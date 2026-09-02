@@ -1,0 +1,28 @@
+# Smoke config specifically to exercise loop D (novelty): a single seed family
+# with zero rewrite budget freezes immediately, so round 1 must go to novelty.
+run:
+  runs_dir: runs
+  seed: 0
+
+agents:
+  default_model: openai/gpt-5.6-sol
+  generator: {model: null, max_retries: 2, n_candidates: 1}
+  rewriter: {model: null, max_retries: 2, n_candidates: 1}
+  novelty: {model: null, max_retries: 2, n_candidates: 1}
+
+budgets:
+  trials_per_space: 4
+  rewrite_rounds_per_family: 0
+  no_improve_rounds: 1
+  min_improvement_pct: 2.0
+  max_families_total: 2
+  max_families_active: 2
+  max_seed_candidates: 1
+  repair_attempts: 1
+  wall_clock_hours: 3
+
+evaluation:
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20

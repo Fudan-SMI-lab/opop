@@ -1,0 +1,28 @@
+# Config for the two real L3 experiments (level3:21, level3:43).
+run:
+  runs_dir: runs
+  seed: 0
+
+agents:
+  default_model: openai/gpt-5.6-sol
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 3
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 3
+  max_families_active: 2
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3          # improvement F: 2->3, compile+precision failures need >2 tries
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed   # improvement A: tf32|ieee dual-witness relaxed gate
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985

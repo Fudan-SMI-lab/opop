@@ -1,0 +1,465 @@
+"""The six concrete agent modules: generator, parameterizer, analyst, rewriter,
+novelty, repair. Each is thin: sandbox seeding + prompt + output schema."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from importlib import resources
+from pathlib import Path
+
+from kernel_optimizer.agents.base import AgentModule
+from kernel_optimizer.agents.sandbox import Sandbox
+from kernel_optimizer.models.core import DeviceLimits, TaskSpec
+from kernel_optimizer.models.reports import (
+    BottleneckReport,
+    GenerationResult,
+    NoveltyResult,
+    ParameterizationResult,
+    RepairResult,
+    RewriteResult,
+    TuningStats,
+)
+from kernel_optimizer.paramspace.triton_lint import lint_triton_source
+
+
+def _contract_doc() -> str:
+    return (
+        resources.files("kernel_optimizer.agents.prompts")
+        .joinpath("candidate_contract.md")
+        .read_text(encoding="utf-8")
+    )
+
+
+def _triton_pitfalls_doc() -> str:
+    return (
+        resources.files("kernel_optimizer.agents.prompts")
+        .joinpath("triton_pitfalls.md")
+        .read_text(encoding="utf-8")
+    )
+
+
+def _device_doc(device: DeviceLimits) -> str:
+    return (
+        f"# Target device\n\n"
+        f"- {device.name}\n"
+        f"- VRAM: {device.vram_gb} GB\n"
+        f"- Max registers/thread: {device.max_regs_per_thread}\n"
+        f"- Max static shared memory/block: {device.max_shared_bytes_static} B\n"
+        f"- Max opt-in shared memory/block: {device.max_shared_bytes_optin} B\n"
+        f"- Max threads/block: {device.max_threads_per_block}\n"
+    )
+
+
+def _repair_guidance(failure_kind: str) -> str:
+    """Failure-class-specific repair hints (improvement F): route the repair to the
+    likely cause instead of a generic 'fix it' prompt. Purely additive — the agent
+    still diagnoses from the actual failure detail in failure/detail.txt."""
+    numeric = (
+        "This is a NUMERICAL error: the kernel compiled and ran but its output did "
+        "not match the reference within tolerance. Focus on precision and reduction "
+        "correctness — accumulate dot products/reductions in fp32 (use "
+        'input_precision="ieee" for tl.dot on fp32 refs), check the reduction order '
+        "and masking of padded lanes, and keep softmax/normalization numerically "
+        "stable (subtract the row max before exp)."
+    )
+    compile_ = (
+        "This is a COMPILE/RUNTIME error: the kernel failed to build or crashed. Focus "
+        "on Triton language constraints — every tl.arange bound and tile size must be a "
+        "compile-time tl.constexpr power of two, tl.dot input dims must be divisible by "
+        "16, never call tl.next_power_of_2 inside device code (compute it on the host "
+        "and pass it in as a tl.constexpr), and mask every out-of-bounds load/store."
+    )
+    oom = (
+        "This is an OUT-OF-MEMORY error: reduce per-program memory — smaller tiles, "
+        "fewer pipeline stages, or stream the reduction instead of materializing large "
+        "intermediates."
+    )
+    mapping = {
+        "correctness_mismatch": numeric,
+        "compile_error": compile_,
+        "runtime_error": compile_,
+        "static_check_failed": compile_,
+        "oom": oom,
+    }
+    return mapping.get(failure_kind,
+                       "Diagnose from the failure detail and fix the root cause.")
+
+
+def _files_exist_check(files: list[str], sb: Sandbox) -> str | None:
+    missing = [f for f in files if not sb.exists(f)]
+    if missing:
+        return (f"your JSON references files that do not exist in the workspace: "
+                f"{missing}. Write each file to disk, then answer again.")
+    return None
+
+
+def _triton_lint_check(files: list[str], sb: Sandbox) -> str | None:
+    """Improvement C: reject certain Triton compile-failures before the GPU sees
+    them, feeding the specific problem back into the agent's own retry loop. A
+    no-op for non-Triton files (no @triton.jit body -> no findings)."""
+    problems: list[str] = []
+    for f in files:
+        try:
+            src = sb.read_output(f)
+        except (OSError, ValueError):
+            continue  # existence is checked separately; don't double-fault here
+        hard_errors, _warnings = lint_triton_source(src)
+        for err in hard_errors:
+            problems.append(f"{f}: {err}")
+    if problems:
+        return ("Static Triton check rejected your kernel(s) before evaluation. "
+                "Fix these and answer again:\n- " + "\n- ".join(problems))
+    return None
+
+
+# --- 1. candidate generator ---------------------------------------------------
+
+
+@dataclass
+class GeneratorInputs:
+    task: TaskSpec
+    ref_source: str
+    device: DeviceLimits
+    n_candidates: int
+
+
+class CandidateGeneratorAgent(AgentModule[GeneratorInputs, GenerationResult]):
+    name = "generator"
+    output_model = GenerationResult
+
+    def seed_sandbox(self, inputs: GeneratorInputs, sb: Sandbox) -> None:
+        sb.write_input("task/ref.py", inputs.ref_source)
+        sb.write_input("docs/candidate_contract.md", _contract_doc())
+        sb.write_input("docs/triton_pitfalls.md", _triton_pitfalls_doc())
+        sb.write_input("docs/device.md", _device_doc(inputs.device))
+
+    def render_prompt(self, inputs: GeneratorInputs, sb: Sandbox) -> str:
+        return f"""You are optimizing a GPU operator from KernelBench.
+
+The reference PyTorch implementation is in `task/ref.py` (task: {inputs.task.name},
+level {inputs.task.level}). Read it carefully, then read
+`docs/candidate_contract.md` and `docs/device.md`. If you write any Triton
+(`@triton.jit`) kernel, you MUST also read `docs/triton_pitfalls.md` first and
+obey every rule that applies — they are compiler/correctness hard constraints,
+not style preferences.
+
+Write {inputs.n_candidates} candidate kernel implementations, each in its own file
+`candidates/cand_1.py`, `candidates/cand_2.py`, ... Each candidate must follow the
+contract exactly (ModelNew + a PARAMS dict of tunable knobs).
+
+CRITICAL: the candidates must differ in COMPUTATIONAL APPROACH, not just in
+parameter defaults or code style. Vary along axes such as: work partitioning
+(what each thread block owns), data placement (shared memory vs registers vs
+recompute), fusion boundaries (which ops are fused into one kernel), thread
+communication (warp shuffle vs shared memory reduction), or kernel organization
+(single fused kernel vs a small pipeline of kernels).
+
+You may run quick syntax checks (e.g. `python -c "import ast; ast.parse(open('candidates/cand_1.py').read())"`),
+but you cannot run GPU code here — the harness evaluates on the GPU afterwards.
+
+When done, answer with JSON:
+{{"candidates": [{{"file": "candidates/cand_1.py", "backend": "triton",
+  "approach_summary": "<1-2 sentences>", "structural_axes": ["<axis>", ...]}}, ...]}}
+"""
+
+    def check_output(self, output: GenerationResult, sb: Sandbox) -> str | None:
+        if not output.candidates:
+            return "empty candidate list; produce at least one candidate"
+        files = [c.file for c in output.candidates]
+        missing = _files_exist_check(files, sb)
+        if missing:
+            return missing
+        triton_files = [c.file for c in output.candidates if c.backend == "triton"]
+        return _triton_lint_check(triton_files, sb)
+
+
+# --- 2. parameterizer -----------------------------------------------------------
+
+
+@dataclass
+class ParameterizerInputs:
+    task: TaskSpec
+    candidate_source: str
+    device: DeviceLimits
+    prior_feedback: str = ""
+
+
+class ParameterizerAgent(AgentModule[ParameterizerInputs, ParameterizationResult]):
+    name = "parameterizer"
+    output_model = ParameterizationResult
+
+    def seed_sandbox(self, inputs: ParameterizerInputs, sb: Sandbox) -> None:
+        sb.write_input("candidate/source.py", inputs.candidate_source)
+        sb.write_input("docs/candidate_contract.md", _contract_doc())
+        sb.write_input("docs/device.md", _device_doc(inputs.device))
+
+    def render_prompt(self, inputs: ParameterizerInputs, sb: Sandbox) -> str:
+        feedback = (
+            f"\nPrevious attempt was rejected: {inputs.prior_feedback}\n"
+            if inputs.prior_feedback
+            else ""
+        )
+        return f"""A candidate kernel is in `candidate/source.py`. Read it, plus
+`docs/candidate_contract.md` and `docs/device.md`.{feedback}
+
+Your job: parameterize every tunable feature of this kernel.
+
+1. Rewrite the file as `candidate/parameterized.py` so ALL tunable knobs flow
+   through one module-level `PARAMS = {{...}}` dict (contract section "PARAMS
+   block"). Tunables typically include block/tile sizes, num_warps, num_stages,
+   vectorization widths, split factors, group sizes.
+2. For each PARAMS key, propose the list of values worth trying, ordered from
+   cheapest (least resources) to most expensive. Keep each list to 2-8 values.
+   The current PARAMS default must be included in its list.
+3. Propose constraints that rule out illegal/doomed combinations, as boolean
+   expressions over the PARAMS names (operators: + - * / // % ** comparisons
+   and/or). You may reference device constants: MAX_REGS_PER_THREAD,
+   MAX_SHARED_BYTES, MAX_SHARED_BYTES_OPTIN, MAX_THREADS_PER_BLOCK.
+   Example: "BLOCK_M * BLOCK_K * 4 + BLOCK_K * BLOCK_N * 4 <= MAX_SHARED_BYTES".
+
+The rewritten kernel must be functionally identical to the original at the
+default PARAMS values.
+
+IMPORTANT: actually create `candidate/parameterized.py` on disk with your file
+tools before answering. A JSON answer that references a file you did not write
+is rejected and wastes an attempt.
+
+Answer with JSON:
+{{"file": "candidate/parameterized.py",
+  "space": {{"params": [{{"name": "BLOCK_M", "kind": "int", "choices": [32, 64, 128],
+             "description": "..."}}, ...],
+            "constraints": [{{"expr": "...", "rationale": "..."}}, ...]}}}}
+"""
+
+    def check_output(self, output: ParameterizationResult, sb: Sandbox) -> str | None:
+        if not output.space.params:
+            return "space.params is empty; declare at least two tunable parameters"
+        return _files_exist_check([output.file], sb)
+
+
+# --- 3. bottleneck analyst -------------------------------------------------------
+
+
+@dataclass
+class AnalystInputs:
+    task: TaskSpec
+    candidate_source: str
+    stats: TuningStats
+    trials_csv: str
+    device: DeviceLimits
+
+
+class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
+    name = "analyst"
+    output_model = BottleneckReport
+
+    def seed_sandbox(self, inputs: AnalystInputs, sb: Sandbox) -> None:
+        sb.write_input("candidate/source.py", inputs.candidate_source)
+        sb.write_input("tuning/stats.json", inputs.stats.model_dump_json(indent=2))
+        sb.write_input("tuning/trials.csv", inputs.trials_csv)
+        sb.write_input("docs/device.md", _device_doc(inputs.device))
+
+    def render_prompt(self, inputs: AnalystInputs, sb: Sandbox) -> str:
+        return """A kernel candidate was tuned over its parameter space. These four
+files already exist in your working directory — read them with your file tools
+before answering; do NOT assume any are missing (a stale index may hide them,
+so read by path):
+- `candidate/source.py` — the kernel (PARAMS dict = tunable knobs)
+- `tuning/stats.json` — per-parameter statistics: best value, whether the optimum
+  sits at a boundary of the tried range (`at_boundary` + direction), effect size,
+  failure rates per value, resource usage (registers/shared memory/spills) at the
+  best config, and failure clusters
+- `tuning/trials.csv` — the full trial log (params, status, latency, resources)
+- `docs/device.md` — hardware limits
+
+Analyze which parameters still have headroom but are BLOCKED — i.e. the latency
+trend keeps improving toward a boundary value, and going further fails or is
+prevented by a hardware/resource limit (registers, shared memory, threads, OOM,
+compile failures). You may compute things (python is available) over trials.csv.
+
+Then propose concrete structural-change hypotheses that would relieve the
+dominant limit (e.g. "split K so each block needs less shared memory",
+"recompute instead of caching to cut registers", "two-stage reduction to allow
+larger tiles").
+
+Answer with JSON matching:
+{"summary": "...",
+ "parameter_limits": [{"param": "...", "headroom_direction": "increase|decrease",
+   "blocked_by": "registers|shared_memory|threads|oom|compile_failure|none",
+   "predicted_gain_pct": <number or null>, "evidence": "..."}],
+ "hypotheses": [{"id": "H1", "change": "...", "expected_effect": "...", "risk": "..."}],
+ "suggested_action": "tune_more|rewrite|stop"}
+"""
+
+
+# --- 4. structure rewriter --------------------------------------------------------
+
+
+@dataclass
+class RewriterInputs:
+    task: TaskSpec
+    best_source: str  # best materialized source of the candidate
+    report: BottleneckReport
+    failed_hypotheses: list[dict]
+    device: DeviceLimits
+    n_candidates: int
+
+
+class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
+    name = "rewriter"
+    output_model = RewriteResult
+
+    def seed_sandbox(self, inputs: RewriterInputs, sb: Sandbox) -> None:
+        sb.write_input("candidate/best.py", inputs.best_source)
+        sb.write_input("analysis/bottleneck.json", inputs.report.model_dump_json(indent=2))
+        sb.write_input(
+            "history/failed_hypotheses.json", json.dumps(inputs.failed_hypotheses, indent=2)
+        )
+        sb.write_input("docs/candidate_contract.md", _contract_doc())
+        sb.write_input("docs/triton_pitfalls.md", _triton_pitfalls_doc())
+        sb.write_input("docs/device.md", _device_doc(inputs.device))
+
+    def render_prompt(self, inputs: RewriterInputs, sb: Sandbox) -> str:
+        return f"""`candidate/best.py` is the current best version of a kernel (already at
+its best-known PARAMS). `analysis/bottleneck.json` explains what limits it —
+which parameters wanted to go further and what resource blocked them.
+`history/failed_hypotheses.json` lists changes already tried that did NOT help;
+do not repeat them. Read `docs/candidate_contract.md` and `docs/device.md`. If
+your rewrite uses Triton, also read `docs/triton_pitfalls.md` and obey it.
+
+Produce up to {inputs.n_candidates} REWRITTEN kernel(s), each targeting a specific
+hypothesis from the bottleneck report: change the structure so the blocked
+parameter direction becomes reachable (less shared memory per element, fewer
+registers, different work partitioning, etc.). This is a structural change, not a
+parameter change — the new file may have different PARAMS keys.
+
+Write each rewrite to `rewrites/rw_1.py`, `rewrites/rw_2.py`, ... following the
+contract (ModelNew + PARAMS dict). The rewrite does NOT need to be faster at the
+old default parameters — it needs to unlock the blocked region (e.g. allow a
+bigger tile that the parent could not compile/run).
+
+Answer with JSON:
+{{"candidates": [{{"file": "rewrites/rw_1.py", "hypothesis_id": "H1",
+  "change_summary": "..."}}, ...]}}
+"""
+
+    def check_output(self, output: RewriteResult, sb: Sandbox) -> str | None:
+        if not output.candidates:
+            return "empty rewrite list; produce at least one rewrite"
+        files = [c.file for c in output.candidates]
+        missing = _files_exist_check(files, sb)
+        if missing:
+            return missing
+        return _triton_lint_check(files, sb)
+
+
+# --- 5. novelty generator -----------------------------------------------------------
+
+
+@dataclass
+class NoveltyInputs:
+    task: TaskSpec
+    ref_source: str
+    family_summaries: list[dict]  # {family_id, approach_summary, best_ms, anchor_source}
+    device: DeviceLimits
+    n_candidates: int
+
+
+class NoveltyGeneratorAgent(AgentModule[NoveltyInputs, NoveltyResult]):
+    name = "novelty"
+    output_model = NoveltyResult
+
+    def seed_sandbox(self, inputs: NoveltyInputs, sb: Sandbox) -> None:
+        sb.write_input("task/ref.py", inputs.ref_source)
+        sb.write_input("docs/candidate_contract.md", _contract_doc())
+        sb.write_input("docs/triton_pitfalls.md", _triton_pitfalls_doc())
+        sb.write_input("docs/device.md", _device_doc(inputs.device))
+        for i, fam in enumerate(inputs.family_summaries, 1):
+            sb.write_input(f"families/family_{i}/anchor.py", fam.get("anchor_source", ""))
+            sb.write_input(
+                f"families/family_{i}/summary.json",
+                json.dumps({k: v for k, v in fam.items() if k != "anchor_source"}, indent=2),
+            )
+
+    def render_prompt(self, inputs: NoveltyInputs, sb: Sandbox) -> str:
+        return f"""We are optimizing the KernelBench task in `task/ref.py`. The approaches
+tried so far are documented under `families/family_*/` (anchor source +
+summary with measured performance). Read them, plus
+`docs/candidate_contract.md` and `docs/device.md`. If your candidate uses Triton,
+also read `docs/triton_pitfalls.md` and obey it.
+
+Produce up to {inputs.n_candidates} NEW candidate kernel(s) whose core computational
+approach is CLEARLY DIFFERENT from every existing family — different work
+decomposition, different data-flow strategy, different fusion structure, or a
+different algorithmic formulation. A candidate that is a parameter tweak or a
+minor variation of an existing family will be automatically rejected by a
+structural-similarity gate, wasting the attempt.
+
+Write each to `novel/nv_1.py`, `novel/nv_2.py`, ... following the contract
+(ModelNew + PARAMS dict).
+
+Answer with JSON:
+{{"candidates": [{{"file": "novel/nv_1.py", "backend": "triton",
+  "approach_summary": "...", "difference_claim": "how it differs from every
+  existing family"}}, ...]}}
+"""
+
+    def check_output(self, output: NoveltyResult, sb: Sandbox) -> str | None:
+        if not output.candidates:
+            return "empty candidate list; produce at least one novel candidate"
+        files = [c.file for c in output.candidates]
+        missing = _files_exist_check(files, sb)
+        if missing:
+            return missing
+        triton_files = [c.file for c in output.candidates if c.backend == "triton"]
+        return _triton_lint_check(triton_files, sb)
+
+
+# --- 6. repair ------------------------------------------------------------------------
+
+
+@dataclass
+class RepairInputs:
+    task: TaskSpec
+    broken_source: str
+    failure_kind: str
+    failure_detail: str
+    device: DeviceLimits
+
+
+class RepairAgent(AgentModule[RepairInputs, RepairResult]):
+    name = "repair"
+    output_model = RepairResult
+
+    def seed_sandbox(self, inputs: RepairInputs, sb: Sandbox) -> None:
+        sb.write_input("candidate/broken.py", inputs.broken_source)
+        sb.write_input("failure/kind.txt", inputs.failure_kind)
+        sb.write_input("failure/detail.txt", inputs.failure_detail)
+        sb.write_input("docs/candidate_contract.md", _contract_doc())
+        sb.write_input("docs/triton_pitfalls.md", _triton_pitfalls_doc())
+        sb.write_input("docs/device.md", _device_doc(inputs.device))
+
+    def render_prompt(self, inputs: RepairInputs, sb: Sandbox) -> str:
+        guidance = _repair_guidance(inputs.failure_kind)
+        return f"""The kernel in `candidate/broken.py` failed with `{inputs.failure_kind}`.
+The full failure detail is in `failure/detail.txt`. Read the contract in
+`docs/candidate_contract.md`, and if the kernel uses Triton also read
+`docs/triton_pitfalls.md`.
+
+{guidance}
+
+Diagnose the failure and write a fixed version to `candidate/fixed.py`. Keep the
+computational approach the same — this is a repair, not a redesign. Preserve the
+PARAMS structure (you may adjust default values or the dict's keys only if the
+failure demands it).
+
+Answer with JSON:
+{{"file": "candidate/fixed.py", "diagnosis": "...", "change_summary": "..."}}
+"""
+
+    def check_output(self, output: RepairResult, sb: Sandbox) -> str | None:
+        missing = _files_exist_check([output.file], sb)
+        if missing:
+            return missing
+        return _triton_lint_check([output.file], sb)

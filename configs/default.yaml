@@ -1,0 +1,68 @@
+run:
+  runs_dir: runs
+  seed: 0
+
+opencode:
+  server_url: null              # null => harness launches `opencode serve`
+  launch_cwd: D:/Pyhon_projects/opop
+  host: 127.0.0.1
+  port: 4096
+  agent: build
+  request_timeout_s: 1200
+  permission_mode: sandbox_config   # or sse_auto_approve
+
+agents:
+  default_model: openai/gpt-5.6-sol
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  parameterizer: {model: null, max_retries: 2}
+  analyst: {model: null, max_retries: 1}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+  repair: {model: null, max_retries: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 3
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 3
+  max_families_active: 2
+  max_seed_candidates: 4
+  repair_attempts: 2
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+  timing_method: cuda_event
+  precision: fp32
+  eval_timeout_s: 600
+  build_timeout_s: 1200
+  suspicious_speedup: 2.0
+  excessive_speedup: 10.0
+
+gpu:
+  concurrency:
+    enabled: true
+    max_shared_jobs: 2          # correctness/compile/static-check lanes only
+    vram_budget_frac: 0.45
+    timing_cooldown_s: 2
+
+wsl:
+  distro: Ubuntu
+  venv: /mnt/d/Pyhon_projects/opop/kernelfoundry/.venv-wsl   # proven torch2.9/cu129 + triton3.5
+  kernelbench_src: /mnt/d/Pyhon_projects/opop/KernelBench/src
+  extra_pythonpath: ""                                       # optional pip --target dir
+  triton_cache_dir: /mnt/d/Pyhon_projects/opop/v2/.triton-cache-wsl
+
+device:
+  name: RTX 5080 Laptop (sm_120)
+  vram_gb: 16
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024
+
+kernelbench_root: D:/Pyhon_projects/opop/KernelBench

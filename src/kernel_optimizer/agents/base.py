@@ -1,0 +1,150 @@
+"""AgentModule: the shared contract for every LLM-backed step.
+
+Each call = fresh sandbox + fresh opencode session with the sandbox as its
+working directory, structured output validated against the module's pydantic
+schema, retries with error feedback, and full event logging.
+"""
+
+from __future__ import annotations
+
+import uuid
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Generic, TypeVar
+
+from pydantic import BaseModel, ValidationError
+
+from kernel_optimizer.agents.runtime import AgentCallError, OpencodeClient, PromptResult
+from kernel_optimizer.agents.sandbox import Sandbox, SandboxFactory
+from kernel_optimizer.config import AgentModuleConfig
+from kernel_optimizer.store.run_store import RunStore
+
+TIn = TypeVar("TIn")
+TOut = TypeVar("TOut", bound=BaseModel)
+
+
+@dataclass
+class AgentOutcome(Generic[TOut]):
+    output: TOut
+    sandbox: Sandbox
+    session_id: str
+    attempts: int
+    tokens: dict
+    cost: float
+
+
+class AgentModule(ABC, Generic[TIn, TOut]):
+    name: str = "agent"
+    output_model: type[BaseModel]
+
+    def __init__(
+        self,
+        client: OpencodeClient,
+        sandboxes: SandboxFactory,
+        store: RunStore,
+        cfg: AgentModuleConfig,
+        agent_name: str = "build",
+    ):
+        self.client = client
+        self.sandboxes = sandboxes
+        self.store = store
+        self.cfg = cfg
+        self.agent_name = agent_name
+
+    @abstractmethod
+    def seed_sandbox(self, inputs: TIn, sb: Sandbox) -> None: ...
+
+    @abstractmethod
+    def render_prompt(self, inputs: TIn, sb: Sandbox) -> str: ...
+
+    def invoke(self, inputs: TIn) -> AgentOutcome[TOut]:
+        call_id = f"{self.name}-{uuid.uuid4().hex[:8]}"
+        sb = self.sandboxes.create(call_id)
+        self.seed_sandbox(inputs, sb)
+        prompt = self.render_prompt(inputs, sb)
+
+        session_id = self.client.create_session(sb.root, title=call_id)
+        self.store.append(
+            "AGENT_CALL_STARTED",
+            {"module": self.name, "call_id": call_id, "session_id": session_id,
+             "model": self.cfg.model},
+        )
+
+        total_tokens: dict = {}
+        total_cost = 0.0
+        feedback = ""
+        last_error = ""
+        for attempt in range(1, self.cfg.max_retries + 2):
+            text = prompt if attempt == 1 else (
+                f"Your previous response could not be used:\n{feedback}\n\n"
+                f"Fix the problem and answer again. Follow the original instructions "
+                f"and output format exactly."
+            )
+            try:
+                result: PromptResult = self.client.prompt(
+                    session_id,
+                    text,
+                    model=self.cfg.model or "",
+                    agent=self.agent_name,
+                    schema=self.output_model.model_json_schema(),
+                    directory=sb.root,
+                )
+            except AgentCallError as exc:
+                last_error = str(exc)
+                self.store.append(
+                    "AGENT_CALL_FAILED",
+                    {"module": self.name, "call_id": call_id, "attempt": attempt,
+                     "error": last_error[:1000]},
+                )
+                feedback = f"transport error: {last_error[:500]}"
+                continue
+
+            total_cost += result.cost
+            for key, value in (result.tokens or {}).items():
+                if isinstance(value, (int, float)):
+                    total_tokens[key] = total_tokens.get(key, 0) + value
+
+            if result.structured is None:
+                feedback = ("no parseable JSON found in your response; emit a single "
+                            "fenced ```json block matching the required schema")
+                last_error = feedback
+                continue
+            try:
+                output = self.output_model.model_validate(result.structured)
+            except ValidationError as exc:
+                feedback = f"JSON did not match the required schema:\n{exc}"[:2000]
+                last_error = feedback
+                continue
+
+            problem = self.check_output(output, sb)
+            if problem:
+                feedback = problem
+                last_error = problem
+                continue
+
+            self.store.append(
+                "AGENT_CALL_FINISHED",
+                {"module": self.name, "call_id": call_id, "attempt": attempt,
+                 "tokens": total_tokens, "cost": total_cost},
+            )
+            return AgentOutcome(
+                output=output,  # type: ignore[arg-type]
+                sandbox=sb,
+                session_id=session_id,
+                attempts=attempt,
+                tokens=total_tokens,
+                cost=total_cost,
+            )
+
+        self.store.append(
+            "AGENT_CALL_FAILED",
+            {"module": self.name, "call_id": call_id, "final": True,
+             "error": last_error[:1000]},
+        )
+        raise AgentCallError(
+            f"{self.name} failed after {self.cfg.max_retries + 1} attempts: {last_error[:500]}"
+        )
+
+    def check_output(self, output: TOut, sb: Sandbox) -> str | None:
+        """Post-validate (e.g. referenced files exist). Return problem text or None."""
+        return None
