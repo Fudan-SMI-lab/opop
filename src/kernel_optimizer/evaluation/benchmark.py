@@ -58,7 +58,7 @@ class Benchmarker:
                         )
                     )
                     continue
-                note = None if mm_mode == "ieee" else "tf32 matmul reference"
+                note = "" if mm_mode == "ieee" else "tf32 matmul reference"
                 baselines.append(Baseline(kind=bkind, latency_ms=lat, note=note))
         return baselines
 

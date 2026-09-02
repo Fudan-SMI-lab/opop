@@ -151,7 +151,9 @@ class Family(BaseModel):
 
 
 class Baseline(BaseModel):
-    kind: Literal["eager", "torch_compile"]
+    # eager / torch_compile, optionally suffixed with a matmul-precision tag
+    # (e.g. eager_tf32) when the dual-witness mode records both precisions.
+    kind: str
     latency_ms: LatencyStats
     note: str = ""
 

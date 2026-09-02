@@ -130,3 +130,51 @@ def test_relaxed_close_semantics():
     assert not _relaxed_close(ref, got2, 0.01, 0.99, 0.99985)
     # shape mismatch never passes
     assert not _relaxed_close(ref, torch.ones(999), 0.01, 0.99, 0.99985)
+
+
+# --- A/decision-2: dual-precision baselines must construct as valid Baselines ---
+
+def test_measure_baseline_dual_precision_records_valid_rows():
+    """Regression: relaxed mode records eager/torch_compile at both ieee and tf32.
+    The ieee rows keep the exact 'eager'/'torch_compile' kinds (speedup denominator);
+    tf32 rows are suffixed. All must be valid Baseline objects (note is a str, kind
+    accepts the suffixed form)."""
+    from kernel_optimizer.config import EvalConfig
+    from kernel_optimizer.evaluation.benchmark import Benchmarker
+    from kernel_optimizer.models.core import Baseline, TaskSpec
+
+    class FakeWorker:
+        def run_job(self, job, timeout, tag, lock_mode="exclusive"):
+            return {"ok": True,
+                    "latency_ms": {"mean": 10.0, "std": 0.1, "min": 9.9, "max": 10.2, "n": 50}}
+
+    cfg = EvalConfig(correctness_mode="dual_witness_relaxed", perf_trials=50)
+    bench = Benchmarker(FakeWorker(), evaluator=None, cfg=cfg)
+    task = TaskSpec(level=1, problem_id=19, name="relu", ref_path="x", ref_src_sha="deadbeef")
+    baselines = bench.measure_baseline(task)
+
+    kinds = {b.kind for b in baselines}
+    assert {"eager", "torch_compile", "eager_tf32", "torch_compile_tf32"} <= kinds
+    assert all(isinstance(b, Baseline) and isinstance(b.note, str) for b in baselines)
+    # ieee rows (the speedup denominators) carry no note; tf32 rows are annotated.
+    ieee = next(b for b in baselines if b.kind == "eager")
+    tf32 = next(b for b in baselines if b.kind == "eager_tf32")
+    assert ieee.note == "" and "tf32" in tf32.note
+
+
+def test_measure_baseline_strict_mode_single_precision():
+    """Strict mode keeps the original two-baseline behavior (ieee only)."""
+    from kernel_optimizer.config import EvalConfig
+    from kernel_optimizer.evaluation.benchmark import Benchmarker
+    from kernel_optimizer.models.core import TaskSpec
+
+    class FakeWorker:
+        def run_job(self, job, timeout, tag, lock_mode="exclusive"):
+            return {"ok": True,
+                    "latency_ms": {"mean": 10.0, "std": 0.1, "min": 9.9, "max": 10.2, "n": 50}}
+
+    cfg = EvalConfig(correctness_mode="strict", perf_trials=50)
+    bench = Benchmarker(FakeWorker(), evaluator=None, cfg=cfg)
+    task = TaskSpec(level=1, problem_id=19, name="relu", ref_path="x", ref_src_sha="deadbeef")
+    baselines = bench.measure_baseline(task)
+    assert {b.kind for b in baselines} == {"eager", "torch_compile"}

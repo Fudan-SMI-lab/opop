@@ -296,17 +296,20 @@ def _dtype(precision: str):
 
 
 def _set_matmul_precision(mode: str) -> None:
-    """Switch fp32 matmul path: 'tf32' (TensorFloat-32) or 'ieee' (full fp32)."""
+    """Switch the fp32 matmul path: 'tf32' (TensorFloat-32) or 'ieee' (full fp32).
+
+    Prefers the torch 2.9+ fp32_precision API and falls back to the older
+    allow_tf32 flags on older torch (both silenced under the try)."""
     import torch
 
-    if mode == "tf32":
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
-        torch.set_float32_matmul_precision("high")
-    else:  # ieee / highest
-        torch.backends.cuda.matmul.allow_tf32 = False
-        torch.backends.cudnn.allow_tf32 = False
-        torch.set_float32_matmul_precision("highest")
+    want_tf32 = (mode == "tf32")
+    try:
+        torch.backends.cuda.matmul.fp32_precision = "tf32" if want_tf32 else "ieee"
+        torch.backends.cudnn.conv.fp32_precision = "tf32" if want_tf32 else "ieee"
+    except (AttributeError, RuntimeError):
+        torch.backends.cuda.matmul.allow_tf32 = want_tf32
+        torch.backends.cudnn.allow_tf32 = want_tf32
+    torch.set_float32_matmul_precision("high" if want_tf32 else "highest")
 
 
 def _relaxed_close(ref, got, elem_tol: float, pass_frac: float, cosine_min: float) -> bool:
@@ -384,6 +387,17 @@ def run_relaxed_correctness(job: dict) -> dict:
         return {"ok": False, "compiled": False, "correct": False,
                 "failure_kind": "compile_error", "log_tail": detail[-4000:]}
 
+    # ModelNew is the class; instantiate it once (seeded, same as KernelBench) — a
+    # failure here is a runtime error, not a compile error.
+    try:
+        with torch.no_grad():
+            set_seed(seed)
+            custom_model = ModelNew(*init_inputs)
+    except Exception as exc:  # noqa: BLE001
+        graceful_eval_cleanup(context, device, tempfile)
+        return {"ok": False, "compiled": True, "correct": False,
+                "failure_kind": _classify_exception(exc), "log_tail": _log_tail(exc)}
+
     # Same deterministic per-trial seed sequence as KernelBench run_and_check_correctness.
     torch.manual_seed(seed)
     trial_seeds = [torch.randint(0, 2**32 - 1, (1,)).item() for _ in range(num_trials)]
@@ -399,8 +413,7 @@ def run_relaxed_correctness(job: dict) -> dict:
                 inputs = [_process_input_tensor(x, device, backend, precision) for x in inputs]
 
                 set_seed(ts); model = ref_model.to(device=device, dtype=precision)
-                set_seed(ts); model_new = ModelNew.to(device=device, dtype=precision) \
-                    if hasattr(ModelNew, "to") else ModelNew
+                set_seed(ts); model_new = custom_model.to(device=device, dtype=precision)
 
                 _set_matmul_precision("tf32")
                 out_ref_tf32 = model(*inputs); torch.cuda.synchronize(device=device)
@@ -443,8 +456,7 @@ def run_relaxed_correctness(job: dict) -> dict:
             perf_inputs = get_inputs()
             perf_inputs = [_process_input_tensor(x, device, backend, precision)
                            for x in perf_inputs]
-            model_new = ModelNew.to(device=device, dtype=precision) \
-                if hasattr(ModelNew, "to") else ModelNew
+            model_new = custom_model.to(device=device, dtype=precision)
             with torch.no_grad():
                 elapsed = time_execution_with_cuda_event(
                     model_new, perf_inputs, num_warmup=3, num_trials=num_perf,

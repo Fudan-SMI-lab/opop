@@ -1,0 +1,33 @@
+# Smoke config to validate the dual-precision relaxed correctness path (improvement A)
+# end-to-end on a cheap L1 task before committing to multi-hour L3 runs.
+run:
+  runs_dir: runs
+  seed: 0
+
+agents:
+  default_model: openai/gpt-5.6-sol
+  generator: {model: null, max_retries: 2, n_candidates: 2}
+  rewriter: {model: null, max_retries: 2, n_candidates: 1}
+  novelty: {model: null, max_retries: 2, n_candidates: 1}
+
+budgets:
+  trials_per_space: 6
+  rewrite_rounds_per_family: 1
+  no_improve_rounds: 1
+  min_improvement_pct: 2.0
+  max_families_total: 2
+  max_families_active: 2
+  max_families_total_hard: 4
+  max_seed_candidates: 2
+  repair_attempts: 2
+  wall_clock_hours: 2
+
+evaluation:
+  correctness_trials: 5
+  perf_trials: 50
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
