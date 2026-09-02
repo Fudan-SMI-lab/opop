@@ -1,9 +1,15 @@
 # v2 Harness 改进实施方案
 
-> 日期:2026-09-02。依据:`framework-diagnosis-and-improvements.md`(磁盘核实的诊断)+
-> `../research/kernelfoundry-findings.md`(KernelFoundry 调研)。
+> 日期:2026-09-02(方案)/ 2026-09-03(实施完成)。依据:`framework-diagnosis-and-improvements.md`
+> (磁盘核实的诊断)+ `../research/kernelfoundry-findings.md`(KernelFoundry 调研)。
 > 本方案给出**每项改进的具体改动点(文件:行)、代码草图、风险、验收**,可直接据此实现。
 > **原则**:只借鉴"硬约束/泛化"做法,不写死"性能策略"类提示(见 §0)。
+>
+> **实施状态(2026-09-03)**:A/B/C/D.1/E/F 全部实施完成,G 已移除。默认行为不变
+> (config flag 控制),experiments_l3.yaml 已开启 A(dual_witness_relaxed)+F(repair 3)。
+> 全套 **90 passed, 1 skipped**(host 无 torch 的 relaxed_close,WSL 侧已验证)。
+> 代码已 push 到 github Fudan-SMI-lab/opop 的 v2 分支留档。实施细节见 `../../HANDOFF.md` §10。
+> **下一步**:用改进后代码重跑 level3:43/level3:21 验证通过率与 Loop C trace 的实质改善。
 
 ---
 
