@@ -20,9 +20,14 @@ docs/
   — v2 效果分析(基于 events.jsonl 磁盘核实):正确性通过率低的根因、L3:21 调参无提升真因、
   novelty 不触发缺陷、五问答、改进路线(按收益排序)。**当前主分析文档,先读它。**
 - **[improvement-implementation-plan.md](analysis/improvement-implementation-plan.md)**
-  — 详细改进实施方案:7 项改进(A 双精度见证门 / B Triton 硬约束 prompt / C 静态门 /
+  — 第一轮详细改进实施方案:7 项改进(A 双精度见证门 / B Triton 硬约束 prompt / C 静态门 /
   D 契约纠错+敏感性检查 / E novelty 名额 / F repair 预算 / G 参考库),每项含改动点(文件:行)、
-  代码草图、风险、验收、实施顺序。**动手实现前读它。**
+  代码草图、风险、验收、实施顺序。已实施 A–F + H1/H2/H3(tensor-core 精度维度)。
+- **[improvement-plan-round2.md](analysis/improvement-plan-round2.md)**
+  — 第二轮改进实施方案(2026-09-04):针对第一轮落地后新暴露的三个问题——J(参考 train/eval
+  运行模式探测并告知 agent,修 L3:21 MBConv 的 BatchNorm 语义缺口)/ K(boundary+空闲资源触发
+  轻量参数空间扩展闭环)/ L(dtype 提为贯穿 cast+dot 的单一 knob,修 fp16 未被独立评测的 gap)。
+  含每项的改动点、通用场景负面作用评估、风险、验收。**尚未实施,待批准。**
 
 ### research/ — 调研
 - **[kernelfoundry-findings.md](research/kernelfoundry-findings.md)**
