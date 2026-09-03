@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 JOB_TYPES = ("baseline", "eval_correctness", "eval_perf", "static_check", "env_probe",
-             "eval_correctness_relaxed")
+             "eval_correctness_relaxed", "probe_semantics")
 
 FAILURE_KINDS = (
     "compile_error",
@@ -20,6 +20,14 @@ FAILURE_KINDS = (
 
 def make_env_probe_job() -> dict[str, Any]:
     return {"job_type": "env_probe"}
+
+
+def make_probe_semantics_job(ref_src_path: str) -> dict[str, Any]:
+    """Improvement J: probe the reference model's runtime eval semantics
+    (train/eval mode + norm-layer flags) so the agent can match them. Reads the
+    live model object's state — not the source text — so it is correct regardless
+    of how the reference is written."""
+    return {"job_type": "probe_semantics", "ref_src_path": ref_src_path}
 
 
 def make_static_check_job(kernel_src_path: str, backend: str, precision: str) -> dict[str, Any]:

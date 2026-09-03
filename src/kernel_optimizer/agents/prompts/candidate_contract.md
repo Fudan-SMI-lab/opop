@@ -55,6 +55,25 @@ Rules:
   >99% of elements). Either way, do not assume loose slack — a numerically sloppy
   reduction (e.g. tf32 accumulation over a long dimension) will be rejected.
 
+## Reference run mode (train vs eval) — read `task/eval_semantics.md`
+
+The reference model is evaluated in a specific run mode, and `task/eval_semantics.md`
+tells you which one (the harness observed the live model). **Your kernel must
+reproduce the semantics of THAT mode**, not an assumed one. This matters most for
+normalization layers:
+
+- **TRAIN mode**: `nn.BatchNorm2d`/`InstanceNorm` normalize with the **current
+  batch's** mean/var (computed from the input), then apply the affine `weight`/`bias`.
+  They do **NOT** use `running_mean`/`running_var` — on a freshly constructed,
+  untrained model those are `0`/`1`, so using them produces a large systematic error
+  (e.g. everything off by a near-constant amount). If `eval_semantics.md` says the
+  reference (or a given norm layer) is in train mode, compute batch statistics.
+- **EVAL mode**: normalization uses the stored `running_mean`/`running_var`.
+- Dropout is a no-op when its `p == 0` regardless of mode; otherwise it too depends
+  on the mode.
+
+Match each layer's stated `training` flag; do not assume all layers agree.
+
 ## Precision and the tensor-core path
 
 For matmul- and convolution-bound kernels, the arithmetic precision of the dot
@@ -72,16 +91,22 @@ choice, not an afterthought:
   harness accepts a result that matches the reference computed at **tf32**. A
   tf32 tensor-core kernel is therefore a legal, accepted candidate — prefer it
   for matmul/conv-bound work unless a diff-test shows it drifts out of tolerance.
-- Make the dot precision a tunable knob, e.g. `PARAMS["DOT_PRECISION"] = "tf32"`
-  with the value threaded into `tl.dot(..., input_precision=PARAMS["DOT_PRECISION"])`,
-  so the tuner can compare `"tf32"` against `"ieee"` on real measurements. Keep
-  an `"ieee"` fallback reachable so a candidate that genuinely needs full fp32
-  can still be expressed.
-- Precision applies to the *dot/accumulate* step. Even on the tf32 input path,
-  keep the **accumulator** in fp32 (`tl.zeros(..., dtype=tl.float32)`); tf32 only
-  reduces the mantissa of the multiply inputs, not the accumulation, and an fp32
+- Make the compute precision a SINGLE tunable knob that controls the WHOLE
+  precision path — both the input cast and the `tl.dot` precision — e.g.
+  `PARAMS["COMPUTE_DTYPE"] = "tf32"` with choices `["fp16", "bf16", "tf32", "ieee"]`:
+  `"fp16"`/`"bf16"` cast the dot inputs to `tl.float16`/`bfloat16` (tensor cores);
+  `"tf32"`/`"ieee"` keep fp32 inputs with the matching `input_precision`. Keep an
+  `"ieee"` choice reachable so a candidate that genuinely needs full fp32 can still
+  be expressed. **REQUIRED:** if your kernel uses a low-precision cast
+  (`.to(tl.float16)` etc.) to reach the tensor cores, that dtype MUST come from a
+  PARAMS knob — never hard-code fp16 in the body while leaving PARAMS without a
+  dtype knob (the tuner then cannot compare precisions and the fp16 path is never
+  measured against the alternatives).
+- Precision applies to the *dot/accumulate* step. Even on the tf32/fp16 input path,
+  keep the **accumulator** in fp32 (`tl.zeros(..., dtype=tl.float32)`); low precision
+  only reduces the mantissa of the multiply inputs, not the accumulation, and an fp32
   accumulator over a long reduction is what keeps you inside tolerance. A sloppy
-  low-precision *accumulator* is the thing that fails the diff-test, not a tf32
+  low-precision *accumulator* is the thing that fails the diff-test, not a tf32/fp16
   *input*.
 
 ## Backend

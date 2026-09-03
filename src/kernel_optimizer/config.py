@@ -61,6 +61,10 @@ class BudgetConfig(BaseModel):
     max_seed_candidates: int = 4
     repair_attempts: int = 2
     wall_clock_hours: float = 12.0
+    # Improvement K: lightweight parameter-space expansion when a knob is at the
+    # tried-range boundary and still improving with idle resources. 0 = disabled.
+    space_expansions_per_candidate: int = 0
+    space_expansion_idle_frac: float = 0.8  # resource must be < this frac of limit
 
 
 class EvalConfig(BaseModel):

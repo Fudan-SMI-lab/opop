@@ -7,7 +7,7 @@ from typing import Any
 
 from kernel_optimizer.config import EvalConfig
 from kernel_optimizer.evaluation.correctness import CorrectnessEvaluator, latency_from_result
-from kernel_optimizer.gpu.jobs import make_baseline_job
+from kernel_optimizer.gpu.jobs import make_baseline_job, make_probe_semantics_job
 from kernel_optimizer.gpu.worker_client import WslGpuWorker
 from kernel_optimizer.models.core import Baseline, LatencyStats, TaskSpec
 
@@ -17,6 +17,23 @@ class Benchmarker:
         self.worker = worker
         self.evaluator = evaluator
         self.cfg = cfg
+
+    def probe_semantics(self, task: TaskSpec) -> dict[str, Any]:
+        """Improvement J: probe the reference's runtime eval semantics (train/eval
+        mode + norm-layer flags). Best-effort — a failure returns an empty dict and
+        the agent contract degrades gracefully (no forced assumption)."""
+        job = make_probe_semantics_job(str(task.ref_path))
+        try:
+            result = self.worker.run_job(
+                job, self.cfg.eval_timeout_s, "probe-semantics", lock_mode="shared")
+        except Exception:  # noqa: BLE001 — probe is advisory, never fatal
+            return {}
+        if not result.get("ok"):
+            return {}
+        return {
+            "training": result.get("training"),
+            "norm_layers": result.get("norm_layers", []),
+        }
 
     def measure_baseline(self, task: TaskSpec) -> list[Baseline]:
         baselines: list[Baseline] = []

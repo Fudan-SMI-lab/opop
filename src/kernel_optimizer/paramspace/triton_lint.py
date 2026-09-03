@@ -55,6 +55,42 @@ class _JitBodyVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+# dtype tokens that indicate a low-precision tensor-core path (improvement L).
+_LOWP_DTYPE_TOKENS = ("float16", "bfloat16")
+# values a dtype/precision PARAMS knob would carry (name-agnostic detection).
+_DTYPE_KNOB_VALUES = {"fp16", "bf16", "tf32", "ieee", "float16", "bfloat16", "float32"}
+
+
+def _has_hardcoded_lowp_cast(tree: ast.Module) -> bool:
+    """True if the source casts to fp16/bf16 anywhere (e.g. `.to(tl.float16)`,
+    `x.to(torch.float16)`, `tl.float16` literal). Name-agnostic to the exact call
+    form — we only care that a low-precision dtype token appears in the code."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr in _LOWP_DTYPE_TOKENS:
+            return True
+        # bare Name (e.g. `float16` imported directly) — rare but cheap to catch
+        if isinstance(node, ast.Name) and node.id in _LOWP_DTYPE_TOKENS:
+            return True
+    return False
+
+
+def _params_has_dtype_knob(tree: ast.Module) -> bool:
+    """True if the module-level PARAMS dict has a knob whose VALUE looks like a
+    dtype/precision selector (name-agnostic: matches on the value, not the key, so
+    DOT_PRECISION / COMPUTE_DTYPE / any name is recognized)."""
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        if "PARAMS" not in targets or not isinstance(node.value, ast.Dict):
+            continue
+        for v in node.value.values:
+            if isinstance(v, ast.Constant) and isinstance(v.value, str):
+                if v.value.strip().lower() in _DTYPE_KNOB_VALUES:
+                    return True
+    return False
+
+
 def lint_triton_source(source: str) -> tuple[list[str], list[str]]:
     """Return (hard_errors, warnings). hard_errors are certain compile failures."""
     try:
@@ -63,4 +99,20 @@ def lint_triton_source(source: str) -> tuple[list[str], list[str]]:
         return ([f"source does not parse: {exc}"], [])
     visitor = _JitBodyVisitor()
     visitor.visit(tree)
-    return (visitor.hard_errors, visitor.warnings)
+    warnings = list(visitor.warnings)
+
+    # Improvement L: if the kernel hardcodes a low-precision (fp16/bf16) cast but
+    # exposes NO dtype/precision PARAMS knob, the tuner cannot compare precisions and
+    # a fp16 path is never evaluated in isolation. This is a WARNING only (never
+    # blocks): a false positive costs at most a little agent attention, and whether
+    # fp16 actually helps is judged by measured tuning data, not this lint.
+    if _has_hardcoded_lowp_cast(tree) and not _params_has_dtype_knob(tree):
+        warnings.append(
+            "This kernel casts to fp16/bf16 (a tensor-core precision choice) but its "
+            "PARAMS has no dtype/precision knob. Expose the compute dtype as a PARAMS "
+            'entry (e.g. "COMPUTE_DTYPE": "fp16" with choices like '
+            '["fp16","bf16","tf32","ieee"]) that drives BOTH the input cast and the '
+            "tl.dot precision, so the tuner can compare precisions on real measurements "
+            "instead of leaving fp16 hardcoded and unmeasured (accumulator stays fp32)."
+        )
+    return (visitor.hard_errors, warnings)

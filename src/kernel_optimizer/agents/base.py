@@ -74,6 +74,7 @@ class AgentModule(ABC, Generic[TIn, TOut]):
         total_cost = 0.0
         feedback = ""
         last_error = ""
+        soft_retry_used = False  # improvement L: at most one advisory (non-blocking) retry
         for attempt in range(1, self.cfg.max_retries + 2):
             text = prompt if attempt == 1 else (
                 f"Your previous response could not be used:\n{feedback}\n\n"
@@ -122,6 +123,26 @@ class AgentModule(ABC, Generic[TIn, TOut]):
                 last_error = problem
                 continue
 
+            # Non-blocking advisory warnings (improvement L). These NEVER reject the
+            # output; they are logged for observability and, at most once and only if
+            # retry budget remains, fed back so the agent can improve. If the agent
+            # ignores them or budget is spent, the output is still accepted.
+            warnings = self.soft_check(output, sb)
+            if warnings:
+                self.store.append(
+                    "AGENT_SOFT_WARNING",
+                    {"module": self.name, "call_id": call_id, "attempt": attempt,
+                     "warnings": warnings},
+                )
+                if not soft_retry_used and attempt < self.cfg.max_retries + 1:
+                    soft_retry_used = True
+                    feedback = (
+                        "Your output is usable, but consider improving it:\n- "
+                        + "\n- ".join(warnings)
+                        + "\nIf the current output already handles this, keep it."
+                    )
+                    continue
+
             self.store.append(
                 "AGENT_CALL_FINISHED",
                 {"module": self.name, "call_id": call_id, "attempt": attempt,
@@ -148,3 +169,9 @@ class AgentModule(ABC, Generic[TIn, TOut]):
     def check_output(self, output: TOut, sb: Sandbox) -> str | None:
         """Post-validate (e.g. referenced files exist). Return problem text or None."""
         return None
+
+    def soft_check(self, output: TOut, sb: Sandbox) -> list[str]:
+        """Non-blocking advisory warnings about an otherwise-usable output. Never
+        rejects it; surfaced for observability and (once, budget permitting) fed back
+        so the agent can improve. Default: none."""
+        return []

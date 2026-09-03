@@ -51,17 +51,62 @@ def _device_doc(device: DeviceLimits) -> str:
     )
 
 
+def _eval_semantics_doc(semantics: dict | None) -> str:
+    """Improvement J: render the probed reference eval semantics (train/eval mode +
+    norm-layer flags) as a task fact for the agent. Empty/None -> a neutral note so
+    the contract degrades gracefully (no forced assumption)."""
+    if not semantics:
+        return (
+            "# Reference evaluation semantics\n\n"
+            "(Not probed for this run. Infer the reference's run mode from its source: "
+            "if it does not call `.eval()`, an nn.Module defaults to TRAIN mode, which "
+            "changes BatchNorm/Dropout behavior — match whatever the reference actually does.)\n"
+        )
+    mode = "TRAIN" if semantics.get("training") else "EVAL"
+    lines = [
+        "# Reference evaluation semantics\n",
+        f"The harness ran the reference model and observed it in **{mode} mode** "
+        f"(`model.training == {bool(semantics.get('training'))}`). Your kernel MUST "
+        f"reproduce the semantics of THIS mode, not an assumed one.\n",
+    ]
+    norm = semantics.get("norm_layers") or []
+    if norm:
+        lines.append("Normalization layers detected (each with its own runtime state):\n")
+        for n in norm:
+            lines.append(
+                f"- `{n.get('type')}`: training={n.get('training')}, "
+                f"has_running_stats={n.get('has_running_stats')}, "
+                f"track_running_stats={n.get('track_running_stats')}, "
+                f"momentum={n.get('momentum')}"
+            )
+        lines.append(
+            "\n**BatchNorm/InstanceNorm in TRAIN mode normalize with the CURRENT BATCH "
+            "mean/var — NOT running_mean/running_var** (which are 0/1 on an untrained "
+            "model and give a large systematic error). In EVAL mode they use "
+            "running_mean/running_var. Match each layer's stated `training` flag."
+        )
+    else:
+        lines.append("(No normalization layers with running-stat buffers were detected.)")
+    return "\n".join(lines) + "\n"
+
+
 def _repair_guidance(failure_kind: str) -> str:
     """Failure-class-specific repair hints (improvement F): route the repair to the
     likely cause instead of a generic 'fix it' prompt. Purely additive — the agent
     still diagnoses from the actual failure detail in failure/detail.txt."""
     numeric = (
         "This is a NUMERICAL error: the kernel compiled and ran but its output did "
-        "not match the reference within tolerance. Focus on precision and reduction "
-        "correctness — accumulate dot products/reductions in fp32 (use "
-        'input_precision="ieee" for tl.dot on fp32 refs), check the reduction order '
-        "and masking of padded lanes, and keep softmax/normalization numerically "
-        "stable (subtract the row max before exp)."
+        "not match the reference within tolerance. First check the ERROR MAGNITUDE in "
+        "failure/detail.txt: a LARGE, roughly constant systematic offset (not a few "
+        "outliers) usually means a SEMANTIC mismatch, not a precision one — most often "
+        "BatchNorm/normalization run in the wrong mode. Read `task/eval_semantics.md`: "
+        "if the reference is in TRAIN mode, BatchNorm must use the CURRENT BATCH "
+        "mean/var, NOT running_mean/running_var (which are 0/1 on an untrained model "
+        "and cause exactly this kind of large offset). A SMALL error just over tolerance "
+        "is a precision issue: accumulate dot products/reductions in fp32 (use "
+        'input_precision="ieee" for tl.dot on fp32 refs), check reduction order and '
+        "masking of padded lanes, and keep softmax/normalization numerically stable "
+        "(subtract the row max before exp)."
     )
     compile_ = (
         "This is a COMPILE/RUNTIME error: the kernel failed to build or crashed. Focus "
@@ -113,6 +158,21 @@ def _triton_lint_check(files: list[str], sb: Sandbox) -> str | None:
     return None
 
 
+def _triton_lint_warnings(files: list[str], sb: Sandbox) -> list[str]:
+    """Improvement L: collect NON-BLOCKING lint warnings (e.g. hardcoded fp16 cast
+    with no dtype knob). Surfaced as advisories; never rejects a candidate."""
+    warns: list[str] = []
+    for f in files:
+        try:
+            src = sb.read_output(f)
+        except (OSError, ValueError):
+            continue
+        _hard, file_warnings = lint_triton_source(src)
+        for w in file_warnings:
+            warns.append(f"{f}: {w}")
+    return warns
+
+
 # --- 1. candidate generator ---------------------------------------------------
 
 
@@ -122,6 +182,7 @@ class GeneratorInputs:
     ref_source: str
     device: DeviceLimits
     n_candidates: int
+    eval_semantics: dict | None = None
 
 
 class CandidateGeneratorAgent(AgentModule[GeneratorInputs, GenerationResult]):
@@ -133,13 +194,16 @@ class CandidateGeneratorAgent(AgentModule[GeneratorInputs, GenerationResult]):
         sb.write_input("docs/candidate_contract.md", _contract_doc())
         sb.write_input("docs/triton_pitfalls.md", _triton_pitfalls_doc())
         sb.write_input("docs/device.md", _device_doc(inputs.device))
+        sb.write_input("task/eval_semantics.md", _eval_semantics_doc(inputs.eval_semantics))
 
     def render_prompt(self, inputs: GeneratorInputs, sb: Sandbox) -> str:
         return f"""You are optimizing a GPU operator from KernelBench.
 
 The reference PyTorch implementation is in `task/ref.py` (task: {inputs.task.name},
 level {inputs.task.level}). Read it carefully, then read
-`docs/candidate_contract.md` and `docs/device.md`. If you write any Triton
+`docs/candidate_contract.md`, `docs/device.md`, and `task/eval_semantics.md` (which
+tells you the run mode — train vs eval — the reference is evaluated in; match it,
+especially for BatchNorm). If you write any Triton
 (`@triton.jit`) kernel, you MUST also read `docs/triton_pitfalls.md` first and
 obey every rule that applies — they are compiler/correctness hard constraints,
 not style preferences.
@@ -184,6 +248,10 @@ When done, answer with JSON:
         triton_files = [c.file for c in output.candidates if c.backend == "triton"]
         return _triton_lint_check(triton_files, sb)
 
+    def soft_check(self, output: GenerationResult, sb: Sandbox) -> list[str]:
+        triton_files = [c.file for c in output.candidates if c.backend == "triton"]
+        return _triton_lint_warnings(triton_files, sb)
+
 
 # --- 2. parameterizer -----------------------------------------------------------
 
@@ -194,6 +262,10 @@ class ParameterizerInputs:
     candidate_source: str
     device: DeviceLimits
     prior_feedback: str = ""
+    # Improvement K: when set, a focused space-EXPANSION request rather than a
+    # fresh parameterization. Describes which knobs hit the tried-range boundary
+    # (with direction) so the agent extends only those choices, structure unchanged.
+    expand_directive: str = ""
 
 
 class ParameterizerAgent(AgentModule[ParameterizerInputs, ParameterizationResult]):
@@ -206,6 +278,8 @@ class ParameterizerAgent(AgentModule[ParameterizerInputs, ParameterizationResult
         sb.write_input("docs/device.md", _device_doc(inputs.device))
 
     def render_prompt(self, inputs: ParameterizerInputs, sb: Sandbox) -> str:
+        if inputs.expand_directive:
+            return self._render_expand_prompt(inputs)
         feedback = (
             f"\nPrevious attempt was rejected: {inputs.prior_feedback}\n"
             if inputs.prior_feedback
@@ -220,10 +294,17 @@ Your job: parameterize every tunable feature of this kernel.
    through one module-level `PARAMS = {{...}}` dict (contract section "PARAMS
    block"). Tunables typically include block/tile sizes, num_warps, num_stages,
    vectorization widths, split factors, group sizes. If the kernel does a matmul
-   or convolution via `tl.dot`, also expose the dot precision as a knob (e.g.
-   "DOT_PRECISION" with choices ["tf32", "ieee"]) threaded into
-   `tl.dot(..., input_precision=PARAMS["DOT_PRECISION"])` — on matmul/conv-bound
-   work this is usually the highest-impact tunable, so do not leave it hard-coded.
+   or convolution via `tl.dot`, expose the COMPUTE PRECISION as a SINGLE unified
+   knob (e.g. "COMPUTE_DTYPE" with choices ["fp16", "bf16", "tf32", "ieee"]) that
+   drives BOTH the input cast AND the tl.dot precision consistently:
+   - "fp16"/"bf16" → cast the dot inputs to tl.float16/bfloat16 (tensor cores);
+   - "tf32" → keep fp32 inputs with `input_precision="tf32"`;
+   - "ieee" → keep fp32 inputs with `input_precision="ieee"`.
+   The accumulator MUST stay fp32 for every choice. Do NOT hard-code a dtype cast
+   in the kernel body and separately add a mismatched precision knob — the one knob
+   must control the actual precision the kernel computes in, so the tuner can
+   compare precisions on real measurements. On matmul/conv-bound work this is
+   usually the highest-impact tunable.
 2. For each PARAMS key, propose the list of values worth trying, ordered from
    cheapest (least resources) to most expensive. Keep each list to 2-8 values.
    The current PARAMS default must be included in its list.
@@ -243,6 +324,38 @@ is rejected and wastes an attempt.
 Answer with JSON:
 {{"file": "candidate/parameterized.py",
   "space": {{"params": [{{"name": "BLOCK_M", "kind": "int", "choices": [32, 64, 128],
+             "description": "..."}}, ...],
+            "constraints": [{{"expr": "...", "rationale": "..."}}, ...]}}}}
+"""
+
+    def _render_expand_prompt(self, inputs: ParameterizerInputs) -> str:
+        """Improvement K: focused space EXPANSION — extend only the boundary knobs'
+        choices toward the improving direction, keeping structure and other knobs."""
+        return f"""A candidate kernel is in `candidate/source.py` (already parameterized
+with a `PARAMS` dict). Read it plus `docs/candidate_contract.md` and `docs/device.md`.
+
+During tuning, some knobs reached the EDGE of the value range that was offered and
+latency was still improving toward that edge, while hardware resources still had
+headroom. Your job is a FOCUSED EXPANSION, not a redesign:
+
+{inputs.expand_directive}
+
+Rules:
+- Keep the kernel STRUCTURE and all other knobs' choices UNCHANGED. Rewrite the file
+  to `candidate/parameterized.py` (it may be nearly identical to the source — only
+  the PARAMS choices for the named knobs and any dependent constraints change).
+- For each named knob, ADD 1-2 larger/smaller legal values in the improving
+  direction (e.g. append 256 to [64,128,256]... keep values legal for tl.dot dims,
+  powers of two where the kernel requires it, and within device limits).
+- Keep the current default value in each list. Update constraints only as needed so
+  the new values remain feasible under hardware limits (registers/shared/threads).
+- Do NOT introduce new knobs or remove existing ones.
+
+IMPORTANT: actually create `candidate/parameterized.py` before answering.
+
+Answer with JSON:
+{{"file": "candidate/parameterized.py",
+  "space": {{"params": [{{"name": "...", "kind": "int", "choices": [...],
              "description": "..."}}, ...],
             "constraints": [{{"expr": "...", "rationale": "..."}}, ...]}}}}
 """
@@ -404,6 +517,9 @@ Answer with JSON:
             return missing
         return _triton_lint_check(files, sb)
 
+    def soft_check(self, output: RewriteResult, sb: Sandbox) -> list[str]:
+        return _triton_lint_warnings([c.file for c in output.candidates], sb)
+
 
 # --- 5. novelty generator -----------------------------------------------------------
 
@@ -466,6 +582,10 @@ Answer with JSON:
         triton_files = [c.file for c in output.candidates if c.backend == "triton"]
         return _triton_lint_check(triton_files, sb)
 
+    def soft_check(self, output: NoveltyResult, sb: Sandbox) -> list[str]:
+        triton_files = [c.file for c in output.candidates if c.backend == "triton"]
+        return _triton_lint_warnings(triton_files, sb)
+
 
 # --- 6. repair ------------------------------------------------------------------------
 
@@ -477,6 +597,7 @@ class RepairInputs:
     failure_kind: str
     failure_detail: str
     device: DeviceLimits
+    eval_semantics: dict | None = None
 
 
 class RepairAgent(AgentModule[RepairInputs, RepairResult]):
@@ -490,13 +611,15 @@ class RepairAgent(AgentModule[RepairInputs, RepairResult]):
         sb.write_input("docs/candidate_contract.md", _contract_doc())
         sb.write_input("docs/triton_pitfalls.md", _triton_pitfalls_doc())
         sb.write_input("docs/device.md", _device_doc(inputs.device))
+        sb.write_input("task/eval_semantics.md", _eval_semantics_doc(inputs.eval_semantics))
 
     def render_prompt(self, inputs: RepairInputs, sb: Sandbox) -> str:
         guidance = _repair_guidance(inputs.failure_kind)
         return f"""The kernel in `candidate/broken.py` failed with `{inputs.failure_kind}`.
 The full failure detail is in `failure/detail.txt`. Read the contract in
-`docs/candidate_contract.md`, and if the kernel uses Triton also read
-`docs/triton_pitfalls.md`.
+`docs/candidate_contract.md`, `task/eval_semantics.md` (the reference's run mode —
+train vs eval — which decides BatchNorm behavior), and if the kernel uses Triton
+also read `docs/triton_pitfalls.md`.
 
 {guidance}
 

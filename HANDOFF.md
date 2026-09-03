@@ -365,3 +365,47 @@ strict 回退)。全套 `uv run pytest -q` = 96 passed / 1 skipped(torch 依赖�
 
 **待验证**:用改进后代码重跑 L3(尤其 L3:43 attention),看 tf32 探索是否真能把候选拉到 tensor-core
 路径并追平/接近 tf32 torch.compile —— 这是唯一有机会翻正的方向。
+
+## 13. 第二轮改进 J/K/L(2026-09-04,已实施,待重跑验证)
+
+第一轮 L3 重跑暴露的三个新问题(详见 `docs/analysis/improvement-plan-round2.md` + memory
+`opop-v2-mbconv-train-mode-bn` / `opop-v2-fp16-knob-gap`)。L3:43 已成功(19.4ms,0.874× compile_tf32);
+L3:21 best=None(2 seed 真实 train-mode BN 错误 + 2 seed 被网络降级杀死,网络已用 agent-smoke 确认恢复)。
+
+- **改进 J(参考 train/eval 语义探测)**:根因 = 候选用 running-stat BN,但参考跑 train 模式(batch stat)
+  → 固定误差 5.655。**不写死"BN 必用 batch stat"**(通用推理场景会反作用),而是:
+  - `worker_main.py:run_probe_semantics` 读**活对象** `ref_model.training` + 用**能力检测**
+    (`hasattr(running_mean)`,非类型列表)枚举 norm 层,回传标量事实。
+  - `benchmark.probe_semantics`(shared lock,失败返回 {} 优雅降级);orchestrator `_baseline` 探测并
+    存 `SEMANTICS_PROBED` 事件(resume 从日志恢复)。
+  - `modules._eval_semantics_doc` 渲染成 `task/eval_semantics.md`,注入 generator/repair 沙箱;契约
+    新增"Reference run mode"段(匹配 harness 告知的模式,非假设);`_repair_guidance` numeric 分支加
+    "大而恒定偏移→怀疑 train/eval BN 语义"。
+  - **裁判仍是双精度见证门**:agent 猜错语义→安全判 fail→repair/丢弃,绝不误接受。
+- **改进 K(boundary+空闲资源→轻量空间扩展)**:先纠正认知——参数空间是 parameterizer **动态生成**
+  + harness 硬校验/GPU 双见证,非硬编码;boundary 检测(`stats.py:_param_stat`)是确定性的。缺的是
+  boundary 只有 rewriter 重出口。新增:
+  - `orchestrator.boundary_knobs_to_expand(stats, idle_frac)`:knob 在已测边缘且单调 + 至少一种资源
+    < idle_frac 上限 → 返回待扩展 knob;资源全满则返回空(退回 rewrite)。
+  - `_maybe_expand_space`(pipeline 内 _stats 之后):调 parameterizer **expand 模式**
+    (`ParameterizerInputs.expand_directive`,只扩展指定 knob 的 choices、结构不变)→ validate_and_publish
+    (guard 守卫)→ 重调一轮;有界(`budgets.space_expansions_per_candidate`,默认 0 关闭,L3 配置设 1);
+    扩展无实质提升(<min_improvement_pct)即停。事件 `SPACE_EXPANDED`/`SPACE_EXPANSION_REJECTED`。
+- **改进 L(dtype 贯穿 knob,修 fp16 未被独立评测)**:
+  - 契约 + parameterizer prompt:dtype 提为**单一** `COMPUTE_DTYPE` knob(choices fp16/bf16/tf32/ieee),
+    同时驱动 cast + tl.dot 精度,累加器恒 fp32;禁止 body 硬编码 dtype 而 PARAMS 无 dtype knob。
+  - `triton_lint.lint_triton_source` 加**非阻断 warning**:body 有 fp16/bf16 cast 但 PARAMS 无 dtype
+    knob(**name-agnostic 值域检测**:值 ∈{fp16,bf16,tf32,ieee},不匹配固定 key 名)。
+  - base `AgentModule.soft_check` 钩子 + invoke loop 的**非阻断 advisory 重试**(至多 1 次,预算内;
+    忽略/预算耗尽仍接受);generator/rewriter/novelty 接 `_triton_lint_warnings`。事件 `AGENT_SOFT_WARNING`。
+  - `_detect_candidate_precision` 改 name-agnostic(认 COMPUTE_DTYPE + fp16/bf16 值)。
+
+**统一安全原则**:所有硬编码/启发式部分(J 的 norm 枚举、L 的 lint)都是建议性/信息性,**从不当正确性
+或接受性的裁判**——正确性用运行时双精度见证门,性能用实测调参数据;启发式失手 = 优雅降级。
+
+测试:`test_improvements.py` 新增 J(eval_semantics doc train/eval/缺失降级、probe job)、
+K(boundary_knobs_to_expand 三情形)、L(lint warning name-agnostic、fp16 精度检测)共 11 组,
+全套 `uv run pytest -q` = **107 passed / 1 skipped**。默认行为不变(K flag 默认 0,J 探测失败降级,
+L warning 非阻断);experiments_l3.yaml 已开 K(space_expansions_per_candidate=1)。
+
+**待验证**:重跑 L3:21(验 J 是否让 MBConv 产出过门候选)+ L3:43(验 K 扩 BLOCK_M、L 让 fp16 被真实评测)。

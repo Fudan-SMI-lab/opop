@@ -235,3 +235,148 @@ def test_honest_verdict_falls_back_when_tf32_baseline_absent():
     v = _honest_verdict("tf32", speedups)
     assert v["compared_against"] == "torch_compile"
     assert v["same_precision_speedup"] == 1.2
+
+
+# --- J: reference eval-semantics doc (train/eval mode injected as a task fact) ----
+
+def test_eval_semantics_doc_train_mode_warns_batchnorm():
+    from kernel_optimizer.agents.modules import _eval_semantics_doc
+    doc = _eval_semantics_doc({
+        "training": True,
+        "norm_layers": [{"type": "BatchNorm2d", "training": True,
+                         "has_running_stats": True, "track_running_stats": True,
+                         "momentum": 0.1}],
+    })
+    assert "TRAIN mode" in doc
+    assert "CURRENT BATCH" in doc
+    assert "BatchNorm2d" in doc
+
+
+def test_eval_semantics_doc_eval_mode():
+    from kernel_optimizer.agents.modules import _eval_semantics_doc
+    doc = _eval_semantics_doc({"training": False, "norm_layers": []})
+    assert "EVAL mode" in doc
+
+
+def test_eval_semantics_doc_missing_degrades_gracefully():
+    from kernel_optimizer.agents.modules import _eval_semantics_doc
+    # No probe result -> neutral, non-forcing note (does not assert train or eval).
+    doc = _eval_semantics_doc(None)
+    assert "Not probed" in doc
+    doc_empty = _eval_semantics_doc({})
+    assert "Not probed" in doc_empty
+
+
+def test_probe_semantics_job_shape():
+    from kernel_optimizer.gpu.jobs import make_probe_semantics_job
+    job = make_probe_semantics_job("/path/to/ref.py")
+    assert job["job_type"] == "probe_semantics"
+    assert job["ref_src_path"] == "/path/to/ref.py"
+
+
+# --- L: dtype-knob consistency lint warning (non-blocking) --------------------
+
+def test_lint_warns_hardcoded_fp16_without_dtype_knob():
+    src = """
+import triton
+import triton.language as tl
+PARAMS = {"BLOCK_M": 64, "BLOCK_N": 64}
+@triton.jit
+def k(a_ptr, b_ptr, BLOCK_M: tl.constexpr):
+    a = tl.load(a_ptr).to(tl.float16)
+    b = tl.load(b_ptr).to(tl.float16)
+    acc = tl.dot(a, b)
+    return acc
+"""
+    hard, warns = lint_triton_source(src)
+    assert hard == []                      # never a hard error (non-blocking)
+    assert any("dtype" in w.lower() and "knob" in w.lower() for w in warns)
+
+
+def test_lint_no_warn_when_dtype_knob_present():
+    # name-agnostic: COMPUTE_DTYPE value "fp16" is recognized even though the key
+    # is not "DOT_PRECISION".
+    src = """
+import triton
+import triton.language as tl
+PARAMS = {"BLOCK_M": 64, "COMPUTE_DTYPE": "fp16"}
+@triton.jit
+def k(a_ptr, b_ptr, BLOCK_M: tl.constexpr):
+    a = tl.load(a_ptr).to(tl.float16)
+    acc = tl.dot(a, a)
+    return acc
+"""
+    hard, warns = lint_triton_source(src)
+    assert hard == []
+    assert not any("dtype" in w.lower() and "knob" in w.lower() for w in warns)
+
+
+def test_lint_no_dtype_warn_for_plain_fp32_kernel():
+    src = """
+import triton
+import triton.language as tl
+PARAMS = {"BLOCK_M": 64}
+@triton.jit
+def k(a_ptr, BLOCK_M: tl.constexpr):
+    a = tl.load(a_ptr)
+    return a
+"""
+    hard, warns = lint_triton_source(src)
+    assert hard == []
+    assert warns == []
+
+
+def test_detect_precision_fp16_from_compute_dtype_knob():
+    from kernel_optimizer.control.orchestrator import _detect_candidate_precision
+    from kernel_optimizer.models.core import ParamSet
+    src = 'x = a.to(tl.float16)\n'
+    assert _detect_candidate_precision(
+        src, ParamSet(values={"COMPUTE_DTYPE": "fp16"})) == "fp16"
+    assert _detect_candidate_precision(
+        src, ParamSet(values={"COMPUTE_DTYPE": "bf16"})) == "bf16"
+
+
+# --- K: boundary + idle-resource -> space expansion decision ------------------
+
+def _param_stat(name, at_boundary, direction):
+    from kernel_optimizer.models.reports import ParamStat
+    return ParamStat(name=name, best_value=128, at_boundary=at_boundary,
+                     boundary_direction=direction, effect_pct=5.0,
+                     latency_by_value={}, failure_rate_by_value={})
+
+
+def _stats(param_stats, regs_frac=None, shared_frac=None):
+    from kernel_optimizer.models.reports import ResourceSnapshot, TuningStats
+    res = None
+    if regs_frac is not None or shared_frac is not None:
+        res = ResourceSnapshot(n_regs=None, regs_frac_of_limit=regs_frac,
+                               shared_bytes=None, shared_frac_of_limit=shared_frac,
+                               n_spills=0)
+    return TuningStats(candidate_id="c", space_id="s", n_complete=10, n_fail=0,
+                       best=None, param_stats=param_stats, resource_at_best=res,
+                       failure_clusters=[])
+
+
+def test_expand_when_boundary_and_idle_resource():
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    # BLOCK_M at max edge, shared only 40% used -> expandable
+    stats = _stats([_param_stat("BLOCK_M", True, "max"),
+                    _param_stat("BLOCK_N", False, None)],
+                   regs_frac=1.0, shared_frac=0.4)
+    out = boundary_knobs_to_expand(stats, idle_frac=0.8)
+    assert out == [{"name": "BLOCK_M", "direction": "max"}]
+
+
+def test_no_expand_when_all_resources_saturated():
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    # boundary knob exists but every resource is saturated -> defer to rewrite
+    stats = _stats([_param_stat("BLOCK_M", True, "max")],
+                   regs_frac=1.0, shared_frac=0.98)
+    assert boundary_knobs_to_expand(stats, idle_frac=0.8) == []
+
+
+def test_no_expand_when_no_boundary_knob():
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    stats = _stats([_param_stat("BLOCK_M", False, None)],
+                   regs_frac=0.5, shared_frac=0.4)
+    assert boundary_knobs_to_expand(stats, idle_frac=0.8) == []

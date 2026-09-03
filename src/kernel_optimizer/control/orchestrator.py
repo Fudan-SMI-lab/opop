@@ -62,13 +62,21 @@ def _detect_candidate_precision(source: str, params: ParamSet) -> str:
     changes what runs. Returns one of "tf32", "fp16", "bf16", "ieee_fp32", or
     "unknown".
     """
-    # A DOT_PRECISION-style PARAMS knob is the most reliable signal (the tuner may
-    # have selected it), so check the materialized params first.
-    for key, val in params.values.items():
-        if "PRECISION" in key.upper() and isinstance(val, str):
+    # A precision/dtype PARAMS knob is the most reliable signal (the tuner may have
+    # selected it), so check the materialized params first. Name-agnostic: match on
+    # the VALUE (fp16/bf16/tf32/ieee...), so DOT_PRECISION / COMPUTE_DTYPE / any name
+    # is recognized.
+    for _key, val in params.values.items():
+        if isinstance(val, str):
             v = val.strip().lower()
-            if v in ("tf32", "ieee", "fp16", "bf16"):
-                return "ieee_fp32" if v == "ieee" else v
+            if v in ("tf32", "ieee", "fp16", "bf16", "float16", "bfloat16"):
+                if v in ("ieee",):
+                    return "ieee_fp32"
+                if v == "float16":
+                    return "fp16"
+                if v == "bfloat16":
+                    return "bf16"
+                return v
     text = source.lower()
     # Explicit tl.dot input_precision literal in the source.
     if 'input_precision="tf32"' in text or "input_precision='tf32'" in text:
@@ -117,6 +125,35 @@ def _honest_verdict(precision: str, speedups: dict[str, float]) -> dict[str, Any
     return verdict
 
 
+def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float) -> list[dict]:
+    """Improvement K: which knobs are at the tried-range boundary AND still improving,
+    given that at least one hardware resource has headroom (< idle_frac of its limit).
+
+    Returns a list of {name, direction} for the boundary knobs. Empty if no knob is
+    blocked at a boundary, or if resources are already saturated (no headroom to
+    exploit — expanding would just OOM/spill, so we defer to a structural rewrite).
+    Purely a read over deterministic stats; never runs anything.
+    """
+    if stats is None or not stats.param_stats:
+        return []
+    res = stats.resource_at_best
+    # Headroom = some resource is comfortably below its limit. If we can't tell
+    # (no profile), be permissive — the guard + validation still gate the result.
+    has_headroom = True
+    if res is not None:
+        fracs = [f for f in (res.regs_frac_of_limit, res.shared_frac_of_limit)
+                 if f is not None]
+        if fracs:
+            has_headroom = any(f < idle_frac for f in fracs)
+    if not has_headroom:
+        return []
+    return [
+        {"name": ps.name, "direction": ps.boundary_direction}
+        for ps in stats.param_stats
+        if ps.at_boundary and ps.boundary_direction in ("min", "max")
+    ]
+
+
 @dataclass
 class Wiring:
     evaluator: CorrectnessEvaluator
@@ -155,6 +192,7 @@ class Orchestrator:
         self.task = task
         self.t0 = time.monotonic()
         self.baselines: list[Baseline] = []
+        self.eval_semantics: dict = {}  # improvement J: reference train/eval semantics
         self.runs: dict[str, CandidateRun] = {}
         self.failed_hypotheses: dict[str, list[dict]] = {}  # family_id -> tried-and-failed
 
@@ -220,7 +258,16 @@ class Orchestrator:
         if key in state.steps_done:
             self.baselines = [Baseline.model_validate(b["baseline"])
                               for b in state.baselines]
+            # Restore probed eval semantics (improvement J) from the log on resume.
+            for ev in state.events:
+                if ev.type == "SEMANTICS_PROBED":
+                    self.eval_semantics = ev.payload.get("semantics", {}) or {}
             return
+        # Improvement J: probe the reference's runtime eval semantics (train/eval +
+        # norm-layer flags) before generation, so agents can match them. Advisory —
+        # an empty dict degrades gracefully in the contract doc.
+        self.eval_semantics = self.deps.benchmarker.probe_semantics(self.task)
+        self.store.append("SEMANTICS_PROBED", {"semantics": self.eval_semantics})
         self.baselines = self.deps.benchmarker.measure_baseline(self.task)
         for b in self.baselines:
             self.store.append("BASELINE_DONE", {"baseline": b.model_dump()})
@@ -257,6 +304,7 @@ class Orchestrator:
                 device=self.cfg.device,
                 n_candidates=min(self.cfg.agents.generator.n_candidates,
                                  self.cfg.budgets.max_seed_candidates),
+                eval_semantics=self.eval_semantics,
             )
         )
         for gen_cand in outcome.output.candidates[: self.cfg.budgets.max_seed_candidates]:
@@ -317,6 +365,7 @@ class Orchestrator:
 
         self._tune(crun, anchors, measured_cache)
         self._stats_and_analysis(crun)
+        self._maybe_expand_space(crun)
         crun.candidate.status = "tuned"
         self._step_done(key)
 
@@ -400,6 +449,7 @@ class Orchestrator:
                             task=self.task, broken_source=param_source,
                             failure_kind=verdict.reason, failure_detail=verdict.detail,
                             device=self.cfg.device,
+                            eval_semantics=self.eval_semantics,
                         )
                     )
                     source = repaired.sandbox.read_output(repaired.output.file)
@@ -522,6 +572,87 @@ class Orchestrator:
                               {"module": "analyst", "final": True,
                                "candidate_id": crun.candidate.candidate_id,
                                "error": str(exc)[:500]})
+
+    def _maybe_expand_space(self, crun: CandidateRun) -> None:
+        """Improvement K: if a knob hit the tried-range boundary while still improving
+        AND resources have headroom, ask the parameterizer to extend ONLY those knobs'
+        choices (structure unchanged), revalidate, and re-tune once. Bounded by
+        budgets.space_expansions_per_candidate; disabled when that is 0. A lightweight
+        alternative to a full structural rewrite for the 'blocked by search range'
+        case. Guarded by validation + guard, so a bad expansion is safely rejected."""
+        budget = self.cfg.budgets.space_expansions_per_candidate
+        if budget <= 0 or crun.stats is None or crun.space is None:
+            return
+        cand = crun.candidate
+        for _ in range(budget):
+            knobs = boundary_knobs_to_expand(
+                crun.stats, self.cfg.budgets.space_expansion_idle_frac)
+            if not knobs:
+                return
+            directive = self._expand_directive_text(crun, knobs)
+            try:
+                outcome = self.deps.parameterizer.invoke(
+                    ParameterizerInputs(
+                        task=self.task, candidate_source=crun.source,
+                        device=self.cfg.device, expand_directive=directive,
+                    )
+                )
+            except AgentCallError as exc:
+                self.store.append("SPACE_EXPANSION_REJECTED",
+                                  {"candidate_id": cand.candidate_id,
+                                   "reason": "agent_error", "detail": str(exc)[:500]})
+                return
+            param_source = outcome.sandbox.read_output(outcome.output.file)
+            work_dir = self.store.candidate_dir(cand.candidate_id)
+            verdict = self.deps.validator.validate_and_publish(
+                cand, param_source, outcome.output, self.task, work_dir,
+                version=crun.space.version + 1,
+            )
+            if not isinstance(verdict, SpaceAccepted):
+                self.store.append("SPACE_EXPANSION_REJECTED", {
+                    "candidate_id": cand.candidate_id,
+                    "reason": verdict.reason, "detail": verdict.detail[:500]})
+                return
+            # Accept the expanded space and re-tune once over it.
+            prev_best = crun.best_ms
+            crun.source = param_source
+            (work_dir / "source.py").write_text(param_source, encoding="utf-8")
+            self.deps.families._sources[cand.candidate_id] = param_source
+            crun.space = verdict.space
+            self.store.append("SPACE_PUBLISHED", {"space": verdict.space.model_dump()})
+            self.store.append("SPACE_EXPANDED", {
+                "candidate_id": cand.candidate_id, "knobs": knobs,
+                "prev_best_ms": prev_best})
+            anchors = tuple(w.params for w in verdict.witnesses)
+            measured_cache: dict[str, TrialRecord] = {}
+            for witness in verdict.witnesses:
+                if witness.latency_mean_ms is not None:
+                    measured_cache[witness.params.key()] = TrialRecord(
+                        trial_id=f"wit-{witness.params.key()}",
+                        candidate_id=cand.candidate_id, space_id=verdict.space.space_id,
+                        params=witness.params, status="complete",
+                        latency_ms=latency_from_result(witness.worker_result),
+                        profile=self.deps.profiler.extract(witness.worker_result),
+                    )
+            self._tune(crun, anchors, measured_cache)
+            self._stats_and_analysis(crun)
+            # Stop if the expansion did not meaningfully help (avoid chasing a flat edge).
+            if (prev_best is not None and crun.best_ms is not None
+                    and crun.best_ms > prev_best * (1 - self.cfg.budgets.min_improvement_pct / 100.0)):
+                return
+
+    def _expand_directive_text(self, crun: CandidateRun, knobs: list[dict]) -> str:
+        lines = ["The following knobs hit the edge of their offered range and latency "
+                 "was still improving toward that edge (resources had headroom):"]
+        stat_by_name = {ps.name: ps for ps in (crun.stats.param_stats if crun.stats else [])}
+        for k in knobs:
+            ps = stat_by_name.get(k["name"])
+            cur = crun.space.domain(k["name"]).choices if crun.space else []
+            lines.append(
+                f"- `{k['name']}`: extend toward {k['direction']} "
+                f"(current choices {list(cur)}; best sat at the {k['direction']} edge)"
+            )
+        return "\n".join(lines)
 
     def _trials_csv(self, crun: CandidateRun) -> str:
         buf = io.StringIO()

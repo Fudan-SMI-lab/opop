@@ -183,6 +183,54 @@ def run_env_probe(job: dict) -> dict:
     return result
 
 
+def run_probe_semantics(job: dict) -> dict:
+    """Improvement J: report the reference model's runtime eval semantics so the
+    agent can reproduce them. Reads the LIVE model object's .training flag (the
+    exact state its reference forward runs in), not the source text — so it is
+    correct regardless of how the reference is written. Norm layers are found by
+    CAPABILITY (running_mean/var buffers) rather than a hardcoded type list, so
+    custom BN-like layers are still detected."""
+    import torch
+    from kernelbench.eval import (
+        load_original_model_and_inputs,
+        set_seed,
+    )
+
+    ref_src = open(job["ref_src_path"], encoding="utf-8").read()
+    context: dict = {}
+    Model, get_init_inputs, _get_inputs = load_original_model_and_inputs(ref_src, context)
+    set_seed(job.get("seed", 0))
+    init_inputs = get_init_inputs()
+    with torch.no_grad():
+        set_seed(job.get("seed", 0))
+        ref_model = Model(*init_inputs)
+
+    norm_layers = []
+    for m in ref_model.modules():
+        has_running = hasattr(m, "running_mean") or hasattr(m, "running_var")
+        has_track = hasattr(m, "track_running_stats")
+        if not (has_running or has_track):
+            continue
+        norm_layers.append({
+            "type": type(m).__name__,
+            "training": bool(getattr(m, "training", False)),
+            "has_running_stats": bool(has_running),
+            "track_running_stats": (
+                bool(m.track_running_stats)
+                if hasattr(m, "track_running_stats") else None
+            ),
+            "momentum": (
+                float(m.momentum)
+                if getattr(m, "momentum", None) is not None else None
+            ),
+        })
+    return {
+        "ok": True,
+        "training": bool(ref_model.training),
+        "norm_layers": norm_layers,
+    }
+
+
 def run_static_check(job: dict) -> dict:
     from kernelbench.kernel_static_checker import validate_kernel_static
 
@@ -489,6 +537,7 @@ def run_relaxed_correctness(job: dict) -> dict:
 
 HANDLERS = {
     "env_probe": run_env_probe,
+    "probe_semantics": run_probe_semantics,
     "static_check": run_static_check,
     "baseline": run_baseline,
     "eval_correctness": lambda job: run_eval(job, measure_performance=False),
