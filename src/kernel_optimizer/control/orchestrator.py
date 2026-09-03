@@ -125,7 +125,9 @@ def _honest_verdict(precision: str, speedups: dict[str, float]) -> dict[str, Any
     return verdict
 
 
-def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float) -> list[dict]:
+def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float,
+                             space: ParameterSpace | None = None,
+                             min_effect_pct: float = 2.0) -> list[dict]:
     """Improvement K: which knobs are at the tried-range boundary AND still improving,
     given that at least one hardware resource has headroom (< idle_frac of its limit).
 
@@ -133,6 +135,16 @@ def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float) -> list[dict]
     blocked at a boundary, or if resources are already saturated (no headroom to
     exploit — expanding would just OOM/spill, so we defer to a structural rewrite).
     Purely a read over deterministic stats; never runs anything.
+
+    Two filters keep this from firing on non-opportunities:
+    - Only ORDERED NUMERIC knobs are expandable: extending a categorical knob (e.g.
+      COMPUTE_DTYPE's fp16/bf16/tf32/ieee) is meaningless — there is no "next value"
+      beyond its edge.
+    - The knob must have a MEANINGFUL EFFECT (>= min_effect_pct). On a flat latency
+      surface the "argmin at an edge" test passes on noise for every knob, but a knob
+      that changes latency by ~0% is irrelevant, not blocked — expanding its range
+      cannot help (observed live on L3:21 cand-dc6526b6: all 6 knobs flagged
+      at_boundary with 0.0-0.4% effect).
     """
     if stats is None or not stats.param_stats:
         return []
@@ -147,10 +159,22 @@ def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float) -> list[dict]
             has_headroom = any(f < idle_frac for f in fracs)
     if not has_headroom:
         return []
+
+    def _is_numeric_knob(name: str) -> bool:
+        if space is None:
+            return True  # cannot tell; validation still gates the expansion
+        try:
+            dom = space.domain(name)
+        except KeyError:
+            return False
+        return dom.kind in ("int", "float")
+
     return [
         {"name": ps.name, "direction": ps.boundary_direction}
         for ps in stats.param_stats
         if ps.at_boundary and ps.boundary_direction in ("min", "max")
+        and _is_numeric_knob(ps.name)
+        and (ps.effect_pct or 0.0) >= min_effect_pct
     ]
 
 
@@ -586,33 +610,48 @@ class Orchestrator:
         cand = crun.candidate
         for _ in range(budget):
             knobs = boundary_knobs_to_expand(
-                crun.stats, self.cfg.budgets.space_expansion_idle_frac)
+                crun.stats, self.cfg.budgets.space_expansion_idle_frac, crun.space,
+                min_effect_pct=self.cfg.budgets.min_improvement_pct)
             if not knobs:
                 return
             directive = self._expand_directive_text(crun, knobs)
-            try:
-                outcome = self.deps.parameterizer.invoke(
-                    ParameterizerInputs(
-                        task=self.task, candidate_source=crun.source,
-                        device=self.cfg.device, expand_directive=directive,
+            # A rejected expansion is often a fixable formatting problem (e.g. an
+            # unsupported constraint form), not a dead end — retry once with the
+            # validator's reason as feedback before giving up.
+            verdict = None
+            param_source = ""
+            outcome = None
+            feedback = ""
+            for expand_attempt in range(2):
+                try:
+                    outcome = self.deps.parameterizer.invoke(
+                        ParameterizerInputs(
+                            task=self.task, candidate_source=crun.source,
+                            device=self.cfg.device, expand_directive=directive,
+                            prior_feedback=feedback,
+                        )
                     )
+                except AgentCallError as exc:
+                    self.store.append("SPACE_EXPANSION_REJECTED",
+                                      {"candidate_id": cand.candidate_id,
+                                       "reason": "agent_error", "detail": str(exc)[:500]})
+                    return
+                param_source = outcome.sandbox.read_output(outcome.output.file)
+                work_dir = self.store.candidate_dir(cand.candidate_id)
+                verdict = self.deps.validator.validate_and_publish(
+                    cand, param_source, outcome.output, self.task, work_dir,
+                    version=crun.space.version + 1,
                 )
-            except AgentCallError as exc:
-                self.store.append("SPACE_EXPANSION_REJECTED",
-                                  {"candidate_id": cand.candidate_id,
-                                   "reason": "agent_error", "detail": str(exc)[:500]})
-                return
-            param_source = outcome.sandbox.read_output(outcome.output.file)
-            work_dir = self.store.candidate_dir(cand.candidate_id)
-            verdict = self.deps.validator.validate_and_publish(
-                cand, param_source, outcome.output, self.task, work_dir,
-                version=crun.space.version + 1,
-            )
-            if not isinstance(verdict, SpaceAccepted):
+                if isinstance(verdict, SpaceAccepted):
+                    break
                 self.store.append("SPACE_EXPANSION_REJECTED", {
-                    "candidate_id": cand.candidate_id,
+                    "candidate_id": cand.candidate_id, "attempt": expand_attempt,
                     "reason": verdict.reason, "detail": verdict.detail[:500]})
+                feedback = (f"the expanded space was rejected ({verdict.reason}): "
+                            f"{verdict.detail[:300]}")
+            if not isinstance(verdict, SpaceAccepted):
                 return
+            work_dir = self.store.candidate_dir(cand.candidate_id)
             # Accept the expanded space and re-tune once over it.
             prev_best = crun.best_ms
             crun.source = param_source
@@ -652,6 +691,15 @@ class Orchestrator:
                 f"- `{k['name']}`: extend toward {k['direction']} "
                 f"(current choices {list(cur)}; best sat at the {k['direction']} edge)"
             )
+        # Spell out the full knob inventory so the agent re-declares every one of them
+        # (a partial space.params list is rejected as key_mismatch).
+        if crun.space is not None:
+            lines.append("")
+            lines.append("Every knob below must appear in your `space.params` response "
+                         "(repeat the unexpanded ones verbatim):")
+            for d in crun.space.domains:
+                mark = " <- EXPAND" if any(k["name"] == d.name for k in knobs) else ""
+                lines.append(f"  - {d.name} ({d.kind}): {list(d.choices)}{mark}")
         return "\n".join(lines)
 
     def _trials_csv(self, crun: CandidateRun) -> str:

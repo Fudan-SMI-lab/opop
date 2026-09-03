@@ -338,10 +338,10 @@ def test_detect_precision_fp16_from_compute_dtype_knob():
 
 # --- K: boundary + idle-resource -> space expansion decision ------------------
 
-def _param_stat(name, at_boundary, direction):
+def _param_stat(name, at_boundary, direction, effect_pct=5.0):
     from kernel_optimizer.models.reports import ParamStat
     return ParamStat(name=name, best_value=128, at_boundary=at_boundary,
-                     boundary_direction=direction, effect_pct=5.0,
+                     boundary_direction=direction, effect_pct=effect_pct,
                      latency_by_value={}, failure_rate_by_value={})
 
 
@@ -357,13 +357,24 @@ def _stats(param_stats, regs_frac=None, shared_frac=None):
                        failure_clusters=[])
 
 
+def _space(names_kinds):
+    """Minimal ParameterSpace so boundary_knobs_to_expand can check knob kinds."""
+    from kernel_optimizer.models.core import ParamDomain, ParameterSpace
+    doms = []
+    for name, kind in names_kinds:
+        choices = [1, 2, 3] if kind != "str" else ["fp16", "tf32"]
+        doms.append(ParamDomain(name=name, kind=kind, choices=choices))
+    return ParameterSpace(space_id="s", candidate_id="c", source_sha="x", domains=doms)
+
+
 def test_expand_when_boundary_and_idle_resource():
     from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
     # BLOCK_M at max edge, shared only 40% used -> expandable
     stats = _stats([_param_stat("BLOCK_M", True, "max"),
                     _param_stat("BLOCK_N", False, None)],
                    regs_frac=1.0, shared_frac=0.4)
-    out = boundary_knobs_to_expand(stats, idle_frac=0.8)
+    sp = _space([("BLOCK_M", "int"), ("BLOCK_N", "int")])
+    out = boundary_knobs_to_expand(stats, idle_frac=0.8, space=sp)
     assert out == [{"name": "BLOCK_M", "direction": "max"}]
 
 
@@ -372,11 +383,47 @@ def test_no_expand_when_all_resources_saturated():
     # boundary knob exists but every resource is saturated -> defer to rewrite
     stats = _stats([_param_stat("BLOCK_M", True, "max")],
                    regs_frac=1.0, shared_frac=0.98)
-    assert boundary_knobs_to_expand(stats, idle_frac=0.8) == []
+    sp = _space([("BLOCK_M", "int")])
+    assert boundary_knobs_to_expand(stats, idle_frac=0.8, space=sp) == []
 
 
 def test_no_expand_when_no_boundary_knob():
     from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
     stats = _stats([_param_stat("BLOCK_M", False, None)],
                    regs_frac=0.5, shared_frac=0.4)
-    assert boundary_knobs_to_expand(stats, idle_frac=0.8) == []
+    sp = _space([("BLOCK_M", "int")])
+    assert boundary_knobs_to_expand(stats, idle_frac=0.8, space=sp) == []
+
+
+def test_categorical_knob_is_not_expandable():
+    """Regression (found live on L3:21): COMPUTE_DTYPE was flagged at_boundary and K
+    tried to 'extend' it, but a dtype choice list has no next value beyond its edge.
+    Only ordered numeric knobs may be expanded."""
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    stats = _stats([_param_stat("COMPUTE_DTYPE", True, "min"),
+                    _param_stat("BLOCK_K", True, "max")],
+                   regs_frac=0.4, shared_frac=0.48)
+    sp = _space([("COMPUTE_DTYPE", "str"), ("BLOCK_K", "int")])
+    out = boundary_knobs_to_expand(stats, idle_frac=0.8, space=sp)
+    assert out == [{"name": "BLOCK_K", "direction": "max"}]
+
+
+def test_flat_latency_surface_is_not_an_expansion_opportunity():
+    """Regression (found live on L3:21 cand-dc6526b6): with a flat latency surface the
+    'argmin at an edge' test passes on noise for EVERY knob (all 6 flagged at_boundary
+    with 0.0-0.4% effect). A knob that changes latency by ~0% is irrelevant, not
+    blocked — expanding its range cannot help, so require a meaningful effect size."""
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    flat = _stats([_param_stat("BLOCK_M", True, "max", effect_pct=0.4),
+                   _param_stat("BLOCK_N", True, "min", effect_pct=0.0)],
+                  regs_frac=0.4, shared_frac=0.4)
+    sp = _space([("BLOCK_M", "int"), ("BLOCK_N", "int")])
+    assert boundary_knobs_to_expand(stats=flat, idle_frac=0.8, space=sp,
+                                    min_effect_pct=2.0) == []
+    # a knob with real effect at a boundary still qualifies
+    sharp = _stats([_param_stat("BLOCK_M", True, "max", effect_pct=41.25)],
+                   regs_frac=0.4, shared_frac=0.48)
+    assert boundary_knobs_to_expand(stats=sharp, idle_frac=0.8,
+                                    space=_space([("BLOCK_M", "int")]),
+                                    min_effect_pct=2.0) == [
+        {"name": "BLOCK_M", "direction": "max"}]

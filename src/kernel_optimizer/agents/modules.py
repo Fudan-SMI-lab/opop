@@ -313,6 +313,13 @@ Your job: parameterize every tunable feature of this kernel.
    and/or). You may reference device constants: MAX_REGS_PER_THREAD,
    MAX_SHARED_BYTES, MAX_SHARED_BYTES_OPTIN, MAX_THREADS_PER_BLOCK.
    Example: "BLOCK_M * BLOCK_K * 4 + BLOCK_K * BLOCK_N * 4 <= MAX_SHARED_BYTES".
+   GRAMMAR LIMIT: a constraint is evaluated by a restricted parser that allows ONLY
+   names, numeric/string literals, `+ - * / // % **`, comparisons, `and`/`or`/`not`.
+   Conditional expressions (`A if C else B`), function calls (`min()`, `max()`, `abs()`),
+   indexing, and comprehensions are REJECTED. Express a conditional rule as a
+   disjunction instead — e.g. instead of
+   `(4 if DTYPE == "fp16" else 2) * BLOCK_M <= X`, write
+   `(DTYPE != "fp16" and 2 * BLOCK_M <= X) or (DTYPE == "fp16" and 4 * BLOCK_M <= X)`.
 
 The rewritten kernel must be functionally identical to the original at the
 default PARAMS values.
@@ -349,7 +356,15 @@ Rules:
   powers of two where the kernel requires it, and within device limits).
 - Keep the current default value in each list. Update constraints only as needed so
   the new values remain feasible under hardware limits (registers/shared/threads).
+- CONSTRAINT GRAMMAR: constraints are evaluated by a restricted parser allowing ONLY
+  names, numeric/string literals, `+ - * / // % **`, comparisons, and `and`/`or`/`not`.
+  Conditional expressions (`A if C else B`), function calls (`min`/`max`/`abs`), and
+  indexing are REJECTED — express conditional rules as a disjunction of `and` clauses.
 - Do NOT introduce new knobs or remove existing ones.
+- **DECLARE EVERY KNOB**: `space.params` MUST list ALL keys of the `PARAMS` dict —
+  not just the ones you expanded. The unexpanded knobs are repeated verbatim with
+  their existing choices. A response whose declared names differ from the PARAMS keys
+  is rejected outright (`key_mismatch`) and wastes the attempt.
 
 IMPORTANT: actually create `candidate/parameterized.py` before answering.
 
