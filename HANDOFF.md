@@ -290,3 +290,41 @@ WSL 侧已验证 run_relaxed_correctness 依赖的 KernelBench 助手全部可�
 
 **下一步**:用改进后代码 + experiments_l3.yaml 重跑 level3:43(和 level3:21),
 对比旧 run 的"4/4 seed 全灭",验证通过率与 Loop C trace 是否实质改善。
+
+---
+
+## 11. 改进后 L3 实验结果(2026-09-03)
+
+用改进后代码 + experiments_l3.yaml(dual_witness_relaxed + repair 3)重跑两个 L3 任务,
+均 RUN_FINISHED、report byte-identical replay OK、事件溯源完整。
+
+### 双精度 baseline(决策 2,关键)
+| task | eager(ieee) | eager(tf32) | compile(ieee) | compile(tf32) |
+|---|---|---|---|---|
+| L3:43 attention | 41.4ms | 28.8ms | 35.3ms | **17.9ms** |
+| L3:21 MBConv | 25.3ms | 21.0ms | 22.1ms | **15.6ms** |
+两个算子都是 matmul/conv-bound,tf32 tensor-core 把 torch.compile 提速近 2×。
+**tf32 才是诚实对比基准。**
+
+### 结果
+- **L3:43**: best cand-52c895a9 @29.3ms(复测 PASS 31.1ms)。报告 vs_eager 1.33×/vs_compile 1.135×(对 ieee)。
+  对 tf32:29.3 vs compile_tf32 17.9 = 0.61×,未超。5.16h,29 agent 调用 0 失败。
+- **L3:21**: best cand-212fb80d @24.6ms(复测 PASS 25.3ms)。vs_eager 1.0×/vs_compile 0.87×(对 ieee)。
+  对 tf32:24.6 vs compile_tf32 15.6 = 0.63×,未超。4.53h。4 个 seed 调参全部 24.6ms(同一 torch conv 回退瓶颈)。
+
+### 改进前后对比(核心成果)
+| 指标 | 旧 run | 改进后 |
+|---|---|---|
+| seed 通过率 | L3:43 clean-rerun 0/4;L3:21 old 1/4 | **两个都 4/4** |
+| Loop C | L3:43 污染(1 rewrite/0 round) | **两个都 7 rewrites/6 family_rounds,两族各跑满 3 轮** |
+| 收敛 | 伪 budget_exhausted | **真 budget_exhausted(best_history 三轮齐全)** |
+| baseline 诚实度 | 只 ieee(旧 L3:43 "胜 1.42×"是假象) | **ieee+tf32 双记,揭穿假象** |
+
+### 诚实结论
+改进(A 双精度见证门/B Triton 反模式 prompt/C 静态门/D 契约纠错/E novelty 名额/F repair 预算+分级)
+**决定性修好了框架流程**:通过率、多轮 Loop C、真收敛、诚实基线。但两个 L3 算子上 LLM triton 
+调到天花板仍未超 tf32 torch.compile(attention/conv 是厂商库强项)——这与论文要展示的
+"调参撞天花板→结构改写→家族收敛"现象一致,是真实的负向但完整的实验实例。
+
+实施中引入并修复 3 个 bug(见 §10 下 fix commit ea8f379):Baseline note/kind、ModelNew 实例化、
+torch 2.9 matmul API。运维教训:kill uv.exe 遗留 WSL worker + opencode serve 孤儿,需一并清理。
