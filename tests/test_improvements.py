@@ -178,3 +178,60 @@ def test_measure_baseline_strict_mode_single_precision():
     task = TaskSpec(level=1, problem_id=19, name="relu", ref_path="x", ref_src_sha="deadbeef")
     baselines = bench.measure_baseline(task)
     assert {b.kind for b in baselines} == {"eager", "torch_compile"}
+
+
+# --- H3: candidate precision detection + honest same-precision verdict --------
+
+def test_detect_precision_from_params_knob():
+    from kernel_optimizer.control.orchestrator import _detect_candidate_precision
+    from kernel_optimizer.models.core import ParamSet
+
+    src = 'acc = tl.dot(a, b, input_precision=PARAMS["DOT_PRECISION"])\n'
+    assert _detect_candidate_precision(src, ParamSet(values={"DOT_PRECISION": "tf32"})) == "tf32"
+    assert _detect_candidate_precision(
+        src, ParamSet(values={"DOT_PRECISION": "ieee"})) == "ieee_fp32"
+
+
+def test_detect_precision_from_source_literal():
+    from kernel_optimizer.control.orchestrator import _detect_candidate_precision
+    from kernel_optimizer.models.core import ParamSet
+
+    empty = ParamSet(values={"BLOCK_M": 64})
+    assert _detect_candidate_precision(
+        'x = tl.dot(a, b, input_precision="ieee")', empty) == "ieee_fp32"
+    assert _detect_candidate_precision(
+        "x = tl.dot(a, b, input_precision='tf32')", empty) == "tf32"
+    # bare tl.dot on fp32 inputs -> tf32 default path on this GPU generation
+    assert _detect_candidate_precision("x = tl.dot(a, b)", empty) == "tf32"
+    # no dot at all -> unknown
+    assert _detect_candidate_precision("y = x + 1", empty) == "unknown"
+
+
+def test_honest_verdict_compares_same_precision():
+    from kernel_optimizer.control.orchestrator import _honest_verdict
+
+    speedups = {
+        "eager": 1.5, "eager_tf32": 0.9,
+        "torch_compile": 1.2, "torch_compile_tf32": 0.6,
+    }
+    # tf32 candidate must be judged against torch_compile_tf32 (the honest rival)
+    v_tf32 = _honest_verdict("tf32", speedups)
+    assert v_tf32["compared_against"] == "torch_compile_tf32"
+    assert v_tf32["same_precision_speedup"] == 0.6
+    assert v_tf32["beats_same_precision_baseline"] is False
+    # ieee candidate compares against the ieee torch.compile
+    v_ieee = _honest_verdict("ieee_fp32", speedups)
+    assert v_ieee["compared_against"] == "torch_compile"
+    assert v_ieee["same_precision_speedup"] == 1.2
+    assert v_ieee["beats_same_precision_baseline"] is True
+
+
+def test_honest_verdict_falls_back_when_tf32_baseline_absent():
+    from kernel_optimizer.control.orchestrator import _honest_verdict
+
+    # strict mode: only ieee baselines recorded. A tf32 candidate falls back to
+    # the untagged torch_compile rather than reporting nothing.
+    speedups = {"eager": 1.5, "torch_compile": 1.2}
+    v = _honest_verdict("tf32", speedups)
+    assert v["compared_against"] == "torch_compile"
+    assert v["same_precision_speedup"] == 1.2

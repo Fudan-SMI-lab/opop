@@ -53,6 +53,70 @@ from kernel_optimizer.tuning.stats import TuningStatsAnalyzer
 from kernel_optimizer.tuning.tpe import OptunaTPETuner
 
 
+def _detect_candidate_precision(source: str, params: ParamSet) -> str:
+    """Best-effort classification of the arithmetic precision the candidate uses.
+
+    Reports the precision the candidate actually computes in so the report can
+    compare it against the same-precision baseline (an ieee candidate vs the ieee
+    baseline, a tf32 candidate vs the tf32 baseline). Purely descriptive — never
+    changes what runs. Returns one of "tf32", "fp16", "bf16", "ieee_fp32", or
+    "unknown".
+    """
+    # A DOT_PRECISION-style PARAMS knob is the most reliable signal (the tuner may
+    # have selected it), so check the materialized params first.
+    for key, val in params.values.items():
+        if "PRECISION" in key.upper() and isinstance(val, str):
+            v = val.strip().lower()
+            if v in ("tf32", "ieee", "fp16", "bf16"):
+                return "ieee_fp32" if v == "ieee" else v
+    text = source.lower()
+    # Explicit tl.dot input_precision literal in the source.
+    if 'input_precision="tf32"' in text or "input_precision='tf32'" in text:
+        return "tf32"
+    if 'input_precision="ieee"' in text or "input_precision='ieee'" in text:
+        return "ieee_fp32"
+    if "float16" in text or "tl.float16" in text or ".half(" in text or "torch.half" in text:
+        return "fp16"
+    if "bfloat16" in text or "tl.bfloat16" in text:
+        return "bf16"
+    if "tl.dot" in text:
+        # tl.dot with no explicit precision: Triton defaults to the tf32 path on
+        # fp32 inputs for this GPU generation.
+        return "tf32"
+    return "unknown"
+
+
+def _honest_verdict(precision: str, speedups: dict[str, float]) -> dict[str, Any]:
+    """Judge the candidate against the baseline computed at the SAME precision.
+
+    speedups maps baseline kind -> (baseline_ms / candidate_ms). tf32 baselines
+    are recorded with a "_tf32" suffix by measure_baseline in dual-precision mode.
+    A tf32 candidate should be compared against torch_compile_tf32, not against the
+    slower ieee torch_compile, or the reported win is against a strawman.
+    """
+    # Which baseline precision is the fair comparison for this candidate?
+    is_tensor_core = precision in ("tf32", "fp16", "bf16")
+    compile_key = "torch_compile_tf32" if is_tensor_core else "torch_compile"
+    eager_key = "eager_tf32" if is_tensor_core else "eager"
+    # Fall back to the untagged baseline if the same-precision one was not recorded
+    # (e.g. strict mode only measured ieee baselines).
+    if compile_key not in speedups and "torch_compile" in speedups:
+        compile_key = "torch_compile"
+    if eager_key not in speedups and "eager" in speedups:
+        eager_key = "eager"
+    verdict: dict[str, Any] = {
+        "candidate_precision": precision,
+        "compared_against": compile_key if compile_key in speedups else eager_key,
+    }
+    ref = speedups.get(compile_key)
+    if ref is None:
+        ref = speedups.get(eager_key)
+    if ref is not None:
+        verdict["same_precision_speedup"] = ref
+        verdict["beats_same_precision_baseline"] = ref > 1.0
+    return verdict
+
+
 @dataclass
 class Wiring:
     evaluator: CorrectnessEvaluator
@@ -673,6 +737,7 @@ class Orchestrator:
         reeval = self.deps.benchmarker.final_reeval(self.task, final_path,
                                                     backend=crun.candidate.backend)
         lat = latency_from_result(reeval)
+        precision = _detect_candidate_precision(final_src, best_family.best.params)
         result["best"] = {
             "candidate_id": best_family.best.candidate_id,
             "family_id": best_family.family_id,
@@ -681,13 +746,25 @@ class Orchestrator:
             "final_reeval_ok": bool(reeval.get("ok")),
             "final_reeval_ms": lat.mean if lat else None,
             "excessive_speedup_flag": bool(reeval.get("excessive_speedup")),
+            "precision": precision,
         }
-        eager = next((b for b in self.baselines if b.kind == "eager"), None)
-        compiled = next((b for b in self.baselines if b.kind == "torch_compile"), None)
-        if lat:
-            if eager and eager.latency_ms.mean > 0:
-                result["best"]["speedup_vs_eager"] = round(eager.latency_ms.mean / lat.mean, 4)
-            if compiled and compiled.latency_ms.mean > 0:
-                result["best"]["speedup_vs_compile"] = round(
-                    compiled.latency_ms.mean / lat.mean, 4)
+        # Speedup vs every recorded baseline (4-way when dual-precision baselines
+        # were measured: eager, eager_tf32, torch_compile, torch_compile_tf32).
+        if lat and lat.mean > 0:
+            speedups: dict[str, float] = {}
+            for b in self.baselines:
+                if b.latency_ms.mean > 0:
+                    speedups[b.kind] = round(b.latency_ms.mean / lat.mean, 4)
+            result["best"]["speedups"] = speedups
+            # Back-compat scalar fields (vs the ieee/untagged baselines).
+            if "eager" in speedups:
+                result["best"]["speedup_vs_eager"] = speedups["eager"]
+            if "torch_compile" in speedups:
+                result["best"]["speedup_vs_compile"] = speedups["torch_compile"]
+            # Honest same-precision verdict: compare the candidate against the
+            # baseline computed at the SAME precision the candidate actually uses.
+            # A tf32 candidate must be judged against tf32 torch.compile, not the
+            # slower ieee baseline, or the speedup is measured against a strawman.
+            result["best"]["honest_verdict"] = _honest_verdict(precision, speedups)
         return result
+

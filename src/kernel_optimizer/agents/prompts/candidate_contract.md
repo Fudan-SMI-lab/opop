@@ -54,7 +54,35 @@ Rules:
   precision and accepts if your output matches EITHER (relative error < 1% on
   >99% of elements). Either way, do not assume loose slack — a numerically sloppy
   reduction (e.g. tf32 accumulation over a long dimension) will be rejected.
-  Accumulate dot products / reductions in fp32.
+
+## Precision and the tensor-core path
+
+For matmul- and convolution-bound kernels, the arithmetic precision of the dot
+product is often the single largest lever on latency — larger than block sizes,
+warps, or stages. On this GPU, `tl.dot(..., input_precision="ieee")` runs on the
+scalar FMA path and leaves the tensor cores idle; `input_precision="tf32"` (or
+casting inputs to fp16/bf16 with an fp32 accumulator) dispatches to the tensor
+cores and can be roughly 2x faster for the same shapes. `torch.compile` gets its
+speed from exactly this — it uses the tf32 tensor-core path by default.
+
+Because of that, you should treat dot-product precision as a first-class design
+choice, not an afterthought:
+
+- Under the dual-precision correctness mode (the L3 experiments use it) the
+  harness accepts a result that matches the reference computed at **tf32**. A
+  tf32 tensor-core kernel is therefore a legal, accepted candidate — prefer it
+  for matmul/conv-bound work unless a diff-test shows it drifts out of tolerance.
+- Make the dot precision a tunable knob, e.g. `PARAMS["DOT_PRECISION"] = "tf32"`
+  with the value threaded into `tl.dot(..., input_precision=PARAMS["DOT_PRECISION"])`,
+  so the tuner can compare `"tf32"` against `"ieee"` on real measurements. Keep
+  an `"ieee"` fallback reachable so a candidate that genuinely needs full fp32
+  can still be expressed.
+- Precision applies to the *dot/accumulate* step. Even on the tf32 input path,
+  keep the **accumulator** in fp32 (`tl.zeros(..., dtype=tl.float32)`); tf32 only
+  reduces the mantissa of the multiply inputs, not the accumulation, and an fp32
+  accumulator over a long reduction is what keeps you inside tolerance. A sloppy
+  low-precision *accumulator* is the thing that fails the diff-test, not a tf32
+  *input*.
 
 ## Backend
 

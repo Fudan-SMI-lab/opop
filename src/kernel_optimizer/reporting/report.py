@@ -71,11 +71,32 @@ class ReportGenerator:
             lines.append(f"- final independent re-eval: "
                          f"{'PASS' if best['final_reeval_ok'] else 'FAIL'} "
                          f"at {best.get('final_reeval_ms')} ms")
-            if "speedup_vs_eager" in best:
-                lines.append(f"- speedup vs eager: **{best['speedup_vs_eager']}x**")
-            if "speedup_vs_compile" in best:
-                lines.append(f"- speedup vs torch.compile: "
-                             f"**{best['speedup_vs_compile']}x**")
+            if best.get("precision"):
+                lines.append(f"- candidate arithmetic precision: **{best['precision']}**")
+            speedups = best.get("speedups")
+            if speedups:
+                lines.append("- speedup vs each baseline "
+                             "(baseline_ms / candidate_ms, >1 = faster):")
+                for kind in sorted(speedups):
+                    lines.append(f"  - vs `{kind}`: **{speedups[kind]}x**")
+            else:
+                if "speedup_vs_eager" in best:
+                    lines.append(f"- speedup vs eager: **{best['speedup_vs_eager']}x**")
+                if "speedup_vs_compile" in best:
+                    lines.append(f"- speedup vs torch.compile: "
+                                 f"**{best['speedup_vs_compile']}x**")
+            hv = best.get("honest_verdict")
+            if hv:
+                verdict = hv.get("same_precision_speedup")
+                against = hv.get("compared_against", "?")
+                if verdict is not None:
+                    beats = hv.get("beats_same_precision_baseline")
+                    mark = "✅ beats" if beats else "❌ does not beat"
+                    lines.append(
+                        f"- **honest same-precision verdict**: candidate is "
+                        f"{best.get('precision', '?')}; vs same-precision baseline "
+                        f"`{against}` = **{verdict}x** — {mark} the same-precision "
+                        f"baseline")
             if best.get("excessive_speedup_flag"):
                 lines.append("- ⚠ flagged: excessive speedup — inspect before trusting")
             lines.append(f"- best params: `{json.dumps(best['params']['values'])}`")

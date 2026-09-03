@@ -53,17 +53,31 @@ BLOCK_K: tl.constexpr = 32
 acc += tl.dot(a, b)   # a: (BLOCK_M, 32), b: (32, BLOCK_N)  OK
 ```
 
-## 5. `tl.dot`: cast inputs explicitly, accumulate in fp32
+## 5. `tl.dot`: the ACCUMULATOR must be fp32 (the input path may be tf32)
+
+Separate two things that are easy to confuse:
+- The **accumulator** dtype — must stay `tl.float32` across the whole reduction.
+  A low-precision accumulator over a long reduction is what drifts past tolerance
+  and fails correctness.
+- The **input precision** of the multiply (`input_precision=` on `tl.dot`) — this
+  is a legitimate *performance* knob, not a correctness bug. `"tf32"` runs on the
+  tensor cores (~2x faster on matmul/conv), `"ieee"` runs the exact fp32 path. The
+  harness's dual-precision gate accepts a tf32-matching result, so tf32 inputs are
+  allowed and usually preferred for matmul/conv-bound kernels.
 
 ```python
-# BAD: relying on tf32 accumulation for an fp32 reference -> mantissa truncation,
-#      long reductions drift past the 1e-4 tolerance and fail correctness
-acc = tl.dot(a, b)                                # implicit tf32 path
+# BAD: fp16/bf16 (or default-tf32) ACCUMULATOR -> mantissa truncation across the
+#      reduction, long sums drift past the 1e-4 tolerance and fail correctness
+acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float16)   # wrong accumulator dtype
+for k in range(...):
+    acc += tl.dot(a, b)
 
-# GOOD: keep the fp32 accumulator; use ieee precision when the reference is fp32
-acc = tl.dot(a, b, input_precision="ieee")        # or "tf32" only if it still passes
-# accumulator dtype stays tl.float32 across the reduction loop
+# GOOD: fp32 accumulator; choose the input path on its performance merits
+acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)   # accumulator stays fp32
+for k in range(...):
+    acc += tl.dot(a, b, input_precision="tf32")        # tensor cores; "ieee" for exact fp32
 ```
+
 
 ## 6. `next_power_of_2` is a HOST helper — never call it in device code
 

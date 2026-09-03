@@ -155,6 +155,17 @@ recompute), fusion boundaries (which ops are fused into one kernel), thread
 communication (warp shuffle vs shared memory reduction), or kernel organization
 (single fused kernel vs a small pipeline of kernels).
 
+PRECISION / TENSOR CORES: for matmul- or convolution-bound work, the dot-product
+precision is a first-class approach axis — read the "Precision and the tensor-core
+path" section of the contract. A kernel that runs `tl.dot(..., input_precision="ieee")`
+(or scalar FMA loops) leaves the tensor cores idle; a tf32 tensor-core path
+(`input_precision="tf32"`, or fp16/bf16 inputs with an fp32 accumulator) is often
+~2x faster and is what torch.compile uses. The dual-precision correctness gate
+accepts a tf32-matching result, so at least one of your candidates SHOULD take the
+tf32 tensor-core path (with an fp32 accumulator), and you should expose the dot
+precision as a PARAMS knob (e.g. "DOT_PRECISION": "tf32") so the tuner can compare
+it against "ieee" on real measurements.
+
 You may run quick syntax checks (e.g. `python -c "import ast; ast.parse(open('candidates/cand_1.py').read())"`),
 but you cannot run GPU code here — the harness evaluates on the GPU afterwards.
 
@@ -208,7 +219,11 @@ Your job: parameterize every tunable feature of this kernel.
 1. Rewrite the file as `candidate/parameterized.py` so ALL tunable knobs flow
    through one module-level `PARAMS = {{...}}` dict (contract section "PARAMS
    block"). Tunables typically include block/tile sizes, num_warps, num_stages,
-   vectorization widths, split factors, group sizes.
+   vectorization widths, split factors, group sizes. If the kernel does a matmul
+   or convolution via `tl.dot`, also expose the dot precision as a knob (e.g.
+   "DOT_PRECISION" with choices ["tf32", "ieee"]) threaded into
+   `tl.dot(..., input_precision=PARAMS["DOT_PRECISION"])` — on matmul/conv-bound
+   work this is usually the highest-impact tunable, so do not leave it hard-coded.
 2. For each PARAMS key, propose the list of values worth trying, ordered from
    cheapest (least resources) to most expensive. Keep each list to 2-8 values.
    The current PARAMS default must be included in its list.
@@ -278,15 +293,41 @@ trend keeps improving toward a boundary value, and going further fails or is
 prevented by a hardware/resource limit (registers, shared memory, threads, OOM,
 compile failures). You may compute things (python is available) over trials.csv.
 
-Then propose concrete structural-change hypotheses that would relieve the
-dominant limit (e.g. "split K so each block needs less shared memory",
-"recompute instead of caching to cut registers", "two-stage reduction to allow
-larger tiles").
+CRITICAL — do not confuse "a resource is saturated" with "that resource is the
+performance limiter." Reason about the WHOLE resource balance before proposing a
+change:
+1. Resource balance: compare each resource at the best config against its device
+   limit. High register use (even at the 255/thread max) is often the SIGNATURE of
+   the fast configuration (large accumulator tiles live in registers), NOT a
+   pathology to relieve — relieving it by spilling to shared memory or recomputing
+   usually makes latency WORSE. Only call a saturated resource "blocking" if the
+   trial data shows latency still wants to move toward a value that resource
+   forbids AND a lower-usage config is not already just as fast.
+2. Idle resources: if a resource is far below its limit (e.g. shared memory at 24%
+   while registers are maxed), ask whether the kernel could trade the saturated
+   resource for the idle one to raise arithmetic throughput — but only if the trial
+   data suggests throughput (not that resource) is the wall.
+3. Precision / tensor-core path: check how the kernel does its core math. If it
+   uses full-IEEE fp32 matmul (e.g. tl.dot(..., input_precision="ieee")) or scalar
+   FMA loops, it is NOT using the tensor cores, and a tf32/fp16-accumulate tensor-
+   core path can be ~2x faster on matmul/conv-bound ops (this is how torch.compile
+   wins). If the flat latency floor across many configs looks like an arithmetic-
+   throughput wall rather than a memory/occupancy wall, say so and propose switching
+   the dot path to tf32 (input_precision="tf32") or fp16 inputs with fp32
+   accumulation — the harness's dual-precision correctness gate accepts a tf32-
+   matching result, so this is allowed. This is frequently the single highest-impact
+   change and must be considered explicitly, not omitted.
+
+Then propose concrete structural-change hypotheses that address the REAL limiter
+(e.g. "switch tl.dot to input_precision='tf32' to use tensor cores", "split K so
+each block needs less shared memory", "two-stage reduction to allow larger tiles").
+Prefer a precision/tensor-core hypothesis when the evidence points to an arithmetic
+throughput floor.
 
 Answer with JSON matching:
 {"summary": "...",
  "parameter_limits": [{"param": "...", "headroom_direction": "increase|decrease",
-   "blocked_by": "registers|shared_memory|threads|oom|compile_failure|none",
+   "blocked_by": "registers|shared_memory|threads|oom|compile_failure|arithmetic_throughput|none",
    "predicted_gain_pct": <number or null>, "evidence": "..."}],
  "hypotheses": [{"id": "H1", "change": "...", "expected_effect": "...", "risk": "..."}],
  "suggested_action": "tune_more|rewrite|stop"}
@@ -333,6 +374,16 @@ hypothesis from the bottleneck report: change the structure so the blocked
 parameter direction becomes reachable (less shared memory per element, fewer
 registers, different work partitioning, etc.). This is a structural change, not a
 parameter change — the new file may have different PARAMS keys.
+
+If the bottleneck report blames `arithmetic_throughput` (or the latency floor is
+flat across many resource profiles), the highest-value rewrite is to move the core
+matmul/conv off the IEEE-fp32 scalar path onto the tensor cores: switch
+`tl.dot(..., input_precision="ieee")` to `"tf32"`, or cast the dot inputs to
+fp16/bf16 while keeping an fp32 accumulator. Read the "Precision and the tensor-core
+path" section of the contract — the dual-precision gate accepts a tf32-matching
+result, so this is a legal rewrite and is usually the only thing that moves an
+arithmetic-throughput floor. Do NOT keep spending rewrites on register/shared-memory
+relief when the report says the limiter is arithmetic throughput.
 
 Write each rewrite to `rewrites/rw_1.py`, `rewrites/rw_2.py`, ... following the
 contract (ModelNew + PARAMS dict). The rewrite does NOT need to be faster at the

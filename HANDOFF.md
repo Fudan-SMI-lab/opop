@@ -328,3 +328,40 @@ WSL 侧已验证 run_relaxed_correctness 依赖的 KernelBench 助手全部可�
 
 实施中引入并修复 3 个 bug(见 §10 下 fix commit ea8f379):Baseline note/kind、ModelNew 实例化、
 torch 2.9 matmul API。运维教训:kill uv.exe 遗留 WSL worker + opencode serve 孤儿,需一并清理。
+
+## 12. tensor-core / 精度维度改进(2026-09-03,H1/H2/H3)
+
+深度取证(§11 + memory `opop-v2-root-cause-no-speedup`)定位根因:候选硬编码 ieee fp32
+`tl.dot`,结构上用不了 tensor core;而 torch.compile 的近 2× 优势正来自 tf32 tensor core。
+瓶颈分析只看寄存器/shared(微架构占用),看不到"精度路径/FLOP floor"这一真正的墙。改写反复
+缓解寄存器压力却让延迟更差——证明诊断的瓶颈不是真限制器。据此实施 3 个方向:
+
+- **H1 让 generator/rewriter/parameterizer 探索 tf32 tensor-core 路径**:
+  - `candidate_contract.md` 新增 "Precision and the tensor-core path" 段:双精度门接受 tf32
+    结果 → tf32 kernel 是合法候选;建议把 dot 精度做成 `PARAMS["DOT_PRECISION"]` 可调 knob;
+    强调累加器必须 fp32(tf32 只降乘法输入尾数,不降累加)。
+  - generator prompt:精度作为一等"计算方法轴",要求至少一个候选走 tf32 tensor-core 路径并把
+    精度暴露为 PARAMS knob。
+  - parameterizer prompt:matmul/conv 类要把 dot 精度提为 knob(choices ["tf32","ieee"])。
+  - rewriter prompt:当 bottleneck 报告归因 `arithmetic_throughput`(或延迟 floor 跨资源画像走平)
+    时,最高价值改写=把 dot 从 ieee 切 tf32/fp16-累加;明令不要在算术吞吐墙上继续做寄存器/shared 缓解。
+  - `triton_pitfalls.md` #5 重写:区分"累加器 dtype(必须 fp32,是正确性硬约束)"与"输入精度
+    (tf32 是性能 knob 不是 bug,双精度门接受)",避免把候选吓离 tf32 路径。
+- **H2 瓶颈分析加入精度/资源平衡维度**(analyst prompt + `blocked_by` 枚举加 `arithmetic_throughput`):
+  新增 "不要把'资源饱和'误当'该资源是性能限制器'" 段——(1) 寄存器满常是快配置的签名而非病,缓解=溢出更慢;
+  (2) 闲置资源(shared 24% vs 寄存器满)只有在吞吐是墙时才值得换用;(3) 若用 ieee/scalar-FMA 且延迟 floor
+  平坦像算术吞吐墙,应显式提出切 tf32 tensor-core(通常单点最高收益)。
+- **H3 报告记录候选精度 + 4 路加速比 + 诚实同精度判定**(orchestrator `_finalize` + report.py):
+  - `_detect_candidate_precision(src, params)`:优先看 DOT_PRECISION knob 实际取值,再看源码
+    `input_precision=` 字面量 / fp16 / bf16 / 裸 tl.dot(→ tf32 默认路径),返回
+    tf32|fp16|bf16|ieee_fp32|unknown(纯描述,不改运行)。
+  - `speedups`:对每个记录的 baseline(dual 模式下 4 个)都算加速比;保留 speedup_vs_eager/compile 兼容字段。
+  - `_honest_verdict(precision, speedups)`:tf32 候选对 `torch_compile_tf32` 比,ieee 候选对
+    `torch_compile` 比(strict 模式无 tf32 baseline 时回退到 untagged),避免拿慢基线当稻草人。
+    report.md "Best result" 段渲染候选精度、每 baseline 加速比、✅/❌ 同精度判定。
+
+测试:`tests/test_improvements.py` 新增 H3 三组测试(精度检测 from-knob / from-source、同精度判定、
+strict 回退)。全套 `uv run pytest -q` = 96 passed / 1 skipped(torch 依赖项,host 无 torch 跳过)。
+
+**待验证**:用改进后代码重跑 L3(尤其 L3:43 attention),看 tf32 探索是否真能把候选拉到 tensor-core
+路径并追平/接近 tf32 torch.compile —— 这是唯一有机会翻正的方向。
