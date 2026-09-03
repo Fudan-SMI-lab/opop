@@ -50,20 +50,32 @@ mean/var。这是 KernelBench 的评测约定,**不是通用真理**。
    或并入现有 `env_probe`):建好参考模型后,读取
    ```python
    ref_model = Model(*init_inputs)          # worker_main.py:371,现状无 .eval()
+   # 核心 flag:直接读活对象的运行时状态(不是解析源码文本、不是正则匹配 .eval())。
+   # 参考前向就在这个状态下跑,所以该 flag 定义上正确,不依赖代码写法。
    semantics = {
        "training": bool(ref_model.training),
        "norm_layers": [
+           # 泛化性关键:用"能力检测"而非"类型列表 isinstance"——只要该层带 running
+           # stats 缓冲区就识别,能 catch 自定义 BN-like 层,不受类型硬编码限制。
            {"type": type(m).__name__, "training": bool(m.training),
+            "has_running_stats": (hasattr(m, "running_mean")
+                                  or hasattr(m, "running_var")),
             "track_running_stats": getattr(m, "track_running_stats", None),
             "momentum": getattr(m, "momentum", None)}
            for m in ref_model.modules()
-           if isinstance(m, (torch.nn.modules.batchnorm._BatchNorm,
-                             torch.nn.modules.instancenorm._InstanceNorm,
-                             torch.nn.GroupNorm, torch.nn.LayerNorm))
+           if hasattr(m, "running_mean") or hasattr(m, "running_var")
+           or hasattr(m, "track_running_stats")
        ],
    }
    ```
-   仅回传**标量/短列表**(每层 4 个字段),不回传权重/张量。
+   仅回传**标量/短列表**(每层 ~5 个字段),不回传权重/张量。
+
+   **泛化性/失败模式评估**(回应"是否硬编码检查代码、是否检测失败"):
+   - 核心 `ref_model.training` 是**读活对象的通用属性**,不是静态代码检查,**不存在"代码写得刁钻检测不到"的问题**——因为我们根本不看代码文本,只读那个即将产出参考输出的对象的真实状态。
+   - 唯一"参考不是 torch Module"时读不到 `.training`——但那样整个正确性比对路径(`Model(*init_inputs)` + `model(*inputs)`)本就跑不起来,不是 J 新引入的失败。
+   - per-layer 细节改用**能力检测(`hasattr(running_mean)`)** 而非类型列表,泛化到自定义 norm;即便某自定义层仍漏判,也只影响"提示完整性",不影响正确性门。
+   - **最终安全网**:双精度见证门是裁判——agent 即使拿到 flag 仍猜错语义,门会安全判 fail(→ repair/丢弃),**绝不误接受错误候选**。启发式只"引导",执行"裁决",降级安全。
+
 
 2. **把 semantics 存进任务 spec / run manifest**,并注入 generator/parameterizer/repair 的沙箱
    (`agents/modules.py` 的 `seed_sandbox`),写成 `task/eval_semantics.json`。
@@ -191,6 +203,21 @@ KernelBench 场景 → 告知 train → 写 batch-stat;通用推理场景 → �
 - **采纳:A 为主 + B 为契约兜底 + 一个轻量 lint**——`paramspace/triton_lint.py` 加一条
   **warning**(非 hard error):若 body 出现硬编码的 `.to(tl.float16/bfloat16)` 且 PARAMS 无
   dtype 类 knob,提示"dtype 疑似硬编码、应提为 knob"。warning 不阻断,只回传给 agent 作反馈。
+
+**lint warning 的不稳定性评估(回应"硬编码监测的不稳定性")**:
+- **关键安全属性:warning 而非 hard error** —— 现有 `triton_lint.py` 分两层:hard error(阻断候选)
+  和 warning(不阻断、只回传 agent)。L 的 dtype 检测属**后者**。
+- **误报代价 = 至多浪费一点 agent 注意力,永不误拒候选**(不阻断)。可能误报:body 里那个
+  `.to(fp16)` 是输出存储 dtype 而非 dot 输入、或候选确实需要一个与可调 dot 无关的固定 fp16 cast
+  —— 这些情况 agent 可忽略 warning,候选照常进见证门。
+- **漏报也不致命**:body 用 AST 不认得的方式构造精度(`tl.cast`、dtype 作 kernel 参数传入)→
+  不响 warning;但它只是"提醒把 dtype 提为 knob"的助推,**真正判断"fp16 有没有被干净评测"的是
+  调参面 + report 的实测数据**(tf32 vs fp16 真实延迟),不是 lint。
+- **实现要点(避免脆弱)**:检测"是否已有 dtype knob"时**不匹配固定 key 名**(不能只找
+  `DOT_PRECISION`,否则 agent 用别名 `COMPUTE_DTYPE` 就误报),改用 **name-agnostic 值域检测**:
+  PARAMS 里是否存在某 str 值 ∈ `{fp16,bf16,tf32,ieee}` 的 knob。
+- **统一原则(与 J 共通)**:所有硬编码/启发式部分都是**建议性/信息性,从不充当正确性或接受性的
+  裁判**。裁判永远是——正确性用运行时双精度见证门,性能用实测调参数据。启发式失手 = 优雅降级。
 
 **一个前提(诚实预期)**:即使 fp16 被干净评测,也**未必**过双精度见证门——bf16 已因 diff 0.0014
 被拒。fp16(10-bit 尾数)比 bf16(7-bit)更可能过,但 attention 长 reduction 仍有风险。
