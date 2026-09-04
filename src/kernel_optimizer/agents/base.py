@@ -64,11 +64,17 @@ class AgentModule(ABC, Generic[TIn, TOut]):
         prompt = self.render_prompt(inputs, sb)
 
         session_id = self.client.create_session(sb.root, title=call_id)
-        self.store.append(
-            "AGENT_CALL_STARTED",
-            {"module": self.name, "call_id": call_id, "session_id": session_id,
-             "model": self.cfg.model},
-        )
+        # Optional subject of the call, read generically so adding it to one Inputs type
+        # needs no change here. Without it a call can only be attributed to a candidate
+        # by "nearest following *_PRODUCED event", a heuristic that left 2 of 4 observed
+        # repair transport timeouts unattributed -- too fragile to support a claim about
+        # whether repeat repairs on the same candidate are the ones that hang.
+        subject = getattr(inputs, "candidate_id", None)
+        payload = {"module": self.name, "call_id": call_id, "session_id": session_id,
+                   "model": self.cfg.model}
+        if subject:
+            payload["candidate_id"] = subject
+        self.store.append("AGENT_CALL_STARTED", payload)
 
         total_tokens: dict = {}
         total_cost = 0.0

@@ -297,6 +297,8 @@ class ParameterizerInputs:
     candidate_source: str
     device: DeviceLimits
     prior_feedback: str = ""
+    # Attribution only (see RepairInputs.candidate_id).
+    candidate_id: str | None = None
     # Improvement K: when set, a focused space-EXPANSION request rather than a
     # fresh parameterization. Describes which knobs hit the tried-range boundary
     # (with direction) so the agent extends only those choices, structure unchanged.
@@ -438,6 +440,8 @@ class AnalystInputs:
     stats: TuningStats
     trials_csv: str
     device: DeviceLimits
+    # Attribution only (see RepairInputs.candidate_id).
+    candidate_id: str | None = None
 
 
 class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
@@ -661,6 +665,10 @@ class RepairInputs:
     device: DeviceLimits
     eval_semantics: dict | None = None
     ref_source: str | None = None
+    # Attribution only: lets AGENT_CALL_STARTED name the candidate this call is about,
+    # so a transport timeout can be tied to a specific candidate and repeat-repair
+    # attempt instead of guessed at by "nearest following REPAIR_PRODUCED".
+    candidate_id: str | None = None
     # Rejected repairs of THIS candidate: [{"diagnosis", "failure_detail"}], oldest
     # first. Without it the agent cannot see that its previous fix was rejected, and
     # oscillates: on L3:48 cand-0137895f it first claimed the decay must be exp(-exp(A))

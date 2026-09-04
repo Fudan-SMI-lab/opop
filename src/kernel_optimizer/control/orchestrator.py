@@ -460,7 +460,8 @@ class Orchestrator:
             self._prefetch_pool.shutdown(wait=wait, cancel_futures=True)
             self._prefetch_pool = None
 
-    def _parameterize_agent_call(self, source: str, feedback: str) -> AgentOutcome:
+    def _parameterize_agent_call(self, source: str, feedback: str,
+                                 cand_id: str | None = None) -> AgentOutcome:
         """The pure-LLM half of parameterization: no GPU, no shared mutable state.
 
         Split out so it can be run ahead of time on the prefetch thread (improvement
@@ -471,6 +472,7 @@ class Orchestrator:
             ParameterizerInputs(
                 task=self.task, candidate_source=source,
                 device=self.cfg.device, prior_feedback=feedback,
+                candidate_id=cand_id,
             )
         )
 
@@ -492,7 +494,7 @@ class Orchestrator:
             self._prefetch_pool = ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix="prefetch")
         self._prefetched[cand_id] = self._prefetch_pool.submit(
-            self._parameterize_agent_call, crun.source, "")
+            self._parameterize_agent_call, crun.source, "", cand_id)
 
     def _take_prefetched(self, cand_id: str, source: str) -> AgentOutcome | None:
         """Claim a prefetched parameterization if it is still valid for this source."""
@@ -521,7 +523,8 @@ class Orchestrator:
                 outcome = self._take_prefetched(cand.candidate_id, source)
             if outcome is None:
                 try:
-                    outcome = self._parameterize_agent_call(source, feedback)
+                    outcome = self._parameterize_agent_call(source, feedback,
+                                                           cand.candidate_id)
                 except AgentCallError as exc:
                     self.store.append("SPACE_REJECTED",
                                       {"candidate_id": cand.candidate_id,
@@ -578,6 +581,7 @@ class Orchestrator:
                             device=self.cfg.device,
                             eval_semantics=self.eval_semantics,
                             ref_source=Path(self.task.ref_path).read_text(encoding="utf-8"),
+                            candidate_id=cand.candidate_id,
                             prior_attempts=[h for h in repair_history
                                             if h.get("failure_detail")] or None,
                         )
@@ -721,6 +725,7 @@ class Orchestrator:
                 AnalystInputs(
                     task=self.task, candidate_source=crun.source, stats=crun.stats,
                     trials_csv=self._trials_csv(crun), device=self.cfg.device,
+                    candidate_id=crun.candidate.candidate_id,
                 )
             )
             crun.report = outcome.output
@@ -765,6 +770,7 @@ class Orchestrator:
                             task=self.task, candidate_source=crun.source,
                             device=self.cfg.device, expand_directive=directive,
                             prior_feedback=feedback,
+                            candidate_id=cand.candidate_id,
                         )
                     )
                 except AgentCallError as exc:

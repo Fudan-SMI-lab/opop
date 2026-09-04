@@ -1494,6 +1494,42 @@ def test_rejected_repairs_doc_skips_entries_without_an_outcome():
     assert "second guess" in doc2 and "Still failed with" not in doc2
 
 
+def test_agent_calls_name_their_candidate_for_timeout_attribution():
+    """AGENT_CALL_STARTED recorded only {module, call_id, session_id, model}, so a
+    transport timeout could be tied to a candidate only by "nearest following
+    *_PRODUCED event". That heuristic left 2 of 4 observed repair timeouts unattributed
+    and is too fragile to support the hypothesis that repeat repairs on the SAME
+    candidate are the ones that hang (repair times out on 36.4% of calls vs 0% for
+    parameterizer and analyst).
+
+    base.invoke reads the field generically, so a new Inputs type needs no change there,
+    but the field is only useful if the call sites actually pass it."""
+    from pathlib import Path
+
+    base = Path("src/kernel_optimizer/agents/base.py").read_text(encoding="utf-8")
+    block = base.split('self.store.append("AGENT_CALL_STARTED"')[0][-800:]
+    assert 'getattr(inputs, "candidate_id", None)' in block, \
+        "must read the subject generically, not per-module"
+    # Absent on types that have no candidate (generator, novelty): the key is omitted
+    # rather than written as null, so a reader can distinguish "not applicable".
+    assert 'if subject:' in block
+
+    mods = Path("src/kernel_optimizer/agents/modules.py").read_text(encoding="utf-8")
+    for cls in ("RepairInputs", "ParameterizerInputs", "AnalystInputs"):
+        seg = mods.split(f"class {cls}:")[1].split("@dataclass")[0]
+        assert "candidate_id" in seg, f"{cls} must carry candidate_id"
+
+    orch = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
+    # Every construction of these three must pass it, or the event stays anonymous.
+    for cls in ("RepairInputs(", "AnalystInputs("):
+        for seg in orch.split(cls)[1:]:
+            assert "candidate_id=" in seg[:600], f"{cls} built without candidate_id"
+    # The parameterizer is reached through a helper (prefetch runs it off-thread), so
+    # check the helper threads the id rather than each construction site.
+    helper = orch.split("def _parameterize_agent_call")[1].split("def ")[0]
+    assert "candidate_id=cand_id" in helper
+
+
 def test_repair_event_records_what_changed_not_only_why():
     """REPAIR_PRODUCED dropped change_summary, so the log kept the agent's reasoning but
     not its edit.

@@ -126,3 +126,33 @@ accruing now.
 Predictions 2 and 3 (H2 passing; repair damaging H1 rather than fixing it) resolve as the
 run continues and are recorded above unchanged.
 
+## Prediction 3 confirmed at 04:13:51
+
+`cand-eed411d8` attempt 1, after the repair, rejected `witness_minimal_failed`:
+frac **0.836301** with **19,403,796 of 134,217,728 values non-finite** (16,070,921 NaN).
+
+The repair's diagnosis was again correct-but-not-a-defect — TF32 truncation compounding
+across sequential dot products, explicitly noting "high cosine similarity but only 97.6%
+of elements within tolerance". It read the noise-floor evidence accurately and still
+concluded there was a bug, because it has no channel to answer "this is the task's own
+spread".
+
+The two families now reproduce the whole trajectory, not just the rejection:
+
+| | round 1 `cand-dc4b6fec` | round 2 `cand-eed411d8` |
+|---|---|---|
+| a=0 | 0.975956, finite, cosine 0.99999996 | 0.976029, finite, cosine 0.99999996 |
+| a=1 | 0.843332 + non-finite | 0.836301 + non-finite (16.1M NaN) |
+| repair's diagnosis | chunk boundaries + TF32 rounding | TF32 truncation across dot products |
+| outcome | dropped after 4 attempts | in progress |
+
+Independent rewriter calls, independent repair calls, different parents — same two-step
+collapse: land ~0.0017 below the noise floor, then get destroyed by a fix for a bug that
+was not there. All three pre-registered predictions hold.
+
+This is the clearest statement of the cost. The gate does not merely fail to measure the
+bolder structural direction; it reliably converts it into a broken kernel, and it does so
+*reproducibly* rather than by accident. Both H1 candidates remain **unknown, not
+disproven** on latency — neither was ever timed.
+
+
