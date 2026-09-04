@@ -1494,6 +1494,70 @@ def test_rejected_repairs_doc_skips_entries_without_an_outcome():
     assert "second guess" in doc2 and "Still failed with" not in doc2
 
 
+def test_expansion_skips_knobs_already_at_a_hard_hardware_edge():
+    """NUM_WARPS=1 cannot go lower -- one warp IS the minimum launch allocation -- so
+    asking the parameterizer to extend it downward buys nothing.
+
+    Live on L3:48 it was requested in 4 of 5 expansions and expanded zero times; twice it
+    was the ONLY requested knob, so the whole expansion returned a byte-identical space
+    and still cost a 40-trial re-tune. The analyst itself reports blocked_by="threads"
+    with "further decrease is impossible", so the trend being real is not the issue: the
+    boundary is simply not extendable."""
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    from kernel_optimizer.models.core import ParamDomain, ParameterSpace
+    from kernel_optimizer.models.reports import ParamStat, TuningStats
+
+    space = ParameterSpace(
+        space_id="sp-1", candidate_id="c", version=1, source_sha="x",
+        domains=[ParamDomain(name="NUM_WARPS", kind="int", choices=[1, 2, 4, 8]),
+                 ParamDomain(name="BLOCK_P", kind="int", choices=[16, 32, 64])],
+    )
+    stats = TuningStats(
+        candidate_id="c", space_id="sp-1", n_complete=40, n_fail=0,
+        param_stats=[
+            # Both look identically "blocked at a boundary with a real effect".
+            ParamStat(name="NUM_WARPS", best_value=1, at_boundary=True,
+                      boundary_direction="min", effect_pct=19.4),
+            ParamStat(name="BLOCK_P", best_value=64, at_boundary=True,
+                      boundary_direction="max", effect_pct=12.0),
+        ],
+    )
+    knobs = boundary_knobs_to_expand(stats, idle_frac=0.8, space=space,
+                                     min_effect_pct=2.0)
+    names = [k["name"] for k in knobs]
+    assert "BLOCK_P" in names, "a genuinely extendable knob must still be expanded"
+    assert "NUM_WARPS" not in names, "1 warp is the floor; there is no next value"
+
+    # Direction matters: NUM_WARPS wanting MORE warps is extendable.
+    stats_up = TuningStats(
+        candidate_id="c", space_id="sp-1", n_complete=40, n_fail=0,
+        param_stats=[ParamStat(name="NUM_WARPS", best_value=8, at_boundary=True,
+                               boundary_direction="max", effect_pct=19.4)],
+    )
+    up = boundary_knobs_to_expand(stats_up, idle_frac=0.8, space=space,
+                                  min_effect_pct=2.0)
+    assert [k["name"] for k in up] == ["NUM_WARPS"]
+
+
+def test_expansion_that_adds_no_choices_is_rejected_not_retuned():
+    """Even for a legitimately extendable knob the agent may return the same domains.
+    Accepting that costs a full re-tune whose only possible outcome is rediscovering the
+    same optimum, so the delivered space is compared against the previous one rather than
+    the request being trusted."""
+    from pathlib import Path
+
+    src = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
+    block = src.split("def _maybe_expand_space")[1].split("def _expand_directive_text")[0]
+    assert "no_new_choices" in block, "a no-op expansion must be rejected by reason"
+    # Compared on choices, not on space_id/sha: a fresh space_id is issued either way.
+    assert "prev_choices" in block and "new_choices" in block
+    assert "tuple(d.choices)" in block
+    # And it must bail out BEFORE the re-tune, which is the cost being avoided.
+    idx_reject = block.find("no_new_choices")
+    idx_tune = block.find("self._tune(")
+    assert idx_reject < idx_tune, "the no-op check must precede the re-tune"
+
+
 def test_report_on_an_unfinished_run_is_honest_not_empty(tmp_path):
     """The report read ONLY RUN_FINISHED, so on a run still in flight it claimed "no
     correct candidate survived" and rendered an empty families section -- on L3:48 that

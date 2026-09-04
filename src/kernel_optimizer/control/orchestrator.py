@@ -151,9 +151,20 @@ def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float,
       that changes latency by ~0% is irrelevant, not blocked — expanding its range
       cannot help (observed live on L3:21 cand-dc6526b6: all 6 knobs flagged
       at_boundary with 0.0-0.4% effect).
+    - The boundary must be EXTENDABLE. A knob sitting on a hard hardware floor/ceiling
+      has no next value to offer, so asking for one wastes a parameterizer call and a
+      full re-tune over an unchanged space. NUM_WARPS=1 is the case that fired: it was
+      requested in 4 of 5 expansions on L3:48 and expanded zero times, because one warp
+      IS the minimum launch allocation — the analyst says so itself
+      (`blocked_by: "threads"`, "further decrease is impossible"). Twice it was the only
+      requested knob, so the whole expansion was a no-op that still cost 40 trials.
     """
     if stats is None or not stats.param_stats:
         return []
+    # Hard limits per direction: a knob already at one of these cannot be extended that
+    # way whatever the latency trend says. Keyed by (name, direction) -> the value that
+    # is already the wall.
+    HARD_EDGE = {("NUM_WARPS", "min"): 1, ("NUM_STAGES", "min"): 1}
     res = stats.resource_at_best
     # Headroom = some resource is comfortably below its limit. If we can't tell
     # (no profile), be permissive — the guard + validation still gate the result.
@@ -175,12 +186,27 @@ def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float,
             return False
         return dom.kind in ("int", "float")
 
+    def _at_hard_edge(name: str, direction: str) -> bool:
+        """True if the knob's offered range already touches an unextendable limit."""
+        wall = HARD_EDGE.get((name, direction))
+        if wall is None or space is None:
+            return False
+        try:
+            choices = space.domain(name).choices
+        except KeyError:
+            return False
+        numeric = [c for c in choices if isinstance(c, (int, float))]
+        if not numeric:
+            return False
+        return min(numeric) <= wall if direction == "min" else max(numeric) >= wall
+
     return [
         {"name": ps.name, "direction": ps.boundary_direction}
         for ps in stats.param_stats
         if ps.at_boundary and ps.boundary_direction in ("min", "max")
         and _is_numeric_knob(ps.name)
         and (ps.effect_pct or 0.0) >= min_effect_pct
+        and not _at_hard_edge(ps.name, ps.boundary_direction)
     ]
 
 
@@ -793,6 +819,22 @@ class Orchestrator:
                 feedback = (f"the expanded space was rejected ({verdict.reason}): "
                             f"{error_excerpt(verdict.detail, 1200)}")
             if not isinstance(verdict, SpaceAccepted):
+                return
+            # A "valid" expansion that added no choices is a no-op: accepting it costs a
+            # full re-tune (40 trials) over the space just tuned, and its only possible
+            # outcome is to rediscover the same optimum. Observed twice on L3:48
+            # (cand-f4a2ce82 sp-cbb94366 and cand-3bcc57ce sp-a848207a were byte-identical
+            # to their predecessors). The knob-side hard-edge filter prevents most of
+            # these, but the agent can also decline to widen a knob for its own reasons,
+            # so check the delivered space rather than trusting the request.
+            prev_choices = {d.name: tuple(d.choices) for d in crun.space.domains}
+            new_choices = {d.name: tuple(d.choices) for d in verdict.space.domains}
+            if new_choices == prev_choices:
+                self.store.append("SPACE_EXPANSION_REJECTED", {
+                    "candidate_id": cand.candidate_id,
+                    "reason": "no_new_choices",
+                    "detail": f"expansion of {[k['name'] for k in knobs]} returned an "
+                              f"identical domain set; skipping the re-tune"})
                 return
             work_dir = self.store.candidate_dir(cand.candidate_id)
             # Accept the expanded space and re-tune once over it.
