@@ -86,11 +86,31 @@ at roughly 5 minutes of agent wall each. In this run repair is already the singl
 agent cost (0.63h of 1.32h total agent time), and part of that is spent on a candidate
 that needed no repair.
 
-## The run produced a controlled comparison
+### Measured cost, once three families had run
 
-The rewriter proposed two candidates from the same bottleneck report, in the same family,
-against the same diagnosed wall (the serial SEQ dependency). They differ in how much they
-reassociate the arithmetic:
+Wall time from each H1 candidate's first event to its last, on `run-l3-48-20260905-010737`:
+
+| candidate | wall | repairs | rejections |
+|---|---|---|---|
+| cand-dc4b6fec | 39.4 min | 3 | 4 |
+| cand-eed411d8 | 17.1 min | 3 | 4 |
+| cand-741c2699 | 3.8 min *(still running)* | 1 | 1 |
+| **total** | **60.3 min = 1.00h** | | |
+
+Against 3.56h elapsed, that is **28% of the run** spent on three candidates that were
+within 0.0019 of the reference's own ieee-vs-tf32 spread when first rejected — and the
+third chain had only just started when this was measured, so the final figure is higher.
+
+The waste is not only the wall time. Repair is the module that times out (36.4%
+historically, 2 of the 8 calls in this run), so every unnecessary repair chain is also
+extra exposure to a 1200s stall.
+
+
+## The run produced a controlled comparison — three times
+
+In each of three families the rewriter proposed two candidates from the same bottleneck
+report, against the same diagnosed wall, differing in how much they reassociate the
+arithmetic. The first instance:
 
 | candidate | hypothesis | approach | outcome |
 |---|---|---|---|
@@ -101,29 +121,70 @@ H2 restructures the sequence-level parallelism but leaves the per-chunk arithmet
 alone, so it stays within the witnesses' agreement. H1 reassociates inside the chunk and
 falls into the 2.2-point gap.
 
-The gate therefore selected on **degree of reassociation, not on correctness**. This is
-the bias described above, observed directly rather than argued: of two rewrites attacking
-the same wall, the conservative one was admitted and the structurally bolder one was
-rejected and then destroyed. A search that systematically keeps the timid half of its
-structural proposals is the early-pruning failure mode the paper's problem statement
-argues against, arising from the harness rather than from the LLM.
+Then it happened again, twice, in unrelated families:
+
+| family | parent | H1 (moves work to tensor cores) | H2 (keeps scalar arithmetic) |
+|---|---|---|---|
+| fam-99aee6de | 2.09ms | **rejected** at frac 0.975956, damaged to 0.844503 | published, 3.34ms |
+| fam-74c41d8d | 2.84ms | **rejected** at frac 0.976029, damaged to 0.836300 | published, **2.46ms** |
+| fam-b1ee96ac | 3.80ms | **rejected** at frac 0.975839 | pending |
+
+**3 for 3.** And the three rejected fracs span only **1.9e-4**, each 0.0017–0.0019 below
+the 0.977767 floor, with every cosine equal to the floor's own (0.99999996) to eight
+decimals. Three independent rewriter calls against three different parent kernels do not
+land that close by chance: the frac is a property of *the transformation*, not of any one
+candidate's correctness.
+
+The second instance was **pre-registered** — the prediction, with explicit falsifiers, was
+committed at `e01708a` before its witnesses ran
+(`docs/prediction-gate-selects-on-reassociation.md`). Every part held. So this is no longer
+an after-the-fact reading of one pair.
+
+The gate therefore selects on **degree of reassociation, not on correctness**. This is the
+bias described above, observed directly rather than argued: of two rewrites attacking the
+same wall, the conservative one was admitted and the structurally bolder one was rejected
+and then destroyed — every time. A search that systematically keeps the timid half of its
+structural proposals is the early-pruning failure mode the paper's problem statement argues
+against, arising from the harness rather than from the LLM.
+
+What sharpens it: the analyst named the tensor-core path as the **primary remaining
+headroom** in all three families, having ruled out resource limits (80/255 registers, 512 B
+of 101,376 shared, one warp, no spills, no OOM). So the harness diagnosed the same
+optimisation three times, generated a candidate for it three times, and never timed it
+once. The single direction its own analysis points at is the direction the gate
+structurally cannot evaluate.
 
 ## Options considered
 
 1. **Floor-relative threshold.** Accept if
-   `frac >= min(pass_frac, noise_floor - margin)` AND `cosine >= cosine_min`, where
-   `noise_floor` is the reference's own ieee-vs-tf32 `frac`, already computed for the
-   failure message. Modelled against every rejection in this run at `margin = 0.005`:
+   `frac >= min(pass_frac, noise_floor - margin)` AND `cosine >= cosine_min` AND the output
+   is finite, where `noise_floor` is the reference's own ieee-vs-tf32 `frac`, already
+   computed for the failure message. At `margin = 0.005` the effective threshold on this
+   task is `min(0.99, 0.977767 - 0.005) = 0.972767`. Modelled against **every** rejection
+   the run has produced:
 
-   | rejection | frac | outcome |
-   |---|---|---|
-   | cand-eb910a18 a=1 | 0.912517 | stays rejected |
-   | cand-eb910a18 a=2 | 0.912517 | stays rejected (also non-finite) |
-   | cand-eb910a18 a=3 | 0.912518 | stays rejected (also non-finite) |
-   | cand-dc4b6fec a=0 | 0.975956 | **accepted** |
+   | rejection | frac | cosine | non-finite | outcome |
+   |---|---|---|---|---|
+   | cand-eb910a18 a=1 | 0.912517 | nan | no | stays rejected |
+   | cand-eb910a18 a=2 | 0.912517 | 1.0 | YES | stays rejected |
+   | cand-eb910a18 a=3 | 0.912518 | 1.0 | YES | stays rejected |
+   | cand-dc4b6fec a=0 | 0.975956 | 0.99999996 | no | **accepted** |
+   | cand-dc4b6fec a=1..3 | 0.843332 / 0.844503 / 0.844503 | 0.99999991 | YES | stays rejected |
+   | cand-eed411d8 a=0 | 0.976029 | 0.99999996 | no | **accepted** |
+   | cand-eed411d8 a=1..3 | 0.836301 / 0.836300 / 0.836300 | 0.99999995 | YES | stays rejected |
+   | cand-741c2699 a=0 | 0.975839 | 0.99999996 | no | **accepted** |
 
-   The three genuinely-wrong attempts stay rejected on frac alone, and two are
-   independently blocked by non-finite output. Only the borderline candidate flips.
+   **3 flip, 9 stay rejected.** Every flip is an a=0 candidate with finite output sitting
+   within 0.0019 of the floor; every kernel that stays rejected is either genuinely wrong on
+   frac alone (`cand-eb910a18` at 0.9125, 6.5 points below the relaxed threshold) or emits
+   millions of NaN/Inf. Non-finite output is an independent hard block, so a broken kernel is
+   never admitted however good its frac looks.
+
+   The decisive point is what does *not* appear in that table: with the three a=0 candidates
+   accepted, **none of the nine damaged attempts would ever have been generated** — each was
+   produced by a repair chain that only started because a=0 was rejected. This option does
+   not merely re-admit three kernels; it removes the 1.00h (28% of the run) those chains
+   consumed and the two 1200s repair timeouts' worth of exposure that came with them.
 
 2. **Per-task `pass_frac` in the config.** Explicit and auditable, but it is a magic
    number per task and invites tuning the gate until candidates pass — the failure mode
@@ -151,17 +212,29 @@ before rejecting a witness). It should not be made mid-experiment or without a d
 
 ## Scope for the current run
 
-`cand-dc4b6fec` (H1, chunked parallel prefix with tensor-core `tl.dot`) was rejected at
-frac 0.975956 against a task noise floor of 0.977767, then damaged by a repair that had
-no real bug to fix (0.843332, then 0.844503 twice, all non-finite) across all four
-attempts, and dropped. `cand-51dd1857` (H2) published on its first attempt, confirming
-that the gate admitted the conservative rewrite and rejected the bold one.
+Three H1 rewrites — one per family, each the analyst's tensor-core hypothesis — were
+rejected at frac 0.975956 / 0.976029 / 0.975839 against a task noise floor of 0.977767.
+Two were then damaged by repairs that had no real bug to fix (`cand-dc4b6fec` to 0.844503,
+`cand-eed411d8` to 0.836300, both with millions of NaN/Inf) across all four attempts and
+dropped; the third was still in its chain when this was written. Each family's conservative
+H2 sibling published, two of them tuning successfully (3.34ms and 2.46ms).
 
-Any report or paper text drawing on this run must say that the H1 rewrite's structural
-headroom is **unknown, not disproven**: it was never measured for latency, because it was
-rejected on a correctness threshold the reference itself does not meet. Reporting it as a
-failed structural direction would be the exact overclaim the report's own
-family-honesty clause was added to prevent.
+Any report or paper text drawing on this run must say that these rewrites' structural
+headroom is **unknown, not disproven**: none was ever measured for latency, because each was
+rejected on a correctness threshold the reference itself does not meet. Reporting them as a
+failed structural direction would be the exact overclaim the report's own family-honesty
+clause was added to prevent.
+
+Two specific numbers to carry carefully:
+
+- The run's best candidate, **2.46ms** (`cand-a04c3f52`, 7.6x torch.compile on tuned_ms), is
+  an H2. It is a real result and the anti-early-pruning fix is what gave its family a
+  rewrite round at all — that family began as the third-best seed at 3.55ms. But it must not
+  be presented as evidence that the conservative structure is *better* than the tensor-core
+  one, only that it is the better of the two the gate allowed to be measured.
+- Both that figure and every other speedup here are **lower bounds**, for an unrelated
+  reason documented in `docs/finding-one-slow-sample-per-measurement.md`: candidate
+  measurements carry one anomalously slow sample per 20 that baseline measurements do not.
 
 ## A second, independent concern this exposes
 
