@@ -1354,3 +1354,43 @@ def test_family_updated_has_no_producer_and_is_documented():
         capture_output=True, text=True).stdout.splitlines()
     emitters = [h for h in hits if "append(" in h]
     assert not emitters, f"unexpected FAMILY_UPDATED emitter: {emitters}"
+
+
+def test_relaxed_metrics_handles_tensors_too_large_for_quantile():
+    """A diagnostic must never destroy the diagnosis.
+
+    torch.quantile refuses inputs above ~16M elements. level3/48's output is
+    2048*128*8*64 = 134M, so the p99 line I added raised inside the failure-reporting
+    path and turned cand-eb910a18's correctness_mismatch into an opaque
+    'RuntimeError: quantile() input tensor is too large' -- the repair agent then saw a
+    crash instead of the mismatch it was supposed to diagnose."""
+    torch = pytest.importorskip("torch")
+    import importlib.util
+
+    spec = importlib.util.find_spec("kernel_optimizer.gpu.worker_main")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    # Comfortably past torch.quantile's limit, small enough for a CPU test.
+    n = 20_000_000
+    ref = torch.ones(n)
+    got = ref.clone()
+    got[:1000] = 2.0
+    m = mod._relaxed_metrics(ref, got)          # must not raise
+    assert m["p99_rel_err"] != "n/a"
+    assert m["frac_within_tol"] == pytest.approx(1.0 - 1000 / n, abs=1e-6)
+
+
+def test_mismatch_detail_falls_back_when_metrics_raise():
+    """Even if the rich metrics fail for some future reason, the mismatch itself must
+    still be reported -- with the gate's thresholds -- not replaced by a traceback."""
+    from pathlib import Path
+
+    src = Path("src/kernel_optimizer/gpu/worker_main.py").read_text(encoding="utf-8")
+    block = src.split("ok = (_relaxed_close")[1].split("except Exception as exc:")[0]
+    assert "except Exception as diag_exc" in block, "metrics must be wrapped"
+    fallback = block.split("except Exception as diag_exc")[1]
+    # The fallback still has to carry a number AND the gate criteria.
+    assert "max abs diff" in fallback
+    assert "frac_within_tol" in fallback and "cosine>=" in fallback
+    assert "Detailed metrics unavailable" in fallback

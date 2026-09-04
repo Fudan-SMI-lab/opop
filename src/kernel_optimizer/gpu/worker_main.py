@@ -421,7 +421,7 @@ def _relaxed_metrics(ref, got) -> dict:
     exp(A) and exp(-exp(A)). Always report frac-within-tol and cosine (the actual gate
     criteria) plus where the error sits relative to the output's own magnitude.
     """
-    import torch  # noqa: F401  (kept for symmetry; tensors arrive already on device)
+    import torch
 
     if ref.shape != got.shape:
         return {"shape_ref": tuple(ref.shape), "shape_got": tuple(got.shape)}
@@ -429,11 +429,26 @@ def _relaxed_metrics(ref, got) -> dict:
     g = got.float()
     rel = (r - g).abs() / (r.abs() + 1e-7)
     cos = _cosine_similarity(r, g)
+    # torch.quantile refuses inputs above ~16M elements, and these tensors are much
+    # larger (level3/48's output is 2048*128*8*64 = 134M), so it raised inside the
+    # failure-reporting path and turned a correctness mismatch into a runtime_error --
+    # a diagnostic that destroyed the diagnosis. Sort a bounded random sample instead:
+    # a p99 of the error distribution needs a representative sample, not every element.
+    flat = rel.flatten()
+    try:
+        if flat.numel() > 1_000_000:
+            idx = torch.randint(0, flat.numel(), (1_000_000,), device=flat.device)
+            sample = flat[idx]
+        else:
+            sample = flat
+        p99 = f"{sample.sort().values[int(sample.numel() * 0.99)].item():.3e}"
+    except Exception:  # noqa: BLE001 - never let reporting break the report
+        p99 = "n/a"
     return {
         "frac_within_tol": round((rel < 0.01).float().mean().item(), 6),
         "cosine": ("nan" if math.isnan(cos) else round(cos, 8)),
         "median_rel_err": f"{rel.median().item():.3e}",
-        "p99_rel_err": f"{rel.flatten().quantile(0.99).item():.3e}",
+        "p99_rel_err": p99,
         "max_abs_diff": f"{(r - g).abs().max().item():.3e}",
         "ref_absmax": f"{r.abs().max().item():.3e}",
         "ref_absmedian": f"{r.abs().median().item():.3e}",
@@ -541,17 +556,33 @@ def run_relaxed_correctness(job: dict) -> dict:
                         # fp32-vs-tf32 spread as the task's noise floor: a candidate whose
                         # error is at or below that floor is not "wrong by 1e16", it is
                         # inside the reference's own reordering noise.
-                        m_ieee = _relaxed_metrics(out_ref_ieee, out_kernel)
-                        m_tf32 = _relaxed_metrics(out_ref_tf32, out_kernel)
-                        floor = _relaxed_metrics(out_ref_ieee, out_ref_tf32)
-                        last_detail = (
-                            f"relaxed mismatch on trial {trial}; gate needs "
-                            f"frac_within_tol>{pass_frac} AND cosine>={cosine_min}\n"
-                            f"  vs ieee ref: {m_ieee}\n"
-                            f"  vs tf32 ref: {m_tf32}\n"
-                            f"  reference's OWN ieee-vs-tf32 spread (task noise floor, "
-                            f"NOT a bug): {floor}"
-                        )
+                        #
+                        # Wrapped because a diagnostic must never destroy the diagnosis:
+                        # torch.quantile's ~16M-element limit raised in here and turned a
+                        # correctness_mismatch into an opaque runtime_error, losing the
+                        # mismatch entirely. Any failure to compute the rich detail falls
+                        # back to the bare numbers rather than propagating.
+                        try:
+                            m_ieee = _relaxed_metrics(out_ref_ieee, out_kernel)
+                            m_tf32 = _relaxed_metrics(out_ref_tf32, out_kernel)
+                            floor = _relaxed_metrics(out_ref_ieee, out_ref_tf32)
+                            last_detail = (
+                                f"relaxed mismatch on trial {trial}; gate needs "
+                                f"frac_within_tol>{pass_frac} AND cosine>={cosine_min}\n"
+                                f"  vs ieee ref: {m_ieee}\n"
+                                f"  vs tf32 ref: {m_tf32}\n"
+                                f"  reference's OWN ieee-vs-tf32 spread (task noise "
+                                f"floor, NOT a bug): {floor}"
+                            )
+                        except Exception as diag_exc:  # noqa: BLE001
+                            md = (out_ref_ieee.float() - out_kernel.float()
+                                  ).abs().max().item()
+                            last_detail = (
+                                f"relaxed mismatch on trial {trial} (max abs diff "
+                                f"{md:.3e}); gate needs frac_within_tol>{pass_frac} AND "
+                                f"cosine>={cosine_min}. Detailed metrics unavailable: "
+                                f"{type(diag_exc).__name__}: {diag_exc}"
+                            )
     except Exception as exc:  # noqa: BLE001
         kind = _classify_exception(exc)
         graceful_eval_cleanup(context, device, tempfile)
