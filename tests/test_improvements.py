@@ -1042,3 +1042,89 @@ def test_rejected_repairs_doc_flags_contradictory_history():
     assert "Attempt 1" in doc and "Attempt 2" in doc
     assert "neither is the" in doc
     assert "7.3e15" in doc and "1.0e22" in doc
+
+
+# --- N: cosine must not overflow on large-magnitude outputs -----------------------
+#
+# The L3:48 rerun rejected every seed with witness_default_failed. Scoring the rejected
+# witnesses directly (scripts/score_l3_48_witnesses.py) showed they were CORRECT:
+# frac_within_1% = 0.999983 against a 0.99 gate, median relative error 4e-7. They were
+# rejected because the cosine term was nan. level3/48's outputs reach 1e22, and fp32
+# dot()/norm() overflow to inf above ~1.8e19 (fp32 max 3.4e38, products are squares), so
+# cos = inf/inf = nan and `nan >= cosine_min` is False. Two correct candidates were
+# discarded by an arithmetic overflow, and four repair attempts were spent inventing
+# sign-convention bugs to explain it.
+
+
+def test_cosine_survives_1e22_magnitude():
+    torch = pytest.importorskip("torch")
+    _relaxed_close = _load_worker_relaxed_close()
+
+    # Identical tensors at level3/48's real output scale must compare equal.
+    ref = torch.full((4096,), 1e22)
+    assert _relaxed_close(ref, ref.clone(), 0.01, 0.99, 0.99985)
+
+    # Sanity: the naive fp32 formula this replaced really does overflow here.
+    a = ref.flatten()
+    assert not torch.isfinite(a.norm())
+
+
+def test_cosine_helper_is_finite_where_fp32_overflows():
+    torch = pytest.importorskip("torch")
+    import importlib.util
+
+    spec = importlib.util.find_spec("kernel_optimizer.gpu.worker_main")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    big = torch.full((1000,), 1e22)
+    cos = mod._cosine_similarity(big, big.clone())
+    assert cos == pytest.approx(1.0, abs=1e-6)
+    # ...and it must never exceed the valid cosine range after rescaling.
+    assert -1.0 <= cos <= 1.0
+
+    # Opposed vectors at the same scale still read as opposed.
+    assert mod._cosine_similarity(big, -big) == pytest.approx(-1.0, abs=1e-6)
+    # All-zero pair is defined as identical, not nan.
+    zero = torch.zeros(10)
+    assert mod._cosine_similarity(zero, zero) == 1.0
+
+
+def test_large_magnitude_wrong_answer_is_still_rejected():
+    """The overflow fix must not turn the gate into a rubber stamp: a genuinely wrong
+    kernel at the same 1e22 scale must still fail."""
+    torch = pytest.importorskip("torch")
+    _relaxed_close = _load_worker_relaxed_close()
+
+    ref = torch.full((4096,), 1e22)
+    wrong = ref.clone()
+    wrong[:1000] = -1e22  # 24% of elements sign-flipped
+    assert not _relaxed_close(ref, wrong, 0.01, 0.99, 0.99985)
+    # A near-zero output against a huge reference must also fail.
+    assert not _relaxed_close(ref, torch.zeros_like(ref), 0.01, 0.99, 0.99985)
+
+
+def test_relaxed_metrics_reports_gate_criteria_not_just_max_diff():
+    """The failure message reported only max-abs-diff. On level3/48 the reference's own
+    fp32-vs-fp64 max-abs-diff is 1.5e16, so '7.3e15' read as catastrophic while being
+    inside the reference's own noise -- which is what sent the repair agent chasing
+    imaginary sign-convention bugs. The message must carry the gate's real criteria."""
+    torch = pytest.importorskip("torch")
+    import importlib.util
+
+    spec = importlib.util.find_spec("kernel_optimizer.gpu.worker_main")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    ref = torch.full((1000,), 1e22)
+    got = ref.clone()
+    got[:5] = 5e21
+    m = mod._relaxed_metrics(ref, got)
+    for key in ("frac_within_tol", "cosine", "median_rel_err", "p99_rel_err",
+                "max_abs_diff", "ref_absmax", "ref_absmedian"):
+        assert key in m, key
+    assert m["frac_within_tol"] == pytest.approx(0.995, abs=1e-6)
+    assert m["cosine"] != "nan"
+
+    shape_m = mod._relaxed_metrics(ref, torch.zeros(999))
+    assert "shape_ref" in shape_m and "shape_got" in shape_m

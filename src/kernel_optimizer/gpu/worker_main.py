@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import time
 import traceback
@@ -360,6 +361,33 @@ def _set_matmul_precision(mode: str) -> None:
     torch.set_float32_matmul_precision("high" if want_tf32 else "highest")
 
 
+def _cosine_similarity(ref32, got32) -> float:
+    """Cosine similarity that does not overflow on large-magnitude outputs.
+
+    Computing dot()/norm() in fp32 overflows to inf whenever the output magnitude
+    exceeds ~1.8e19 (fp32 max is 3.4e38, and the products are squares): level3/48's
+    outputs reach 1e22, so dot and both norms became inf, cos became inf/inf = nan, and
+    `nan >= cosine_min` is False. That silently rejected candidates whose accuracy was
+    excellent -- measured frac_within_1%=0.999983 with median relative error 4e-7,
+    against a 0.99 gate. Accumulate in float64 and scale by the larger norm first, so
+    the gate judges accuracy instead of dynamic range.
+    """
+    import torch
+
+    a = ref32.flatten().double()
+    b = got32.flatten().double()
+    scale = max(a.abs().max().item(), b.abs().max().item())
+    if scale == 0.0:
+        return 1.0  # both identically zero
+    a = a / scale
+    b = b / scale
+    denom = (a.norm() * b.norm()).item()
+    if denom == 0.0 or not math.isfinite(denom):
+        return float("nan")
+    cos = torch.dot(a, b).item() / denom
+    return max(-1.0, min(1.0, cos))
+
+
 def _relaxed_close(ref, got, elem_tol: float, pass_frac: float, cosine_min: float) -> bool:
     """Improvement A slack gate (mirrors kernelfoundry all_close_with_slack + cosine):
     accept when >pass_frac of elements are within elem_tol relative error AND the
@@ -374,13 +402,42 @@ def _relaxed_close(ref, got, elem_tol: float, pass_frac: float, cosine_min: floa
     frac_ok = (rel < elem_tol).float().mean().item()
     if frac_ok <= pass_frac:
         return False
-    a = ref32.flatten()
-    b = got32.flatten()
-    denom = (a.norm() * b.norm()).item()
-    if denom == 0.0:
-        return frac_ok > pass_frac  # both ~zero and elementwise-close
-    cos = torch.dot(a, b).item() / denom
+    cos = _cosine_similarity(ref32, got32)
+    if math.isnan(cos):
+        # Degenerate cosine (all-zero or non-finite output). Fall back to the
+        # elementwise verdict rather than rejecting an otherwise-passing candidate.
+        return bool(torch.isfinite(got32).all().item())
     return cos >= cosine_min
+
+
+def _relaxed_metrics(ref, got) -> dict:
+    """The numbers the relaxed gate actually decides on, for the failure message.
+
+    Reporting only max-abs-diff is diagnostically useless on a task whose outputs span
+    many orders of magnitude: on level3/48 the reference's OWN fp32-vs-fp64 max-abs-diff
+    is 1.5e16, so a candidate rejected at "max abs diff 7.3e15" may be well inside the
+    reference's own noise while the message reads as catastrophic. On L3:48 that misled
+    the repair agent into inventing sign-convention bugs and flip-flopping between
+    exp(A) and exp(-exp(A)). Always report frac-within-tol and cosine (the actual gate
+    criteria) plus where the error sits relative to the output's own magnitude.
+    """
+    import torch  # noqa: F401  (kept for symmetry; tensors arrive already on device)
+
+    if ref.shape != got.shape:
+        return {"shape_ref": tuple(ref.shape), "shape_got": tuple(got.shape)}
+    r = ref.float()
+    g = got.float()
+    rel = (r - g).abs() / (r.abs() + 1e-7)
+    cos = _cosine_similarity(r, g)
+    return {
+        "frac_within_tol": round((rel < 0.01).float().mean().item(), 6),
+        "cosine": ("nan" if math.isnan(cos) else round(cos, 8)),
+        "median_rel_err": f"{rel.median().item():.3e}",
+        "p99_rel_err": f"{rel.flatten().quantile(0.99).item():.3e}",
+        "max_abs_diff": f"{(r - g).abs().max().item():.3e}",
+        "ref_absmax": f"{r.abs().max().item():.3e}",
+        "ref_absmedian": f"{r.abs().median().item():.3e}",
+    }
 
 
 def run_relaxed_correctness(job: dict) -> dict:
@@ -479,8 +536,22 @@ def run_relaxed_correctness(job: dict) -> dict:
                         last_detail = (f"shape mismatch: ref {tuple(out_ref_ieee.shape)} "
                                        f"vs kernel {tuple(out_kernel.shape)}")
                     else:
-                        md = (out_ref_ieee.float() - out_kernel.float()).abs().max().item()
-                        last_detail = f"relaxed mismatch (max abs diff {md:.6f}) on trial {trial}"
+                        # Report against BOTH witnesses (the gate accepts either) with the
+                        # criteria it actually uses, and include the reference's own
+                        # fp32-vs-tf32 spread as the task's noise floor: a candidate whose
+                        # error is at or below that floor is not "wrong by 1e16", it is
+                        # inside the reference's own reordering noise.
+                        m_ieee = _relaxed_metrics(out_ref_ieee, out_kernel)
+                        m_tf32 = _relaxed_metrics(out_ref_tf32, out_kernel)
+                        floor = _relaxed_metrics(out_ref_ieee, out_ref_tf32)
+                        last_detail = (
+                            f"relaxed mismatch on trial {trial}; gate needs "
+                            f"frac_within_tol>{pass_frac} AND cosine>={cosine_min}\n"
+                            f"  vs ieee ref: {m_ieee}\n"
+                            f"  vs tf32 ref: {m_tf32}\n"
+                            f"  reference's OWN ieee-vs-tf32 spread (task noise floor, "
+                            f"NOT a bug): {floor}"
+                        )
     except Exception as exc:  # noqa: BLE001
         kind = _classify_exception(exc)
         graceful_eval_cleanup(context, device, tempfile)
