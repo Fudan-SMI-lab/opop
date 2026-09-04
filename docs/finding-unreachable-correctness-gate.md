@@ -86,7 +86,7 @@ at roughly 5 minutes of agent wall each. In this run repair is already the singl
 agent cost (0.63h of 1.32h total agent time), and part of that is spent on a candidate
 that needed no repair.
 
-### Measured cost: four chains, a third of the run
+### Measured cost: five chains, 40% of the run
 
 Wall time from each tensor-core candidate's first event to its last, on
 `run-l3-48-20260905-010737`:
@@ -97,13 +97,18 @@ Wall time from each tensor-core candidate's first event to its last, on
 | cand-eed411d8 | 17.1 min | 3 | 4 |
 | cand-741c2699 | 15.4 min | 3 | 4 |
 | cand-61f768c8 | 18.8 min | 3 | 4 |
-| **total** | **90.8 min = 1.51h** | **12** | **16** |
+| cand-dcf4e7e6 | 26.8 min | 3 | 4 |
+| **total** | **117.6 min = 1.96h** | **15** | **20** |
 
-All four chains are complete. Against 4.44h elapsed, that is **34% of the run** spent on four
+All five chains are complete. Against 4.95h elapsed, that is **40% of the run** spent on five
 candidates that were within 0.0019 of the reference's own ieee-vs-tf32 spread when first
-rejected — 12 repair calls and 16 rejections, and not one of them had a defect to fix at
+rejected — 15 repair calls and 20 rejections, and not one of them had a defect to fix at
 a=0. Every chain used its full `repair_attempts` budget and every chain ended with the
 candidate dropped.
+
+By agent time specifically, attributing each repair call to the candidate whose rejection
+window contains it: **0.85h of 1.37h of repair wall — 62% — went to these candidates**
+(`docs/finding-agent-wall-is-now-the-bottleneck.md` has the per-candidate table).
 
 The waste is not only the wall time. Repair is the module that times out (36.4%
 historically, 2 of the 8 calls in this run), so every unnecessary repair chain is also
@@ -134,7 +139,7 @@ with itself*. No sequence of correct repairs can close it. The other two chains 
 the loop can make a working kernel worse; this one shows that succeeding does not help
 either.
 
-### The four chains exhaust the outcome space
+### The chains exhaust the outcome space
 
 | attempt | cand-dc4b6fec | cand-eed411d8 | cand-741c2699 | cand-61f768c8 |
 |---|---|---|---|---|
@@ -142,6 +147,9 @@ either.
 | a=1 | 0.843332 **broken** | 0.836301 **broken** | 0.976153 ok | 0.805267 **broken** |
 | a=2 | 0.844503 **broken** | 0.836300 **broken** | 0.976152 ok | **0.978034 ok — above floor** |
 | a=3 | 0.844503 **broken** | 0.836300 **broken** | 0.844827 **broken** | 0.896239 **broken** |
+
+(The fifth chain, `cand-dcf4e7e6`, repeats the first pattern: 0.976424 → 0.805268 →
+0.830554 → 0.830555, broken from a=1 onward.)
 
 Every distinct behaviour a repair loop can exhibit is present:
 
@@ -160,7 +168,7 @@ itself, and the last chain demonstrates that even *arriving* at the reference's 
 is not enough, because 0.978034 < 0.99.
 
 
-## The run produced a controlled comparison — three times, then a fourth instance
+## The run produced a controlled comparison — five times
 
 In each of three families the rewriter proposed two candidates from the same bottleneck
 report, against the same diagnosed wall, differing in how much they reassociate the
@@ -401,31 +409,29 @@ is a claim about the conservative half only.
    `frac >= min(pass_frac, noise_floor - margin)` AND `cosine >= cosine_min` AND the output
    is finite, where `noise_floor` is the reference's own ieee-vs-tf32 `frac`, already
    computed for the failure message. At `margin = 0.005` the effective threshold on this
-   task is `min(0.99, 0.977767 - 0.005) = 0.972767`. Modelled against **every** rejection
-   the run has produced:
+   task is `min(0.99, 0.977767 - 0.005) = 0.972767`. Modelled against **all 24 rejections**
+   the run produced:
 
-   | rejection | frac | cosine | non-finite | outcome |
-   |---|---|---|---|---|
-   | cand-eb910a18 a=1 | 0.912517 | nan | no | stays rejected |
-   | cand-eb910a18 a=2 | 0.912517 | 1.0 | YES | stays rejected |
-   | cand-eb910a18 a=3 | 0.912518 | 1.0 | YES | stays rejected |
-   | cand-dc4b6fec a=0 | 0.975956 | 0.99999996 | no | **accepted** |
-   | cand-dc4b6fec a=1..3 | 0.843332 / 0.844503 / 0.844503 | 0.99999991 | YES | stays rejected |
-   | cand-eed411d8 a=0 | 0.976029 | 0.99999996 | no | **accepted** |
-   | cand-eed411d8 a=1..3 | 0.836301 / 0.836300 / 0.836300 | 0.99999995 | YES | stays rejected |
-   | cand-741c2699 a=0 | 0.975839 | 0.99999996 | no | **accepted** |
+   **Accepted (8)** — every one finite, every one within 0.002 of the floor:
+   `dc4b6fec a=0` 0.975956 · `eed411d8 a=0` 0.976029 · `741c2699 a=0/1/2` 0.975839–0.976153 ·
+   `61f768c8 a=0` 0.976424 · `61f768c8 a=2` **0.978034** (above the floor) ·
+   `dcf4e7e6 a=0` 0.976424
 
-   **3 flip, 9 stay rejected.** Every flip is an a=0 candidate with finite output sitting
-   within 0.0019 of the floor; every kernel that stays rejected is either genuinely wrong on
-   frac alone (`cand-eb910a18` at 0.9125, 6.5 points below the relaxed threshold) or emits
-   millions of NaN/Inf. Non-finite output is an independent hard block, so a broken kernel is
-   never admitted however good its frac looks.
+   **Stay rejected (16)** — without exception either genuinely wrong on frac or non-finite:
+   `eb910a18` a=0 (no metrics), a=1 0.912517, a=2/a=3 0.9125 + NaN — 6.5 points below the
+   relaxed threshold; and the twelve post-repair collapses (0.805–0.896), all with millions
+   of NaN/Inf. Non-finite output is an independent hard block, so a broken kernel is never
+   admitted however good its frac looks.
 
-   The decisive point is what does *not* appear in that table: with the three a=0 candidates
-   accepted, **none of the nine damaged attempts would ever have been generated** — each was
-   produced by a repair chain that only started because a=0 was rejected. This option does
-   not merely re-admit three kernels; it removes the 1.51h (34% of the run) those chains
-   consumed and the two 1200s repair timeouts' worth of exposure that came with them.
+   Two things this table makes clear. First, the separation is not marginal: accepted fracs
+   span 0.9758–0.9780, rejected ones 0.805–0.9125, with nothing in between — the threshold
+   is not being tuned to squeeze candidates through. Second, and decisive: with the five a=0
+   candidates accepted, **none of the fifteen post-repair attempts would ever have been
+   generated**, because each exists only as a consequence of its a=0 rejection. (Three of
+   the eight acceptances above — `741c2699` a=1/a=2 and `61f768c8` a=2 — are likewise
+   hypothetical for the same reason.) This option does not merely re-admit five kernels; it
+   removes the 1.96h (40% of the run) those chains consumed, the 0.85h of repair agent time
+   inside it, and the two 1200s repair-timeout exposures that came with them.
 
 2. **Per-task `pass_frac` in the config.** Explicit and auditable, but it is a magic
    number per task and invites tuning the gate until candidates pass — the failure mode
