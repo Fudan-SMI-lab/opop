@@ -232,6 +232,29 @@ So the gate does not reject a flawed chunked scan. It rejects **any tensor-core 
 of this operator**, and the rewriter cannot escape by being more creative: the property being
 measured is not a defect it can remove.
 
+#### The fourth diagnosis says there is no bug, in as many words
+
+`cand-61f768c8`'s a=0 repair diagnosis, quoted in full:
+
+> "The dense-scan equations, causal direction, parameter layouts, and initial-state
+> contribution **match the reference**, but the default TF32 path rounds both chained dot
+> products (C @ B.T and transition @ X). With exponentially scaled transitions and outputs
+> up to about 1e22, that compounded input truncation leaves only 97.64% of elements within
+> tolerance **despite near-perfect cosine similarity**, causing witness_default_failed."
+
+Every clause is correct, and together they are a finding of *no defect*: the algorithm
+matches the reference, the only difference is tf32 rounding at 1e22 dynamic range, and the
+cosine is near-perfect. The agent diagnosed the situation more accurately than the gate did.
+
+It then had to produce a fix regardless, because that is the only response the harness
+accepts — and the fix took the kernel from 0.976424 to **0.805267 with 23,687,808
+non-finite values**, the worst collapse of the four chains.
+
+This is the second concern in this document (a repair channel for "within task noise, no
+change needed") reduced to a single case: the agent already knows. It wrote it down. There is
+nowhere for that answer to go.
+
+
 
 ### Half the structural search was never measured
 
@@ -348,7 +371,10 @@ Two specific numbers to carry carefully:
 
 Even with the threshold fixed, the repair agent has no way to answer "this difference is
 the task's own noise, not a bug". It receives the noise floor in the failure message (it
-quoted the 97.6% correctly) but the message frames the situation as a defect to diagnose,
+quoted the 97.6% correctly, and on `cand-61f768c8` it went further and stated outright that
+the equations, causal direction, layouts and initial-state contribution all match the
+reference and the cosine is near-perfect — a finding of no defect, in as many words) but the
+message frames the situation as a defect to diagnose,
 and `_repair_guidance("correctness_mismatch")` tells it to find a numerical error. When
 the candidate is at the floor, the honest answer is "no change needed" — and there is no
 channel for the agent to say so, nor for the harness to accept that answer. Worth
