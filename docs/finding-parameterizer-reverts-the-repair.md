@@ -1,16 +1,25 @@
 # Finding: the parameterizer can silently revert the repair it was handed
 
-Found live on the L3:21 rerun, 2026-09-05 07:22–07:39. **3 of 75** repair→parameterize
-hand-offs across all runs, and when it happens the repair loop is guaranteed to spin, because
-the agent is asked to fix a source that has had its fix removed. On the first candidate it hit,
-it consumed **all three** repair attempts.
+Found live on the L3:21 rerun, 2026-09-05 07:22–07:43. **4 of 76** repair→parameterize hand-offs
+across all runs, and when it happens the repair loop cannot converge, because the agent is asked
+to fix a source that has had its fix removed.
 
-> **Scope corrected 07:39.** I first described this as a single candidate's problem. It has now
-> hit a **second** candidate in the same run — `cand-89fa74fe`, `repair-dd224c67` (4496 bytes,
-> 6 dots) reverted to (4178, 4) — from a different rewriter lineage. So it is not
-> candidate-specific: it is triggered by the *repair pattern*, and specifically by a repair that
-> adds dot products to a precision branch. Every instance so far is a split-precision
-> (hi/lo residual) fix inside an fp16 branch. Two candidates, three hand-offs, one run.
+> **Scope corrected twice as the run continued.** I first described this as one candidate's
+> problem, then as a pattern that had hit two. The final shape on L3:21: it hit **both**
+> tensor-core candidates and consumed **both of their entire repair budgets**.
+>
+> | candidate | minimal witnesses run | distinct sources | source |
+> |---|---|---|---|
+> | cand-6b313c39 | 3 | **1** | `ebb81c3f8116`, 3965 bytes, 4 dots |
+> | cand-89fa74fe | 3 | **1** | `cdc899e62765`, 4178 bytes, 4 dots |
+>
+> Six GPU witness evaluations, **two distinct programs**. Every repair attempt on this task
+> measured a source its own predecessor had already been rejected for. Cost so far: 4 wasted
+> agent calls of 16, roughly **11.8 min of 23.7 min** of repair+parameterizer wall.
+>
+> It is triggered by the repair *pattern*, not the candidate: every instance is a
+> split-precision (hi/lo residual) fix inside an fp16 branch, from two different rewriter
+> lineages.
 
 ## Loop A's shape makes this possible
 
@@ -92,8 +101,8 @@ comparing sandbox files this reads as "repair tried twice and failed twice".
 
 ## Why it is rare, and what likely triggers it
 
-72 of 75 hand-offs preserved the repair's structure exactly or near-exactly (small byte deltas
-from re-indentation). All three failures are in the same run, across two candidates, and every
+72 of 76 hand-offs preserved the repair's structure exactly or near-exactly (small byte deltas
+from re-indentation). All four failures are in the same run, across two candidates, and every
 one shares a trait the survivors lack: **they violate the candidate contract.**
 
 `candidate_contract.md` requires exactly one module-level `PARAMS` dict whose values are the
