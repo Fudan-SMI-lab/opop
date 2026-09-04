@@ -1,11 +1,12 @@
 # Result: the harness rejected 100% of tensor-core candidates on level3/48
 
 `run-l3-48-20260905-010737`. This is the run's most important number, and it is a perfect
-partition with no exceptions, n=15:
+partition with no exceptions, n=16 (counts as of 06:57; the run is still in flight and the
+separation has held at every step, from 7/7 through 9/7):
 
 | candidate class | published | rejected |
 |---|---|---|
-| **uses `tl.dot`** (tensor-core path) | **0** | **8** |
+| **uses `tl.dot`** (tensor-core path) | **0** | **9** |
 | no `tl.dot` (scalar FMA path) | **7** | **0** |
 
 Read off every candidate's own source on disk, not from event labels:
@@ -16,6 +17,7 @@ cand-61f768c8         20       True        True      False
 cand-dc4b6fec         16       True        True      False
 cand-dcf4e7e6         16       True        True      False
 cand-8cb745ff         12       True        True      False
+cand-ef6f0748         12       True        True      False
 cand-eb910a18          8       True        True      False
 cand-2136993c          4       True        True      False
 cand-741c2699          4       True        True      False
@@ -29,7 +31,7 @@ cand-cf0f07e7          0      False       False       True
 cand-f4a2ce82          0      False       False       True
 ```
 
-`tl.dot` count, low-precision cast, and dtype knob are perfectly collinear here — the eight
+`tl.dot` count, low-precision cast, and dtype knob are perfectly collinear here — the nine
 tensor-core candidates all declared a `COMPUTE_DTYPE` knob and all cast to fp16/bf16,
 exactly as `candidate_contract.md:87-104` instructs. The seven survivors did none of it.
 
@@ -40,7 +42,7 @@ The run's founding question was **why candidates never beat `torch.compile`**
 ran on the scalar FMA path while `torch.compile` used tf32 tensor cores. Improvements H1/H2/H3
 and the dual-precision witness gate were built to unlock that path.
 
-They did unlock it — the agent *generated* tensor-core kernels, eight of them, unprompted and
+They did unlock it — the agent *generated* tensor-core kernels, nine of them, unprompted and
 correctly following the contract. **Every single one was then rejected by the harness**, by
 two independent mechanisms that both trip on this task's 1e22 dynamic range:
 
@@ -58,7 +60,7 @@ headroom in every family.
 ## What this does and does not say
 
 **Does not say** the tensor-core candidates were faster *on this task*. None was ever timed —
-that is the point, and it stays unknown rather than disproven. Three of the eight also had
+that is the point, and it stays unknown rather than disproven. Three of the nine also had
 genuine defects alongside the two harness problems (eb910a18 at frac 0.9125, 741c2699 whose
 default witness failed three times, 8cb745ff).
 
@@ -74,10 +76,10 @@ The scalar-FMA candidates are the two slowest of the sixteen. That is a small n 
 scalar side and a different task, so it is not evidence about what 48's rejected kernels
 would have clocked. It does mean the class the harness discarded on 48 is not a class that
 loses on the merits where it has been measured — which is the assumption a reader would
-otherwise have to make to treat the 0/8 rejection as harmless.
+otherwise have to make to treat the 0/9 rejection as harmless.
 
 **Does say**, and this is fully supported: the acceptance path, not the generator and not the
-tuner, is what kept tensor cores out of this run's results. The 0/8 vs 7/0 split is not a
+tuner, is what kept tensor cores out of this run's results. The 0/9 vs 7/0 split is not a
 tendency, it is every case.
 
 **For the paper.** The two-loop argument does not depend on tensor cores — the 2.09ms result
@@ -93,11 +95,11 @@ against the most recent L3:21 and L3:43 runs:
 
 | run | uses `tl.dot` | no `tl.dot` |
 |---|---|---|
-| **l3-48** (09-05) | **0 published, 8 rejected** | 7 published, 0 rejected |
+| **l3-48** (09-05) | **0 published, 9 rejected** | 7 published, 0 rejected |
 | l3-21 (09-04) | **14 published, 0 rejected** | 2 published, 0 rejected |
 | l3-43 (09-04) | **14 published, 0 rejected** | — |
 
-28 tensor-core candidates on 21/43, all published. 8 on 48, all rejected. So the rejection
+28 tensor-core candidates on 21/43, all published. 9 on 48, all rejected. So the rejection
 is not a property of tensor-core kernels or of the gate in general — it is specific to
 level3/48, whose `exp(cumsum(randn))` reaches 1e22 where fp16's ceiling is 65504 and where
 two fp32 witness precisions disagree on 2.2% of elements. On level3/21 (BatchNorm, bounded)

@@ -18,7 +18,8 @@ for label, params in (("default", default_params), ("minimal", minimal_params)):
 ```
 
 So `witness_minimal_failed` means **the default witness passed**. That is the opposite of
-how I had been reading those events, and it is 17 of the 27 rejections.
+how I had been reading those events, and it is the majority of them — 19 of 34 as of 06:57
+(17 of 27 when this was first written; the run is still in flight).
 
 The minimal witness is `{d.name: d.choices[0] for d in domains}` (`validation.py:136`) — the
 first choice of every knob. `candidate_contract.md:96` tells the agent to write the precision
@@ -37,17 +38,18 @@ L3:48's reference output reaches `ref_absmax = 1.038e+22`. fp16's largest finite
 
 ## The evidence
 
-Complete separation, n=14, no exceptions — read off the witness sources on disk:
+Complete separation, **n=16, no exceptions** — read off the witness sources on disk:
 
 | declared a `COMPUTE_DTYPE` knob? | candidates | outcome |
 |---|---|---|
-| yes | 7 (eb910a18, dc4b6fec, eed411d8, 741c2699, 61f768c8, dcf4e7e6, 8cb745ff) | **7 rejected** |
-| no | 7 (c18203b6, f4a2ce82, cf0f07e7, 51dd1857, a04c3f52, 3bcc57ce, 8a617cba) | **7 published** |
+| yes | 9 (eb910a18, dc4b6fec, eed411d8, 741c2699, 61f768c8, dcf4e7e6, 8cb745ff, 2136993c, ef6f0748) | **9 rejected, 0 published** |
+| no | 7 (c18203b6, f4a2ce82, cf0f07e7, 51dd1857, a04c3f52, 3bcc57ce, 8a617cba) | **7 published, 0 rejected** |
 
-Every space that offered a precision knob died. Every space that did not, lived.
+Every space that offered a precision knob died. Every space that did not, lived. (Counts
+updated as the run continued; it began as 7/7 and the separation held at every step.)
 
-The failure signature is overflow, not a wrong algorithm — 15 of the 17 minimal-witness
-rejections report **7.3% to 17.6% of the output non-finite**:
+The failure signature is overflow, not a wrong algorithm — all but two of the
+minimal-witness rejections report **7.3% to 17.6% of the output non-finite**:
 
 ```
 cand-61f768c8  a=1  17.6% of output non-finite   NaN/Inf
@@ -68,6 +70,32 @@ reports the largest reference value **where the candidate stayed finite**:
 Twelve orders of magnitude of the output are simply gone on the fp16 path. That is not a
 kernel bug; 65504 is where fp16 stops.
 
+### A second, independent fingerprint: the overflow positions are identical
+
+`ref_absmax` was the first line of evidence. The non-finite *counts* are a second, and they
+do not depend on how the metrics are computed at all. Four distinct programs, on their fp16
+witness:
+
+| candidate | source sha256 | bytes | non-finite | NaN | ±Inf |
+|---|---|---|---|---|---|
+| cand-61f768c8 | 2aca91f4… | 11082 | **23687808** | 19634497 | 4053311 |
+| cand-dcf4e7e6 | d7f790b9… | 13787 | **23687808** | 19634561 | 4053247 |
+| cand-ef6f0748 | ce7dadd5… | 9609 | **23687808** | 19634497 | 4053311 |
+| cand-8cb745ff | 5348e86f… | 7420 | 23687872 | 19634561 | 4053311 |
+
+23,687,808 of 134,217,728 elements — **17.6488%** — non-finite, identical across three
+independent programs and within **64 elements** (4.8e-5%) on the fourth. The sources differ
+in size by 1.9x and have four distinct SHAs.
+
+Four separate kernels do not lose precisely the same 23.7M elements by coincidence. That set
+is the positions where the reference's `|output|` exceeds 65504 — a property of the **task
+data**, identical for any kernel that routes those values through fp16. The 64-element
+difference is one tile boundary.
+
+This is the fp16 counterpart of the gate finding's `frac` fingerprint, and it closes the same
+argument from the other side: on the fp16 corner the failure is determined by the task, not by
+the candidate, so no repair can change it.
+
 ## Why the repair loop could never win
 
 Attributing each repair call to the rejection window it follows:
@@ -77,7 +105,7 @@ Attributing each repair call to the rejection window it follows:
 | **minimal witness (fp16 corner)** | **10** | **1.33h** |
 | default witness | 10 | 0.46h |
 
-The seven affected candidates all show the same shape:
+The affected candidates all show the same shape:
 
 ```
 cand-dc4b6fec   default witness: 3/4 passed (first pass at attempt 1) | minimal: 0/3 passed

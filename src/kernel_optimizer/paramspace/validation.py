@@ -176,11 +176,12 @@ class SpaceValidator:
                 # `minimal_params` is choices[0] of every knob, and candidate_contract.md
                 # asks for choices ordered cheap->expensive with "fp16" first on the
                 # precision knob. On level3/48, whose outputs reach 1e22 against fp16's
-                # 65504 ceiling, that corner overflows by construction: 7 of 7 candidates
-                # declaring a COMPUTE_DTYPE knob were rejected here while 7 of 7 without one
-                # were published, and repair had already fixed the real defect at attempt 1
-                # in four of those seven before burning its remaining budget on an
-                # impossible config. See docs/finding-minimal-witness-forces-fp16.md.
+                # 65504 ceiling, that corner overflows by construction: every candidate
+                # declaring a COMPUTE_DTYPE knob was rejected here (9 of 9) while every
+                # candidate without one was published (7 of 7), and repair had already fixed
+                # the real defect at attempt 1 in four of them before burning its remaining
+                # budget on an impossible config.
+                # See docs/finding-minimal-witness-forces-fp16.md.
                 #
                 # So retry with the next feasible config before giving up. Only a candidate
                 # that fails at EVERY alternative is rejected -- the anti-inertness
