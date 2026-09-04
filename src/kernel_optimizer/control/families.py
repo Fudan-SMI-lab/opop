@@ -197,10 +197,56 @@ class FamilyManager:
         return self.families[self.candidates[candidate_id].family_id]
 
     def active_families(self) -> list[Family]:
+        """Which families get a rewrite round now, at most max_families_active.
+
+        Selection is deliberately NOT "the K lowest-latency incumbents". That is the
+        early-pruning failure this project exists to avoid: a family's current latency
+        reflects how good its *initial parameterization* happens to be, which does not
+        predict how much a structural rewrite can still win. Measured on L3:43
+        (run-l3-43-20260904-093730): the best-ranked family stalled at [19.6, 19.6,
+        19.6] across three rounds while the second-ranked one went [19.5, 17.9, 17.9]
+        and produced the run's winner. Ranking on latency alone would have spent the
+        budget on the stalled branch; with max_families_active=1 it would have deleted
+        the winner outright. In the two round-2 L3 runs, half the families (2 of 4)
+        never received a single rewrite round for this reason.
+
+        So:
+        1. Every family that has never had a rewrite round goes first. A branch may not
+           be dropped before it has been given one chance to show its headroom.
+        2. The rest are ordered by IMPROVEMENT SLOPE — how much the last round actually
+           gained — not by absolute latency. A family still moving keeps its budget; a
+           stalled one yields to a fresher branch even if it currently holds a better
+           number.
+        3. Absolute latency is only the final tie-break, among families that are
+           equally unproven and equally stalled.
+        """
         active = [f for f in self.families.values() if f.status == "active"]
-        # Prefer families with a better incumbent; unmeasured families sort last.
-        active.sort(key=lambda f: f.best.latency_ms if f.best else float("inf"))
+
+        def rank(f: Family) -> tuple[int, float, float]:
+            unproven = 0 if f.rewrite_rounds_used == 0 else 1
+            return (unproven, -self._improvement_pct(f), self._incumbent(f))
+
+        active.sort(key=rank)
         return active[: self.max_families_active]
+
+    @staticmethod
+    def _incumbent(f: Family) -> float:
+        return f.best.latency_ms if f.best else float("inf")
+
+    @staticmethod
+    def _improvement_pct(f: Family) -> float:
+        """Percent gained in the most recent completed rewrite round (0 if stalled).
+
+        best_history holds the family's incumbent after each round, so the last step
+        is the freshest evidence of remaining headroom.
+        """
+        hist = f.best_history
+        if len(hist) < 2:
+            return 0.0
+        prev, cur = hist[-2], hist[-1]
+        if not prev or prev <= 0 or cur is None:
+            return 0.0
+        return max(0.0, (prev - cur) / prev * 100.0)
 
     def update_best(self, family_id: str, candidate_id: str, params: ParamSet,
                     latency_ms: float) -> bool:

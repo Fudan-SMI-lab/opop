@@ -681,6 +681,80 @@ def test_prefetch_agent_failure_falls_back_to_sync_call():
         assert orch._take_prefetched("c", "src") is None
 
 
+# --- early pruning: family budget must not be handed out by incumbent latency -----
+
+
+def _fam(fm, fid, incumbent, rounds_used, history=()):
+    """Register a family with a given incumbent, rounds used, and round history."""
+    from kernel_optimizer.models.core import BestRecord, Family, ParamSet
+    cid = f"cand-{fid}"
+    fm.families[fid] = Family(
+        family_id=fid, anchor_candidate_id=cid, member_ids=[cid], status="active",
+        best=BestRecord(candidate_id=cid, params=ParamSet(values={"B": 1}),
+                        latency_ms=incumbent),
+        best_history=list(history), rewrite_rounds_used=rounds_used,
+    )
+    return fm.families[fid]
+
+
+def test_every_family_gets_a_rewrite_round_before_any_is_pruned():
+    """The core anti-early-pruning guarantee.
+
+    Found live: active_families() sorted by incumbent latency and sliced to
+    max_families_active, so in both round-2 L3 runs 2 of 4 families never received a
+    single rewrite round — they were frozen as 'budget_exhausted' having never once
+    invoked the rewriter. A branch must be given one chance before it can lose budget.
+    """
+    fm = FamilyManager(max_families_total=4, max_families_total_hard=8)
+    fm.max_families_active = 2
+    _fam(fm, "fast-proven", 19.6, rounds_used=3, history=[19.6, 19.6, 19.6])
+    _fam(fm, "slow-unproven", 31.6, rounds_used=0)
+    picked = {f.family_id for f in fm.active_families()}
+    assert "slow-unproven" in picked, "an unproven branch must not be pruned on latency"
+
+
+def test_stalled_family_yields_to_one_still_improving():
+    """Ranking is by improvement slope, not absolute latency.
+
+    Reproduces L3:43 exactly: fam-c9461c56 held the better number (19.6) but had
+    stalled across three rounds, while fam-ff3ef34b (19.5 -> 17.9) was still moving and
+    produced the run's winner. The still-improving branch must be preferred.
+    """
+    fm = FamilyManager(max_families_total=4, max_families_total_hard=8)
+    fm.max_families_active = 1
+    _fam(fm, "stalled-but-good", 19.6, rounds_used=3, history=[19.6, 19.6, 19.6])
+    _fam(fm, "improving", 17.9, rounds_used=3, history=[19.5, 17.9])
+    assert [f.family_id for f in fm.active_families()] == ["improving"]
+
+    # And it still holds when the stalled family has the BETTER incumbent, which is the
+    # case that latency-ranking got wrong.
+    fm2 = FamilyManager(max_families_total=4, max_families_total_hard=8)
+    fm2.max_families_active = 1
+    _fam(fm2, "stalled-better-number", 18.0, rounds_used=2, history=[18.0, 18.0])
+    _fam(fm2, "improving-worse-number", 19.0, rounds_used=2, history=[22.0, 19.0])
+    assert [f.family_id for f in fm2.active_families()] == ["improving-worse-number"]
+
+
+def test_latency_only_breaks_ties_among_equally_stalled_families():
+    fm = FamilyManager(max_families_total=4, max_families_total_hard=8)
+    fm.max_families_active = 1
+    _fam(fm, "slower", 25.0, rounds_used=2, history=[25.0, 25.0])
+    _fam(fm, "faster", 20.0, rounds_used=2, history=[20.0, 20.0])
+    assert [f.family_id for f in fm.active_families()] == ["faster"]
+
+
+def test_improvement_pct_handles_short_and_degenerate_history():
+    fm = FamilyManager(max_families_total=2, max_families_total_hard=4)
+    f_new = _fam(fm, "new", 20.0, rounds_used=0)
+    f_one = _fam(fm, "one", 20.0, rounds_used=1, history=[20.0])
+    f_zero = _fam(fm, "zero", 20.0, rounds_used=2, history=[0.0, 20.0])
+    for f in (f_new, f_one, f_zero):
+        assert fm._improvement_pct(f) == 0.0
+    f_ok = _fam(fm, "ok", 18.0, rounds_used=2, history=[20.0, 18.0])
+    assert fm._improvement_pct(f_ok) == pytest.approx(10.0)
+
+
+
 
 
 
