@@ -260,7 +260,24 @@ Worth stating plainly for the write-up: the run's best candidate so far (2.46ms,
 torch.compile) is an H2. Every H1 remains **untimed**. Whether tensor cores would beat it
 is unknown, and this run cannot answer it.
 
+## Final scoring of prediction 1, against every case the run produced
 
+Prediction 1 named a numeric range in advance: `frac_within_tol` in **0.95–0.978** with
+**cosine >= 0.9999**. The run went on to produce 13 finite rejections of `tl.dot`-bearing
+candidates (8 candidates, 4 families, several arriving hours after this file was committed
+at `e01708a`). Scored against all of them:
 
+| test | result |
+|---|---|
+| frac inside 0.95–0.978 | **12 / 13** |
+| cosine >= 0.9999 | **13 / 13** |
 
+The single miss is `cand-61f768c8` a=2 at **0.978034**, which *overshoots* the upper bound —
+it did better than predicted, cleared the reference's own 0.977767 floor, and was rejected
+anyway. That is a miss on the stated interval and it is recorded as one, but it falsifies
+the prediction in the direction that strengthens the finding rather than weakening it.
 
+The 12 in-range values span 6.49e-4 (0.975775 to 0.976424), i.e. **0.067%**. Excluded from
+this scoring, as it was from the fingerprint: `cand-eb910a18` at frac 0.9125, a genuinely
+wrong kernel — which is the outcome branch "H1 rejected with frac far below the floor"
+above, correctly identified by the gate, and the reason that branch was written down.

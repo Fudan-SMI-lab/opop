@@ -294,6 +294,41 @@ the arithmetic formulation, not of the candidate's correctness: pick a formulati
 number is determined, whoever writes the kernel. A threshold at 0.99 does not test whether a
 kernel is right; on this task it tests *which formulation was chosen*.
 
+#### Final tally: 12 measurements, 4 families, spread 6.5e-4
+
+The run continued past the fifth instance and the fingerprint held every time. Every finite
+rejection of a `tl.dot`-bearing candidate, collected at the end (excluding `cand-eb910a18`
+at 0.9125, which is a genuinely wrong kernel and the one case that does *not* fit):
+
+| candidate | family | a | frac vs ieee | frac vs tf32 | cosine | class |
+|---|---|---|---|---|---|---|
+| cand-2136993c | fam-74c41d8d | 0 | 0.975775 | 0.963896 | 0.99999996 | chunked scan |
+| cand-741c2699 | fam-b1ee96ac | 0 | 0.975839 | 0.962538 | 0.99999996 | chunked scan |
+| cand-dc4b6fec | fam-99aee6de | 0 | 0.975956 | 0.965382 | 0.99999996 | chunked scan |
+| cand-eed411d8 | fam-74c41d8d | 0 | 0.976029 | 0.962411 | 0.99999996 | chunked scan |
+| cand-2136993c | fam-74c41d8d | 1 | 0.976111 | 0.961993 | 0.99999994 | chunked scan |
+| cand-741c2699 | fam-b1ee96ac | 2 | 0.976152 | 0.961405 | 0.99999995 | chunked scan |
+| cand-741c2699 | fam-b1ee96ac | 1 | 0.976153 | 0.961405 | 0.99999995 | chunked scan |
+| cand-8cb745ff | fam-74c41d8d | 1 | 0.976423 | 0.962258 | 0.99999997 | dense contraction |
+| cand-8cb745ff | fam-74c41d8d | 3 | 0.976423 | 0.962258 | 0.99999997 | dense contraction |
+| cand-61f768c8 | fam-99aee6de | 0 | **0.976424** | 0.962259 | 0.99999997 | dense contraction |
+| cand-dcf4e7e6 | fam-74c41d8d | 0 | **0.976424** | 0.962258 | 0.99999997 | dense contraction |
+| cand-8cb745ff | fam-74c41d8d | 0 | **0.976424** | 0.962259 | 0.99999997 | dense contraction |
+
+**n=12, min 0.975775, max 0.976424, spread 6.49e-4 — every value within 0.067% of every
+other**, across four families, two algorithm classes, and eight distinct candidates written
+by separate rewriter and repair calls. The dense-contraction cluster reproduces 0.97642 to
+five decimals from *three* independent sources.
+
+Every one of the twelve sits **below** the reference's own 0.977767 floor and nowhere near
+the 0.99 the gate demands. Both facts follow from the same cause: these are reassociations of
+the same arithmetic, and reassociating it costs slightly more than the reference's own
+ieee-vs-tf32 disagreement. The gate's threshold is 1.3 percentage points above where any of
+them can reach.
+
+The one candidate that *did* clear the floor — `cand-61f768c8` at a=2, frac 0.978034 — is in
+the table above and was still rejected. That remains the single strongest datapoint here.
+
 #### The fourth diagnosis says there is no bug, in as many words
 
 `cand-61f768c8`'s a=0 repair diagnosis, quoted in full:
