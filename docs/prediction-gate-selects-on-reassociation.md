@@ -70,3 +70,59 @@ rejected structural direction is **unknown, not disproven**.
 
 No change is being made to the gate to run this test. The prediction is read off events
 the run produces on its own.
+
+---
+
+# Resolution
+
+**Prediction 1 confirmed at 04:10:05**, more sharply than the stated range required.
+
+`cand-eed411d8` (H1, the reassociating rewrite) rejected `witness_default_failed`:
+
+```
+vs ieee ref: frac_within_tol=0.976029  cosine=0.99999996  median_rel_err=1.441e-03
+vs tf32 ref: frac_within_tol=0.962411  cosine=0.99999990  median_rel_err=1.521e-03
+noise floor: frac_within_tol=0.977767  cosine=0.99999996  median_rel_err=3.928e-04
+```
+
+Predicted frac 0.95–0.978 with cosine >= 0.9999. Observed 0.976029 with cosine
+0.99999996, and **no** non-finite output — exactly the shape called in advance: sitting
+0.0017 below the floor while the cosine matches the floor's own cosine to eight decimals.
+
+Side by side with round 1's independent instance:
+
+| | round 1 `cand-dc4b6fec` | round 2 `cand-eed411d8` |
+|---|---|---|
+| family | fam-99aee6de | fam-74c41d8d |
+| parent | cand-c18203b6 (2.09ms) | cand-cf0f07e7 (2.84ms) |
+| rewriter call | rewriter-... (03:03:57) | rewriter-9c437173 (04:07:31) |
+| frac vs ieee | 0.975956 | 0.976029 |
+| frac vs tf32 | 0.965382 | 0.962411 |
+| cosine vs ieee | 0.99999996 | 0.99999996 |
+| noise floor frac | 0.977767 | 0.977767 |
+
+Two independent rewriter calls, different families, different parent source, landing
+**7e-5 apart** in frac — and both cosines equal to the floor's cosine to eight decimals.
+That is not two candidates each happening to be slightly wrong. It is the same structural
+transformation reproducing the same numerical signature, which is what the finding
+predicted and what a coincidence would not do.
+
+## What this establishes, and what it does not
+
+Established: on this task the frac threshold, not correctness, is what stops reassociating
+rewrites. The claim was pre-registered with falsifiers and survived an independent
+instance, so it is no longer an after-the-fact reading of one pair.
+
+Still not established: whether either H1 would have been *faster*. Neither was ever
+timed. Both remain **unknown, not disproven** — the write-up rule stands unchanged.
+
+## Cost, now measurable
+
+Two candidates x up to 4 attempts of repair + reparameterize, on candidates with no
+defect to fix. Round 1's cost is known: `cand-dc4b6fec` degraded 0.975956 -> 0.843332 ->
+0.844503 (non-finite) and was dropped after consuming ~40 min of wall. Round 2's is
+accruing now.
+
+Predictions 2 and 3 (H2 passing; repair damaging H1 rather than fixing it) resolve as the
+run continues and are recorded above unchanged.
+
