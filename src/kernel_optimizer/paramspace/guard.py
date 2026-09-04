@@ -71,7 +71,9 @@ def _eval_node(node: ast.expr, env: dict[str, ParamValue]) -> ParamValue | bool:
         result = True
         for op, comparator in zip(node.ops, node.comparators):
             if not isinstance(op, _ALLOWED_CMPOPS):
-                raise ConstraintError("comparison op not allowed")
+                raise ConstraintError(
+                    f"comparison op {type(op).__name__} not allowed "
+                    "(only < <= > >= == !=; rewrite `in`/`is` as a disjunction of `==`)")
             right = _eval_node(comparator, env)
             checks = {
                 ast.Lt: lambda a, b: a < b,

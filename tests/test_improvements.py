@@ -427,3 +427,34 @@ def test_flat_latency_surface_is_not_an_expansion_opportunity():
                                     space=_space([("BLOCK_M", "int")]),
                                     min_effect_pct=2.0) == [
         {"name": "BLOCK_M", "direction": "max"}]
+
+
+# --- K: expansion prompt/guard must steer away from the live rejection reasons ----
+
+
+def test_expand_prompt_forbids_shrinking_a_knob():
+    """Regression (found live on L3:21, cand-6582d191 and cand-80665a49): the expand
+    agent returned a knob collapsed to a single choice, rejected as degenerate_domain.
+    Expansion may only ADD values, so the prompt must say so explicitly."""
+    from kernel_optimizer.agents.modules import ParameterizerAgent
+    text = " ".join(str(c) for c in ParameterizerAgent._render_expand_prompt.__code__.co_consts
+                    if isinstance(c, str))
+    assert "degenerate_domain" in text
+    assert "NEVER SHRINK" in text
+
+
+def test_guard_rejects_membership_test_with_actionable_message():
+    """Regression (found live on L3:21, cand-98852844): the agent wrote a membership
+    test in a constraint; the guard correctly refuses it, but the old message
+    ('comparison op not allowed') did not say what to write instead, so K's feedback
+    retry had nothing to act on."""
+    from kernel_optimizer.paramspace.guard import ConstraintError, eval_constraint
+
+    with pytest.raises(ConstraintError) as exc:
+        eval_constraint('DTYPE in ("fp16", "bf16")', {"DTYPE": "fp16"})
+    msg = str(exc.value)
+    assert "In" in msg          # names the offending node
+    assert "==" in msg          # tells the agent how to express it legally
+    # the legal disjunction form still evaluates
+    assert eval_constraint('DTYPE == "fp16" or DTYPE == "bf16"', {"DTYPE": "bf16"}) is True
+

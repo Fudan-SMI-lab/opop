@@ -314,12 +314,16 @@ Your job: parameterize every tunable feature of this kernel.
    MAX_SHARED_BYTES, MAX_SHARED_BYTES_OPTIN, MAX_THREADS_PER_BLOCK.
    Example: "BLOCK_M * BLOCK_K * 4 + BLOCK_K * BLOCK_N * 4 <= MAX_SHARED_BYTES".
    GRAMMAR LIMIT: a constraint is evaluated by a restricted parser that allows ONLY
-   names, numeric/string literals, `+ - * / // % **`, comparisons, `and`/`or`/`not`.
+   names, numeric/string literals, `+ - * / // % **`, the comparisons
+   `< <= > >= == !=`, and `and`/`or`/`not`.
    Conditional expressions (`A if C else B`), function calls (`min()`, `max()`, `abs()`),
-   indexing, and comprehensions are REJECTED. Express a conditional rule as a
+   membership tests (`in`, `not in`), identity tests (`is`, `is not`), indexing, and
+   comprehensions are REJECTED. Express a conditional rule as a
    disjunction instead — e.g. instead of
    `(4 if DTYPE == "fp16" else 2) * BLOCK_M <= X`, write
    `(DTYPE != "fp16" and 2 * BLOCK_M <= X) or (DTYPE == "fp16" and 4 * BLOCK_M <= X)`.
+   Express a membership test as a disjunction of `==` too — instead of
+   `DTYPE in ("fp16", "bf16")`, write `DTYPE == "fp16" or DTYPE == "bf16"`.
 
 The rewritten kernel must be functionally identical to the original at the
 default PARAMS values.
@@ -357,14 +361,22 @@ Rules:
 - Keep the current default value in each list. Update constraints only as needed so
   the new values remain feasible under hardware limits (registers/shared/threads).
 - CONSTRAINT GRAMMAR: constraints are evaluated by a restricted parser allowing ONLY
-  names, numeric/string literals, `+ - * / // % **`, comparisons, and `and`/`or`/`not`.
-  Conditional expressions (`A if C else B`), function calls (`min`/`max`/`abs`), and
-  indexing are REJECTED — express conditional rules as a disjunction of `and` clauses.
+  names, numeric/string literals, `+ - * / // % **`, the comparisons
+  `< <= > >= == !=`, and `and`/`or`/`not`.
+  Conditional expressions (`A if C else B`), function calls (`min`/`max`/`abs`),
+  membership tests (`in`, `not in`), identity tests (`is`), and indexing are REJECTED —
+  express conditional rules as a disjunction of `and` clauses, and membership tests as
+  a disjunction of `==` (`DTYPE == "fp16" or DTYPE == "bf16"`).
 - Do NOT introduce new knobs or remove existing ones.
 - **DECLARE EVERY KNOB**: `space.params` MUST list ALL keys of the `PARAMS` dict —
   not just the ones you expanded. The unexpanded knobs are repeated verbatim with
   their existing choices. A response whose declared names differ from the PARAMS keys
   is rejected outright (`key_mismatch`) and wastes the attempt.
+- **NEVER SHRINK A KNOB**: expansion only ADDS values. Every knob must keep at least
+  2 choices, and you must not drop values that were already offered — not even ones
+  that measured poorly. A knob left with a single choice is rejected
+  (`degenerate_domain`) and wastes the attempt. If you believe a value is useless,
+  keep it in the list anyway; the tuner will avoid it on its own.
 
 IMPORTANT: actually create `candidate/parameterized.py` before answering.
 
