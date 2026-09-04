@@ -57,6 +57,35 @@ change matters most. For a paper arguing against premature convergence on a loca
 structure, silently rejecting the boldest rewrites is a problem in the results, not only
 in the plumbing.
 
+## It does not just reject — it actively damages candidates
+
+Observed after the first rejection. `cand-dc4b6fec` was sent to the repair agent, which
+diagnosed:
+
+> "The default kernel used 32-element chunks even though the reference performs its
+> cumsums and state recurrence in 64-element blocks, changing floating-point accumulation
+> boundaries. It also applied TF32 rounding through multiple factorized dot products,
+> compounding error enough that only 97.6% of elements matched tolerance."
+
+That diagnosis is **correct**. The agent read the numbers accurately and identified a
+real source of numerical difference. But the difference was inside the reference's own
+ieee-vs-tf32 spread, so there was no defect to remove — and its fix made the kernel
+strictly worse:
+
+| attempt | frac vs ieee | note |
+|---|---|---|
+| a=0 | 0.975956 | 0.0018 below the noise floor |
+| a=1 | **0.843332** | **non-finite output** |
+
+So the gate converted a working, structurally-novel kernel into a broken one. The agent
+behaved correctly throughout; it was told there was a correctness bug, and it is not
+given the means to answer "this difference is the task's own noise".
+
+Cost per affected candidate: up to `repair_attempts` (3) repair + reparameterize cycles
+at roughly 5 minutes of agent wall each. In this run repair is already the single largest
+agent cost (0.63h of 1.32h total agent time), and part of that is spent on a candidate
+that needed no repair.
+
 ## Options considered
 
 1. **Floor-relative threshold.** Accept if
@@ -100,7 +129,25 @@ before rejecting a witness). It should not be made mid-experiment or without a d
 
 ## Scope for the current run
 
-`cand-dc4b6fec` has been dropped. `cand-51dd1857` (H2), which keeps the original scalar
-recurrence inside each chunk, is still in flight and may not hit this. Any report from
-this run should state that one rewrite candidate was rejected at 0.976 against a task
-noise floor of 0.978 — i.e. its structural headroom is unknown, not disproven.
+`cand-dc4b6fec` (H1, chunked parallel prefix with tensor-core `tl.dot`) was rejected at
+frac 0.975956 against a task noise floor of 0.977767, then damaged by a repair that had
+no real bug to fix (0.843332, non-finite). `cand-51dd1857` (H2), which keeps the original
+scalar recurrence inside each chunk, is a much smaller reassociation and may not hit
+this.
+
+Any report or paper text drawing on this run must say that the H1 rewrite's structural
+headroom is **unknown, not disproven**: it was never measured for latency, because it was
+rejected on a correctness threshold the reference itself does not meet. Reporting it as a
+failed structural direction would be the exact overclaim the report's own
+family-honesty clause was added to prevent.
+
+## A second, independent concern this exposes
+
+Even with the threshold fixed, the repair agent has no way to answer "this difference is
+the task's own noise, not a bug". It receives the noise floor in the failure message (it
+quoted the 97.6% correctly) but the message frames the situation as a defect to diagnose,
+and `_repair_guidance("correctness_mismatch")` tells it to find a numerical error. When
+the candidate is at the floor, the honest answer is "no change needed" — and there is no
+channel for the agent to say so, nor for the harness to accept that answer. Worth
+considering alongside option 1: a repair agent that can return "within task noise, no
+change" would have preserved this kernel even under the current threshold.
