@@ -254,6 +254,50 @@ This is the second concern in this document (a repair channel for "within task n
 change needed") reduced to a single case: the agent already knows. It wrote it down. There is
 nowhere for that answer to go.
 
+#### Then its third attempt beat the reference's own witness agreement — and was rejected
+
+`cand-61f768c8` a=2 is the strongest data point the run has produced, better than anything
+option 1 models. Every metric, side by side with the reference compared against *itself*:
+
+| metric | candidate a=2 | reference ieee-vs-tf32 |
+|---|---|---|
+| frac within tol (vs ieee) | **0.978034** | 0.977767 |
+| median_rel_err | **3.926e-04** | 3.928e-04 |
+| p99_rel_err | **2.210e-02** | 2.229e-02 |
+| max_abs_diff | **3.391e+18** | 3.820e+18 |
+| cosine | 0.99999998 | 0.99999996 |
+
+It agrees with the ieee reference **more closely than the reference's two witness precisions
+agree with each other**, on every metric — frac, median, p99, and max-abs-diff. Against the
+tf32 witness it reaches 0.98461. It was rejected for needing 0.99.
+
+Across every finite rejection in the run this is the only candidate to clear the floor:
+
+```
+0.978034  cand-61f768c8 a=2   <== above the noise floor
+0.976424  cand-61f768c8 a=0
+0.976153  cand-741c2699 a=1
+0.976152  cand-741c2699 a=2
+0.976029  cand-eed411d8 a=0
+0.975956  cand-dc4b6fec a=0
+0.975839  cand-741c2699 a=0
+0.912517  cand-eb910a18 a=1        (genuinely wrong)
+---
+0.977767  reference vs its own tf32 witness
+0.990000  what the gate demands
+```
+
+There is no coherent sense in which this kernel is incorrect. "As accurate as the reference's
+own precision variation" is the ceiling for any reimplementation that does not reproduce the
+reference's exact operation order — and this candidate reached it, from a tensor-core
+algorithm, after a repair chain that was chasing a phantom. The gate's threshold sits 0.0122
+above that ceiling.
+
+Note what this also means for option 1: at `margin = 0.005` the effective threshold would be
+0.972767, so a=2 would have been accepted — but so would a=0, three attempts earlier, saving
+the entire chain.
+
+
 
 
 ### Half the structural search was never measured
