@@ -172,19 +172,37 @@ def check_expansion_regression(rows: list[dict]) -> None:
 
 
 def check_early_pruning(rows: list[dict]) -> None:
-    """Anti-early-pruning: no active family may be frozen with 0 rewrite rounds."""
+    """Anti-early-pruning: no family with a WORKING candidate may be frozen at 0 rounds.
+
+    The distinction matters. `_rewrite_round` freezes a family with `family.best is None`
+    as frozen_budget because there is no source to rewrite from -- a family whose only
+    candidate never passed correctness cannot be given a rewrite round, and counting that
+    as early pruning convicts the fix of something it does not do. On L3:48
+    fam-dc0697c9's sole member (cand-eb910a18, frac 0.9125) was genuinely wrong, so its
+    0 rounds is correct behaviour, not a regression.
+
+    Only a family that HAD a measured best and still got 0 rounds is evidence against the
+    anti-early-pruning change.
+    """
     fin = next((e for e in rows if e["type"] == "RUN_FINISHED"), None)
     if not fin:
-        say("F  no family frozen with 0 rewrite rounds", None, "run not finished")
+        say("F  no family with a working candidate frozen at 0 rounds", None,
+            "run not finished")
         return
     fams = fin["payload"]["summary"]["families"]
     rounds = collections.Counter()
     for e in rows:
         if e["type"] == "FAMILY_ROUND_RECORDED":
             rounds[e["payload"]["family_id"]] += 1
-    unexplored = [f for f in fams if rounds[f] == 0]
-    detail = "; ".join(f"{f}: {rounds[f]} rounds, {fams[f]['status']}" for f in fams)
-    say("F  no family frozen with 0 rewrite rounds", not unexplored, detail)
+    # `best_ms` is None exactly when nothing in the family ever passed correctness.
+    starved = [f for f, v in fams.items()
+               if rounds[f] == 0 and v.get("best_ms") is None]
+    pruned = [f for f, v in fams.items()
+              if rounds[f] == 0 and v.get("best_ms") is not None]
+    detail = "; ".join(
+        f"{f}: {rounds[f]} rounds, {v['status']}"
+        f"{', no correct candidate' if f in starved else ''}" for f, v in fams.items())
+    say("F  no family with a working candidate frozen at 0 rounds", not pruned, detail)
 
 
 def check_antihack(run: Path, rows: list[dict]) -> None:
