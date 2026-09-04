@@ -33,10 +33,32 @@ source "$VENV/bin/activate"
 # Deliberately lean: only what worker_main.py imports. The old kernelfoundry venv
 # carried openvino/nicegui/transformers/pandas/scipy (~1.5G) that the worker never
 # touches, and every byte on C: matters here.
+# NOTE: kernelbench.utils/eval import dotenv, tqdm, openai and requests at MODULE
+# scope. worker_main stubs only litellm, so those four are hard requirements — leaving
+# them out makes `import kernelbench` fail before any eval can run.
 echo "== installing torch 2.9 (cu129) + triton 3.5 + deps"
 pip install --upgrade pip -q
 pip install -q "torch==2.9.*" --index-url https://download.pytorch.org/whl/cu129
 pip install -q "triton==3.5.*" ninja numpy pydantic einops
+pip install -q python-dotenv tqdm openai requests   # kernelbench module-scope imports
+
+# pip -q hides download failures on a flaky link; verify what actually landed rather
+# than trusting the exit code.
+echo "== verifying every module the worker imports"
+python - <<'EOF'
+import sys
+missing = []
+for m in ("torch", "triton", "numpy", "pydantic", "einops",
+          "dotenv", "tqdm", "openai", "requests"):
+    try:
+        __import__(m)
+    except Exception as exc:
+        missing.append("%s (%s)" % (m, type(exc).__name__))
+if missing:
+    sys.exit("MISSING worker deps: %s -- re-run, the installs are resumable" %
+             ", ".join(missing))
+print("all worker deps importable")
+EOF
 
 
 echo "== probing CUDA"
@@ -49,6 +71,18 @@ EOF
 
 echo "== probing kernelbench import"
 PYTHONPATH=/mnt/d/Pyhon_projects/opop/KernelBench/src python - <<'EOF'
+# Mirror worker_main._ensure_optional_deps: kernelbench.utils imports litellm at module
+# scope for LLM helpers this worker never calls, so the worker stubs it. Probing without
+# the stub fails on a dependency that is genuinely not needed.
+import importlib.util
+import sys
+import types
+
+if importlib.util.find_spec("litellm") is None:
+    stub = types.ModuleType("litellm")
+    stub.completion = None
+    sys.modules["litellm"] = stub
+
 import kernelbench
 from kernelbench.eval import eval_kernel_against_ref  # noqa: F401
 from kernelbench.timing import measure_ref_program_time  # noqa: F401
