@@ -427,6 +427,27 @@ def _relaxed_metrics(ref, got) -> dict:
         return {"shape_ref": tuple(ref.shape), "shape_got": tuple(got.shape)}
     r = ref.float()
     g = got.float()
+    # A NaN/Inf ANYWHERE in the candidate's output poisons every derived statistic
+    # (median, max, cosine all come back nan), so the message would read "nan" five
+    # times without saying why -- indistinguishable from a metric that overflowed, and
+    # useless to a repair agent. Count and locate the non-finite values explicitly, and
+    # compute the remaining statistics over the finite subset so they stay informative.
+    bad = ~torch.isfinite(g)
+    n_bad = int(bad.sum().item())
+    out: dict = {}
+    if n_bad:
+        n_nan = int(torch.isnan(g).sum().item())
+        out["NON_FINITE_OUTPUT"] = (
+            f"{n_bad} of {g.numel()} candidate values are not finite "
+            f"({n_nan} NaN, {n_bad - n_nan} +/-Inf) -- THIS is the failure; the "
+            f"statistics below are computed over the finite values only"
+        )
+        finite = ~bad
+        r = r[finite]
+        g = g[finite]
+        if g.numel() == 0:
+            out["frac_within_tol"] = 0.0
+            return out
     rel = (r - g).abs() / (r.abs() + 1e-7)
     cos = _cosine_similarity(r, g)
     # torch.quantile refuses inputs above ~16M elements, and these tensors are much
@@ -444,15 +465,20 @@ def _relaxed_metrics(ref, got) -> dict:
         p99 = f"{sample.sort().values[int(sample.numel() * 0.99)].item():.3e}"
     except Exception:  # noqa: BLE001 - never let reporting break the report
         p99 = "n/a"
-    return {
-        "frac_within_tol": round((rel < 0.01).float().mean().item(), 6),
+    # frac_within_tol must be reported against the FULL output, not the finite subset:
+    # a kernel that is perfect on 91% of elements and NaN on the rest has not passed
+    # 91% of the gate, it has failed. Non-finite values count as outside tolerance.
+    frac = (rel < 0.01).float().sum().item() / (rel.numel() + n_bad)
+    out.update({
+        "frac_within_tol": round(frac, 6),
         "cosine": ("nan" if math.isnan(cos) else round(cos, 8)),
         "median_rel_err": f"{rel.median().item():.3e}",
         "p99_rel_err": p99,
         "max_abs_diff": f"{(r - g).abs().max().item():.3e}",
         "ref_absmax": f"{r.abs().max().item():.3e}",
         "ref_absmedian": f"{r.abs().median().item():.3e}",
-    }
+    })
+    return out
 
 
 def run_relaxed_correctness(job: dict) -> dict:

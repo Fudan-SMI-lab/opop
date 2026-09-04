@@ -1394,3 +1394,62 @@ def test_mismatch_detail_falls_back_when_metrics_raise():
     assert "max abs diff" in fallback
     assert "frac_within_tol" in fallback and "cosine>=" in fallback
     assert "Detailed metrics unavailable" in fallback
+
+
+def test_non_finite_output_is_named_not_reported_as_five_nans():
+    """A NaN anywhere in the candidate's output poisons every derived statistic, so the
+    L3:48 message for cand-eb910a18 read cosine/median/p99/max_abs_diff all 'nan' --
+    indistinguishable from a metric that overflowed, and useless to a repair agent. The
+    non-finite values must be counted and named as THE failure, with the remaining
+    statistics computed over the finite subset so they stay informative."""
+    torch = pytest.importorskip("torch")
+    import importlib.util
+
+    spec = importlib.util.find_spec("kernel_optimizer.gpu.worker_main")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    ref = torch.full((100000,), 100.0)
+    got = ref.clone()
+    got[:5000] = float("nan")
+    got[5000:6000] = float("inf")
+    m = mod._relaxed_metrics(ref, got)
+
+    assert "NON_FINITE_OUTPUT" in m
+    assert "5000 NaN" in m["NON_FINITE_OUTPUT"] and "1000 +/-Inf" in m["NON_FINITE_OUTPUT"]
+    # Surviving statistics must be real numbers, not nan.
+    assert m["median_rel_err"] != "nan" and m["cosine"] != "nan"
+    # Non-finite elements count as OUTSIDE tolerance: 94% finite-and-perfect is 0.94,
+    # not 1.0 over the finite subset.
+    assert m["frac_within_tol"] == pytest.approx(0.94, abs=1e-6)
+
+    # Clean output must be untouched by all this.
+    clean = mod._relaxed_metrics(ref, ref.clone())
+    assert "NON_FINITE_OUTPUT" not in clean and clean["frac_within_tol"] == 1.0
+
+
+def test_all_non_finite_output_does_not_raise():
+    torch = pytest.importorskip("torch")
+    import importlib.util
+
+    spec = importlib.util.find_spec("kernel_optimizer.gpu.worker_main")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    ref = torch.full((1000,), 100.0)
+    m = mod._relaxed_metrics(ref, torch.full_like(ref, float("nan")))
+    assert m["frac_within_tol"] == 0.0 and "NON_FINITE_OUTPUT" in m
+
+
+def test_gate_rejects_nan_output_even_when_frac_would_pass():
+    """0.5% NaN gives frac 0.995, above the 0.99 threshold; the all-finite fallback in
+    _relaxed_close must still reject it, or NaN output could pass the gate."""
+    torch = pytest.importorskip("torch")
+    _relaxed_close = _load_worker_relaxed_close()
+
+    ref = torch.full((100000,), 100.0)
+    few = ref.clone()
+    few[:500] = float("nan")
+    assert not _relaxed_close(ref, few, 0.01, 0.99, 0.99985)
+    # And a fully-correct kernel at the same shape still passes.
+    assert _relaxed_close(ref, ref.clone(), 0.01, 0.99, 0.99985)
