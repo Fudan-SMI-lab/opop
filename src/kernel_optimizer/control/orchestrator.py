@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import io
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -223,6 +224,14 @@ class Orchestrator:
         self.eval_semantics: dict = {}  # improvement J: reference train/eval semantics
         self.runs: dict[str, CandidateRun] = {}
         self.failed_hypotheses: dict[str, list[dict]] = {}  # family_id -> tried-and-failed
+        # Improvement B1: one worker thread that runs the NEXT candidate's
+        # parameterization (an LLM call) while the CURRENT one occupies the GPU.
+        # Measured on L3:43: agent 2.88h and GPU 7.34h with 0.00h of overlap, purely
+        # because the pipeline is synchronous. Parameterization is the only agent step
+        # that needs no trial results, so it is the only one safe to run ahead;
+        # analyst/rewriter read tuning stats and must stay ordered.
+        self._prefetch_pool: ThreadPoolExecutor | None = None
+        self._prefetched: dict[str, Future] = {}
 
     # ------------------------------------------------------------------ helpers
 
@@ -251,9 +260,16 @@ class Orchestrator:
         self._baseline()
         self._generate_seeds()
 
-        for cand_id in list(self.runs):
+        for i, cand_id in enumerate(list(self.runs)):
+            # B1: while this candidate occupies the GPU for ~40 trials, run the NEXT
+            # one's parameterizer call in the background so the two never queue behind
+            # each other.
+            remaining = list(self.runs)[i + 1:]
+            for nxt in remaining[: self.cfg.budgets.prefetch_parameterization]:
+                self._prefetch_parameterization(nxt)
             self._candidate_pipeline(cand_id)
 
+        self._shutdown_prefetch()
         self._restore_family_control_state()
 
         # Loop C: rewrite rounds on active families, then Loop D: novelty rounds.
@@ -423,24 +439,78 @@ class Orchestrator:
                 crun.report = BottleneckReport.model_validate(ev.payload["report"])
                 break
 
+    def _shutdown_prefetch(self) -> None:
+        """Drain the prefetch thread. Outcomes not claimed by a candidate are simply
+        dropped: the agent call already happened and is logged, so nothing is lost
+        beyond the tokens it cost."""
+        for fut in self._prefetched.values():
+            fut.cancel()
+        self._prefetched.clear()
+        if self._prefetch_pool is not None:
+            self._prefetch_pool.shutdown(wait=True)
+            self._prefetch_pool = None
+
+    def _parameterize_agent_call(self, source: str, feedback: str) -> AgentOutcome:
+        """The pure-LLM half of parameterization: no GPU, no shared mutable state.
+
+        Split out so it can be run ahead of time on the prefetch thread (improvement
+        B1). Sandboxes are per-call (uuid4 call_id) and RunStore.append is locked, so
+        this is safe off the main thread.
+        """
+        return self.deps.parameterizer.invoke(
+            ParameterizerInputs(
+                task=self.task, candidate_source=source,
+                device=self.cfg.device, prior_feedback=feedback,
+            )
+        )
+
+    def _prefetch_parameterization(self, cand_id: str) -> None:
+        """Kick off the next candidate's parameterizer call in the background."""
+        if self.cfg.budgets.prefetch_parameterization <= 0:
+            return
+        if cand_id in self._prefetched or cand_id not in self.runs:
+            return
+        crun = self.runs[cand_id]
+        if not crun.source or crun.candidate.status == "dropped":
+            return
+        if self._prefetch_pool is None:
+            self._prefetch_pool = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="prefetch")
+        self._prefetched[cand_id] = self._prefetch_pool.submit(
+            self._parameterize_agent_call, crun.source, "")
+
+    def _take_prefetched(self, cand_id: str, source: str) -> AgentOutcome | None:
+        """Claim a prefetched parameterization if it is still valid for this source."""
+        fut = self._prefetched.pop(cand_id, None)
+        if fut is None:
+            return None
+        try:
+            outcome = fut.result()
+        except AgentCallError:
+            return None          # fall through to a fresh, synchronous attempt
+        except Exception:        # noqa: BLE001 — a prefetch must never break the run
+            return None
+        # The prefetch was issued against the source as it stood then. If a repair has
+        # since rewritten it, the result is stale and must be discarded.
+        return outcome if source == self.runs[cand_id].source else None
+
     def _parameterize_with_repair(self, crun: CandidateRun) -> SpaceAccepted | None:
         """Loop A: parameterize; on failure feed typed errors to repair, retry."""
         cand = crun.candidate
         source = crun.source
         feedback = ""
         for attempt in range(self.cfg.budgets.repair_attempts + 1):
-            try:
-                outcome = self.deps.parameterizer.invoke(
-                    ParameterizerInputs(
-                        task=self.task, candidate_source=source,
-                        device=self.cfg.device, prior_feedback=feedback,
-                    )
-                )
-            except AgentCallError as exc:
-                self.store.append("SPACE_REJECTED",
-                                  {"candidate_id": cand.candidate_id,
-                                   "reason": "agent_error", "detail": str(exc)[:500]})
-                return None
+            outcome = None
+            if attempt == 0 and not feedback:
+                outcome = self._take_prefetched(cand.candidate_id, source)
+            if outcome is None:
+                try:
+                    outcome = self._parameterize_agent_call(source, feedback)
+                except AgentCallError as exc:
+                    self.store.append("SPACE_REJECTED",
+                                      {"candidate_id": cand.candidate_id,
+                                       "reason": "agent_error", "detail": str(exc)[:500]})
+                    return None
 
             param_source = outcome.sandbox.read_output(outcome.output.file)
             work_dir = self.store.candidate_dir(cand.candidate_id)

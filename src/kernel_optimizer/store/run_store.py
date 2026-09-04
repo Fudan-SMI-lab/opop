@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +45,7 @@ class RunStore:
         self.events_path = run_dir / "events.jsonl"
         self.artifacts_dir = run_dir / "artifacts"
         self._seq = self._count_events()
+        self._append_lock = threading.Lock()
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -76,16 +78,21 @@ class RunStore:
     # -- events ---------------------------------------------------------------
 
     def append(self, event_type: str, payload: dict[str, Any]) -> Event:
-        ev = Event(seq=self._seq, ts=time.time(), type=event_type, payload=payload)
-        line = json.dumps(
-            {"seq": ev.seq, "ts": ev.ts, "type": ev.type, "payload": ev.payload},
-            ensure_ascii=False,
-            default=str,
-        )
-        with self.events_path.open("a", encoding="utf-8") as f:
-            f.write(line + "\n")
-        self._seq += 1
-        return ev
+        # Serialized: agent calls may run on a background thread (pipelined
+        # parameterization), and both `self._seq += 1` and the append-write would
+        # otherwise interleave, producing duplicate seqs or torn lines in the log
+        # that replay() depends on.
+        with self._append_lock:
+            ev = Event(seq=self._seq, ts=time.time(), type=event_type, payload=payload)
+            line = json.dumps(
+                {"seq": ev.seq, "ts": ev.ts, "type": ev.type, "payload": ev.payload},
+                ensure_ascii=False,
+                default=str,
+            )
+            with self.events_path.open("a", encoding="utf-8") as f:
+                f.write(line + "\n")
+            self._seq += 1
+            return ev
 
     def iter_events(self) -> list[Event]:
         events: list[Event] = []

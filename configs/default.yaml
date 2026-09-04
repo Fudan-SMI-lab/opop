@@ -52,10 +52,12 @@ gpu:
 
 wsl:
   distro: Ubuntu
-  venv: /mnt/d/Pyhon_projects/opop/kernelfoundry/.venv-wsl   # proven torch2.9/cu129 + triton3.5
+  # MUST be on ext4, never /mnt/* (9p): 26.8s vs 2.4s of per-worker startup, measured.
+  # Build with scripts/setup_wsl_venv.sh.
+  venv: ~/kernel-opt-venv
   kernelbench_src: /mnt/d/Pyhon_projects/opop/KernelBench/src
   extra_pythonpath: ""                                       # optional pip --target dir
-  triton_cache_dir: /mnt/d/Pyhon_projects/opop/v2/.triton-cache-wsl
+  triton_cache_dir: ~/.triton-cache-kopt                     # ext4 too, same reason
 
 device:
   name: RTX 5080 Laptop (sm_120)

@@ -573,4 +573,114 @@ def test_error_excerpt_passes_short_text_through_unchanged():
     assert error_excerpt(None, 800) == ""
 
 
+# --- A: the WSL venv must never sit on a 9p mount ------------------------------
+
+
+def test_wsl_paths_are_on_ext4_not_9p():
+    """Regression guard for the single largest cost in the harness: a venv under
+    /mnt/* is read over 9p, where `import torch` costs ~26.8s instead of ~2.4s
+    (measured, alternating, incl. a real triton compile+launch). With ~1000 one-shot
+    GPU jobs per L3 run that was 6.7h of the 11.7h wall clock."""
+    from kernel_optimizer.config import WslConfig
+    cfg = WslConfig()
+    assert not cfg.venv.startswith("/mnt/"), "venv on 9p costs ~11x per-job startup"
+    assert not cfg.triton_cache_dir.startswith("/mnt/")
+    # kernelbench_src stays on /mnt: read-only, a few files per job, and it must
+    # remain visible from Windows.
+    assert cfg.kernelbench_src.startswith("/mnt/")
+
+
+def test_setup_script_refuses_a_9p_venv():
+    from pathlib import Path
+    src = Path("scripts/setup_wsl_venv.sh").read_text(encoding="utf-8")
+    assert "REFUSING" in src and "/mnt/*" in src
+
+
+# --- B1: prefetched parameterization ------------------------------------------
+
+
+def test_run_store_append_is_thread_safe():
+    """B1 runs parameterizer calls on a background thread, and those calls append
+    AGENT_CALL_* events. Without a lock, `self._seq += 1` races and events.jsonl —
+    the resume authority — gets duplicate seqs or torn lines."""
+    import tempfile
+    from concurrent.futures import ThreadPoolExecutor
+    from pathlib import Path
+
+    from kernel_optimizer.store.run_store import RunStore
+
+    with tempfile.TemporaryDirectory() as td:
+        store = RunStore.create(Path(td), "run-x", {"task": "t"})
+        n = 200
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(lambda i: store.append("TRIAL_DONE", {"i": i}), range(n)))
+        events = store.iter_events()
+        # RUN_CREATED + n appends, every seq distinct and every line valid JSON.
+        assert len(events) == n + 1
+        assert len({e.seq for e in events}) == n + 1
+
+
+def test_prefetch_disabled_by_config():
+    from kernel_optimizer.config import BudgetConfig
+    assert BudgetConfig().prefetch_parameterization == 1     # on by default
+    assert BudgetConfig(prefetch_parameterization=0).prefetch_parameterization == 0
+
+
+def test_prefetched_outcome_is_discarded_when_source_changed():
+    """The safety rule that makes B1 information-preserving.
+
+    A prefetch is issued against the candidate source as it stood at submit time. If a
+    repair rewrote that source in the meantime, the prefetched parameterization
+    describes the OLD code and must be thrown away rather than published — otherwise
+    the space would be validated against source the agent never saw.
+    """
+    from concurrent.futures import Future
+
+    from kernel_optimizer.control.orchestrator import CandidateRun, Orchestrator
+    from kernel_optimizer.models.core import Candidate
+
+    cand = Candidate(candidate_id="c", family_id="f", origin="seed", backend="triton",
+                     source_sha="x", structural_signature="y")
+    orch = Orchestrator.__new__(Orchestrator)          # no wiring needed for this unit
+    orch.runs = {"c": CandidateRun(candidate=cand, source="NEW source")}
+    sentinel = object()
+    fut: Future = Future()
+    fut.set_result(sentinel)
+    orch._prefetched = {"c": fut}
+
+    # Source moved on since the prefetch -> discard, fall back to a fresh call.
+    assert orch._take_prefetched("c", "OLD source") is None
+
+    # Same source -> the prefetched outcome is claimed.
+    fut2: Future = Future()
+    fut2.set_result(sentinel)
+    orch._prefetched = {"c": fut2}
+    assert orch._take_prefetched("c", "NEW source") is sentinel
+
+    # Claiming is one-shot: the future is consumed.
+    assert orch._take_prefetched("c", "NEW source") is None
+
+
+def test_prefetch_agent_failure_falls_back_to_sync_call():
+    """A failed prefetch must be invisible: return None so the caller makes its own
+    synchronous attempt (and gets the real error path with its own retry budget)."""
+    from concurrent.futures import Future
+
+    from kernel_optimizer.agents.runtime import AgentCallError
+    from kernel_optimizer.control.orchestrator import CandidateRun, Orchestrator
+    from kernel_optimizer.models.core import Candidate
+
+    cand = Candidate(candidate_id="c", family_id="f", origin="seed", backend="triton",
+                     source_sha="x", structural_signature="y")
+    orch = Orchestrator.__new__(Orchestrator)
+    orch.runs = {"c": CandidateRun(candidate=cand, source="src")}
+    for exc in (AgentCallError("boom"), RuntimeError("unexpected")):
+        fut: Future = Future()
+        fut.set_exception(exc)
+        orch._prefetched = {"c": fut}
+        assert orch._take_prefetched("c", "src") is None
+
+
+
+
 

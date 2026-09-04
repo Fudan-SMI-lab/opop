@@ -65,6 +65,11 @@ class BudgetConfig(BaseModel):
     # tried-range boundary and still improving with idle resources. 0 = disabled.
     space_expansions_per_candidate: int = 0
     space_expansion_idle_frac: float = 0.8  # resource must be < this frac of limit
+    # Improvement B1: how many upcoming candidates' parameterizer calls to run on a
+    # background thread while the current candidate holds the GPU. 0 = disabled
+    # (fully synchronous, the pre-B1 behaviour). Only parameterization is prefetched;
+    # analyst/rewriter depend on tuning results and stay strictly ordered.
+    prefetch_parameterization: int = 1
 
 
 class EvalConfig(BaseModel):
@@ -99,12 +104,19 @@ class GpuConcurrencyConfig(BaseModel):
 
 class WslConfig(BaseModel):
     distro: str = "Ubuntu"
-    # Reuse the proven kernelfoundry WSL venv (torch 2.9+cu129, triton 3.5).
-    venv: str = "/mnt/d/Pyhon_projects/opop/kernelfoundry/.venv-wsl"
+    # MUST be on ext4, never under /mnt/* (a 9p mount of a Windows drive). Small-file
+    # reads on 9p cost ~100x more than on ext4, and `import torch` reads thousands of
+    # them: measured 26.8s vs 2.4s of per-worker startup (3x alternating, including a
+    # real triton compile+launch). Every eval is a one-shot process, so with ~1000 jobs
+    # per L3 run this alone was 6.7h of the 11.7h wall clock.
+    # Built by scripts/setup_wsl_venv.sh (lean: torch/triton/numpy/pydantic/einops).
+    venv: str = "~/kernel-opt-venv"
+    # Read-only, a handful of files per job -> 9p is fine and keeps it Windows-visible.
     kernelbench_src: str = "/mnt/d/Pyhon_projects/opop/KernelBench/src"
     # Extra site dir for deps missing from the venv (pip --target), optional.
     extra_pythonpath: str = ""
-    triton_cache_dir: str = "/mnt/d/Pyhon_projects/opop/v2/.triton-cache-wsl"
+    # Also ext4: the triton cache is read on every compile, same 9p penalty.
+    triton_cache_dir: str = "~/.triton-cache-kopt"
 
 
 class GpuConfig(BaseModel):
