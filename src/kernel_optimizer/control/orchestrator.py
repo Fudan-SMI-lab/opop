@@ -616,6 +616,16 @@ class Orchestrator:
             cached = measured_cache.get(params.key())
             if cached is not None:
                 record = cached.model_copy(update={"trial_id": trial_id})
+                # Reused measurements must still be journalled. replay() rebuilds
+                # measured_cache purely from TRIAL_DONE, and the report and lineage read
+                # the same events, so a silently-reused record is invisible to both: a
+                # resume would re-run it on the GPU, and the expansion anchor carrying
+                # the pre-expansion optimum (the fix for L3:43 cand-0c3b5820's
+                # 20.0 -> 22.6ms regression) would not appear in the trial log at all.
+                # Marked so it is never mistaken for a fresh measurement.
+                record = record.model_copy(update={"space_id": space.space_id})
+                self.store.append("TRIAL_DONE", {"trial": record.model_dump(),
+                                                 "reused_measurement": True})
             else:
                 record = self._run_trial(crun, space, trial_id, params, trials_dir)
                 self.store.append("TRIAL_DONE", {"trial": record.model_dump()})

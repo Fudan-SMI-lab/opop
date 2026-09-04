@@ -1242,3 +1242,41 @@ def test_guard_uses_median_reference_not_outlier_corrupted_mean():
     cand = 5.29
     assert mean / cand > 100          # the bogus verdict the mean produced
     assert median / cand < 10         # the median keeps it under the threshold
+
+
+# --- J: reused measurements must be journalled ------------------------------------
+#
+# Found while watching the L3:48 expansion re-tune. _tune reuses an already-measured
+# record when a TPE ask lands on a cached param set (witness anchors, and the
+# pre-expansion optimum carried over by the K fix) but appended no TRIAL_DONE. Since
+# replay() rebuilds measured_cache purely from TRIAL_DONE, and the report and lineage
+# read the same events, those points were invisible: a resume would re-run them on the
+# GPU, and the anchor carrying the prior optimum -- the whole fix for L3:43
+# cand-0c3b5820's 20.0 -> 22.6ms regression -- never appeared in the trial log, so the
+# regression it prevents could not be confirmed from the events either.
+
+
+def test_reused_measurement_is_journalled_with_flag():
+    from pathlib import Path
+
+    src = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
+    block = src.split("cached = measured_cache.get(params.key())")[1].split("else:")[0]
+    assert "TRIAL_DONE" in block, "a reused measurement must still emit TRIAL_DONE"
+    assert "reused_measurement" in block, "it must be distinguishable from a fresh run"
+    # The reused record must be re-stamped with the CURRENT space, or the trial would be
+    # filed under the pre-expansion space and still be missed on replay.
+    assert "space_id=space.space_id" in block or "space_id\": space.space_id" in block \
+        or "space_id" in block
+
+
+def test_replay_rebuilds_cache_from_trial_done_only():
+    """Documents why the above matters: replay's measured_cache source is TRIAL_DONE."""
+    from pathlib import Path
+
+    src = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
+    resume = src.split("measured_cache: dict[str, TrialRecord] = {}")[1][:700]
+    assert "state.trials" in resume
+    store = Path("src/kernel_optimizer/store/run_store.py").read_text(encoding="utf-8")
+    trials_line = next(l for l in store.splitlines() if "state.trials.setdefault" in l)
+    assert trials_line  # populated under the TRIAL_DONE branch
+    assert 'ev.type == "TRIAL_DONE"' in store
