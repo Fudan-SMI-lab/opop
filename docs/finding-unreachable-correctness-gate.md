@@ -151,3 +151,45 @@ the candidate is at the floor, the honest answer is "no change needed" — and t
 channel for the agent to say so, nor for the harness to accept that answer. Worth
 considering alongside option 1: a repair agent that can return "within task noise, no
 change" would have preserved this kernel even under the current threshold.
+
+---
+
+# Adjacent observation: transport timeouts concentrate in the repair module
+
+Not part of the gate finding, but measured while investigating it, and relevant because
+repair is now the largest agent cost.
+
+Across the three completed/running L3 runs (151 agent calls total):
+
+| module | ReadTimeouts | calls | rate | clean-call p50 |
+|---|---|---|---|---|
+| repair | 4 | 11 | **36.4%** | 141s |
+| rewriter | 1 | 13 | 7.7% | 191s |
+| generator | 0 | 3 | 0% | 460s |
+| parameterizer | 0 | 76 | 0% | 98s |
+| analyst | 0 | 48 | 0% | 73s |
+
+**What the data rules out.** It is not prompt/context size: repair's sandbox is the
+largest (35KB mean) but generator's is comparable (33KB) and generator has never timed
+out. It is not slowness: repair's clean calls finish in 141s median, *faster* than both
+generator (460s) and rewriter (191s). Repair is bimodal — it either completes quickly or
+hangs for the full 1200s. It is not local concurrency: both L3:48 timeouts began with no
+other agent call in flight. The `opencode serve` log contains no errors, warnings, or
+rate-limit messages, so the stall is upstream of the local server.
+
+**What I could not establish.** Whether repeat repairs on the same candidate are
+over-represented. My first attempt to measure this attributed calls to candidates by
+"nearest following REPAIR_PRODUCED", which left two of four timeouts unattributed and is
+too fragile to support a claim. Testing it properly needs `candidate_id` recorded on
+AGENT_CALL_STARTED, which is a one-line change but should not be made mid-run.
+
+**Cost.** 4 × 1200s = 1.33h of pure wall time across the three runs, plus whatever the
+retry costs. In L3:43 a single repair call consumed 0.99h — 34% of that run's entire agent
+time — because the pre-fix retry logic queued the second attempt behind its own aborted
+session. That specific waste is fixed (`995bc96`); the underlying stall is not.
+
+**Not actionable from here.** Lowering `request_timeout_s` would kill legitimate generator
+calls (max observed clean call: 478s). The fix that is available — one transport retry on
+a fresh session — is already in place and demonstrably works: at both 02:25:11 and
+03:36:00 the reset fired and the first one recovered in 4.7 minutes. Worth raising with
+whoever owns the model endpoint rather than working around further in the harness.
