@@ -445,6 +445,39 @@ is a claim about the conservative half only.
 4. **Exclude level3/48 from the correctness-comparable task set,** as was already done
    for tasks with `randn` inside `forward` (33/35/41).
 
+## Scope: does this affect level3/21 and level3/43?
+
+Checked before the reruns, because if they share the problem their results inherit it. They
+do not, and the reason is structural rather than lucky.
+
+| task | what bounds the output | dynamic range |
+|---|---|---|
+| **level3/48** | *nothing* — `A = nn.Parameter(randn(...))` feeds `exp(cumsum(A))`; cumsum spans ±33 | `exp` spans 3e-15 … 5e14, outputs reach **1e22** |
+| level3/43 | `F.softmax(att, dim=-1)` — normalized to [0,1] by construction | bounded |
+| level3/21 | conv → `BatchNorm2d` → ReLU6/sigmoid | bounded by BN + activation |
+
+The two witness precisions disagree on 2.2% of level3/48's elements *because* of that
+range: at 1e22 a tf32 mantissa and an ieee one land in different relative-error buckets.
+Where outputs are O(1), tf32 and ieee agree to far better than 1%, the noise floor sits near
+1.0, and `min(0.99, floor - margin)` degenerates to 0.99 — the current behaviour, unchanged.
+
+Confirmed against the previous runs' own rejection messages. Their `correctness_mismatch`
+details report max-abs-diff of **0.0014 – 0.004** (L3:43 `run-...-145357`, L3:21
+`run-...-013056`), i.e. genuinely small absolute errors on normalized values. L3:48's are
+**1.8e19**. Those are not the same kind of failure, and the earlier tasks' rejections look
+like real defects rather than gate artefacts.
+
+Two caveats on that comparison. The noise-floor and `ref_absmax` lines were only added at
+02:07 and 01:04 today, so the older runs cannot be checked directly — the max-abs-diff
+figures are the best available proxy. And L3:21's set includes one 5.66 max-abs-diff, which
+is a genuinely broken candidate, not a borderline one.
+
+**Implication for the decision.** Option 1 is not a global loosening: on 21 and 43 it changes
+nothing at all, because their floors are ~1.0. It only takes effect on tasks whose reference
+cannot meet the threshold against itself, which so far means level3/48 alone. That also
+means the reruns of 21 and 43 are unaffected either way, so this decision does not block
+them.
+
 ## Recommendation
 
 Option 1, with the margin in config and the effective threshold recorded in the event so
