@@ -28,10 +28,12 @@ for i in 1 2 3; do
       push "$URL" HEAD:v2 >/tmp/push.txt 2>&1
   push_rc=$?
 
-  # Verification is a separate, independently-checked step. Its own exit code matters:
-  # an empty $R could mean "branch absent" OR "ls-remote never ran".
-  R=$(git ls-remote "$URL" refs/heads/v2 2>/tmp/lsr.txt | cut -f1)
+  # Verification is a separate, independently-checked step. Capture ls-remote's OWN
+  # exit code: in `x=$(cmd | cut ...)`, $? is cut's status, so a failed ls-remote would
+  # look like success. Run it unpiped, then extract.
+  lsr_out=$(git ls-remote "$URL" refs/heads/v2 2>/tmp/lsr.txt)
   lsr_rc=$?
+  R=$(printf '%s\n' "$lsr_out" | head -1 | cut -f1)
 
   if [ "$lsr_rc" -ne 0 ]; then
     echo "attempt $i: push_rc=$push_rc but VERIFICATION FAILED TO RUN (ls-remote rc=$lsr_rc)"
@@ -41,6 +43,22 @@ for i in 1 2 3; do
   fi
 
   echo "attempt $i: push_rc=$push_rc remote=${R:-<none>} local=$L"
+
+  # ls-remote can exit 0 having printed NOTHING (observed live: push_rc=0,
+  # "Everything up-to-date", yet remote=<none>). An empty hash is not a comparison --
+  # it means the ref was not read, which is indistinguishable from "branch deleted".
+  # Either way it is not evidence of a successful push, so never fall through to the
+  # match test with it.
+  if [ -z "$R" ]; then
+    echo "attempt $i: ls-remote exited 0 but returned no ref for v2 -- retrying"
+    if [ "$i" -eq 3 ]; then
+      echo "PUSH_UNVERIFIED: could not read refs/heads/v2 after 3 attempts" >&2
+      exit 3
+    fi
+    sleep 5
+    continue
+  fi
+
   if [ "$R" = "$L" ]; then
     echo "PUSH_OK: remote matches local at $L"
     exit 0
