@@ -1494,6 +1494,26 @@ def test_rejected_repairs_doc_skips_entries_without_an_outcome():
     assert "second guess" in doc2 and "Still failed with" not in doc2
 
 
+def test_repair_event_records_what_changed_not_only_why():
+    """REPAIR_PRODUCED dropped change_summary, so the log kept the agent's reasoning but
+    not its edit.
+
+    Live on L3:48 cand-eed411d8: the event carried only {candidate_id, diagnosis,
+    prior_rejected}. RepairResult already has change_summary, and the distinction matters
+    most in exactly the case that keeps arising -- when the diagnosis turns out to
+    describe the task's own numerical spread rather than a defect, "I switched one dtype"
+    and "I rewrote the arithmetic" have completely different implications for whether the
+    candidate was damaged. A source_sha also makes the repaired file identifiable in the
+    artifact store."""
+    from pathlib import Path
+
+    src = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
+    block = src.split('self.store.append("REPAIR_PRODUCED"')[1].split("})")[0]
+    assert "change_summary" in block, "the edit itself must be journalled, not just the why"
+    assert "diagnosis" in block
+    assert "source_sha" in block, "the repaired source must be identifiable"
+
+
 def test_rejection_events_keep_the_verdict_bearing_tail():
     """SPACE_REJECTED truncated verdict.detail at a flat 800 chars. The rich mismatch
     message is 1149 chars and its LAST line is the reference's own noise floor -- the

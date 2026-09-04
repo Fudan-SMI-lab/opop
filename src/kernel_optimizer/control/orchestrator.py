@@ -8,6 +8,7 @@ Every step is guarded by a step_key; replay()-known steps are skipped on resume.
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -591,6 +592,14 @@ class Orchestrator:
                     self.store.append("REPAIR_PRODUCED", {
                         "candidate_id": cand.candidate_id,
                         "diagnosis": repaired.output.diagnosis[:500],
+                        # The agent's own account of what it EDITED, as distinct from
+                        # what it believes went wrong. Without it the event log records
+                        # only the reasoning, so a post-hoc reader cannot tell a repair
+                        # that rewrote the arithmetic from one that changed a single
+                        # dtype -- the two have very different implications when the
+                        # diagnosis turns out to describe task noise rather than a bug.
+                        "change_summary": repaired.output.change_summary[:500],
+                        "source_sha": hashlib.sha256(source.encode()).hexdigest(),
                         "prior_rejected": sum(1 for h in repair_history
                                               if h.get("failure_detail")),
                     })
