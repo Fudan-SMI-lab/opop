@@ -553,6 +553,32 @@ is a claim about the conservative half only.
 > explained by "the gate does not bite on 21/43", and the honest position is that the
 > difference is not yet explained.
 
+#### The cleanest instance in the project so far, from L3:21 (07:22)
+
+`cand-6b313c39`, the same candidate, attempt 1, **fp16** minimal witness — and this one has
+no confound at all:
+
+| | frac | cosine |
+|---|---|---|
+| vs ieee ref | **0.960593** | 0.99999981 |
+| vs tf32 ref | **0.978946** | 0.99999994 |
+| reference's own floor | 0.955360 | 0.99999975 |
+| gate requires | 0.990000 | 0.99985 |
+
+**Above the floor on frac against BOTH witnesses, and above the floor's cosine against both.**
+Rejected for needing 0.99.
+
+And this is the **fp16** corner with **zero non-finite values** and `ref_absmax` 5.749 on both
+witnesses — so it is not the overflow case from `finding-minimal-witness-forces-fp16.md`. On
+L3:21 fp16 is numerically healthy: its 0.978946 against the tf32 reference is *better* than
+the default tf32 config managed (0.958919). The more accurate configuration is the one being
+thrown away, and the gate is the only thing throwing it.
+
+L3:48's strongest datapoint (`cand-61f768c8` a=2 at 0.978034) needed a caveat: it beat the
+floor on the ieee witness only. This one beats it on both, with a cleaner error profile than
+the config the harness accepted. It is the single best piece of evidence for the finding and
+it comes from a task I had predicted was unaffected.
+
 ### The original (incorrect) argument, kept for the record
 
 Checked before the reruns, because if they share the problem their results inherit it. They
