@@ -1494,6 +1494,59 @@ def test_rejected_repairs_doc_skips_entries_without_an_outcome():
     assert "second guess" in doc2 and "Still failed with" not in doc2
 
 
+def test_experiment_config_names_the_device_it_optimizes_for():
+    """load_config reads ONE file: default.yaml is not a base layer, so a key omitted
+    from experiments_l3.yaml falls back to the pydantic field default, NOT to
+    default.yaml.
+
+    Every numeric limit happened to match its field default, so this stayed invisible --
+    but DeviceLimits.name defaults to "unknown", and _device_doc() writes it verbatim into
+    every agent sandbox. Verified on disk: every docs/device.md in the L3:48 run reads
+    "# Target device\\n\\n- unknown", so no agent ever learned the target is Blackwell
+    sm_120, which decides which tensor-core paths and instructions exist at all.
+
+    Pins two things: the experiment config states a real device name, and its numeric
+    limits agree with default.yaml so the two cannot silently drift apart."""
+    import yaml
+
+    from kernel_optimizer.agents.modules import _device_doc
+    from kernel_optimizer.config import load_config
+
+    cfg = load_config("configs/experiments_l3.yaml")
+    assert cfg.device.name and cfg.device.name != "unknown", \
+        "the experiment config must name the GPU; agents are told this verbatim"
+    assert cfg.device.name in _device_doc(cfg.device)
+
+    base = yaml.safe_load(open("configs/default.yaml", encoding="utf-8"))["device"]
+    for key, expected in base.items():
+        got = getattr(cfg.device, key)
+        # Compare numerically where both are numbers (yaml 16 vs float 16.0 is not drift).
+        if isinstance(expected, (int, float)) and not isinstance(expected, bool):
+            assert float(got) == float(expected), f"device.{key} drifted: {got} != {expected}"
+        else:
+            assert got == expected, f"device.{key} drifted: {got!r} != {expected!r}"
+
+    # The gate must be untouched by this edit -- it is the user's decision, not a
+    # side effect of fixing a config-precedence bug.
+    assert cfg.evaluation.relaxed_pass_frac == 0.99
+    assert cfg.evaluation.cosine_min == 0.99985
+
+
+def test_no_config_leaves_the_device_unnamed():
+    """The same hole existed in all three smoke configs. Checking every config (rather
+    than the ones I happened to look at) is what stops a new config from silently
+    reintroducing "- unknown" into agent sandboxes."""
+    import glob
+
+    from kernel_optimizer.config import load_config
+
+    configs = sorted(glob.glob("configs/*.yaml"))
+    assert configs, "no configs found -- the glob or cwd is wrong, not a real pass"
+    for path in configs:
+        cfg = load_config(path)
+        assert cfg.device.name != "unknown", f"{path} leaves the device unnamed"
+
+
 def test_agent_calls_name_their_candidate_for_timeout_attribution():
     """AGENT_CALL_STARTED recorded only {module, call_id, session_id, model}, so a
     transport timeout could be tied to a candidate only by "nearest following

@@ -28,3 +28,19 @@ evaluation:
   relaxed_elem_tol: 0.01
   relaxed_pass_frac: 0.99
   cosine_min: 0.99985
+
+# load_config reads ONE file -- default.yaml is not a base layer, so anything omitted
+# here falls back to the pydantic field default rather than to default.yaml. Every
+# numeric limit below happens to match its field default, but device.name did NOT: it
+# defaults to "unknown", and _device_doc() writes it verbatim into every agent sandbox.
+# So every agent call in every L3 run so far was told "# Target device\n\n- unknown",
+# never learning the architecture is Blackwell sm_120 -- which decides which tensor-core
+# paths and instructions exist at all. Stated explicitly here; see also the assertion in
+# tests/test_improvements.py that keeps the two configs' device blocks in agreement.
+device:
+  name: RTX 5080 Laptop (sm_120)
+  vram_gb: 16
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024
