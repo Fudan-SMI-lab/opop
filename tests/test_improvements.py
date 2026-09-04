@@ -2052,3 +2052,75 @@ def test_witness_fallback_is_bounded(tmp_path):
     alt_calls = [t for t, _ in rec.calls if "wit-alt" in t]
     assert alt_calls, "the fallback must actually be attempted"
     assert len(alt_calls) <= validator.max_witness_retries
+
+
+# --- stop_kind="converged" is structurally unreachable ------------------------
+# Measured across every L3 run: 11 of 11 family freezes are budget_exhausted, including six
+# with a completely flat history like [25.2, 25.2, 25.2]. Two off-by-ones compound:
+# best_history excludes the seed, and the budget check runs before the converged check while
+# both conditions become true in the same round.
+# See docs/finding-converged-stop-kind-is-unreachable.md.
+
+def test_converged_is_unreachable_at_the_l3_config():
+    """Pins the arithmetic rather than the outcome, so the guard survives a refactor.
+
+    At the check, len(best_history) == rewrite_rounds_used (the round is recorded AFTER the
+    verdict). Budget freezes at rounds_used >= rewrite_rounds_per_family; converged needs
+    len(history) >= no_improve_rounds + 1. When those thresholds coincide the budget test,
+    being first, always wins."""
+    from kernel_optimizer.config import load_config
+
+    cfg = load_config("configs/experiments_l3.yaml").budgets
+    reachable = cfg.no_improve_rounds + 1 < cfg.rewrite_rounds_per_family
+    assert not reachable, (
+        "This test documents a KNOWN defect. If it now fails, the fix in "
+        "docs/finding-converged-stop-kind-is-unreachable.md has landed -- invert this "
+        "assertion and assert `reachable` instead."
+    )
+
+
+def test_a_flat_family_cannot_freeze_as_converged_today():
+    """The behavioural half: three identical bests, and the verdict is still budget."""
+    from kernel_optimizer.config import BudgetConfig
+    from kernel_optimizer.control.convergence import ConvergencePolicy
+    from kernel_optimizer.models.core import Family
+
+    cfg = BudgetConfig(rewrite_rounds_per_family=3, no_improve_rounds=2,
+                       min_improvement_pct=2.0)
+    policy = ConvergencePolicy(cfg)
+
+    # Exactly the state of fam-99aee6de on L3:48 and fam-3dacc96b on L3:21: the family has
+    # not moved, and at the moment of the check history is one entry short of judgeable.
+    stalled = Family(family_id="f", anchor_candidate_id="c")
+    stalled.best_history = [25.2, 25.2]
+    stalled.rewrite_rounds_used = 2
+    v = policy.family_verdict(stalled)
+    assert v.verdict == "continue", \
+        "a family stalled for two rounds is granted a third -- this is the defect"
+
+    # One round later both thresholds are met at once, and budget wins.
+    stalled.best_history = [25.2, 25.2, 25.2]
+    stalled.rewrite_rounds_used = 3
+    v = policy.family_verdict(stalled)
+    assert v.verdict == "freeze"
+    assert v.stop_kind == "budget_exhausted", (
+        "a flat history reported as budget_exhausted tells a reader there may be headroom "
+        "left, which is the opposite of the truth"
+    )
+
+
+def test_improvement_slope_is_blind_to_the_first_round():
+    """The same off-by-one in the ranking path: _improvement_pct needs two entries, so a
+    family that improved sharply in its first rewrite round scores 0.0 and is ranked as
+    though it had stalled."""
+    from kernel_optimizer.control.families import FamilyManager
+    from kernel_optimizer.models.core import Family
+
+    moved = Family(family_id="f", anchor_candidate_id="c")
+    moved.best_history = [17.9]  # seed 19.5 -> 17.9 is an 8.2% gain, but the seed is absent
+    assert FamilyManager._improvement_pct(moved) == 0.0, \
+        "documents the defect: a real first-round gain is invisible to the ranker"
+
+    # With two entries it works as intended.
+    moved.best_history = [19.5, 17.9]
+    assert FamilyManager._improvement_pct(moved) > 8.0
