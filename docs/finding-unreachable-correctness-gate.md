@@ -86,6 +86,28 @@ at roughly 5 minutes of agent wall each. In this run repair is already the singl
 agent cost (0.63h of 1.32h total agent time), and part of that is spent on a candidate
 that needed no repair.
 
+## The run produced a controlled comparison
+
+The rewriter proposed two candidates from the same bottleneck report, in the same family,
+against the same diagnosed wall (the serial SEQ dependency). They differ in how much they
+reassociate the arithmetic:
+
+| candidate | hypothesis | approach | outcome |
+|---|---|---|---|
+| cand-dc4b6fec | H1 | chunked parallel prefix, dense work moved to tensor-core `tl.dot` | frac 0.975956 → **rejected**, then damaged to 0.844503 + non-finite across 4 attempts |
+| cand-51dd1857 | H2 | two-level scalar scan, **original scalar recurrence kept inside each chunk** | **published first try**, witnesses 4.55ms / 16.7ms |
+
+H2 restructures the sequence-level parallelism but leaves the per-chunk arithmetic order
+alone, so it stays within the witnesses' agreement. H1 reassociates inside the chunk and
+falls into the 2.2-point gap.
+
+The gate therefore selected on **degree of reassociation, not on correctness**. This is
+the bias described above, observed directly rather than argued: of two rewrites attacking
+the same wall, the conservative one was admitted and the structurally bolder one was
+rejected and then destroyed. A search that systematically keeps the timid half of its
+structural proposals is the early-pruning failure mode the paper's problem statement
+argues against, arising from the harness rather than from the LLM.
+
 ## Options considered
 
 1. **Floor-relative threshold.** Accept if
@@ -131,9 +153,9 @@ before rejecting a witness). It should not be made mid-experiment or without a d
 
 `cand-dc4b6fec` (H1, chunked parallel prefix with tensor-core `tl.dot`) was rejected at
 frac 0.975956 against a task noise floor of 0.977767, then damaged by a repair that had
-no real bug to fix (0.843332, non-finite). `cand-51dd1857` (H2), which keeps the original
-scalar recurrence inside each chunk, is a much smaller reassociation and may not hit
-this.
+no real bug to fix (0.843332, then 0.844503 twice, all non-finite) across all four
+attempts, and dropped. `cand-51dd1857` (H2) published on its first attempt, confirming
+that the gate admitted the conservative rewrite and rejected the bold one.
 
 Any report or paper text drawing on this run must say that the H1 rewrite's structural
 headroom is **unknown, not disproven**: it was never measured for latency, because it was
