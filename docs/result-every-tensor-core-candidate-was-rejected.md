@@ -109,11 +109,37 @@ is not a property of tensor-core kernels as such — those runs measured plenty 
 > 4.5 points below the 0.99 gate. Bounded magnitude does not imply witness agreement; the
 > spread is set by reduction depth and cancellation, not output range.
 >
-> The 28-vs-9 fact stands as an observation about those runs. Its **cause is now unexplained**
-> — it is not that 21/43 have a harmless gate. Plausible remaining explanations, untested:
-> those candidates' rewrites may have been less aggressive reassociations, or their tf32 error
-> may have landed inside 0.99 for reasons unrelated to the floor. Do not cite the bounded-output
-> argument. See the falsification note in `finding-unreachable-correctness-gate.md`.
+> The 28-vs-9 fact stands as an observation about those runs. Its **cause is not the gate being
+> harmless on 21/43.** Do not cite the bounded-output argument. See the falsification note in
+> `finding-unreachable-correctness-gate.md`.
+
+### A candidate mechanism for the 28-vs-9 split: how many precisions it must clear
+
+The L3:21 rerun makes this testable, because the same task is now producing the L3:48 pattern:
+**0 of 2 tensor-core candidates published, 1 of 1 scalar published** (07:32), against 14 of 14
+tensor-core published yesterday.
+
+Same task, same gate, same 0.95536 floor — so the difference is in the candidates. It is:
+
+| run | tensor-core candidates | `default == choices[0]` | published |
+|---|---|---|---|
+| l3-21 (09-04) | 14 | **12 of 14** (all fp16) | 14 of 14 |
+| l3-21 (09-05) | 2 | **0 of 2** (tf32/fp16, ieee/fp16) | **0 of 2** |
+
+Publication requires **both** witnesses to pass. When a candidate's `PARAMS` default equals
+`choices[0]`, both witnesses run the same dtype and the gate has to be cleared at **one**
+precision. When they differ, it must be cleared at **two**. Yesterday 12 of 14 were in the easy
+case; today neither is.
+
+Stated as a mechanism, not a cause: n is 2 today, and the two candidates yesterday that *did*
+have `default=ieee != minimal=fp16` published anyway. So a two-precision pair is harder on
+L3:21, not impossible. The run will produce more candidates and this table should be re-checked
+against them.
+
+What it is **not**: evidence that fp16 is the accurate configuration. It is worth noting
+separately that on `cand-6b313c39` the fp16 config outscored its own tf32 default (0.978946 vs
+0.927816 against the tf32 reference) — but that is one candidate, and the mechanism above does
+not depend on it.
 
 One consequence worth stating plainly: **the earlier 21/43 runs already accepted
 tensor-core kernels**, so their results are not affected by this, and the reruns are a test
