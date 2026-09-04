@@ -317,8 +317,29 @@ at 0.9125, which is a genuinely wrong kernel and the one case that does *not* fi
 
 **n=12, min 0.975775, max 0.976424, spread 6.49e-4 — every value within 0.067% of every
 other**, across four families, two algorithm classes, and eight distinct candidates written
-by separate rewriter and repair calls. The dense-contraction cluster reproduces 0.97642 to
-five decimals from *three* independent sources.
+by separate rewriter and repair calls.
+
+#### The dense-contraction cluster reaches n=4, and they are provably different programs
+
+`cand-ef6f0748` (06:52, `fam-99aee6de`) made it four. This is the strongest form of the
+argument, so the identity check is worth showing in full:
+
+| candidate | family | source sha256 | bytes | `tl.dot` | frac vs ieee |
+|---|---|---|---|---|---|
+| cand-61f768c8 | fam-99aee6de | ef1b325b… | 11082 | 20 | **0.976424** |
+| cand-dcf4e7e6 | fam-74c41d8d | 24ebcba5… | 13787 | 16 | **0.976424** |
+| cand-8cb745ff | fam-74c41d8d | 0326e703… | 7350 | 12 | **0.976424** |
+| cand-ef6f0748 | fam-99aee6de | be249586… | 9451 | 12 | **0.976424** |
+
+Four distinct source SHAs, four distinct structural signatures, two families, three distinct
+parents, four separate rewriter calls — and the sources differ in size by a factor of 1.9.
+Each cites a *different* hypothesis text ("full lower-triangular contraction", "materialized
+causal semiseparable coefficient matrix", "output-parallel closed-form causal contraction",
+"exact closed-form causal operator"). They agree on `frac_within_tol` to six decimal places.
+
+Four independent implementation bugs do not agree to six decimals. `frac_within_tol` is
+determined by the *arithmetic formulation* — closed-form causal contraction on this operator
+at this precision — and is invariant to who writes it or how.
 
 Every one of the twelve sits **below** the reference's own 0.977767 floor and nowhere near
 the 0.99 the gate demands. Both facts follow from the same cause: these are reassociations of
