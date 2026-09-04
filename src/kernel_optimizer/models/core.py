@@ -26,6 +26,9 @@ FailureKind = Literal[
     "static_check_failed",
     "guard_rejected",
     "materialize_error",
+    # >=10x faster than the reference: treated as not doing the reference's work
+    # (anti-reward-hacking), not as a legitimate result.
+    "excessive_speedup",
 ]
 
 

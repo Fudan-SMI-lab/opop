@@ -101,8 +101,20 @@ def test_repair_guidance_routes_by_failure_kind():
     assert "COMPILE" in _repair_guidance("compile_error")
     assert "COMPILE" in _repair_guidance("runtime_error")
     assert "OUT-OF-MEMORY" in _repair_guidance("oom")
+    assert "10x FASTER" in _repair_guidance("excessive_speedup")
     # unknown kind still returns a usable generic hint
     assert _repair_guidance("weird") and "root cause" in _repair_guidance("weird")
+
+
+def test_excessive_speedup_is_a_known_failure_kind():
+    """The relaxed correctness path can now reject a candidate for being implausibly
+    fast, so TrialRecord must accept that kind (a Literal mismatch would raise on
+    every such trial)."""
+    from kernel_optimizer.models.core import ParamSet, TrialRecord
+    rec = TrialRecord(trial_id="t", candidate_id="c", space_id="s",
+                      params=ParamSet(values={"B": 1}), status="fail",
+                      failure_kind="excessive_speedup")
+    assert rec.failure_kind == "excessive_speedup"
 
 
 # --- A: relaxed slack gate (worker-side helper, imported directly) -----------

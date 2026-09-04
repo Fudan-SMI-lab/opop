@@ -120,12 +120,23 @@ def _repair_guidance(failure_kind: str) -> str:
         "fewer pipeline stages, or stream the reduction instead of materializing large "
         "intermediates."
     )
+    excessive = (
+        "The kernel was measured as MORE THAN 10x FASTER than the reference. On this "
+        "hardware that is not a real optimization — it means the kernel is not doing "
+        "the reference's work. Look for: an output that is allocated but never filled "
+        "(or filled from a cached/stale buffer), a grid that covers only part of the "
+        "output, a loop bound that skips most of the reduction, work moved outside the "
+        "timed region, or an early return on a condition that is always true. Fix the "
+        "kernel so it computes the full result; do NOT try to make the timing look "
+        "more plausible."
+    )
     mapping = {
         "correctness_mismatch": numeric,
         "compile_error": compile_,
         "runtime_error": compile_,
         "static_check_failed": compile_,
         "oom": oom,
+        "excessive_speedup": excessive,
     }
     return mapping.get(failure_kind,
                        "Diagnose from the failure detail and fix the root cause.")

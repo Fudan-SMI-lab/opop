@@ -494,6 +494,7 @@ def run_relaxed_correctness(job: dict) -> dict:
     # the dual-witness gate above; KernelBench's perf path would re-fail a tf32
     # candidate under its strict allclose. Time under ieee precision (honest fp32).
     latency_ms = None
+    ref_latency_ms = None
     num_perf = job.get("num_perf_trials", 0)
     if correct and num_perf and num_perf > 0:
         try:
@@ -510,6 +511,27 @@ def run_relaxed_correctness(job: dict) -> dict:
                     model_new, perf_inputs, num_warmup=3, num_trials=num_perf,
                     verbose=False, device=device)
             latency_ms = _stats_to_dict(get_timing_stats(elapsed, device=device))
+
+            # Anti-reward-hacking: KernelBench's own excessive-speedup check lives in
+            # its strict eval path, which this relaxed handler deliberately bypasses
+            # (that path re-fails a legitimately tf32 candidate under strict allclose).
+            # So the guard has to be reproduced here, or a candidate that skips the
+            # real work — caching an output, eliding the compute — is reported as a
+            # spectacular win with nothing flagging it.
+            #
+            # The threshold is 10x, so this screen needs an order-of-magnitude estimate
+            # of the reference, not a precise measurement: a few samples suffice and
+            # keep the added cost off the hot path (a full re-timing of the reference
+            # on every trial would roughly double the timed work per job).
+            ref_trials = max(3, min(int(num_perf), 10))
+            ref_model = Model(*init_inputs).to(device=device, dtype=precision)
+            set_seed(seed)
+            with torch.no_grad():
+                ref_elapsed = time_execution_with_cuda_event(
+                    ref_model, perf_inputs, num_warmup=3, num_trials=ref_trials,
+                    verbose=False, device=device)
+            ref_latency_ms = _stats_to_dict(get_timing_stats(ref_elapsed, device=device))
+            del ref_model
         except Exception as exc:  # noqa: BLE001 — timing failure is a runtime failure
             kind = _classify_exception(exc)
             graceful_eval_cleanup(context, device, tempfile)
@@ -526,6 +548,27 @@ def run_relaxed_correctness(job: dict) -> dict:
     }
     if latency_ms is not None:
         result["latency_ms"] = latency_ms
+    if ref_latency_ms is not None:
+        result["ref_latency_ms"] = ref_latency_ms
+        thr = float(job.get("excessive_speedup_threshold", 10.0) or 10.0)
+        cand_mean = latency_ms.get("mean", -1.0) if latency_ms else -1.0
+        ref_mean = ref_latency_ms.get("mean", -1.0)
+        if cand_mean > 0 and ref_mean > 0:
+            speedup = ref_mean / cand_mean
+            result["speedup_vs_ref_in_worker"] = speedup
+            if speedup >= thr:
+                # Hard fail, matching KernelBench: a >=10x win on this hardware means
+                # the candidate almost certainly is not doing the reference's work.
+                result["ok"] = False
+                result["failure_kind"] = "excessive_speedup"
+                result["excessive_speedup"] = True
+                result["log_tail"] = (
+                    f"excessive speedup {speedup:.1f}x vs the reference "
+                    f"({ref_mean:.3f} ms -> {cand_mean:.3f} ms) exceeds the {thr:.0f}x "
+                    "threshold; treated as not performing the reference computation"
+                )
+            else:
+                result["excessive_speedup"] = False
     if correct and job.get("collect_triton_metadata") and backend == "triton":
         try:
             result["triton"] = _extract_triton_metadata(kernel_src, ref_src, 0)
