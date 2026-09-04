@@ -812,3 +812,233 @@ def test_pipeline_batch_prefetch_can_be_disabled():
 
 
 
+
+
+# --- T: transport timeouts retry the ORIGINAL prompt on a FRESH session -----------
+#
+# Found while verifying the L3:48 rerun: one L3:43 repair call spent 0.99h (34% of all
+# agent wall time in that run) on two 20-minute ReadTimeouts before succeeding. Two
+# defects fed it. (1) The retry sent "Your previous response could not be used:
+# transport error..." — but a ReadTimeout means no response ever arrived, so the agent
+# was asked to fix a message it never sent, losing the actual task text. (2) The retry
+# reused the same session, queueing a second generation behind its own aborted turn.
+
+
+class _FakeStore:
+    def __init__(self) -> None:
+        self.events: list[tuple[str, dict]] = []
+
+    def append(self, event_type: str, payload: dict) -> None:
+        self.events.append((event_type, payload))
+
+    def put_artifact(self, *a, **k):  # pragma: no cover - unused here
+        return "sha-stub"
+
+
+class _FakeSandboxes:
+    def __init__(self, tmp_path) -> None:
+        self.tmp_path = tmp_path
+
+    def create(self, call_id: str):
+        from kernel_optimizer.agents.sandbox import Sandbox
+
+        root = self.tmp_path / call_id
+        root.mkdir(parents=True, exist_ok=True)
+        return Sandbox(root)
+
+
+def _timeout_module(tmp_path, fail_times: int, max_transport_retries: int = 2):
+    """An AgentModule whose transport raises ReadTimeout `fail_times` times."""
+    from pydantic import BaseModel as _BM
+
+    from kernel_optimizer.agents.base import AgentModule
+    from kernel_optimizer.agents.runtime import AgentCallError, PromptResult
+    from kernel_optimizer.config import AgentModuleConfig
+
+    class Out(_BM):
+        answer: str
+
+    seen: list[tuple[str, str]] = []  # (session_id, prompt text)
+    sessions: list[str] = []
+
+    class FakeClient:
+        def create_session(self, root, title=""):
+            sid = f"ses_{len(sessions)}"
+            sessions.append(sid)
+            return sid
+
+        def prompt(self, session_id, text, **kw):
+            seen.append((session_id, text))
+            if len(seen) <= fail_times:
+                raise AgentCallError("prompt transport error (ReadTimeout): timed out")
+            return PromptResult(
+                text="", structured={"answer": "ok"}, tokens={}, cost=0.0,
+                session_id=session_id, message_id="m1",
+            )
+
+    class Mod(AgentModule):
+        name = "repair"
+        output_model = Out
+
+        def seed_sandbox(self, inputs, sb):
+            pass
+
+        def render_prompt(self, inputs, sb):
+            return "ORIGINAL TASK TEXT"
+
+    store = _FakeStore()
+    cfg = AgentModuleConfig(max_transport_retries=max_transport_retries)
+    mod = Mod(FakeClient(), _FakeSandboxes(tmp_path), store, cfg)
+    return mod, store, seen, sessions
+
+
+def test_transport_timeout_resends_original_prompt_on_fresh_session(tmp_path):
+    mod, store, seen, sessions = _timeout_module(tmp_path, fail_times=1)
+    out = mod.invoke(None)
+
+    assert out.output.answer == "ok"
+    assert len(seen) == 2
+    # The retry must carry the real task, NOT "your previous response could not be used".
+    assert seen[1][1] == "ORIGINAL TASK TEXT"
+    assert "could not be used" not in seen[1][1]
+    # ...and must run on a different session than the one prompt() aborted.
+    assert seen[0][0] != seen[1][0]
+    assert any(t == "AGENT_SESSION_RESET" for t, _ in store.events)
+
+
+def test_schema_failure_still_gets_corrective_feedback(tmp_path):
+    """The transport fix must not disable ordinary schema-failure feedback: an invalid
+    response DID arrive, so the agent should be told what was wrong with it."""
+    from pydantic import BaseModel as _BM
+
+    from kernel_optimizer.agents.base import AgentModule
+    from kernel_optimizer.agents.runtime import PromptResult
+    from kernel_optimizer.config import AgentModuleConfig
+
+    class Out(_BM):
+        answer: str
+
+    seen: list[str] = []
+
+    class FakeClient:
+        def create_session(self, root, title=""):
+            return "ses_only"
+
+        def prompt(self, session_id, text, **kw):
+            seen.append(text)
+            structured = {"wrong_field": 1} if len(seen) == 1 else {"answer": "ok"}
+            return PromptResult(text="", structured=structured, tokens={}, cost=0.0,
+                                session_id=session_id, message_id="m")
+
+    class Mod(AgentModule):
+        name = "parameterizer"
+        output_model = Out
+
+        def seed_sandbox(self, inputs, sb):
+            pass
+
+        def render_prompt(self, inputs, sb):
+            return "ORIGINAL TASK TEXT"
+
+    mod = Mod(FakeClient(), _FakeSandboxes(tmp_path), _FakeStore(), AgentModuleConfig())
+    assert mod.invoke(None).output.answer == "ok"
+    assert len(seen) == 2 and "could not be used" in seen[1]
+
+
+def test_transport_retries_are_capped(tmp_path):
+    """A permanently dead endpoint must not consume the whole retry budget at
+    request_timeout_s apiece; it gives up after max_transport_retries."""
+    from kernel_optimizer.agents.runtime import AgentCallError
+
+    mod, store, seen, _ = _timeout_module(tmp_path, fail_times=99,
+                                          max_transport_retries=1)
+    with pytest.raises(AgentCallError):
+        mod.invoke(None)
+    assert len(seen) == 2  # initial attempt + 1 transport retry, then stop
+
+
+# --- R: repair agent must see the reference and its own rejected diagnoses --------
+#
+# Found in the L3:48 rerun. cand-0137895f was rejected three times with
+# witness_default_failed. The repair agent first diagnosed "the reference parameterizes
+# the transition as A_effective = -exp(A), so decay must be exp(-exp(A))", was rejected,
+# then diagnosed the exact OPPOSITE ("the reference uses A_t directly") and reverted to
+# a form already known to fail. The reference (level3/48 line 61,
+# `torch.exp(self.segsum(A_blocks))`) uses A directly -- but the agent could not check,
+# because the repair sandbox never contained ref.py, and could not tell it was going in
+# circles, because each call saw only the current error. Both inputs are strictly
+# same-candidate; nothing cross-candidate is shared.
+
+
+def test_repair_sandbox_gets_reference_and_rejected_history(tmp_path):
+    from kernel_optimizer.agents.modules import RepairAgent, RepairInputs
+    from kernel_optimizer.agents.sandbox import Sandbox
+    from kernel_optimizer.config import AgentModuleConfig
+    from kernel_optimizer.models.core import DeviceLimits, TaskSpec
+
+    sb = Sandbox(tmp_path)
+    agent = RepairAgent.__new__(RepairAgent)
+    agent.cfg = AgentModuleConfig()
+    inputs = RepairInputs(
+        task=TaskSpec(level=3, problem_id=48, name="48_Mamba2ReturnY",
+                      ref_path=tmp_path / "ref.py", ref_src_sha="x"),
+        broken_source="PARAMS = {}\n",
+        failure_kind="witness_default_failed",
+        failure_detail="correctness_mismatch: relaxed mismatch (max abs diff 7.3e15)",
+        device=DeviceLimits(),
+        ref_source="Y = torch.exp(self.segsum(A_blocks))  # A used directly\n",
+        prior_attempts=[
+            {"diagnosis": "decay must be exp(-exp(A))", "failure_detail": "diff 7.3e15"},
+        ],
+    )
+    agent.seed_sandbox(inputs, sb)
+
+    ref = (tmp_path / "task" / "ref.py").read_text(encoding="utf-8")
+    assert "segsum(A_blocks)" in ref
+    hist = (tmp_path / "failure" / "rejected_repairs.md").read_text(encoding="utf-8")
+    assert "exp(-exp(A))" in hist and "DISPROVEN" in hist
+    # The agent must be warned against merely inverting a rejected claim.
+    assert "inverting" in hist
+
+    prompt = agent.render_prompt(inputs, sb)
+    assert "task/ref.py" in prompt and "failure/rejected_repairs.md" in prompt
+    assert "invert" in prompt
+
+
+def test_repair_prompt_omits_absent_optional_inputs(tmp_path):
+    """A repair with no reference and no history must not reference missing files."""
+    from kernel_optimizer.agents.modules import RepairAgent, RepairInputs
+    from kernel_optimizer.agents.sandbox import Sandbox
+    from kernel_optimizer.config import AgentModuleConfig
+    from kernel_optimizer.models.core import DeviceLimits, TaskSpec
+
+    sb = Sandbox(tmp_path)
+    agent = RepairAgent.__new__(RepairAgent)
+    agent.cfg = AgentModuleConfig()
+    inputs = RepairInputs(
+        task=TaskSpec(level=1, problem_id=19, name="19_ReLU",
+                      ref_path=tmp_path / "ref.py", ref_src_sha="x"),
+        broken_source="PARAMS = {}\n",
+        failure_kind="witness_minimal_failed",
+        failure_detail="compile_error: boom",
+        device=DeviceLimits(),
+    )
+    agent.seed_sandbox(inputs, sb)
+    prompt = agent.render_prompt(inputs, sb)
+    assert not (tmp_path / "task" / "ref.py").exists()
+    assert not (tmp_path / "failure" / "rejected_repairs.md").exists()
+    assert "task/ref.py" not in prompt and "rejected_repairs" not in prompt
+
+
+def test_rejected_repairs_doc_flags_contradictory_history():
+    """Two mutually-inverse rejected diagnoses is the oscillation signature; the doc
+    must tell the agent that neither is the cause, not just 'do not repeat'."""
+    from kernel_optimizer.agents.modules import _rejected_repairs_doc
+
+    doc = _rejected_repairs_doc([
+        {"diagnosis": "decay must be exp(-exp(A))", "failure_detail": "diff 7.3e15"},
+        {"diagnosis": "reference uses A directly", "failure_detail": "diff 1.0e22"},
+    ])
+    assert "Attempt 1" in doc and "Attempt 2" in doc
+    assert "neither is the" in doc
+    assert "7.3e15" in doc and "1.0e22" in doc

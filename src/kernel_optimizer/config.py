@@ -32,6 +32,14 @@ class AgentModuleConfig(BaseModel):
     max_retries: int = 2
     timeout_s: float = 1200.0
     n_candidates: int = 4  # generator / rewriter / novelty batch size
+    # Transport (ReadTimeout / connection) failures retried on a FRESH session. Capped
+    # separately from max_retries because a hung endpoint costs a full request_timeout_s
+    # per attempt with no diagnostic value, whereas a schema-invalid response costs
+    # seconds and the feedback usually fixes it. Default 2 preserves the previous total
+    # retry budget exactly (max_retries=2 => 3 attempts), so the win here comes from the
+    # fresh session, not from cutting attempts: the L3:43 repair that burned 0.99h timed
+    # out twice while queued behind its own aborted turn on one session.
+    max_transport_retries: int = 2
 
 
 class AgentsConfig(BaseModel):

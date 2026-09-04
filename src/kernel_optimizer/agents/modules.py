@@ -90,6 +90,30 @@ def _eval_semantics_doc(semantics: dict | None) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _rejected_repairs_doc(prior: list[dict]) -> str:
+    """Same-candidate repair history, so the agent cannot silently re-try or invert a
+    fix that was already rejected (L3:48 cand-0137895f oscillated between exp(A) and
+    exp(-exp(A)) because each repair call saw only the current error)."""
+    out = [
+        "# Your earlier repairs of THIS candidate — all rejected",
+        "",
+        "Each entry is a fix you already produced and the failure it still hit. Treat",
+        "every diagnosis below as DISPROVEN. Re-proposing one, or merely inverting one,",
+        "wastes an attempt: if a claim and its opposite both appear here, neither is the",
+        "cause and you must look elsewhere (indexing, masking, accumulation order,",
+        "dtype, or a boundary/tail case).",
+        "",
+    ]
+    for i, item in enumerate(prior, 1):
+        out.append(f"## Attempt {i} — REJECTED")
+        out.append(f"- Your diagnosis: {str(item.get('diagnosis', '')).strip()}")
+        detail = str(item.get("failure_detail", "")).strip()
+        if detail:
+            out.append(f"- Still failed with: {detail}")
+        out.append("")
+    return "\n".join(out)
+
+
 def _repair_guidance(failure_kind: str) -> str:
     """Failure-class-specific repair hints (improvement F): route the repair to the
     likely cause instead of a generic 'fix it' prompt. Purely additive — the agent
@@ -636,6 +660,13 @@ class RepairInputs:
     failure_detail: str
     device: DeviceLimits
     eval_semantics: dict | None = None
+    ref_source: str | None = None
+    # Rejected repairs of THIS candidate: [{"diagnosis", "failure_detail"}], oldest
+    # first. Without it the agent cannot see that its previous fix was rejected, and
+    # oscillates: on L3:48 cand-0137895f it first claimed the decay must be exp(-exp(A))
+    # and then, after that was rejected, claimed the opposite -- reverting to a form
+    # already known to fail. Strictly same-candidate history; nothing cross-candidate.
+    prior_attempts: list[dict] | None = None
 
 
 class RepairAgent(AgentModule[RepairInputs, RepairResult]):
@@ -650,15 +681,39 @@ class RepairAgent(AgentModule[RepairInputs, RepairResult]):
         sb.write_input("docs/triton_pitfalls.md", _triton_pitfalls_doc())
         sb.write_input("docs/device.md", _device_doc(inputs.device))
         sb.write_input("task/eval_semantics.md", _eval_semantics_doc(inputs.eval_semantics))
+        # Ground truth for a correctness_mismatch. Without it the agent can only guess
+        # at the reference's conventions from the broken kernel's own comments.
+        if inputs.ref_source:
+            sb.write_input("task/ref.py", inputs.ref_source)
+        if inputs.prior_attempts:
+            sb.write_input(
+                "failure/rejected_repairs.md", _rejected_repairs_doc(inputs.prior_attempts)
+            )
 
     def render_prompt(self, inputs: RepairInputs, sb: Sandbox) -> str:
         guidance = _repair_guidance(inputs.failure_kind)
+        ref_line = (
+            "`task/ref.py` is the REFERENCE implementation this kernel must match "
+            "numerically -- read it and verify every convention you rely on (signs, "
+            "parameterizations, transposes, accumulation order) against it rather than "
+            "inferring them from the broken kernel.\n"
+            if inputs.ref_source
+            else ""
+        )
+        prior_line = (
+            "`failure/rejected_repairs.md` lists YOUR earlier fixes to this same "
+            "candidate and how each was rejected. Do NOT re-propose any of them, and do "
+            "NOT simply invert a rejected claim -- if a previous diagnosis and its "
+            "opposite were both rejected, the real cause is elsewhere.\n"
+            if inputs.prior_attempts
+            else ""
+        )
         return f"""The kernel in `candidate/broken.py` failed with `{inputs.failure_kind}`.
 The full failure detail is in `failure/detail.txt`. Read the contract in
 `docs/candidate_contract.md`, `task/eval_semantics.md` (the reference's run mode —
 train vs eval — which decides BatchNorm behavior), and if the kernel uses Triton
 also read `docs/triton_pitfalls.md`.
-
+{ref_line}{prior_line}
 {guidance}
 
 Diagnose the failure and write a fixed version to `candidate/fixed.py`. Keep the

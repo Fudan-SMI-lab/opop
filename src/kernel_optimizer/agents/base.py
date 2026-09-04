@@ -74,9 +74,10 @@ class AgentModule(ABC, Generic[TIn, TOut]):
         total_cost = 0.0
         feedback = ""
         last_error = ""
+        transport_retries = 0
         soft_retry_used = False  # improvement L: at most one advisory (non-blocking) retry
         for attempt in range(1, self.cfg.max_retries + 2):
-            text = prompt if attempt == 1 else (
+            text = prompt if not feedback else (
                 f"Your previous response could not be used:\n{feedback}\n\n"
                 f"Fix the problem and answer again. Follow the original instructions "
                 f"and output format exactly."
@@ -97,7 +98,25 @@ class AgentModule(ABC, Generic[TIn, TOut]):
                     {"module": self.name, "call_id": call_id, "attempt": attempt,
                      "error": last_error[:1000]},
                 )
-                feedback = f"transport error: {last_error[:500]}"
+                # A transport timeout means no response ever arrived, so there is nothing
+                # for the agent to "fix" — sending corrective feedback would make it
+                # apologise for a message it never sent. Keep the ORIGINAL prompt, and
+                # move to a fresh session: prompt() already aborted this one, and a
+                # second generation queued behind an aborted turn is what made one L3:43
+                # repair burn 0.99h (two 20-min ReadTimeouts) before succeeding.
+                feedback = ""
+                transport_retries += 1
+                if transport_retries > self.cfg.max_transport_retries:
+                    break
+                try:
+                    session_id = self.client.create_session(sb.root, title=f"{call_id}-r{attempt}")
+                    self.store.append(
+                        "AGENT_SESSION_RESET",
+                        {"module": self.name, "call_id": call_id, "attempt": attempt,
+                         "session_id": session_id, "reason": "transport_timeout"},
+                    )
+                except Exception as reset_exc:  # keep the old session rather than crash
+                    last_error = f"{last_error} (session reset failed: {reset_exc})"
                 continue
 
             total_cost += result.cost

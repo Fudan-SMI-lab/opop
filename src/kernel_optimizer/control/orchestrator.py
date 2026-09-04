@@ -513,6 +513,7 @@ class Orchestrator:
         cand = crun.candidate
         source = crun.source
         feedback = ""
+        repair_history: list[dict] = []
         for attempt in range(self.cfg.budgets.repair_attempts + 1):
             outcome = None
             if attempt == 0 and not feedback:
@@ -562,12 +563,21 @@ class Orchestrator:
                             failure_kind=verdict.reason, failure_detail=verdict.detail,
                             device=self.cfg.device,
                             eval_semantics=self.eval_semantics,
+                            ref_source=Path(self.task.ref_path).read_text(encoding="utf-8"),
+                            prior_attempts=list(repair_history) or None,
                         )
                     )
                     source = repaired.sandbox.read_output(repaired.output.file)
+                    # Record what was tried and how it still failed, so the NEXT repair
+                    # of this candidate cannot re-propose or invert a disproven diagnosis.
+                    repair_history.append({
+                        "diagnosis": repaired.output.diagnosis[:600],
+                        "failure_detail": verdict.detail[:600],
+                    })
                     self.store.append("REPAIR_PRODUCED", {
                         "candidate_id": cand.candidate_id,
                         "diagnosis": repaired.output.diagnosis[:500],
+                        "prior_rejected": len(repair_history) - 1,
                     })
                     feedback = ""
                 except AgentCallError as exc:
