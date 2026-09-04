@@ -556,6 +556,13 @@ class Orchestrator:
             # Witness execution failures go to the repair agent; other rejections
             # go back to the parameterizer as feedback.
             if verdict.reason.startswith("witness_"):
+                # Close out the PREVIOUS repair with the failure it actually produced.
+                # verdict.detail here is the outcome of the last repaired source, so it
+                # belongs to that attempt -- attaching it at append time instead labelled
+                # each diagnosis with the failure it was RESPONDING to, telling the agent
+                # its TF32 hypothesis "still failed with" the crash that came before it.
+                if repair_history and repair_history[-1].get("failure_detail") is None:
+                    repair_history[-1]["failure_detail"] = verdict.detail[:600]
                 try:
                     repaired = self.deps.repair.invoke(
                         RepairInputs(
@@ -564,20 +571,22 @@ class Orchestrator:
                             device=self.cfg.device,
                             eval_semantics=self.eval_semantics,
                             ref_source=Path(self.task.ref_path).read_text(encoding="utf-8"),
-                            prior_attempts=list(repair_history) or None,
+                            prior_attempts=[h for h in repair_history
+                                            if h.get("failure_detail")] or None,
                         )
                     )
                     source = repaired.sandbox.read_output(repaired.output.file)
-                    # Record what was tried and how it still failed, so the NEXT repair
-                    # of this candidate cannot re-propose or invert a disproven diagnosis.
+                    # Record what was tried; its failure_detail is filled in on the next
+                    # iteration, once we know what this fix actually did.
                     repair_history.append({
                         "diagnosis": repaired.output.diagnosis[:600],
-                        "failure_detail": verdict.detail[:600],
+                        "failure_detail": None,
                     })
                     self.store.append("REPAIR_PRODUCED", {
                         "candidate_id": cand.candidate_id,
                         "diagnosis": repaired.output.diagnosis[:500],
-                        "prior_rejected": len(repair_history) - 1,
+                        "prior_rejected": sum(1 for h in repair_history
+                                              if h.get("failure_detail")),
                     })
                     feedback = ""
                 except AgentCallError as exc:

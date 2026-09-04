@@ -1453,3 +1453,42 @@ def test_gate_rejects_nan_output_even_when_frac_would_pass():
     assert not _relaxed_close(ref, few, 0.01, 0.99, 0.99985)
     # And a fully-correct kernel at the same shape still passes.
     assert _relaxed_close(ref, ref.clone(), 0.01, 0.99, 0.99985)
+
+
+def test_repair_history_pairs_each_diagnosis_with_the_failure_IT_caused():
+    """The history is only useful if a diagnosis is labelled with what it PRODUCED.
+
+    Live on L3:48: the file told the agent its TF32-precision diagnosis "still failed
+    with" the quantile crash -- but that crash PRECEDED the repair and was the reason it
+    was called. Attaching verdict.detail at append time always records the failure the
+    repair was responding to, one step off. The detail must be filled in on the next
+    iteration, once the repaired source has actually been evaluated."""
+    from pathlib import Path
+
+    src = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
+    block = src.split('if verdict.reason.startswith("witness_"):')[1].split("except AgentCallError")[0]
+
+    # A fresh entry must be recorded with NO failure yet.
+    assert '"failure_detail": None' in block, "detail must be deferred, not set at append"
+    # The previous entry gets closed out with the CURRENT verdict.
+    assert 'repair_history[-1]["failure_detail"] = verdict.detail' in block
+    assert 'repair_history[-1].get("failure_detail") is None' in block, \
+        "must only fill an open entry, never overwrite a closed one"
+    # Only entries with a known outcome are shown to the agent -- an entry whose result
+    # is still unknown carries no information and must not be presented as disproven.
+    assert 'if h.get("failure_detail")' in block
+
+
+def test_rejected_repairs_doc_skips_entries_without_an_outcome():
+    """_rejected_repairs_doc must tolerate (and not mislabel) an entry whose failure is
+    not yet known, since the orchestrator now fills that in one step later."""
+    from kernel_optimizer.agents.modules import _rejected_repairs_doc
+
+    doc = _rejected_repairs_doc([
+        {"diagnosis": "first guess", "failure_detail": "frac 0.91 vs floor 0.98"},
+    ])
+    assert "first guess" in doc and "frac 0.91" in doc
+    # An entry with no detail must still render its diagnosis as disproven-by-rejection,
+    # but must not fabricate a "Still failed with:" line.
+    doc2 = _rejected_repairs_doc([{"diagnosis": "second guess", "failure_detail": ""}])
+    assert "second guess" in doc2 and "Still failed with" not in doc2
