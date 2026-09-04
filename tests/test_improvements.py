@@ -1494,6 +1494,83 @@ def test_rejected_repairs_doc_skips_entries_without_an_outcome():
     assert "second guess" in doc2 and "Still failed with" not in doc2
 
 
+def test_report_on_an_unfinished_run_is_honest_not_empty(tmp_path):
+    """The report read ONLY RUN_FINISHED, so on a run still in flight it claimed "no
+    correct candidate survived" and rendered an empty families section -- on L3:48 that
+    was a lie about 338 trials and nine successful tunings sitting in the same event log.
+    `kernel-opt report` is the documented way to inspect a run, including an interrupted
+    one, so it must reconstruct from events.
+
+    It must also NOT invent what it does not have: final_reeval_ms and the honest verdict
+    come from a fresh-process re-eval at finalize, and tuned_ms runs 1.5-6.7% optimistic
+    against it, so synthesising them would manufacture exactly the number the reeval-gap
+    rule says not to trust."""
+    from kernel_optimizer.reporting.report import ReportGenerator
+    from kernel_optimizer.store.run_store import RunStore
+
+    store = RunStore.create(tmp_path, run_id="unfinished", manifest={})
+    store.append("CANDIDATE_REGISTERED", {"candidate": {
+        "candidate_id": "cand-aaa", "family_id": "fam-1", "parent_ids": [],
+        "origin": "seed", "backend": "triton", "source_sha": "x",
+        "structural_signature": "s", "approach_summary": "a fused scan"}})
+    store.append("TRIAL_DONE", {"trial": {
+        "trial_id": "tr-1", "candidate_id": "cand-aaa", "space_id": "sp-1",
+        "params": {"values": {"B": 64}}, "status": "complete",
+        "latency_ms": {"mean": 2.5, "std": 0.1, "min": 2.4, "max": 2.9, "n_samples": 20}}})
+    store.append("TUNING_DONE", {"candidate_id": "cand-aaa", "space_id": "sp-1",
+                                 "best_ms": 2.5, "snapshot": {"asked": 40}})
+    text = ReportGenerator().generate(store).read_text(encoding="utf-8")
+
+    assert "no correct candidate survived" not in text
+    assert "PROVISIONAL" in text, "an unfinished report must say so"
+    assert "cand-aaa" in text and "2.5 ms" in text
+    assert "fam-1" in text, "families section must not be empty"
+    # No fabricated verified latency.
+    assert "not run yet" in text
+    # The banner mentions the absent verdict by name, so check the Best result section
+    # itself rather than the whole document.
+    best_section = text.split("## Best result")[1].split("##")[0]
+    assert "honest same-precision verdict" not in best_section
+    assert "speedup vs" not in best_section
+    # A family with no completed round mid-run must NOT be described as frozen: on L3:48
+    # fam-b1ee96ac had two rewrites under evaluation while the report called it frozen.
+    assert "was frozen without the rewriter" not in text
+
+
+def test_report_distinguishes_a_retune_from_a_duplicate_line(tmp_path):
+    """A candidate that got a K expansion is tuned twice, and the Tuning section rendered
+    two identical lines -- indistinguishable from a duplicated entry, and hiding which
+    result came from the widened space (on L3:48, cand-cf0f07e7's 3.55 -> 2.84 is the one
+    expansion that paid off)."""
+    from kernel_optimizer.reporting.report import ReportGenerator
+    from kernel_optimizer.store.run_store import RunStore
+
+    store = RunStore.create(tmp_path, run_id="expanded", manifest={})
+    store.append("CANDIDATE_REGISTERED", {"candidate": {
+        "candidate_id": "cand-bbb", "family_id": "fam-1", "parent_ids": [],
+        "origin": "seed", "backend": "triton", "source_sha": "x",
+        "structural_signature": "s", "approach_summary": "scan"}})
+    store.append("SPACE_PUBLISHED", {"space": {"space_id": "sp-first",
+                                               "candidate_id": "cand-bbb"}})
+    store.append("TUNING_DONE", {"candidate_id": "cand-bbb", "space_id": "sp-first",
+                                 "best_ms": 3.55, "snapshot": {"asked": 40}})
+    store.append("SPACE_PUBLISHED", {"space": {"space_id": "sp-second",
+                                               "candidate_id": "cand-bbb"}})
+    store.append("SPACE_EXPANDED", {"candidate_id": "cand-bbb", "knobs": [],
+                                    "prev_best_ms": 3.55})
+    store.append("TUNING_DONE", {"candidate_id": "cand-bbb", "space_id": "sp-second",
+                                 "best_ms": 2.84, "snapshot": {"asked": 40}})
+    text = ReportGenerator().generate(store).read_text(encoding="utf-8")
+
+    tuning = text.split("## Tuning")[1].split("##")[0]
+    assert "sp-first" in tuning and "sp-second" in tuning, "spaces must be identifiable"
+    assert "(expanded space)" in tuning
+    # Only the second space is the expansion.
+    first = next(ln for ln in tuning.splitlines() if "sp-first" in ln)
+    second = next(ln for ln in tuning.splitlines() if "sp-second" in ln)
+    assert "expanded" not in first and "expanded" in second
+
+
 def test_experiment_config_names_the_device_it_optimizes_for():
     """load_config reads ONE file: default.yaml is not a base layer, so a key omitted
     from experiments_l3.yaml falls back to the pydantic field default, NOT to
