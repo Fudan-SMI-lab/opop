@@ -1,9 +1,16 @@
 # Finding: the parameterizer can silently revert the repair it was handed
 
-Found live on the L3:21 rerun, 2026-09-05 07:22–07:30. Rare rather than systemic — **2 of 74**
-repair→parameterize hand-offs across all runs — but when it happens the repair loop is
-guaranteed to spin, because the agent is asked to fix a source that has had its fix removed.
-On the one candidate it hit, it consumed **all three** repair attempts.
+Found live on the L3:21 rerun, 2026-09-05 07:22–07:39. **3 of 75** repair→parameterize
+hand-offs across all runs, and when it happens the repair loop is guaranteed to spin, because
+the agent is asked to fix a source that has had its fix removed. On the first candidate it hit,
+it consumed **all three** repair attempts.
+
+> **Scope corrected 07:39.** I first described this as a single candidate's problem. It has now
+> hit a **second** candidate in the same run — `cand-89fa74fe`, `repair-dd224c67` (4496 bytes,
+> 6 dots) reverted to (4178, 4) — from a different rewriter lineage. So it is not
+> candidate-specific: it is triggered by the *repair pattern*, and specifically by a repair that
+> adds dot products to a precision branch. Every instance so far is a split-precision
+> (hi/lo residual) fix inside an fp16 branch. Two candidates, three hand-offs, one run.
 
 ## Loop A's shape makes this possible
 
@@ -85,17 +92,24 @@ comparing sandbox files this reads as "repair tried twice and failed twice".
 
 ## Why it is rare, and what likely triggers it
 
-72 of 74 hand-offs preserved the repair's structure exactly or near-exactly (small byte deltas
-from re-indentation). Both failures are the same candidate in the same run, and both repairs
-share a trait the survivors lack: **they violate the candidate contract.**
+72 of 75 hand-offs preserved the repair's structure exactly or near-exactly (small byte deltas
+from re-indentation). All three failures are in the same run, across two candidates, and every
+one shares a trait the survivors lack: **they violate the candidate contract.**
 
 `candidate_contract.md` requires exactly one module-level `PARAMS` dict whose values are the
 tunable knobs, and asks that a low-precision cast's dtype come *from* a knob. These repairs
-hard-coded a four-term expansion inside the `fp16` branch — the dtype still comes from
+hard-code a multi-term expansion inside the `fp16` branch — the dtype still comes from
 `COMPUTE_DTYPE`, but the *number of dot products* is now branch-specific and unexpressed in
 `PARAMS`. A parameterizer told to normalize a candidate onto the contract has a defensible
 reason to rewrite that body. It just has no way to say "I am discarding your fix", and no
 mechanism stops it.
+
+That the trigger is consistent across two candidates makes this predictable rather than random,
+and it means the fix has a clear target: **a repair that legitimately needs to add dot products
+has no way to express that within the contract.** Option (2) below (tell the parameterizer to
+preserve the body) addresses the symptom; the deeper answer is that the contract should let a
+repair declare "this branch now has N terms" so the parameterizer has nothing to normalize
+away.
 
 ## Cost
 
