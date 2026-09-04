@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import itertools
 import random
+import re
 import uuid
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,40 @@ from kernel_optimizer.paramspace.guard import ConstraintError, check_config, eva
 class SpaceRejection(BaseModel):
     reason: str
     detail: str
+
+
+def _looks_out_of_range(result: dict) -> bool:
+    """Does this witness failure carry the fingerprint of a dtype that cannot hold the task?
+
+    Distinguishes the level3/48 case -- the fp16 corner of the candidate's own space
+    overflowing on a 1e22 output -- from an ordinary small-error mismatch. The two need
+    opposite handling: the first has no correct answer and should be stepped over, the second
+    is evidence about the kernel and should be reported.
+
+    Two signals, either sufficient:
+
+    - non-finite output. fp16 saturates to +/-Inf above 65504 and Inf-Inf gives NaN, so an
+      out-of-range cast shows up as a large NaN/Inf population. L3:48's fp16 witnesses report
+      7.3-17.6% of the output non-finite; the 21/43 minimal failures report none.
+    - the finite-subset `ref_absmax` collapsing far below the full output's magnitude.
+      `_relaxed_metrics` computes statistics over the finite values only, so when the large
+      elements are exactly the ones that died, the fp16 witness reports 7.696e+09 where the
+      ieee witness reports 1.038e+22. A gap of many orders of magnitude means the failure
+      tracks output MAGNITUDE, which no amount of repair changes.
+
+    Deliberately conservative: an ordinary mismatch (finite, comparable magnitudes) returns
+    False and is reported as the defect evidence it is.
+    """
+    tail = str(result.get("log_tail", ""))
+    if "NON_FINITE_OUTPUT" in tail or "not finite" in tail:
+        return True
+    absmax = [float(m) for m in re.findall(r"'ref_absmax': '([0-9.e+-]+)'", tail)]
+    if len(absmax) >= 2:
+        lo, hi = min(absmax), max(absmax)
+        # Four orders of magnitude: far beyond any rounding difference, and well inside the
+        # twelve observed on L3:48.
+        return lo > 0 and hi / lo >= 1e4
+    return False
 
 
 def error_excerpt(log_tail: str, limit: int = 2000) -> str:
@@ -187,7 +222,17 @@ class SpaceValidator:
                 # that fails at EVERY alternative is rejected -- the anti-inertness
                 # guarantee is preserved, since acceptance still requires two distinct
                 # sources both passing a real GPU correctness test.
-                if label == "minimal":
+                #
+                # Narrowed to the OUT-OF-RANGE signature, though. The historical
+                # minimal-witness failures on level3/21 and level3/43 look nothing like
+                # L3:48's: zero non-finite values and max-abs-diff of 0.0013-0.0040 on
+                # bounded outputs, i.e. plausibly a real defect that only shows at the cheap
+                # corner. Falling back there would step past a genuine signal, so the
+                # fallback only fires when the failure carries the overflow fingerprint.
+                # A wrong cheap corner is not catastrophic either way -- every tuning trial
+                # re-runs correctness before timing, so the tuner cannot promote an
+                # incorrect config -- but there is no reason to hide the evidence.
+                if label == "minimal" and _looks_out_of_range(result):
                     alt = self._next_witness(
                         space, exclude=(default_params, minimal_params),
                         source=source, work_dir=work_dir, task=task, candidate=candidate,

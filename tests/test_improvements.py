@@ -2124,3 +2124,86 @@ def test_improvement_slope_is_blind_to_the_first_round():
     # With two entries it works as intended.
     moved.best_history = [19.5, 17.9]
     assert FamilyManager._improvement_pct(moved) > 8.0
+
+
+# The fallback must fire ONLY on the out-of-range signature. The historical minimal-witness
+# failures on 21/43 look nothing like L3:48's -- zero non-finite values, max-abs-diff
+# 0.0013-0.0040 on bounded outputs -- i.e. plausibly a real defect that only shows at the
+# cheap corner. Falling back there would step past genuine evidence.
+
+def test_out_of_range_predicate_separates_the_two_failure_kinds():
+    """Fed the actual log tails from disk, from both task families."""
+    from kernel_optimizer.paramspace.validation import _looks_out_of_range
+
+    # --- L3:48 fp16 corner: overflow. Must fall back. ---
+    assert _looks_out_of_range({"log_tail":
+        "18424816 of 134217728 candidate values are not finite (16870024 NaN, 1554792 +/-Inf)"})
+    # Even with no non-finite line, a collapsed finite-subset ref_absmax is the fingerprint:
+    # the fp16 witness reports 7.696e+09 where the full output reaches 1.038e+22.
+    assert _looks_out_of_range({"log_tail":
+        "vs ieee ref: {'frac_within_tol': 0.84, 'ref_absmax': '7.696e+09'}\n"
+        "  reference's OWN spread: {'ref_absmax': '1.038e+22'}"})
+
+    # --- L3:21 / L3:43 minimal failures: finite, small error. Must NOT fall back. ---
+    assert not _looks_out_of_range({"log_tail":
+        "relaxed mismatch (max abs diff 0.003952) on trial 2"})
+    assert not _looks_out_of_range({"log_tail":
+        "relaxed mismatch (max abs diff 0.001347) on trial 2"})
+    assert not _looks_out_of_range({"log_tail": "Output mismatch"})
+    # Comparable magnitudes across witnesses = an ordinary mismatch, not an out-of-range cast.
+    assert not _looks_out_of_range({"log_tail":
+        "vs ieee ref: {'ref_absmax': '1.038e+22'}\nvs tf32 ref: {'ref_absmax': '1.038e+22'}"})
+    assert not _looks_out_of_range({"log_tail": ""})
+    assert not _looks_out_of_range({})
+
+
+def test_an_ordinary_cheap_corner_failure_is_still_reported(tmp_path):
+    """A finite small-error mismatch at the cheap corner is evidence about the kernel, so it
+    must reject rather than silently fall back to a config that happens to work."""
+    from kernel_optimizer.paramspace.validation import SpaceRejection
+
+    validator, cand, source, proposal, task = _witness_fixture(tmp_path)
+
+    class OrdinaryMismatch:
+        """Only the exact default config passes; everything else has a small finite error."""
+
+        def __init__(self):
+            self.calls = []
+
+        def quick_test(self, task, path, tag, backend):
+            text = path.read_text(encoding="utf-8")
+            self.calls.append(tag)
+            if "'ieee'" in text and "64" in text:
+                return dict(OK_RESULT)
+            return {"ok": False, "failure_kind": "correctness_mismatch",
+                    "log_tail": "relaxed mismatch (max abs diff 0.003952) on trial 2"}
+
+    rec = OrdinaryMismatch()
+    validator.correctness = rec
+    result = validator.validate_and_publish(cand, source, proposal, task, tmp_path)
+
+    assert isinstance(result, SpaceRejection)
+    assert result.reason == "witness_minimal_failed"
+    assert not [t for t in rec.calls if "wit-alt" in t], \
+        "an ordinary mismatch must NOT trigger the out-of-range fallback"
+    # And it still says which config failed, so repair is not misled about scope.
+    assert "[minimal witness config" in result.detail
+    assert "DEFAULT config passed" in result.detail
+
+
+def test_trials_recheck_correctness_so_a_bad_corner_cannot_win_on_latency():
+    """Why the fallback is safe even when it does fire: publishing a space whose cheapest
+    corner is wrong cannot promote that corner, because every tuning trial re-runs
+    correctness before timing (and the worker only times `if correct`)."""
+    from pathlib import Path
+
+    orch = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
+    trial = orch.split("def _run_trial")[1].split("\n    def ")[0]
+    assert "quick_test" in trial, "a trial must run the correctness+timing quick test"
+    # A failing trial becomes status="fail", never a latency.
+    assert 'status="fail"' in trial
+    assert 'if not result.get("ok") or lat is None' in trial
+
+    worker = Path("src/kernel_optimizer/gpu/worker_main.py").read_text(encoding="utf-8")
+    assert "if correct and num_perf" in worker, \
+        "the worker must only time a kernel that passed correctness"

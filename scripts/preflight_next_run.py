@@ -116,9 +116,11 @@ def main() -> int:
     val = src("src/kernel_optimizer/paramspace/validation.py")
     wit = val.split("for label, params in ((\"default\", default_params)")[-1]
     check("out-of-range cheap corner falls back, not rejects",
-          "_next_witness" in wit and 'if label == "minimal":' in wit
-          and "def _next_witness" in val,
-          "a failing minimal witness tries the next feasible config before rejecting")
+          "_next_witness" in wit
+          and 'if label == "minimal" and _looks_out_of_range(result):' in wit
+          and "def _next_witness" in val and "def _looks_out_of_range" in val,
+          "a minimal witness failing with the OVERFLOW signature tries the next feasible "
+          "config; an ordinary mismatch still rejects")
     check("witness fallback is bounded",
           "max_witness_retries" in val
           and "attempted >= self.max_witness_retries" in val,

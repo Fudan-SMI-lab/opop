@@ -165,6 +165,32 @@ Three options, cheapest first:
 (1) and (2) are complementary and neither touches acceptance semantics: a candidate still has
 to pass a real GPU correctness test at two distinct configurations. Recommend both.
 
+### Applied, and narrowed — the fallback must not fire on 21/43
+
+Both landed (`391e918`), and then a check against the historical 21/43 runs showed (1) was
+too broad. Those runs *do* hit `witness_minimal_failed` — 2, 2, 3 and 1 times across four
+runs — but their failures look nothing like L3:48's:
+
+| | L3:48 minimal failures | 21/43 minimal failures |
+|---|---|---|
+| non-finite output | **7.3 – 17.6%** | **none** |
+| max-abs-diff | 1.7e7 – 1.8e19 | **0.0013 – 0.0040** |
+| finite-subset `ref_absmax` | collapses 1e22 → 1e9 | comparable across witnesses |
+
+A finite, small-error mismatch at the cheap corner is plausibly a *real* defect that only
+shows there — a kernel correct only at large block sizes, say. Falling back would step past
+genuine evidence about the kernel. So the fallback is now gated on `_looks_out_of_range`,
+which fires on either a non-finite population or a finite-subset `ref_absmax` collapsed by
+≥1e4, and returns False for an ordinary mismatch. Verified against the real log tails from
+both task families.
+
+Worth recording why this is a matter of evidence quality rather than safety: **publishing a
+space whose cheapest corner is wrong cannot promote that corner.** Every tuning trial runs
+`quick_test` (3 correctness trials) before timing, and the worker only times `if correct
+and num_perf`, so a wrong config comes back `status="fail"` with no latency and TPE learns to
+avoid it. The reason to narrow the fallback is that hiding a real defect behind a working
+alternative costs the repair agent its diagnosis, not that it could corrupt a result.
+
 ## Scope
 
 Task-specific in the same way as the gate finding, and for the same reason. On L3:21 and
