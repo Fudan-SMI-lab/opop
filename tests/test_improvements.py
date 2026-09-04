@@ -1280,3 +1280,77 @@ def test_replay_rebuilds_cache_from_trial_done_only():
     trials_line = next(l for l in store.splitlines() if "state.trials.setdefault" in l)
     assert trials_line  # populated under the TRIAL_DONE branch
     assert 'ev.type == "TRIAL_DONE"' in store
+
+
+# --- Y: family control state must survive resume ----------------------------------
+#
+# Checked because active_families()'s anti-early-pruning ranking sorts on
+# rewrite_rounds_used, best_history and best -- if a resume reset those, the ordering the
+# paper's problem statement cares about would silently reset, and a family that already
+# spent its rewrite budget could be handed a fresh one. It does NOT: `best` is rebuilt
+# from TRIAL_DONE, best_history and rewrite_rounds_used from FAMILY_ROUND_RECORDED, and
+# `status` is re-derived by family_verdict, which reads only those two fields. FAMILY_UPDATED
+# is consumed by replay() but emitted by nothing; these tests pin the real contract so a
+# future change cannot quietly break it.
+
+
+def test_family_verdict_depends_only_on_persisted_fields():
+    """status is a derived cache, so losing it on resume must not change any decision."""
+    from kernel_optimizer.config import BudgetConfig
+    from kernel_optimizer.control.convergence import ConvergencePolicy
+    from kernel_optimizer.models.core import Family
+
+    judge = ConvergencePolicy(BudgetConfig(rewrite_rounds_per_family=3,
+                                          no_improve_rounds=2, min_improvement_pct=2.0))
+
+    # Budget exhausted is decided by rewrite_rounds_used alone.
+    spent = Family(family_id="f", anchor_candidate_id="c", member_ids=["c"],
+                   rewrite_rounds_used=3, status="active")  # status deliberately wrong
+    v = judge.family_verdict(spent)
+    assert v.verdict == "freeze" and v.stop_kind == "budget_exhausted"
+
+    # Convergence is decided by best_history alone.
+    flat = Family(family_id="g", anchor_candidate_id="c", member_ids=["c"],
+                  rewrite_rounds_used=2, best_history=[20.0, 19.9, 19.85], status="active")
+    v2 = judge.family_verdict(flat)
+    assert v2.verdict == "freeze" and v2.stop_kind == "converged"
+
+    # A still-improving family continues regardless of a stale status.
+    good = Family(family_id="h", anchor_candidate_id="c", member_ids=["c"],
+                  rewrite_rounds_used=1, best_history=[20.0, 15.0], status="active")
+    assert judge.family_verdict(good).verdict == "continue"
+
+
+def test_family_round_recorded_is_the_persisted_source_of_truth():
+    """best_history and rewrite_rounds_used must both come from that one stream, so a
+    resume cannot double-count or lose rounds."""
+    from pathlib import Path
+
+    src = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
+    restore = src.split("def _restore_family_control_state")[1].split("def _rewrite_round")[0]
+    assert 'FAMILY_ROUND_RECORDED' in restore
+    assert "family.best_history = [" in restore
+    assert "family.rewrite_rounds_used = len(evs)" in restore, \
+        "rounds must be the event count, not an increment, or resume double-counts"
+    # And the restore must run BEFORE loop C, or the first round uses empty state.
+    run_body = src.split("def _run(")[1].split("def ")[0]
+    assert run_body.index("_restore_family_control_state") < run_body.index("_rewrite_round")
+
+
+def test_family_updated_has_no_producer_and_is_documented():
+    """replay() consumes FAMILY_UPDATED but nothing emits it. That is intentional (state
+    is reconstructed, not snapshotted); the branch must say so, so nobody 'fixes' it by
+    emitting events that would then race the reconstruction."""
+    from pathlib import Path
+
+    store = Path("src/kernel_optimizer/store/run_store.py").read_text(encoding="utf-8")
+    branch = store.split('elif ev.type == "FAMILY_UPDATED":')[1].split("elif ev.type")[0]
+    assert "No producer" in branch
+
+    # Assert the absence mechanically, across the package.
+    import subprocess
+    hits = subprocess.run(
+        ["git", "grep", "-n", "FAMILY_UPDATED", "--", "src/"],
+        capture_output=True, text=True).stdout.splitlines()
+    emitters = [h for h in hits if "append(" in h]
+    assert not emitters, f"unexpected FAMILY_UPDATED emitter: {emitters}"

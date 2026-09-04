@@ -146,6 +146,15 @@ class RunStore:
             elif ev.type == "CANDIDATE_REGISTERED":
                 state.candidates[p["candidate"]["candidate_id"]] = p["candidate"]
             elif ev.type == "FAMILY_UPDATED":
+                # No producer emits this. Family control state is deliberately
+                # reconstructed instead of snapshotted: `best` from the TRIAL_DONE
+                # stream (_restore_pipeline), `best_history` and
+                # `rewrite_rounds_used` from FAMILY_ROUND_RECORDED
+                # (_restore_family_control_state), and `status` is re-derived by
+                # convergence.family_verdict, which reads only those two fields.
+                # Kept as a tolerated no-op so an older log with these events still
+                # replays; do NOT start emitting it without deciding which of the
+                # two sources wins on conflict.
                 state.families[p["family"]["family_id"]] = p["family"]
             elif ev.type == "SPACE_PUBLISHED":
                 state.spaces[p["space"]["space_id"]] = p["space"]
