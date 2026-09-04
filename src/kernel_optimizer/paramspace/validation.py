@@ -31,6 +31,24 @@ class SpaceRejection(BaseModel):
     detail: str
 
 
+def error_excerpt(log_tail: str, limit: int = 2000) -> str:
+    """Keep the END of a traceback, not the beginning.
+
+    The worker captures the last 4000 chars of the traceback; the actual exception
+    type and message are on its LAST line, while the first ~500 chars are the
+    harness's own call frames. Truncating from the front (`log_tail[:500]`) therefore
+    handed the repair agent a diagnosis-free prefix — observed live on L3:43, where
+    three seeds were rejected with a detail that ended mid-frame at
+    `torch/nn/modules/module.py ... return self._call_impl(*args, **kwargs)` and never
+    named the error. Prefer the tail; keep a short head for context when both fit.
+    """
+    text = (log_tail or "").strip()
+    if len(text) <= limit:
+        return text
+    head = limit // 4
+    return f"{text[:head]}\n...[{len(text) - limit} chars elided]...\n{text[-(limit - head):]}"
+
+
 class WitnessResult(BaseModel):
     params: ParamSet
     latency_mean_ms: float | None = None
@@ -147,7 +165,8 @@ class SpaceValidator:
             if not result.get("ok"):
                 return SpaceRejection(
                     reason=f"witness_{label}_failed",
-                    detail=f"{result.get('failure_kind')}: {result.get('log_tail', '')[:500]}",
+                    detail=f"{result.get('failure_kind')}: "
+                           f"{error_excerpt(result.get('log_tail', ''))}",
                 )
             lat = latency_from_result(result)
             witnesses.append(

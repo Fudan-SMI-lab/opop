@@ -47,7 +47,11 @@ from kernel_optimizer.models.core import (
 from kernel_optimizer.models.reports import BottleneckReport, TuningStats
 from kernel_optimizer.paramspace import materializer
 from kernel_optimizer.paramspace.guard import check_config
-from kernel_optimizer.paramspace.validation import SpaceAccepted, SpaceValidator
+from kernel_optimizer.paramspace.validation import (
+    SpaceAccepted,
+    SpaceValidator,
+    error_excerpt,
+)
 from kernel_optimizer.store.run_store import RunStore
 from kernel_optimizer.tuning.stats import TuningStatsAnalyzer
 from kernel_optimizer.tuning.tpe import OptunaTPETuner
@@ -485,7 +489,7 @@ class Orchestrator:
                 except AgentCallError as exc:
                     feedback = f"repair also failed: {str(exc)[:300]}"
             else:
-                feedback = f"{verdict.reason}: {verdict.detail[:500]}"
+                feedback = f"{verdict.reason}: {error_excerpt(verdict.detail, 1200)}"
         return None
 
     def _tune(self, crun: CandidateRun, anchors: tuple[ParamSet, ...],
@@ -569,7 +573,7 @@ class Orchestrator:
                 trial_id=trial_id, candidate_id=cand.candidate_id,
                 space_id=space.space_id, params=params, status="fail",
                 failure_kind=result.get("failure_kind") or "runtime_error",
-                failure_detail=str(result.get("log_tail", ""))[:500],
+                failure_detail=error_excerpt(str(result.get("log_tail", "")), 800),
             )
         return TrialRecord(
             trial_id=trial_id, candidate_id=cand.candidate_id, space_id=space.space_id,
@@ -652,7 +656,7 @@ class Orchestrator:
                     "candidate_id": cand.candidate_id, "attempt": expand_attempt,
                     "reason": verdict.reason, "detail": verdict.detail[:500]})
                 feedback = (f"the expanded space was rejected ({verdict.reason}): "
-                            f"{verdict.detail[:300]}")
+                            f"{error_excerpt(verdict.detail, 1200)}")
             if not isinstance(verdict, SpaceAccepted):
                 return
             work_dir = self.store.candidate_dir(cand.candidate_id)

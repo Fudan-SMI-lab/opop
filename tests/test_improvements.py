@@ -530,3 +530,47 @@ def test_family_update_best_is_monotonic():
     assert fm.families["fam-x"].best.latency_ms == 20.0
 
 
+# --- diagnostics: a truncated traceback must not hide the exception --------------
+
+# Shape of a real failing witness from L3:43 (run-l3-43-20260904-093730): the harness
+# and torch frames come first, the actual cause is the LAST line.
+_REAL_TAIL = (
+    "runtime_error: Traceback (most recent call last):\n"
+    '  File "/mnt/d/Pyhon_projects/opop/v2/src/kernel_optimizer/gpu/worker_main.py", '
+    "line 471, in run_relaxed_correctness\n"
+    "    out_kernel = model_new(*inputs); torch.cuda.synchronize(device=device)\n"
+    "                 ^^^^^^^^^^^^^^^^^^\n"
+    '  File "/mnt/d/.../torch/nn/modules/module.py", line 1775, in _wrapped_call_impl\n'
+    "    return self._call_impl(*args, **kwargs)\n"
+    "           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+    + '  File "/mnt/d/.../triton/compiler.py", line 99, in launch\n    pass\n' * 12
+    + "triton.runtime.errors.OutOfResources: out of resource: shared memory, "
+      "Required: 409600, Hardware limit: 101376. Reducing block sizes or "
+      "`num_stages` may help.\n"
+)
+
+
+def test_error_excerpt_keeps_the_actual_exception():
+    """Regression (found live on L3:43): witness rejections were reported as
+    `log_tail[:500]`, which cut the traceback off inside torch's call frames and never
+    reached the exception line. All three rejected seeds carried a byte-identical,
+    diagnosis-free detail, so the repair agent had to guess. The excerpt must keep the
+    TAIL, where the cause is."""
+    from kernel_optimizer.paramspace.validation import error_excerpt
+
+    assert "OutOfResources" not in _REAL_TAIL[:500]      # the old behaviour's window
+    out = error_excerpt(_REAL_TAIL, 800)
+    assert "OutOfResources" in out
+    assert "409600" in out and "101376" in out           # the actionable numbers
+    assert len(out) <= 900                               # still context-budget safe
+    assert "elided" in out                               # says it dropped the middle
+
+
+def test_error_excerpt_passes_short_text_through_unchanged():
+    from kernel_optimizer.paramspace.validation import error_excerpt
+    assert error_excerpt("boom: bad thing", 800) == "boom: bad thing"
+    assert error_excerpt("", 800) == ""
+    assert error_excerpt(None, 800) == ""
+
+
+
