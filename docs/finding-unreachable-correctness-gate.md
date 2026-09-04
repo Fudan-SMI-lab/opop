@@ -130,6 +130,24 @@ with itself*. No sequence of correct repairs can close it. The two destructive c
 that the loop can make a working kernel worse; this one shows that succeeding does not help
 either.
 
+### The three chains exhaust the outcome space
+
+| attempt | cand-dc4b6fec | cand-eed411d8 | cand-741c2699 |
+|---|---|---|---|
+| a=0 | 0.975956 finite | 0.976029 finite | 0.975839 finite |
+| a=1 | 0.843332 **broken** | 0.836301 **broken** | 0.976153 finite |
+| a=2 | 0.844503 **broken** | 0.836300 **broken** | 0.976152 finite |
+| a=3 | 0.844503 **broken** | 0.836300 **broken** | — |
+
+Two chains collapse to a broken fixed point and stall there. The third never breaks at all
+and stalls 3e-4 above where it started. Between them that is every available outcome for a
+repair loop — make it worse, or fail to move it — and all six terminal states are
+`rejected`.
+
+There is no fourth behaviour left to hope for. The loop is not misbehaving in any of the
+three chains; it is being asked to reach a threshold that is 0.0122 beyond what the task's
+own reference achieves, and no repair strategy can do that.
+
 
 ## The run produced a controlled comparison — three times
 
