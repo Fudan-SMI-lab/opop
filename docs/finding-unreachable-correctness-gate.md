@@ -553,6 +553,29 @@ is a claim about the conservative half only.
 > explained by "the gate does not bite on 21/43", and the honest position is that the
 > difference is not yet explained.
 
+#### L3:21 is now 4 for 4 above the floor
+
+As the rerun continued every tensor-core rejection landed above the reference's own floor:
+
+| time | candidate | a | witness | dtype | frac vs ieee | frac vs tf32 |
+|---|---|---|---|---|---|---|
+| 07:19 | cand-6b313c39 | 0 | default | tf32 | 0.958919 | 0.927816 |
+| 07:22 | cand-6b313c39 | 1 | minimal | fp16 | 0.960593 | **0.978946** |
+| 07:26 | cand-6b313c39 | 2 | minimal | fp16 | 0.960593 | 0.978946 |
+| 07:30 | cand-6b313c39 | 3 | minimal | fp16 | 0.960593 | 0.978946 |
+| 07:32 | cand-89fa74fe | 0 | default | tf32 | **0.977751** | 0.947952 |
+| 07:35 | cand-89fa74fe | 1 | minimal | fp16 | **0.978934** | 0.955005 |
+| | *floor* | | | | *0.955360* | |
+| | *gate* | | | | *0.990000* | |
+
+Every finite measurement clears 0.955360 on the ieee witness, and two clear it on both. All
+six are rejected. Note the a=1/2/3 rows are the **same source measured three times** — see
+`finding-parameterizer-reverts-the-repair.md`; they are one datapoint, not three.
+
+So on distinct candidates the count is 4 above-floor rejections from 3 candidates
+(`cand-6b313c39` default and minimal, `cand-89fa74fe` default and minimal), on a task whose
+floor sits 3.5 points below the gate.
+
 #### The cleanest instance in the project so far, from L3:21 (07:22)
 
 `cand-6b313c39`, the same candidate, attempt 1, **fp16** minimal witness — and this one has

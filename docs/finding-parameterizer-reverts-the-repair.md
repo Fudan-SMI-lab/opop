@@ -1,8 +1,9 @@
 # Finding: the parameterizer can silently revert the repair it was handed
 
-Found live on the L3:21 rerun, 2026-09-05 07:22–07:26. Rare rather than systemic — **2 of 73**
+Found live on the L3:21 rerun, 2026-09-05 07:22–07:30. Rare rather than systemic — **2 of 74**
 repair→parameterize hand-offs across all runs — but when it happens the repair loop is
 guaranteed to spin, because the agent is asked to fix a source that has had its fix removed.
+On the one candidate it hit, it consumed **all three** repair attempts.
 
 ## Loop A's shape makes this possible
 
@@ -19,7 +20,7 @@ GPU.
 
 ## What happened
 
-`cand-6b313c39`, attempts 1 and 2. Both repairs implemented the same correct technique —
+`cand-6b313c39`. Its two substantive repairs both implemented the same correct technique —
 2-term split-precision (Dekker-style) emulation, which is the textbook answer to "fp16 operand
 rounding loses accuracy":
 
@@ -49,11 +50,21 @@ By signature, `(bytes, tl.dot count, @triton.jit count)`:
 | repair `fixed.py` (a=2) | (4217, **7**, 1) |
 | parameterizer emitted | (3965, **4**, 1) |
 
-Both collapse to the *same* 3965-byte, 4-dot source — which is byte-identical to what a=1
-already ran. Confirmed independently by the witness jobs: the minimal-witness source sha is
-`ebb81c3f8116abe0` for both a=1 and a=2, and the metrics repeat to six decimals (frac
-0.960593 / 0.978946). Nothing was measured twice by accident; the same program was measured
-twice.
+Both collapse to the *same* 3965-byte, 4-dot source — byte-identical to what a=1 already ran.
+
+**Corrected as the run continued: it was three attempts, not two.** `cand-6b313c39` reached
+a=3, and all three minimal witnesses ran source sha `ebb81c3f8116abe0`, 3965 bytes, 4 dots:
+
+```
+cand-6b313c39-wit-minimal-eval-127f3c41   sha=ebb81c3f8116abe0  3965 bytes  4 dots
+cand-6b313c39-wit-minimal-eval-903fde0f   sha=ebb81c3f8116abe0  3965 bytes  4 dots
+cand-6b313c39-wit-minimal-eval-8e16f314   sha=ebb81c3f8116abe0  3965 bytes  4 dots
+```
+
+3 witnesses, **1 distinct source**, and metrics identical to six decimals every time
+(0.960593 / 0.978946). So the revert consumed the candidate's **entire** `repair_attempts`
+budget of 3 — every attempt measured the same program, and the candidate was dropped as though
+three repairs had failed.
 
 ## Why the loop then cannot converge
 
@@ -74,7 +85,7 @@ comparing sandbox files this reads as "repair tried twice and failed twice".
 
 ## Why it is rare, and what likely triggers it
 
-71 of 73 hand-offs preserved the repair's structure exactly or near-exactly (small byte deltas
+72 of 74 hand-offs preserved the repair's structure exactly or near-exactly (small byte deltas
 from re-indentation). Both failures are the same candidate in the same run, and both repairs
 share a trait the survivors lack: **they violate the candidate contract.**
 
@@ -88,8 +99,9 @@ mechanism stops it.
 
 ## Cost
 
-Small on this evidence — 2 hand-offs, ~4 minutes of agent wall on the wasted attempt — but the
-failure mode is bad out of proportion to its frequency:
+Small in frequency, larger in consequence than the count suggests: the 2 affected hand-offs are
+2 of the same candidate's 3 repair attempts, so **one candidate's whole repair budget was spent
+re-measuring one program**. The failure mode is bad out of proportion to how often it fires:
 
 - it burns a repair attempt from a budget of 3, with no signal that it did;
 - it makes the repair loop look incapable when it is being undone;
