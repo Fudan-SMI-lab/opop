@@ -94,23 +94,24 @@ Wall time from each H1 candidate's first event to its last, on `run-l3-48-202609
 |---|---|---|---|
 | cand-dc4b6fec | 39.4 min | 3 | 4 |
 | cand-eed411d8 | 17.1 min | 3 | 4 |
-| cand-741c2699 | 3.8 min *(still running)* | 1 | 1 |
-| **total** | **60.3 min = 1.00h** | | |
+| cand-741c2699 | 15.4 min | 3 | 4 |
+| **total** | **71.9 min = 1.20h** | **9** | **12** |
 
-Against 3.56h elapsed, that is **28% of the run** spent on three candidates that were
-within 0.0019 of the reference's own ieee-vs-tf32 spread when first rejected — and the
-third chain had only just started when this was measured, so the final figure is higher.
+All three chains are now complete. Against 3.78h elapsed, that is **32% of the run** spent
+on three candidates that were within 0.0019 of the reference's own ieee-vs-tf32 spread when
+first rejected — 9 repair calls and 12 rejections, none of which had a defect to fix at
+a=0.
 
 The waste is not only the wall time. Repair is the module that times out (36.4%
 historically, 2 of the 8 calls in this run), so every unnecessary repair chain is also
 extra exposure to a 1200s stall.
 
-### The third chain shows the gate is unreachable even by a *correct* repair
+### The gate is unreachable even by a *correct* repair
 
-`cand-741c2699`'s repair did not destroy it. The diagnosis — "the kernel used a 16-token
-temporal tile while the reference performs its SSD diagonal and state reductions in
-64-token chunks" — is right, and the fix matched the reference's chunking exactly, keeping
-the output finite:
+`cand-741c2699`'s first repair did not destroy it (its last one did — see the next
+section). The diagnosis — "the kernel used a 16-token temporal tile while the reference
+performs its SSD diagonal and state reductions in 64-token chunks" — is right, and the fix
+matched the reference's chunking exactly, keeping the output finite:
 
 | | frac vs ieee | below floor | below gate |
 |---|---|---|---|
@@ -126,27 +127,32 @@ gate**.
 This is the cleanest statement of the problem available: even when the repair agent
 correctly identifies a genuine numerical difference and fixes it without breaking anything,
 the target is unreachable, because the remaining 0.0122 gap is *the reference disagreeing
-with itself*. No sequence of correct repairs can close it. The two destructive chains showed
-that the loop can make a working kernel worse; this one shows that succeeding does not help
+with itself*. No sequence of correct repairs can close it. The other two chains showed that
+the loop can make a working kernel worse; this one shows that succeeding does not help
 either.
 
 ### The three chains exhaust the outcome space
 
 | attempt | cand-dc4b6fec | cand-eed411d8 | cand-741c2699 |
 |---|---|---|---|
-| a=0 | 0.975956 finite | 0.976029 finite | 0.975839 finite |
-| a=1 | 0.843332 **broken** | 0.836301 **broken** | 0.976153 finite |
-| a=2 | 0.844503 **broken** | 0.836300 **broken** | 0.976152 finite |
-| a=3 | 0.844503 **broken** | 0.836300 **broken** | — |
+| a=0 | 0.975956 ok | 0.976029 ok | 0.975839 ok |
+| a=1 | 0.843332 **broken** | 0.836301 **broken** | 0.976153 ok |
+| a=2 | 0.844503 **broken** | 0.836300 **broken** | 0.976152 ok |
+| a=3 | 0.844503 **broken** | 0.836300 **broken** | 0.844827 **broken** |
 
-Two chains collapse to a broken fixed point and stall there. The third never breaks at all
-and stalls 3e-4 above where it started. Between them that is every available outcome for a
-repair loop — make it worse, or fail to move it — and all six terminal states are
-`rejected`.
+Two chains collapse on their first repair and stall at a broken fixed point. The third is
+the one that makes the point hardest to argue with: it stayed **correct for three
+consecutive attempts** — and at a=1 it *improved* frac by +3.14e-4, moving toward the floor
+— then broke on a=3, the last attempt before the budget ran out.
 
-There is no fourth behaviour left to hope for. The loop is not misbehaving in any of the
-three chains; it is being asked to reach a threshold that is 0.0122 beyond what the task's
-own reference achieves, and no repair strategy can do that.
+So its repair loop spent its entire budget on a kernel that was correct the whole time, made
+genuine progress on a real numerical difference, could never reach a threshold 0.0122 beyond
+what the reference achieves against itself, and its parting act was to destroy the kernel.
+
+Between the three chains that is every outcome available to a repair loop — break it
+immediately, or improve it correctly and still fail, or run out of budget and then break it
+— and all twelve terminal states are `rejected`. There is no fourth behaviour left to hope
+for, and the loop is not misbehaving in any of them.
 
 
 ## The run produced a controlled comparison — three times
@@ -226,7 +232,7 @@ structurally cannot evaluate.
    The decisive point is what does *not* appear in that table: with the three a=0 candidates
    accepted, **none of the nine damaged attempts would ever have been generated** — each was
    produced by a repair chain that only started because a=0 was rejected. This option does
-   not merely re-admit three kernels; it removes the 1.00h (28% of the run) those chains
+   not merely re-admit three kernels; it removes the 1.20h (32% of the run) those chains
    consumed and the two 1200s repair timeouts' worth of exposure that came with them.
 
 2. **Per-task `pass_frac` in the config.** Explicit and auditable, but it is a magic
