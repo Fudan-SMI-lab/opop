@@ -1620,3 +1620,44 @@ def test_report_distinguishes_failed_branch_from_unexplored_one(tmp_path):
     explored = md.split("`fam-explored`")[1].split("###")[0]
     assert "rewrite rounds used: 3" in explored
     assert "never entered structural search" not in explored
+
+
+def test_failed_hypotheses_survive_resume():
+    """The rewriter reads failed_hypotheses to avoid re-proposing a change already shown
+    not to help. It was memory-only with no restore path, so a resumed run started with
+    an empty set and could spend rewrite rounds -- the scarcest budget in the loop --
+    re-testing known dead ends. Unlike best_history there was no reconstruction from
+    another stream; it is now journalled as HYPOTHESES_FAILED and restored alongside."""
+    from pathlib import Path
+
+    src = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
+
+    # Emitted where a round failed to improve.
+    emit = src.split("if best_after >= best_before")[1][:900]
+    assert '"HYPOTHESES_FAILED"' in emit
+    assert '"hypotheses": tried' in emit
+    # Only when there is something to record.
+    assert "if tried:" in emit
+
+    # Restored before Loop C, in the same place as the other memory-only control state.
+    restore = src.split("def _restore_family_control_state")[1].split("def _rewrite_round")[0]
+    assert 'ev.type == "HYPOTHESES_FAILED"' in restore
+    assert "self.failed_hypotheses[family_id] = hyps" in restore, \
+        "must assign, not extend, so a re-entry cannot double-count"
+    run_body = src.split("def _run(")[1].split("\n    def ")[0]
+    assert run_body.index("_restore_family_control_state") < run_body.index("_rewrite_round")
+
+
+def test_replay_tolerates_the_new_event_type():
+    """replay() must ignore HYPOTHESES_FAILED rather than raise on an unknown type."""
+    from kernel_optimizer.store.run_store import RunStore
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as td:
+        store = RunStore.create(Path(td), "run-x", {"task": {}})
+        store.append("HYPOTHESES_FAILED", {"family_id": "f", "round": 1,
+                                           "hypotheses": [{"id": "H1", "change": "x"}]})
+        store.append("STEP_DONE", {"step_key": "k"})
+        state = store.replay()
+        assert "k" in state.steps_done  # replay completed past the unknown type

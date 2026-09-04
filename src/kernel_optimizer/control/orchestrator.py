@@ -877,12 +877,26 @@ class Orchestrator:
         zero rounds-used, forgetting how much of the rewrite budget each family
         already spent. Both are derived from the FAMILY_ROUND_RECORDED stream (one
         event per completed rewrite round), the single persisted source of truth.
+
+        `failed_hypotheses` is restored here too, from HYPOTHESES_FAILED: the rewriter
+        reads it to avoid re-proposing a change already shown not to help, so losing it
+        on resume spends rewrite rounds re-testing known dead ends.
         """
         state = self.store.replay()
         rounds: dict[str, list[dict]] = {}
+        # Rebuilt from scratch rather than extended: this runs once before Loop C and
+        # HYPOTHESES_FAILED is only emitted inside Loop C, so in a fresh run there is
+        # nothing to double-count -- but assigning instead of extending keeps that true
+        # even if the call site ever moves.
+        restored: dict[str, list[dict]] = {}
         for ev in state.events:
             if ev.type == "FAMILY_ROUND_RECORDED":
                 rounds.setdefault(ev.payload["family_id"], []).append(ev.payload)
+            elif ev.type == "HYPOTHESES_FAILED":
+                restored.setdefault(
+                    ev.payload["family_id"], []).extend(ev.payload["hypotheses"])
+        for family_id, hyps in restored.items():
+            self.failed_hypotheses[family_id] = hyps
         for family_id, evs in rounds.items():
             family = self.deps.families.families.get(family_id)
             if family is None:
@@ -932,10 +946,17 @@ class Orchestrator:
                 "family_id": family.family_id, "best_ms": best_after,
                 "round": round_no})
             if best_after >= best_before and source_crun.report is not None:
-                for hyp in source_crun.report.hypotheses:
-                    self.failed_hypotheses.setdefault(family.family_id, []).append(
-                        {"id": hyp.id, "change": hyp.change, "round": round_no}
-                    )
+                tried = [{"id": hyp.id, "change": hyp.change, "round": round_no}
+                         for hyp in source_crun.report.hypotheses]
+                self.failed_hypotheses.setdefault(family.family_id, []).extend(tried)
+                # Journalled for the same reason as best_history: this is memory-only
+                # state that a resume would silently lose, and the rewriter uses it to
+                # avoid re-proposing changes already shown not to help. Losing it wastes
+                # rewrite rounds, the scarcest budget in the loop.
+                if tried:
+                    self.store.append("HYPOTHESES_FAILED", {
+                        "family_id": family.family_id, "round": round_no,
+                        "hypotheses": tried})
             self._step_done(key)
         return progressed
 
