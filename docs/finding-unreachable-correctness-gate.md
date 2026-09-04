@@ -105,6 +105,31 @@ The waste is not only the wall time. Repair is the module that times out (36.4%
 historically, 2 of the 8 calls in this run), so every unnecessary repair chain is also
 extra exposure to a 1200s stall.
 
+### The third chain shows the gate is unreachable even by a *correct* repair
+
+`cand-741c2699`'s repair did not destroy it. The diagnosis — "the kernel used a 16-token
+temporal tile while the reference performs its SSD diagonal and state reductions in
+64-token chunks" — is right, and the fix matched the reference's chunking exactly, keeping
+the output finite:
+
+| | frac vs ieee | below floor | below gate |
+|---|---|---|---|
+| a=0 | 0.975839 | 0.001928 | 0.014161 |
+| a=1 (after repair) | **0.976153** | 0.001614 | 0.013847 |
+| noise floor | 0.977767 | — | 0.012233 |
+| gate requires | 0.990000 | — | — |
+
+The repair moved frac **+3.14e-4 in the right direction** and was rejected anyway. It closed
+16% of the distance to the reference's own agreement level and **2% of the distance to the
+gate**.
+
+This is the cleanest statement of the problem available: even when the repair agent
+correctly identifies a genuine numerical difference and fixes it without breaking anything,
+the target is unreachable, because the remaining 0.0122 gap is *the reference disagreeing
+with itself*. No sequence of correct repairs can close it. The two destructive chains showed
+that the loop can make a working kernel worse; this one shows that succeeding does not help
+either.
+
 
 ## The run produced a controlled comparison — three times
 
