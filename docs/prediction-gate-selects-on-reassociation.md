@@ -155,4 +155,43 @@ bolder structural direction; it reliably converts it into a broken kernel, and i
 *reproducibly* rather than by accident. Both H1 candidates remain **unknown, not
 disproven** on latency — neither was ever timed.
 
+## The repair loop converges to a broken fixed point
+
+Full attempt trajectories, both families:
+
+| attempt | round 1 `cand-dc4b6fec` | round 2 `cand-eed411d8` |
+|---|---|---|
+| a=0 | 0.975956, finite | 0.976029, finite |
+| a=1 | 0.843332, 18,424,816 non-finite | 0.836301, 19,403,796 non-finite |
+| a=2 | 0.844503, 18,256,126 non-finite | 0.836300, 19,403,796 non-finite |
+| a=3 | 0.844503, 18,256,126 non-finite | (pending) |
+
+In both families the later attempts are *numerically identical* to their predecessor —
+round 1's a=2 and a=3 agree to the last digit of frac and to the exact non-finite count;
+round 2's a=1 and a=2 differ only in how 5 of 19.4M values split between NaN and Inf,
+which is run-to-run nondeterminism, not a different kernel.
+
+Yet each attempt was given a **different diagnosis**. Round 2's a=1 blamed TF32
+truncation across sequential dot products; a=2 blamed `tl.sum` recomputation of the decay
+prefixes instead of reusing `A_cumsum`. Different claims, functionally equivalent output.
+
+Grouping every diagnosis in the run shows why: across all three affected candidates
+(`cand-eb910a18`, `cand-dc4b6fec`, `cand-eed411d8`) they converge on one class of claim —
+fp32 accumulation order, chunk boundaries, TF32 rounding. **As physics that class is
+correct.** Those differences are exactly why the candidate's frac sits at 0.976. As a
+defect it is wrong, because the reference's own two witnesses differ for the same reason at
+0.977767. The agents are being asked to remove a difference that is not removable, so the
+loop settles at whatever broken kernel it first reaches and then stops moving.
+
+`prior_rejected` climbing 0 -> 1 -> 2 confirms the repair-history fix is live and each
+diagnosis is being shown its predecessors as disproven. It stopped the oscillation it was
+built to stop — no diagnosis repeats a rejected claim — but no amount of history helps when
+every available answer is wrong.
+
+This is the concrete case for the second concern in
+`docs/finding-unreachable-correctness-gate.md`: a repair agent with a channel to answer
+"within task noise, no change needed" would have preserved both kernels at a=0, under the
+current threshold, with no change to what the harness calls correct.
+
+
 
