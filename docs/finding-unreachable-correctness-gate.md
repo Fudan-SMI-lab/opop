@@ -155,7 +155,7 @@ immediately, or improve it correctly and still fail, or run out of budget and th
 for, and the loop is not misbehaving in any of them.
 
 
-## The run produced a controlled comparison — three times
+## The run produced a controlled comparison — three times, then a fourth instance
 
 In each of three families the rewriter proposed two candidates from the same bottleneck
 report, against the same diagnosed wall, differing in how much they reassociate the
@@ -203,6 +203,36 @@ optimisation three times, generated a candidate for it three times, and never ti
 once. The single direction its own analysis points at is the direction the gate
 structurally cannot evaluate.
 
+### A fourth instance, and it rules out "one flawed implementation"
+
+Round 2 in `fam-99aee6de` produced `cand-61f768c8`, and it matters because of *why* it
+exists. Its change summary opens: "Reformulates the recurrence as a full lower-triangular
+contraction **rather than the previously failed chunked scan**". The rewriter read round 1's
+failure, discarded that approach, and wrote a structurally different algorithm — a
+prefix-log kernel plus on-demand `C@B^T` transition tiles contracted with X, no per-timestep
+scalar recurrence at all.
+
+| candidate | family | round | frac | cosine | below floor |
+|---|---|---|---|---|---|
+| cand-dc4b6fec | fam-99aee6de | 1 | 0.975956 | 0.99999996 | 0.001811 |
+| cand-eed411d8 | fam-74c41d8d | 1 | 0.976029 | 0.99999996 | 0.001738 |
+| cand-741c2699 | fam-b1ee96ac | 1 | 0.975839 | 0.99999996 | 0.001928 |
+| **cand-61f768c8** | fam-99aee6de | **2** | **0.976424** | 0.99999997 | 0.001343 |
+| *(noise floor)* | reference | — | *0.977767* | *0.99999996* | — |
+
+Four independent rewriter calls, spread **5.85e-4**, mean 0.976062.
+
+This closes the last alternative explanation. Three instances of one *kind* of rewrite
+(chunked scan onto tensor cores) could conceivably share an implementation flaw. This fourth
+uses a different algorithm, was written specifically to avoid the first one, and lands in
+the same band. What the four have in common is not their structure — it is that they perform
+this task's arithmetic in a different order from the reference, using tensor cores.
+
+So the gate does not reject a flawed chunked scan. It rejects **any tensor-core formulation
+of this operator**, and the rewriter cannot escape by being more creative: the property being
+measured is not a defect it can remove.
+
+
 ### Half the structural search was never measured
 
 Round 1 completed in all three families. The full yield:
@@ -213,8 +243,10 @@ Round 1 completed in all three families. The full yield:
 | fam-74c41d8d | 2.84ms | rejected, then broken | **2.46ms** | **improved** |
 | fam-b1ee96ac | 3.80ms | rejected, then broken | 3.91ms | no gain |
 
-Six rewrite candidates were generated. **Three were never measured at all**, and of the
-three that were, one improved its family.
+Six rewrite candidates were generated in round 1. **Three were never measured at all**, and
+of the three that were, one improved its family. Round 2 has since added a fourth unmeasured
+tensor-core candidate (`cand-61f768c8`), so the count of generated-but-never-timed rewrites
+is still climbing.
 
 So the entire measurable output of round 1 across the whole run is a single improvement
 (2.84 → 2.46ms) — while the three candidates the analyst ranked as each family's primary
