@@ -1492,3 +1492,35 @@ def test_rejected_repairs_doc_skips_entries_without_an_outcome():
     # but must not fabricate a "Still failed with:" line.
     doc2 = _rejected_repairs_doc([{"diagnosis": "second guess", "failure_detail": ""}])
     assert "second guess" in doc2 and "Still failed with" not in doc2
+
+
+def test_rejection_events_keep_the_verdict_bearing_tail():
+    """SPACE_REJECTED truncated verdict.detail at a flat 800 chars. The rich mismatch
+    message is 1149 chars and its LAST line is the reference's own noise floor -- the
+    part that decides whether a candidate is genuinely wrong or merely inside the task's
+    spread. A head-truncation cut it off mid-word, so every later analysis read a record
+    missing the decisive number (the agent itself got the untruncated detail)."""
+    from pathlib import Path
+
+    src = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
+    # There are four rejection appends: two record an agent transport error
+    # (reason="agent_error", detail=str(exc)) and have no verdict; two record a real
+    # verdict. Only the latter two are in scope, found by the text they actually contain.
+    verdict_appends = [seg for seg in src.split("self.store.append(")
+                       if "REJECTED" in seg[:60] and "verdict.detail" in seg[:900]]
+    assert len(verdict_appends) == 2, f"expected 2 verdict rejections, got {len(verdict_appends)}"
+    for seg in verdict_appends:
+        window = seg[:900]
+        assert "error_excerpt(verdict.detail" in window, "must keep the tail"
+        assert "verdict.detail[:" not in window, "still head-truncates"
+
+    # And error_excerpt must actually preserve the tail for a message this size.
+    from kernel_optimizer.paramspace.validation import error_excerpt
+
+    floor_line = "reference's OWN ieee-vs-tf32 spread (task noise floor, NOT a bug): {...}"
+    msg = "x" * 1500 + "\n" + floor_line
+    out = error_excerpt(msg, 2000)
+    assert floor_line in out
+    # A message longer than the limit keeps the tail and says what it dropped.
+    long_out = error_excerpt("y" * 4000 + floor_line, 2000)
+    assert floor_line in long_out and "chars elided" in long_out

@@ -548,7 +548,13 @@ class Orchestrator:
 
             self.store.append("SPACE_REJECTED", {
                 "candidate_id": cand.candidate_id, "attempt": attempt,
-                "reason": verdict.reason, "detail": verdict.detail[:800],
+                # error_excerpt keeps the TAIL, where the verdict lives. A flat [:800]
+                # cut the rich mismatch message (1149 chars) mid-word and dropped the
+                # reference's own noise-floor line -- the part that says whether the
+                # candidate is actually wrong or merely inside the task's own spread.
+                # The AGENT already receives the untruncated verdict.detail; this is the
+                # permanent record, which every later analysis reads instead of the run.
+                "reason": verdict.reason, "detail": error_excerpt(verdict.detail, 2000),
             })
             if attempt >= self.cfg.budgets.repair_attempts:
                 return None
@@ -767,7 +773,8 @@ class Orchestrator:
                     break
                 self.store.append("SPACE_EXPANSION_REJECTED", {
                     "candidate_id": cand.candidate_id, "attempt": expand_attempt,
-                    "reason": verdict.reason, "detail": verdict.detail[:500]})
+                    "reason": verdict.reason,
+                    "detail": error_excerpt(verdict.detail, 2000)})
                 feedback = (f"the expanded space was rejected ({verdict.reason}): "
                             f"{error_excerpt(verdict.detail, 1200)}")
             if not isinstance(verdict, SpaceAccepted):
