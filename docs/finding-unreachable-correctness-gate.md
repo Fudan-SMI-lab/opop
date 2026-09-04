@@ -237,6 +237,40 @@ So the gate does not reject a flawed chunked scan. It rejects **any tensor-core 
 of this operator**, and the rewriter cannot escape by being more creative: the property being
 measured is not a defect it can remove.
 
+#### Fifth instance: the fingerprint is reproducible to six decimals across families
+
+`cand-dcf4e7e6` (round 2 of `fam-74c41d8d`, parent `cand-a04c3f52`) is a *different* kernel
+from `cand-61f768c8` — different source sha, different structural signature, different
+family, different parent — written by a different rewriter call. Its a=0 metrics:
+
+| | cand-61f768c8 | cand-dcf4e7e6 |
+|---|---|---|
+| frac vs ieee | 0.976424 | **0.976424** |
+| median_rel_err | 1.431e-03 | **1.431e-03** |
+| p99_rel_err | 2.349e-02 | 2.351e-02 |
+| frac vs tf32 | 0.962259 | 0.962258 |
+| cosine | 0.99999997 | 0.99999997 |
+
+And the five instances cluster by *algorithm class*, not by candidate:
+
+| candidate | frac vs ieee | median_rel_err | frac vs tf32 | class |
+|---|---|---|---|---|
+| cand-dc4b6fec | 0.975956 | 1.432e-03 | 0.965382 | chunked scan |
+| cand-eed411d8 | 0.976029 | 1.441e-03 | 0.962411 | chunked scan |
+| cand-741c2699 | 0.975839 | 1.432e-03 | 0.962538 | chunked scan |
+| cand-61f768c8 | **0.976424** | **1.431e-03** | 0.962259 | dense contraction |
+| cand-dcf4e7e6 | **0.976424** | **1.431e-03** | 0.962258 | dense contraction |
+
+Two independently written dense-contraction kernels land on the same fingerprint to six
+decimal places. That is not a shared bug — two different programs do not reproduce a bug to
+six digits. It is the deterministic numerical signature of *doing this operator's arithmetic
+that way* on this hardware.
+
+Which settles what the gate is actually measuring. `frac_within_tol` here is a property of
+the arithmetic formulation, not of the candidate's correctness: pick a formulation and the
+number is determined, whoever writes the kernel. A threshold at 0.99 does not test whether a
+kernel is right; on this task it tests *which formulation was chosen*.
+
 #### The fourth diagnosis says there is no bug, in as many words
 
 `cand-61f768c8`'s a=0 repair diagnosis, quoted in full:
