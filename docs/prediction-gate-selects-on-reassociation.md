@@ -216,6 +216,51 @@ noise-class (3 of 3), which is the phantom-bug problem, and the later attempts c
 a numerically fixed broken kernel. How the intermediate diagnoses are distributed is not
 something this run determines.
 
+## A third family, and the frac is effectively a constant
+
+Round 3, `fam-b1ee96ac` (parent `cand-f4a2ce82`, 3.80ms). H1 `cand-741c2699` —
+"reformulates each recurrence chunk into TF32 tensor-core matrix products … retaining fp32
+accumulators" — rejected at a=0, finite output:
+
+| candidate | family | parent | frac vs ieee | cosine | below floor |
+|---|---|---|---|---|---|
+| cand-dc4b6fec | fam-99aee6de | cand-c18203b6 (2.09ms) | 0.975956 | 0.99999996 | 0.001811 |
+| cand-eed411d8 | fam-74c41d8d | cand-cf0f07e7 (2.84ms) | 0.976029 | 0.99999996 | 0.001738 |
+| cand-741c2699 | fam-b1ee96ac | cand-f4a2ce82 (3.80ms) | 0.975839 | 0.99999996 | 0.001928 |
+| *(reference's own noise floor)* | — | — | *0.977767* | *0.99999996* | — |
+
+Three independent families, three independent rewriter calls, three different parent
+kernels: total spread **1.9e-4**, every cosine identical to the floor's to eight decimals,
+every one sitting 0.0017–0.0019 below the threshold it needed.
+
+At this point the frac is not a property of any individual candidate. It is a property of
+**the transformation** — reassociating this task's chunked scan onto tensor cores lands at
+0.9759 ± 0.0001 against an ieee witness, whatever kernel performs it.
+
+## The H1/H2 split is 3 for 3
+
+| family | H1 (moves work to tensor cores) | H2 (keeps scalar arithmetic) |
+|---|---|---|
+| fam-99aee6de | **rejected**, then damaged to 0.844503 | published, 3.34ms |
+| fam-74c41d8d | **rejected**, then damaged to 0.836300 | published, **2.46ms** |
+| fam-b1ee96ac | **rejected** | pending |
+
+Every rewrite that reassociates was rejected. Every conservative sibling was admitted. The
+analyst independently identified the tensor-core path as the primary remaining headroom in
+all three families — its bottleneck reports say the kernels are not resource-bound (80/255
+registers, 512 B of 101,376 shared, one warp, no spills) and that the wall is scalar fp32
+arithmetic throughput.
+
+So the harness has now diagnosed the same optimisation three times, generated a candidate
+for it three times, and refused to time it three times — on a threshold the reference
+itself does not meet. The one direction the evidence points at is the one direction the
+gate structurally cannot evaluate.
+
+Worth stating plainly for the write-up: the run's best candidate so far (2.46ms, 7.6x
+torch.compile) is an H2. Every H1 remains **untimed**. Whether tensor cores would beat it
+is unknown, and this run cannot answer it.
+
+
 
 
 
