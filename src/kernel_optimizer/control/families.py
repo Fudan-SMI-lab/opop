@@ -267,6 +267,12 @@ class FamilyManager:
                 "status": f.status,
                 "best_ms": f.best.latency_ms if f.best else None,
                 "history": f.best_history,
+                # Distinguish "spent its rewrite budget" from "never got one". Both
+                # end as frozen_budget, so without this the report reads as though
+                # every branch was explored: in both round-2 L3 runs, 2 of 4 families
+                # had rewrite_rounds_used == 0 and never invoked the rewriter at all.
+                "rewrite_rounds_used": f.rewrite_rounds_used,
+                "explored": f.rewrite_rounds_used > 0,
                 "members": [
                     {
                         "id": cid,

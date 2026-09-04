@@ -754,6 +754,48 @@ def test_improvement_pct_handles_short_and_degenerate_history():
     assert fm._improvement_pct(f_ok) == pytest.approx(10.0)
 
 
+# --- B1 coverage: prefetch must apply to rewrite/novelty candidates too -----------
+
+
+def test_pipeline_batch_prefetches_the_next_candidate():
+    """B1 initially prefetched only inside the seed loop. In L3:43, 10 of the 14
+    candidates were rewrites, so under a third of the parameterizer calls were
+    overlapped. All three pipelining sites now go through _pipeline_batch."""
+    from kernel_optimizer.config import AppConfig
+    from kernel_optimizer.control.orchestrator import Orchestrator
+
+    orch = Orchestrator.__new__(Orchestrator)
+    orch.cfg = AppConfig()
+    orch.cfg.budgets.prefetch_parameterization = 1
+    prefetched: list[str] = []
+    pipelined: list[str] = []
+    orch._prefetch_parameterization = prefetched.append
+    orch._candidate_pipeline = pipelined.append
+
+    orch._pipeline_batch(["a", "b", "c"])
+
+    assert pipelined == ["a", "b", "c"]
+    # Each iteration prefetches the NEXT id; the last has no successor.
+    assert prefetched == ["b", "c"]
+
+
+def test_pipeline_batch_prefetch_can_be_disabled():
+    from kernel_optimizer.config import AppConfig
+    from kernel_optimizer.control.orchestrator import Orchestrator
+
+    orch = Orchestrator.__new__(Orchestrator)
+    orch.cfg = AppConfig()
+    orch.cfg.budgets.prefetch_parameterization = 0
+    prefetched: list[str] = []
+    pipelined: list[str] = []
+    orch._prefetch_parameterization = prefetched.append
+    orch._candidate_pipeline = pipelined.append
+
+    orch._pipeline_batch(["a", "b"])
+    assert pipelined == ["a", "b"] and prefetched == []
+
+
+
 
 
 

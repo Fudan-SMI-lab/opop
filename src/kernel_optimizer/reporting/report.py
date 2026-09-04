@@ -108,6 +108,15 @@ class ReportGenerator:
         families = (summary or {}).get("families", {})
         for fid, fam in families.items():
             lines.append(f"### `{fid}` — {fam['status']}, best {fam['best_ms']} ms")
+            rounds = fam.get("rewrite_rounds_used")
+            if rounds == 0:
+                lines.append(
+                    "- **never entered structural search** (0 rewrite rounds): this "
+                    "branch was frozen without the rewriter ever being invoked on it, "
+                    "so its structural headroom is UNKNOWN, not exhausted."
+                )
+            elif rounds is not None:
+                lines.append(f"- rewrite rounds used: {rounds}")
             lines.append(f"- best history: {fam['history']}")
             for member in fam["members"]:
                 lines.append(f"  - `{member['id']}` ({member['origin']}"

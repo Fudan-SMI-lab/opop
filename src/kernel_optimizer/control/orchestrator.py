@@ -256,20 +256,21 @@ class Orchestrator:
     # ------------------------------------------------------------------ stages
 
     def run(self) -> dict[str, Any]:
+        try:
+            return self._run()
+        finally:
+            # A non-daemon ThreadPoolExecutor keeps the process alive at exit, so an
+            # exception mid-run would otherwise hang the CLI. Do not wait on an
+            # in-flight prompt here (it can run for request_timeout_s).
+            self._shutdown_prefetch(wait=False)
+
+    def _run(self) -> dict[str, Any]:
         self.store.write_state_snapshot({"phase": "started", "task": self.task.model_dump()})
         self._baseline()
         self._generate_seeds()
 
-        for i, cand_id in enumerate(list(self.runs)):
-            # B1: while this candidate occupies the GPU for ~40 trials, run the NEXT
-            # one's parameterizer call in the background so the two never queue behind
-            # each other.
-            remaining = list(self.runs)[i + 1:]
-            for nxt in remaining[: self.cfg.budgets.prefetch_parameterization]:
-                self._prefetch_parameterization(nxt)
-            self._candidate_pipeline(cand_id)
+        self._pipeline_batch(list(self.runs))
 
-        self._shutdown_prefetch()
         self._restore_family_control_state()
 
         # Loop C: rewrite rounds on active families, then Loop D: novelty rounds.
@@ -292,6 +293,10 @@ class Orchestrator:
                             fam.status = "frozen_budget"
                     continue
 
+        # Drain the prefetch thread only once all pipelining is done — Loop C and D
+        # pipeline candidates too, so shutting down after the seed loop would disable
+        # B1 for the majority of them.
+        self._shutdown_prefetch()
         result = self._finalize()
         self.store.append("RUN_FINISHED", {"summary": result})
         return result
@@ -439,15 +444,19 @@ class Orchestrator:
                 crun.report = BottleneckReport.model_validate(ev.payload["report"])
                 break
 
-    def _shutdown_prefetch(self) -> None:
+    def _shutdown_prefetch(self, wait: bool = True) -> None:
         """Drain the prefetch thread. Outcomes not claimed by a candidate are simply
         dropped: the agent call already happened and is logged, so nothing is lost
-        beyond the tokens it cost."""
+        beyond the tokens it cost.
+
+        wait=False is for the error path — an in-flight prompt can take up to
+        request_timeout_s (1200s), and blocking on it would stall the CLI's exit.
+        """
         for fut in self._prefetched.values():
             fut.cancel()
         self._prefetched.clear()
         if self._prefetch_pool is not None:
-            self._prefetch_pool.shutdown(wait=True)
+            self._prefetch_pool.shutdown(wait=wait, cancel_futures=True)
             self._prefetch_pool = None
 
     def _parameterize_agent_call(self, source: str, feedback: str) -> AgentOutcome:
@@ -472,6 +481,11 @@ class Orchestrator:
             return
         crun = self.runs[cand_id]
         if not crun.source or crun.candidate.status == "dropped":
+            return
+        # On resume, a candidate whose pipeline already completed is skipped by
+        # _candidate_pipeline, so prefetching for it would spend a real agent call
+        # (and its tokens) on a result nothing can claim.
+        if f"pipeline:{cand_id}" in self.store.replay().steps_done:
             return
         if self._prefetch_pool is None:
             self._prefetch_pool = ThreadPoolExecutor(
@@ -910,6 +924,7 @@ class Orchestrator:
                               {"module": "rewriter", "final": True,
                                "family_id": family_id, "error": str(exc)[:500]})
             return
+        registered: list[str] = []
         for rw in outcome.output.candidates:
             source = outcome.sandbox.read_output(rw.file)
             cand = self._register(source, "rewrite", [parent.candidate_id],
@@ -923,7 +938,21 @@ class Orchestrator:
                 "candidate_id": cand.candidate_id, "family_id": family_id,
                 "hypothesis_id": rw.hypothesis_id,
                 "change_summary": rw.change_summary[:500]})
-            self._candidate_pipeline(cand.candidate_id)
+            registered.append(cand.candidate_id)
+        # B1 also applies here: rewrite/novelty candidates are 10 of the 14 candidates
+        # in a typical L3 run, so prefetching only in the seed loop covered under a
+        # third of the parameterizer calls. The rewriter hands back every candidate
+        # before any is pipelined, so the next one's parameterization can be issued
+        # while the current one holds the GPU.
+        self._pipeline_batch(registered)
+
+    def _pipeline_batch(self, cand_ids: list[str]) -> None:
+        """Run the per-candidate pipeline over a batch, prefetching the next one's
+        parameterizer call while the current one occupies the GPU."""
+        for i, cand_id in enumerate(cand_ids):
+            for nxt in cand_ids[i + 1:][: self.cfg.budgets.prefetch_parameterization]:
+                self._prefetch_parameterization(nxt)
+            self._candidate_pipeline(cand_id)
 
     # ------------------------------------------------------------- loop D: novelty
 
@@ -964,6 +993,7 @@ class Orchestrator:
             return False
 
         accepted_any = False
+        accepted_ids: list[str] = []
         for nc in outcome.output.candidates:
             source = outcome.sandbox.read_output(nc.file)
             result = self.deps.families.accept_novel_seed(
@@ -981,7 +1011,8 @@ class Orchestrator:
                 "difference_claim": nc.difference_claim[:500]})
             self.runs[result.candidate_id] = CandidateRun(candidate=result, source=source)
             accepted_any = True
-            self._candidate_pipeline(result.candidate_id)
+            accepted_ids.append(result.candidate_id)
+        self._pipeline_batch(accepted_ids)
         self._step_done(key)
         return accepted_any
 
