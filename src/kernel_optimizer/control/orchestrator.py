@@ -526,7 +526,11 @@ class Orchestrator:
 
         best = tuner.best()
         if best is not None:
-            crun.best_ms = best.latency_ms.mean
+            # crun.best_ms tracks the candidate's best over ALL its spaces, so a
+            # re-tune (improvement K's expansion) that lands worse must not erase a
+            # better earlier result. FamilyManager.update_best is already monotonic.
+            if crun.best_ms is None or best.latency_ms.mean < crun.best_ms:
+                crun.best_ms = best.latency_ms.mean
             improved = self.deps.families.update_best(
                 cand.family_id, cand.candidate_id, best.params, best.latency_ms.mean
             )
@@ -673,6 +677,24 @@ class Orchestrator:
                         latency_ms=latency_from_result(witness.worker_result),
                         profile=self.deps.profiler.extract(witness.worker_result),
                     )
+            # An expansion only ADDS choices, so the pre-expansion optimum is still a
+            # legal config — but the re-tune starts a FRESH TPE study whose only
+            # anchors are the two witnesses. Without carrying the old optimum over,
+            # 40 fresh trials can simply fail to rediscover it and the candidate goes
+            # BACKWARDS (live on L3:43 cand-0c3b5820: 20.0 -> 22.6 ms). Seed it as an
+            # anchor and reuse its measurement so it costs no GPU time.
+            prev_trials = list(crun.trials)
+            prior_best = min(
+                (t for t in prev_trials if t.status == "complete" and t.latency_ms),
+                key=lambda t: t.latency_ms.mean, default=None)
+            if prior_best is not None and check_config(
+                    verdict.space, prior_best.params, self.cfg.device) is None:
+                key = prior_best.params.key()
+                if key not in measured_cache:
+                    measured_cache[key] = prior_best.model_copy(
+                        update={"space_id": verdict.space.space_id})
+                if prior_best.params not in anchors:
+                    anchors = (prior_best.params, *anchors)
             self._tune(crun, anchors, measured_cache)
             self._stats_and_analysis(crun)
             # Stop if the expansion did not meaningfully help (avoid chasing a flat edge).

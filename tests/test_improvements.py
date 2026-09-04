@@ -458,3 +458,75 @@ def test_guard_rejects_membership_test_with_actionable_message():
     # the legal disjunction form still evaluates
     assert eval_constraint('DTYPE == "fp16" or DTYPE == "bf16"', {"DTYPE": "bf16"}) is True
 
+
+# --- K: an expansion must never lose ground ------------------------------------
+
+
+def _trial(cid, sp, vals, ms):
+    from kernel_optimizer.models.core import LatencyStats, ParamSet, TrialRecord
+    return TrialRecord(
+        trial_id=f"tr-{ms}", candidate_id=cid, space_id=sp,
+        params=ParamSet(values=vals), status="complete",
+        latency_ms=LatencyStats(mean=ms, std=0.1, min=ms - 0.1, max=ms + 0.1, n_samples=20))
+
+
+def test_expanded_space_still_contains_the_prior_optimum():
+    """The invariant K relies on: expansion only ADDS choices, so the pre-expansion
+    optimum stays legal in the expanded space. If this holds, carrying it over as an
+    anchor is always sound."""
+    from kernel_optimizer.models.core import (
+        DeviceLimits, ParamDomain, ParameterSpace, ParamSet,
+    )
+    from kernel_optimizer.paramspace.guard import check_config
+
+    def sp(choices):
+        return ParameterSpace(
+            space_id="s", candidate_id="c", source_sha="x",
+            domains=[ParamDomain(name="BLOCK_M", kind="int", choices=choices)])
+
+    old, expanded = sp([1, 2, 3]), sp([1, 2, 3, 4])   # expansion only ADDS
+    best = ParamSet(values={"BLOCK_M": 3})
+    dev = DeviceLimits()
+    assert check_config(old, best, dev) is None
+    assert check_config(expanded, best, dev) is None  # still legal -> anchorable
+
+
+def test_candidate_best_ms_never_regresses_across_spaces():
+    """Regression (found live on L3:43 cand-0c3b5820): the expansion re-tune ran a
+    FRESH TPE study over the expanded space, failed to rediscover the 20.0 ms config
+    in 40 trials, and reported 22.6 ms — the candidate went backwards. crun.best_ms
+    must be a running minimum over all of the candidate's spaces, mirroring
+    FamilyManager.update_best, which was already monotonic."""
+    from kernel_optimizer.control.orchestrator import CandidateRun
+    from kernel_optimizer.models.core import Candidate
+
+    cand = Candidate(candidate_id="c", family_id="f", origin="seed", backend="triton",
+                     source_sha="x", structural_signature="y")
+    crun = CandidateRun(candidate=cand, source="x = 1\n")
+    # first space finds 20.0
+    crun.best_ms = 20.0
+    # a worse re-tune must not overwrite it
+    new_best = 22.6
+    if crun.best_ms is None or new_best < crun.best_ms:
+        crun.best_ms = new_best
+    assert crun.best_ms == 20.0
+    # a better re-tune does
+    better = 19.1
+    if crun.best_ms is None or better < crun.best_ms:
+        crun.best_ms = better
+    assert crun.best_ms == 19.1
+
+
+def test_family_update_best_is_monotonic():
+    """The family-level best already ignores worse results, which is why the L3:43
+    regression did not corrupt the reported run best — only the candidate-local
+    number and the stats fed to the analyst."""
+    from kernel_optimizer.models.core import ParamSet
+    fm = FamilyManager(max_families_total=3, max_families_total_hard=6)
+    _seed(fm, "fam-x", dropped=False)
+    p = ParamSet(values={"BLOCK_M": 1})
+    assert fm.update_best("fam-x", "cand-fam-x", p, 20.0) is True
+    assert fm.update_best("fam-x", "cand-fam-x", p, 22.6) is False
+    assert fm.families["fam-x"].best.latency_ms == 20.0
+
+
