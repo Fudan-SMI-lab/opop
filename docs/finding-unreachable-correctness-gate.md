@@ -518,6 +518,43 @@ is a claim about the conservative half only.
 
 ## Scope: does this affect level3/21 and level3/43?
 
+> **FALSIFIED 2026-09-05 07:19, by the first rejection of the L3:21 rerun. The section
+> below is wrong and is kept because the reasoning error is the useful part.**
+>
+> I predicted 21/43 would be unaffected because their outputs are bounded, so the two
+> witness precisions would agree to far better than 1%, putting the floor near 1.0. The
+> first L3:21 rejection reports its measured floor:
+>
+> ```
+> reference's OWN ieee-vs-tf32 spread: {'frac_within_tol': 0.95536, 'cosine': 0.99999975,
+>                                       'ref_absmax': '5.749e+00'}
+> ```
+>
+> **L3:21's floor is 0.95536 — 3.5 points BELOW L3:48's 0.977767, and 4.5 points below the
+> 0.99 gate.** `ref_absmax` is 5.749, i.e. thoroughly bounded, exactly as I said. The
+> bounded-output premise was correct and the conclusion drawn from it was not.
+>
+> **The reasoning error:** bounded magnitude does not imply witness agreement. What sets the
+> ieee-vs-tf32 spread is how much tf32 mantissa truncation perturbs the *result* — a function
+> of reduction depth and cancellation — not of the output's range. L3:48's 1e22 range is why
+> its *absolute* differences are 1e19; it is not why its witnesses disagree on 2.2% of
+> elements. I conflated the two.
+>
+> So the gate finding is **not** task-specific in the way this section claims. On the very
+> first candidate of the L3:21 rerun, frac 0.958919 vs a 0.95536 floor and cosine 0.99999979
+> vs 0.99999975 — **above the floor on both** — rejected for needing 0.99.
+>
+> What this changes for the decision: Option 1 is a broader change than I represented, and
+> the reruns **do** inherit the problem. The `min(0.99, floor - margin)` form matters more,
+> not less: on a task with a 0.955 floor it is the difference between a reachable gate and an
+> unreachable one. The measured cross-run evidence in
+> `result-every-tensor-core-candidate-was-rejected.md` (28 tensor-core candidates published
+> on 21/43 vs 0 of 9 on 48) still stands as a fact about *those* runs — but it cannot be
+> explained by "the gate does not bite on 21/43", and the honest position is that the
+> difference is not yet explained.
+
+### The original (incorrect) argument, kept for the record
+
 Checked before the reruns, because if they share the problem their results inherit it. They
 do not, and the reason is structural rather than lucky.
 

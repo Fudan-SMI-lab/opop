@@ -193,10 +193,17 @@ alternative costs the repair agent its diagnosis, not that it could corrupt a re
 
 ## Scope
 
-Task-specific in the same way as the gate finding, and for the same reason. On L3:21 and
-L3:43 (softmax / BatchNorm — bounded, O(1) outputs) fp16 is a legitimate cheap corner and this
-does not fire. Checked: the 21/43 rejection histories show max-abs-diff of 0.0014–0.004 with
-no non-finite reports. The queued reruns are unaffected either way.
+Narrower than the gate finding, and for a reason that survives the gate finding's
+falsification. **The fp16 claim rests on output MAGNITUDE, which is the right variable here:**
+fp16 saturates above 65504, L3:48 reaches 1.038e22, L3:21's `ref_absmax` is **5.749** (measured,
+07:19). An fp16 cast cannot overflow on a 5.749-magnitude output, so the corner really is
+legitimate there.
+
+That is exactly the distinction the gate finding got wrong: magnitude governs *overflow* (this
+finding) but not *two-precision agreement* (that one). L3:21's floor is 0.95536 despite its
+bounded range. Confirmed empirically for this finding: the 21/43 rejection histories show
+max-abs-diff of 0.0014–0.004 with **no non-finite reports** in any of them, versus 7.3–17.6%
+non-finite on L3:48.
 
 ## What is not claimed
 

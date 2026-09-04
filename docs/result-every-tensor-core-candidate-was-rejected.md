@@ -100,15 +100,20 @@ against the most recent L3:21 and L3:43 runs:
 | l3-43 (09-04) | **14 published, 0 rejected** | — |
 
 28 tensor-core candidates on 21/43, all published. 9 on 48, all rejected. So the rejection
-is not a property of tensor-core kernels or of the gate in general — it is specific to
-level3/48, whose `exp(cumsum(randn))` reaches 1e22 where fp16's ceiling is 65504 and where
-two fp32 witness precisions disagree on 2.2% of elements. On level3/21 (BatchNorm, bounded)
-and level3/43 (softmax, [0,1]) neither mechanism fires, and the evidence above says so
-directly.
+is not a property of tensor-core kernels as such — those runs measured plenty of them.
 
-This also strengthens the scope note in both findings: those were argued from the task
-sources (what bounds the output), and this confirms the prediction on 28 independent cases
-that predate either finding.
+> **Corrected 2026-09-05 07:19.** I originally explained this difference by saying the gate
+> "does not fire" on 21/43 because their outputs are bounded. **That explanation is wrong.**
+> The first L3:21 rerun rejection reports the task's own ieee-vs-tf32 floor as **0.95536**
+> with `ref_absmax` 5.749 — bounded, and a floor 3.5 points *below* L3:48's 0.977767, i.e.
+> 4.5 points below the 0.99 gate. Bounded magnitude does not imply witness agreement; the
+> spread is set by reduction depth and cancellation, not output range.
+>
+> The 28-vs-9 fact stands as an observation about those runs. Its **cause is now unexplained**
+> — it is not that 21/43 have a harmless gate. Plausible remaining explanations, untested:
+> those candidates' rewrites may have been less aggressive reassociations, or their tf32 error
+> may have landed inside 0.99 for reasons unrelated to the floor. Do not cite the bounded-output
+> argument. See the falsification note in `finding-unreachable-correctness-gate.md`.
 
 One consequence worth stating plainly: **the earlier 21/43 runs already accepted
 tensor-core kernels**, so their results are not affected by this, and the reruns are a test
