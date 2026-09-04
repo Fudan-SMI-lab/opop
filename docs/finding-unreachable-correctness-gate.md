@@ -4,6 +4,21 @@
 
 Found 2026-09-05 during the L3:48 rerun, at the first rewrite round.
 
+> **Partially superseded, 2026-09-05 (later the same run).** This document originally read
+> all 27 of the run's `SPACE_REJECTED` events as one phenomenon. They are two.
+> `validation.py:158` tests the default witness *first* and returns on the first failure, so
+> `witness_minimal_failed` — 17 of the 27 — means the default witness **passed**, and those
+> failures are the minimal witness's fp16 corner overflowing on a 1e22 output, not the gate.
+> See `finding-minimal-witness-forces-fp16.md`.
+>
+> What survives unchanged: the six `witness_default_failed` tensor-core rejections at
+> frac 0.9758–0.9764 with the cross-family fingerprint, the unreachability arithmetic, and
+> `cand-61f768c8`'s frac 0.978034 (above the reference's own 0.977767 floor, with a finite
+> output) which is the single strongest datapoint here. What changes: the repair-cost
+> attribution. Of the 1.79h of repair triggered by rejections, **1.33h followed the fp16
+> corner and 0.46h the gate** — I had reported 0.85h as gate-attributable. The two also have
+> different remedies: this one needs a decision, that one does not.
+
 ## The claim
 
 On `level3/48_Mamba2ReturnY`, a candidate that reassociates the scan's arithmetic is

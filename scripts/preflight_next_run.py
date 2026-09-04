@@ -112,6 +112,27 @@ def main() -> int:
           "ref_line" in mods and "prior_line" in mods and "_rejected_repairs_doc" in mods,
           "seeded and rendered")
 
+    # --- minimal witness = the fp16 corner (docs/finding-minimal-witness-forces-fp16) --
+    val = src("src/kernel_optimizer/paramspace/validation.py")
+    wit = val.split("for label, params in ((\"default\", default_params)")[-1]
+    check("out-of-range cheap corner falls back, not rejects",
+          "_next_witness" in wit and 'if label == "minimal":' in wit
+          and "def _next_witness" in val,
+          "a failing minimal witness tries the next feasible config before rejecting")
+    check("witness fallback is bounded",
+          "max_witness_retries" in val
+          and "attempted >= self.max_witness_retries" in val,
+          "each retry is a real GPU quick test, so the walk cannot be exhaustive")
+    check("witness rejection names the failing config",
+          "[{label} witness config {params.values}]" in val
+          and "DEFAULT config passed" in val,
+          "repair is told it is the cheap corner, not a globally broken kernel")
+    # The fallback must not weaken acceptance: two distinct sources must still pass.
+    check("anti-inertness preserved",
+          'reason="inert_space"' in val
+          and "if mat_src == witness_sources_default:" in wit,
+          "an alternative identical to the default is not accepted as a second witness")
+
     width = max(len(n) for _, n, _ in RESULTS)
     bad = 0
     for ok, name, detail in RESULTS:

@@ -598,7 +598,12 @@ class Orchestrator:
                 # each diagnosis with the failure it was RESPONDING to, telling the agent
                 # its TF32 hypothesis "still failed with" the crash that came before it.
                 if repair_history and repair_history[-1].get("failure_detail") is None:
-                    repair_history[-1]["failure_detail"] = verdict.detail[:600]
+                    # 900, not 600: the witness detail now leads with a ~200-char
+                    # "[minimal witness config {...}] the DEFAULT config passed" prefix
+                    # (docs/finding-minimal-witness-forces-fp16.md), and at 600 that prefix
+                    # would displace the metrics the agent needs -- trading one missing
+                    # piece of context for another.
+                    repair_history[-1]["failure_detail"] = verdict.detail[:900]
                 try:
                     repaired = self.deps.repair.invoke(
                         RepairInputs(

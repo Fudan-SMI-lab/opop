@@ -1911,3 +1911,144 @@ def test_replay_tolerates_the_new_event_type():
         store.append("STEP_DONE", {"step_key": "k"})
         state = store.replay()
         assert "k" in state.steps_done  # replay completed past the unknown type
+
+
+# --- L3:48: the minimal witness is the fp16 corner ----------------------------
+# 17 of that run's 27 SPACE_REJECTED events were witness_minimal_failed, which -- because
+# validation tests the default witness FIRST and returns on the first failure -- means the
+# default config PASSED. The minimal witness is choices[0] of every knob, and
+# candidate_contract.md asks for the precision knob's choices ordered cheap->expensive with
+# "fp16" first; L3:48's outputs reach 1e22 against fp16's 65504 ceiling. Correlation was
+# 7/7 rejected with a COMPUTE_DTYPE knob vs 7/7 published without one.
+# See docs/finding-minimal-witness-forces-fp16.md.
+
+def _witness_fixture(tmp_path):
+    """A validator over a two-knob space whose cheapest corner is fp16."""
+    from kernel_optimizer.config import EvalConfig
+    from kernel_optimizer.models.core import Candidate, DeviceLimits, TaskSpec
+    from kernel_optimizer.models.reports import ParameterizationResult
+    from kernel_optimizer.paramspace.validation import SpaceValidator
+
+    source = (
+        "PARAMS = {\n"
+        "    'COMPUTE_DTYPE': 'ieee',\n"
+        "    'BLOCK': 64,\n"
+        "}\n"
+        "class ModelNew:\n"
+        "    pass\n"
+    )
+    proposal = ParameterizationResult(
+        file="c.py",
+        space={
+            "params": [
+                {"name": "COMPUTE_DTYPE", "kind": "str",
+                 "choices": ["fp16", "bf16", "tf32", "ieee"]},
+                {"name": "BLOCK", "kind": "int", "choices": [32, 64]},
+            ],
+            "constraints": [],
+        },
+    )
+    validator = SpaceValidator(
+        None,
+        DeviceLimits(name="t", vram_gb=16, max_regs_per_thread=255,
+                     max_shared_bytes_static=49152, max_shared_bytes_optin=101376,
+                     max_threads_per_block=1024),
+        EvalConfig(correctness_mode="dual_witness_relaxed"),
+    )
+    cand = Candidate(candidate_id="cand-x", family_id="fam-x", origin="seed",
+                     backend="triton", source_sha="a" * 64,
+                     structural_signature="b" * 64, approach_summary="s")
+    task = TaskSpec(level=3, problem_id=48, name="m", ref_path="r", ref_src_sha="c" * 64)
+    return validator, cand, source, proposal, task
+
+
+OK_RESULT = {"ok": True,
+             "latency_ms": {"mean": 5.0, "std": 0.1, "min": 4.9, "max": 5.1, "n": 20}}
+NONFINITE = {"ok": False, "failure_kind": "correctness_mismatch",
+             "log_tail": "18424816 of 134217728 candidate values are not finite"}
+
+
+class _Recorder:
+    """quick_test stub that fails any config containing a banned literal."""
+
+    def __init__(self, banned):
+        self.banned = banned
+        self.calls = []
+
+    def quick_test(self, task, path, tag, backend):
+        text = path.read_text(encoding="utf-8")
+        self.calls.append((tag, text))
+        if any(b in text for b in self.banned):
+            return dict(NONFINITE)
+        return dict(OK_RESULT)
+
+
+def test_out_of_range_cheap_corner_falls_back_instead_of_rejecting(tmp_path):
+    """The fp16 corner of a candidate's own space must not sink the whole space.
+
+    The second witness exists to prove the space is not inert -- that SOME config other
+    than the default runs. It need not be the cheapest. On L3:48 insisting on the cheapest
+    rejected 7 of 7 candidates that declared a precision knob, and repair (which had
+    already fixed the real defect at attempt 1 in four of them) then spent its remaining
+    budget trying to make fp16 represent 1e22."""
+    from kernel_optimizer.paramspace.validation import SpaceAccepted
+
+    validator, cand, source, proposal, task = _witness_fixture(tmp_path)
+    rec = _Recorder(banned=["fp16"])
+    validator.correctness = rec
+    result = validator.validate_and_publish(cand, source, proposal, task, tmp_path)
+
+    assert isinstance(result, SpaceAccepted), \
+        f"space must survive an out-of-range cheap corner, got {result}"
+    # Still two DISTINCT witnesses: anti-inertness is preserved, not bypassed.
+    assert len(result.witnesses) == 2
+    assert result.witnesses[0].params.values != result.witnesses[1].params.values
+    # The surviving second witness is not the fp16 one.
+    assert result.witnesses[1].params.values["COMPUTE_DTYPE"] != "fp16"
+    # It ran a real GPU test for the alternative rather than assuming it works.
+    assert any("wit-alt" in tag for tag, _ in rec.calls)
+
+
+def test_a_genuinely_broken_kernel_is_still_rejected(tmp_path):
+    """The fallback must not become a way for a broken kernel to get published: if every
+    config fails, the space is still rejected."""
+    from kernel_optimizer.paramspace.validation import SpaceRejection
+
+    validator, cand, source, proposal, task = _witness_fixture(tmp_path)
+    validator.correctness = _Recorder(banned=["PARAMS"])  # every materialized file
+    result = validator.validate_and_publish(cand, source, proposal, task, tmp_path)
+    assert isinstance(result, SpaceRejection)
+    assert result.reason == "witness_default_failed"
+
+
+def test_witness_rejection_says_which_config_failed(tmp_path):
+    """The repair agent was never told which witness failed, so a message that meant "the
+    cheapest corner of your own space is out of range" read as "your kernel is broken", and
+    every diagnosis in those chains rewrote the algorithm. The label, the config, and the
+    fact that the default passed are now in the detail the agent sees."""
+    from kernel_optimizer.paramspace.validation import SpaceRejection
+
+    validator, cand, source, proposal, task = _witness_fixture(tmp_path)
+    # Everything except the default config fails, so no fallback exists and it rejects.
+    validator.correctness = _Recorder(banned=["fp16", "bf16", "tf32", "32,"])
+    result = validator.validate_and_publish(cand, source, proposal, task, tmp_path)
+
+    assert isinstance(result, SpaceRejection)
+    assert result.reason == "witness_minimal_failed"
+    assert "[minimal witness config" in result.detail
+    assert "COMPUTE_DTYPE" in result.detail, "the agent must see WHICH config failed"
+    assert "DEFAULT config passed" in result.detail, \
+        "without this the agent rewrites a kernel whose default is already correct"
+    assert "not finite" in result.detail, "the underlying failure must survive"
+
+
+def test_witness_fallback_is_bounded(tmp_path):
+    """Each retry is a real GPU quick test, so the walk must be bounded rather than an
+    exhaustive product over the grid."""
+    validator, cand, source, proposal, task = _witness_fixture(tmp_path)
+    rec = _Recorder(banned=["fp16", "bf16", "tf32", "32,"])
+    validator.correctness = rec
+    validator.validate_and_publish(cand, source, proposal, task, tmp_path)
+    alt_calls = [t for t, _ in rec.calls if "wit-alt" in t]
+    assert alt_calls, "the fallback must actually be attempted"
+    assert len(alt_calls) <= validator.max_witness_retries

@@ -63,13 +63,18 @@ class SpaceAccepted(BaseModel):
 class SpaceValidator:
     def __init__(self, correctness: CorrectnessEvaluator, device: DeviceLimits,
                  eval_cfg: EvalConfig, min_feasible_frac: float = 0.25,
-                 feasibility_samples: int = 512, seed: int = 0):
+                 feasibility_samples: int = 512, seed: int = 0,
+                 max_witness_retries: int = 2):
         self.correctness = correctness
         self.device = device
         self.eval_cfg = eval_cfg
         self.min_feasible_frac = min_feasible_frac
         self.feasibility_samples = feasibility_samples
         self.seed = seed
+        # Each retry is a real GPU quick test (~30-60s on L3), so the walk is bounded.
+        # 2 is enough to step past a single out-of-range corner such as fp16 on a task
+        # whose outputs exceed 65504, which is the case this exists for.
+        self.max_witness_retries = max_witness_retries
 
     def validate_and_publish(
         self,
@@ -163,9 +168,43 @@ class SpaceValidator:
                 backend=candidate.backend,
             )
             if not result.get("ok"):
+                # The SECOND witness only has to prove the space is not inert -- that some
+                # config other than the default actually runs. It does not have to be the
+                # CHEAPEST one, and insisting on that was rejecting whole spaces for a
+                # reason no repair could fix.
+                #
+                # `minimal_params` is choices[0] of every knob, and candidate_contract.md
+                # asks for choices ordered cheap->expensive with "fp16" first on the
+                # precision knob. On level3/48, whose outputs reach 1e22 against fp16's
+                # 65504 ceiling, that corner overflows by construction: 7 of 7 candidates
+                # declaring a COMPUTE_DTYPE knob were rejected here while 7 of 7 without one
+                # were published, and repair had already fixed the real defect at attempt 1
+                # in four of those seven before burning its remaining budget on an
+                # impossible config. See docs/finding-minimal-witness-forces-fp16.md.
+                #
+                # So retry with the next feasible config before giving up. Only a candidate
+                # that fails at EVERY alternative is rejected -- the anti-inertness
+                # guarantee is preserved, since acceptance still requires two distinct
+                # sources both passing a real GPU correctness test.
+                if label == "minimal":
+                    alt = self._next_witness(
+                        space, exclude=(default_params, minimal_params),
+                        source=source, work_dir=work_dir, task=task, candidate=candidate,
+                        witness_sources_default=witness_sources["default"])
+                    if alt is not None:
+                        witnesses.append(alt)
+                        break
+                passed_note = ("the DEFAULT config passed; only this one failed. "
+                               if label == "minimal" else "")
                 return SpaceRejection(
                     reason=f"witness_{label}_failed",
-                    detail=f"{result.get('failure_kind')}: "
+                    # Which witness failed is the difference between "your kernel is broken"
+                    # and "the cheapest corner of your own space is out of range", and the
+                    # label was previously dropped on the floor -- it reached the event's
+                    # `reason` but never the repair prompt, so every diagnosis in these
+                    # chains read as though the kernel were globally wrong.
+                    detail=f"[{label} witness config {params.values}] {passed_note}"
+                           f"{result.get('failure_kind')}: "
                            f"{error_excerpt(result.get('log_tail', ''))}",
                 )
             lat = latency_from_result(result)
@@ -175,6 +214,45 @@ class SpaceValidator:
                               worker_result=result)
             )
         return SpaceAccepted(space=space, witnesses=witnesses)
+
+    def _next_witness(self, space: ParameterSpace, exclude: tuple[ParamSet, ...],
+                      source: str, work_dir: Path, task: TaskSpec,
+                      candidate: Candidate, witness_sources_default: str) -> WitnessResult | None:
+        """Find a second witness that is neither the default nor an already-failed config.
+
+        Bounded: tries at most `max_witness_retries` alternatives, because each one is a
+        real GPU quick test and an exhaustive walk of the grid would cost more than the
+        tuning it is gating.
+        """
+        tried = [p.values for p in exclude]
+        attempted = 0
+        for combo in itertools.product(*[d.choices for d in space.domains]):
+            if attempted >= self.max_witness_retries:
+                return None
+            params = ParamSet(values=dict(zip(space.param_names(), combo)))
+            if params.values in tried:
+                continue
+            if check_config(space, params, self.device) is not None:
+                continue
+            try:
+                mat_src = materializer.materialize(source, params)
+            except materializer.MaterializeError:
+                continue
+            if mat_src == witness_sources_default:
+                continue  # inert against the default; no evidence of a live knob
+            attempted += 1
+            path = work_dir / f"witness_alt{attempted}.py"
+            path.write_text(mat_src, encoding="utf-8")
+            result = self.correctness.quick_test(
+                task, path, tag=f"{candidate.candidate_id}-wit-alt{attempted}",
+                backend=candidate.backend,
+            )
+            if result.get("ok"):
+                lat = latency_from_result(result)
+                return WitnessResult(params=params,
+                                     latency_mean_ms=lat.mean if lat else None,
+                                     worker_result=result)
+        return None
 
     # -- helpers ---------------------------------------------------------------
 
