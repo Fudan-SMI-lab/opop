@@ -1524,3 +1524,44 @@ def test_rejection_events_keep_the_verdict_bearing_tail():
     # A message longer than the limit keeps the tail and says what it dropped.
     long_out = error_excerpt("y" * 4000 + floor_line, 2000)
     assert floor_line in long_out and "chars elided" in long_out
+
+
+def test_every_family_gets_a_rewrite_round_across_rounds():
+    """The single-ranking tests show unproven-first ordering; this shows the CONSEQUENCE
+    over successive rounds, which is what the paper's problem statement is about.
+
+    With max_families_active=2 and three families, a naive best-first ranking would keep
+    picking the same top two forever and the third would never enter structural search --
+    the exact early pruning we argue against, and what both round-2 L3 runs did (2 of 4
+    families reported frozen_budget with rewrite_rounds_used == 0). Unproven-first
+    promotes the untried family as soon as the others have spent a round."""
+    from kernel_optimizer.control.families import FamilyManager
+    from kernel_optimizer.models.core import BestRecord, Candidate, Family, ParamSet
+
+    fm = FamilyManager(max_families_total=3, max_families_total_hard=6,
+                       max_families_active=2)
+    for fid, ms in (("A", 2.09), ("B", 3.80), ("C", 5.00)):
+        cid = f"cand-{fid}"
+        fm.candidates[cid] = Candidate(candidate_id=cid, family_id=fid, origin="seed",
+                                       backend="triton", source_sha=cid,
+                                       structural_signature=cid)
+        fm._sources[cid] = f"# {cid}\n"
+        fam = Family(family_id=fid, anchor_candidate_id=cid, member_ids=[cid],
+                     status="active")
+        fam.best = BestRecord(candidate_id=cid, params=ParamSet(values={"B": 1}),
+                              latency_ms=ms)
+        fm.families[fid] = fam
+
+    selected: set[str] = set()
+    for _ in range(6):
+        active = fm.active_families()
+        selected.update(f.family_id for f in active)
+        for f in active:  # worst case: every round spends budget and improves nothing
+            f.rewrite_rounds_used += 1
+            f.best_history.append(f.best.latency_ms)
+            if f.rewrite_rounds_used >= 3:
+                f.status = "frozen_budget"
+
+    assert selected == {"A", "B", "C"}, \
+        f"a family never entered structural search: {selected}"
+    assert all(f.rewrite_rounds_used > 0 for f in fm.families.values())
