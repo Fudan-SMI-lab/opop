@@ -193,5 +193,29 @@ This is the concrete case for the second concern in
 "within task noise, no change needed" would have preserved both kernels at a=0, under the
 current threshold, with no change to what the harness calls correct.
 
+## One thing the diagnoses do NOT show
+
+I looked for a pattern where the loop diagnoses the damage it caused itself — noise-class
+claims while the output is finite, real-bug claims (masking, overflow) once a repair has
+introduced NaN/Inf. Classifying all 9 diagnoses in the run against whether the rejection
+they answered actually reported non-finite output:
+
+| | NOISE-class claim | REAL-BUG-class claim |
+|---|---|---|
+| rejection showed finite output | 3 | 1 |
+| rejection showed non-finite output | 3 | 2 |
+
+There is no such relationship. `cand-eb910a18`'s masking/overflow diagnosis was made while
+the output was still finite — it anticipated the overflow rather than reacting to it — and
+three diagnoses that *did* see millions of NaN went back to blaming accumulation order
+anyway. With 9 points split like that, nothing is established either way, so this is
+recorded as a non-finding rather than dressed up as one.
+
+What survives is only the claim the evidence actually carries: every **a=0** diagnosis is
+noise-class (3 of 3), which is the phantom-bug problem, and the later attempts converge to
+a numerically fixed broken kernel. How the intermediate diagnoses are distributed is not
+something this run determines.
+
+
 
 
