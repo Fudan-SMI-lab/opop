@@ -576,6 +576,21 @@ So on distinct candidates the count is 4 above-floor rejections from 3 candidate
 (`cand-6b313c39` default and minimal, `cand-89fa74fe` default and minimal), on a task whose
 floor sits 3.5 points below the gate.
 
+**And a control case arrived at 07:55.** `cand-d31b0474` scored frac **0.953277** against ieee
+(0.923261 against tf32) — **below** the 0.955360 floor by 2.08e-3, with no `COMPUTE_DTYPE` knob
+at all. That is precisely what the gate should catch: worse than the reference manages against
+itself. Under Option 1's `min(0.99, floor - margin)` it would **still be rejected**.
+
+This matters for reading the four above-floor rejections. The gate on L3:21 is not simply
+refusing everything — it correctly separated one genuinely-worse candidate from four that beat
+the reference's own two-precision agreement. Same role `cand-eb910a18` (frac 0.9125) played on
+L3:48, and the same reason the pre-registered prediction wrote down a "far below the floor"
+branch: without a case the gate gets right, the above-floor rejections would be
+indistinguishable from a gate nothing can pass.
+
+Running L3:21 tally: **4 above-floor rejections, 1 below-floor rejection, 2 published** (both
+scalar-FMA). All four above-floor cases are tensor-core candidates.
+
 #### The cleanest instance in the project so far, from L3:21 (07:22)
 
 `cand-6b313c39`, the same candidate, attempt 1, **fp16** minimal witness — and this one has
