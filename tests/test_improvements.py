@@ -1565,3 +1565,58 @@ def test_every_family_gets_a_rewrite_round_across_rounds():
     assert selected == {"A", "B", "C"}, \
         f"a family never entered structural search: {selected}"
     assert all(f.rewrite_rounds_used > 0 for f in fm.families.values())
+
+
+# --- Z: the report must distinguish FAILED from UNEXPLORED branches ----------------
+
+
+def test_report_distinguishes_failed_branch_from_unexplored_one(tmp_path):
+    """Three states look alike in `status` and conflating them misreads the search.
+
+    A family whose only seed never passed correctness has best=None and 0 rewrite
+    rounds -- but the "structural headroom is UNKNOWN, not exhausted" note is wrong for
+    it: nothing was ever measured, so there is no headroom claim to make. It also
+    rendered as "best None ms". On L3:48, fam-dc0697c9 is exactly this case
+    (cand-eb910a18 exhausted all four repair attempts on non-finite output)."""
+    from kernel_optimizer.reporting.report import ReportGenerator
+    from kernel_optimizer.store.run_store import RunStore
+
+    summary = {
+        "task": {"level": 3, "problem_id": 48, "name": "48_Mamba2ReturnY",
+                 "ref_path": "x", "ref_src_sha": "abc"},
+        "baselines": [],
+        "elapsed_hours": 1.7,
+        "families": {
+            "fam-failed": {"anchor": "c-bad", "status": "frozen_budget", "best_ms": None,
+                           "history": [], "rewrite_rounds_used": 0, "explored": False,
+                           "members": [{"id": "c-bad", "origin": "seed", "parents": [],
+                                        "approach": "never passed correctness"}]},
+            "fam-unexplored": {"anchor": "c-ok", "status": "frozen_budget",
+                               "best_ms": 3.55, "history": [3.55],
+                               "rewrite_rounds_used": 0, "explored": False,
+                               "members": [{"id": "c-ok", "origin": "seed", "parents": [],
+                                            "approach": "tuned but never rewritten"}]},
+            "fam-explored": {"anchor": "c-r", "status": "frozen_converged",
+                             "best_ms": 2.09, "history": [2.5, 2.09],
+                             "rewrite_rounds_used": 3, "explored": True,
+                             "members": [{"id": "c-r", "origin": "seed", "parents": [],
+                                          "approach": "rewritten three times"}]},
+        },
+    }
+    store = RunStore.create(tmp_path, "run-test", {"task": summary["task"]})
+    store.append("RUN_FINISHED", {"summary": summary})
+    md = (ReportGenerator().generate(store)).read_text(encoding="utf-8")
+
+    failed = md.split("`fam-failed`")[1].split("###")[0]
+    assert "no measured candidate" in failed
+    assert "FAILED branch, not an unexplored one" in failed
+    assert "headroom is UNKNOWN" not in failed, "must not claim headroom for a dead branch"
+    assert "best None ms" not in md, "None must never be rendered as a latency"
+
+    unexplored = md.split("`fam-unexplored`")[1].split("###")[0]
+    assert "never entered structural search" in unexplored
+    assert "headroom is UNKNOWN, not exhausted" in unexplored
+
+    explored = md.split("`fam-explored`")[1].split("###")[0]
+    assert "rewrite rounds used: 3" in explored
+    assert "never entered structural search" not in explored

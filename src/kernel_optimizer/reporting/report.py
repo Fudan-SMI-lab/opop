@@ -107,9 +107,25 @@ class ReportGenerator:
         lines.append("## Families / lineage\n")
         families = (summary or {}).get("families", {})
         for fid, fam in families.items():
-            lines.append(f"### `{fid}` — {fam['status']}, best {fam['best_ms']} ms")
+            best_ms = fam.get("best_ms")
             rounds = fam.get("rewrite_rounds_used")
-            if rounds == 0:
+            headline = (f"best {best_ms} ms" if best_ms is not None
+                        else "**no measured candidate**")
+            lines.append(f"### `{fid}` — {fam['status']}, {headline}")
+            # Three genuinely different states end up looking alike in the status field,
+            # and conflating them misreads the search. A family with no best never got a
+            # working candidate at all, so "0 rewrite rounds" says nothing about its
+            # structure -- claiming its headroom is unknown-but-promising would be wrong.
+            # On L3:48, fam-dc0697c9 is exactly this: its only seed (cand-eb910a18)
+            # exhausted every repair attempt on non-finite output and was dropped.
+            if best_ms is None:
+                lines.append(
+                    "- **no candidate in this family ever passed correctness**, so it was "
+                    "never tuned and never rewritten. This is a FAILED branch, not an "
+                    "unexplored one: the structure could not be made correct within the "
+                    "repair budget."
+                )
+            elif rounds == 0:
                 lines.append(
                     "- **never entered structural search** (0 rewrite rounds): this "
                     "branch was frozen without the rewriter ever being invoked on it, "
