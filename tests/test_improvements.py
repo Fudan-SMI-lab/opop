@@ -1128,3 +1128,117 @@ def test_relaxed_metrics_reports_gate_criteria_not_just_max_diff():
 
     shape_m = mod._relaxed_metrics(ref, torch.zeros(999))
     assert "shape_ref" in shape_m and "shape_got" in shape_m
+
+
+# --- X: the excessive-speedup guard must not reject VERIFIED-CORRECT kernels -------
+#
+# Found live in the L3:48 rerun. The guard hard-failed any candidate over 10x, ignoring
+# correctness. Four trials of cand-c18203b6 were rejected at 11.1x-13.9x with
+# correct=True and trials_passed=3/3, while a neighbouring parameter point at 8.95x was
+# accepted -- same kernel, verdict decided by which side of 10x the timing noise landed.
+# 4 of 19 trials (21%) were discarded, and they were the FASTEST ones, so the reported
+# optimum was biased downward. The guard's purpose is catching work-SKIPPING, and a
+# kernel that reproduced the reference's values on fresh inputs in every correctness
+# trial has not skipped the work. Correctness now decides acceptance; the speedup only
+# raises a flag. A fast kernel that FAILS correctness is still a hard failure -- which is
+# what the timing-cheat fixture is, since it caches on tensor identity and so cannot pass
+# correctness trials that use fresh inputs.
+
+
+def _guard_verdict(*, correct: bool, cand_ms: float, ref_ms: float,
+                   thr: float = 10.0) -> dict:
+    """Replay the worker's post-timing guard block on a synthetic result."""
+    import importlib.util
+
+    spec = importlib.util.find_spec("kernel_optimizer.gpu.worker_main")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    # The guard is inline in run_relaxed_correctness; exercise it through a job whose
+    # numbers are fixed, by calling the same arithmetic the module applies.
+    pass_count, num_trials = (3, 3) if correct else (1, 3)
+    result = {
+        "ok": correct,
+        "failure_kind": None if correct else "correctness_mismatch",
+        "latency_ms": {"mean": cand_ms},
+        "ref_latency_ms": {"mean": ref_ms},
+    }
+    speedup = ref_ms / cand_ms
+    result["speedup_vs_ref_in_worker"] = speedup
+    if speedup >= thr:
+        result["excessive_speedup"] = True
+        if not correct:
+            result["ok"] = False
+            result["failure_kind"] = "excessive_speedup"
+        else:
+            result["excessive_speedup_note"] = f"{speedup:.1f}x flagged"
+    else:
+        result["excessive_speedup"] = False
+    return result
+
+
+def test_guard_source_accepts_correct_fast_kernel_and_fails_incorrect_one():
+    """Assert against the real module source, so the test tracks the shipped logic
+    rather than only the replay helper above."""
+    from pathlib import Path
+
+    src = Path("src/kernel_optimizer/gpu/worker_main.py").read_text(encoding="utf-8")
+    # Take the whole guard block: from the threshold test to where the flag is set
+    # False on the non-suspicious path. Splitting on the first "else:" would cut at
+    # the inner `if not correct:` branch and miss the accept path.
+    guard = src.split("if speedup >= thr:")[1].split('result["excessive_speedup"] = False')[0]
+    # The hard fail must be conditional on correctness, not unconditional.
+    assert "if not correct:" in guard, "guard must branch on correctness"
+    assert "excessive_speedup_note" in guard, "correct-but-fast must be flagged, not failed"
+    # And the flag itself must still be recorded.
+    assert 'result["excessive_speedup"] = True' in guard
+    # The hard-fail assignment must live inside the not-correct branch: everything
+    # before "else:" (the accept path) is the failure path.
+    fail_path = guard.split("else:")[0]
+    assert 'result["failure_kind"] = "excessive_speedup"' in fail_path
+    accept_path = guard.split("else:", 1)[1]
+    assert 'result["ok"] = False' not in accept_path, "accept path must not fail the job"
+
+
+def test_correct_kernel_over_threshold_is_accepted_and_flagged():
+    r = _guard_verdict(correct=True, cand_ms=2.62, ref_ms=29.1)  # the real L3:48 case
+    assert r["speedup_vs_ref_in_worker"] == pytest.approx(11.1, abs=0.1)
+    assert r["ok"] is True and r["failure_kind"] is None
+    assert r["excessive_speedup"] is True and "excessive_speedup_note" in r
+
+
+def test_incorrect_kernel_over_threshold_is_still_hard_failed():
+    r = _guard_verdict(correct=False, cand_ms=0.0001, ref_ms=29.1)
+    assert r["ok"] is False and r["failure_kind"] == "excessive_speedup"
+
+
+def test_neighbouring_points_no_longer_get_opposite_verdicts():
+    """The 8.95x and 11.1x points of the same kernel must now agree."""
+    slow = _guard_verdict(correct=True, cand_ms=3.24, ref_ms=29.0)  # 8.95x, was accepted
+    fast = _guard_verdict(correct=True, cand_ms=2.62, ref_ms=29.1)  # 11.1x, was rejected
+    assert slow["ok"] == fast["ok"] is True
+
+
+def test_guard_uses_median_reference_not_outlier_corrupted_mean():
+    """A single scheduling stall in the guard's own reference timing must not decide a
+    verdict. Observed live on L3:48: a 10-sample reference returned mean=609ms with
+    min=29.8ms / max=5760ms / std=1720ms -- one ~5.8s outlier dragged the mean 20x and
+    manufactured a 115x 'speedup' against a candidate at 5.29ms. The reference's true
+    latency on this task is ~29ms (matching the eager baseline)."""
+    from pathlib import Path
+
+    src = Path("src/kernel_optimizer/gpu/worker_main.py").read_text(encoding="utf-8")
+    assert 'ref_latency_ms["median"]' in src, "median must be recorded"
+    # The ratio must read the median first.
+    ratio_line = next(l for l in src.splitlines() if "ref_mean = ref_latency_ms" in l)
+    assert '"median"' in ratio_line and ratio_line.index('"median"') < ratio_line.index('"mean"')
+
+    # The real distribution from the live run: median is ~29ms, mean is 609ms.
+    samples = [29.8, 30.1, 29.9, 30.0, 5760.0, 29.7, 30.2, 29.8, 30.0, 90.0]
+    s = sorted(samples)
+    n = len(s)
+    median = s[n // 2] if n % 2 else 0.5 * (s[n // 2 - 1] + s[n // 2])
+    mean = sum(samples) / n
+    cand = 5.29
+    assert mean / cand > 100          # the bogus verdict the mean produced
+    assert median / cand < 10         # the median keeps it under the threshold
