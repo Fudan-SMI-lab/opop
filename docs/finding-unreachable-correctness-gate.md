@@ -203,6 +203,33 @@ optimisation three times, generated a candidate for it three times, and never ti
 once. The single direction its own analysis points at is the direction the gate
 structurally cannot evaluate.
 
+### Half the structural search was never measured
+
+Round 1 completed in all three families. The full yield:
+
+| family | parent | H1 (tensor-core) | H2 (conservative) | net |
+|---|---|---|---|---|
+| fam-99aee6de | 2.09ms | rejected, then broken | 3.34ms | no gain |
+| fam-74c41d8d | 2.84ms | rejected, then broken | **2.46ms** | **improved** |
+| fam-b1ee96ac | 3.80ms | rejected, then broken | 3.91ms | no gain |
+
+Six rewrite candidates were generated. **Three were never measured at all**, and of the
+three that were, one improved its family.
+
+So the entire measurable output of round 1 across the whole run is a single improvement
+(2.84 → 2.46ms) — while the three candidates the analyst ranked as each family's primary
+headroom were rejected on a threshold the reference does not meet, and two-thirds of the
+rewriter's tokens bought nothing.
+
+This is worth stating carefully in the write-up. It is *not* evidence that the conservative
+direction is unproductive — one in three improving is a reasonable hit rate for structural
+search, and the paper's thesis is precisely that unpromising-looking branches deserve
+rounds. It is evidence that the run's measured hit rate is computed over **half the
+candidates generated**, with the omitted half selected not at random but by degree of
+reassociation. Any claim about how often structural rewriting helps, drawn from these runs,
+is a claim about the conservative half only.
+
+
 ## Options considered
 
 1. **Floor-relative threshold.** Accept if
