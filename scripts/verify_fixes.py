@@ -14,6 +14,7 @@ import json
 import os
 import statistics
 import sys
+import time
 from pathlib import Path
 
 
@@ -154,21 +155,42 @@ def check_early_pruning(rows: list[dict]) -> None:
 
 
 def check_antihack(rows: list[dict]) -> None:
-    """The excessive_speedup guard must be live (not vacuously false)."""
+    """The excessive_speedup guard must flag, not reject, a verified-correct kernel.
+
+    A trial FAILED as excessive_speedup means the old semantics were in force (or the
+    candidate genuinely failed correctness too). Since worker jobs are one-shot
+    subprocesses that re-import worker_main, a mid-run fix changes semantics partway
+    through, so report when the last such failure occurred rather than just the count.
+    """
     fin = next((e for e in rows if e["type"] == "RUN_FINISHED"), None)
-    kinds = collections.Counter()
+    kinds: collections.Counter = collections.Counter()
+    last_xs = None
     for e in rows:
         if e["type"] == "TRIAL_DONE":
             fk = e["payload"]["trial"].get("failure_kind")
             if fk:
                 kinds[fk] += 1
-    flag = fin["payload"]["summary"]["best"].get("excessive_speedup_flag") if fin else None
-    say(
-        "G  anti-reward-hacking guard live",
-        None if fin is None else True,
-        f"best.excessive_speedup_flag={flag}; trial failure kinds = {dict(kinds) or 'none'}"
-        " (guard verified separately on GPU via scripts/check_antihack.sh)",
-    )
+            if fk == "excessive_speedup":
+                last_xs = e["ts"]
+    xs = kinds.get("excessive_speedup", 0)
+    detail = f"trial failure kinds = {dict(kinds) or 'none'}"
+    verdict: bool | None = None
+    if xs:
+        when = time.strftime("%H:%M:%S", time.localtime(last_xs)) if last_xs else "?"
+        detail += (f"; {xs} trial(s) HARD-FAILED for speed (last at {when}) -- expected"
+                   " only from jobs that ran before the guard fix, or that also failed"
+                   " correctness")
+        verdict = False  # a hard fail for speed alone is the bug this check watches
+    else:
+        detail += ("; no trial hard-failed for speed. NOTE this is vacuous unless the"
+                   " run actually produced a >=10x candidate -- check for"
+                   " excessive_speedup_note in jobs/*.out.json to confirm the flag path"
+                   " ran")
+    if fin:
+        flag = fin["payload"]["summary"]["best"].get("excessive_speedup_flag")
+        detail += f"; best.excessive_speedup_flag={flag}"
+        verdict = verdict if verdict is not None else True
+    say("G  speed guard flags rather than rejects", verdict, detail)
 
 
 def check_reeval_gap(rows: list[dict]) -> None:
@@ -210,6 +232,28 @@ def check_error_excerpt(run: Path, rows: list[dict]) -> None:
     )
 
 
+def check_reused_journalled(rows: list[dict]) -> None:
+    """Reused measurements (witness anchors, the carried-over pre-expansion optimum)
+    must appear as TRIAL_DONE, or replay re-runs them and the report cannot see them."""
+    reused = [e for e in rows if e["type"] == "TRIAL_DONE"
+              and e["payload"].get("reused_measurement")]
+    expansions = sum(1 for e in rows if e["type"] == "SPACE_EXPANDED")
+    published = sum(1 for e in rows if e["type"] == "SPACE_PUBLISHED")
+    if published == 0:
+        say("J  reused measurements journalled", None, "no spaces published yet")
+        return
+    # Every published space anchors its two witnesses, so a run that tuned at all
+    # should show reused records once the fix is in force.
+    say(
+        "J  reused measurements journalled",
+        bool(reused),
+        f"{len(reused)} reused-measurement trials across {published} space(s), "
+        f"{expansions} expansion(s)"
+        + ("" if reused else " -- none present: driver predates the fix (orchestrator"
+                             " changes need a fresh run, unlike worker-side fixes)"),
+    )
+
+
 def main() -> None:
     run = Path(sys.argv[1])
     base = Path(sys.argv[2]) if len(sys.argv) > 2 else None
@@ -223,6 +267,7 @@ def main() -> None:
     check_antihack(rows)
     check_reeval_gap(rows)
     check_error_excerpt(run, rows)
+    check_reused_journalled(rows)
 
 
 if __name__ == "__main__":
