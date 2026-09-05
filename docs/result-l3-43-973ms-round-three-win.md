@@ -1,8 +1,9 @@
-# Result: 9.73 ms on round 3 — the refuted hypothesis, re-attacked, wins
+# Result: 10.2 ms verified on round 3 — the refuted hypothesis, re-attacked, wins
 
-`run-l3-43-20260905-091705`, `cand-e3a5da01`, 14:53:36. **9.73 ms `tuned_ms`**, `improved_family:
-true`. Against the 18.40 ms same-precision bar that is **1.891×**, and it is the project's best
-result on any task by a wide margin.
+`run-l3-43-20260905-091705`, `cand-e3a5da01`. **9.73 ms `tuned_ms`** at 14:53:36, re-evaluated in a
+fresh process at **10.2 ms** when the run finished at 15:31. Against the 18.40 ms same-precision bar
+(`torch_compile_tf32`) that is **1.804×** — the project's best verified result on any task, and the
+first to clear its same-precision baseline by a wide margin.
 
 It also falsifies or corrects three things I documented earlier today, which is the more important
 part of this note.
@@ -21,10 +22,24 @@ Not a cached witness (`reused_measurement` absent, job file `tr-88446e7a.py` on 
 and third-best trials are 9.85 and 10.00 from *different* `QKV_LOGICAL_M` values, so the result is
 not one lucky sample sitting alone — three configurations land under 10 ms.
 
-**Still `tuned_ms` only.** No `final_reeval_ms` yet, and that is the number that decides the verdict.
-At the worst re-eval gap on record (−6.2%) this is 10.3 ms and still 1.78× the bar, so unlike the
-0904 case (17.9 → 19.1, decided by the gap) the conclusion is robust to it. I will not call it before
-the re-eval.
+**RE-EVAL CONFIRMED at 15:31.** `final_reeval_ms = 10.2` (`final_reeval_ok: true`), a **+4.8%**
+gap on the 9.73 tuned figure — within the −6.2%/+6.7% range on record. The verdict the harness
+computed for itself:
+
+```
+precision                    fp16
+compared_against             torch_compile_tf32   (18.40 ms, the same-precision bar)
+same_precision_speedup       1.8039
+beats_same_precision_baseline  true
+excessive_speedup_flag       false
+speedups   eager 4.078 | eager_tf32 2.824 | torch_compile 3.471 | torch_compile_tf32 1.804
+```
+
+So the headline is **10.2 ms, 1.804×** the same-precision baseline — not the 1.891× that
+`tuned_ms` suggested. The pre-registered prediction ("at the worst gap on record this is 10.3 ms
+and still 1.78× the bar, so the conclusion is robust to it") held: the gap moved the number and
+did not move the conclusion. **1.804× is the figure to quote**; 9.73 is a tuning artifact and
+`memory: opop-v2-reeval-gap-is-the-real-number` is why.
 
 ## Correction 1: my round-3 record was 0-for-12, and this breaks it
 
@@ -129,10 +144,15 @@ the split that doc argued for.
 
 ## Open
 
-- `final_reeval_ms` on `tr-88446e7a`'s config. Everything above is `tuned_ms`.
-- `fam-4aea322a`'s round-3 `FAMILY_ROUND_RECORDED` has not fired yet; when it does the history
-  becomes `[11.0, 11.0, 9.73]` with `used=3`, which will freeze the family as `budget_exhausted` —
-  the pre-registered 14-of-14 prediction, now with the twist that the round it "wastes" was the
-  productive one.
+- ~~`final_reeval_ms`~~ — **done: 10.2 ms, 1.804×, `final_reeval_ok: true`.** See above.
+- ~~`fam-4aea322a`'s round-3 `FAMILY_ROUND_RECORDED`~~ — **fired.** History is
+  `[11.0, 11.0, 9.73]`, `rewrite_rounds_used: 3`, frozen as `budget_exhausted`, exactly as
+  pre-registered. That makes the record **14 of 14** `budget_exhausted` with `converged` never
+  firing, and the twist stands: the round it "wastes" was the productive one. `fam-92e7c576`
+  froze the same way on `[19.6, 19.6, 19.6]`, making it 15 of 15.
+- The run finished at **6.24h of a 12h budget** with all four families frozen. Half the wall
+  clock went unused — the empty-family/exhaustion interaction in
+  `finding-run-stops-with-budget-unused.md`, still unfixed and now the largest single waste in
+  a completed L3 run.
 - 23 of 40 trials failed on this candidate (17 complete), so the space is still coarse; a fourth
   round is not budgeted.
