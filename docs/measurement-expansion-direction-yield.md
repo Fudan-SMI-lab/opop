@@ -1,4 +1,4 @@
-# Measurement: improvement K's real yield is 23%, and downward expansion is 0-for-8
+# Measurement: improvement K's real yield is 23%, and downward expansion is 0-for-9
 
 `audit_expansion_outcomes.py` reports **67.7% improved (21 of 31)** for space expansion, and its
 own output warns that this is an upper bound. This note measures the lower bound — how often the
@@ -56,19 +56,20 @@ already-fixed `NUM_WARPS=1` / `NUM_STAGES=1` cases are excluded:
 | `max` | 40 | 5 (12%) |
 | `min` | **9** | **0 (0%)** |
 
-The eight post-filter downward expansions, every one a miss:
+The nine post-filter downward expansions, every one a miss:
 
 ```
-PW_WARPS      added [1]      OUT_NUM_WARPS added [1]      QK_NUM_WARPS  added [1]
-QKV_NUM_WARPS added [2]      BLOCK_N       added [8]      PV_BLOCK_K    added [8]
-QKV_BLOCK_K   added [8]      SOFTMAX_BLOCK added [512]
+PW_WARPS         added [1]   OUT_NUM_WARPS added [1]   QK_NUM_WARPS  added [1]
+QKV_NUM_WARPS    added [2]   BLOCK_N       added [8]   PV_BLOCK_K    added [8]
+QKV_BLOCK_K      added [8]   SOFTMAX_BLOCK added [512]
+EXPAND_NUM_WARPS added [1]   (live on the clean L3:21 rerun, lost by 20%)
 ```
 
 Two independent mechanisms are visible, and both are general rather than task-specific:
 
 1. **Warp counts keep being pushed toward 1** even when the domain minimum is 2 — the hard-edge
    filter only blocks a knob whose range *already touches* the wall, so `[2,4,8]` → add `1` is
-   still allowed. Three of the eight are this.
+   still allowed. Four of the nine are this, the newest being `EXPAND_NUM_WARPS` at 16:24 today.
 2. **`BLOCK_K`-shaped knobs get pushed to 8**, which for a `tl.dot` contraction dimension is
    illegal (`K >= 16`). `QKV_BLOCK_K` added 8 on the project's best candidate and the witness
    failed to compile, rejecting the whole expansion; `PV_BLOCK_K` did the same. The prompt was
@@ -102,11 +103,11 @@ the winning trial's params showed the opposite. The record is now **0-for-9** on
 
 ## What I am not proposing yet
 
-The obvious change — refuse `min`-direction expansion requests outright — is tempting at 0-for-8
+The obvious change — refuse `min`-direction expansion requests outright — is tempting at 0-for-9
 and I am **not** making it on this evidence:
 
-- **n=8 post-filter.** The single historical `min` win (`FUSED_BLOCK_N` added 16, and the best used
-  it) is pre-filter, so a blanket ban rests on eight observations.
+- **n=9 post-filter.** The single historical `min` win (`FUSED_BLOCK_N` added 16, and the best used
+  it) is pre-filter, so a blanket ban rests on nine observations.
 - **It would be the wrong shape of fix.** The two mechanisms above are specific and separately
   addressable: a warp-floor that checks the *domain minimum against the device* rather than
   against a literal, and a contraction-dim floor that the *directive* can respect because
