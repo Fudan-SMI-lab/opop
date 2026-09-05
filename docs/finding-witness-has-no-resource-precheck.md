@@ -53,39 +53,36 @@ The declared domains almost certainly contain a feasible point: 131072 / 101376 
 halving `ATTN_BLOCK_N` to 32, or dropping `ATTN_NUM_STAGES` from 2 to 1, would very likely fit.
 Nothing tried.
 
-## Scale: rare overall, but it has now happened twice — both in this run, both on "go bigger" rewrites
+## Scale: rare across all rejections, but it hits 43% of rewrites and nothing else
 
-Across all runs, `witness_default_failed` fires 72 times. Categorising the details:
+Across all runs, `witness_default_failed` fires 72 times, and only **4 of those events** (3 distinct
+candidates) are `OutOfResources`. Stated that way it looks negligible. Stated by *origin* it does
+not:
 
-| cause | n |
-|---|---|
-| correctness (mismatch, incl. the older bare "Output mismatch" wording) | 57 |
-| other runtime error | 13 |
-| **shared-memory / register `OutOfResources`** | **2** |
-
-Both resource cases are in `run-l3-43-20260905-091705`, and both are **rewrite children produced
-from a "the tile is blocked, go bigger" hypothesis**:
-
-| candidate | required | limit | ratio | its hypothesis |
+| candidate | required | ratio | origin | hypothesis |
 |---|---|---|---|---|
-| `cand-919059a0` | 131072 | 101376 | 1.29× | logical 256-row CTA from two 128-row groups |
-| `cand-2d0194cc` | 139264 | 101376 | 1.37× | `STATS_BLOCK_M=256` "to reach beyond the parent's shared-memory-blocked 128-row region" |
+| `cand-919059a0` | 131072 | 1.29× | **rewrite** | logical 256-row CTA from two 128-row groups |
+| `cand-2d0194cc` | 139264 | 1.37× | **rewrite** | `STATS_BLOCK_M=256` past the blocked region |
+| `cand-fe4af2fc` | 155648 | 1.54× | **rewrite** | fuse QK + online softmax + PV into one kernel |
 
-`cand-2d0194cc`'s default witness is `STATS_BLOCK_M: 256, STATS_NUM_WARPS: 8, …` — again the most
-expensive corner of its own declared space, and again 1.3–1.4× over the limit rather than wildly
-out.
+**3 of the 7 rewrite candidates produced in this run (43%) were rejected this way. Zero seeds, zero
+repairs, zero novelty candidates ever have been, in any run.** All three are in
+`run-l3-43-20260905-091705` — the first run whose analyst reports named a resource ceiling as the
+blocker — and all three defaults land 1.3–1.5× over the limit rather than wildly out.
 
-**This substantially strengthens the correlation argument I made when it was n=1.** I wrote then
-that "resource-hungry structures are precisely the ones a register-pressure hypothesis produces, so
-the failure mode is correlated with the most interesting rewrites rather than randomly
-distributed." Two of two instances are now exactly that, and both arrived within 45 minutes of each
-other in the first run whose analyst reports named a resource ceiling. It is still 2 of 72 overall,
-so the *rate* claim stays modest — but the selectivity is no longer speculative.
+That is the selectivity argument, now with a denominator. When it was n=1 I could only say the
+failure mode "is correlated with the most interesting rewrites"; the origin split makes it concrete.
+Structural rewrites are the only candidate class that proposes a *bigger* configuration than
+something already known to work, so they are the only class whose default lands over the line.
 
-Note also what the two share mechanically: a rewriter proposes a bigger tile, the parameterizer
-makes that tile the **default**, and the witness gate — which only ever tries the default and the
-minimal corner — hits the one configuration guaranteed to be worst-case for shared memory. The
-larger the hypothesis, the likelier the default is infeasible.
+Note the escalation across the three: 1.29× → 1.37× → 1.54×. The more ambitious the fusion, the
+further over. `cand-fe4af2fc` fuses three stages into one kernel at `FLASH_BLOCK_M=64,
+FLASH_BLOCK_N=64, FLASH_NUM_STAGES=3` and needs 155,648 B.
+
+What the two share mechanically: a rewriter proposes a bigger tile, the parameterizer makes that
+tile the **default**, and the witness gate — which only ever tries the default and the minimal
+corner — hits the one configuration guaranteed to be worst-case for shared memory. The larger the
+hypothesis, the likelier the default is infeasible.
 
 ## And on the second instance, repair failed — with its own fix falsifying its diagnosis
 
