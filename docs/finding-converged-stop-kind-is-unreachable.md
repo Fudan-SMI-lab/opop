@@ -68,6 +68,25 @@ frozen early, so the third round is always paid for even when the first two prod
 On L3:48 `fam-99aee6de` was 2.09 → 2.09 → 2.09 and still received a third round. At roughly
 30-40 min per round that is real budget, taken from families that were still moving.
 
+**And the third round has never paid off — 0 for 13.** Counting improving steps (>0.5%) across
+every recorded family history:
+
+| step | improved | flat |
+|---|---|---|
+| round 1 → round 2 | **4 of 13** (3.8%, 3.7%, 8.2%, 15.0%) | 9 |
+| round 2 → round 3 | **0 of 13** | 13 |
+
+Not one family in any run has improved on its third round. Combined with the unreachable
+`converged` verdict, that is the sharpest statement of the cost: the harness is structurally
+obliged to spend a round that has a 0-for-13 record, on every family, in every run — roughly
+1.5 h per run at ~22 min per round across four families.
+
+This strengthens the case for the fix rather than changing it: with `best_history` seeded, a
+family whose first two rounds gained less than `min_improvement_pct` would freeze at the right
+time and the dead third round would be skipped. Note the caveat below about a 2.1% re-tune swing
+against a 2.0% threshold still applies — but the 0-for-13 record means the risk of freezing one
+round *too early* is much smaller than the certainty of wasting one round *too late*.
+
 **The reported `stop_kind` is wrong.** Every family in every report reads
 `budget_exhausted`, which tells a reader "we ran out of time here, there may be more
 headroom" when the truth for six of these eleven is "three rounds produced no improvement".
