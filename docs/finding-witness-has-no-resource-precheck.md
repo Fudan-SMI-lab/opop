@@ -129,6 +129,36 @@ That moves this finding from "a ~3-minute efficiency item" to something with a m
 attempt 2 also misses, the rewrite is lost — and it is the *only* child of `fam-7f682a54`'s round
 that targeted the stats kernel.
 
+### Attempt 2 got it right, and derived the byte count exactly
+
+Recovered at 12:17:24, published at 12:19:53. The third diagnosis:
+
+> "The default witness fails while launching `_attention_stats_kernel`, **not the output kernel
+> addressed by the rejected repair**. For the reference head dimension 96, `D_PAD` is 128;
+> `STATS_BLOCK_M=256` makes Triton allocate a 256×128 fp32 Q tile plus a 128×16 fp32 K tile,
+> **exactly 139,264 bytes**, exceeding the 101,376-byte hardware limit."
+
+Checked: 256×128×4 = 131072, plus 128×16×4 = 8192, total **139264**. Exact to the byte. The fix
+changed `STATS_BLOCK_M` from 256 to 128 — the knob the arithmetic implicated, and the one I had
+identified independently as accounting for 94% of the requirement.
+
+So the repair loop *did* work, in three attempts, and the third attempt explicitly notes that the
+previous one addressed the wrong kernel. That is the retry budget being used for what it is for.
+Two observations survive:
+
+- **The information needed was derivable from the source all along** — head dim 96 → `D_PAD` 128,
+  times the declared default tile. The first two attempts did not do that arithmetic; the third
+  did. Nothing external was added between attempts except the knowledge that the previous fix
+  failed, which is exactly what option (4) would have supplied up front.
+- **Final cost**: 3 repair calls, ~10 min of agent wall, and the whole 3-attempt budget spent on a
+  default value. `_next_witness` retrying a feasible config would have cost one GPU job. The
+  candidate is published and tuning, so nothing was lost — but this is the expensive path to a
+  cheap outcome, and it exhausted the budget that exists for genuinely broken kernels.
+
+The witnesses passed at 30.1 and 43.0 ms, both far behind the family's 20.3 incumbent, so this
+candidate is unlikely to matter to the result. The finding is about the mechanism, not this
+candidate's prospects.
+
 ## What the harness did next — correctly
 
 `AGENT_CALL_STARTED repair cand-919059a0` at 11:18:20, one second after the rejection. The
