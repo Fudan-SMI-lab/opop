@@ -213,6 +213,24 @@ so this is precisely the case where the distinction matters, and `final_reeval_m
 samples, fresh process, fresh inputs, re-measuring exactly the θ_best config) is the number
 to wait for. I will not call this a result before it lands.
 
+## The full tile picture at 1.03h, 72 trials on this candidate
+
+| ATTN_BLOCK_M | trials | fail rate | measured latencies |
+|---|---|---|---|
+| 16 | 30 | 11/30 = 37% | 29.8 … 394.0 (17 values) |
+| 32 | 20 | 12/20 = 60% | 31.8, 38.0, 41.2, 54.5, 58.2, 77.5 |
+| 64 | 11 | 7/11 = 64% | **20.8**, 54.4, 64.0, 99.8 |
+| 128 | 11 | 7/11 = 64% | **14.2**, **19.8**, 59.4 |
+
+The regularity worth keeping: **larger tiles reach the fast region but fail far more often.**
+The two best results in the run both come from tiles ≥64, and so does a 64% failure rate.
+Every fast result is a large tile; not every large tile is fast.
+
+That is a coherent picture of a real optimum in a fragile region, rather than a measurement
+artifact — and it is also why the winning config's n=1 is hard to improve on within this
+budget: TPE has to land a large tile *and* the right surrounding values, and most attempts at
+the former fail outright.
+
 Until then the honest statement is: *a single trial measured 14.2 ms with stable per-sample
 timing and physically ordinary throughput; if it holds, it is the first L3:43 kernel to beat
 `torch.compile`'s tf32 path.* Not "L3:43 beats its baseline".
