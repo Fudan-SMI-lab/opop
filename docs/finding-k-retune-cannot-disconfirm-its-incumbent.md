@@ -18,8 +18,8 @@ unproductive. It is the default outcome.
 
 ## Measured
 
-Across every run, 108 reported bests. **2 came from a cached measurement**, and both are K
-re-tunes on the L3:21 09-05 run:
+Across every run, **3 reported bests came from a cached measurement** — all three are K
+re-tunes, two on L3:21 09-05 and one live on L3:43 09-05 (see the third instance below):
 
 | candidate | pre-expansion space | post-expansion space | identical? |
 |---|---|---|---|
@@ -120,9 +120,11 @@ failed, which is the real price of the expansion rather than the flat headline.
 
 ## Caveats
 
-- 2 of 108 is the count of reported bests that came from cache, not the count of cache hits
-  overall (those are far more common and entirely benign — most cached trials are not the
-  best).
-- Both instances are on one run. The mechanism is structural rather than statistical, so the
-  count matters less than the reasoning, but no other run has yet had a K expansion whose
-  incumbent got resampled as the best.
+- The count is of reported *bests* that came from cache, not of cache hits overall (those are
+  far more common and entirely benign — most cached trials are not the best).
+- The mechanism is structural rather than statistical, so the count matters less than the
+  reasoning: **every** K expansion that leaves the incumbent's knobs untouched will do this.
+  Three instances across two tasks now, and the L3:43 one was predicted before it was
+  observed.
+- `scripts/audit_cached_bests.py` prints the current tally; it grows as runs proceed, so the
+  number in this doc is a floor rather than a total.
