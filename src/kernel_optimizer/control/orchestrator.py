@@ -7,6 +7,7 @@ Every step is guarded by a step_key; replay()-known steps are skipped on resume.
 
 from __future__ import annotations
 
+import ast
 import csv
 import hashlib
 import io
@@ -49,6 +50,7 @@ from kernel_optimizer.models.core import (
 from kernel_optimizer.models.reports import BottleneckReport, TuningStats
 from kernel_optimizer.paramspace import materializer
 from kernel_optimizer.paramspace.guard import check_config
+from kernel_optimizer.paramspace.triton_lint import jit_kernel_names
 from kernel_optimizer.paramspace.validation import (
     SpaceAccepted,
     SpaceValidator,
@@ -759,6 +761,20 @@ class Orchestrator:
             return
         crun.stats = self.deps.stats_analyzer.analyze(crun.space, crun.trials)
         self.store.append("STATS_DONE", {"stats": crun.stats.model_dump()})
+        unlaunched = self._unlaunched_kernels(crun)
+        if unlaunched:
+            # Improvement M: a kernel defined but never launched across the WHOLE tuning
+            # budget is dead code, and the budget measured something other than the
+            # advertised optimization. Deterministic (compares defined @triton.jit names
+            # against profile.kernel_names), so it is journalled as fact rather than left
+            # to the analyst -- which on L3:21 cand-c0b3b7cd proposed the same
+            # inference-BN fusion again after 31 trials had all timed the fallback.
+            self.store.append("KERNELS_NEVER_LAUNCHED", {
+                "candidate_id": crun.candidate.candidate_id,
+                "space_id": crun.space.space_id,
+                "never_launched": sorted(unlaunched),
+                "n_trials_measured": len(crun.trials),
+            })
         if crun.best_ms is None:
             return  # nothing correct; analysis would have no signal
         try:
@@ -768,6 +784,7 @@ class Orchestrator:
                     trials_csv=self._trials_csv(crun), device=self.cfg.device,
                     candidate_id=crun.candidate.candidate_id,
                     eval_semantics=self.eval_semantics,
+                    never_launched_kernels=sorted(unlaunched),
                 )
             )
             crun.report = outcome.output
@@ -926,7 +943,8 @@ class Orchestrator:
         names = crun.space.param_names() if crun.space else []
         writer = csv.writer(buf)
         writer.writerow(["trial_id", *names, "status", "failure_kind", "latency_mean_ms",
-                         "latency_std_ms", "n_regs", "n_spills", "shared_bytes"])
+                         "latency_std_ms", "n_regs", "n_spills", "shared_bytes",
+                         "kernels_launched"])
         for t in crun.trials:
             writer.writerow([
                 t.trial_id,
@@ -937,8 +955,37 @@ class Orchestrator:
                 t.profile.n_regs if t.profile else "",
                 t.profile.n_spills if t.profile else "",
                 t.profile.shared_bytes if t.profile else "",
+                # Improvement M: which kernels this trial ACTUALLY launched. Without
+                # this the analyst cannot tell a measured optimization from a measured
+                # fallback, and will keep proposing a fusion that is already dead code.
+                " ".join(t.profile.kernel_names) if t.profile and t.profile.kernel_names
+                else "",
             ])
         return buf.getvalue()
+
+    def _unlaunched_kernels(self, crun: CandidateRun) -> set[str]:
+        """`@triton.jit` kernels defined in the candidate but launched by NO trial.
+
+        Deterministic dead-code evidence: if a name never appears in any trial's
+        `profile.kernel_names` across the whole budget, the tuning measured something
+        other than that kernel. Returns an empty set when no trial carries kernel names
+        (a CUDA backend, or profiling unavailable) so absence of data never reads as
+        absence of launches.
+        """
+        launched: set[str] = set()
+        any_names = False
+        for t in crun.trials:
+            names = t.profile.kernel_names if t.profile else None
+            if names:
+                any_names = True
+                launched |= set(names)
+        if not any_names:
+            return set()
+        try:
+            defined = jit_kernel_names(ast.parse(crun.source))
+        except SyntaxError:
+            return set()
+        return defined - launched
 
     # ------------------------------------------------------------- loop C: rewrite
 

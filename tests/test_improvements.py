@@ -2358,3 +2358,102 @@ class ModelNew:
     hard, warns = lint_triton_source(src)
     assert hard == []
     assert len(_MODE_WARN(warns)) == 1
+
+
+# --- improvement M: the harness detects a defined-but-never-launched kernel ----------
+# The analyst re-proposed the same inference-BN fusion AFTER 31 trials had all timed the
+# fallback, because nothing told it which kernels ran. This check is deterministic
+# (defined @triton.jit names vs profile.kernel_names), so it is journalled as fact.
+
+def _crun_stub(source, kernel_names_per_trial):
+    from kernel_optimizer.models.core import (
+        Candidate, LatencyStats, ParameterSpace, ParamSet, ProfileRecord, TrialRecord,
+    )
+    from kernel_optimizer.control.orchestrator import CandidateRun
+    cand = Candidate(candidate_id="cand-test", family_id="fam-test", origin="seed",
+                     backend="triton", source_sha="0" * 8, structural_signature="s")
+    space = ParameterSpace(space_id="sp-test", candidate_id="cand-test", version=1,
+                           source_sha="0" * 8, domains=[], constraints=[])
+    trials = []
+    for i, names in enumerate(kernel_names_per_trial):
+        trials.append(TrialRecord(
+            trial_id=f"tr-{i}", candidate_id="cand-test", space_id="sp-test",
+            params=ParamSet(values={}), status="complete",
+            latency_ms=LatencyStats(mean=1.0, std=0.0, min=1.0, max=1.0, n_samples=20),
+            profile=ProfileRecord(kernel_names=list(names)) if names is not None else None,
+        ))
+    crun = CandidateRun(candidate=cand, source=source)
+    crun.space = space
+    crun.trials = trials
+    return crun
+
+
+_TWO_KERNEL_SRC = """
+import triton
+import triton.language as tl
+PARAMS = {"BLOCK_X": 128}
+@triton.jit
+def _live(x_ptr, BLOCK_X: tl.constexpr):
+    return tl.load(x_ptr)
+@triton.jit
+def _dead(x_ptr, BLOCK_X: tl.constexpr):
+    return tl.load(x_ptr)
+"""
+
+
+def _unlaunched(source, per_trial):
+    from kernel_optimizer.control.orchestrator import Orchestrator
+    crun = _crun_stub(source, per_trial)
+    return Orchestrator._unlaunched_kernels(None, crun)
+
+
+def test_unlaunched_kernels_names_the_dead_one():
+    dead = _unlaunched(_TWO_KERNEL_SRC, [["_live"]] * 31)
+    assert dead == {"_dead"}
+
+
+def test_unlaunched_kernels_silent_when_all_run():
+    assert _unlaunched(_TWO_KERNEL_SRC, [["_live"], ["_live", "_dead"]]) == set()
+
+
+def test_unlaunched_kernels_needs_no_profile_data_to_stay_silent():
+    # A CUDA-backend candidate carries no kernel names at all. Absence of data must
+    # never read as absence of launches, or every such candidate is falsely flagged.
+    assert _unlaunched(_TWO_KERNEL_SRC, [None, None]) == set()
+    assert _unlaunched(_TWO_KERNEL_SRC, [[], []]) == set()
+
+
+def test_unlaunched_kernels_tolerates_unparseable_source():
+    assert _unlaunched("def broken(:\n", [["_live"]]) == set()
+
+
+def test_trials_csv_carries_kernels_launched():
+    from kernel_optimizer.control.orchestrator import Orchestrator
+    crun = _crun_stub(_TWO_KERNEL_SRC, [["_live", "_dead"]])
+    csv_text = Orchestrator._trials_csv(None, crun)
+    assert "kernels_launched" in csv_text.splitlines()[0]
+    assert "_live _dead" in csv_text
+
+
+def test_analyst_seeds_dead_kernel_note_only_when_there_is_one():
+    from kernel_optimizer.agents.modules import AnalystInputs, BottleneckAnalystAgent
+    from kernel_optimizer.models.core import DeviceLimits
+    from kernel_optimizer.models.reports import TuningStats
+
+    class _SB:
+        def __init__(self): self.files = {}
+        def write_input(self, path, text): self.files[path] = text
+
+    stats = TuningStats(candidate_id="c", space_id="s", n_complete=1, n_fail=0)
+    common = dict(task=None, candidate_source="x = 1\n", stats=stats, trials_csv="",
+                  device=DeviceLimits())
+    agent = BottleneckAnalystAgent.__new__(BottleneckAnalystAgent)
+
+    sb = _SB()
+    agent.seed_sandbox(AnalystInputs(**common, never_launched_kernels=["_dead"]), sb)
+    assert "tuning/never_launched_kernels.md" in sb.files
+    assert "_dead" in sb.files["tuning/never_launched_kernels.md"]
+
+    sb2 = _SB()
+    agent.seed_sandbox(AnalystInputs(**common), sb2)
+    assert "tuning/never_launched_kernels.md" not in sb2.files

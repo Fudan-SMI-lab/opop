@@ -111,7 +111,7 @@ def _mode_gated_kernel_branches(tree: ast.Module) -> list[str]:
     33 such branches on disk are that case. Branching on `.training` is legal, so this
     is a WARNING and never a hard error.
     """
-    jit_kernels = _jit_kernel_names(tree)
+    jit_kernels = jit_kernel_names(tree)
     findings: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.If):
@@ -144,7 +144,7 @@ def _mode_gated_kernel_branches(tree: ast.Module) -> list[str]:
     return findings
 
 
-def _jit_kernel_names(tree: ast.Module) -> set[str]:
+def jit_kernel_names(tree: ast.Module) -> set[str]:
     """Names of module-level functions decorated with `@triton.jit` (or `@jit`)."""
     names: set[str] = set()
     for node in tree.body:

@@ -171,7 +171,7 @@ def main() -> int:
           and "warnings.extend(_mode_gated_kernel_branches(tree))" in lint,
           "reaches the agent via soft_check; implementing both modes stays legal")
     check("mode-gate lint resolves real jit kernels",
-          "_jit_kernel_names(tree)" in lint and "if name in jit_kernels:" in lint,
+          "jit_kernel_names(tree)" in lint and "if name in jit_kernels:" in lint,
           "counting bare Subscript calls fired on 10.8% of candidates; this fires on 0.5%")
     # Live regression: the detector must still fire on the candidate that motivated it.
     from kernel_optimizer.paramspace.triton_lint import lint_triton_source
@@ -181,6 +181,24 @@ def main() -> int:
         fires = [w for w in _warns if "if ...training:" in w]
         check("mode-gate lint fires on cand-c0b3b7cd", len(fires) == 1,
               "the known true positive is still detected" if fires else "REGRESSION: no longer fires")
+
+    # The deterministic half: the harness itself must notice a kernel that never ran, so
+    # the analyst is told as fact rather than having to infer it (it did not: it
+    # re-proposed the same fusion after 31 trials had all timed the fallback).
+    check("unlaunched kernels journalled",
+          '"KERNELS_NEVER_LAUNCHED"' in orch and "def _unlaunched_kernels" in orch,
+          "defined @triton.jit names compared against profile.kernel_names")
+    check("unlaunched check cannot false-positive on missing data",
+          "if not any_names:" in orch,
+          "a CUDA candidate carries no kernel names; absence of data is not absence of launches")
+    check("trials.csv exposes kernels_launched",
+          '"kernels_launched"' in orch and "t.profile.kernel_names" in orch,
+          "the analyst can distinguish a measured optimization from a measured fallback")
+    check("analyst is handed the dead-kernel fact",
+          "never_launched_kernels" in mods
+          and "tuning/never_launched_kernels.md" in mods
+          and "STOP AND READ" in mods,
+          "seeded + prompted only when non-empty")
 
     width = max(len(n) for _, n, _ in RESULTS)
     bad = 0

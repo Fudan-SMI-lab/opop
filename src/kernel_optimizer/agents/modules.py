@@ -4,7 +4,7 @@ novelty, repair. Each is thin: sandbox seeding + prompt + output schema."""
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
 
@@ -443,6 +443,8 @@ class AnalystInputs:
     # Attribution only (see RepairInputs.candidate_id).
     candidate_id: str | None = None
     eval_semantics: dict | None = None
+    # Improvement M: @triton.jit kernels defined in the source that NO trial launched.
+    never_launched_kernels: list[str] = field(default_factory=list)
 
 
 class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
@@ -455,8 +457,35 @@ class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
         sb.write_input("tuning/trials.csv", inputs.trials_csv)
         sb.write_input("docs/device.md", _device_doc(inputs.device))
         sb.write_input("task/eval_semantics.md", _eval_semantics_doc(inputs.eval_semantics))
+        if inputs.never_launched_kernels:
+            sb.write_input(
+                "tuning/never_launched_kernels.md",
+                "# Kernels that NEVER ran\n\n"
+                "These `@triton.jit` kernels are defined in `candidate/source.py` but were "
+                "launched by **zero** trials in the entire tuning budget (measured from each "
+                "trial's compiled-kernel metadata, not inferred):\n\n"
+                + "".join(f"- `{k}`\n" for k in inputs.never_launched_kernels)
+                + "\nThey are DEAD CODE, so every latency number in `tuning/trials.csv` "
+                "measures the other path. If one of these is the candidate's advertised "
+                "optimization, that optimization has never been evaluated and the tuning "
+                "result says nothing about it. The usual cause is a guard the harness's "
+                "fixed run mode never selects (see `task/eval_semantics.md`) — check the "
+                "`kernels_launched` column in `tuning/trials.csv` to see what did run. "
+                "Say so explicitly in your summary, and make your first hypothesis "
+                "moving the optimization onto the live path.\n",
+            )
 
     def render_prompt(self, inputs: AnalystInputs, sb: Sandbox) -> str:
+        dead = ""
+        if inputs.never_launched_kernels:
+            dead = (
+                "\n\nSTOP AND READ `tuning/never_launched_kernels.md` FIRST. The harness "
+                "measured that "
+                + ", ".join(f"`{k}`" for k in inputs.never_launched_kernels)
+                + " was launched by ZERO trials, so it is dead code and every latency "
+                "number below measures a different path. Address that before any "
+                "resource analysis: an unreached kernel is not a slow kernel."
+            )
         return """A kernel candidate was tuned over its parameter space. These five
 files already exist in your working directory — read them with your file tools
 before answering; do NOT assume any are missing (a stale index may hide them,
@@ -466,7 +495,8 @@ so read by path):
   sits at a boundary of the tried range (`at_boundary` + direction), effect size,
   failure rates per value, resource usage (registers/shared memory/spills) at the
   best config, and failure clusters
-- `tuning/trials.csv` — the full trial log (params, status, latency, resources)
+- `tuning/trials.csv` — the full trial log (params, status, latency, resources,
+  and `kernels_launched`: which Triton kernels each trial actually ran)
 - `docs/device.md` — hardware limits
 - `task/eval_semantics.md` — the run mode the harness evaluates the reference in
   (train vs eval) and the state of each normalization layer
@@ -524,7 +554,7 @@ Answer with JSON matching:
    "predicted_gain_pct": <number or null>, "evidence": "..."}],
  "hypotheses": [{"id": "H1", "change": "...", "expected_effect": "...", "risk": "..."}],
  "suggested_action": "tune_more|rewrite|stop"}
-"""
+""" + dead
 
 
 # --- 4. structure rewriter --------------------------------------------------------
