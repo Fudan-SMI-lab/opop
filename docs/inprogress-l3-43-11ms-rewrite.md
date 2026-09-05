@@ -130,5 +130,35 @@ value; none of the three could have produced this alone.
   because its child is faster and densely reproduced.
 - Whether `ATTN_BLOCK_M=256` helps. Every sub-15 config here uses 128, and `QKV_M_CTAS`
   serializes rather than enlarging the tile — so this rewrite *sidestepped* the 256 question
-  rather than answering it. The controlled 128-vs-256 comparison the record lacks
-  (`result-row-tile-is-monotone-and-k-supplies-it.md`) is still missing.
+  rather than answering it. **Resolved separately**: 256 rows × 128 `D_PAD` × 4 B = 131072 exceeds
+  this device's 101376 B limit, so the comparison is impossible here
+  (`result-row-tile-is-monotone-and-k-supplies-it.md`).
+
+## Cross-run context at 3.14h: three candidates now clear the bar, where five runs managed one
+
+| run | candidates tuned | best | under 18.40 | published `final_reeval` |
+|---|---|---|---|---|
+| 0902-140823 | 4 | 29.1 | 0 | 30.1 |
+| 0902-213608 | 0 | — | 0 | — |
+| 0903-020233 | 11 | 29.3 | 0 | 31.1 |
+| 0903-145357 | 12 | 19.4 | 0 | 20.6 |
+| 0904-093730 | 14 | 17.9 | **1** (17.9) | 19.1 |
+| **0905-091705** | 9 | **11.0** | **3** (11.0, 14.2, 14.6) | *pending* |
+
+Two things worth separating here.
+
+**The improvement is not marginal.** Across five prior runs and 41 tuned candidates, exactly one
+ever measured below 18.40 ms, and its re-eval came in at 19.1 — *above* the bar. This run has three
+below it at 3.14h with 9 candidates tuned, and the leader is 39% faster than the best any previous
+run achieved.
+
+**But the re-eval gap is exactly what sank the previous attempt.** 0904's 17.9 `tuned_ms` became
+19.1 `final_reeval_ms` — a +6.7% drift that turned a bar-clearing number into a miss. That is the
+single most relevant precedent for the 11.0, and it is why this document still says provisional.
+The arithmetic: at +6.7% the 11.0 becomes 11.7 and still clears comfortably; the margin here is
+1.67× rather than 1.03×, which is the difference between a verdict robust to the gap and one
+decided by it.
+
+All three sub-bar numbers belong to `fam-4aea322a` — the family seeded by the candidate that was
+rejected below the noise floor, repaired, and republished. No other family has produced anything
+under 19.6.
