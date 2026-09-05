@@ -120,6 +120,47 @@ Related: `finding-failure-messages-must-carry-gate-criteria.md` made the same ar
 details and it worked — the fix changed no verdicts and made a 190-trial pattern legible. This is
 the same shape one level up, with the caveat that (2) is not merely observational.
 
+## Outcome: the rewrite tested the hypothesis directly, and the 8.5% claim was wrong
+
+`cand-ec53c32b` tuned to **19.6 ms** at 11:41 — a real 12.9% gain on the family (22.5 → 19.6),
+so the rewrite was worth making. But it also unblocked `BLOCK_N=128`, which is exactly the
+prediction under scrutiny, and the answer is unambiguous:
+
+| BLOCK_N | parent `cand-6476b4cb` | rewrite `cand-ec53c32b` |
+|---|---|---|
+| 16 | 23.4 (4 complete) | 20.0 (5 complete) |
+| 32 | **22.5** (6) | 19.7 (4) |
+| 64 | 25.2 (1) | **19.6** (6) |
+| 128 | **0 of 5 completed** | **25.9** (1 of 3 completed) |
+
+The staging change worked mechanically — `BLOCK_N=128` went from never running to running — and
+at 25.9 ms it is **32% slower** than the same kernel at `BLOCK_N=64`. The predicted "8.5% gain
+from unblocking 128" is not merely unmet; the sign is wrong.
+
+Why, visible in the profile of that one trial:
+
+```
+BLOCK_N=128:  shared 81920 (down from 90112)  regs 255  spills 642
+BLOCK_N=64:   shared 90112                    regs 255  spills 2
+```
+
+The rewrite did free shared memory at the large tile — 8 KiB less — and the cost simply **moved
+to registers**: 642 spills against 2. So the shared-memory wall the analyst identified was real,
+and clearing it exposed a register wall immediately behind it. "Blocked by shared memory" was
+true and useless: the value was blocked by *both*, and relieving one changed nothing about the
+outcome.
+
+This is the cleanest available demonstration of the point above. The bests series
+(23.4 → 22.5 → 25.2, optimum at 32) predicted that 128 would be bad; the medians series
+(29.4 → 27.55 → 25.2, monotone improving) predicted it would be good; **the experiment agreed
+with the bests.** Had `n_complete_by_value` been in the report, the 25.2-from-one-trial point
+would have carried visibly less weight and the monotone median trend would have looked like what
+it was — three numbers of very unequal quality.
+
+The rewrite still paid for itself, which is worth keeping in view: 12.9% on the family from
+better staging at the tile sizes that *do* fit. A hypothesis can be wrong about its headline
+number and still produce a useful change, and reporting only the 19.6 would hide both halves.
+
 ## Contrast with the register case, which was well-founded
 
 On `cand-cb7be6b4` the analyst's register-pressure diagnosis had 15 completed trials at
