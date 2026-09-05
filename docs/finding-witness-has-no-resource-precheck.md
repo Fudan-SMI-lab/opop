@@ -202,6 +202,40 @@ also now clearly better than repair for this failure class:
 
 Recorded, with the repair outcome for attempt 2 still to come.
 
+## Third instance: repair succeeded in one attempt, on a different mechanism
+
+`cand-fe4af2fc`, rejected 12:44:30 at 155,648 B, recovered 12:45:48 and published 12:47:58 — one
+attempt, 78 seconds. Its diagnosis:
+
+> "The default Triton launch used `FLASH_NUM_STAGES=3` with 64×64 attention tiles, causing
+> compilation to allocate 155,648 bytes of shared memory, above the GPU's 101,376-byte limit."
+
+and the fix reduced the default `FLASH_NUM_STAGES` from 3 to 1.
+
+Note this is a genuinely **different** cause from the previous two, and repair got it right first
+time here:
+
+| candidate | the knob at fault | what it controls |
+|---|---|---|
+| `cand-919059a0` | `ATTN_ROWS_PER_GROUP` | tile *size* |
+| `cand-2d0194cc` | `STATS_BLOCK_M` | tile *size* (after one wrong guess at a stage count) |
+| `cand-fe4af2fc` | `FLASH_NUM_STAGES` | pipeline *depth* — a multiplier on staged buffers |
+
+`num_stages` multiplies the staged K/V buffers, so 3 → 1 divides that term by three; a large and
+plausible reduction. Ironically the previous candidate's *first* repair attempt guessed a stage
+count and was wrong (`OUTPUT_NUM_STAGES`, which moved nothing); here a stage count was genuinely the
+cause. Both guesses were plausible from the error text alone, which is exactly the point of the
+"report the failing term" proposal — the agent is choosing between tile-size and stage-depth
+explanations with no per-term data, and has now been right and wrong once each.
+
+Running tally for the repair path on this failure class: **3 candidates, 5 repair calls, all three
+recovered** (1 attempt, 3 attempts, 1 attempt). Nothing is lost to it; the cost is agent wall and, in
+the middle case, an entire 3-attempt budget.
+
+The witnesses passed at 21.3 and 33.8 ms — and 21.3 is notable, because this family's incumbent is
+28.0. A *witness* config already beats the family's tuned best by 24%, before any tuning of this
+candidate has happened.
+
 ## Follow-up: repair recovered it in 2 minutes, and its fix confirms the diagnosis
 
 `REPAIR_PRODUCED` at 11:20:22 — 2m02s after the rejection — and the space republished at
