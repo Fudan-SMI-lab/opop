@@ -1,4 +1,17 @@
-# Result: every rewrite round on L3:43 09-05 improved its family, 3 for 3
+# Result: every rewrite round on L3:43 09-05 improved its family, 4 for 4 — then round 2 broke the streak
+
+**Superseded in part.** The 4-for-4 record below is round 1 for all four families and stands as
+recorded. Round 2 on `fam-4aea322a` then failed twice: `cand-aa016dfe` at 11.8 and `cand-45c3fd7d`
+at 22.0, both `improved_family: False` against the 11.0 incumbent. So the streak is 4 of 6, and the
+one refuted case is documented in detail in `result-analyst-hypothesis-refuted-by-control.md` —
+worth reading alongside this file, because it is the *stronger* piece of evidence about the paper's
+claim despite being the negative result.
+
+Why the negative one carries more weight: the four wins below show that rewriting helps, which is
+compatible with the rewrites succeeding for reasons unrelated to the tuning feedback that prompted
+them. The round-2 failure had a quantified prediction (+8.0%), a verified mechanism (256 rows
+became reachable and won *inside* the child), and the parent's own 21 trials as a same-run control —
+so it isolates the analyst's *inference* as the thing that failed, which no win here does.
 
 `run-l3-43-20260905-091705` at 2.66h of 12h. Recorded because the *consistency* is new — earlier
 L3:43 runs had families that sat flat across all three rounds — and because each gain has a
