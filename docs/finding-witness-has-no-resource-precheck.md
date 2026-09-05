@@ -53,36 +53,47 @@ The declared domains almost certainly contain a feasible point: 131072 / 101376 
 halving `ATTN_BLOCK_N` to 32, or dropping `ATTN_NUM_STAGES` from 2 to 1, would very likely fit.
 Nothing tried.
 
-## Scale: rare across all rejections, but it hits 43% of rewrites and nothing else
+## Scale: rare across all rejections, but it hits 57% of rewrites and nothing else
 
-Across all runs, `witness_default_failed` fires 72 times, and only **4 of those events** (3 distinct
-candidates) are `OutOfResources`. Stated that way it looks negligible. Stated by *origin* it does
-not:
+Across all runs, `witness_default_failed` fires 72 times, and only a handful of those events are
+`OutOfResources`. Stated that way it looks negligible. Stated by *origin* it does not:
 
-| candidate | required | ratio | origin | hypothesis |
+| candidate | required | ratio | family | hypothesis |
 |---|---|---|---|---|
-| `cand-919059a0` | 131072 | 1.29× | **rewrite** | logical 256-row CTA from two 128-row groups |
-| `cand-2d0194cc` | 139264 | 1.37× | **rewrite** | `STATS_BLOCK_M=256` past the blocked region |
-| `cand-fe4af2fc` | 155648 | 1.54× | **rewrite** | fuse QK + online softmax + PV into one kernel |
+| `cand-919059a0` | 131072 | 1.29× | fam-4aea322a | logical 256-row CTA from two 128-row groups |
+| `cand-2d0194cc` | 139264 | 1.37× | fam-7f682a54 | `STATS_BLOCK_M=256` past the blocked region |
+| `cand-fe4af2fc` | 155648 | 1.54× | fam-ea7bc8bb | fuse QK + online softmax + PV into one kernel |
+| `cand-2cda23e2` | **221184** | **2.18×** | fam-ea7bc8bb | `QK_ROW_GROUP=256` + `SOFTMAX_BLOCK=1024`, 4 stages |
 
-**3 of the 7 rewrite candidates produced in this run (43%) were rejected this way. Zero seeds, zero
-repairs, zero novelty candidates ever have been, in any run.** All three are in
+**4 of the 7 rewrite candidates produced in this run (57%) were rejected this way. Zero seeds, zero
+repairs, zero novelty candidates ever have been, in any run.** Every one is in
 `run-l3-43-20260905-091705` — the first run whose analyst reports named a resource ceiling as the
-blocker — and all three defaults land 1.3–1.5× over the limit rather than wildly out.
+blocker.
 
-That is the selectivity argument, now with a denominator. When it was n=1 I could only say the
-failure mode "is correlated with the most interesting rewrites"; the origin split makes it concrete.
+Per family:
+
+| family | rewrites | OOM-rejected |
+|---|---|---|
+| fam-4aea322a | 2 | 1 |
+| fam-92e7c576 | 1 | 0 |
+| fam-7f682a54 | 2 | 1 |
+| **fam-ea7bc8bb** | 2 | **2 — both** |
+
+That is the selectivity argument with a denominator. When it was n=1 I could only say the failure
+mode "is correlated with the most interesting rewrites"; the origin split makes it concrete.
 Structural rewrites are the only candidate class that proposes a *bigger* configuration than
 something already known to work, so they are the only class whose default lands over the line.
 
-Note the escalation across the three: 1.29× → 1.37× → 1.54×. The more ambitious the fusion, the
-further over. `cand-fe4af2fc` fuses three stages into one kernel at `FLASH_BLOCK_M=64,
-FLASH_BLOCK_N=64, FLASH_NUM_STAGES=3` and needs 155,648 B.
+Note the monotone escalation: **1.29× → 1.37× → 1.54× → 2.18×**. The more ambitious the
+restructuring, the further over the limit its default sits. `cand-2cda23e2` — which combines a
+256-row QK group, a 1024-wide softmax and 4 pipeline stages — needs 221,184 B, more than double the
+device's capacity, and it is the only candidate in the run whose *entire family's* rewrite output
+was rejected this way.
 
-What the two share mechanically: a rewriter proposes a bigger tile, the parameterizer makes that
-tile the **default**, and the witness gate — which only ever tries the default and the minimal
-corner — hits the one configuration guaranteed to be worst-case for shared memory. The larger the
-hypothesis, the likelier the default is infeasible.
+What these share mechanically: a rewriter proposes a bigger tile, the parameterizer makes that tile
+the **default**, and the witness gate — which only ever tries the default and the minimal corner —
+hits the one configuration guaranteed to be worst-case for shared memory. The larger the hypothesis,
+the likelier the default is infeasible.
 
 ## And on the second instance, repair failed — with its own fix falsifying its diagnosis
 
