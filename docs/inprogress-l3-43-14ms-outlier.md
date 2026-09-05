@@ -180,15 +180,38 @@ Note the register story is not monotonic: the 3rd best (30.1 ms) uses 121 regist
    | 30.1 … 30.9 | 16 | measured (6 trials) |
    | 31.8 | 32 | measured |
 
-   So the 2x gap is a property of the **tile size**, not of one lucky trial: the large tile
-   wins by 33–52% from two different surrounding configurations, one of which spills no
-   registers at all. The "measurement skipped work" hypothesis no longer has a leg to stand
-   on — a stale-buffer artifact would not scale with an unrelated knob.
+   **Then a third measured 128-tile trial landed at 59.4 ms, and a 64-tile trial at 20.8** —
+   so my "it is the tile size" reading was too quick. The full measured picture, uncached
+   only:
 
-The remaining uncertainty is narrower than it was: whether the **14.2** specifically holds,
-or whether the honest number for this candidate is nearer 19.8. `final_reeval_ms` re-measures
-exactly the θ_best config in a fresh process, so it decides that — and note it re-measures the
-14.2 config, which is the one with 12 spills.
+   | ms | ATTN_BLOCK_M | ATTN_BLOCK_N | WARPS | STAGES | QKV_BLOCK_M | regs | spills |
+   |---|---|---|---|---|---|---|---|
+   | **14.2** | 128 | 64 | 8 | 1 | 128 | 255 | 12 |
+   | 19.8 | 128 | 16 | 8 | 2 | 64 | 213 | 0 |
+   | 20.8 | **64** | 64 | 4 | 1 | 64 | 255 | 0 |
+   | 29.8 | 16 | 16 | 2 | 1 | 64 | 255 | 34 |
+   | 59.4 | **128** | 16 | — | 4 | — | — | — |
+
+   `ATTN_BLOCK_M=128` alone gives 14.2, 19.8 **and** 59.4. `ATTN_BLOCK_M=64` gives 20.8. So
+   the tile is necessary-ish but nowhere near sufficient, and `ATTN_NUM_STAGES` does not
+   isolate it either — at large tiles, `STAGES=1` spans 14.2 to 99.8.
+
+## Where this actually leaves the number
+
+**What is now settled:** the sub-20 ms region is **real and reachable by more than one
+configuration**. Three independently measured trials beat the 29.8 ms cluster (14.2, 19.8,
+20.8), from three different parameter vectors, with register counts of 255/213/255 and spills
+of 12/0/0. A stale-buffer or skipped-work artifact would not reproduce across unrelated knob
+settings, so **the "measurement skipped work" hypothesis is out.**
+
+**What is not settled:** whether **14.2 specifically** is right, or whether the honest figure
+for this candidate is nearer 19.8–20.8. That single config is still n=1, it is the one with 12
+register spills, and no other measured point comes within 5.6 ms of it.
+
+Either way L3:43 would clear its 18.40 ms bar on the 14.2 config and *miss* it at 19.8 —
+so this is precisely the case where the distinction matters, and `final_reeval_ms` (100
+samples, fresh process, fresh inputs, re-measuring exactly the θ_best config) is the number
+to wait for. I will not call this a result before it lands.
 
 Until then the honest statement is: *a single trial measured 14.2 ms with stable per-sample
 timing and physically ordinary throughput; if it holds, it is the first L3:43 kernel to beat
