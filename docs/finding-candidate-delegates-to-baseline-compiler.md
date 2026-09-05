@@ -72,6 +72,16 @@ tracer, and **0 of the KernelBench reference files** do. There is no legitimate 
 The rule is also stated in the contract's own terms — eager torch ops around a kernel stay
 allowed; a compiler or tracer does not.
 
+**The third gap, found by asking which agents were gated at all.** After wiring the two checks
+into the generator, rewriter, novelty and repair agents, an inventory showed the
+**parameterizer** had no static gate — the only code-producing agent without one. That is the
+worst place to omit it: the parameterizer *rewrites the kernel body*, and its output is the source
+that actually gets tuned, measured and reported. So a violation that reached it, or that it
+introduced while rewriting, was never checked again before 40 GPU trials were spent. It is also
+the second gap found in this same method — `seed_sandbox` was missing `triton_pitfalls.md`
+(`finding-parameterizer-lacks-triton-pitfalls-doc.md`). Now gated, with an inventory test so a
+future agent cannot be added without one.
+
 **The backend-label loophole, closed at the same time.** `check_output` linted only files whose
 candidate declared `backend == "triton"`. The label is the agent's own free-text choice, so a
 kernel-less file declaring `backend: "cuda"` would have skipped the check entirely. Both observed
@@ -89,8 +99,13 @@ nothing.
   specific, checkable case of delegating to *the measured baseline*.
 - **It is agent-side, so it takes effect immediately**, including on the running L3:21 rerun
   (`memory: opop-v2-worker-vs-driver-fix-propagation`). `cand-d086960b` was already published
-  before the second check landed, so it may still finish its 40 trials in this run; the fix stops
-  the next such candidate at generation, repair, rewrite, and novelty.
+  before the checks landed and **finished its tuning at 18.7 ms with `improved_family: true`** —
+  it is the anchor of its own family (`fam-b194f76d`), so that family is contaminated for the rest
+  of this run and its rewrites will inherit a compiled-graph parent. The other delegating seed
+  (`cand-7e87ed89`, zero kernels) was still mid-parameterization when the checks landed, so it
+  should now be blocked. The two clean seeds (`cand-a21b6653`, `cand-af603097`) each define a real
+  kernel. **This run's L3:21 number will therefore need reading with care**: if the final best
+  comes from `fam-b194f76d`, it is not a valid result and I will say so rather than report it.
 - **It does not retroactively invalidate any completed result.** The 2 affected candidates are
   both in this one run, and the L3:43 result verified an hour earlier
   (`result-l3-43-973ms-round-three-win.md`, 10.2 ms / 1.804×) uses three genuine Triton kernels

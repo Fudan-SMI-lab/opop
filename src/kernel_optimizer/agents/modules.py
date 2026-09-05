@@ -522,7 +522,16 @@ Answer with JSON:
     def check_output(self, output: ParameterizationResult, sb: Sandbox) -> str | None:
         if not output.space.params:
             return "space.params is empty; declare at least two tunable parameters"
-        return _files_exist_check([output.file], sb)
+        missing = _files_exist_check([output.file], sb)
+        if missing:
+            return missing
+        # The parameterizer REWRITES the kernel body, and its output is the source
+        # that actually gets tuned and reported — yet it was the only Triton-writing
+        # agent with no static gate. So a contract violation that reached it (or that
+        # it introduced while rewriting) was never checked again before 40 GPU trials
+        # were spent on it. Same reason it needed triton_pitfalls.md:
+        # finding-parameterizer-lacks-triton-pitfalls-doc.md.
+        return _triton_lint_check([output.file], sb)
 
 
 # --- 3. bottleneck analyst -------------------------------------------------------

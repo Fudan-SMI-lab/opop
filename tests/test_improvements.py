@@ -2918,3 +2918,65 @@ def test_plain_torch_ops_around_a_kernel_are_still_allowed():
     unrelated = _WITH_KERNEL.replace("PARAMS = {\"BLOCK\": 128}",
                                      "PARAMS = {\"BLOCK\": 128}\n_R = re.compile('x')")
     assert delegates_to_baseline_compiler(unrelated) is None
+
+
+def test_parameterizer_output_is_statically_gated():
+    """The parameterizer rewrites the body that actually gets tuned and reported.
+
+    It was the only code-producing agent whose check_output did not run the static
+    check, so a contract violation that reached it -- or that it introduced while
+    rewriting -- was never re-checked before 40 GPU trials were spent. On the L3:21
+    rerun the delegating candidate passed through it and became the incumbent.
+    """
+    from kernel_optimizer.agents.modules import ParameterizerAgent
+    from kernel_optimizer.models.reports import (
+        ParameterizationResult,
+        ProposedParam,
+        ProposedSpace,
+    )
+
+    class _SB:
+        def exists(self, f):
+            return True
+
+        def read_output(self, f):
+            return _COPY_BESIDE_COMPILE
+
+    out = ParameterizationResult(
+        file="candidate/parameterized.py",
+        space=ProposedSpace(params=[
+            ProposedParam(name="BLOCK_SIZE", kind="int", choices=[128, 256]),
+            ProposedParam(name="COPY_NUM_WARPS", kind="int", choices=[2, 4]),
+        ]))
+    problem = ParameterizerAgent.check_output(None, out, _SB())
+    assert problem is not None and "measured against" in problem
+
+
+def test_every_code_producing_agent_is_gated():
+    """Guard against a new agent being added without the static gate.
+
+    The delegating candidate reached the tuner because ONE of six agents skipped
+    _triton_lint_check; an inventory test is cheaper than rediscovering that.
+    """
+    import inspect
+
+    from kernel_optimizer.agents import modules as m
+
+    expected_gated = {
+        "CandidateGeneratorAgent", "ParameterizerAgent", "StructureRewriterAgent",
+        "NoveltyGeneratorAgent", "RepairAgent",
+    }
+    gated = set()
+    for name, obj in vars(m).items():
+        if not (inspect.isclass(obj) and name.endswith("Agent")):
+            continue
+        check = getattr(obj, "check_output", None)
+        if check is None:
+            continue
+        try:
+            src = inspect.getsource(check)
+        except OSError:  # pragma: no cover
+            continue
+        if "_triton_lint_check" in src:
+            gated.add(name)
+    assert expected_gated <= gated, f"ungated code-producing agents: {expected_gated - gated}"
