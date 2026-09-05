@@ -69,9 +69,68 @@ docstring rather than being re-derived each time.
 - **It does not change any reported latency.** Every family in the table reaches the same
   best either way; the seeded runs simply stop describing a flat branch as unfinished.
 
-The second half of the fix — the slope no longer being one round stale — is not measured
-here. It changes `active_families()` ordering rather than a freeze verdict, so its effect
-only appears in a live run's activation sequence, which is one of the things the current
-round is watched for.
+## The second half, now measured: the slope is not merely stale, it is *absent*
+
+I wrote above that "the second half of the fix — the slope no longer being one round stale — is
+not measured here", and described it as an ordering effect only visible in a live run. That
+undersold it, and reading `_improvement_pct` says why:
+
+```python
+hist = f.best_history
+if len(hist) < 2:
+    return 0.0
+```
+
+Unseeded, at the decision that selects families for **round 2**, every family has run exactly
+one round and therefore has a **one-entry** history. All of them return slope `0.0`, tie, and
+fall through to `rank()`'s third key — **absolute latency**. That is precisely the
+early-pruning-by-latency the docstring spends two paragraphs rejecting. So the slope ordering
+was not one round stale at that decision; it was unavailable, and the documented fallback was
+the ranking it exists to replace.
+
+Replayed over all 11 finished runs (`scripts/audit_slope_ordering.py`), the round-2 selection
+**set** differs in 1. That single case is worth reading rather than dismissing:
+
+```
+run-l3-43-20260905-091705, max_families_active=2
+  fam-92e7c576  seed 22.5 -> round1 19.6   slope unseeded 0.00%  seeded 12.89%
+  fam-4aea322a  seed 14.2 -> round1 11.0   slope unseeded 0.00%  seeded 22.54%
+  fam-ea7bc8bb  seed 28.6 -> round1 21.3   slope unseeded 0.00%  seeded 25.52%
+  fam-7f682a54  seed 23.5 -> round1 19.9   slope unseeded 0.00%  seeded 15.32%
+chosen unseeded (latency tie-break) : fam-4aea322a, fam-92e7c576
+chosen seeded   (real slope)        : fam-ea7bc8bb, fam-4aea322a
+```
+
+All four slopes collapse to 0.00% unseeded — the mechanism, shown rather than argued. And the
+family the latency tie-break selected, `fam-92e7c576`, is the one that went
+**19.6 → 19.6 → 19.6**: three rounds, zero gain. What it consumed:
+
+```
+round timeline (hours from run start)
+  2.44h  fam-92e7c576  round 1  19.6
+  5.43h  fam-92e7c576  round 3  19.6
+  6.24h  fam-92e7c576  round 4  19.6      <- run ended at 6.235h
+trials spent on that family after its round 1: 160  (97 completed)
+```
+
+Meanwhile `fam-ea7bc8bb` (the highest seeded slope, 25.52%) and `fam-7f682a54` each got **one**
+round and were frozen on budget with the run's 12 rewrite rounds only 8 spent. So the freed
+budget had somewhere to go.
+
+**What this does and does not establish.** The audit exits 0 and prints "no case where the
+unseeded tie-break drops a family that later improved" — that check asks whether the *dropped*
+family later improved, and `fam-92e7c576` is not dropped by the seeded order in the harmful
+direction. What is demonstrated is the weaker, still useful claim: the tie-break selected the
+branch that turned out flat over one with 2× its measured slope, and the flat branch then spent
+160 trials confirming it was flat. Whether `fam-ea7bc8bb` would have gained anything with those
+rounds is **not knowable from this record** — it was never given them. I am not going to claim
+a latency win that the disk cannot support.
+
+n=1 of 11 is also a small effect. It is small for a structural reason worth stating: the set
+only changes when the latency order and the slope order disagree *across the K boundary*, which
+needs at least three families and a genuine slope spread. Most runs have fewer families active
+than that.
+
+Reproduce with `python scripts/audit_slope_ordering.py`.
 
 Reproduce with `python scripts/audit_history_seeding.py`.

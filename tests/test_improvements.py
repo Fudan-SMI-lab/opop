@@ -1387,6 +1387,70 @@ def test_seeded_history_makes_converged_reachable_and_slope_current():
     assert FamilyManager._improvement_pct(fam([11.0], 1)) == 0.0
 
 
+def test_unseeded_round_two_selection_falls_back_to_the_latency_tie_break():
+    """Without the seed, round 2 is allocated by LATENCY -- the rule the ranking rejects.
+
+    `_improvement_pct` returns 0.0 for a history shorter than two entries. At the decision
+    that picks families for round 2 every family has run exactly one round, so unseeded
+    they ALL tie at slope 0.0 and `rank()` falls through to its third key, absolute
+    latency. That is the early-pruning-by-latency `active_families()` spends two docstring
+    paragraphs rejecting, and it is not merely a stale slope -- the slope is absent.
+
+    The fixture is the real run-l3-43-20260905-091705, where the latency tie-break picks
+    fam-92e7c576 (which then went 19.6/19.6/19.6 across three rounds, spending 160 trials
+    to confirm it was flat) over fam-ea7bc8bb, whose measured first-round slope was 2x as
+    large. See docs/result-history-seeding-makes-converged-reachable.md.
+    """
+    from kernel_optimizer.control.families import FamilyManager
+    from kernel_optimizer.models.core import BestRecord, Family, ParamSet
+
+    # (seed_ms, round1_ms) as recorded on disk.
+    observed = {
+        "fam-92e7c576": (22.5, 19.6),
+        "fam-4aea322a": (14.2, 11.0),
+        "fam-ea7bc8bb": (28.6, 21.3),
+        "fam-7f682a54": (23.5, 19.9),
+    }
+
+    def choose(seeded: bool, k: int = 2) -> list[str]:
+        mgr = FamilyManager.__new__(FamilyManager)
+        mgr.families = {}
+        mgr.max_families_active = k
+        for fid, (seed_ms, round1) in observed.items():
+            history = [seed_ms, round1] if seeded else [round1]
+            mgr.families[fid] = Family(
+                family_id=fid, anchor_candidate_id="c", member_ids=["c"],
+                best=BestRecord(candidate_id="c", params=ParamSet(values={}),
+                                latency_ms=round1),
+                best_history=history, rewrite_rounds_used=1, status="active")
+        return [f.family_id for f in mgr.active_families()]
+
+    # Unseeded: every slope is 0.0, so the pick is the two lowest latencies.
+    unseeded = choose(seeded=False)
+    by_latency = sorted(observed, key=lambda f: observed[f][1])[:2]
+    assert unseeded == by_latency, unseeded
+    assert "fam-92e7c576" in unseeded  # the branch that turned out flat
+
+    # Seeded: the real first-round slopes decide, and the steepest one is selected.
+    seeded = choose(seeded=True)
+    assert "fam-ea7bc8bb" in seeded, seeded   # 25.5% slope, was never given round 2
+    assert set(seeded) != set(unseeded)
+
+    # The mechanism itself, stated directly: a one-entry history has no slope at all.
+    for fid, (seed_ms, round1) in observed.items():
+        one = Family(family_id=fid, anchor_candidate_id="c", member_ids=["c"],
+                     best=BestRecord(candidate_id="c", params=ParamSet(values={}),
+                                     latency_ms=round1),
+                     best_history=[round1], rewrite_rounds_used=1, status="active")
+        assert FamilyManager._improvement_pct(one) == 0.0
+        two = Family(family_id=fid, anchor_candidate_id="c", member_ids=["c"],
+                     best=BestRecord(candidate_id="c", params=ParamSet(values={}),
+                                     latency_ms=round1),
+                     best_history=[seed_ms, round1], rewrite_rounds_used=1,
+                     status="active")
+        assert FamilyManager._improvement_pct(two) > 0.0
+
+
 def test_family_updated_has_no_producer_and_is_documented():
     """replay() consumes FAMILY_UPDATED but nothing emits it. That is intentional (state
     is reconstructed, not snapshotted); the branch must say so, so nobody 'fixes' it by
