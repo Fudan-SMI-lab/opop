@@ -166,10 +166,33 @@ def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float,
 
       The wall list must cover every knob shape that HAS a floor, which is where it was
       short: `BLOCK_K=[16,32,64]` was asked to add 8, which is ILLEGAL for a `tl.dot`
-      contraction dimension (`K >= 16`). It fails to compile and takes the whole
-      expansion down with it -- observed twice, on QKV_BLOCK_K and PV_BLOCK_K, each
-      costing a parameterizer call and 40 trials. That floor is a compiler fact of the
-      same kind as the warp floor, so it belongs in the same table.
+      contraction dimension (`K >= 16`). Observed twice, on QKV_BLOCK_K and PV_BLOCK_K.
+
+      What follows is corrected from an earlier draft of this docstring, which said the
+      value "fails to compile and takes the whole expansion down with it". The disk says
+      otherwise, and the real behaviour is a better argument for the filter:
+
+      - The FIRST attempt is rejected (`SPACE_EXPANSION_REJECTED / witness_minimal_failed`,
+        `CompilationError: Input shapes should have M >= 1, N >= 1 and K >= 16`).
+      - The parameterizer then RETRIES and satisfies the request by changing the kernel:
+        `DOT_BLOCK_K = 16 if BLOCK_K == 8 else BLOCK_K`, loading a 16-wide slice and
+        masking the 8 lanes that must not contribute. Two candidates invented this
+        independently, so it is the model's default move, not a fluke.
+      - So `BLOCK_K=8` DOES compile and DOES produce completed trials -- as the widest
+        dot the hardware offers, running at half useful occupancy. It came last in its
+        domain both times: PV_BLOCK_K 38.8ms vs 24.4 best (1.59x), QKV_BLOCK_K 57.1ms vs
+        14.75 best (3.87x).
+
+      Both outcomes waste the request, which is why the floor belongs in this table
+      regardless of which one occurs: below a hardware wall an agent can only refuse
+      (costing a witness attempt and a retry) or emulate (costing a masking branch in the
+      hot loop and a strictly-worst value in the domain). Neither can win, and the filter
+      does not need to know which one it prevented. The warp floor is the same shape.
+
+      This is subtractive only where nothing was lost: on both historical expansions 6 of
+      the 7 requested knobs survive the filter, including the `OUT_BLOCK_M=256` that
+      earned cand-45c3fd7d's 7.7% gain, and the winning trial of the run's best candidate
+      (cand-e3a5da01, 9.73ms) used no added value at all.
     """
     if stats is None or not stats.param_stats:
         return []
@@ -222,8 +245,8 @@ def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float,
         I implemented that variant first; checked exhaustively over 6392 candidate
         domains it produces an identical verdict in every case, because a ladder whose
         next step would cross the wall has its edge AT the wall already. The extra
-        arithmetic was dead code, so the real fix for the BLOCK_K=8 failures is the
-        HARD_EDGE entry above, not a cleverer predicate here.
+        arithmetic was dead code, so the real fix for the wasted BLOCK_K=8 requests is
+        the HARD_EDGE entry above, not a cleverer predicate here.
         """
         wall = next((v for (suffix, d), v in HARD_EDGE.items()
                      if d == direction and name.upper().endswith(suffix)), None)

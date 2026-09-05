@@ -76,8 +76,24 @@ Measured behaviour today:
 | `BLOCK_M [32,64,128]` | max | requested | yes — legitimate |
 
 Downward expansion is **0 for 9** post-filter. Two mechanisms: warp counts pushed to 1 (loses,
-e.g. `EXPAND_NUM_WARPS=1` at +20% worse), and `BLOCK_K` pushed to 8, which fails to compile
-(`tl.dot` requires `K >= 16`) and takes the whole expansion down with it — twice.
+e.g. `EXPAND_NUM_WARPS=1` at +20% worse), and `BLOCK_K` pushed to 8, below the `tl.dot`
+contraction floor of 16 — twice.
+
+**Correction to what this section first said.** I wrote that `BLOCK_K=8` "fails to compile and
+takes the whole expansion down with it". Only the first half of that happens. The first witness
+is rejected on `CompilationError: Input shapes should have M >= 1, N >= 1 and K >= 16`, and then
+the parameterizer *retries and changes the kernel* to make 8 legal —
+`DOT_BLOCK_K = 16 if BLOCK_K == 8 else BLOCK_K`, masking the 8 lanes that must not contribute.
+Two candidates invented that shim independently. So 8 compiles and completes trials, as the
+widest dot the hardware has at half useful occupancy, and comes **last in its domain** both
+times: `PV_BLOCK_K` 38.8ms vs 24.4 best, `QKV_BLOCK_K` 57.1ms vs 14.75 best.
+
+That makes the filter's case stronger rather than weaker: below a hardware wall the agent can
+only refuse (a wasted witness attempt plus a retry) or emulate (a masking branch in the hot loop
+and a guaranteed-worst value in the domain). The request cannot win either way, so the floor
+belongs in the table without the filter needing to predict which outcome it prevented. And it is
+subtractive only where nothing was lost — on both historical expansions **6 of the 7** requested
+knobs survive, including the `OUT_BLOCK_M=256` that earned cand-45c3fd7d's 7.7% gain.
 
 **The fix, and a correction to my own first attempt.** I implemented the "would the next
 value cross a wall" predicate first. Checked exhaustively over 6392 candidate domains it

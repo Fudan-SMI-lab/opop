@@ -70,12 +70,16 @@ Two independent mechanisms are visible, and both are general rather than task-sp
 1. **Warp counts keep being pushed toward 1** even when the domain minimum is 2 — the hard-edge
    filter only blocks a knob whose range *already touches* the wall, so `[2,4,8]` → add `1` is
    still allowed. Four of the nine are this, the newest being `EXPAND_NUM_WARPS` at 16:24 today.
-2. **`BLOCK_K`-shaped knobs get pushed to 8**, which for a `tl.dot` contraction dimension is
-   illegal (`K >= 16`). `QKV_BLOCK_K` added 8 on the project's best candidate and the witness
-   failed to compile, rejecting the whole expansion; `PV_BLOCK_K` did the same. The prompt was
-   already strengthened for this (`finding-parameterizer-lacks-triton-pitfalls-doc.md`), and it
-   still happens because `boundary_knobs_to_expand` **asks** for the downward extension before
-   any prompt gets a say.
+2. **`BLOCK_K`-shaped knobs get pushed to 8**, below the `tl.dot` contraction floor
+   (`K >= 16`). `QKV_BLOCK_K` added 8 on the project's best candidate and `PV_BLOCK_K` did the
+   same. In both cases the first witness failed to compile, **and then the parameterizer retried
+   and changed the kernel** to pad the dot to 16 with the extra lanes masked off
+   (`DOT_BLOCK_K = 16 if BLOCK_K == 8 else BLOCK_K`) — invented independently by both
+   candidates. So 8 does run, and loses by a wide margin (38.8ms vs 24.4 best; 57.1ms vs 14.75
+   best), which is what a half-occupancy dot predicts. Either way the request is wasted: below a
+   hardware wall the agent can only refuse or emulate. The prompt was already strengthened for
+   this (`finding-parameterizer-lacks-triton-pitfalls-doc.md`), and it still happens because
+   `boundary_knobs_to_expand` **asks** for the downward extension before any prompt gets a say.
 
 ## A live instance, and it went the way the measurement predicts
 
@@ -117,9 +121,43 @@ and I am **not** making it on this evidence:
   worth it depends on what the freed trials would be spent on, which is the same
   budget-allocation question as `best_history` seeding — deferred, and correctly so.
 
-So this note records the measurement and the two mechanisms. The concrete proposal, if it is
-wanted, is to extend `HARD_EDGE` from "is the range already at the wall" to "would the requested
-extension cross a wall", which subsumes both cases without naming a task, a candidate, or a knob.
+So this note records the measurement and the two mechanisms.
+
+**Update: the concrete proposal this note ended with turned out to be inert.** It read: "extend
+`HARD_EDGE` from 'is the range already at the wall' to 'would the requested extension cross a
+wall', which subsumes both cases". I implemented exactly that and checked it over 6392 candidate
+domains: it gives an **identical verdict in every case**, because a ladder whose next step would
+cross a wall already has its edge at the wall. It cannot subsume the warp case, because
+`NUM_WARPS=[2,4,8] → add 1` does not cross a wall — 1 is legal, merely slow, and that is the
+tuner's business rather than a filter's. What actually fixed the contraction-dim case was adding
+`("BLOCK_K","min"): 16` to the table, i.e. new data, not a new predicate. Recorded here because
+the proposal is the kind that reads convincingly and measures to nothing.
+
+## A second live instance, strictly measured: the round's first K expansion
+
+`cand-e2cd07de` on `run-l3-21-20260905-195615` expanded `APPLY_BLOCK` and reported
+`improved_family: false`, 19.4 → 19.4 ms. Strictly measured, it is the 74% case again:
+
+```
+APPLY_BLOCK=2048  n=9  best 19.4 ms      <- added
+APPLY_BLOCK=4096  n=9  best 19.4 ms      <- added
+overall best      19.4 ms in sp-fb745e6e at APPLY_BLOCK=1024   (the ORIGINAL domain)
+winner used an added value? False
+```
+
+Two points in its favour, both worth keeping separate from the outcome:
+
+- **Requesting it was correct on the evidence.** The pre-expansion stats gave `APPLY_BLOCK`
+  `effect_pct` 7.65 with a monotone curve toward the edge (128 → 21.1 ms, 1024 → 19.6 ms). That
+  is precisely the signature the filter is built to detect; the curve had simply already
+  flattened at 1024, which is only knowable by measuring past the edge.
+- **The expansion mechanics were clean.** Only the requested knob widened
+  (`[128,256,512,1024,2048,4096]`), both constraints kept verbatim, 0 dropped, and
+  `EXPANSION_CONSTRAINTS_RESTORED` fired 0 times — the prompt half held and the driver backstop
+  had nothing to do. Second consecutive clean expansion since that fix.
+
+So the sample for the strict test is now **8 of 32 (25%)** counting this one as a miss, and the
+`min`-direction record is unchanged at 0-for-9 because this was a `max` request.
 
 Reproduce with `python scripts/audit_expansion_outcomes.py` (headline) and
 `python scripts/audit_expansion_direction_yield.py` (this split).

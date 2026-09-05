@@ -3101,9 +3101,15 @@ def test_empty_family_does_not_occupy_a_rewrite_slot():
 
 
 def test_hard_edge_covers_the_tl_dot_contraction_floor():
-    """BLOCK_K below 16 is illegal for a `tl.dot` contraction dim, and asking for it
-    cost two whole expansions (QKV_BLOCK_K and PV_BLOCK_K compiled-failed, taking the
-    expansion down). The floor belongs in HARD_EDGE next to the warp/stage floors.
+    """BLOCK_K below 16 is below the `tl.dot` contraction floor, and asking for it wasted
+    two whole expansions. The floor belongs in HARD_EDGE next to the warp/stage floors.
+
+    On what the waste actually was: the first witness fails to compile, and then the
+    parameterizer RETRIES and rewrites the kernel to pad the dot to 16 with the surplus
+    lanes masked off, so 8 does run -- at half useful occupancy, coming last in its domain
+    both times (38.8 vs 24.4 best; 57.1 vs 14.75 best). Below a hardware wall the agent
+    can only refuse or emulate, and neither can win, so the filter is right without
+    needing to predict which happens.
 
     The rule is ASYMMETRIC -- only K has a floor -- so BLOCK_M/BLOCK_N must stay free.
     """
@@ -3142,6 +3148,43 @@ def test_hard_edge_covers_the_tl_dot_contraction_floor():
     assert not asked("NUM_WARPS", [1, 2, 4], "min")
     assert not asked("PW_WARPS", [1, 2, 4], "min")
     assert not asked("NUM_STAGES", [1, 2, 3], "min")
+
+
+def test_hard_edge_is_subtractive_only_on_the_wall_knob():
+    """The filter must remove the wall knob WITHOUT cancelling the expansion.
+
+    This is the property that makes the fix safe rather than merely correct. Both
+    historical BLOCK_K=8 expansions requested seven knobs; on the real spaces the filter
+    drops one and keeps six, including the `OUT_BLOCK_M` widening that earned
+    cand-45c3fd7d its 7.7% gain. A filter that suppressed the whole request instead would
+    have deleted that gain, so the multi-knob case is pinned here.
+    """
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    from kernel_optimizer.models.core import ParamDomain, ParameterSpace
+    from kernel_optimizer.models.reports import ParamStat, TuningStats
+
+    domains = [
+        ParamDomain(name="PV_BLOCK_K", kind="int", choices=[16, 32, 64]),   # at the wall
+        ParamDomain(name="QKV_NUM_WARPS", kind="int", choices=[1, 2, 4]),   # at the wall
+        ParamDomain(name="OUT_BLOCK_M", kind="int", choices=[16, 32, 64]),  # free
+        ParamDomain(name="SCORE_NUM_WARPS", kind="int", choices=[2, 4, 8]),  # free (max)
+    ]
+    space = ParameterSpace(space_id="sp-x", candidate_id="c", source_sha="s", version=1,
+                           constraints=[], domains=domains)
+    directions = {"PV_BLOCK_K": ("min", 16), "QKV_NUM_WARPS": ("min", 1),
+                  "OUT_BLOCK_M": ("max", 64), "SCORE_NUM_WARPS": ("max", 8)}
+    stats = TuningStats(
+        candidate_id="c", space_id="sp-x", n_complete=40, n_fail=0,
+        resource_at_best=None, failure_clusters=[],
+        param_stats=[ParamStat(name=n, best_value=b, at_boundary=True,
+                               boundary_direction=d, effect_pct=30.0)
+                     for n, (d, b) in directions.items()])
+
+    got = {(k["name"], k["direction"]) for k in boundary_knobs_to_expand(
+        stats, 0.8, space=space)}
+    assert got == {("OUT_BLOCK_M", "max"), ("SCORE_NUM_WARPS", "max")}, got
+    # The expansion still happens: the surviving knobs are what gets requested.
+    assert len(got) == 2
 
 
 def test_fp64_relative_gate_follows_the_torch_criterion():
