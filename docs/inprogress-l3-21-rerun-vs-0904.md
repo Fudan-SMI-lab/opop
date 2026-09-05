@@ -119,3 +119,48 @@ on this task.
 
 Still provisional: `tuned_ms`, 20 samples, and this run has four families and no rewrite rounds
 completed yet.
+
+---
+
+## 1.2h: 16.9 ms, and the rewrite round is the reason
+
+`cand-7dcdbd99` tuned to **16.90 ms** at fp16 — a second improvement, and the trajectory is now
+worth stating as a whole:
+
+| candidate | ms | class | origin |
+|---|---|---|---|
+| cand-080f8c60 | 25.00 | scalar fp32 | seed |
+| cand-1eee8139 | 20.50 | scalar fp32 | seed |
+| cand-d31b0474 | 17.10 | **fp16 tensor-core** | rewrite of `cand-1eee8139` |
+| cand-7dcdbd99 | **16.90** | **fp16 tensor-core** | rewrite of `cand-1eee8139` |
+
+**17.6% better than anything L3:21 has produced before** (the 09-04 run's best was 20.50), and
+the gap to `torch_compile_tf32` has gone from **26% to 3.6%**.
+
+The mechanism is exactly what the two-loop design is for. Both 17.10 and 16.90 are rewrites of
+the *same* parent — the 20.50 ms scalar seed — under one structural hypothesis: move the
+pointwise convolution onto the tensor cores. That hypothesis produced two independent kernels
+(different source shas, different signatures, 7830 vs 9636 bytes, 3 vs 6 `tl.dot`) which both
+beat the parent by ~18%. The tuner then found fp16 inside each of them on its own.
+
+So on this task the structural loop supplied the idea, the parameter loop supplied the precision,
+and neither alone would have got from 20.50 to 16.90.
+
+### Both are still reported as not beating their baseline
+
+Unchanged and worth repeating, because it is the thing a reader will misread:
+
+| candidate | ms | precision | denominator | verdict |
+|---|---|---|---|---|
+| cand-1eee8139 | 20.50 | fp32 | 22.20 ieee-compile | **1.083x passes** |
+| cand-d31b0474 | 17.10 | fp16 | 16.30 tf32-compile | 0.953x fails |
+| **cand-7dcdbd99** | **16.90** | fp16 | 16.30 tf32-compile | **0.964x fails** |
+
+The run's two fastest kernels both report `beats_same_precision_baseline: false`, while the
+20.50 ms one passes. That ordering is the correct application of the rule and it will be what the
+final report says. The honest headline for L3:21 is therefore two sentences, not one: *the search
+improved the best known kernel for this task by 17.6%, and it still does not beat
+`torch.compile`'s tf32 path on equal precision terms.*
+
+Provisional as before: `tuned_ms`, 20 samples, no `final_reeval_ms` yet, and `fam-f069ef3c` has
+rewrite rounds remaining.
