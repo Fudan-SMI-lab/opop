@@ -146,16 +146,26 @@ Note the register story is not monotonic: the 3rd best (30.1 ms) uses 121 regist
 1. **`final_reeval_ms`** — 100 samples in a fresh process, 5/5 correctness on new inputs.
    This is the number that decides, and on L3:21 the gap ran +1.9% while on L3:48 it ran
    −6.2%, so the direction is not predictable.
-2. **A second sample of `ATTN_BLOCK_M=128`** — but **this will not arrive automatically.**
-   No `SPACE_EXPANDED` fired for this candidate, so there is no K re-tune to resample the
-   region, and `ATTN_BLOCK_M=128` is already the top of its domain so K would have nothing
-   to widen toward. The analyst's suggested action is `rewrite`, which produces a *different*
-   program rather than more samples of this one.
+2. **A second sample of `ATTN_BLOCK_M=128`.** I first wrote that this would not arrive
+   automatically. **Wrong on the first half, right on the second.** A K expansion *did* fire
+   at 10:14:23, widening `QKV_BLOCK_K`, `QKV_NUM_WARPS`, `ATTN_BLOCK_N`, `OUT_BLOCK_M` and
+   `OUT_NUM_WARPS`, and the re-tune on `sp-db2e9791` did sample `ATTN_BLOCK_M=128` again as
+   `tr-ebf1aa16`, reporting 14.2 ms.
 
-So the reproduction question stays open unless the rewrite round happens to land near the
-same configuration. `final_reeval_ms` on this candidate is the one check that is guaranteed
-to run, and it re-measures exactly this θ_best in a fresh process — which is the important
-half anyway, since it would catch a stale-buffer or skipped-work artifact.
+   **But that is not an independent measurement.** Its statistics are identical to the first
+   trial's to every digit — `14.2, std 0.41, min 13.0, max 14.5, n 20`, same 255 regs, same
+   12 spills — and the event carries `reused_measurement: True` with **no job files on
+   disk**. It is the measurement cache replaying `tr-d1701cb3`, exactly as designed: the
+   expansion left `ATTN_BLOCK_M`'s domain untouched, so the identical parameter vector hits
+   the cache instead of the GPU.
+
+   That is correct behaviour and it saves GPU time, but it means **a K re-tune can never
+   reproduce a suspicious measurement** — the cache guarantees the same answer. Worth
+   remembering when reading any re-tune that "confirms" a prior best.
+
+So the reproduction question stays open. `final_reeval_ms` is the one check guaranteed to
+re-measure this θ_best in a fresh process, and it is the important half anyway, since it
+would catch a stale-buffer or skipped-work artifact.
 
 Until then the honest statement is: *a single trial measured 14.2 ms with stable per-sample
 timing and physically ordinary throughput; if it holds, it is the first L3:43 kernel to beat
