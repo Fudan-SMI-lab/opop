@@ -147,6 +147,30 @@ This is one observation and it cannot carry the argument on its own; the 38-vs-5
 What it adds is direction: the retrospective measurement said misdirected flags convert at 2.6%,
 and the first live expansion after the fix behaved exactly that way.
 
+### The second live expansion changes nothing, which is the point
+
+Twenty minutes later the run expanded `cand-faa8862d` (`fam-a2688942`, 20.4 → 15.1 ms). Here the
+two rules agree exactly:
+
+```
+OLD requested: BLOCK_N/max
+NEW requests : BLOCK_N/max
+
+knob             median   winner   old flag     new flag
+BLOCK_N             128      128   True/max     True/max
+COMPUTE_DTYPE      fp16     fp16   True/min     True/min
+(six others: no flag under either rule)
+```
+
+`BLOCK_N`'s median pick and its winning value are the same, so the anchor swap is a no-op, and
+`COMPUTE_DTYPE` is non-numeric so `_is_numeric_knob` filters it before direction matters. The
+expansion added `BLOCK_N=256` — aimed at the edge the winner actually sits on.
+
+Worth recording precisely because it is the un-dramatic outcome. The change is not a general
+re-aiming of expansion; it is inert on the 77.6% of knobs where median and winner agree, and only
+bites where they disagree. Two live expansions, one changed and one unchanged, is what a 44.7%
+disagreement rate looks like at n=2.
+
 ## Propagation
 
 `tuning/stats.py` is driver-side, so this affects the **next** run, not the one in flight —
