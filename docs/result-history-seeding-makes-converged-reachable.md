@@ -131,6 +131,35 @@ only changes when the latency order and the slope order disagree *across the K b
 needs at least three families and a genuine slope spread. Most runs have fewer families active
 than that.
 
+## Live confirmation on `run-l3-21-20260905-195615`
+
+`FAMILY_SEEDED` fired for all four families, and the first family verdict on disk reads:
+
+```
+CONVERGENCE_DECIDED  family  continue  stop_kind=None  best_history=[19.4]  rewrite_rounds_used=0
+```
+
+Before the fix that history was `[]` — the state in which `converged` is arithmetically
+unreachable. So the seed datum is present at a real decision point, not just in replay.
+
+Then `fam-a4a8353c` completed round 1 at **11.0 ms** from a 19.4 ms seed
+(`FAMILY_ROUND_RECORDED  round=1  best_ms=11.0`). Its slope entering round 2:
+
+```
+with the seed    : best_history=[19.4, 11.0]  ->  43.3%
+without the seed : best_history=[11.0]        ->   0.0%
+```
+
+The run's strongest branch — the one that produced the 11.4 ms verified result — would have
+scored **zero measurable headroom** at the moment round 2 was allocated. That is the mechanism
+stated as sharply as the data allows.
+
+**What it did not change, this time.** Both orderings pick the same two families right now, and
+for a reason the fix does not touch: `rank()`'s first key is "never had a rewrite round", and
+three families are still unproven, so they go first regardless of slope. The seeding will only
+bind once all four have a round each. Worth stating plainly rather than claiming a live win — the
+43.3% figure shows the slope is *available*; it has not yet been *used*.
+
 Reproduce with `python scripts/audit_slope_ordering.py`.
 
 Reproduce with `python scripts/audit_history_seeding.py`.

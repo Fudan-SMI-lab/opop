@@ -159,5 +159,56 @@ Two points in its favour, both worth keeping separate from the outcome:
 So the sample for the strict test is now **8 of 32 (25%)** counting this one as a miss, and the
 `min`-direction record is unchanged at 0-for-9 because this was a `max` request.
 
+## The round's other two expansions, and the case against filtering harder
+
+`run-l3-21-20260905-195615` ran three more expansions after that one. Strictly measured:
+
+| candidate | knobs added | gain | winner used an added value | verdict |
+|---|---|---|---|---|
+| `cand-61759130` | BLOCK_N, BLOCK_K, NUM_WARPS (max) | 22.8 → 22.8, 0% | no | miss |
+| `cand-80bf3097` | GEMM_BLOCK_N +[256,512], WARPS +[16], STAGES +[5,6], APPLY_BLOCK +[32,64] | 15.6 → **14.7**, 5.8% | **yes** (`GEMM_BLOCK_N=256`) | **PAID** |
+| `cand-f66890d0` | GEMM_BLOCK_N +[256], PARTIAL_BLOCK +[2048], FINAL_NUM_STAGES +[5] | 11.1 → 11.0, 0.9% | no | miss |
+
+Running strict tally: **9 of 35 (26%)**, essentially unchanged from the 23% headline.
+
+**The pair in the middle is the important part, and it argues against the filter proposal.**
+`GEMM_BLOCK_N += [256]` was requested on both siblings, in the same run, minutes apart, on kernels
+from the same rewrite call. It **paid on one and lost on the other**:
+
+```
+cand-80bf3097  sp-274540fa   BLOCK_N=256  n=4  median 20.55  min 14.70  <- space best
+cand-80bf3097                BLOCK_N=128  n=19 median 17.20  min 15.60
+
+cand-f66890d0  sp-d36a6e38   BLOCK_N=256  n=4  median 28.65  min 17.90
+cand-f66890d0                BLOCK_N=128  n=18 median 12.05  min 11.00  <- space best
+```
+
+Checked for a confound before concluding: `f66890d0`'s 256 group contains a 436 ms trial at
+`WARPS=1, STAGES=1, dtype=ieee`, which would wreck any median. Holding `dtype=fp16` and
+`WARPS >= 4` to remove it, 256 is *still* worse — 17.9 vs 11.0. So the verdict survives the
+outlier; the outlier only exaggerates it.
+
+Two consequences:
+
+1. **No static filter could have got both right.** Same knob name, same direction, same task,
+   same parent, adjacent in time — and opposite correct answers. The distinguishing factor is the
+   kernel's own tiling (H2 fuses the BN apply into the depthwise load, changing what tile width
+   is optimal), which `boundary_knobs_to_expand` cannot see. This is the strongest argument yet
+   against the still-undecided proposal to refuse expansion requests on aggregate historical
+   yield: the 26% figure is a *population* statistic, and the population is not homogeneous.
+2. **The 26% hit rate is not obviously the right thing to raise.** The one expansion that paid
+   this round produced the 14.7 ms result, which then seeded the round that reached 11.0. A filter
+   tight enough to remove the two misses would have needed to distinguish them from a request that
+   was, on the visible evidence, identical.
+
+**Also worth separating: the two audits disagree here, and both are right.**
+`audit_expansion_outcomes.py` scores `f66890d0`'s `GEMM_BLOCK_N += [256]` at **−88.5%** (median
+with vs without) while the strict test calls the whole expansion a miss for a different reason
+(the winner ignored the added values). On `80bf3097` they disagree in the *other* direction: the
+median ranks 256 worst of five values while its minimum is the space best. That is the same
+median-vs-minimum split recorded in `finding-latency-by-value-is-a-median.md`, showing up in the
+expansion audits rather than the analyst's table. Neither script is wrong; they answer different
+questions, and quoting one number without saying which question it answers would be.
+
 Reproduce with `python scripts/audit_expansion_outcomes.py` (headline) and
 `python scripts/audit_expansion_direction_yield.py` (this split).
