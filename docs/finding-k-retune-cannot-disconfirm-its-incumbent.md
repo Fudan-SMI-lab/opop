@@ -118,13 +118,40 @@ no-op three times over; it was not.
 Note also the failure cost: 28 of 40 trials went to new-choice territory and 22 of those 28
 failed, which is the real price of the expansion rather than the flat headline.
 
+## A pre-registered prediction on the fourth instance
+
+Written at 10:36, **before** the re-tune produced a single trial, so this is a prediction and
+not a postdiction. `cand-3bf724d6`, `sp-57e98792` → `sp-f50bba31` at 10:34:55. K widened four
+knobs, all purely additive:
+
+```
+QK_BLOCK_M         [16,32,64]      -> +128
+QK_BLOCK_N         [16,32,64,128]  -> +256
+SOFTMAX_BLOCK      [512,1024]      -> +2048
+SOFTMAX_NUM_WARPS  [2,4,8]         -> +16
+```
+
+The pre-expansion θ_best (`tr-d7f2220d`, **28.6 ms**) is
+`QK_BLOCK_M=64, QK_BLOCK_N=64, SOFTMAX_BLOCK=1024, SOFTMAX_NUM_WARPS=4`, and **every one of
+its 13 values is still in its domain** — machine-checked, no value was removed. So the
+mechanism applies exactly:
+
+> **Prediction: if the re-tune samples that vector, `TUNING_DONE` will report 28.6 ms with
+> `reused_measurement: True`, and the informative number will be the best among trials that
+> used 128 / 256 / 2048 / 16.**
+
+The only way this fails is if a genuinely new point beats 28.6, in which case the reported
+best changes and the expansion was productive — which is the outcome the metric *should*
+detect and the one the flat headline cannot distinguish from a cache replay. Either result is
+informative; that is the point of writing it down first.
+
 ## Caveats
 
 - The count is of reported *bests* that came from cache, not of cache hits overall (those are
   far more common and entirely benign — most cached trials are not the best).
 - The mechanism is structural rather than statistical, so the count matters less than the
   reasoning: **every** K expansion that leaves the incumbent's knobs untouched will do this.
-  Three instances across two tasks now, and the L3:43 one was predicted before it was
-  observed.
+  Three observed instances across two tasks, one of them predicted before observation, plus
+  one prediction currently open.
 - `scripts/audit_cached_bests.py` prints the current tally; it grows as runs proceed, so the
   number in this doc is a floor rather than a total.
