@@ -91,4 +91,71 @@ mid-experiment.
 `parameterizer`'s 0 on 301. Whether that is prompt size, prompt content, or chance at n=90 is not
 established — but if a cause exists it is module-specific, and `repair` is where to look.
 
+## Update: `parameterizer` then timed out too, and three hypotheses all fail
+
+The paragraph above pointed at `repair` as module-specific. Within hours `parameterizer` timed out
+on `run-l3-21-20260905-195615` — after **306 clean attempts** across every prior run. So whatever
+causes this is not a property of one module's prompt. Cost is now **253.7 min (4.2 h)** over 13
+ReadTimeouts, and this single run has lost 40 min of its own.
+
+I tested the three explanations that were available. None of them stands:
+
+**1. Module-specific cause — refuted.** `parameterizer`'s first timeout in 306 attempts is the
+counter-example. Its prompt did not change.
+
+**2. Time-clustered endpoint trouble — weak.** If the endpoint has bad windows and whichever
+module calls during one takes the hit, timeouts should cluster. They barely do
+(`scripts/audit_timeout_clustering.py`, 90-minute windows):
+
+```
+clusters: 7 for 12 timeouts, and 5 of the 7 are singletons
+  09-03 21:11  n=3  span 85.3 min  generator, repair
+  09-04 10:49  n=2  span 20.0 min  repair
+  09-05 02:05  n=2  span 70.8 min  repair
+  09-05 20:51  n=2  span 71.0 min  parameterizer, rewriter
+gaps between timeouts: 20, 65, 71, 85, 330, 366, 382, 402, 674, 895 min
+```
+
+Two clusters do mix modules, which is what this hypothesis predicts, and the tightest gaps are
+exactly 20.0 min — a retry hitting the wall immediately after its parent. But most timeouts are
+isolated.
+
+**3. In-window call share — refuted.** If clustering explained the module split, each module's
+timeout share should track its share of calls *made during those windows*. It does not:
+
+```
+module            all calls   share  in-window   share  timeouts   share
+analyst                 166   25.0%         57   25.1%         0    0.0%
+parameterizer           311   46.9%        106   46.7%         1    8.3%
+repair                   99   14.9%         37   16.3%         8   66.7%
+rewriter                 63    9.5%         18    7.9%         2   16.7%
+```
+
+`repair` makes 16.3% of in-window calls and takes 66.7% of the timeouts; `parameterizer` makes
+46.7% and takes 8.3%. The windows do not explain it.
+
+**What does correlate: prompt size.** Summing each sandbox's non-`.git` bytes, the failure rate
+rises monotonically with median prompt size across all five modules:
+
+```
+module            calls  timeouts    rate  median KB
+analyst             166         0   0.00%       13.2
+parameterizer       311         1   0.32%       23.3
+generator            23         1   4.35%       30.1
+rewriter             63         2   3.17%       30.2
+repair               99         8   8.08%       31.9
+```
+
+Monotone in five points is suggestive, and it fits the mechanism (a larger prompt is a longer
+request, more of it exposed to whatever drops). But it does not explain the *magnitude*: the three
+largest modules sit within 6% of each other in size while their rates span 3.17–8.08%, and
+`generator`'s 4.35% is one timeout in 23 calls. At n=13 total none of these splits is
+statistically separable.
+
+**Conclusion, stated as a null result.** The cause is not identified. It is not one module, not
+obviously the clock, and prompt size correlates without accounting for the spread. What is
+established is the cost (4.2 h), that every occurrence recovered on retry, and that
+`AGENT_SESSION_RESET` is what makes the retry work. The earlier "look at `repair`" pointer should
+be treated as retracted — it was a plausible reading of 12 events that the 13th contradicted.
+
 Reproduce with `python scripts/audit_agent_call_timeouts.py`.
