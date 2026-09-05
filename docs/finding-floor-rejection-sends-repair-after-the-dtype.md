@@ -1,4 +1,23 @@
-# Finding: a floor-passing rejection sends repair to change the dtype, and it has never recovered
+# Finding: a floor-passing rejection sends repair to change the dtype
+
+**PARTLY SUPERSEDED at 16:15 (see `result-dtype-direction-decides-floor-recovery.md`).** The
+title used to end "and it has never recovered", on a 0-of-3 count. Separating the DIRECTION of
+the dtype move splits that cleanly:
+
+```
+tf32 -> ieee  (more precision)   5 candidates, 5 published   (100%)
+tf32 -> fp16  (less precision)   3 candidates, 0 published   (0%)
+```
+
+All three cases this file draws on moved *downward*; pooling them with the upward moves was my
+error. The lever is not the problem, the sign is — moving toward more precision reduces the very
+deviation the gate measures, and it has worked every time it was tried, including `cand-fe183b2d`
+on the clean L3:21 rerun.
+
+**The suggestion at the bottom of this file — suppress repair dispatch when the detail already
+shows the candidate above the floor — is WITHDRAWN.** It would have prevented all five
+recoveries. Everything below about the mechanism (what the rejection makes repair do, and the
+fp16-corner interaction) still stands as recorded.
 
 Observed live at 14:28–14:33 on `cand-90886b3c`, and it chains two separately-documented defects
 into one candidate. This is the clearest instance in the record of how the noise-floor gate
@@ -191,21 +210,17 @@ but that is wrong: `finding-k-expansion-drops-constraints.md` records `STATS_BLO
 infeasible at tf32 and holding the best result at fp16, so precision *is* sometimes the right
 lever. Forbidding it would break the cases where it works.
 
-The separable thing, flagged and not done: **the failure message already contains the floor
-comparison** — the detail string prints "reference's OWN ieee-vs-tf32 spread (task noise floor, NOT
-a bug)" right there. So the harness knows, at the moment it dispatches repair, that this candidate
-is above the floor. Suppressing the repair dispatch in that case would:
+~~The separable thing, flagged and not done: suppress the repair dispatch when the failure detail
+already shows the candidate above the floor.~~ **WITHDRAWN at 16:15.** I argued this would "cost
+nothing in accept/reject semantics — the candidate is still rejected, it just is not 'fixed'".
+That premise was false. Repair *does* recover these, when it moves the dtype toward MORE
+precision: 5 of 5 such candidates published a space, including `cand-fe183b2d` on the clean L3:21
+rerun 3.4 minutes after its rejection. Suppressing the dispatch would have deleted all five.
 
-- cost nothing in accept/reject semantics — the candidate is still rejected, it just is not
-  "fixed";
-- save 3 agent calls and ~5 min per occurrence (10 rejections in the record → ~50 min);
-- stop producing the un-compilable tf32 variants;
-- and leave the actual decision (should it have been accepted?) entirely to the user.
-
-That is ~15 lines in the orchestrator's repair branch, gated on a comparison the event already
-carries. It is the smallest change that acts on this evidence without pre-empting the deferred
-decision, and I am putting it on the pending list rather than making it — it still turns on
-believing the floor comparison, which is the same premise the user deferred.
+The mistake was scoring "repair changed the dtype" as one behaviour. Split by direction it is
+5/5 up and 0/3 down (`result-dtype-direction-decides-floor-recovery.md`), and the three cases this
+file is built on all moved down. Nothing about the mechanism below changes; the conclusion that
+repair is wasted effort here does.
 
 `scripts/audit_noise_floor_rejections.py` prints the ledger; the dtype-switch sequences above come
 from grouping `SPACE_REJECTED` details by candidate.
