@@ -1,7 +1,7 @@
 # Finding: `stop_kind = "converged"` is structurally unreachable
 
-Measured, not inferred: **11 of 11 family freezes across every L3 run are
-`budget_exhausted`. `converged` has never fired once**, including six families whose history
+Measured, not inferred: **13 of 13 family freezes across every L3 run are
+`budget_exhausted`. `converged` has never fired once**, including eight families whose history
 is completely flat.
 
 ```
@@ -16,10 +16,14 @@ run-l3-43-20260903-145357  fam-36474be2  budget_exhausted  [19.4, 19.4, 19.4]
 run-l3-43-20260903-145357  fam-19e13c64  budget_exhausted  [19.5, 19.5, 19.5]
 run-l3-43-20260904-093730  fam-ff3ef34b  budget_exhausted  [19.5, 17.9, 17.9]
 run-l3-43-20260904-093730  fam-c9461c56  budget_exhausted  [19.6, 19.6, 19.6]
+run-l3-48-20260905-010737  fam-99aee6de  budget_exhausted  [2.09, 2.09, 2.09]
+run-l3-48-20260905-010737  fam-74c41d8d  budget_exhausted  [2.46, 2.09, 2.09]
 ```
 
-`[25.2, 25.2, 25.2]` is a family that did not move for three consecutive rounds and was
-still recorded as having run out of budget rather than converged.
+`[25.2, 25.2, 25.2]` and `[2.09, 2.09, 2.09]` are families that did not move for three
+consecutive rounds and were still recorded as having run out of budget rather than converged.
+(Verified with `scripts/audit_convergence_stop_kinds.py`; the count was 11 when first written and
+grew with the L3:48 run — the *ratio* has never changed, because the cause is arithmetic.)
 
 ## The mechanism
 
@@ -90,6 +94,49 @@ ordering came from the unproven-first rule plus latency. The documented round-2 
 (stalled leader 0% vs moving challenger +13.4%) is computed from the *recorded histories*,
 which is the right comparison for the claim — but the ranking code at that moment saw 0.0 for
 both. The claim stands; how it was reached is partly this bug.
+
+## Watched live, on the best result the project has produced
+
+`run-l3-43-20260905-091705`, `fam-4aea322a`, 11:31:09. This is the first time both off-by-ones
+have been observed *as they happened* rather than reconstructed from a finished run, and the
+family in question is the one that produced the run's 11.0 ms.
+
+```
+FAMILY_ROUND_RECORDED  {"family_id": "fam-4aea322a", "best_ms": 11.0, "round": 1}
+CONVERGENCE_DECIDED    {"scope": "family", "verdict": "continue",
+                        "evidence": {"best_history": [], "rewrite_rounds_used": 0}}
+```
+
+The family went **14.2 → 11.0 in its first round, a 22.5% improvement** — and the convergence
+evidence at that moment reads `best_history: []`. Two consequences visible in one event pair:
+
+1. **The 22.5% gain is invisible to the policy.** `best_history` is empty at the check, so
+   `_improvement_pct` returns 0.0 and this family — the fastest-improving one on record for this
+   task — is ranked for the next round as though it had stalled completely.
+2. **The seed's 14.2 is nowhere.** With the seed included, the history would read `[14.2, 11.0]`
+   and the improvement would be measurable after round 1, which is what `active_families()` was
+   written to consume.
+
+Note the `CONVERGENCE_DECIDED` for `fam-92e7c576` at the same timestamp *also* reads
+`best_history: [], rewrite_rounds_used: 0` — correct there, since that family has genuinely had
+no round yet. The two are indistinguishable in the event log: a family that improved 22.5% and a
+family that has done nothing both report `[]`.
+
+### The unreachability, proved arithmetically rather than argued
+
+At the L3 config (`rewrite_rounds_per_family: 3`, `no_improve_rounds: 2`), enumerating the state
+at each check:
+
+| at start of round | `rounds_used` | entries in history | budget freeze? | can even test converged? |
+|---|---|---|---|---|
+| 2 | 1 | 1 | no | no (needs 3) |
+| 3 | 2 | 2 | no | no (needs 3) |
+| 4 | 3 | 3 | **yes** | yes — but never reached |
+
+The improvement test needs 3 entries, which requires `rounds_used >= 3`, which triggers
+`budget_exhausted` first *in the same call*. There is no configuration of this run in which
+`converged` can fire. That is not a probabilistic claim about these runs — it is arithmetic, and
+it is why the count below is 13 of 13 rather than merely lopsided.
 
 ## The fix
 
