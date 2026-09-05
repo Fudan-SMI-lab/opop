@@ -88,3 +88,21 @@ value it just found. Whether that has actually happened is not established here,
 tracing analyst hypotheses against subsequent expansion requests — a separate measurement.
 
 Reproduce with `python scripts/audit_latency_by_value_median_bias.py`.
+
+## Update: that cost is now measured, and it was larger than "analyst advice"
+
+The paragraph above treated the consequence as advisory and unestablished. Both halves were
+wrong, and `docs/fix-boundary-direction-follows-the-winning-trial.md` has the full measurement.
+
+`at_boundary` / `boundary_direction` are derived from this same median table, and
+`boundary_knobs_to_expand` reads them to choose which knob improvement K extends **and in which
+direction** — so the disagreement steers a scarce budget, not just a prompt. Over 1126 knobs,
+16.3% carry a boundary flag pointing away from the value the winning trial used, and expansions
+born from those flags found a better configuration 1 of 38 times (2.6%) against 12 of 55 (21.8%)
+for well-directed ones (Fisher two-sided p=0.013; not the known min/max yield gap — within
+`direction=max` alone it is 0/25 vs 12/53).
+
+What this note argues still stands unchanged: `latency_by_value` remains a median, because it is
+the right *trend* statistic on a noisy laptop GPU. The fix anchors only the edge test to
+`best_trial_value`. The sentence to retract is the framing of the cost as unmeasured and merely
+advisory.

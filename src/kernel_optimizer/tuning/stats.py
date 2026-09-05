@@ -40,6 +40,39 @@ class TuningStatsAnalyzer:
 
     def _param_stat(self, name: str, choices: list, complete: list[TrialRecord],
                     failed: list[TrialRecord]) -> ParamStat:
+        """Per-knob view of one tuning space.
+
+        `latency_by_value` is a MEDIAN per choice, deliberately: latency on a laptop GPU is
+        noisy (100-sample baselines show std up to 1.78 ms), and a per-choice minimum rewards
+        whichever configuration caught the quietest moment on the card. That is the right
+        statistic for the analyst to read as a trend.
+
+        It is the wrong statistic for deciding which way to EXTEND a range, because the
+        objective is a minimum: `best_ms` is `min(trials)`, families are compared on their
+        best, and the delivered result is one configuration. So `at_boundary` /
+        `boundary_direction` are anchored to `best_trial_value` -- the value the fastest trial
+        actually used -- while `best_value` keeps reporting the median's pick.
+
+        Measured cost of not doing this (`scripts/audit_boundary_direction_vs_best_trial.py`,
+        1126 knobs): the two picks disagree on 44.7%, and on 16.3% the median flagged an edge
+        pointing AWAY from the value the winning trial used. Expansions born from those flags
+        found a better configuration 1 of 38 times (2.6%) against 12 of 55 (21.8%) for
+        well-directed ones, Fisher two-sided p=0.013. Not a relabelling of the known
+        min-vs-max yield gap: within `direction=max` alone it is 0/25 against 12/53.
+
+        Concretely, `cand-47371017` (a 9.78 ms run best) reported `GEMM_STAGES best_value=5,
+        at_boundary=max` while its winning trial ran `GEMM_STAGES=1`; an expansion would have
+        added STAGES=6 and left the winning edge unexplored.
+
+        The change is mostly SUBTRACTIVE, which is the conservative direction. The monotone
+        tail test still reads the median curve: the anchor picks which edge to consider, and
+        the trend must still agree the curve heads there. Replayed over the same 1126 knobs,
+        18.4% of flags are withdrawn (winner on an edge the median slopes away from -- one
+        lucky trial against a contrary trend, not worth an expansion) and 3.1% newly raised.
+        Expansion is not starved: 78 of the 96 spaces that previously had at least one request
+        still have one, with requests per space falling 2.2 -> 1.5 and all now aimed at the
+        winner's edge.
+        """
         lat_by_value: dict[str, float] = {}
         grouped: dict[str, list[float]] = defaultdict(list)
         for t in complete:
@@ -57,6 +90,7 @@ class TuningStatsAnalyzer:
                 fail_by_value[key] = n_bad / total
 
         best_value = choices[0]
+        best_trial_value = None
         at_boundary = False
         boundary_direction = None
         effect_pct = 0.0
@@ -67,14 +101,24 @@ class TuningStatsAnalyzer:
             lo, hi = min(lats), max(lats)
             effect_pct = 0.0 if lo <= 0 else (hi - lo) / lo * 100.0
 
+            # The objective's own winner: the value used by the single fastest trial.
+            fastest = min(complete, key=lambda t: t.latency_ms.mean)
+            candidate_value = fastest.params.values.get(name)
+            # Only usable as an anchor if it is one of this domain's measured choices.
+            measured_choices = [c for c, _ in measured]
+            if candidate_value in measured_choices:
+                best_trial_value = candidate_value
+
             # Boundary = edge of the MEASURED range; choices beyond that either
             # don't exist or consistently fail (the paper's "blocked" case).
-            measured_choices = [c for c, _ in measured]
-            best_m_idx = measured_choices.index(best_value)
+            # Anchored on the fastest trial's value (see docstring), falling back to the
+            # median's pick when the trial's value is not among the measured choices.
+            anchor = best_trial_value if best_trial_value is not None else best_value
+            best_m_idx = measured_choices.index(anchor)
             at_min_edge = best_m_idx == 0
             at_max_edge = best_m_idx == len(measured_choices) - 1
             if at_min_edge or at_max_edge:
-                full_idx = choices.index(best_value)
+                full_idx = choices.index(anchor)
                 beyond = choices[:full_idx] if at_min_edge else choices[full_idx + 1:]
                 beyond_blocked = all(
                     fail_by_value.get(repr(c), 0.0) >= 1.0 or repr(c) not in lat_by_value
@@ -94,6 +138,7 @@ class TuningStatsAnalyzer:
         return ParamStat(
             name=name,
             best_value=best_value,
+            best_trial_value=best_trial_value,
             at_boundary=at_boundary,
             boundary_direction=boundary_direction,
             effect_pct=round(effect_pct, 2),

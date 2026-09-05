@@ -15,7 +15,15 @@ from kernel_optimizer.models.core import (
 
 class ParamStat(BaseModel):
     name: str
+    # The median table's pick: argmin over per-choice MEDIAN latency. A trend statistic,
+    # robust to a single quiet moment on the card.
     best_value: ParamValue
+    # The value this knob took in the single fastest trial -- the objective's own winner,
+    # since best_ms is min(trials). Differs from best_value on 44.7% of knobs measured, so
+    # `at_boundary` / `boundary_direction` are anchored to THIS rather than to the median
+    # (see TuningStatsAnalyzer._param_stat). None when no trial completed, or when the
+    # fastest trial's value is not among this domain's measured choices.
+    best_trial_value: ParamValue | None = None
     at_boundary: bool = False
     boundary_direction: Literal["min", "max"] | None = None
     # Relative latency spread across this param's choices: (worst - best) / best.
