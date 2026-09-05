@@ -161,7 +161,10 @@ something different, verified by reading their source on this machine:
   documented factor.
 - **KernelFoundry** applies `(frac on either witness) AND (cosine on either witness)`, where we
   apply `(frac AND cosine) on either`. On our data this changes nothing: cosine passes
-  **279 of 279** and frac fails 279 of 279, so our gate is effectively single-criterion.
+  **279 of 279** and frac fails 279 of 279, so our gate is effectively single-criterion *on the
+  candidates we produce*. Not a property of the gate: a constructed single-element defect scores
+  `frac` = 1.000000 and is rejected by cosine alone, so the criteria are complementary
+  (`scripts/audit_fp64_gate_adversarial.py`).
 
 **Verified against our own numbers.** 512³ GEMM, MBConv-like values, fp64 golden reference:
 

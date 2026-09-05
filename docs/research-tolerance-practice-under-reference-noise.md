@@ -129,6 +129,23 @@ cosine passed but frac failed : 279
 `cosine` passes in **279 of 279** rejections. The gate is effectively single-criterion, and
 that criterion is `frac_within_tol`. Worth knowing before anyone tunes `cosine_min`.
 
+**Refinement, from adversarially testing the gate rather than only observing it.** "Effectively
+single-criterion" describes the *candidate population we happen to have*, not a property of the
+gate. Constructing the defect cosine is built for shows the two criteria are complementary:
+
+```
+candidate                        abs gate     frac      RMSE vs fp64   ratio
+ONE element off by +1000            FAIL   1.000000       2.0377e-01   289.9
+systematic 2% scale error           FAIL   0.015168       1.9999e-02    28.5
+```
+
+The first row has `frac_within_tol` = **1.000000** — a perfect score on the criterion that
+rejects all 279 real candidates — and is rejected anyway, which only `cosine` can be doing. One
+wild element is invisible to a 99th-percentile elementwise test and obvious to a whole-vector
+direction test; the systematic error is the reverse. So `cosine_min` is not dead weight, and
+lowering it because "it never binds" would remove the only check on a class of defect
+`frac` cannot see. Reproduce with `python scripts/audit_fp64_gate_adversarial.py <reference.py>`.
+
 ## What this means for our gate
 
 Our gate is stricter than all three references, on a specific axis: it applies **one**

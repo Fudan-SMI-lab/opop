@@ -58,9 +58,41 @@ Three things in that block matter more than the verdict:
 2. **`frac_within_tol` = 0.9279 against tf32 while the reference's own floor is 0.9553.** The
    candidate is *inside* the band the reference itself occupies. The absolute gate demands
    0.99 of both, which neither meets — it was rejecting the task, not the kernel.
-3. **cosine is 0.99999935**, far above its 0.99985 threshold, on a rejected trial. The gate is
-   effectively single-criterion on `frac`, exactly as
+3. **cosine is 0.99999935**, far above its 0.99985 threshold, on a rejected trial. On the
+   candidates we actually produce the gate is effectively single-criterion on `frac`, as
    `research-tolerance-practice-under-reference-noise.md` measured (cosine passes 279/279).
+   That is a fact about our candidate population, not about the gate — see the adversarial
+   section below, where a constructed defect scores `frac` = 1.000000 and is rejected by
+   cosine alone.
+
+## Adversarial check: the gate cannot be fooled by RMSE averaging
+
+The obvious worry about an RMSE-relative criterion is that a mean over millions of elements
+averages down a defect confined to a few of them. Tested rather than reasoned about, against
+the real L3:21 reference (`scripts/audit_fp64_gate_adversarial.py`):
+
+```
+reference RMSE vs fp64 golden : 7.029335e-04
+
+candidate                              abs gate     frac         RMSE    ratio   @2.0   @3.0
+tf32-class noise (the live case)           FAIL  0.964279   5.6018e-04    0.797   PASS   PASS
+ONE element off by +1000                   FAIL  1.000000   2.0377e-01  289.879   FAIL   FAIL
+1% of elements (240844) off by 50%         FAIL  0.990000   5.0087e-02   71.254   FAIL   FAIL
+systematic 2% scale error                  FAIL  0.015168   1.9999e-02   28.451   FAIL   FAIL
+```
+
+The required pattern holds: the legitimate low-precision candidate passes at ratio 0.797, and
+all three defects fail — by **28× to 290×**, nowhere near the 2.0/3.0 multipliers. Even the
+single-element corruption, the averaging worry stated as concretely as possible, lands at 290×.
+On a 10×192×112×112 output one element at +1000 moves the RMSE from 7.0e-04 to 2.0e-01, because
+RMSE is a root-mean-*square*: a large outlier is amplified before it is averaged. So the
+multipliers are not close to admitting anything wrong, and the margin is wide enough that the
+values themselves are not delicate.
+
+Row 2 also corrects the "effectively single-criterion" reading above: `frac` = 1.000000 is a
+perfect score on the criterion that rejects all 279 real candidates, and the trial is still
+rejected — by cosine, which is the only remaining arm. The two criteria catch different
+defects.
 
 ## What would falsify it, and has not
 
