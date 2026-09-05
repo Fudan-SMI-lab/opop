@@ -53,13 +53,38 @@ Three things follow, and the first two contradict what I had written:
    of that one event, not a regression in what the run keeps — the monotonic guards were
    already there and the code comment at `orchestrator.py:708` says why.
 
-**Caution on reading that 68% as K's success rate.** The "improved" column counts whether the
+**Caution on reading that as K's success rate.** The "improved" column counts whether the
 post-expansion *best* fell, not whether K's *added values* caused it. A re-tune re-runs 40 trials
 over the whole space, so it can find a better point inside the original domain and be scored as an
-improvement. At least one case is now confirmed to be exactly that (`cand-88e76051`, +2.0% while
-the added value landed 13% worse — see
-`measurement-k-expands-downward-and-adds-zero-stages.md`), so **68% is an upper bound on K's
-contribution**, and the honest per-case test remains the new-choice subset.
+improvement. `scripts/audit_expansion_outcomes.py` now attributes each expansion by comparing the
+best **fresh** new-choice trial against the best fresh old-choice trial:
+
+```
+ATTRIBUTION -- of the 22 expansions where both sides were freshly measured,
+the best came from a value K ADDED in 10 (45%) and from the original domain in 12.
+```
+
+Breaking the 20 "improved" headlines down by attribution:
+
+| | n | headline gains |
+|---|---|---|
+| best came from a **new** value — K earned it | 9 | up to +20.0% |
+| best came from the **old** domain — the re-tune re-found it | **7** | 8.3, 2.2, 2.0, 1.0, 0.5, 0.5, 0.4 (median **1.0%**) |
+| no attribution possible (one side never measured fresh) | 4 | — |
+
+So **7 of 20 improved headlines credit K for a gain its widened region did not produce.** Their
+median is 1.0%, i.e. mostly small — with one exception worth flagging: `cand-7dcdbd99`'s **+8.3%**
+(16.9 → 15.5) is the largest single gain in L3:21's winning family, and its best fresh trial used
+only old choices while the new-choice best was 16.0.
+
+That case was already read correctly at the time — `result-l3-21-rerun-verdict.md` says "the final
+8.3% was re-tune **coverage**, NOT improvement K … every value in the winner pre-existed the
+expansion; the best trial *using* a new choice was 16.00 ms". What the audit adds is that the same
+pattern holds six more times, and that it can now be checked with one command instead of a manual
+trial-by-trial reading.
+
+**68–70% is therefore an upper bound and ~45% the attributable figure**, and that ratio has been
+stable as n grew (9/20, then 10/22).
 
 ## Measured: which reported bests came from cache
 
