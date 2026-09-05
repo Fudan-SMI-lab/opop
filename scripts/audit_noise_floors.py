@@ -22,9 +22,18 @@ for run in sorted((REPO / "runs").glob("run-l3-*")):
     task = run.name.split("-")[2]
     for line in ev_path.open(encoding="utf-8"):
         e = json.loads(line)
-        if e["type"] != "SPACE_REJECTED":
+        # The floor line appears in BOTH sources. Reading only SPACE_REJECTED missed
+        # L3:43 entirely, where the rejections that carry it are per-trial (bf16 fails
+        # inside tuning rather than at witness time) -- see
+        # docs/result-l3-43-bf16-rejected-above-the-floor.md.
+        if e["type"] == "SPACE_REJECTED":
+            detail = e["payload"].get("detail", "")
+        elif e["type"] == "TRIAL_DONE":
+            trial = e["payload"].get("trial") or e["payload"]
+            detail = str(trial.get("failure_detail") or "")
+        else:
             continue
-        m = FLOOR.search(e["payload"].get("detail", ""))
+        m = FLOOR.search(detail)
         if not m:
             continue
         body = m.group(1)
