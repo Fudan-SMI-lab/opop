@@ -178,41 +178,55 @@ Note this is a weaker test than L3:21/L3:48: those two sat on opposite sides of 
 families and a *long* elapsed time would be the observation that actually falsifies the
 threshold claim.
 
-### Status at 2.44h: two rounds done, and the budget demonstrably fits
+### Status at 4.03h: all four families have had exactly one rewrite round
 
-Both active families completed round 1 and both improved:
+Both outer rounds are done and every family improved:
 
-| family | seed | after round 1 | gain | round took |
+| family | seed | after its round | gain | outer round it ran in |
 |---|---|---|---|---|
-| fam-4aea322a | 14.2 | **11.0** | 22.5% | 31.0 min |
-| fam-92e7c576 | 22.5 | 19.6 | 12.9% | 12.5 min |
+| fam-4aea322a | 14.2 | **11.0** | 22.5% | 1 |
+| fam-92e7c576 | 22.5 | 19.6 | 12.9% | 1 |
+| fam-7f682a54 | 23.4 | 19.9 | 15.0% | 2 |
+| fam-ea7bc8bb | 28.0 | 21.3 | 23.9% | 2 |
 
-Seed phase ended at 1.72h; the two rounds averaged **21.7 min**. With 4 families × 3 rounds = 12
-rounds and 10 remaining, the projection is a **6.1h finish against a 12h wall**.
+Note the `round` field in `FAMILY_ROUND_RECORDED` is the **outer loop** counter, not the family's own
+count: `fam-7f682a54` and `fam-ea7bc8bb` show `round: 2` while having had only their *first* rewrite,
+because `max_families_active: 2` admits two families per outer pass. All four have
+`rewrite_rounds_used == 1`. Worth knowing before reading any round number in these events.
 
-That matters for the prediction's testability: the full rewrite budget *fits*, with roughly six
-hours of slack. So if this run stops early it will not be because it ran out of wall clock, and
-the prediction is a real test rather than one that passes trivially. Conversely, if it does run
-all 12 rounds, that is the mechanism behaving as described with zero empty families.
+Timing, and the projection: 4 family-rounds done, averaging **36 min** each; 8 remain, so the full
+12-round budget projects a **8.8h finish against the 12h wall**. Tighter than my earlier 6.1h estimate
+(the later rounds took 55 and 40 min against the first two at 31 and 12), but still inside budget —
+so the pre-registered prediction remains a real test rather than one that passes by running out of
+time.
 
-The global verdict at 2.44h reads `continue` with all four families `active`, so nothing has
-frozen yet.
+### All four families now enter round 2 with slope 0.0
+
+```
+family        seed  best_history  rounds_used  slope policy sees  true round-1 gain
+fam-4aea322a  14.2  [11.0]        1            0.0%              22.5%
+fam-92e7c576  22.5  [19.6]        1            0.0%              12.9%
+fam-7f682a54  23.4  [19.9]        1            0.0%              15.0%
+fam-ea7bc8bb  28.0  [21.3]        1            0.0%              23.9%
+```
+
+`fam-4aea322a`'s round-2 `CONVERGENCE_DECIDED` at 13:18:43 is the first non-empty `best_history` in
+the run — `[11.0]` — and it still yields a 0.0% slope, because `_improvement_pct` needs two entries.
+So the four largest single-round gains this project has recorded (12.9–23.9%) are *all* invisible to
+the ranking policy at the moment it allocates round 2. They become visible only after round 3, by
+which point `budget_exhausted` has already fired
+(`finding-converged-stop-kind-is-unreachable.md`).
 
 ### The slope rule is currently inert — the seed off-by-one again
 
-Round-2 selection, computed from `active_families()`'s actual ranking rule:
+At the outer-round-1 decision point, `active_families()` ranked the two never-rewritten families
+first (`fam-7f682a54` 23.4, `fam-ea7bc8bb` 28.0) ahead of the two that had just improved
+(`fam-4aea322a` 11.0, `fam-92e7c576` 19.6). That is the intended "no branch is dropped before it has
+had one chance" rule and is correct.
 
-```
-ACTIVE  fam-7f682a54  unproven=0  slope=0.0%  incumbent=23.4
-ACTIVE  fam-ea7bc8bb  unproven=0  slope=0.0%  incumbent=28.0
-        fam-4aea322a  unproven=1  slope=0.0%  incumbent=11.0   <- improved 22.5%
-        fam-92e7c576  unproven=1  slope=0.0%  incumbent=19.6   <- improved 12.9%
-```
-
-The two never-rewritten families go first, which is the intended "no branch is dropped before it
-has had one chance" rule and is correct. But note **all four score `slope = 0.0`** — including the
-two that just improved 22.5% and 12.9% — because `_improvement_pct` needs two `best_history`
-entries and each has one (`finding-converged-stop-kind-is-unreachable.md`).
+But all four scored `slope = 0.0` — including the two that had just improved 22.5% and 12.9% —
+because `_improvement_pct` needs two `best_history` entries and each had one
+(`finding-converged-stop-kind-is-unreachable.md`).
 
 So at *this* decision point the slope term contributes nothing, and the ordering is decided
 entirely by the unproven-first rule plus the latency tie-break.
