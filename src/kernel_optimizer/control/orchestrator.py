@@ -780,6 +780,7 @@ class Orchestrator:
             trial_id=trial_id, candidate_id=cand.candidate_id, space_id=space.space_id,
             params=params, status="complete", latency_ms=lat,
             profile=self.deps.profiler.extract(result),
+            fp64_rescued_trials=result.get("fp64_rescued_trials"),
         )
 
     def _stats_and_analysis(self, crun: CandidateRun) -> None:

@@ -134,6 +134,12 @@ class TrialRecord(BaseModel):
     failure_detail: str = ""
     latency_ms: LatencyStats | None = None
     profile: ProfileRecord | None = None
+    # How many of this trial's correctness trials were accepted ONLY by the fp64
+    # relative arm (0 when the gate is on and did not change the verdict, None when the
+    # gate is off). Journalled so the gate's effect is measurable from the event log --
+    # the fp64 metrics otherwise appear only on FAILURES, i.e. never on the cases the
+    # gate was added to admit.
+    fp64_rescued_trials: int | None = None
 
 
 class BestRecord(BaseModel):

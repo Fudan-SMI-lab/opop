@@ -3233,3 +3233,83 @@ def test_low_precision_detection_reads_the_materialized_params():
     assert not wm._computes_low_precision('PARAMS = {"COMPUTE_DTYPE": "ieee"}')
     assert not wm._computes_low_precision('acc += tl.dot(a, b, input_precision="ieee")')
     assert not wm._computes_low_precision('PARAMS = {"BLOCK_M": 64}')
+
+
+def test_low_precision_detection_ignores_dead_dtype_branches():
+    """The multiplier must reflect the LIVE dtype, not every dtype named in the file.
+
+    Candidates keep all dtype branches in the kernel body and select with a
+    `tl.constexpr` knob, so exactly one survives compilation while the source still
+    mentions the others. A whole-file token scan therefore granted the wider
+    low-precision multiplier to a tf32 candidate -- verified live at multiplier 3.0 where
+    2.0 was intended. The materialized PARAMS literal carries the tuner's actual choice
+    and must win.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "wm_probe2", Path("src/kernel_optimizer/gpu/worker_main.py"))
+    wm = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(wm)
+
+    # The real shape: every branch present, one selected by the knob.
+    body = '''
+PARAMS = {"BLOCK_M": 32, "COMPUTE_DTYPE": "%s"}
+
+@triton.jit
+def k(a, b, COMPUTE_DTYPE: tl.constexpr):
+    if COMPUTE_DTYPE == "fp16":
+        acc += tl.dot(a.to(tl.float16), b.to(tl.float16), input_precision="ieee")
+    elif COMPUTE_DTYPE == "bf16":
+        acc += tl.dot(a.to(tl.bfloat16), b.to(tl.bfloat16), input_precision="ieee")
+    elif COMPUTE_DTYPE == "tf32":
+        acc += tl.dot(a, b, input_precision="tf32")
+    else:
+        acc += tl.dot(a, b, input_precision="ieee")
+'''
+    assert wm._computes_low_precision(body % "fp16")
+    assert wm._computes_low_precision(body % "bf16")
+    # These two are the regression: the file names fp16/bf16 in dead branches.
+    assert not wm._computes_low_precision(body % "tf32"), \
+        "a tf32 candidate must take the 2.0 multiplier, not 3.0"
+    assert not wm._computes_low_precision(body % "ieee"), \
+        "an ieee candidate must take the 2.0 multiplier, not 3.0"
+
+    # With no dtype knob at all, a hardcoded cast IS the live code.
+    assert wm._computes_low_precision('PARAMS = {"BLOCK_M": 64}\nx = x.to(tl.float16)')
+    assert not wm._computes_low_precision(
+        'PARAMS = {"BLOCK_M": 64}\nacc = tl.dot(a, b, input_precision="ieee")')
+
+
+def test_fp64_rescue_is_journalled_so_the_experiment_is_measurable():
+    """A trial accepted ONLY by the fp64 relative arm must say so.
+
+    Without this the fp64 metrics reach the log only on FAILURE, i.e. never on the cases
+    the gate was added to admit -- the experiment would be unmeasurable from the event
+    log. `fp64_rescued_trials` is None when the gate is off and 0 when it is on and
+    changed nothing, which are different findings.
+    """
+    from pathlib import Path
+
+    from kernel_optimizer.models.core import ParamSet, TrialRecord
+
+    wm = Path("src/kernel_optimizer/gpu/worker_main.py").read_text(encoding="utf-8")
+    assert "fp64_rescued += 1" in wm, "the accepting arm must be counted"
+    assert 'result["fp64_rescued_trials"] = fp64_rescued' in wm
+    # Reported even when zero, so "enabled and rescued nothing" is distinguishable.
+    gate_block = wm.split("if fp64_gate:")[-1]
+    assert 'result["fp64_gate_enabled"] = True' in gate_block
+
+    orch = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
+    assert 'fp64_rescued_trials=result.get("fp64_rescued_trials")' in orch, \
+        "the driver must carry it onto TRIAL_DONE or it never reaches the event log"
+
+    rec = TrialRecord(trial_id="t", candidate_id="c", space_id="s",
+                      params=ParamSet(values={}), status="complete",
+                      fp64_rescued_trials=3)
+    assert rec.fp64_rescued_trials == 3
+    # Absent by default, so old event logs replay unchanged.
+    assert TrialRecord(trial_id="t", candidate_id="c", space_id="s",
+                       params=ParamSet(values={}),
+                       status="complete").fp64_rescued_trials is None

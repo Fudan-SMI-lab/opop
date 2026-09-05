@@ -410,23 +410,55 @@ def _relaxed_close(ref, got, elem_tol: float, pass_frac: float, cosine_min: floa
     return cos >= cosine_min
 
 
-_LOW_PRECISION_TOKENS = ("fp16", "bf16", "float16", "bfloat16")
+_LOW_PRECISION_VALUES = ("fp16", "bf16", "float16", "bfloat16", "half")
+_LOW_PRECISION_TOKENS = ("tl.float16", "tl.bfloat16", ".half(", "torch.float16",
+                         "torch.bfloat16")
 
 
 def _computes_low_precision(kernel_src: str) -> bool:
-    """Does this materialized candidate compute in fp16/bf16?
+    """Does this materialized candidate actually COMPUTE in fp16/bf16?
 
-    Mirrors the driver's `_detect_candidate_precision` on the signals available here.
-    The source is MATERIALIZED, so the tuner's chosen knob value is already substituted
-    into the PARAMS literal -- a candidate tuned to bf16 literally contains "bf16".
-    Casts in the kernel body (`.to(tl.float16)`, `a.to(tl.bfloat16)`) are covered by the
-    same token scan.
+    Only used to choose which slack multiplier the fp64 relative gate applies (2.0 vs
+    3.0), mirroring the driver's `_detect_candidate_precision` on the signals available
+    inside the worker.
 
-    Used only to pick which slack multiplier the fp64 relative gate applies, so a false
-    negative just holds the candidate to the stricter 2.0 and a false positive grants
-    3.0 -- both are inside the range torch itself uses.
+    Reads the PARAMS literal FIRST and treats it as authoritative, because a plain token
+    scan over the whole file is wrong on the common shape. Candidates keep every dtype
+    branch in the kernel body:
+
+        if COMPUTE_DTYPE == "fp16":    ... tl.float16 ...
+        elif COMPUTE_DTYPE == "bf16": ... tl.bfloat16 ...
+        elif COMPUTE_DTYPE == "tf32": ...
+
+    `COMPUTE_DTYPE` is a `tl.constexpr`, so exactly one branch survives compilation --
+    but the file still contains all of them. Scanning the text granted the wider
+    low-precision multiplier to a tf32 candidate (verified live: multiplier 3.0 where
+    2.0 was intended), and would do the same for an ieee one. The materialized PARAMS
+    holds the tuner's actual choice, so it decides.
+
+    Falls back to the token scan only when there is no dtype-valued knob at all -- a
+    candidate that hardcodes its cast has no knob to read, and there the tokens are the
+    live code.
     """
     text = kernel_src.lower()
+    params_block = ""
+    if "params" in text:
+        head = text.split("params", 1)[1]
+        brace = head.find("{")
+        close = head.find("}", brace) if brace >= 0 else -1
+        if brace >= 0 and close > brace:
+            params_block = head[brace:close + 1]
+
+    if params_block:
+        # A dtype-valued knob is present iff one of the recognized precision names
+        # appears as a value in the literal. If so, it alone decides.
+        declares_dtype = any(f'"{v}"' in params_block or f"'{v}'" in params_block
+                             for v in _LOW_PRECISION_VALUES + ("tf32", "ieee",
+                                                               "float32", "fp32"))
+        if declares_dtype:
+            return any(f'"{v}"' in params_block or f"'{v}'" in params_block
+                       for v in _LOW_PRECISION_VALUES)
+
     return any(tok in text for tok in _LOW_PRECISION_TOKENS)
 
 
@@ -655,6 +687,11 @@ def run_relaxed_correctness(job: dict) -> dict:
     pass_count = 0
     last_detail = ""
     fp64_metrics_last: dict = {}
+    # How many trials were accepted ONLY because of the fp64 relative arm. This is the
+    # experiment's dependent variable: without it, the fp64 numbers reach the log only
+    # when the arm ALSO failed, so the cases it was added to admit would be invisible.
+    fp64_rescued = 0
+    fp64_rescue_metrics: dict = {}
     try:
         with torch.no_grad():
             for trial in range(num_trials):
@@ -705,6 +742,11 @@ def run_relaxed_correctness(job: dict) -> dict:
                         ok, fp64_metrics_last = _fp64_relative_ok(
                             golden, out_ref_tf32, out_kernel, mult, elem_tol)
                         del golden
+                        if ok:
+                            # Accepted by the relative arm alone: the absolute gate had
+                            # already failed on this trial.
+                            fp64_rescued += 1
+                            fp64_rescue_metrics = dict(fp64_metrics_last)
                     except Exception as exc:  # noqa: BLE001 -- absence of fp64 is not a failure
                         fp64_unavailable = f"{type(exc).__name__}: {exc}"
                         golden_model = None
@@ -839,6 +881,16 @@ def run_relaxed_correctness(job: dict) -> dict:
         "correctness_mode": "dual_witness_relaxed",
         "trials_passed": pass_count, "trials_total": num_trials,
     }
+    # Report the relative arm's contribution whenever the gate was enabled, including a
+    # plain zero. "Enabled and rescued nothing" and "not enabled" are different findings,
+    # and only an explicit field can tell them apart after the fact.
+    if fp64_gate:
+        result["fp64_gate_enabled"] = True
+        result["fp64_rescued_trials"] = fp64_rescued
+        if fp64_rescue_metrics:
+            result["fp64_rescue_metrics"] = fp64_rescue_metrics
+        if fp64_unavailable:
+            result["fp64_unavailable"] = fp64_unavailable
     if latency_ms is not None:
         result["latency_ms"] = latency_ms
     if ref_latency_ms is not None:
