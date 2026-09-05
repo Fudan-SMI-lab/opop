@@ -102,11 +102,56 @@ K expands at most `space_expansions_per_candidate` (=1) per candidate, so what m
 whether a space still has *any* request. 78 of 96 do, at 1.5 requests per space instead of 2.2,
 all now aimed at the winner's edge.
 
+## Live confirmation on the next expansion, unplanned
+
+The fix was written from the retrospective audit above. Within the hour the running L3:21 expanded
+`cand-47371017`'s space and re-tuned it — a prospective test nobody arranged, on the space whose
+misdirected `GEMM_STAGES` flag prompted the fix.
+
+The old rule requested four knobs; the new rule requests two:
+
+```
+OLD requested: GEMM_BLOCK_N/max  GEMM_STAGES/max  DEPTHWISE_BLOCK/max  DEPTHWISE_WARPS/max
+NEW requests : GEMM_BLOCK_N/max                                       DEPTHWISE_WARPS/max
+
+knob                 median   winner   old flag     new flag
+GEMM_BLOCK_N            128      128   True/max     True/max
+GEMM_STAGES               5        1   True/max     False/None    <- withdrawn
+DEPTHWISE_BLOCK        1024      512   True/max     False/None    <- withdrawn
+DEPTHWISE_WARPS           8        8   True/max     True/max
+```
+
+Both withdrawn knobs are exactly the ones whose winner sat away from the median's edge. What the
+re-tune then did with the values that expansion added:
+
+```
+GEMM_BLOCK_N=256   tried  0
+GEMM_BLOCK_N=512   tried  1  best 17.9
+GEMM_STAGES=6      tried 10  best 10.6   (2 failed)
+GEMM_STAGES=7      tried  0
+DEPTHWISE_BLOCK=2048  tried 4  best 12.1
+DEPTHWISE_BLOCK=4096  tried 0
+DEPTHWISE_WARPS=16    tried 3  best 11.1
+
+winner: 9.42 ms, using GEMM_BLOCK_N=128, GEMM_STAGES=4, DEPTHWISE_BLOCK=512,
+        DEPTHWISE_WARPS=8 -- every one of them pre-existing.
+```
+
+So the expansion did improve the candidate (9.78 → 9.42, and `GEMM_BLOCK_K=64` was already in the
+space), but **by re-tuning values it already had**, not by reaching a new one. Of the 40 re-tune
+trials, **13 (32%) spent themselves on values the withdrawn knobs contributed**, whose best was
+10.6 ms — worse than the 9.78 ms incumbent they started from. The two knobs the new rule keeps
+consumed 4 trials (10%).
+
+This is one observation and it cannot carry the argument on its own; the 38-vs-55 audit does that.
+What it adds is direction: the retrospective measurement said misdirected flags convert at 2.6%,
+and the first live expansion after the fix behaved exactly that way.
+
 ## Propagation
 
 `tuning/stats.py` is driver-side, so this affects the **next** run, not the one in flight —
-see `opop-v2-worker-vs-driver-fix-propagation`. The 9.78 ms result that exposed it stands on its
-own; nothing about it is retroactively changed.
+see `opop-v2-worker-vs-driver-fix-propagation`. The results that exposed it (9.78 ms, then 9.42 ms
+after the expansion) stand on their own; nothing about them is retroactively changed.
 
 Tests: `tests/test_stats.py::test_boundary_follows_the_fastest_trial_not_the_median`,
 `::test_a_winner_the_median_trend_contradicts_is_withdrawn_not_flipped`,

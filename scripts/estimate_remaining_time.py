@@ -121,15 +121,27 @@ for r in live:
           f"-{max(0.0, statistics.quantiles(tails, n=4)[2]-here):.1f}h)")
     print(f"  wall-clock cap: hard stop {12.0 - el:.1f}h from now (never yet binding)")
 
-print("\n=== remaining chain: run_l3_chain.ps1 -> level3:43, level3:48")
+print("\n=== remaining queue: scripts/queue_glm_first.ps1")
+print("  1. glm level3:21  (configs/experiments_l3_glm.yaml)")
+print("  2. gpt level3:43")
+print("  3. gpt level3:48")
+print("\n  The GLM arm has NO finished run, so its duration is unpredicted. Its budgets are")
+print("  identical to the gpt arm's, but agent latency, retry rate and whether its candidates")
+print("  pass the PARAMS contract are all unmeasured -- one smoke call is the only evidence.")
+print("  A gpt run on the same task is the closest available prior, quoted below for scale only.")
+gpt21 = [r["total_h"] for r in ref if r["task"] == "21"]
+if gpt21:
+    print(f"    gpt on level3:21: n={len(gpt21)} median {statistics.median(gpt21):.2f}h "
+          f"range {min(gpt21):.2f}-{max(gpt21):.2f}h")
+print("\n  the two gpt tasks that follow:")
 for task in ("43", "48"):
     ts = [r["total_h"] for r in ref if r["task"] == task]
     if ts:
-        print(f"  level3:{task}: n={len(ts)} median {statistics.median(ts):.2f}h "
+        print(f"    level3:{task}: n={len(ts)} median {statistics.median(ts):.2f}h "
               f"range {min(ts):.2f}-{max(ts):.2f}h")
 per_task = {t: [r["total_h"] for r in ref if r["task"] == t] for t in ("43", "48")}
 if all(per_task.values()):
     lo = sum(min(v) for v in per_task.values())
     mid = sum(statistics.median(v) for v in per_task.values())
     hi = sum(max(v) for v in per_task.values())
-    print(f"  both: {mid:.1f}h at the medians (range {lo:.1f}-{hi:.1f}h)")
+    print(f"    both gpt tasks: {mid:.1f}h at the medians (range {lo:.1f}-{hi:.1f}h)")
