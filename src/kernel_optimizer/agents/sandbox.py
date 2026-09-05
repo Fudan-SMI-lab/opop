@@ -46,14 +46,38 @@ PERMISSION_CONFIG = {
 
 
 class SandboxFactory:
-    def __init__(self, sandboxes_dir: Path):
+    """Creates one throwaway directory per agent call.
+
+    `extra_config` is merged into the sandbox's `opencode.json` on top of the permission
+    block. It exists because that file makes the sandbox a project root for opencode, which
+    STOPS its upward search for configuration: a provider declared in an ancestor directory
+    is invisible from inside a sandbox. Providers that also appear in the user's global
+    `~/.config/opencode` config still resolve (that one is always loaded), which is why
+    `openai/gpt-5.6-sol` has always worked while a repo-only provider does not --
+    `zhipuai/glm-5.3` failed with `ProviderModelNotFoundError: Model not found:
+    zhipuai/glm-5.3` on every attempt until its provider block was written here.
+
+    Passing the block through config rather than hardcoding it keeps the mechanism general:
+    any model whose provider is defined per-project works without touching this module, and
+    nothing model-specific lives in the harness.
+
+    SECURITY: a provider block normally carries `options.apiKey`, so every sandbox under the
+    run directory ends up holding a plaintext credential. Run directories are gitignored, but
+    they are also archived and copied around — treat a run dir of an arm using this mechanism
+    as secret-bearing, and rotate the key if one is shared. The gpt arm has no such copies
+    because its provider comes from the user's global config instead.
+    """
+
+    def __init__(self, sandboxes_dir: Path, extra_config: dict | None = None):
         self.sandboxes_dir = sandboxes_dir
+        self.extra_config = extra_config or {}
 
     def create(self, call_id: str) -> Sandbox:
         root = self.sandboxes_dir / call_id
         root.mkdir(parents=True, exist_ok=False)
+        config = {**PERMISSION_CONFIG, **self.extra_config}
         (root / "opencode.json").write_text(
-            json.dumps(PERMISSION_CONFIG, indent=2), encoding="utf-8"
+            json.dumps(config, indent=2), encoding="utf-8"
         )
         # git init helps opencode's diff tracking; best effort.
         try:

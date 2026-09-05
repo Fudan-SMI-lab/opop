@@ -1,0 +1,88 @@
+# Config for the GLM-5.3 arm of the L3 experiments.
+#
+# Identical to configs/experiments_l3.yaml in EVERY budget and evaluation knob --
+# only the agent model and the opencode launch directory differ, so the two arms are
+# comparable as a model swap rather than a different experiment.
+#
+# runs_dir is INSIDE v2-glm on purpose. Agent sessions run with directory=<sandbox>,
+# and opencode resolves providers by walking UP from that directory; a sandbox under
+# v2/runs-glm never passes v2-glm and the zhipuai provider is not found
+# (ProviderModelNotFoundError, verified live). Keeping the run dir under v2-glm puts
+# the config on that path.
+#
+# The launch_cwd below is what gives this arm its own opencode server: the harness
+# spawns `opencode serve` there on a free port, and opencode merges the configs it
+# finds walking UP from that directory. v2-glm/.opencode/opencode.jsonc declares only
+# zhipuai, with glm-5.3 pinned to reasoningEffort max at the model level so the depth
+# applies whether or not a variant is sent.
+run:
+  runs_dir: D:/Pyhon_projects/opop/v2-glm/runs
+  seed: 0
+
+# This arm's own opencode server. The harness spawns `opencode serve` in launch_cwd on a
+# free port, so it never shares a server with the gpt-5.6-sol arm.
+opencode:
+  server_url: null
+  launch_cwd: D:/Pyhon_projects/opop/v2-glm
+  # Each agent sandbox gets its own opencode.json, and that file makes the sandbox a
+  # project root, which STOPS opencode's upward config search. A provider declared only in
+  # an ancestor directory is therefore invisible from inside a sandbox -- verified live:
+  # every call failed with `ProviderModelNotFoundError: Model not found: zhipuai/glm-5.3`.
+  # openai never hit this because it is in the user's global config, which is always
+  # loaded. Pointing at the file (rather than inlining) keeps the API key out of this
+  # config and out of git.
+  sandbox_config_path: D:/Pyhon_projects/opop/v2-glm/.opencode/opencode.jsonc
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 3
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 3
+  max_families_active: 2
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3          # improvement F: 2->3, compile+precision failures need >2 tries
+  space_expansions_per_candidate: 1   # improvement K: extend boundary knobs once before rewrite
+  space_expansion_idle_frac: 0.8
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed   # improvement A: tf32|ieee dual-witness relaxed gate
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  # Second acceptance path, ON for this round as the thing being tested. Follows
+  # torch._dynamo.utils.same(): build an fp64 golden reference and accept when the
+  # candidate's RMSE against it is within multiplier x the REFERENCE's own RMSE. Only
+  # consulted after the absolute gate above has already failed, so it can add
+  # acceptances but never remove one. Rationale and primary sources in
+  # docs/research-tolerance-practice-under-reference-noise.md; all three L3 tasks have
+  # ieee-vs-tf32 floors BELOW the 0.99 that relaxed_pass_frac demands
+  # (0.9554 / 0.9767 / 0.9778), which makes the absolute gate unreachable for a
+  # low-precision candidate however correct it is.
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+
+# load_config reads ONE file -- default.yaml is not a base layer, so anything omitted
+# here falls back to the pydantic field default rather than to default.yaml. Every
+# numeric limit below happens to match its field default, but device.name did NOT: it
+# defaults to "unknown", and _device_doc() writes it verbatim into every agent sandbox.
+# So every agent call in every L3 run so far was told "# Target device\n\n- unknown",
+# never learning the architecture is Blackwell sm_120 -- which decides which tensor-core
+# paths and instructions exist at all. Stated explicitly here; see also the assertion in
+# tests/test_improvements.py that keeps the two configs' device blocks in agreement.
+device:
+  name: RTX 5080 Laptop (sm_120)
+  vram_gb: 16
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024

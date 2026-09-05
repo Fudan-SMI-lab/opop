@@ -3420,3 +3420,69 @@ def test_fp64_rescue_is_journalled_so_the_experiment_is_measurable():
     assert TrialRecord(trial_id="t", candidate_id="c", space_id="s",
                        params=ParamSet(values={}),
                        status="complete").fp64_rescued_trials is None
+
+
+def test_sandbox_config_carries_a_project_provider_but_not_its_permissions(tmp_path):
+    """A per-project provider must reach the sandbox, and nothing else may ride along.
+
+    Every agent call runs with `directory=<sandbox>`, and the sandbox's own `opencode.json`
+    makes it a project ROOT -- which stops opencode's upward config search. A provider
+    declared only in an ancestor directory is therefore unresolvable from inside a sandbox
+    (`ProviderModelNotFoundError`, observed on every glm-5.3 call before this existed).
+    Providers in the user's global config are unaffected because that file is always loaded,
+    which is why the openai arm never needed this.
+
+    Two properties are asserted because both were deliberate: the provider block IS copied,
+    and `permission` / `plugin` from the project config are NOT -- carrying those across
+    would silently change sandbox behaviour that the harness sets on purpose.
+    """
+    import json
+
+    from kernel_optimizer.agents.sandbox import PERMISSION_CONFIG, SandboxFactory
+    from kernel_optimizer.config import AppConfig
+    from kernel_optimizer.wiring import _sandbox_extra_config
+
+    project_cfg = tmp_path / "opencode.jsonc"
+    project_cfg.write_text(
+        """{
+  // a comment, because the repo's own configs are .jsonc
+  "provider": {"zhipuai": {"models": {"glm-5.3": {"options": {"reasoningEffort": "max"}}}}},
+  "permission": {"webfetch": "allow"},
+  "plugin": ["something"]
+}""",
+        encoding="utf-8",
+    )
+    cfg = AppConfig.model_validate({"opencode": {"sandbox_config_path": str(project_cfg)}})
+    extra = _sandbox_extra_config(cfg)
+    assert "zhipuai" in extra["provider"]
+    assert "permission" not in extra and "plugin" not in extra
+
+    written = json.loads(
+        (SandboxFactory(tmp_path / "sb", extra_config=extra).create("call-1").root
+         / "opencode.json").read_text(encoding="utf-8")
+    )
+    assert "zhipuai" in written["provider"]
+    # The harness's own permission block survives the merge.
+    assert written["permission"] == PERMISSION_CONFIG["permission"]
+
+    # No config path => byte-identical to the pre-change behaviour.
+    assert _sandbox_extra_config(AppConfig()) == {}
+
+
+def test_a_missing_sandbox_config_is_fatal_rather_than_silent(tmp_path):
+    """Refusing to start beats a 12-hour run whose every agent call fails.
+
+    The failure this guards against is not hypothetical: a wrong path yields a config with
+    no provider block, every call dies `ProviderModelNotFound` after its full retry budget,
+    and the run burns its wall clock producing nothing. A warning would scroll past.
+    """
+    import pytest
+
+    from kernel_optimizer.config import AppConfig
+    from kernel_optimizer.wiring import _sandbox_extra_config
+
+    cfg = AppConfig.model_validate(
+        {"opencode": {"sandbox_config_path": str(tmp_path / "nope.jsonc")}}
+    )
+    with pytest.raises(FileNotFoundError):
+        _sandbox_extra_config(cfg)

@@ -25,6 +25,14 @@ class OpencodeConfig(BaseModel):
     request_timeout_s: float = 1200.0
     permission_mode: str = "sandbox_config"  # or "sse_auto_approve"
     startup_timeout_s: float = 60.0
+    # Merged into every agent sandbox's opencode.json. That file makes the sandbox a
+    # project root, which stops opencode's upward config search — so a provider declared
+    # only in an ancestor directory cannot be resolved from inside a sandbox. Providers in
+    # the user's GLOBAL config still work (it is always loaded), which is why openai has
+    # never needed this and a repo-local provider does. Point it at a file with
+    # `sandbox_config_path` instead of inlining secrets in the experiment config.
+    sandbox_extra_config: dict = Field(default_factory=dict)
+    sandbox_config_path: Path | None = None
 
 
 class AgentModuleConfig(BaseModel):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from kernel_optimizer.agents.modules import (
@@ -55,6 +56,31 @@ class Runtime:
         self.server.stop()
 
 
+def _sandbox_extra_config(cfg: AppConfig) -> dict:
+    """Config merged into each sandbox's `opencode.json` (see SandboxFactory's docstring).
+
+    `sandbox_config_path` is read from disk so an experiment config never has to inline a
+    provider block containing an API key; `sandbox_extra_config` is merged on top for small
+    inline overrides. A missing or unreadable file is fatal rather than silent: running a
+    whole experiment whose every agent call fails `ProviderModelNotFound` is worse than
+    refusing to start.
+    """
+    extra: dict = {}
+    path = cfg.opencode.sandbox_config_path
+    if path is not None:
+        text = Path(path).read_text(encoding="utf-8")
+        # The repo's own opencode configs are .jsonc with // comments.
+        stripped = "\n".join(ln for ln in text.splitlines()
+                             if not ln.lstrip().startswith("//"))
+        loaded = json.loads(stripped)
+        # Only the provider block is wanted; copying `permission` or `plugin` from a
+        # project config into a sandbox would change unrelated behaviour.
+        if "provider" in loaded:
+            extra["provider"] = loaded["provider"]
+    extra.update(cfg.opencode.sandbox_extra_config)
+    return extra
+
+
 def build_gpu_stack(cfg: AppConfig, store: RunStore):
     worker = WslGpuWorker(cfg.wsl, cfg.gpu.concurrency, jobs_dir=store.run_dir / "jobs")
     evaluator = CorrectnessEvaluator(worker, cfg.evaluation, cfg.gpu.concurrency,
@@ -76,7 +102,8 @@ def build_orchestrator(cfg: AppConfig, store: RunStore, task: TaskSpec,
         max_families_total_hard=cfg.budgets.max_families_total_hard,
     )
     convergence = ConvergencePolicy(cfg.budgets)
-    sandboxes = SandboxFactory(store.run_dir / "sandboxes")
+    sandboxes = SandboxFactory(store.run_dir / "sandboxes",
+                               extra_config=_sandbox_extra_config(cfg))
 
     def agent(cls, name: str):
         module_cfg = cfg.agents.module(name)
