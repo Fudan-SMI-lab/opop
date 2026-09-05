@@ -588,8 +588,37 @@ L3:48, and the same reason the pre-registered prediction wrote down a "far below
 branch: without a case the gate gets right, the above-floor rejections would be
 indistinguishable from a gate nothing can pass.
 
-Running L3:21 tally: **4 above-floor rejections, 1 below-floor rejection, 2 published** (both
-scalar-FMA). All four above-floor cases are tensor-core candidates.
+**And the control case then completed the loop.** At 07:59 `cand-d31b0474` was **published**
+after a single repair. Its diagnosis names a real defect:
+
+> "The custom pointwise convolutions forced Triton TF32 while the rest of the MBConv remained on
+> PyTorch's harness-controlled convolution path. This mixed precision/accumulation convention did
+> not numerically match either [witness]."
+
+That is a genuine bug — a candidate matching *neither* witness because it mixed conventions — and
+one repair fixed it. Both witnesses then passed:
+
+| attempt | witness | `COMPUTE_PRECISION` | result |
+|---|---|---|---|
+| a=0 | default | ieee | frac 0.953277, **below floor** → rejected |
+| a=1 | default | ieee | **passed** |
+| a=1 | minimal | **fp16** | **passed** |
+
+Three things this settles, none of which the L3:48 run could show:
+
+1. **Loop A works end-to-end on a candidate with a real defect** — correct diagnosis, one
+   attempt, published, no revert. The first clean repair success of the day, against the four
+   attempts wasted by `finding-parameterizer-reverts-the-repair.md`.
+2. **The gate discriminates in both directions**: it rejected below-floor and accepted after the
+   fix. So the four above-floor rejections are not an artefact of a gate nothing passes.
+3. **The fp16 minimal witness PASSES on L3:21.** This independently confirms the scope claim in
+   `finding-minimal-witness-forces-fp16.md` from the positive side: with `ref_absmax` 5.749 the
+   fp16 corner is a legitimate cheap config there, exactly as predicted, and unlike on L3:48
+   where it overflows by construction. That prediction was made on magnitude — the variable that
+   survived the falsification of the bounded-output argument.
+
+Running L3:21 tally: **4 above-floor rejections** (all tensor-core), **1 below-floor rejection
+that was then repaired and published**, **3 published** (2 scalar-FMA plus this one).
 
 #### The cleanest instance in the project so far, from L3:21 (07:22)
 
