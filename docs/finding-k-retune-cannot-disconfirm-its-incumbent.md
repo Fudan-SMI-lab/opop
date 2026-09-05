@@ -163,7 +163,46 @@ no-op three times over; it was not.
 Note also the failure cost: 28 of 40 trials went to new-choice territory and 22 of those 28
 failed, which is the real price of the expansion rather than the flat headline.
 
-## A pre-registered prediction on the fourth instance
+## A fourth cached best, and the first that is NOT a K re-tune
+
+`run-l3-43-20260905-091705`, `cand-fe4af2fc`, 12:53. The reported best is **21.3 ms from
+`tr-46a171a0`, which carries `reused_measurement: True`** — but this is the candidate's *first*
+tuning, so there is no prior space and no incumbent to replay. What was replayed is the **default
+witness**.
+
+The mechanism is the other half of the same cache. `_tune` seeds `measured_cache` with both witness
+results (`orchestrator.py:443-452`), so the default and minimal configs are known before trial 1.
+Here the default won:
+
+```
+best overall (cached witness):  21.3   BLOCK_M=64 BLOCK_N=64 WARPS=4 STAGES=1 fp16
+best FRESH measurement:         21.4   BLOCK_M=64 BLOCK_N=64 WARPS=4 STAGES=2 fp16
+```
+
+**40 trials, 13 fresh completions, and none beat the parameterizer's default** — the nearest came
+within 0.1 ms by changing only `FLASH_NUM_STAGES` from 1 to 2. So the honest reading of this
+candidate is "the default configuration was already optimal within this space", which is a
+different statement from "tuning found 21.3".
+
+That makes 4 of 121 reported bests cached, and this is the **first of 95 first-tunings** where it
+happened; the other three are all K re-tunes replaying an incumbent. Two distinct phenomena share
+one signature:
+
+| | replayed thing | what a cached best means |
+|---|---|---|
+| K re-tune (3 cases) | the pre-expansion incumbent | the widened region produced nothing better |
+| **first tuning (1 case)** | **the default witness** | **tuning produced nothing better than the default** |
+
+Both are legitimate outcomes and neither is a bug. But both are invisible in `TUNING_DONE`, which
+reports a latency and a params dict with no indication that no trial produced it. The reporting
+proposal above — mark a cached best — covers this case too, and this instance is the more
+misleading of the two: a reader seeing "tuned to 21.3, a 23.9% gain over the family's 28.0" would
+credit the tuner for a number the parameterizer supplied.
+
+Note the gain itself is real: the family went 28.0 → 21.3 because the *rewrite* was better, and the
+rewriter deserves that credit. `scripts/audit_cached_bests.py` now reports this case.
+
+## A pre-registered prediction on the fourth K expansion
 
 Written at 10:36, **before** the re-tune produced a single trial, so this is a prediction and
 not a postdiction. `cand-3bf724d6`, `sp-57e98792` → `sp-f50bba31` at 10:34:55. K widened four
