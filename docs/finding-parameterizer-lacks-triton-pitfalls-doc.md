@@ -87,23 +87,48 @@ while keeping the loop stride at 8. That is a correct fix, it compiles, and both
 own failure, understood the constraint, and satisfied it by changing the code rather than
 retreating on the domain.
 
-Whether it was *worth* doing is a different question, and the trials answer it:
+Whether it was *worth* doing is a different question. The expansion's full 40 trials answer it,
+and the answer splits by knob. K widened **seven** knobs here:
 
 ```
-PV_BLOCK_K=8    n=2  complete=2  best=38.8
-PV_BLOCK_K=16   n=2  complete=1  best=22.8
-PV_BLOCK_K=32   n=5  complete=3  best=22.0
-PV_BLOCK_K=64   n=6  complete=4  best=21.2
+QKV_BLOCK_K   +128     QKV_M_CTAS  +16    QKV_NUM_WARPS  +2
+SCORE_NUM_WARPS +16    OUT_BLOCK_M +256   OUT_NUM_WARPS  +16
+PV_BLOCK_K    +8   <- the illegal one
 ```
 
-8 is the worst value by a wide margin — 38.8 vs 21.2 — which is exactly what padding a dot to
-double its useful width predicts. The analyst had reported `PV_BLOCK_K` "trends downward in
-aggregate but the best uses 32", i.e. weak evidence, and the downward expansion bought a
-strictly bad region plus a masking branch in the hot loop. Cheap, but not free.
+The expansion **improved the candidate 22.0 → 20.3 (7.7%)**, and it is attributable — the winning
+trial uses the newly-added `OUT_BLOCK_M=256`:
 
-This is a second instance of the pattern in
-`result-analyst-hypothesis-refuted-by-control.md`: the boundary trend did not extrapolate past
-the boundary, and measuring the point beyond the edge turned the curve.
+| | trials | complete | best |
+|---|---|---|---|
+| used a new choice | 18 | 10 | **20.3** |
+| only old choices | 22 | 14 | 20.5 |
+
+But the specific value that caused the rejection contributed nothing:
+
+```
+PV_BLOCK_K=8    n=4   complete=3   best=24.5
+PV_BLOCK_K=16   n=2   complete=1   best=22.8
+PV_BLOCK_K=32   n=20  complete=15  best=20.3   <- the winner
+PV_BLOCK_K=64   n=14  complete=5   best=21.2
+```
+
+8 is the worst value in the domain, which is what padding a dot to double its useful width
+predicts. The analyst had reported `PV_BLOCK_K` "trends downward in aggregate but the best uses
+32" — weak evidence by its own account — and the downward expansion bought a strictly bad region
+plus a masking branch in the hot loop, costing one rejected attempt, ~3 min of agent wall, and 4
+trials.
+
+So this expansion is a clean example of something the current metric cannot see: **one expansion,
+seven knobs, one clearly productive (`OUT_BLOCK_M`) and one clearly counterproductive
+(`PV_BLOCK_K`)**, scored as a single 7.7% success. `scripts/audit_expansion_outcomes.py` attributes
+per-expansion, not per-knob, so the bad knob is invisible in the headline. Per-knob attribution
+would need the same new-vs-old split done one knob at a time — read-only, and worth doing when the
+run is over.
+
+It is also a second instance of the pattern in
+`result-analyst-hypothesis-refuted-by-control.md`: the boundary trend did not extrapolate past the
+boundary, and measuring the point beyond the edge turned the curve.
 
 ## What I changed
 
