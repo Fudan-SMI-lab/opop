@@ -1,5 +1,11 @@
 # In progress: L3:21 rerun vs the 09-04 run — same latency, opposite structural class
 
+> **SUPERSEDED — the run has finished and been re-evaluated.**
+> Read `result-l3-21-rerun-verdict.md` instead. Every `tuned_ms` figure below is
+> provisional; the final number is **15.80 ms** (`final_reeval_ms`), which beats
+> `torch_compile_tf32` by **3.2%**, not the 5.2% the last section projects from 15.50.
+> Kept for the structural-class and attribution analysis, which stands.
+
 `run-l3-21-20260905-071312`, written at 0.60h elapsed with 2 candidates tuned. **Provisional:
 no `final_reeval_ms` yet, so no honest verdict.** Recorded now because the comparison against
 yesterday's completed run is unusually clean and depends on data that will be overwritten as
