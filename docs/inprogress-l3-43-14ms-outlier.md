@@ -163,9 +163,32 @@ Note the register story is not monotonic: the 3rd best (30.1 ms) uses 121 regist
    reproduce a suspicious measurement** — the cache guarantees the same answer. Worth
    remembering when reading any re-tune that "confirms" a prior best.
 
-So the reproduction question stays open. `final_reeval_ms` is the one check guaranteed to
-re-measure this θ_best in a fresh process, and it is the important half anyway, since it
-would catch a stale-buffer or skipped-work artifact.
+3. **A genuinely independent 128-tile sample did arrive** — `tr-9c5d8622`, uncached, at
+   **19.8 ms** with a *different* surrounding configuration (`ATTN_BLOCK_N=16` vs 64,
+   `ATTN_NUM_STAGES=2` vs 1, `QKV_BLOCK_M=64` vs 128, 213 regs, **0 spills**).
+
+   That is the evidence the outlier reading was missing. Two independently measured
+   `ATTN_BLOCK_M=128` trials now exist, at 14.2 and 19.8 ms, and **both beat the 29.8 ms
+   best of every other tile size**:
+
+   | latency | ATTN_BLOCK_M | measured or cached |
+   |---|---|---|
+   | **14.2** | **128** | measured |
+   | 14.2 | 128 | *cached replay of the above* |
+   | **19.8** | **128** | **measured, different config** |
+   | 29.8 | 16 | measured |
+   | 30.1 … 30.9 | 16 | measured (6 trials) |
+   | 31.8 | 32 | measured |
+
+   So the 2x gap is a property of the **tile size**, not of one lucky trial: the large tile
+   wins by 33–52% from two different surrounding configurations, one of which spills no
+   registers at all. The "measurement skipped work" hypothesis no longer has a leg to stand
+   on — a stale-buffer artifact would not scale with an unrelated knob.
+
+The remaining uncertainty is narrower than it was: whether the **14.2** specifically holds,
+or whether the honest number for this candidate is nearer 19.8. `final_reeval_ms` re-measures
+exactly the θ_best config in a fresh process, so it decides that — and note it re-measures the
+14.2 config, which is the one with 12 spills.
 
 Until then the honest statement is: *a single trial measured 14.2 ms with stable per-sample
 timing and physically ordinary throughput; if it holds, it is the first L3:43 kernel to beat
