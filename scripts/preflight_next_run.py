@@ -246,6 +246,35 @@ def main() -> int:
         check("inlined helper not reported as dead", fp == set(),
               "_qk_scores ran on all 76 trials" if not fp else f"REGRESSION: {sorted(fp)}")
 
+    # --- report states how much of the search budget ran ----------------------------
+    # I quoted L3:21's 3.2% win before noticing the run used 2 of 6 rewrite rounds. A
+    # reader of report.md must not be able to make the same mistake.
+    check("report states search-budget utilization",
+          "_search_budget_lines" in report
+          and "Search budget actually used" in report
+          and "rewrite rounds used" in report,
+          "rounds used + empty families + dead-kernel trials, beside the verdict")
+    from kernel_optimizer.reporting.report import _search_budget_lines
+    starved = {"a": {"best_ms": None, "rewrite_rounds_used": 0},
+               "b": {"best_ms": 25.0, "rewrite_rounds_used": 1},
+               "c": {"best_ms": None, "rewrite_rounds_used": 0},
+               "d": {"best_ms": 15.5, "rewrite_rounds_used": 1}}
+    healthy = {"a": {"best_ms": 2.09, "rewrite_rounds_used": 3},
+               "b": {"best_ms": 3.8, "rewrite_rounds_used": 1},
+               "c": {"best_ms": None, "rewrite_rounds_used": 0},
+               "d": {"best_ms": 2.09, "rewrite_rounds_used": 3}}
+    warn_txt = " ".join(_search_budget_lines(
+        {"families": starved, "elapsed_hours": 2.05}, [], [], False))
+    quiet_txt = " ".join(_search_budget_lines(
+        {"families": healthy, "elapsed_hours": 6.08}, [], [], False))
+    check("budget warning discriminates",
+          "may have stopped before" in warn_txt and "may have stopped before" not in quiet_txt,
+          "fires on L3:21's [0,1,0,1]; silent on L3:48's [3,1,0,3]")
+    check("budget block silent when rounds unrecorded",
+          _search_budget_lines({"families": {"a": {"best_ms": 20.0}},
+                                "elapsed_hours": 1.0}, [], [], False) == [],
+          "older summaries lack the field; 0 there means unrecorded, not zero")
+
     width = max(len(n) for _, n, _ in RESULTS)
     bad = 0
     for ok, name, detail in RESULTS:

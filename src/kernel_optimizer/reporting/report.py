@@ -64,6 +64,72 @@ def _reconstruct_summary(events, candidates: dict, trials: list) -> dict:
     return out
 
 
+def _search_budget_lines(summary: dict | None, trials: list,
+                         dead_events: list, provisional: bool) -> list[str]:
+    """How much of the intended search actually ran, stated next to the headline number.
+
+    A latency result means something different when the search that produced it used two
+    thirds of its rewrite budget than when it used one sixth, and a reader quoting the
+    speedup has no way to tell from the number alone. Two real cases motivated this:
+
+    - `run-l3-21-20260905-071312` stopped at 2.05h of 12h with 2 of 6 rewrite rounds used,
+      because two families with no correct candidate filled both active slots and ended
+      the loop (docs/finding-run-stops-with-budget-unused.md). Its winning family was
+      still improving 24% per round when frozen.
+    - The same run spent 80 of 374 trials on a kernel that never launched
+      (docs/finding-optimization-behind-a-dead-mode-branch.md).
+
+    Both facts belong beside the verdict, not buried in a per-family section further down.
+    Reports only what the events say; no interpretation of whether the result is good.
+    """
+    if not summary:
+        return []
+    families = summary.get("families") or {}
+    if not isinstance(families, dict):
+        return []
+    used = sum(f.get("rewrite_rounds_used") or 0 for f in families.values())
+    # rewrite_rounds_used is absent from older runs' summaries: 0 there means unrecorded,
+    # so do not present a budget fraction we cannot substantiate.
+    recorded = any(f.get("rewrite_rounds_used") is not None for f in families.values())
+    empty = [fid for fid, f in families.items() if f.get("best_ms") is None]
+
+    lines = ["### Search budget actually used\n"]
+    substantive = False
+    if recorded and families:
+        lines.append(f"- rewrite rounds used: **{used}** across {len(families)} families "
+                     f"({[f.get('rewrite_rounds_used') for f in families.values()]})")
+        substantive = True
+    if empty:
+        lines.append(f"- families with **no correct candidate**: {len(empty)} of "
+                     f"{len(families)} — {', '.join(f'`{f}`' for f in empty)}")
+        substantive = True
+    eh = summary.get("elapsed_hours")
+    if eh is not None:
+        # Never carries the section alone: elapsed is already in the report footer, and a
+        # heading with nothing but a duration under it says less than no heading.
+        lines.append(f"- elapsed: **{eh} h**")
+    if dead_events:
+        wasted = 0
+        for ev in dead_events:
+            wasted += ev.get("n_trials_measured") or 0
+        names = sorted({k for ev in dead_events
+                        for k in (ev.get("never_launched") or [])})
+        lines.append(
+            f"- ⚠ **{wasted} of {len(trials)} trials measured a candidate carrying a "
+            f"kernel that never launched** ({', '.join(f'`{n}`' for n in names)}): those "
+            f"budgets timed a fallback path, not the advertised optimization")
+        substantive = True
+    if not provisional and recorded and empty and used < len(families):
+        lines.append(
+            "- ⚠ this run may have stopped before its rewrite budget was spent: a family "
+            "with no correct candidate is frozen without counting as progress, so enough "
+            "of them ends the outer loop early "
+            "(`docs/finding-run-stops-with-budget-unused.md`). Read the speedup above as "
+            "the product of THIS much search, not of a converged one.")
+    lines.append("")
+    return lines if substantive else []
+
+
 class ReportGenerator:
     def generate(self, store: RunStore) -> Path:
         events = store.iter_events()
@@ -82,6 +148,7 @@ class ReportGenerator:
                           if e.type == "AGENT_CALL_FAILED" and e.payload.get("final")]
         rejected = [e.payload for e in events
                     if e.type in ("SPACE_REJECTED", "NOVELTY_REJECTED")]
+        dead_kernels = [e.payload for e in events if e.type == "KERNELS_NEVER_LAUNCHED"]
         # SPACE_EXPANDED names the candidate, not the space; the expanded space is the one
         # published immediately before it.
         expanded_spaces: set[str] = set()
@@ -190,6 +257,8 @@ class ReportGenerator:
                 lines.append("- ⚠ flagged: excessive speedup — inspect before trusting")
             lines.append(f"- best params: `{json.dumps(best['params']['values'])}`")
             lines.append("")
+            lines.extend(_search_budget_lines(summary, trials, dead_kernels,
+                                              provisional))
         else:
             lines.append("## Best result\n\n- no correct candidate survived\n")
 

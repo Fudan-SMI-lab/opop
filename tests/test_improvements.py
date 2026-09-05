@@ -2548,3 +2548,67 @@ class ModelNew:
     assert hard == []
     assert _MODE_WARN(warns) == []          # static check genuinely cannot see it
     assert _unlaunched(src, [["_train_kernel"]] * 38) == {"_pointwise_eval_epilogue_kernel"}
+
+
+# --- report states how much of the search budget actually ran -----------------------
+# A speedup means something different at 2 of 6 rewrite rounds than at 7, and a reader
+# quoting the number cannot tell from the number alone. L3:21 09-05 stopped at 2.05h of
+# 12h with 2 of 6 rounds; L3:48 09-05 used 7 and must NOT be warned about.
+
+def _budget_lines(families, trials_n=100, dead=None, provisional=False):
+    from kernel_optimizer.reporting.report import _search_budget_lines
+    summary = {"families": families, "elapsed_hours": 2.05}
+    return _search_budget_lines(summary, [{}] * trials_n, dead or [], provisional)
+
+
+_STARVED = {  # the real L3:21 09-05 shape
+    "fam-c2143500": {"best_ms": None, "rewrite_rounds_used": 0},
+    "fam-5dfc36d7": {"best_ms": 25.0, "rewrite_rounds_used": 1},
+    "fam-a43b404b": {"best_ms": None, "rewrite_rounds_used": 0},
+    "fam-f069ef3c": {"best_ms": 15.5, "rewrite_rounds_used": 1},
+}
+_HEALTHY = {  # the real L3:48 09-05 shape
+    "fam-99aee6de": {"best_ms": 2.09, "rewrite_rounds_used": 3},
+    "fam-b1ee96ac": {"best_ms": 3.8, "rewrite_rounds_used": 1},
+    "fam-dc0697c9": {"best_ms": None, "rewrite_rounds_used": 0},
+    "fam-74c41d8d": {"best_ms": 2.09, "rewrite_rounds_used": 3},
+}
+
+
+def test_report_warns_when_the_run_stopped_with_rounds_unused():
+    text = "\n".join(_budget_lines(_STARVED))
+    assert "rewrite rounds used: **2** across 4 families" in text
+    assert "no correct candidate**: 2 of 4" in text
+    assert "may have stopped before its rewrite budget was spent" in text
+
+
+def test_report_does_not_warn_when_the_budget_was_spent():
+    # One empty family cannot fill both active slots, and 7 rounds ran. Warning here
+    # would cry wolf on the run that behaved correctly.
+    text = "\n".join(_budget_lines(_HEALTHY))
+    assert "rewrite rounds used: **7** across 4 families" in text
+    assert "no correct candidate**: 1 of 4" in text
+    assert "may have stopped before" not in text
+
+
+def test_report_stays_silent_on_a_run_that_never_recorded_rounds():
+    # Older summaries lack rewrite_rounds_used; 0 there means unrecorded, not zero, so no
+    # budget fraction may be asserted.
+    old = {"fam-a": {"best_ms": 20.0}, "fam-b": {"best_ms": 21.0}}
+    assert _budget_lines(old) == []
+
+
+def test_report_does_not_warn_mid_run():
+    # provisional=True: families still active, nothing to conclude about the stop.
+    text = "\n".join(_budget_lines(_STARVED, provisional=True))
+    assert "rewrite rounds used" in text
+    assert "may have stopped before" not in text
+
+
+def test_report_surfaces_dead_kernel_trials_next_to_the_verdict():
+    dead = [{"candidate_id": "cand-c0b3b7cd", "n_trials_measured": 80,
+             "never_launched": ["_depthwise_bn_relu6_kernel"]}]
+    text = "\n".join(_budget_lines(_STARVED, trials_n=374, dead=dead))
+    assert "80 of 374 trials measured a candidate carrying a kernel that never launched" \
+        in text.replace("**", "")
+    assert "_depthwise_bn_relu6_kernel" in text
