@@ -179,6 +179,29 @@ def _launched_kernels(body: list[ast.stmt], jit_kernels: set[str]) -> set[str]:
     return found
 
 
+def device_helper_names(tree: ast.Module, jit_names: set[str]) -> set[str]:
+    """Of `jit_names`, those CALLED BY NAME from inside another `@triton.jit` body.
+
+    Triton inlines a jit function invoked as `f(...)` (no `[grid]`) into its caller, so
+    it produces no separate compiled kernel and never appears in a trial's
+    `kernel_names` — even though it executes on every trial. Anything that treats
+    "absent from kernel_names" as "never ran" must exclude these, or every candidate
+    factored into device helpers is falsely reported as carrying dead code (L3:43
+    `cand-d257924a`: `_qk_scores` is inlined into two kernels that launched on all 76
+    trials).
+    """
+    helpers: set[str] = set()
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef) or node.name not in jit_names:
+            continue
+        for inner in ast.walk(node):
+            # a plain call `f(...)`; a launch is Call(func=Subscript(...)) instead
+            if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name):
+                if inner.func.id in jit_names and inner.func.id != node.name:
+                    helpers.add(inner.func.id)
+    return helpers
+
+
 def lint_triton_source(source: str) -> tuple[list[str], list[str]]:
     """Return (hard_errors, warnings). hard_errors are certain compile failures."""
     try:

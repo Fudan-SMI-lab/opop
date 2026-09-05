@@ -2457,3 +2457,94 @@ def test_analyst_seeds_dead_kernel_note_only_when_there_is_one():
     sb2 = _SB()
     agent.seed_sandbox(AnalystInputs(**common), sb2)
     assert "tuning/never_launched_kernels.md" not in sb2.files
+
+
+# --- improvement M: device helpers are inlined, not dead ----------------------------
+# L3:43 cand-d257924a was a FALSE POSITIVE of the first version: `_qk_scores` is a
+# @triton.jit device helper called by name from inside two host-launched kernels, so
+# Triton inlines it and it never appears in kernel_names -- while running on all 76
+# trials. Anything reading "absent from kernel_names" as "never ran" must exclude these.
+
+_HELPER_SRC = """
+import triton
+import triton.language as tl
+PARAMS = {"BLOCK_M": 64}
+@triton.jit
+def _qk_scores(p, BLOCK_M: tl.constexpr):
+    return tl.load(p)
+@triton.jit
+def _softmax_stats(p, BLOCK_M: tl.constexpr):
+    scores = _qk_scores(p, BLOCK_M)
+    return scores
+@triton.jit
+def _really_dead(p, BLOCK_M: tl.constexpr):
+    return tl.load(p)
+"""
+
+
+def test_device_helper_names_finds_inlined_callee():
+    import ast
+
+    from kernel_optimizer.paramspace.triton_lint import device_helper_names, jit_kernel_names
+    tree = ast.parse(_HELPER_SRC)
+    jit = jit_kernel_names(tree)
+    assert jit == {"_qk_scores", "_softmax_stats", "_really_dead"}
+    assert device_helper_names(tree, jit) == {"_qk_scores"}
+
+
+def test_unlaunched_excludes_helpers_but_keeps_real_dead_code():
+    # Only `_softmax_stats` launched. `_qk_scores` is inlined into it (not dead);
+    # `_really_dead` is genuinely never reached.
+    assert _unlaunched(_HELPER_SRC, [["_softmax_stats"]] * 5) == {"_really_dead"}
+
+
+def test_device_helper_detection_ignores_self_recursion():
+    import ast
+
+    from kernel_optimizer.paramspace.triton_lint import device_helper_names, jit_kernel_names
+    src = """
+import triton
+import triton.language as tl
+@triton.jit
+def _k(p, n):
+    if n > 0:
+        return _k(p, n - 1)
+    return p
+"""
+    tree = ast.parse(src)
+    jit = jit_kernel_names(tree)
+    # a kernel calling itself is not somebody else's helper -- it must stay checkable
+    assert device_helper_names(tree, jit) == set()
+
+
+def test_unlaunched_catches_launch_hidden_in_a_host_wrapper():
+    # L3:21 cand-80665a49/cand-faa71ba0: the launch sits inside a plain host function
+    # `_launch_pointwise(...)`, so the STATIC mode-gate lint cannot see a
+    # `kernel[grid](...)` in the branch and stays silent. The runtime check catches it
+    # anyway -- the two checks are complementary, not redundant.
+    src = """
+import triton
+import triton.language as tl
+PARAMS = {"BLOCK_X": 128}
+@triton.jit
+def _train_kernel(p, BLOCK_X: tl.constexpr):
+    return tl.load(p)
+@triton.jit
+def _pointwise_eval_epilogue_kernel(p, BLOCK_X: tl.constexpr):
+    return tl.load(p)
+def _launch_pointwise(x, w, batch_norm=None):
+    if batch_norm is None:
+        _train_kernel[(1,)](x, BLOCK_X=PARAMS["BLOCK_X"])
+    else:
+        _pointwise_eval_epilogue_kernel[(1,)](x, BLOCK_X=PARAMS["BLOCK_X"])
+    return x
+class ModelNew:
+    def forward(self, x):
+        if self.training:
+            return _launch_pointwise(x, self.w)
+        return _launch_pointwise(x, self.w, batch_norm=self.bn)
+"""
+    hard, warns = lint_triton_source(src)
+    assert hard == []
+    assert _MODE_WARN(warns) == []          # static check genuinely cannot see it
+    assert _unlaunched(src, [["_train_kernel"]] * 38) == {"_pointwise_eval_epilogue_kernel"}

@@ -50,7 +50,7 @@ from kernel_optimizer.models.core import (
 from kernel_optimizer.models.reports import BottleneckReport, TuningStats
 from kernel_optimizer.paramspace import materializer
 from kernel_optimizer.paramspace.guard import check_config
-from kernel_optimizer.paramspace.triton_lint import jit_kernel_names
+from kernel_optimizer.paramspace.triton_lint import device_helper_names, jit_kernel_names
 from kernel_optimizer.paramspace.validation import (
     SpaceAccepted,
     SpaceValidator,
@@ -968,9 +968,17 @@ class Orchestrator:
 
         Deterministic dead-code evidence: if a name never appears in any trial's
         `profile.kernel_names` across the whole budget, the tuning measured something
-        other than that kernel. Returns an empty set when no trial carries kernel names
-        (a CUDA backend, or profiling unavailable) so absence of data never reads as
-        absence of launches.
+        other than that kernel.
+
+        Two exclusions keep this factual rather than merely suggestive:
+        - Returns an empty set when NO trial carries kernel names (a CUDA backend, or
+          profiling unavailable) so absence of data never reads as absence of launches.
+        - Skips `@triton.jit` DEVICE HELPERS — functions called by name from inside
+          another jit body (`scores = _qk_scores(...)`, no `[grid]`). Triton inlines
+          those into their caller, so they never appear in `kernel_names` even though
+          they run on every trial. L3:43 `cand-d257924a` is the case: `_qk_scores` is
+          inlined into `_softmax_stats` and `_attention_from_stats`, both of which
+          launched on all 76 trials.
         """
         launched: set[str] = set()
         any_names = False
@@ -982,10 +990,11 @@ class Orchestrator:
         if not any_names:
             return set()
         try:
-            defined = jit_kernel_names(ast.parse(crun.source))
+            tree = ast.parse(crun.source)
         except SyntaxError:
             return set()
-        return defined - launched
+        defined = jit_kernel_names(tree)
+        return defined - launched - device_helper_names(tree, defined)
 
     # ------------------------------------------------------------- loop C: rewrite
 

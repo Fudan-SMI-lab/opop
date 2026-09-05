@@ -11,6 +11,8 @@ Exit 0 if every check passes, 1 otherwise.
 
 from __future__ import annotations
 
+import ast
+import json
 import sys
 from pathlib import Path
 
@@ -199,6 +201,50 @@ def main() -> int:
           and "tuning/never_launched_kernels.md" in mods
           and "STOP AND READ" in mods,
           "seeded + prompted only when non-empty")
+    check("unlaunched check excludes inlined device helpers",
+          "device_helper_names(tree, defined)" in orch,
+          "L3:43 cand-d257924a's _qk_scores is inlined into 2 launched kernels, not dead")
+    # Live regression on BOTH directions: the two known true positives must still be
+    # caught and the known false positive must stay silent.
+    from kernel_optimizer.paramspace.triton_lint import device_helper_names, jit_kernel_names
+    def _dead_for(run_name: str, cid: str) -> set[str] | None:
+        run = REPO / "runs" / run_name
+        ev_path = run / "events.jsonl"
+        if not ev_path.exists():
+            return None
+        trials = []
+        for line in ev_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            e = json.loads(line)
+            if e["type"] == "TRIAL_DONE":
+                t = e["payload"].get("trial") or e["payload"]
+                if t.get("candidate_id") == cid:
+                    trials.append(t)
+        jobs = [j for j in run.glob(f"jobs/{cid}-wit-default-eval-*.json")
+                if not j.name.endswith(".out.json")]
+        if not jobs or not trials:
+            return None
+        raw = json.loads(jobs[0].read_text(encoding="utf-8"))["kernel_src_path"]
+        sp = Path(raw[5].upper() + ":/" + raw[7:]) if raw.startswith("/mnt/") else Path(raw)
+        if not sp.exists():
+            return None
+        tree = ast.parse(sp.read_text(encoding="utf-8"))
+        defined = jit_kernel_names(tree)
+        launched = {k for t in trials for k in ((t.get("profile") or {}).get("kernel_names") or [])}
+        if not launched:
+            return None
+        return defined - launched - device_helper_names(tree, defined)
+
+    tp = _dead_for("run-l3-21-20260904-013056", "cand-80665a49")
+    if tp is not None:
+        check("wrapper-hidden dead kernel still caught",
+              tp == {"_pointwise_eval_epilogue_kernel"},
+              "the static lint is blind to this one; the runtime check must not be")
+    fp = _dead_for("run-l3-43-20260904-093730", "cand-d257924a")
+    if fp is not None:
+        check("inlined helper not reported as dead", fp == set(),
+              "_qk_scores ran on all 76 trials" if not fp else f"REGRESSION: {sorted(fp)}")
 
     width = max(len(n) for _, n, _ in RESULTS)
     bad = 0

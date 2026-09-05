@@ -177,19 +177,73 @@ launches. Verified by replay over real trial data — it names
 
 The mode question only bites where a layer behaves differently in train mode.
 
-- **L3:21** — three `nn.BatchNorm2d` layers, no `.eval()`. Affected. Two other
-  candidates also finished at ~25.0 ms launching only a depthwise kernel
-  (`cand-080f8c60` seed, `cand-11f83cb7` on the 09-04 run), but **neither has a
-  `.training` branch** — they are genuinely unfused, not stranded. This failure mode is
-  n=1.
+- **L3:21** — three `nn.BatchNorm2d` layers, no `.eval()`. Affected, and **n=3, not the
+  n=1 I first reported** (see the audit below). Two ~25.0 ms candidates that launch only
+  a depthwise kernel (`cand-080f8c60` seed, `cand-11f83cb7` on the 09-04 run) are *not*
+  instances: neither has a `.training` branch, so they are genuinely unfused rather than
+  stranded.
 - **L3:43** — two `nn.Dropout` layers in the forward path, which *is* mode-sensitive,
   but both rates are **`attn_pdrop = 0.0`, `resid_pdrop = 0.0`**, so dropout is the
   identity in either mode. Safe.
 - **L3:48** — no normalization or dropout layers. Not applicable.
 
+## The audit: n=3, 156 trials, and the static lint alone would miss two of them
+
+`scripts/audit_dead_kernels.py` runs the same defined-vs-launched comparison over any set
+of runs. Across all 19 runs on disk, **89 tuned candidates** carry kernel metadata and
+**3** spent a budget with a kernel that never ran:
+
+| run | candidate | never launched | trials | best ms | static lint |
+|---|---|---|---|---|---|
+| 09-04 L3:21 | cand-80665a49 | `_pointwise_eval_epilogue_kernel` | 38 | 20.7 | **blind** |
+| 09-04 L3:21 | cand-faa71ba0 | `_pointwise_eval_epilogue_kernel` | 38 | 21.1 | **blind** |
+| 09-05 L3:21 | cand-c0b3b7cd | `_depthwise_bn_relu6_kernel` | 80 | 25.0 | fires |
+
+**156 trials total.** The two 09-04 cases predate this investigation by a day and were
+never noticed — exactly as the failure mode predicts, since both produced plausible
+mid-field results (20.7 and 21.1 ms against a 20.5 best).
+
+The `static lint blind` column is the important one. Those two hide the launch inside a
+host wrapper:
+
+```python
+def _launch_pointwise(x, w, batch_norm=None):
+    if batch_norm is None:
+        _pointwise_kernel[grid](...)
+    else:
+        _pointwise_eval_epilogue_kernel[grid](...)   # never reached
+
+# and in forward():
+if self.training:
+    x = _launch_pointwise(x, w)                       # no kernel[grid] in the branch
+else:
+    x = _launch_pointwise(x, w, batch_norm=..., ...)
+```
+
+The `.training` branch contains no `kernel[grid](...)` at all, so the static check
+correctly cannot see it. **2 of 3 are invisible to the static lint and only the runtime
+check catches them** — the two are complementary, not redundant, and that is now pinned
+by a test.
+
+### One false positive found and fixed by this audit
+
+The first version of the runtime check flagged L3:43 `cand-d257924a`'s `_qk_scores`. That
+was wrong: it is a `@triton.jit` **device helper**, called by name (`scores =
+_qk_scores(...)`, no `[grid]`) from inside `_softmax_stats` and `_attention_from_stats`.
+Triton inlines it, so it produces no separate compiled entry and never appears in
+`kernel_names` — while running on all 76 trials. `device_helper_names` now excludes any
+jit function invoked as a plain call from another jit body (self-recursion excepted).
+
+Verified in both directions: `_qk_scores` drops out, while `_depthwise_bn_relu6_kernel`
+and `_pointwise_eval_epilogue_kernel` are still reported.
+
 ## What this does not claim
 
-n=1 for the stranded-optimization failure. The fix is justified by the mechanism rather
-than the frequency: the wiring gap is a certain defect (three agents were structurally
-blind to a fact the harness already probed), and the cost when it fires is an entire
-candidate budget spent measuring nothing while every signal reads normal.
+Three instances, all on one task, is not a frequency estimate. The fixes are justified by
+the mechanism rather than the count: the wiring gap was a certain defect (three agents
+were structurally blind to a fact the harness already probed), and the cost when it fires
+is a whole candidate budget spent measuring nothing while every signal reads normal.
+
+The detectors are also not proof of absence. Both need `profile.kernel_names`, so a CUDA
+candidate or one whose profiling failed is skipped rather than cleared, and a kernel that
+launches on *some* trials but not the tuned best would pass both.
