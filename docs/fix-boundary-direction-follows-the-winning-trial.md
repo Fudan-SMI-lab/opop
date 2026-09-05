@@ -168,8 +168,28 @@ expansion added `BLOCK_N=256` — aimed at the edge the winner actually sits on.
 
 Worth recording precisely because it is the un-dramatic outcome. The change is not a general
 re-aiming of expansion; it is inert on the 77.6% of knobs where median and winner agree, and only
-bites where they disagree. Two live expansions, one changed and one unchanged, is what a 44.7%
-disagreement rate looks like at n=2.
+bites where they disagree.
+
+### Correction: "mostly inert" is true per KNOB and false per EXPANSION
+
+I originally read the second and third live expansions as evidence the fix tracks the
+retrospective 77.6%-unchanged rate. That conflated two units, and replaying the whole run
+settles it (`scripts/audit_boundary_fix_prospective.py`):
+
+```
+run-l3-21-20260905-195615, per EXPANSION:  9 replayed, 5 CHANGED (55.6%), 4 inert
+run-l3-21-20260905-195615, per KNOB:     179 verdicts, 28 changed (15.6%)
+                                          of those: 24 withdrawn, 3 newly raised, 1 re-aimed
+```
+
+Both are correct and they are consistent: an expansion requests a *set* of knobs and changes if
+**any** member changes, so a ~16% per-knob rate compounds across a ~3-knob set to
+`1-(1-0.156)^3 = 40%`, and the observed 55.6% is in that region at n=9.
+
+So the honest statement is two-part: **per knob** the fix is mostly inert and, where it acts,
+overwhelmingly subtractive (24 of 28 changes are withdrawals, exactly 1 is a re-aiming) — but
+**per expansion** roughly half of them get a different requested set. The conservatism claim rests
+on the withdrawal-vs-re-aiming ratio, not on expansions being mostly untouched.
 
 ## Propagation
 
