@@ -140,3 +140,53 @@ and unambiguous; the 17.10 ms figure carries the usual optimism against `final_r
 has not been re-evaluated yet. And per `inprogress-l3-21-rerun-vs-0904.md`, 17.10 ms at fp16 is
 judged against `torch_compile_tf32` (16.30) and reports **0.953x** — it does not beat its
 same-precision baseline.
+
+---
+
+## Third replication at 08:57: a different family, the same six decimals
+
+`cand-fdb4dac6` (`fam-5dfc36d7`, a rewrite of the `cand-080f8c60` seed — a **different
+lineage** from the two above, which are both rewrites of `cand-1eee8139`) was rejected at
+its default witness with `COMPUTE_DTYPE='tf32'` and reported:
+
+```
+frac_within_tol: 0.953277     cosine: 0.99999973
+```
+
+**0.953277 to six decimals** — the same value, from a third distinct program:
+
+| candidate | bytes | `tl.dot` | source sha | frac at tf32 |
+|---|---|---|---|---|
+| cand-d31b0474 | 7830 | 3 | `40a930e78e` | 0.953274 – 0.953277 |
+| cand-7dcdbd99 | 9636 | 6 | `3a64469e1c` | 0.953274 – 0.953278 |
+| **cand-fdb4dac6** | **6586** | **4** | **`ef6f7bde92`** | **0.953277** |
+
+Three programs spanning 6586–9636 bytes and 3–6 dot products, from two different rewrite
+lineages, agree to six decimals. That closes the argument that the value could be an
+artefact of one kernel's blocking: it is the numerical signature of *L3:21's pointwise
+convolution evaluated at tf32*, full stop.
+
+It also lands 2.1e-3 below the task's 0.955360 floor — the same near-miss as before, so
+the gate rejects it for a 0.2% shortfall against the reference's own two-precision
+disagreement. This is now n=3 on L3:21 for the pattern documented in
+`finding-unreachable-correctness-gate.md`, and the tf32 branch remains the one precision
+the earlier repair did not fix.
+
+### The improved failure message is working, live
+
+Worth noting because it was one of the fixes under test. The rejection detail this run
+carries the gate criteria, both witnesses, and the task's measured noise floor:
+
+```
+correctness_mismatch: relaxed mismatch on trial 2;
+  gate needs frac_within_tol>0.99 AND cosine>=0.99985
+  vs ieee ref: frac 0.953277  cosine 0.99999973  median_rel_err 7.354e-04
+  vs tf32 ref: frac 0.923261  cosine 0.99999927  median_rel_err 1.211e-03
+  reference's OWN ieee-vs-tf32 spread (task noise floor, NOT a bug): frac 0.95536 ...
+```
+
+Compare the pre-fix message, which reported only `max-abs-diff` and led repair agents to
+invent sign bugs (`finding-failure-messages-must-carry-gate-criteria.md`). A repair agent
+reading the above can see that its cosine is 0.9999997, that the shortfall is in
+`frac_within_tol`, and that the reference disagrees with itself by more than the margin it
+is being held to.
