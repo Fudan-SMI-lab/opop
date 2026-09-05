@@ -244,6 +244,18 @@ the mechanism rather than the count: the wiring gap was a certain defect (three 
 were structurally blind to a fact the harness already probed), and the cost when it fires
 is a whole candidate budget spent measuring nothing while every signal reads normal.
 
-The detectors are also not proof of absence. Both need `profile.kernel_names`, so a CUDA
-candidate or one whose profiling failed is skipped rather than cleared, and a kernel that
-launches on *some* trials but not the tuned best would pass both.
+The detectors are also not proof of absence: both need `profile.kernel_names`, so a CUDA
+candidate or one whose profiling failed is skipped rather than cleared.
+
+One residual gap I flagged turns out to be empty. A kernel launching on *some* trials but
+not the tuned best would pass both checks (the union over trials would contain it). Tested
+over all 89 candidates with kernel metadata:
+
+- **0** have a best trial that launched fewer kernels than some other trial;
+- **0** have a launched kernel set that varies across trials at all.
+
+Every candidate on disk launches an identical kernel set on every trial, so within this
+evidence the union-over-trials comparison is equivalent to a per-trial one. That is a
+property of the candidates written so far rather than a guarantee — a candidate could
+branch on a knob value — but it means the check is not currently weakened by using the
+union.
