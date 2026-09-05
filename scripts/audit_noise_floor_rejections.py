@@ -27,6 +27,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 FRAC = re.compile(r"'frac_within_tol': ([0-9.]+)")
+DTYPE = re.compile(r"'(?:COMPUTE_DTYPE|COMPUTE_PRECISION|DOT_PRECISION)': '(\w+)'")
 
 
 def parse(detail: str) -> tuple[float, float] | None:
@@ -119,6 +120,54 @@ def main(argv: list[str]) -> int:
         print(f"  above the floor: {trial_above}    below: {trial_below}")
         print("  Do NOT read the above count as distinct losses -- it is dominated by a few")
         print("  candidates re-sampling the same configuration across a 40-trial budget.")
+
+    # What does a floor-passing rejection make the repair loop DO? Group each candidate's
+    # successive rejections and surface the ones where the compute dtype changed between
+    # attempts -- that is repair reaching for the precision lever on a false signal.
+    print()
+    print("=" * 82)
+    print("REPAIR CONSEQUENCE -- rejections where the dtype changed between attempts")
+    print("=" * 82)
+    found_any = False
+    for run in runs:
+        ev_path = run / "events.jsonl"
+        if not ev_path.exists():
+            continue
+        seqs: dict[str, list[tuple]] = {}
+        for line in ev_path.open(encoding="utf-8"):
+            e = json.loads(line)
+            if e["type"] not in ("SPACE_REJECTED", "SPACE_EXPANSION_REJECTED"):
+                continue
+            pl = e["payload"]
+            cid = pl.get("candidate_id")
+            if not cid:
+                continue
+            detail = pl.get("detail") or ""
+            dt = DTYPE.search(detail)
+            parsed = parse(detail)
+            seqs.setdefault(cid, []).append(
+                (pl.get("attempt"), pl.get("reason"), dt.group(1) if dt else None, parsed))
+        for cid, seq in seqs.items():
+            dts = {s[2] for s in seq if s[2]}
+            if len(seq) < 2 or len(dts) < 2:
+                continue
+            found_any = True
+            print(f"  {run.name[4:]:<26} {cid}")
+            for attempt, reason, dt, parsed in seq:
+                if parsed:
+                    cand, floor = parsed
+                    where = f"cand={cand:.6f} floor={floor:.6f} {cand - floor:+.4f}"
+                else:
+                    where = "(no frac in detail -- compile/resource failure)"
+                print(f"    attempt {attempt}  dtype={str(dt):<5} {str(reason):<24} {where}")
+    if not found_any:
+        print("  none")
+    else:
+        print("\n  A correctness rejection with no reproducible logic bug leaves the repair agent")
+        print("  one lever it can always pull: precision. On this hardware that is never free --")
+        print("  fp16->tf32 doubles staged bytes (and the space often has no shared-memory bound,")
+        print("  so it OOMs), while tf32->fp16 INCREASES the deviation it was told to fix.")
+        print("  See docs/finding-floor-rejection-sends-repair-after-the-dtype.md")
     return 0
 
 
