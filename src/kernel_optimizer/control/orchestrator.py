@@ -261,14 +261,75 @@ def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float,
             return False
         return min(numeric) <= wall if direction == "min" else max(numeric) >= wall
 
-    return [
-        {"name": ps.name, "direction": ps.boundary_direction}
-        for ps in stats.param_stats
-        if ps.at_boundary and ps.boundary_direction in ("min", "max")
-        and _is_numeric_knob(ps.name)
-        and (ps.effect_pct or 0.0) >= min_effect_pct
-        and not _at_hard_edge(ps.name, ps.boundary_direction)
-    ]
+    def _median_direction(ps) -> str | None:
+        """Edge direction implied by the MEDIAN table alone -- the pre-fix rule.
+
+        `at_boundary`/`boundary_direction` are now anchored on the winning trial, so this
+        recovers the older, looser signal for the fallback above: a knob whose median pick
+        sits at an edge of the measured range qualifies, nothing else does.
+
+        Ordering must come from the DOMAIN, not from `latency_by_value`. That dict is built
+        by iterating completed trials, so its key order is trial order -- on the real
+        `cand-0d0dcd49` stats it reads `['128','64','256','512','1024']`, whose first key is
+        not the domain minimum. Reading edges off it would mislabel directions.
+        """
+        lat = ps.latency_by_value or {}
+        if len(lat) < 2 or space is None:
+            return None
+        try:
+            choices = space.domain(ps.name).choices
+        except KeyError:
+            return None
+        measured = [c for c in choices if repr(c) in lat]
+        if len(measured) < 2:
+            return None
+        best = min(measured, key=lambda c: lat[repr(c)])
+        if best == measured[0]:
+            return "min"
+        if best == measured[-1]:
+            return "max"
+        return None
+
+    def _requests(use_winner_anchor: bool) -> list[dict]:
+        return [
+            {"name": ps.name, "direction": ps.boundary_direction}
+            for ps in stats.param_stats
+            if ps.at_boundary and ps.boundary_direction in ("min", "max")
+            and _is_numeric_knob(ps.name)
+            and (ps.effect_pct or 0.0) >= min_effect_pct
+            and not _at_hard_edge(ps.name, ps.boundary_direction)
+        ] if use_winner_anchor else [
+            # Fallback aim: the median table's own edge test, i.e. the pre-fix behaviour.
+            # Only consulted when the winner-anchored pass returns NOTHING (see below).
+            {"name": ps.name, "direction": _median_direction(ps)}
+            for ps in stats.param_stats
+            if _median_direction(ps) is not None
+            and _is_numeric_knob(ps.name)
+            and (ps.effect_pct or 0.0) >= min_effect_pct
+            and not _at_hard_edge(ps.name, _median_direction(ps))
+        ]
+
+    requests = _requests(True)
+    if requests:
+        return requests
+    # An expansion delivers TWO things: a widened range and a fresh tuning budget. The
+    # winner-anchored aim is measurably better at the first (added values convert 21.8% vs
+    # 2.6%), but returning [] cancels the expansion outright and forfeits the SECOND -- and
+    # more than half of improving expansions were won by a configuration that was already
+    # reachable, so the re-tune alone carries real value.
+    #
+    # Measured cost of cancelling (scripts/audit_expansion_cancellation_cost.py): 8 of 43
+    # historical expansions would be cancelled, 6 of them improved, including the two
+    # largest gains in that group -- cand-0d0dcd49 9.14 -> 8.13 ms (11.1%, the run's best
+    # candidate) and cand-913f73c9 24.00 -> 21.40 (10.8%). In BOTH the winning config used
+    # no added value at all: it was reachable before the expansion and the fresh budget is
+    # what found it.
+    #
+    # So when the corrected aim has nothing to ask for, fall back to the median's aim rather
+    # than skipping the round. The expansion still happens, the re-tune is preserved, and
+    # the only thing lost is a knob request that was going to be a low-yield guess anyway.
+    return _requests(False)
+
 
 
 @dataclass

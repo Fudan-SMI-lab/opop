@@ -3486,3 +3486,96 @@ def test_a_missing_sandbox_config_is_fatal_rather_than_silent(tmp_path):
     )
     with pytest.raises(FileNotFoundError):
         _sandbox_extra_config(cfg)
+
+
+def _fallback_stat(name, latency_by_value, best_value, best_trial_value,
+          at_boundary, direction, effect_pct=25.0):
+    from kernel_optimizer.models.reports import ParamStat
+    return ParamStat(name=name, best_value=best_value, best_trial_value=best_trial_value,
+                     at_boundary=at_boundary, boundary_direction=direction,
+                     effect_pct=effect_pct, latency_by_value=latency_by_value)
+
+
+def _fallback_space(name, choices):
+    from kernel_optimizer.models.core import ParamDomain, ParameterSpace
+    return ParameterSpace(space_id="sp", candidate_id="c", source_sha="x",
+                          domains=[ParamDomain(name=name, kind="int", choices=choices)])
+
+
+def test_a_corrected_aim_must_never_cancel_the_expansion_itself():
+    """Withdrawing every knob request would forfeit the re-tune, which carries its own value.
+
+    An expansion delivers TWO things: a widened range AND a fresh tuning budget. Anchoring
+    the boundary flag on the winning trial improves the first (added values convert 21.8% vs
+    2.6%) but, taken alone, it can empty the request list and cancel the round outright --
+    losing the second.
+
+    That cost is measured, not hypothetical. Of 43 historical expansions, 8 would have been
+    cancelled and 6 of those improved, including the two largest gains in the group:
+    cand-0d0dcd49 9.14 -> 8.13 ms (11.1%, on the run's best candidate) and cand-913f73c9
+    24.00 -> 21.40 (10.8%). In BOTH the winning configuration used no added value at all --
+    it was already reachable, and the fresh budget is what found it. More than half of all
+    improving expansions are of that shape.
+
+    So when the winner-anchored pass asks for nothing, the median's aim is used instead: the
+    expansion still happens and only a low-yield knob guess is lost.
+
+    Shaped after the real FINAL_BLOCK case: median picks 1024 (n=2, a lucky pair), the
+    winning trial ran 512 (interior), so the anchored pass withdraws the only request.
+    """
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    from kernel_optimizer.models.reports import TuningStats
+
+    lat = {"64": 13.55, "128": 12.0, "256": 13.6, "512": 13.45, "1024": 10.95}
+    stats = TuningStats(
+        candidate_id="c", space_id="sp", n_complete=35, n_fail=5,
+        param_stats=[_fallback_stat("FINAL_BLOCK", lat, 1024, 512, False, None)],
+    )
+    knobs = boundary_knobs_to_expand(stats, 0.8, _fallback_space("FINAL_BLOCK", [64, 128, 256, 512, 1024]),
+                                     min_effect_pct=2.0)
+    assert [k["name"] for k in knobs] == ["FINAL_BLOCK"], \
+        "an empty anchored result must fall back to the median's aim, not cancel"
+    assert knobs[0]["direction"] == "max", "the median's argmin sits on the max edge"
+
+
+def test_the_fallback_does_not_override_a_non_empty_corrected_aim():
+    """The fallback is a floor, not a merge: a knob the anchored pass dropped stays dropped.
+
+    Otherwise the fix would be undone -- every withdrawal would be restored by the median
+    pass sitting behind it. Two knobs here: one the anchored rule keeps, one it withdraws.
+    """
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    from kernel_optimizer.models.core import ParamDomain, ParameterSpace
+    from kernel_optimizer.models.reports import TuningStats
+
+    keep = _fallback_stat("BLOCK_N", {"64": 20.0, "128": 10.0}, 128, 128, True, "max")
+    drop = _fallback_stat("STAGES", {"1": 25.0, "5": 13.0}, 5, 1, False, None)
+    space = ParameterSpace(
+        space_id="sp", candidate_id="c", source_sha="x",
+        domains=[ParamDomain(name="BLOCK_N", kind="int", choices=[64, 128]),
+                 ParamDomain(name="STAGES", kind="int", choices=[1, 2, 3, 4, 5])],
+    )
+    stats = TuningStats(candidate_id="c", space_id="sp", n_complete=30, n_fail=0,
+                        param_stats=[keep, drop])
+    names = [k["name"] for k in boundary_knobs_to_expand(stats, 0.8, space, min_effect_pct=2.0)]
+    assert names == ["BLOCK_N"], f"withdrawn knob must stay withdrawn, got {names}"
+
+
+def test_median_fallback_reads_edges_from_the_domain_not_the_latency_dict():
+    """`latency_by_value` is keyed in TRIAL order, so its first key is not the domain minimum.
+
+    Observed on the real cand-0d0dcd49 stats: the stored key order is
+    ['128','64','256','512','1024']. A fallback reading edges off that dict would call 128
+    the minimum edge and mislabel the direction. Domain order is the only correct source.
+    """
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    from kernel_optimizer.models.reports import TuningStats
+
+    # Trial-order keys; the median's argmin (1024) is the domain MAX.
+    lat = {"128": 12.0, "64": 13.55, "256": 13.6, "512": 13.45, "1024": 10.95}
+    stats = TuningStats(candidate_id="c", space_id="sp", n_complete=35, n_fail=0,
+                        param_stats=[_fallback_stat("FINAL_BLOCK", lat, 1024, 512, False, None)])
+    knobs = boundary_knobs_to_expand(stats, 0.8, _fallback_space("FINAL_BLOCK", [64, 128, 256, 512, 1024]),
+                                     min_effect_pct=2.0)
+    assert knobs and knobs[0]["direction"] == "max", \
+        "direction must come from domain order, not from latency_by_value insertion order"

@@ -222,6 +222,44 @@ genuinely better. What makes that trade defensible is not certainty but the meas
 misdirected flags convert at 2.6% against 21.8% — plus the observation that a 2-sample median
 beating five better-sampled minima is a noise signature, not a trend.
 
+### And then that expansion produced the run's best result, which forced a second fix
+
+The re-tune of the space above went **9.14 → 8.13 ms (11.1%)** — the largest single expansion
+gain in the project, on the space my change would have cancelled. The winning configuration used
+`FINAL_BLOCK=512`, not the added 2048; every value in it was **already legal pre-expansion**, and
+the pre-expansion 40 trials simply never found it.
+
+That exposes an error in the fix as first shipped. An expansion delivers **two** things:
+
+1. a widened range — new values the tuner could not reach;
+2. a fresh tuning budget — another `trials_per_space` on the candidate.
+
+Anchoring on the winning trial improves the aim of (1), but when it withdraws *every* request the
+expansion is cancelled and (2) is forfeited as an unchosen side effect. Measured over the 43
+historical expansions (`scripts/audit_expansion_cancellation_cost.py`):
+
+```
+CANCELLED (new=[])    n=8   improved 6   incl. 9.14 -> 8.13 (11.1%) and 24.00 -> 21.40 (10.8%)
+RE-AIMED  (different) n=12  improved 10  -- expansion still happens, budget preserved
+UNCHANGED             n=23  improved 14
+```
+
+And the counterfactual that matters: of 30 improving expansions, **16 (53%) were won by a
+configuration that was already reachable** before the expansion. For those the fresh budget, not
+the widened range, is what produced the gain.
+
+**So the fix is now a floor, not a veto.** `boundary_knobs_to_expand` runs the winner-anchored
+pass first; only if it returns nothing does it fall back to the median's aim. The expansion still
+happens, and the only thing lost is a knob request that was a low-yield guess anyway. Cancellations
+drop **8 → 1** while the re-aiming is fully preserved (5 of 10 expansions in this run still get a
+different set; `cand-47371017` still goes from 4 requests to 2).
+
+One implementation trap, caught by checking real data: `latency_by_value` is keyed in **trial
+order**, not domain order — the actual stored order for `FINAL_BLOCK` is
+`['128','64','256','512','1024']`. A fallback reading its first/last key as the range edges would
+label 128 the minimum and mislabel directions. The fallback reads the domain's `choices` instead,
+pinned by `test_median_fallback_reads_edges_from_the_domain_not_the_latency_dict`.
+
 ## Propagation
 
 `tuning/stats.py` is driver-side, so this affects the **next** run, not the one in flight —
