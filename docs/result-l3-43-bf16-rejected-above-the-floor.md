@@ -24,13 +24,42 @@ Cosine is 0.99999996 against a requirement of 0.99985, so it passes that arm by 
 orders of magnitude. `median_rel_err` is 1.781e-04 and `max_abs_diff` is 1.363e-03 on an
 output whose `ref_absmax` is 0.8305. Nothing here looks like a broken kernel.
 
-**17 of 17** bf16 mismatches this run are above the floor. Not one is below it. (Was 14 of
-14 when first written 25 minutes earlier; the tally grows as TPE keeps sampling the branch,
-and every new instance lands in the same 0.987202–0.987266 band.)
+**17 of 17** bf16 mismatches on this candidate are above the floor. Not one is below it. (Was
+14 of 14 when first written 25 minutes earlier; the tally grows as TPE keeps sampling the
+branch, and every new instance lands in the same 0.987202–0.987266 band.)
 
-The other precisions are not producing mismatches at all: bf16 is the only dtype with any
-`correctness_mismatch` in tuning, so this is not a general accuracy problem with the
-candidate.
+On this candidate the other precisions are not producing mismatches at all: bf16 is the only
+dtype with any `correctness_mismatch` in tuning, so this is not a general accuracy problem
+with the candidate.
+
+### It replicated on a second, structurally unrelated candidate — and bf16 split
+
+By 1.18h the run had tuned a third seed, `cand-3bf724d6` (`fam-ea7bc8bb`, a
+materialize-scores-then-separate-softmax design, structurally unrelated to
+`cand-6476b4cb`'s fused online-softmax kernel). Its bf16 branch behaves the same way:
+
+| candidate | family | bf16 best-arm frac | above floor 0.976682? | cosine |
+|---|---|---|---|---|
+| `cand-6476b4cb` | fam-92e7c576 | 0.987202 – 0.987266 (17 trials) | **all 17 yes** | 0.99999996 |
+| `cand-3bf724d6` | fam-ea7bc8bb | 0.985624 (9 trials, identical) | **all 9 yes** | 0.99999995 |
+| `cand-cb7be6b4` | fam-4aea322a | 0.811939 – 0.811958 (5 trials) | **no — 0.165 below** | 0.99999531 |
+
+**26 of 34 mismatches in the run are above the floor; 8 are below.** That 26/8 split is the
+part worth keeping, because it is no longer "bf16 is rejected unfairly" — it is
+**dtype-independent**:
+
+- bf16 is above the floor on two candidates (26 trials) and *far* below it on a third (5
+  trials, frac 0.81, `median_rel_err` 3.09e-03 — an order of magnitude worse and plainly a
+  real inaccuracy).
+- tf32 is below the floor on `cand-cb7be6b4` (3 trials, 0.963953) and passes cleanly on the
+  other two.
+
+So the knob value does not predict the verdict; **the floor-relative comparison does.** A
+dtype-based rule — the "ban bf16" shape the user already rejected as too dangerous — would
+have thrown away 26 correct results *and* kept 5 genuinely wrong ones on the same task, in
+the same run. That is the sharpest argument yet that the floor, not the dtype, is the right
+discriminator, and it is also an independent confirmation that the user's call on the
+dtype-ban was correct.
 
 ## Why this case is cleaner than the earlier ones
 
@@ -119,7 +148,7 @@ rejections happen inside tuning rather than at witness time):
 ```
 task  runs     n  floor frac (min..max)       ref_absmax
 L3:21      1  98  0.955360 .. 0.955360         5.749e+00
-L3:43      1  17  0.976682 .. 0.976682         8.305e-01
+L3:43      1  34  0.976682 .. 0.976682         8.305e-01
 L3:48      1  15  0.977767 .. 0.977767         1.038e+22
 
 Gate threshold: 0.99
@@ -128,9 +157,13 @@ Gate threshold: 0.99
   L3:48   floor 0.977767  ->  gate is +0.0122 above the floor
 ```
 
-Each floor is stable to six decimals across every measurement (n=98, 17, 15), so it is a
+Each floor is stable to six decimals across every measurement (n=98, 34, 15), so it is a
 property of the task's arithmetic rather than a noisy estimate — and the harness already
 measures it at witness time. Whatever is decided, the floor is available to decide with.
+
+Note the L3:43 floor did not move a digit as n went 17 → 34 across three structurally
+unrelated candidates. It is a property of the *reference*, which is why it is usable as a
+threshold at all.
 
 ## The same run has a control case pointing the other way
 
@@ -153,22 +186,48 @@ So within one task, one run, and half an hour:
 | candidate | best witness frac | vs floor 0.976682 | gate verdict |
 |---|---|---|---|
 | bf16 trials of `cand-6476b4cb` | 0.987266 | **+0.0106 above** | reject — **wrong** |
+| bf16 trials of `cand-3bf724d6` | 0.985624 | **+0.0089 above** | reject — **wrong** |
 | `cand-cb7be6b4` default (tf32) | 0.963932 | **−0.0128 below** | reject — **right** |
+| bf16 trials of `cand-cb7be6b4` | 0.811958 | **−0.165 below** | reject — **right** |
 
 That pairing is what makes the finding actionable rather than merely a complaint about
 strictness. The gate already discriminates correctly when the comparison is
-floor-relative; it is the *fixed* 0.99 that produces the wrong verdict on the first row.
-Both rows come from the same reference, the same task, the same measurement code, and the
-floor separates them cleanly.
+floor-relative; it is the *fixed* 0.99 that produces the wrong verdict on the first two
+rows. All four rows come from the same reference, the same task, the same measurement code,
+and the floor separates them cleanly — 26 above, 8 below, with a gap of 0.17 between the
+nearest above-floor value and the nearest below-floor one on the same dtype.
+
+The four rows also rule out the two simpler rules one might reach for instead:
+
+- **"Reject bf16"** — rows 1, 2 and 4 are all bf16, and it is right on one of them.
+- **"Trust cosine"** — every row passes the 0.99985 cosine arm, including both genuinely
+  wrong ones (0.99999531 and 0.99999987). Cosine is insensitive to the errors that matter
+  here.
 
 ## Caveats
 
-- One candidate, 0.3h into a run that has 11.7h to go. The 14/14 tally will grow and the
-  floor is measured per witness evaluation, so the exact figures will move slightly (the
-  four distinct ieee values seen span 0.987202–0.987266).
+- 1.18h into a 12h run. Figures will keep moving as TPE samples; the floor has not moved
+  and is not expected to.
 - The 09-04 attribution is an inference, not a direct reading: those messages do not carry
-  `frac_within_tol`, so I matched on `max_abs_diff` being identical to six digits
-  (0.001363 / 1.363e-03) and on the same task, knob and failure kind. The two distinct
-  09-04 values (0.001363 and 0.001861) suggest two clusters, of which I have located one.
-- `runtime_error` bf16 trials (36 on 09-04, 2 today) are a separate matter — tile/dtype
-  incompatibilities, not gate rejections.
+  `frac_within_tol`, so I matched on `max_abs_diff` and on the same task, knob and failure
+  kind. **Both 09-04 clusters are now located and they account for every mismatch there**,
+  which makes that inference much stronger than when it was one cluster of two:
+
+  | 09-04 `max_abs_diff` | trials | today's candidate with the identical value | today's frac | vs floor |
+  |---|---|---|---|---|
+  | 0.001363 | **123** | `cand-6476b4cb` (1.363e-03) | 0.987266 | **above** |
+  | 0.001861 | **31** | `cand-3bf724d6` (1.861e-03) | 0.985624 | **above** |
+  | | **154 = all of them** | | | |
+
+  Every one of 09-04's 154 bf16 `correctness_mismatch` trials falls into one of two clusters,
+  and both clusters reproduce today to six digits on candidates measured to be above the
+  floor. Today's *below*-floor bf16 candidate has `max_abs_diff` 2.920e-03, which appears in
+  09-04 not at all. So the 09-04 run most likely spent 154 trials rejecting kernels the
+  reference could not distinguish from itself — and none on kernels that were genuinely wrong.
+- `runtime_error` bf16 trials (36 on 09-04, 11 today) are a separate matter — tile/dtype
+  incompatibilities, not gate rejections. Together with the 154 above, that is the full 190.
+- What this does *not* establish: that an above-floor kernel is *correct*, only that the
+  reference cannot distinguish it from its own precision spread. A floor-relative gate would
+  admit anything the reference cannot resolve, which is a real and deliberate weakening of
+  the guarantee. That is the substance of the user's "危险性过大", and these numbers do not
+  answer it — they only show that the current rule's verdicts do not track accuracy.
