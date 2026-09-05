@@ -83,6 +83,28 @@ raising arithmetic intensity, which is the whole point of a FlashAttention-style
 `_linear_kernel`, `_linear_to_head_major_kernel` — the same three as every other trial, so
 this is not the dead-branch failure mode.
 
+**5. The winning trial's own worker output contains an in-process control.** Reading
+`jobs/cand-cb7be6b4-tr-d1701cb3-eval-48dd56ab.out.json` directly:
+
+```
+correct                    true          trials_passed  3/3
+correctness_mode           "dual_witness_relaxed"
+excessive_speedup          false
+latency_ms                 {mean 14.2, std 0.41, min 13.0, max 14.5, n 20}
+ref_latency_ms             {mean 41.4, std 0.818, min 40.1, max 42.7, n 10, median 41.442}
+speedup_vs_ref_in_worker   2.918
+```
+
+The worker timed **the reference itself at 41.4 ms in the same process, in the same
+trial** — against the independently measured `eager` baseline of **41.6 ms**. Agreement to
+0.5% means the timing harness was functioning correctly during exactly this measurement.
+A stalled clock, a stale buffer, or a missing synchronize would have distorted the reference
+number too, and it did not.
+
+That is the closest thing to a control the trial record offers, and it is why the outlier
+reading has weakened considerably: the 2.9x in-worker speedup was measured against a
+correctly-timed reference by the same code, in the same process, seconds apart.
+
 Against that: `n_spills: 12` at `n_regs: 255`, where the 30.1 ms config spills nothing.
 Spilling usually costs performance, so the fastest config spilling is mildly odd — though
 with a 128-row tile the register pressure is expected and the extra tile size can pay for
