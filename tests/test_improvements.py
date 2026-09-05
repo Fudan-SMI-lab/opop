@@ -2207,3 +2207,48 @@ def test_trials_recheck_correctness_so_a_bad_corner_cannot_win_on_latency():
     worker = Path("src/kernel_optimizer/gpu/worker_main.py").read_text(encoding="utf-8")
     assert "if correct and num_perf" in worker, \
         "the worker must only time a kernel that passed correctness"
+
+
+def test_hard_edge_matches_prefixed_knob_names():
+    """Agents prefix these knob names freely, so exact matching under-covers.
+
+    The runs so far contain NUM_WARPS, NUM_STAGES, PW_WARPS, APPLY_WARPS, FINISH_WARPS,
+    PW_STAGES, EXPAND_NUM_STAGES, FUSED_NUM_WARPS, SUMMARY_NUM_WARPS, SCAN_NUM_WARPS and
+    OUTPUT_NUM_WARPS. Auditing every min-direction request across all runs: 11 asked for a
+    knob whose minimum was ALREADY 1, and exact matching caught 10 -- `EXPAND_NUM_STAGES`
+    (L3:21 09-04, cand-82819823) escaped. Suffix matching covers all 11.
+    """
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    from kernel_optimizer.models.core import ParamDomain, ParameterSpace
+    from kernel_optimizer.models.reports import ParamStat, TuningStats
+
+    space = ParameterSpace(
+        space_id="sp-1", candidate_id="c", version=1, source_sha="x",
+        domains=[
+            # Already at the wall under a prefixed name: must be skipped.
+            ParamDomain(name="EXPAND_NUM_STAGES", kind="int", choices=[1, 2, 3, 4]),
+            ParamDomain(name="SCAN_NUM_WARPS", kind="int", choices=[1, 2, 4]),
+            # Prefixed but NOT at the wall (min=2): a legitimate request, must survive.
+            ParamDomain(name="PW_WARPS", kind="int", choices=[2, 4, 8]),
+        ],
+    )
+    stats = TuningStats(
+        candidate_id="c", space_id="sp-1", n_complete=40, n_fail=0,
+        param_stats=[
+            ParamStat(name="EXPAND_NUM_STAGES", best_value=1, at_boundary=True,
+                      boundary_direction="min", effect_pct=9.0),
+            ParamStat(name="SCAN_NUM_WARPS", best_value=1, at_boundary=True,
+                      boundary_direction="min", effect_pct=9.0),
+            ParamStat(name="PW_WARPS", best_value=2, at_boundary=True,
+                      boundary_direction="min", effect_pct=9.0),
+        ],
+    )
+    names = [k["name"] for k in boundary_knobs_to_expand(stats, idle_frac=0.8,
+                                                         space=space)]
+    assert "EXPAND_NUM_STAGES" not in names, "prefixed stages knob at 1 must be skipped"
+    assert "SCAN_NUM_WARPS" not in names, "prefixed warps knob at 1 must be skipped"
+    assert "PW_WARPS" in names, (
+        "a prefixed knob whose min is 2 can still be widened downward -- observed live on "
+        "L3:21 (cand-7dcdbd99, PW_WARPS=[2,4,8]); the wall check must gate on the domain, "
+        "not on the name"
+    )

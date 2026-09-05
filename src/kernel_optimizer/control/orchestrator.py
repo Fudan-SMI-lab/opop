@@ -162,9 +162,18 @@ def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float,
     if stats is None or not stats.param_stats:
         return []
     # Hard limits per direction: a knob already at one of these cannot be extended that
-    # way whatever the latency trend says. Keyed by (name, direction) -> the value that
-    # is already the wall.
-    HARD_EDGE = {("NUM_WARPS", "min"): 1, ("NUM_STAGES", "min"): 1}
+    # way whatever the latency trend says. Keyed by (name SUFFIX, direction) -> the value
+    # that is already the wall.
+    #
+    # Matched by suffix, not exact name, because agents prefix these freely: the runs so
+    # far contain NUM_WARPS, NUM_STAGES, PW_WARPS, APPLY_WARPS, FINISH_WARPS, PW_STAGES,
+    # EXPAND_NUM_STAGES, FUSED_NUM_WARPS, SUMMARY_NUM_WARPS, SCAN_NUM_WARPS and
+    # OUTPUT_NUM_WARPS. Exact matching covered 10 of the 11 historical min-at-1 requests
+    # and let `EXPAND_NUM_STAGES` through (L3:21 09-04, cand-82819823); suffix matching
+    # covers all 11. It cannot over-block, because the wall check still requires the
+    # domain's minimum to already BE 1 -- e.g. PW_WARPS=[2,4,8] (L3:21 09-05,
+    # cand-7dcdbd99) is a legitimate min-direction request and stays allowed.
+    HARD_EDGE = {("WARPS", "min"): 1, ("STAGES", "min"): 1}
     res = stats.resource_at_best
     # Headroom = some resource is comfortably below its limit. If we can't tell
     # (no profile), be permissive — the guard + validation still gate the result.
@@ -188,7 +197,8 @@ def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float,
 
     def _at_hard_edge(name: str, direction: str) -> bool:
         """True if the knob's offered range already touches an unextendable limit."""
-        wall = HARD_EDGE.get((name, direction))
+        wall = next((v for (suffix, d), v in HARD_EDGE.items()
+                     if d == direction and name.upper().endswith(suffix)), None)
         if wall is None or space is None:
             return False
         try:
