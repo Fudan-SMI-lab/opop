@@ -42,16 +42,25 @@ def kernel(x_ptr, N, BLOCK_SIZE: tl.constexpr):
     offs = tl.arange(0, BLOCK_SIZE)               # OK: statically known
 ```
 
-## 4. `tl.dot` input dimensions must be divisible by 16
+## 4. `tl.dot`: the CONTRACTION dimension must be >= 16
+
+Triton's rule is asymmetric — it reports it as
+`Input shapes should have M >= 1, N >= 1 and K >= 16`. Only the shared K of
+`(M,K) x (K,N)` has a floor; M and N may be smaller (an N tile of 8 compiles and runs).
 
 ```python
-# BAD: BLOCK_K = 8 -> tl.dot rejects it (needs both dims % 16 == 0, and >= 16)
+# BAD: BLOCK_K = 8 -> tl.dot rejects it (the contraction dim must be >= 16)
 acc += tl.dot(a, b)   # a: (BLOCK_M, 8), b: (8, BLOCK_N)   ERROR
 
-# GOOD: choose tile dims that are multiples of 16 (16, 32, 64, ...)
+# GOOD: keep the contraction dim a multiple of 16 (16, 32, 64, ...)
 BLOCK_K: tl.constexpr = 32
 acc += tl.dot(a, b)   # a: (BLOCK_M, 32), b: (32, BLOCK_N)  OK
 ```
+
+Multiples of 16 are the right default for **all** three dims — they map onto the tensor
+core MMA shapes, so off-multiple M/N tiles are padded and waste throughput even when
+they compile. But when you must pick a small value, know which dim you are shrinking:
+below 16 on K is an error, below 16 on M or N is merely a slow choice.
 
 ## 5. `tl.dot`: the ACCUMULATOR must be fp32 (the input path may be tf32)
 

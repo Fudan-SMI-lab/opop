@@ -312,6 +312,11 @@ class ParameterizerAgent(AgentModule[ParameterizerInputs, ParameterizationResult
     def seed_sandbox(self, inputs: ParameterizerInputs, sb: Sandbox) -> None:
         sb.write_input("candidate/source.py", inputs.candidate_source)
         sb.write_input("docs/candidate_contract.md", _contract_doc())
+        # The parameterizer REWRITES the kernel body (and, on an expansion, chooses new
+        # tile-dimension values), so every Triton rule that constrains a tile dimension
+        # binds it exactly as it binds the generator/rewriter. It was the only
+        # Triton-writing agent that never received this doc.
+        sb.write_input("docs/triton_pitfalls.md", _triton_pitfalls_doc())
         sb.write_input("docs/device.md", _device_doc(inputs.device))
 
     def render_prompt(self, inputs: ParameterizerInputs, sb: Sandbox) -> str:
@@ -323,7 +328,12 @@ class ParameterizerAgent(AgentModule[ParameterizerInputs, ParameterizationResult
             else ""
         )
         return f"""A candidate kernel is in `candidate/source.py`. Read it, plus
-`docs/candidate_contract.md` and `docs/device.md`.{feedback}
+`docs/candidate_contract.md` and `docs/device.md`. If the kernel is Triton
+(`@triton.jit`), you MUST also read `docs/triton_pitfalls.md` and obey it — both in
+the rewritten body AND when choosing each knob's choices: every value you offer for a
+tile dimension must be legal there (e.g. the CONTRACTION dimension of a `tl.dot` must
+be at least 16, so 8 is never a legal choice for a K tile, though it may be legal for
+an M or N tile).{feedback}
 
 Your job: parameterize every tunable feature of this kernel.
 
@@ -410,6 +420,14 @@ Answer with JSON:
         choices toward the improving direction, keeping structure and other knobs."""
         return f"""A candidate kernel is in `candidate/source.py` (already parameterized
 with a `PARAMS` dict). Read it plus `docs/candidate_contract.md` and `docs/device.md`.
+If the kernel is Triton, also read `docs/triton_pitfalls.md`: every value you ADD must
+be legal there. In particular the CONTRACTION dimension of a `tl.dot` (the shared K of
+`(M,K) x (K,N)`) must be at least 16 — Triton rejects a smaller one outright with
+`Input shapes should have M >= 1, N >= 1 and K >= 16`. So check which dot dimension a
+knob actually feeds before expanding it downward: an M or N tile may legally go below
+16, a K tile may not. When the improving direction is downward and the knob is already
+at its legal floor, expand a different knob or leave that domain unchanged — an illegal
+value makes the witness fail to compile and the ENTIRE expansion is rejected.
 
 During tuning, some knobs reached the EDGE of the value range that was offered and
 latency was still improving toward that edge, while hardware resources still had
