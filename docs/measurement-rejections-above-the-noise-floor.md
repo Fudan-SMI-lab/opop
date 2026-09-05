@@ -38,6 +38,16 @@ the task's floor, classified by which is larger:
 
 So **36% of correctness rejections are of candidates the floor says are fine.** Broken out:
 
+**Update — this table classifies by `frac_within_tol`, the metric the gate uses, which is right for
+describing what the gate *did* but not sufficient to call a candidate fine.** The four-metric check
+(`finding-floor-rejection-sends-repair-after-the-dtype.md`) is now in the audit script and resolves
+it: of 11 above-floor rejections, **10 are clean on all four metrics** (`frac_within_tol`,
+`median_rel_err`, `max_abs_diff`, `p99_rel_err`) and **1 is not** — `cand-90886b3c` attempt 2, the
+product of two repairs, which clears the floor on `frac_within_tol` while being 2.7× worse on the
+typical element. All 18 below-floor rejections are 0/4, so the groups separate cleanly. Read the
+counts here as the gate's-eye view and the four-metric column in
+`scripts/audit_noise_floor_rejections.py` as the verified one.
+
 ```
 l3-21  cand-6b313c39   0.958919 / 0.978946  vs floor 0.955360   ABOVE   (4 rejections)
 l3-21  cand-89fa74fe   0.977751 / 0.978934  vs floor 0.955360   ABOVE   (4 rejections)

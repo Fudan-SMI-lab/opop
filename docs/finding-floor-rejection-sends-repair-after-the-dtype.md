@@ -95,6 +95,66 @@ failure, attempt 2 fixed *that*. Three agent calls and ~7 minutes, and the candi
 where it started numerically but with `ATTN_PIPE_STAGES` cut from 2 to 1 — a configuration change it
 did not need, imposed by a chain that began with a rejection it should not have received.
 
+## Attempt 2's numbers refine the finding — `frac_within_tol` alone is not enough
+
+Attempt 2 (14:38:03) cleared the OOM and was rejected on correctness again, at
+`frac_within_tol 0.978924` against the floor's 0.976682 — still above it, so by the single-metric
+ledger this is a fourth floor-passing rejection. But comparing *all four* metrics against the
+floor's own values tells a different story than attempt 0 did:
+
+| metric | attempt 0 (fp16) | attempt 2 (tf32) | floor | |
+|---|---|---|---|---|
+| `frac_within_tol` | 0.9869 | 0.9789 | 0.9767 | both better |
+| `median_rel_err` | 2.39e-04 | **1.34e-03** | 3.83e-04 | 0 better, **2 worse** |
+| `max_abs_diff` | 2.82e-04 | **1.05e-03** | 3.91e-04 | 0 better, **2 worse** |
+| `p99_rel_err` | 1.30e-02 | 2.05e-02 | 2.31e-02 | both better |
+
+Attempt 0 beat the floor on **all four**. Attempt 2 beats it on two and is **2.7× worse on the
+typical element** (`median_rel_err` 1.34e-03 vs 3.83e-04) and 2.7× worse on the largest deviation.
+So attempt 2 is genuinely less accurate than the reference-vs-itself even though its
+`frac_within_tol` sits above the floor — the repair chain did degrade the kernel, exactly as
+`opop-v2-noise-floor-gate-damages-candidates` predicts, and the single metric I had been ledgering
+does not show it.
+
+**That is a limitation of my own analysis, not just of the gate.**
+`measurement-rejections-above-the-noise-floor.md` classifies rejections by `frac_within_tol`
+alone, which is the metric the gate uses — so as a description of *what the gate did* it is right.
+But as evidence that a rejected candidate was *fine*, one metric is not enough: a candidate can
+clear the floor on `frac_within_tol` while being multiples worse on median and max deviation.
+
+So I ran the four-metric comparison over the whole record rather than leaving that as a caveat:
+
+| | n |
+|---|---|
+| **clean on ALL four metrics** (better than the reference-vs-itself everywhere) | **10** |
+| above the floor on `frac_within_tol` but worse on ≥1 other metric | **1** |
+| below the floor on `frac_within_tol` | 18 |
+
+```
+l3-21  cand-6b313c39   attempts 0,1,2,3   4/4  CLEAN
+l3-21  cand-89fa74fe   attempts 0,1,2,3   4/4  CLEAN
+l3-43  cand-90886b3c   attempt  0         4/4  CLEAN
+l3-48  cand-61f768c8   attempt  2         4/4  CLEAN
+l3-43  cand-90886b3c   attempt  2         2/4  gate-only  <- the degraded one
+```
+
+The single ambiguous case is exactly the one that prompted the check — attempt 2, the product of two
+repairs. Every *other* above-floor rejection is clean on all four metrics, and both the 18
+below-floor rejections are 0/4 (none of them beats the floor on any metric), so the two groups
+separate cleanly rather than shading into each other.
+
+My "1 verified clean, 9 unverified" reading a paragraph ago was too pessimistic: it is **10 verified
+clean, 1 genuinely degraded**. Worth stating plainly because I nearly recorded a weaker conclusion
+than the data supports — the four-metric check made the ledger *stronger*, not weaker, while
+correctly flagging the one row that deserved it.
+
+This does not change the deferred decision, but it does sharpen what a floor-relative gate would
+have to compare. A rule keyed on `frac_within_tol` alone would have accepted attempt 2, which is
+2.7× worse on the typical element. A rule requiring the candidate to match the reference-vs-itself
+on **median and max deviation as well** accepts all 10 clean cases and correctly rejects attempt 2 —
+and that is a materially different (and better-founded) proposal than the single-metric one in
+`decisions-awaiting-user.md` item 1.
+
 ## Why the dtype switch is the specific damage
 
 `opop-v2-noise-floor-gate-damages-candidates` already records that repair can break a correct

@@ -29,6 +29,46 @@ REPO = Path(__file__).resolve().parent.parent
 FRAC = re.compile(r"'frac_within_tol': ([0-9.]+)")
 DTYPE = re.compile(r"'(?:COMPUTE_DTYPE|COMPUTE_PRECISION|DOT_PRECISION)': '(\w+)'")
 
+# Metrics the detail prints for the candidate and for the reference-vs-itself floor.
+# frac_within_tol and cosine are better when LARGER; the error metrics when SMALLER.
+LARGER_IS_BETTER = ("frac_within_tol", "cosine")
+METRICS = ("frac_within_tol", "median_rel_err", "max_abs_diff", "p99_rel_err")
+
+
+def block(detail: str, marker: str) -> dict[str, float]:
+    """Parse the metric dict that follows `marker` in a failure detail."""
+    i = detail.find(marker)
+    if i < 0:
+        return {}
+    seg = detail[i:i + 420]
+    out: dict[str, float] = {}
+    for key in ("frac_within_tol", "cosine", "median_rel_err", "p99_rel_err", "max_abs_diff"):
+        m = re.search(rf"'{key}': '?([0-9.eE+-]+)'?", seg)
+        if m:
+            out[key] = float(m.group(1))
+    return out
+
+
+def four_metric_verdict(detail: str) -> dict[str, bool]:
+    """Per-metric: is the candidate at least as good as the reference-vs-itself?
+
+    The gate accepts on EITHER reference, so the candidate's figure per metric is the better
+    of its ieee and tf32 comparisons. Returns {} when the detail cannot be parsed.
+    """
+    ieee, tf32, floor = (block(detail, "vs ieee ref"), block(detail, "vs tf32 ref"),
+                         block(detail, "noise floor"))
+    if not ieee or not floor:
+        return {}
+    verdict: dict[str, bool] = {}
+    for key in METRICS:
+        if key not in ieee or key not in floor:
+            continue
+        a, b = ieee[key], tf32.get(key)
+        best = (max(a, b) if b is not None else a) if key in LARGER_IS_BETTER else (
+            min(a, b) if b is not None else a)
+        verdict[key] = best > floor[key] if key in LARGER_IS_BETTER else best < floor[key]
+    return verdict
+
 
 def parse(detail: str) -> tuple[float, float] | None:
     """(best candidate frac across the two references, task floor) or None.
@@ -65,7 +105,8 @@ def main(argv: list[str]) -> int:
                     continue
                 cand, floor = parsed
                 space_rows.append((task, pl.get("candidate_id"), pl.get("reason"),
-                                   cand, floor, cand > floor))
+                                   cand, floor, cand > floor,
+                                   four_metric_verdict(pl["detail"])))
             elif e["type"] == "TRIAL_DONE":
                 t = e["payload"]["trial"]
                 if t.get("failure_kind") != "correctness_mismatch":
@@ -94,16 +135,31 @@ def main(argv: list[str]) -> int:
     print(f"  candidate BELOW the floor (genuinely less consistent):                    "
           f"{len(below)}")
 
-    print("\n  ABOVE -- rejected although more consistent than the reference is with itself:")
-    for task, cid, reason, cand, floor, _ in sorted(above, key=lambda r: -(r[3] - r[4])):
+    print("\n  ABOVE -- rejected although more consistent than the reference is with itself.")
+    print("  The `metrics` column is the FOUR-metric check: frac_within_tol alone (the metric the")
+    print("  gate uses) can clear the floor while median/max deviation are multiples worse, so a")
+    print("  4/4 row is verified clean and anything less is not.")
+    for task, cid, reason, cand, floor, _, v in sorted(above, key=lambda r: -(r[3] - r[4])):
+        n_ok, n_tot = sum(v.values()), len(v)
+        tag = "CLEAN" if v and n_ok == n_tot else "gate-only -- DEGRADED on another metric"
         print(f"    {task:<8} {str(cid):<16} {str(reason):<26} "
-              f"cand={cand:.6f} floor={floor:.6f}  +{cand - floor:.4f}")
+              f"cand={cand:.6f} floor={floor:.6f}  +{cand - floor:.4f}  "
+              f"{n_ok}/{n_tot}  {tag}")
 
     print("\n  BELOW -- and note how thin the margins are; a floor-relative gate must pick a")
     print("  tolerance that decides these too:")
-    for task, cid, reason, cand, floor, _ in sorted(below, key=lambda r: -(r[3] - r[4])):
+    for task, cid, reason, cand, floor, _, v in sorted(below, key=lambda r: -(r[3] - r[4])):
+        n_ok, n_tot = sum(v.values()), len(v)
         print(f"    {task:<8} {str(cid):<16} {str(reason):<26} "
-              f"cand={cand:.6f} floor={floor:.6f}  {cand - floor:+.4f}")
+              f"cand={cand:.6f} floor={floor:.6f}  {cand - floor:+.4f}  {n_ok}/{n_tot}")
+
+    clean = [r for r in above if r[6] and sum(r[6].values()) == len(r[6])]
+    gate_only = [r for r in above if r[6] and sum(r[6].values()) < len(r[6])]
+    print(f"\n  FOUR-METRIC SUMMARY: {len(clean)} verified clean on every metric, "
+          f"{len(gate_only)} above the floor on frac_within_tol but degraded elsewhere, "
+          f"{len(below)} below.")
+    print("  A floor-relative rule keyed on frac_within_tol ALONE would accept the degraded rows;")
+    print("  one that also requires matching the reference on median and max deviation would not.")
 
     both = {r[1] for r in above} & {r[1] for r in below}
     if both:
