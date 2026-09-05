@@ -244,9 +244,39 @@ Until then the honest statement is: *a single trial measured 14.2 ms with stable
 timing and physically ordinary throughput; if it holds, it is the first L3:43 kernel to beat
 `torch.compile`'s tf32 path.* Not "L3:43 beats its baseline".
 
+## The seed cohort, complete — and it argues the 14.2 is a lone outlier
+
+All four seeds are now tuned (1.54h), so the run's structural coverage can be compared
+against every previous L3:43 run's seed phase:
+
+| run | best | 2nd | median | worst | spread | run's final (tuned / re-eval) |
+|---|---|---|---|---|---|---|
+| 0902-140823 | 29.1 | 39.1 | 41.0 | 45.2 | 1.55× | 29.2 / 30.1 |
+| 0903-020233 | 29.3 | 31.6 | 32.2 | 55.7 | 1.90× | 29.3 / 31.1 |
+| 0903-145357 | 21.0 | 22.9 | 23.7 | 60.3 | 2.87× | 19.4 / 20.6 |
+| 0904-093730 | 19.6 | 20.0 | 20.6 | 23.7 | 1.21× | 17.9 / **19.1** |
+| **0905-091705** | **14.2** | 22.5 | 23.0 | 28.0 | 1.97× | *in flight* |
+
+Two readings, and the second is the one I had been underweighting:
+
+**For the run:** its best seed is 27.6% faster than any previous run's best seed, and this is
+the first L3:43 cohort whose leader is under 19.6.
+
+**Against the 14.2 being a property of this cohort:** the *other three* seeds (22.5, 23.5,
+28.0) are **worse than 0904's entire cohort** (19.6, 20.0, 21.2, 23.7). By median this is the
+third-best cohort of five, not the best. So the run is not broadly stronger — it has one
+candidate far ahead of a middling field, which is the same shape as the intra-candidate
+picture (one trial at 14.2, nothing else within 5.6 ms).
+
+That matters for the pending verdict in two ways. It weakens any "this run is simply better"
+explanation for the 14.2, leaving the single candidate to carry it alone. And it means the
+0904 run, whose cohort was tighter and better, still only reached 19.1 ms re-eval — so if the
+14.2 does not survive re-evaluation, this run's fallback is a 22.5 seed that would land
+*behind* 0904's published result.
+
 ## Note on the run's health
 
-0.87h of 12h, 78 trials. Two candidates tuned (22.5, 14.2), one rejection — correctly, below
-the floor — repaired and republished. No `KERNELS_NEVER_LAUNCHED` events. The repair
-timeout at 09:58 recovered at 10:00:07 and its fix survived the parameterizer intact (16
-`tl.dot` preserved, only the dtype default changed).
+1.54h of 12h, 4 of 4 seeds tuned, one rejection — correctly, below the floor — repaired and
+republished. No `KERNELS_NEVER_LAUNCHED` events. Two K expansions (one flat from cache, one a
+genuine +2.1%). The repair timeout at 09:58 recovered at 10:00:07 and its fix survived the
+parameterizer intact (16 `tl.dot` preserved, only the dtype default changed).
