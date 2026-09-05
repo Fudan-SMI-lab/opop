@@ -259,3 +259,35 @@ evidence the union-over-trials comparison is equivalent to a per-trial one. That
 property of the candidates written so far rather than a guarantee — a candidate could
 branch on a knob value — but it means the check is not currently weakened by using the
 union.
+
+---
+
+## Verified live on the first post-fix run
+
+`run-l3-43-20260905-091705` started at 09:17:05; the fixes landed 09:08–09:15. Its first
+`BOTTLENECK_REPORTED` (09:37:40, `cand-6476b4cb`) shows the intended behaviour change in
+both hypotheses' `risk` fields:
+
+> **H1 risk**: "**TRAIN mode assumed.** Preserve causal online-softmax semantics and
+> training-mode dropout behavior exactly; do not fold normalization statistics (none are
+> present)."
+>
+> **H2 risk**: "**TRAIN mode assumed, with no inference-only BatchNorm folding.**"
+
+The analyst now states which mode it assumed and rules out the fold that cost 80 trials on
+L3:21 — including noticing, correctly, that this task has no normalization layers at all.
+
+The before/after is unambiguous across every run on disk:
+
+| | hypotheses | state a mode assumption | mention "inference BN" |
+|---|---|---|---|
+| 9 runs before the fix | **283** | **0** | 8 (all on L3:21, the train-mode task) |
+| first run after | 2 | **2** | 0 |
+
+0 of 283 against 2 of 2. Small n on the after side — one report — but the pre-fix rate is
+zero across 283 chances, so the change is not plausibly noise. And the 8 pre-fix
+"inference BN" mentions are all on L3:21, i.e. all on the one task where that premise was
+false.
+
+The runtime half of the fix has also been silent so far: no `KERNELS_NEVER_LAUNCHED` event
+in this run, which matches `audit_dead_kernels.py` reporting nothing for it.
