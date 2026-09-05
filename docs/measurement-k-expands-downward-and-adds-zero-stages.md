@@ -25,6 +25,34 @@ The live example is clean. `cand-88e76051`'s winner uses `BLOCK_N=16`, the *mini
 (5 of 5 fail at 64). So the boundary is at `min`, direction is `decrease`, and K added **8**. That
 is the mirror image of the row-tile cases and equally correct behaviour.
 
+### Its outcome: the headline improved, the added value lost
+
+This is exactly the case the "judge an expansion by its new-choice trials" rule
+(`finding-k-retune-cannot-disconfirm-its-incumbent.md`) was written for, and here the two readings
+diverge in the direction that flatters K:
+
+| | trials | complete | best (fresh) |
+|---|---|---|---|
+| **`BLOCK_N=8`** — the value K added | 6 | 5 | **22.5** |
+| `BLOCK_N` in {16, 32, 64} | 34 | 18 | **19.9** |
+
+`TUNING_DONE` reports **19.9 ms, a 2.0% improvement over 20.3** — and it is a fresh measurement,
+not a cache replay. But the winner is `BLOCK_N=16` with `NUM_STAGES` moved 1 → 2; the incumbent's
+own value, re-found with a different stage count. **K's added value never came close**: 22.5 at
+best, 13% worse than the incumbent, with the downward direction decisively refuted.
+
+So the top line says "+2.0%, expansion helped" and the new-choice subset says "the widened region
+is unproductive". Both are true statements about different things: the re-tune found a better point
+*inside the old domain*, which is a benefit of re-running the tuner rather than of widening it.
+Attributing the 2.0% to K would be wrong.
+
+This is the first case in the record where the split changes the verdict in K's *disfavour* — the
+three earlier instances all had a flat headline hiding a productive new region, so I had only ever
+used the rule to defend expansions. It cuts both ways, which is the point of having it.
+
+Worth noting the 2.0% also lands exactly on `min_improvement_pct: 2.0`, so this expansion counts as
+"progress" by the convergence policy on the strength of a gain its widened region did not produce.
+
 ## But five downward expansions added `NUM_STAGES = 0`
 
 ```

@@ -22,21 +22,21 @@ best is **arithmetically guaranteed** to be ≤ the pre-expansion best, and equa
 some genuinely new point wins. A "flat" re-tune is therefore uninformative about the widened
 region — but it is not the *likely* outcome, and I was wrong to say so.
 
-## The base rate — what actually happens across all 23 expansions
+## The base rate — what actually happens across all 25 expansions
 
 Every K expansion in the record that has a before/after `TUNING_DONE` pair:
 
 | outcome | n | post-expansion best was a cache hit |
 |---|---|---|
-| **improved** | **15** | 0 |
+| **improved** | **17** | 0 |
 | flat | 6 | **3** |
 | worse | 2 | 0 |
 
 Three things follow, and the first two contradict what I had written:
 
-1. **Expansions usually help.** 15 of 23, ranging +0.4% to +20.0%. Improvement K is doing
+1. **Expansions usually help.** 17 of 25, ranging +0.4% to +20.0%. Improvement K is doing
    real work; the cache issue is a reading hazard, not a verdict on the mechanism.
-2. **Flatness is uncommon (6 of 23) and only half of it is a cache artifact.** Three flat
+2. **Flatness is uncommon (6 of 25) and only half of it is a cache artifact.** Three flat
    outcomes had a *freshly measured* best that merely tied — so even "flat" does not reliably
    imply "replayed".
 3. **Two expansions made the reported best worse** (`cand-0c3b5820` 20.0 → 22.6,
@@ -52,6 +52,14 @@ Three things follow, and the first two contradict what I had written:
    17.9 tuned / 19.1 re-eval. So a worse post-expansion `TUNING_DONE` is a *reporting* artifact
    of that one event, not a regression in what the run keeps — the monotonic guards were
    already there and the code comment at `orchestrator.py:708` says why.
+
+**Caution on reading that 68% as K's success rate.** The "improved" column counts whether the
+post-expansion *best* fell, not whether K's *added values* caused it. A re-tune re-runs 40 trials
+over the whole space, so it can find a better point inside the original domain and be scored as an
+improvement. At least one case is now confirmed to be exactly that (`cand-88e76051`, +2.0% while
+the added value landed 13% worse — see
+`measurement-k-expands-downward-and-adds-zero-stages.md`), so **68% is an upper bound on K's
+contribution**, and the honest per-case test remains the new-choice subset.
 
 ## Measured: which reported bests came from cache
 

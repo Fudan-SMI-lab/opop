@@ -53,21 +53,39 @@ The declared domains almost certainly contain a feasible point: 131072 / 101376 
 halving `ATTN_BLOCK_N` to 32, or dropping `ATTN_NUM_STAGES` from 2 to 1, would very likely fit.
 Nothing tried.
 
-## Scale: rare overall, but this is the first instance
+## Scale: rare overall, but it has now happened twice — both in this run, both on "go bigger" rewrites
 
-Across all runs, `witness_default_failed` fires 71 times. Categorising the details:
+Across all runs, `witness_default_failed` fires 72 times. Categorising the details:
 
 | cause | n |
 |---|---|
 | correctness (mismatch, incl. the older bare "Output mismatch" wording) | 57 |
 | other runtime error | 13 |
-| **shared-memory / register `OutOfResources`** | **1** |
+| **shared-memory / register `OutOfResources`** | **2** |
 
-So this is **n=1** and I am not claiming a systemic pattern from it. What makes it worth writing
-down is not frequency but *which* candidate it hit: the resource-hungry structures are precisely
-the ones a register-pressure hypothesis produces, so the failure mode is correlated with the
-most interesting rewrites rather than randomly distributed. A 1-in-71 event that selectively
-removes the "go bigger" branch of every such experiment is worse than its rate suggests.
+Both resource cases are in `run-l3-43-20260905-091705`, and both are **rewrite children produced
+from a "the tile is blocked, go bigger" hypothesis**:
+
+| candidate | required | limit | ratio | its hypothesis |
+|---|---|---|---|---|
+| `cand-919059a0` | 131072 | 101376 | 1.29× | logical 256-row CTA from two 128-row groups |
+| `cand-2d0194cc` | 139264 | 101376 | 1.37× | `STATS_BLOCK_M=256` "to reach beyond the parent's shared-memory-blocked 128-row region" |
+
+`cand-2d0194cc`'s default witness is `STATS_BLOCK_M: 256, STATS_NUM_WARPS: 8, …` — again the most
+expensive corner of its own declared space, and again 1.3–1.4× over the limit rather than wildly
+out.
+
+**This substantially strengthens the correlation argument I made when it was n=1.** I wrote then
+that "resource-hungry structures are precisely the ones a register-pressure hypothesis produces, so
+the failure mode is correlated with the most interesting rewrites rather than randomly
+distributed." Two of two instances are now exactly that, and both arrived within 45 minutes of each
+other in the first run whose analyst reports named a resource ceiling. It is still 2 of 72 overall,
+so the *rate* claim stays modest — but the selectivity is no longer speculative.
+
+Note also what the two share mechanically: a rewriter proposes a bigger tile, the parameterizer
+makes that tile the **default**, and the witness gate — which only ever tries the default and the
+minimal corner — hits the one configuration guaranteed to be worst-case for shared memory. The
+larger the hypothesis, the likelier the default is infeasible.
 
 ## What the harness did next — correctly
 
