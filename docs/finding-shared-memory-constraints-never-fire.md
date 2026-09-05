@@ -194,13 +194,54 @@ rate rather than eliminating it.
   symptom is `infeasible_space` rejections in `SPACE_REJECTED`, which are journalled and easy to
   count. There have been none from this cause so far, so any appearance is attributable.
 
+## Post-hoc validation: the defect reproduced live, twice, after the fix was written
+
+Recorded at 14:30, ~45 min after committing the prompt change. Because the fix is driver-side, the
+in-flight run kept the old prompt — so it went on producing the exact failure mode, which is the
+cleanest possible confirmation that the diagnosis was right rather than a story fitted to old data.
+
+`cand-03f69b0e`, a two-kernel candidate (`QK_*` and `PV_*`), published `sp-aaa3a411` and then
+`sp-2ed3b8c2`. The second space's **entire** constraint list:
+
+```
+PV_NUM_WARPS * 32 <= 1024
+```
+
+One thread bound, for one of the two kernels. No shared-memory constraint for either. Both spaces
+appear in the audit with `MISSING=PV,QK  n_shared=0`.
+
+Then K widened `PV_BLOCK_N` upward to 256, and both trials that sampled it died:
+
+```
+PV_BLOCK_N=256 trials: {'runtime_error': 2}
+   OutOfResources: shared memory, Required: 196608, Hardware limit: 101376
+   OutOfResources: shared memory, Required: 393216, Hardware limit: 101376
+```
+
+Required 1.9× and 3.9× the limit. A per-kernel `PV_*` shared-memory bound — the thing point (a) of
+the fix asks for — would have excluded 256 from the sampled grid before a single GPU job ran. The
+running totals moved accordingly while I watched: **251 → 280 OOM trials, 22 → 25 under-covered
+multi-kernel spaces, 32 → 35 multi-kernel spaces**, with the guard still preventing exactly **0**.
+
+Two things this settles that the retrospective numbers could not:
+
+1. **It is not a historical artifact of early prompts.** The same parameterizer, on the same task,
+   40 minutes ago, produced a two-kernel space with zero shared-memory constraints.
+2. **The failure is reachable by K, not just by the initial space.** `sp-2ed3b8c2` is a *expansion*
+   of an already-uncovered space, so the missing constraint and the widened domain compound exactly
+   as the "Cause 1 + constraint-dropping" note above predicts.
+
+What it does not do is validate the fix — that needs the next run, where the new prompt is active.
+The prediction to check there: multi-kernel spaces should carry one shared-memory constraint per
+kernel prefix, and the `n_shared=0` rows should stop appearing for new spaces.
+
 ## What it does not fix
 
 - The **excluded 2-byte region** (7,388 grid points) only reopens if the agent writes the
   disjunction rather than switching the literal `4` to `2`. A blanket `2` would be wrong in the
   other direction and would reintroduce the OOMs at tf32/ieee.
 - **Register and thread bounds** have the same per-kernel coverage question and I have not
-  measured them. The 243 figure is shared memory only; `n_regs` pressure shows up as spills and
+  measured them. The 280 figure is shared memory only; `n_regs` pressure shows up as spills and
   slow kernels rather than a clean failure, which is harder to attribute.
 - **K's expansion path** (`_render_expand_prompt`) has its own constraint instructions and its
   own documented defect (26 of 26 expansions drop constraints). I am not touching it — that is
