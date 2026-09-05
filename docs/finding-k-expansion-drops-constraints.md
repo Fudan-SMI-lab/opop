@@ -78,15 +78,52 @@ kernel needs 139,264 B against a 101,376 B limit. Repair fixed it by setting the
 STATS_BLOCK_M: [16, 32, 64, 128] -> [16, 32, 64, 128, 256]
 ```
 
-Two trials have already sampled it, and one failed with
+Two trials sampled it immediately and one failed with
 `out of resource: shared memory, Required: 147456, Hardware limit: 101376` — a *worse* violation
 than the one repair spent three attempts fixing, because the widened `OUTPUT_*` knobs add to it.
 
-This is not the constraint-dropping bug by itself — no constraint forbade `STATS_BLOCK_M=256`,
-since the original space expressed the limit through its *default* rather than a constraint. But
-it is the same root cause: **the expansion has no memory of what the candidate's history
-established.** Repair learned a hard fact about this kernel and wrote it into a default; K, calling
-a fresh parameterizer with no knowledge of that episode, re-opened it.
+### Then the re-tune's winner turned out to be `STATS_BLOCK_M=256` — and K was right
+
+The 40-trial re-tune reported **21.1 ms** (7.5% better than the pre-expansion 22.8), and its
+θ_best is:
+
+```
+STATS_BLOCK_M: 256   <- the value repair removed
+STATS_BLOCK_N: 64, STATS_NUM_WARPS: 4, STATS_NUM_STAGES: 2
+OUTPUT_BLOCK_M: 128, OUTPUT_BLOCK_N: 32, OUTPUT_NUM_WARPS: 4, OUTPUT_NUM_STAGES: 3
+COMPUTE_DTYPE: fp16
+```
+
+`shared_bytes: 98304` — it fits, at 97% of the opt-in limit. So **re-adding 256 was correct and I
+was wrong to imply otherwise.** The resolution is `COMPUTE_DTYPE`:
+
+| dtype at `STATS_BLOCK_M=256` | trials | complete |
+|---|---|---|
+| **fp16** (2 bytes) | 9 | **7** |
+| bf16 | 4 | 0 |
+| ieee (4 bytes) | 7 | 0 |
+| tf32 (4 bytes) | 2 | 0 |
+
+The failing witness used `COMPUTE_DTYPE: tf32` — four bytes per element — which is why its 256-row
+tile needed 139,264 B. At fp16 the same tile needs half that and fits. `STATS_BLOCK_M=256` is not
+infeasible; it is infeasible *at 4-byte precision*, and feasible at 2-byte.
+
+Two corrections to what I wrote above, both mine:
+
+1. I said repair's three attempts established "a hard fact about this kernel". They did not — they
+   established a fact about one *config*. Repair moved the default to a value that works at every
+   dtype, which is the right call for a witness, and K then correctly re-opened a value that works
+   at the dtype the tuner actually prefers.
+2. My earlier table of "same STATS knobs, both complete and fail" looked like non-determinism. It
+   was my own omission: the rows differed in `COMPUTE_DTYPE`, which I had dropped from the columns.
+   `tr-dccc6077` (fp16) completes and `tr-95f802bd` (ieee) OOMs on otherwise identical vectors.
+
+**What this does not change:** the constraint-dropping bug is unaffected — 26 of 26 expansions
+still discard constraints, and the 116-trial / 61%-failure measurement stands, since none of those
+constraints concerned `STATS_BLOCK_M`. What it does change is the framing of this instance: it is
+an example of K's *domain* widening working, not of K undoing a repair. The correct criticism of
+this expansion is narrower — it re-opened a value whose infeasibility at 3 of 4 dtypes had just
+been demonstrated, and paid for that with 6 OOM trials, while finding a genuine 7.5% at the fourth.
 
 ## What I would change — not applied
 
@@ -99,6 +136,11 @@ a fresh parameterizer with no knowledge of that episode, re-opened it.
 3. **Feed the expansion the candidate's failure history**, so a value that has already been proven
    infeasible is not re-offered. Bigger, and it edges toward the cross-candidate sharing the user
    has ruled out — though *within* one candidate it does not.
+
+   **Weakened by the `STATS_BLOCK_M=256` outcome above.** A history-aware expansion would likely
+   have declined to re-add 256, and 256 turned out to hold the best result. "Already failed" is not
+   "infeasible" when the failure was at one dtype and the win is at another. So this option needs
+   to be per-(value, dtype) at minimum, which makes it considerably less attractive than it looked.
 
 **Why I stopped:** (1) changes what K produces, and K's expansion rule is already the subject of
 two pending items (`at_boundary` gating in `measurement-analyst-median-on-one-sample.md`, per-knob
