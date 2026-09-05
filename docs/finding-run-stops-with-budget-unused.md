@@ -147,6 +147,37 @@ That also makes the prediction testable: a run whose empty-family count reaches
 `max_families_active` should terminate early, and one below it should not. n=2 so far, on
 opposite sides of the threshold.
 
+## A third data point, pre-registered: L3:43 09-05 has ZERO empty families
+
+Recorded at 11:00, the moment its rewrite phase began, so this is a prediction rather than a
+postdiction. `run-l3-43-20260905-091705` finished its seed phase with **all four families
+holding a correct candidate**:
+
+```
+fam-4aea322a  cand-cb7be6b4  14.2   <- active (rank 1)
+fam-92e7c576  cand-6476b4cb  22.5   <- active (rank 2)
+fam-7f682a54  cand-de802450  23.4
+fam-ea7bc8bb  cand-3bf724d6  28.0
+empty families (best is None): []
+```
+
+So the `family.best is None` branch **cannot be reached** in this run, and the mechanism above
+predicts the loop will not exit early:
+
+> **Prediction: this run does not terminate via the empty-family path. It should either
+> exhaust its rewrite rounds (up to 3 per family, 4 families) or hit the 12h wall — not stop
+> in ~2h with rounds unused.**
+
+If it *does* stop early with rounds remaining, the mechanism as I have described it is
+incomplete and there is a second exit path I have not found. That is the useful outcome to
+watch for, and it is why the empty-family count is worth checking at the *start* of a rewrite
+phase rather than reconstructing it afterwards.
+
+Note this is a weaker test than L3:21/L3:48: those two sat on opposite sides of the threshold
+(2 vs 1 empty families), whereas zero is simply further from it. A run with exactly 2 empty
+families and a *long* elapsed time would be the observation that actually falsifies the
+threshold claim.
+
 Earlier runs cannot be checked this way — `rewrite_rounds_used` is absent from their
 `RUN_FINISHED` summaries (the field predates them), so `[None, None, None, None]` there
 means unrecorded, not zero.
