@@ -101,6 +101,36 @@ A stale constraint vetoing the expansion it was requested for would be a worse b
 the one being fixed, which is why the gate is empirical rather than a heuristic about
 which constraints "look like" resource bounds.
 
+## Confirmed live, on the first expansion after the fix
+
+`run-l3-21-20260905-160156`, `cand-fe183b2d`, 16:24:48 — the first space expansion to run with the
+fix in place:
+
+```
+sp-af99ad66 (v2)  ->  sp-806e9317 (v3)
+constraints dropped: 0 of 6        (both dtype-aware shared-memory disjunctions kept verbatim)
+domains widened:     EXPAND_NUM_WARPS  [2,4,8] -> [1,2,4,8]
+                     PROJECT_NUM_WARPS [2,4,8] -> [2,4,8,16]
+EXPANSION_CONSTRAINTS_RESTORED: did not fire
+```
+
+That last line is the intended outcome, not a missing event: the prompt half of the fix worked, so
+the driver backstop had nothing to restore. Against a prior record of **30 of 30 expansions
+dropping at least one constraint by text**, this is the first that preserved its inherited space
+while still widening the domains it was asked to widen.
+
+The audit agrees — `cand-fe183b2d` is the first row to read `leak 0.0%` with `0` constraints
+restored:
+
+```
+l3-21-0905-160156   cand-fe183b2d    0.0%    0.0%    0 restored    2 new choices
+```
+
+One caveat on how much this proves: n=1, and the two constraints that matter most here (the
+dtype-aware shared-memory disjunctions) are long and distinctive, which may make them easier to
+copy forward than a short bound. The 33-expansion replay below remains the stronger evidence for
+the backstop itself.
+
 ## Replayed over every recorded expansion
 
 ```
