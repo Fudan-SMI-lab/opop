@@ -164,3 +164,57 @@ improved the best known kernel for this task by 17.6%, and it still does not bea
 
 Provisional as before: `tuned_ms`, 20 samples, no `final_reeval_ms` yet, and `fam-f069ef3c` has
 rewrite rounds remaining.
+
+---
+
+## 1.4h: 15.5 ms — the first L3:21 candidate to beat its own same-precision baseline
+
+The K re-tune of `cand-7dcdbd99` returned **15.50 ms**, and this one crosses the line the
+previous two could not:
+
+| baseline | ms | vs 15.50 |
+|---|---|---|
+| eager | 25.30 | 1.632x |
+| eager_tf32 | 20.90 | 1.348x |
+| torch_compile | 22.20 | 1.432x |
+| **torch_compile_tf32** (its denominator) | 16.30 | **1.052x BEATS** |
+
+The candidate computes in fp16, so `torch_compile_tf32` is the honest comparison, and 15.50
+beats it by **5.2%**. Every earlier L3:21 best reported
+`beats_same_precision_baseline: false`; this is the first that would not.
+
+### The gain is the RE-TUNE, not the expansion — attribution matters here
+
+Easy to credit improvement K, and wrong. The winning configuration is
+`PW_BLOCK_M=64, PW_WARPS=8, PW_BLOCK_N=128, fp16` — **every value in it already existed** in the
+pre-expansion space `sp-d127a691`. The two knobs K widened (`PW_BLOCK_M` +256, `PW_WARPS` +1)
+do not appear in the winner, and the best trial that *does* use a new choice is **16.00 ms**
+(`PW_BLOCK_M=256`), worse than 15.50.
+
+What did change: that combination was sampled **0 times in the previous 40 trials** and **9 times
+in the new 40**, reproducing 15.50–15.70 ms. So TPE reached a region its earlier budget missed,
+on a space that was only incidentally wider.
+
+This is a different effect from the one already on file.
+`measurement-retune-repeatability.md` documents re-tuning an unchanged space swinging up to
+**2.1%**. Here the swing is 16.90 → 15.50 = **8.3%**, four times larger, and it is not noise —
+nine trials at the winning config agree to ±0.2 ms. It is genuine search coverage: 40 TPE trials
+do not exhaust an 9-knob space, so a second 40 can find materially better ground without any
+domain changing.
+
+Two consequences worth stating:
+
+1. **K's record on this run is now 0 for 2 on its own terms** — both expansions produced their
+   improvement (or lack of it) from pre-existing choices. The first was flat
+   (`measurement-k-expansion-vs-analyst.md`); this one improved 8.3% for reasons unrelated to the
+   widening.
+2. **A plain re-tune may be worth more than an expansion on this task.** That is a testable claim
+   and the cheaper intervention, but it is n=1 and must not be turned into a config change on
+   this evidence.
+
+### Still provisional, and the caveat is now load-bearing
+
+`tuned_ms`, 20 samples per trial, no `final_reeval_ms`. The re-eval gap on this task yesterday
+was **+1.5%** (20.5 → 20.8); if that repeats, 15.50 → ~15.73, which still beats 16.30. But
+L3:48's best went the other way (−6.2%), so the direction is not reliable, and until the final
+re-eval runs the "beats its baseline" claim is **provisional, not established.**
