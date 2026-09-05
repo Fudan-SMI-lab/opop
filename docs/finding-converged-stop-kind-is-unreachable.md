@@ -157,6 +157,53 @@ The improvement test needs 3 entries, which requires `rounds_used >= 3`, which t
 `converged` can fire. That is not a probabilistic claim about these runs — it is arithmetic, and
 it is why the count below is 13 of 13 rather than merely lopsided.
 
+### The invariant the proof rests on, now machine-checked
+
+The argument above assumes `len(best_history) == rewrite_rounds_used` at every check. That is
+worth verifying rather than asserting, since it is the single load-bearing step. Checking **every
+family `CONVERGENCE_DECIDED` in every run**:
+
+```
+family decisions checked: 96 | len(best_history) != rewrite_rounds_used in 1
+```
+
+The one exception is `run-l1-19-20260902-011132` `fam-daf4267d` — `best_history: []` with
+`rewrite_rounds_used: 1` — and it is not a counter-example: that smoke run has
+`rewrite_rounds_per_family: 1`, the family is empty (`best is None`), and it took the
+empty-family branch that increments the counter without recording a round
+(`finding-run-stops-with-budget-unused.md`). So the invariant holds in all 95 cases where a
+round was actually recorded, which is exactly the set the proof concerns.
+
+`record_round` (`families.py:261`) is a bare `append` called once per round, so this is
+structural rather than incidental.
+
+### And the corollary, observed live at 14:02:50
+
+`run-l3-43-20260905-091705`, `fam-4aea322a`, second round recorded:
+
+```
+FAMILY_ROUND_RECORDED  {"family_id": "fam-4aea322a", "best_ms": 11.0, "round": 3}
+```
+
+Flat — 11.0 after round 1, 11.0 after round 2 (both round-2 children failed to beat it:
+`cand-aa016dfe` 11.8, `cand-45c3fd7d` 20.3, see
+`result-analyst-hypothesis-refuted-by-control.md`). **This was pre-registered before the event
+fired**, and it is the first family in this run to reach a two-entry history.
+
+So `fam-4aea322a` now sits at `[11.0, 11.0]` with `rewrite_rounds_used: 2` — one genuine
+no-improvement transition observed, `_improvement_pct` computing a *true* 0.0% for the first
+time in this run rather than the usual one-entry artifact. Per the table above it needs a third
+entry to test `converged`, and the third entry arrives with `rounds_used: 3`, so this family will
+freeze as `budget_exhausted` after spending a round with a 0-for-13 record. That will make it
+**14 of 14**.
+
+One correction to what I said when pre-registering this: I called `[11.0, 11.0]` "the first
+`best_history` in the project long enough for `_improvement_pct` to compute anything". That is
+wrong — thirteen length-3 histories exist (the table at the top of this file). What is true is
+narrower: it is the first in *this run*, and `_improvement_pct` has been computing real slopes
+since 09-02. The unreachability was never about histories being too short in general; it is
+specifically that a history reaches length 3 only in the same call that exhausts the budget.
+
 ## The fix
 
 Seed `best_history` with the family's post-tuning incumbent at the moment it enters Loop C,
