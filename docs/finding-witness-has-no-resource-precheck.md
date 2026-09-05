@@ -247,6 +247,32 @@ The witnesses passed at 21.3 and 33.8 ms — and 21.3 is notable, because this f
 28.0. A *witness* config already beats the family's tuned best by 24%, before any tuning of this
 candidate has happened.
 
+## Final tally on this failure class: 4 of 4 recovered, and repair's error is now characterised
+
+All four OOM-rejected rewrites were recovered:
+
+| candidate | repair calls | recovery time | knob repair changed | correct? |
+|---|---|---|---|---|
+| `cand-919059a0` | 1 | 5.0 min | `ATTN_ROWS_PER_GROUP` (tile size) | yes |
+| `cand-2d0194cc` | **2** | **10.0 min** | `OUTPUT_NUM_STAGES` → then `STATS_BLOCK_M` | **1st wrong**, 2nd right |
+| `cand-fe4af2fc` | 1 | 3.5 min | `FLASH_NUM_STAGES` (stage depth) | yes |
+| `cand-2cda23e2` | 1 | 4.1 min | `QK_NUM_STAGES` (stage depth) | yes |
+
+**4 of 4 recovered, 5 repair calls, ~23 min of wall total.** So the loop is robust to this failure
+mode and nothing was lost — which is why this stays an efficiency finding rather than a defect that
+threatens results.
+
+The one wrong guess is informative about *what* repair gets wrong. Three of the four correct fixes
+reduced a **stage count** or a **tile size** — and the single failure was also a stage count, just on
+the wrong kernel (`OUTPUT_NUM_STAGES` when the cost was in the stats kernel). So repair reliably
+identifies the *kind* of knob and can pick the wrong *instance* when a candidate has two kernels with
+parallel knob families. Both `cand-fe4af2fc` and `cand-2cda23e2` had a single dominant kernel and
+were fixed first time; `cand-2d0194cc` had `STATS_*` and `OUTPUT_*` side by side and was not.
+
+That is a sharper version of the "report the failing term" proposal: what repair needs is not the byte
+count (it already derives that correctly) but **which kernel** the allocation belongs to. Triton's
+message names neither.
+
 ## Follow-up: repair recovered it in 2 minutes, and its fix confirms the diagnosis
 
 `REPAIR_PRODUCED` at 11:20:22 — 2m02s after the rejection — and the space republished at
