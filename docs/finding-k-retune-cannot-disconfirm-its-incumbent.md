@@ -4,6 +4,12 @@ Found while trying to reproduce L3:43's 14.2 ms outlier. The measurement cache i
 exactly as designed, but it has a consequence for how improvement-K results must be read,
 and it partially invalidates the way I characterized two earlier "flat" expansions.
 
+**Scope correction (see "The base rate" below).** An earlier version of this doc said a flat
+re-tune "is the default outcome". Across the full record that is **false**: 15 of 23
+expansions improved the reported best, 6 were flat, 2 got worse. The surviving claim is
+narrower and still load-bearing: *when* a re-tune comes back flat, that flatness is not
+evidence about the widened region, and no re-tune can ever re-measure its own incumbent.
+
 ## The mechanism
 
 `_tune` caches measurements by parameter vector (`measured_cache`, journalled as
@@ -13,13 +19,44 @@ when TPE samples it again, it is a **cache hit**, not a measurement.
 
 Therefore: if the pre-expansion best config is resampled in the re-tune, the post-expansion
 best is **arithmetically guaranteed** to be ≤ the pre-expansion best, and equal to it unless
-some genuinely new point wins. A "flat" re-tune is not evidence that the widened region is
-unproductive. It is the default outcome.
+some genuinely new point wins. A "flat" re-tune is therefore uninformative about the widened
+region — but it is not the *likely* outcome, and I was wrong to say so.
 
-## Measured
+## The base rate — what actually happens across all 23 expansions
+
+Every K expansion in the record that has a before/after `TUNING_DONE` pair:
+
+| outcome | n | post-expansion best was a cache hit |
+|---|---|---|
+| **improved** | **15** | 0 |
+| flat | 6 | **3** |
+| worse | 2 | 0 |
+
+Three things follow, and the first two contradict what I had written:
+
+1. **Expansions usually help.** 15 of 23, ranging +0.4% to +20.0%. Improvement K is doing
+   real work; the cache issue is a reading hazard, not a verdict on the mechanism.
+2. **Flatness is uncommon (6 of 23) and only half of it is a cache artifact.** Three flat
+   outcomes had a *freshly measured* best that merely tied — so even "flat" does not reliably
+   imply "replayed".
+3. **Two expansions made the reported best worse** (`cand-0c3b5820` 20.0 → 22.6,
+   `cand-cb7a07c1` 22.3 → 22.8), neither from cache. That is only possible if the incumbent
+   vector was *never resampled* in the 40-trial re-tune — which shows the cache-replay
+   guarantee is conditional on TPE happening to revisit it, and with a widened space it often
+   does not.
+
+   **Checked: neither one damaged anything.** Both are `improved_family: False`, `crun.best_ms`
+   keeps the better earlier value by the explicit guard at `orchestrator.py:711`, and
+   `FamilyManager.update_best` (`families.py:254`) is monotonic. Their family's recorded
+   history is `[19.5, 17.9, 17.9]` and the run's published best is a different candidate at
+   17.9 tuned / 19.1 re-eval. So a worse post-expansion `TUNING_DONE` is a *reporting* artifact
+   of that one event, not a regression in what the run keeps — the monotonic guards were
+   already there and the code comment at `orchestrator.py:708` says why.
+
+## Measured: which reported bests came from cache
 
 Across every run, **3 reported bests came from a cached measurement** — all three are K
-re-tunes, two on L3:21 09-05 and one live on L3:43 09-05 (see the third instance below):
+re-tunes, two on L3:21 09-05 and one on L3:43 09-05 (see the third instance below):
 
 | candidate | pre-expansion space | post-expansion space | identical? |
 |---|---|---|---|
@@ -145,13 +182,55 @@ best changes and the expansion was productive — which is the outcome the metri
 detect and the one the flat headline cannot distinguish from a cache replay. Either result is
 informative; that is the point of writing it down first.
 
+### Outcome: the prediction was WRONG — a new choice won
+
+`TUNING_DONE` at 10:43 reported **28.0 ms, not 28.6**, from `tr-e14c7f45` with
+`reused_measurement: False`. The winning vector is the incumbent with **`QK_BLOCK_M` changed
+from 64 to the newly-added 128**, everything else identical. So the escape clause fired: a
+genuinely new point beat the incumbent, and the reported best is a fresh measurement.
+
+| | trials | complete | best | best uncached |
+|---|---|---|---|---|
+| used a new choice | 21 | 13 | **28.0** | **28.0** |
+| only old choices | 19 | 17 | 28.5 | 28.5 |
+
+**What was right:** the cache mechanism operated exactly as described — the incumbent vector
+*was* resampled and *did* come back as a 28.6 cache hit (visible in the trial list, along with
+two other cached replays at 32.8 and 53.6). Nothing about the caching account changes.
+
+**What was wrong:** my prediction of the *reported best*. I had come to treat "flat re-tune"
+as the near-certain outcome after three instances, and stated the alternative as a formality.
+It happened on the first pre-registered test — and checking the full record afterwards showed
+why it should not have been a surprise at all: **15 of 23 expansions improve** (see "The base
+rate" above). I had generalized from the three cases I had investigated, which were selected
+*because* they were flat, and never asked what the denominator was. That is the mistake worth
+keeping: the three instances were not a sample, they were the cases that had caught my eye.
+
+I also wrote in the first version of this section that 28.6 → 28.0 was "the first K expansion
+in the record that improved a reported best". That was wrong too, and by a wide margin — it is
+the sixteenth. Both errors have the same root: asserting a rate from the cases I had looked at
+without counting the population, twice in one paragraph.
+
+The improvement itself is modest: 28.6 → 28.0 is **2.1%**, sitting almost exactly on
+`min_improvement_pct: 2.0`, so the widened region produced a real but marginal gain that the
+convergence policy would barely count as progress.
+
+Note the new choice is a *double-edged* one: `QK_BLOCK_M=128` produced the best trial (28.0)
+and also three of the four worst (182, 201, and with `SOFTMAX_BLOCK=2048`, 203 ms). Same
+pattern as `cand-cb7be6b4`'s large tiles — the fast region and the failure region are reached
+by the same knob.
+
 ## Caveats
 
 - The count is of reported *bests* that came from cache, not of cache hits overall (those are
   far more common and entirely benign — most cached trials are not the best).
-- The mechanism is structural rather than statistical, so the count matters less than the
-  reasoning: **every** K expansion that leaves the incumbent's knobs untouched will do this.
-  Three observed instances across two tasks, one of them predicted before observation, plus
-  one prediction currently open.
+- The mechanism is structural rather than statistical, and the fourth instance shows what that
+  does and does not buy: **every** K expansion that leaves the incumbent legal *can* replay it
+  from cache, and three of four did — but the fourth found a better point with a new choice, so
+  a flat outcome is the *default*, not a law. Predicting flatness in advance failed on its
+  first test.
+- The load-bearing claim is therefore the negative one, which the fourth instance does not
+  touch: **a flat re-tune is not evidence about the widened region**, so an expansion must be
+  judged on its new-choice trials either way.
 - `scripts/audit_cached_bests.py` prints the current tally; it grows as runs proceed, so the
   number in this doc is a floor rather than a total.

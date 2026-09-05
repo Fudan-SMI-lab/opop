@@ -89,7 +89,21 @@ had cleared the knob when K expands it anyway, so the cost is attributable after
 than requiring a timeline reconstruction. That is observational and cheap, in the same spirit as
 the `REPAIR_REVERTED` proposal in `finding-parameterizer-reverts-the-repair.md`.
 
-K's overall record across runs stays mixed and is honestly reported elsewhere
-(`result-second-ranked-family-catches-the-leader.md`): one expansion that changed an outcome
-(3.55 → 2.84 ms), two byte-identical no-ops since fixed, one flat, and now this one — flat, with
-the extra detail that the flatness was predicted.
+K's overall record across runs is **better than this document previously implied**. I had
+described it as "mixed" on the strength of the flat cases I had investigated; counting all of
+them (`scripts/audit_expansion_outcomes.py`) gives:
+
+```
+23 K expansions with a before/after pair:
+  improved   15  (65.2%)   post-expansion best was a cache replay: 0
+  flat        6  (26.1%)   post-expansion best was a cache replay: 3
+  worse       2  ( 8.7%)   post-expansion best was a cache replay: 0
+```
+
+Improvements range +0.4% to +20.0%. So the mechanism usually helps, and the flat cases that
+prompted this document are the minority — I had generalized from a selected sample. What
+remains true and specific to *this* case is the local finding: for `cand-d31b0474` the analyst
+had cleared the knob, K expanded it anyway, and the 8 completed new-choice trials all landed
+at 18.20 ms or worse. That is evidence about one disagreement, not about K in general, and the
+"exactly flat" headline was never the load-bearing part (see
+`finding-k-retune-cannot-disconfirm-its-incumbent.md`).
