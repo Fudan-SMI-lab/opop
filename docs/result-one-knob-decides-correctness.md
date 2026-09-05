@@ -101,6 +101,38 @@ This is the two-loop premise working end to end: deterministic tuning statistics
 (`failure_rate_by_value` 100% for bf16/tf32, 0% for fp16/ieee) became a structural
 recommendation that the harness could not have written itself.
 
+## Replicated on a second candidate, 20 minutes later
+
+`cand-7dcdbd99` (08:16–08:21, same family, same parent `cand-1eee8139`, but a **different
+program**: source sha `d812b7e0` vs `3d54f8ac`, structural signature `d23b4aa6` vs `f73667d8`,
+9636 bytes and 6 `tl.dot` against 7830 and 3) reproduces **both** clusters:
+
+| cluster | cand-d31b0474 | cand-7dcdbd99 |
+|---|---|---|
+| tf32 | 0.953274 – 0.953277 | **0.953274, 0.953276, 0.953277** |
+| bf16 | 0.674026 – 0.67403 | **0.67403** |
+
+Same values to five and six decimals, from a program 23% larger with twice the dot products.
+And its own a=0 rejection was **0.953274** — the tf32 cluster value — with a repair diagnosis
+that independently names the same cause:
+
+> "The default Triton pointwise path used TF32. Its tensor-core rounding and tiled accumulation
+> did not match either reference convolution closely enough."
+
+So the two frac values are not properties of either kernel. They are the numerical signature of
+*this task's* pointwise convolution done at tf32 (0.9533) and at bf16 (0.674) — the same
+formulation-not-implementation result established on L3:48
+(`finding-unreachable-correctness-gate.md`), now replicated on a second task with a different
+operator and a different failure magnitude.
+
+Note the asymmetry that makes this useful rather than merely tidy: **0.674 is far below the
+0.955360 floor and 0.9533 is just 2.1e-3 below it.** The gate is correct to reject bf16 here and
+is rejecting tf32 for a 0.2% shortfall against the reference's own agreement. Two branches, one
+threshold, opposite verdicts on merit.
+
+`cand-7dcdbd99` was also repaired once and published with 9 knobs, making it the second
+below-floor candidate this run to be correctly caught, correctly fixed, and admitted.
+
 ## Caveats
 
 `tuned_ms`, 20 samples per trial, one candidate, one run. The precision separation is 55 trials
