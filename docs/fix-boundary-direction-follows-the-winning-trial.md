@@ -191,6 +191,37 @@ overwhelmingly subtractive (24 of 28 changes are withdrawals, exactly 1 is a re-
 **per expansion** roughly half of them get a different requested set. The conservatism claim rests
 on the withdrawal-vs-re-aiming ratio, not on expansions being mostly untouched.
 
+### The clearest instance so far: a small-n lucky median on the run's best candidate
+
+The tenth live expansion is the first where the new rule empties the request list entirely
+(`old=['FINAL_BLOCK'] new=[]`), and it happened on `cand-0d0dcd49`, the run's best candidate at
+9.14 ms. The per-value table shows exactly why:
+
+```
+FINAL_BLOCK    n   median      min
+64             8    13.55     9.33
+128           14    12.00     9.23
+256            5    13.60     9.47
+512            6    13.45     9.14   <- the winning trial
+1024           2    10.95    10.50   <- median's pick, flagged at_boundary=max
+```
+
+`1024` was sampled **twice**, caught a quiet pair, and won the median table by 1.05 ms with a
+reported `effect_pct` of 24.2. Its own best trial is 10.50 — **worse than every other value's
+best**. Among the top 8 trials in the space, 1024 does not appear once; 512/128/64/256 take all
+eight.
+
+The old rule therefore flagged the max edge and the run spent a parameterizer call plus a fresh
+40-trial budget adding `FINAL_BLOCK=2048`, pushing further in the direction of a value whose only
+evidence is two lucky samples. The new rule anchors on 512, finds it interior, and requests
+nothing — the expansion does not happen at all.
+
+This is the mechanism in its purest form, and it is also the honest counter-argument to the
+"mostly subtractive is safe" framing: withdrawing this flag forgoes the *chance* that 2048 was
+genuinely better. What makes that trade defensible is not certainty but the measured base rate —
+misdirected flags convert at 2.6% against 21.8% — plus the observation that a 2-sample median
+beating five better-sampled minima is a noise signature, not a trend.
+
 ## Propagation
 
 `tuning/stats.py` is driver-side, so this affects the **next** run, not the one in flight —
