@@ -1322,19 +1322,69 @@ def test_family_verdict_depends_only_on_persisted_fields():
 
 
 def test_family_round_recorded_is_the_persisted_source_of_truth():
-    """best_history and rewrite_rounds_used must both come from that one stream, so a
-    resume cannot double-count or lose rounds."""
+    """best_history and rewrite_rounds_used must both come from the event log, so a
+    resume cannot double-count or lose rounds.
+
+    `best_history` now carries a SEEDED round-0 entry (the seed-phase best) ahead of the
+    recorded rounds, so this checks the two invariants behaviourally rather than by
+    matching source text: rounds-used counts only FAMILY_ROUND_RECORDED events, and the
+    history is the seed followed by those events' values, with no duplication on a
+    second restore.
+    """
     from pathlib import Path
 
     src = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
     restore = src.split("def _restore_family_control_state")[1].split("def _rewrite_round")[0]
-    assert 'FAMILY_ROUND_RECORDED' in restore
-    assert "family.best_history = [" in restore
+    assert "FAMILY_ROUND_RECORDED" in restore
+    assert "FAMILY_SEEDED" in restore, "the seed datum must be event-sourced, not live state"
     assert "family.rewrite_rounds_used = len(evs)" in restore, \
         "rounds must be the event count, not an increment, or resume double-counts"
+    # The seed must not inflate the round count -- that would consume rewrite budget.
+    assert "len(evs)" in restore and "len(family.best_history)" not in restore
     # And the restore must run BEFORE loop C, or the first round uses empty state.
     run_body = src.split("def _run(")[1].split("def ")[0]
     assert run_body.index("_restore_family_control_state") < run_body.index("_rewrite_round")
+
+
+def test_seeded_history_makes_converged_reachable_and_slope_current():
+    """The seed datum fixes two off-by-ones at once, and must not cost a rewrite round.
+
+    Before seeding, `family_verdict` checked the round budget before convergence and the
+    convergence test needed no_improve_rounds+1 entries, so with (3 rounds, 2 no-improve)
+    the budget froze at round 4 while the history only reached 3 entries at that same
+    moment -- `converged` was arithmetically unreachable, and all 48 recorded families
+    ended `frozen_budget` with history length 0, 1 or 3.
+    """
+    from kernel_optimizer.config import BudgetConfig
+    from kernel_optimizer.control.convergence import ConvergencePolicy
+    from kernel_optimizer.control.families import FamilyManager
+    from kernel_optimizer.models.core import BestRecord, Family, ParamSet
+
+    cfg = BudgetConfig(rewrite_rounds_per_family=3, no_improve_rounds=2,
+                       min_improvement_pct=2.0)
+    judge = ConvergencePolicy(cfg)
+
+    def fam(history, used):
+        return Family(family_id="f", anchor_candidate_id="c", member_ids=["c"],
+                      best=BestRecord(candidate_id="c", params=ParamSet(values={}),
+                                      latency_ms=history[-1]),
+                      best_history=list(history), rewrite_rounds_used=used,
+                      status="active")
+
+    # A stalled family reaches `converged` at round 3 now that round 0 is seeded.
+    stalled = judge.family_verdict(fam([20.0, 19.98, 19.96], 2))
+    assert stalled.verdict == "freeze" and stalled.stop_kind == "converged"
+
+    # A still-improving family is NOT frozen early -- it keeps its full budget.
+    moving = judge.family_verdict(fam([20.0, 18.0, 16.2], 2))
+    assert moving.verdict == "continue"
+
+    # And the first round's gain is now visible to the ranking rule. This is the real
+    # l3-43-20260905-091705 fam-4aea322a: seed 14.2 -> 11.0, a 22.5% gain that scored
+    # 0.0% slope at the moment round 2 was allocated.
+    assert FamilyManager._improvement_pct(fam([14.2, 11.0], 1)) > 22.0
+    # Unseeded, the same family had one entry and no measurable slope.
+    assert FamilyManager._improvement_pct(fam([11.0], 1)) == 0.0
 
 
 def test_family_updated_has_no_producer_and_is_documented():
@@ -1387,7 +1437,12 @@ def test_mismatch_detail_falls_back_when_metrics_raise():
     from pathlib import Path
 
     src = Path("src/kernel_optimizer/gpu/worker_main.py").read_text(encoding="utf-8")
-    block = src.split("ok = (_relaxed_close")[1].split("except Exception as exc:")[0]
+    # Slice from the shape check, which begins the failure-reporting branch, rather than
+    # from the gate expression: the fp64 relative arm now sits between them and carries
+    # its own `except Exception as exc`, which would truncate the slice before the
+    # diagnostic wrapper this test is about.
+    block = src.split("if out_ref_ieee.shape != out_kernel.shape:")[1].split(
+        "except Exception as exc:")[0]
     assert "except Exception as diag_exc" in block, "metrics must be wrapped"
     fallback = block.split("except Exception as diag_exc")[1]
     # The fallback still has to carry a number AND the gate criteria.
@@ -2999,3 +3054,182 @@ def test_every_code_producing_agent_is_gated():
         if "_triton_lint_check" in src:
             gated.add(name)
     assert expected_gated <= gated, f"ungated code-producing agents: {expected_gated - gated}"
+
+
+def test_empty_family_does_not_occupy_a_rewrite_slot():
+    """A family with no correct candidate must not consume a max_families_active slot.
+
+    It cannot be rewritten (`_do_rewrite` needs a correct parent), and `_rewrite_round`
+    freezes it WITHOUT setting `progressed`, which the outer loop reads as "nothing left
+    to do anywhere" and uses to freeze every remaining active family. Two empty families
+    filling both slots ended run-l3-21-20260905-071312 at 2.05h of 12h with a 15.5 ms
+    incumbent and 4 of 6 rewrite rounds unspent.
+    """
+    from kernel_optimizer.control.families import FamilyManager
+    from kernel_optimizer.models.core import BestRecord, Family, ParamSet
+
+    mgr = FamilyManager.__new__(FamilyManager)
+    mgr.max_families_active = 2
+    mgr.families = {}
+
+    def add(fid, best_ms):
+        mgr.families[fid] = Family(
+            family_id=fid, anchor_candidate_id="c", member_ids=["c"],
+            best=(None if best_ms is None else
+                  BestRecord(candidate_id="c", params=ParamSet(values={}),
+                             latency_ms=best_ms)),
+            best_history=[], rewrite_rounds_used=0, status="active")
+
+    # Two empty families ranked ahead of two productive ones (all unproven, and an
+    # empty family's incumbent sorts as +inf so it lost the tie-break anyway -- the
+    # point is that it must not appear AT ALL).
+    add("empty1", None)
+    add("empty2", None)
+    add("good1", 15.5)
+    add("good2", 25.0)
+
+    active = mgr.active_families()
+    ids = {f.family_id for f in active}
+    assert ids == {"good1", "good2"}, f"empty families still occupy slots: {ids}"
+    assert all(f.best is not None for f in active)
+
+    # If every family is empty the list is empty -- correct, there is nothing to rewrite.
+    mgr.families = {}
+    add("e1", None)
+    add("e2", None)
+    assert mgr.active_families() == []
+
+
+def test_hard_edge_covers_the_tl_dot_contraction_floor():
+    """BLOCK_K below 16 is illegal for a `tl.dot` contraction dim, and asking for it
+    cost two whole expansions (QKV_BLOCK_K and PV_BLOCK_K compiled-failed, taking the
+    expansion down). The floor belongs in HARD_EDGE next to the warp/stage floors.
+
+    The rule is ASYMMETRIC -- only K has a floor -- so BLOCK_M/BLOCK_N must stay free.
+    """
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    from kernel_optimizer.models.core import ParamDomain, ParameterSpace
+    from kernel_optimizer.models.reports import ParamStat, TuningStats
+
+    def space(name, choices):
+        return ParameterSpace(space_id="sp-x", candidate_id="c", source_sha="s",
+                              version=1, constraints=[],
+                              domains=[ParamDomain(name=name, kind="int",
+                                                   choices=choices)])
+
+    def stats(name, direction, best):
+        return TuningStats(
+            candidate_id="c", space_id="sp-x", n_complete=30, n_fail=0,
+            resource_at_best=None, failure_clusters=[],
+            param_stats=[ParamStat(name=name, best_value=best, at_boundary=True,
+                                   boundary_direction=direction, effect_pct=30.0)])
+
+    def asked(name, choices, direction):
+        edge = min(choices) if direction == "min" else max(choices)
+        return bool(boundary_knobs_to_expand(stats(name, direction, edge), 0.8,
+                                             space=space(name, choices)))
+
+    # K at its floor: blocked, whatever prefix the agent chose.
+    assert not asked("BLOCK_K", [16, 32, 64], "min")
+    assert not asked("QKV_BLOCK_K", [16, 32], "min")
+    assert not asked("EXPAND_BLOCK_K", [16, 32, 64], "min")
+    # K above the floor may still be lowered to 16, which is legal.
+    assert asked("PV_BLOCK_K", [32, 64], "min")
+    # M and N have NO contraction floor -- they must not be caught.
+    assert asked("BLOCK_M", [32, 64], "min")
+    assert asked("BLOCK_N", [16, 32], "min")
+    # The pre-existing warp/stage floors still hold.
+    assert not asked("NUM_WARPS", [1, 2, 4], "min")
+    assert not asked("PW_WARPS", [1, 2, 4], "min")
+    assert not asked("NUM_STAGES", [1, 2, 3], "min")
+
+
+def test_fp64_relative_gate_follows_the_torch_criterion():
+    """The relative arm must implement torch._dynamo.utils.same()'s fp64 path:
+
+        passes <=> rmse(fp64_ref, candidate) <= multiplier * rmse(fp64_ref, ref) + tol/10
+
+    A candidate as accurate as the reference passes; one far worse fails; and the
+    multiplier is >1 by design (torch: "to avoid these false alarms").
+    """
+    from pathlib import Path
+
+    src = Path("src/kernel_optimizer/gpu/worker_main.py").read_text(encoding="utf-8")
+    fn = src.split("def _fp64_relative_ok")[1].split("\ndef ")[0]
+    assert "multiplier * ref_error + tol / 10.0" in fn, "must be torch's exact threshold"
+    assert "math.isnan(ref_error) or math.isnan(res_error)" in fn, \
+        "a nan must defer to the absolute gate, not pass"
+
+    # The gate is a SECOND acceptance path: it may only run when the absolute gate failed,
+    # so it can never turn a previously-accepted candidate into a rejection.
+    body = src.split("def run_relaxed_correctness")[1]
+    guard = body.split("if (not ok and golden_model is not None")[1].split("if ok:")[0]
+    assert "_fp64_relative_ok" in guard
+    # The low-precision multiplier must be chosen from the precision the candidate
+    # COMPUTES in, not from its output dtype: a candidate doing tl.dot(a.to(bf16), ...)
+    # with an fp32 accumulator returns float32, so an output-dtype test left the wider
+    # multiplier permanently dead (observed live -- a bf16 candidate scored 2.0, not 3.0).
+    assert "fp64_mult_effective" in guard, \
+        "multiplier must come from the source-derived precision, not only out dtype"
+    assert "_computes_low_precision" in src
+    assert "out_kernel.dtype in (torch.float16, torch.bfloat16)" in guard, \
+        "a genuinely low-precision output should still take the wider multiplier"
+    # It compares against the tf32 reference -- the noisier of the two, and the one the
+    # harness actually compares against -- so that reference sets the floor.
+    assert "golden, out_ref_tf32, out_kernel" in guard
+
+    # fp64 unavailability must be non-fatal.
+    assert "fp64_unavailable" in body
+    assert "golden_model = None" in body
+
+
+def test_fp64_gate_is_wired_from_config_to_job():
+    """The flag has to reach the worker, or turning it on in the config does nothing."""
+    from pathlib import Path
+
+    from kernel_optimizer.gpu.jobs import make_relaxed_correctness_job
+
+    job = make_relaxed_correctness_job(
+        "ref.py", "k.py", num_correct_trials=3, backend="triton", precision="fp32",
+        seed=0, collect_triton_metadata=True, relaxed_elem_tol=0.01,
+        relaxed_pass_frac=0.99, cosine_min=0.99985,
+        fp64_relative_gate=True, fp64_rel_multiplier=2.0,
+        fp64_rel_multiplier_lowp=3.0)
+    assert job["fp64_relative_gate"] is True
+    assert job["fp64_rel_multiplier"] == 2.0
+    assert job["fp64_rel_multiplier_lowp"] == 3.0
+
+    # Both call sites in correctness.py must forward it, not just one: `screen` gates the
+    # witness (space publication) and `_run` gates every tuning trial and the final
+    # re-eval. Forwarding only one would apply the gate inconsistently.
+    src = Path("src/kernel_optimizer/evaluation/correctness.py").read_text(encoding="utf-8")
+    assert src.count("fp64_relative_gate=self.cfg.fp64_relative_gate") == 2
+
+
+def test_low_precision_detection_reads_the_materialized_params():
+    """The fp64 gate's slack multiplier depends on the precision the candidate COMPUTES
+    in, and the worker can only see source text -- but the source it receives is
+    MATERIALIZED, so the tuner's chosen knob value is already substituted into PARAMS.
+
+    Regression: keying the multiplier off `out_kernel.dtype` left the low-precision
+    multiplier dead, because a candidate casting only its dot inputs still returns fp32.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "wm_probe", Path("src/kernel_optimizer/gpu/worker_main.py"))
+    wm = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(wm)
+
+    # A materialized bf16 candidate: the knob literal carries the choice.
+    assert wm._computes_low_precision('PARAMS = {"COMPUTE_DTYPE": "bf16"}')
+    assert wm._computes_low_precision('PARAMS = {"DOT_PRECISION": "fp16"}')
+    # A cast in the kernel body, with no dtype knob at all.
+    assert wm._computes_low_precision("acc += tl.dot(a.to(tl.bfloat16), b.to(tl.bfloat16))")
+    assert wm._computes_low_precision("x = x.to(tl.float16)")
+    # Full-precision candidates must NOT get the wider slack.
+    assert not wm._computes_low_precision('PARAMS = {"COMPUTE_DTYPE": "tf32"}')
+    assert not wm._computes_low_precision('PARAMS = {"COMPUTE_DTYPE": "ieee"}')
+    assert not wm._computes_low_precision('acc += tl.dot(a, b, input_precision="ieee")')
+    assert not wm._computes_low_precision('PARAMS = {"BLOCK_M": 64}')

@@ -79,6 +79,9 @@ class CorrectnessEvaluator:
                 relaxed_elem_tol=self.cfg.relaxed_elem_tol,
                 relaxed_pass_frac=self.cfg.relaxed_pass_frac,
                 cosine_min=self.cfg.cosine_min,
+                fp64_relative_gate=self.cfg.fp64_relative_gate,
+                fp64_rel_multiplier=self.cfg.fp64_rel_multiplier,
+                fp64_rel_multiplier_lowp=self.cfg.fp64_rel_multiplier_lowp,
             )  # num_perf_trials defaults to 0 -> correctness only
         else:
             job = make_eval_job(
@@ -120,6 +123,9 @@ class CorrectnessEvaluator:
                 relaxed_elem_tol=self.cfg.relaxed_elem_tol,
                 relaxed_pass_frac=self.cfg.relaxed_pass_frac,
                 cosine_min=self.cfg.cosine_min,
+                fp64_relative_gate=self.cfg.fp64_relative_gate,
+                fp64_rel_multiplier=self.cfg.fp64_rel_multiplier,
+                fp64_rel_multiplier_lowp=self.cfg.fp64_rel_multiplier_lowp,
             )
             job["num_perf_trials"] = perf_trials
         else:

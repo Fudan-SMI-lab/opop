@@ -219,8 +219,29 @@ class FamilyManager:
            number.
         3. Absolute latency is only the final tie-break, among families that are
            equally unproven and equally stalled.
+
+        A family with NO correct candidate (`best is None`) is excluded outright, and
+        that exclusion is load-bearing rather than cosmetic. Such a family cannot be
+        rewritten at all -- `_do_rewrite` needs a correct parent to materialize -- so
+        occupying one of the `max_families_active` slots with it costs a real rewrite
+        round. Worse, `_rewrite_round` freezes it *without* setting `progressed`, and
+        the outer loop reads `not progressed` as "nothing left to do anywhere" and
+        freezes every remaining active family. So two empty families filling both slots
+        ended a run that still had budget: run-l3-21-20260905-071312 stopped at 2.05h of
+        12h with a 15.5 ms incumbent and 4 of 6 rewrite rounds unspent, both empty
+        families having been activated for the first time in the same second the run
+        finished. The threshold is exactly max_families_active -- L3:48 with ONE empty
+        family ran 6.08h and used [3,1,0,3] rounds; L3:21 with TWO used [0,1,0,1].
+
+        Excluding them here is the general statement of the invariant: a family that
+        cannot be structurally rewritten does not compete for rewrite budget. Empty
+        families are still frozen (in `_rewrite_round`, when reached, and by the
+        outer loop's sweep); they simply stop ending other families' search. If EVERY
+        family is empty this returns [], `progressed` stays False and the run ends --
+        which is the correct outcome, since there is then genuinely nothing to rewrite.
         """
-        active = [f for f in self.families.values() if f.status == "active"]
+        active = [f for f in self.families.values()
+                  if f.status == "active" and f.best is not None]
 
         def rank(f: Family) -> tuple[int, float, float]:
             unproven = 0 if f.rewrite_rounds_used == 0 else 1

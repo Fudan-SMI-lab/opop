@@ -28,6 +28,18 @@ evaluation:
   relaxed_elem_tol: 0.01
   relaxed_pass_frac: 0.99
   cosine_min: 0.99985
+  # Second acceptance path, ON for this round as the thing being tested. Follows
+  # torch._dynamo.utils.same(): build an fp64 golden reference and accept when the
+  # candidate's RMSE against it is within multiplier x the REFERENCE's own RMSE. Only
+  # consulted after the absolute gate above has already failed, so it can add
+  # acceptances but never remove one. Rationale and primary sources in
+  # docs/research-tolerance-practice-under-reference-noise.md; all three L3 tasks have
+  # ieee-vs-tf32 floors BELOW the 0.99 that relaxed_pass_frac demands
+  # (0.9554 / 0.9767 / 0.9778), which makes the absolute gate unreachable for a
+  # low-precision candidate however correct it is.
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
 
 # load_config reads ONE file -- default.yaml is not a base layer, so anything omitted
 # here falls back to the pydantic field default rather than to default.yaml. Every

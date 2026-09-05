@@ -410,6 +410,79 @@ def _relaxed_close(ref, got, elem_tol: float, pass_frac: float, cosine_min: floa
     return cos >= cosine_min
 
 
+_LOW_PRECISION_TOKENS = ("fp16", "bf16", "float16", "bfloat16")
+
+
+def _computes_low_precision(kernel_src: str) -> bool:
+    """Does this materialized candidate compute in fp16/bf16?
+
+    Mirrors the driver's `_detect_candidate_precision` on the signals available here.
+    The source is MATERIALIZED, so the tuner's chosen knob value is already substituted
+    into the PARAMS literal -- a candidate tuned to bf16 literally contains "bf16".
+    Casts in the kernel body (`.to(tl.float16)`, `a.to(tl.bfloat16)`) are covered by the
+    same token scan.
+
+    Used only to pick which slack multiplier the fp64 relative gate applies, so a false
+    negative just holds the candidate to the stricter 2.0 and a false positive grants
+    3.0 -- both are inside the range torch itself uses.
+    """
+    text = kernel_src.lower()
+    return any(tok in text for tok in _LOW_PRECISION_TOKENS)
+
+
+def _rmse(ref, got) -> float:
+    """Root-mean-square error in fp64. Matches torch._dynamo.utils.rmse."""
+    import torch
+
+    return torch.sqrt(torch.mean(torch.square(ref.double() - got.double()))).item()
+
+
+def _fp64_relative_ok(golden, ref, got, multiplier: float, tol: float) -> tuple[bool, dict]:
+    """Accept when the candidate is no worse than `multiplier` x the REFERENCE's own error.
+
+    This is torch._dynamo.utils.same()'s fp64 path, which is what PyTorch's own accuracy
+    checker falls back to when plain allclose fails:
+
+        ref_error = rmse(fp64_ref, ref)
+        res_error = rmse(fp64_ref, res)
+        passes    = res_error <= multiplier * ref_error + tol / 10
+
+    Why this shape rather than our absolute gate:
+
+    - The floor is measured against TRUTH (an fp64 evaluation of the reference), not
+      between two imprecise results. On level3/21 the reference's own ieee-vs-tf32 spread
+      puts 4.5% of elements outside a 1% tolerance, so an absolute `frac > 0.99` gate is
+      unreachable for any low-precision candidate however correct it is. Comparing to
+      fp64 separates "this kernel is wrong" from "this task cannot be computed that
+      precisely".
+    - RMSE is a single aggregate dominated by the large deviations, so it needs one
+      threshold rather than one per metric. A candidate that is fine on most elements but
+      badly wrong on a few has a large RMSE and still fails.
+    - `multiplier > 1` is deliberate and comes from torch, whose comment explains it:
+      AMP-vs-fp32 end-to-end accuracy differs by <0.1% while failing a strict check, so
+      "it's possible that the correctness check failures for these models are false
+      alarms. We use multiplier of 3 instead of 2 to avoid these false alarms."
+
+    Returns (verdict, metrics) so the numbers reach the failure message either way.
+    """
+    ref_error = _rmse(golden, ref)
+    res_error = _rmse(golden, got)
+    threshold = multiplier * ref_error + tol / 10.0
+    metrics = {
+        "reference_rmse_vs_fp64": f"{ref_error:.4e}",
+        "candidate_rmse_vs_fp64": f"{res_error:.4e}",
+        "multiplier": multiplier,
+        "threshold": f"{threshold:.4e}",
+        "ratio_to_reference": (f"{res_error / ref_error:.3f}" if ref_error > 0 else "inf"),
+    }
+    if math.isnan(ref_error) or math.isnan(res_error):
+        # A nan on either side makes the comparison meaningless; defer to the
+        # absolute gate rather than passing on an unreadable number.
+        metrics["skipped"] = "nan in rmse"
+        return False, metrics
+    return res_error <= threshold, metrics
+
+
 def _relaxed_metrics(ref, got) -> dict:
     """The numbers the relaxed gate actually decides on, for the failure message.
 
@@ -506,6 +579,9 @@ def run_relaxed_correctness(job: dict) -> dict:
     elem_tol = job.get("relaxed_elem_tol", 0.01)
     pass_frac = job.get("relaxed_pass_frac", 0.99)
     cosine_min = job.get("cosine_min", 0.99985)
+    fp64_gate = bool(job.get("fp64_relative_gate", False))
+    fp64_mult_lowp = float(job.get("fp64_rel_multiplier_lowp", 3.0) or 3.0)
+    fp64_mult = float(job.get("fp64_rel_multiplier", 2.0) or 2.0)
 
     context: dict = {}
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(ref_src, context)
@@ -548,8 +624,37 @@ def run_relaxed_correctness(job: dict) -> dict:
     torch.manual_seed(seed)
     trial_seeds = [torch.randint(0, 2**32 - 1, (1,)).item() for _ in range(num_trials)]
 
+    # fp64 golden reference model, built once per job. Cheap relative to the trials:
+    # one extra module instantiation, and one fp64 forward per trial only when the
+    # relaxed gate has already failed. If fp64 is unsupported for an op or OOMs, the
+    # relative arm is simply unavailable and the absolute gate decides alone -- which is
+    # also what torch does (it falls back to cosine, which we already require).
+    golden_model = None
+    fp64_unavailable = ""
+    # Which multiplier applies is decided by the precision the candidate COMPUTES in,
+    # which is NOT its output dtype. torch's same() keys off res.dtype because torchbench
+    # casts the whole model, so a low-precision run returns low-precision tensors. Here
+    # only the dot is cast -- `tl.dot(a.to(bf16), ...)` with an fp32 accumulator returns
+    # float32 -- so keying off the output dtype left the low-precision multiplier
+    # permanently dead (verified live: a bf16 candidate was scored with 2.0, not 3.0).
+    # The MATERIALIZED source carries the answer, since the tuner's chosen value is
+    # substituted into the PARAMS literal before the file reaches this worker.
+    fp64_mult_effective = fp64_mult_lowp if _computes_low_precision(kernel_src) else fp64_mult
+    if fp64_gate:
+        try:
+            with torch.no_grad():
+                set_seed(seed)
+                golden_model = Model(*[
+                    x.double() if isinstance(x, torch.Tensor) and x.is_floating_point()
+                    else x for x in init_inputs
+                ]).to(device=device, dtype=torch.float64)
+        except Exception as exc:  # noqa: BLE001 -- absence of fp64 is not a failure
+            golden_model = None
+            fp64_unavailable = f"{type(exc).__name__}: {exc}"
+
     pass_count = 0
     last_detail = ""
+    fp64_metrics_last: dict = {}
     try:
         with torch.no_grad():
             for trial in range(num_trials):
@@ -570,6 +675,40 @@ def run_relaxed_correctness(job: dict) -> dict:
 
                 ok = (_relaxed_close(out_ref_tf32, out_kernel, elem_tol, pass_frac, cosine_min)
                       or _relaxed_close(out_ref_ieee, out_kernel, elem_tol, pass_frac, cosine_min))
+
+                # Second acceptance path, and ONLY reachable when the absolute gate has
+                # already failed -- so the fp64 forward stays off the happy path and no
+                # previously-accepted candidate can become a rejection.
+                #
+                # This is torch._dynamo.utils.same()'s fp64 arm: judge the candidate
+                # against the REFERENCE's own distance from truth rather than against a
+                # fixed tolerance that the task itself may not meet. All three L3 tasks
+                # measure ieee-vs-tf32 floors below the 0.99 the absolute gate demands
+                # (0.9554 / 0.9767 / 0.9778), so a correct low-precision kernel could not
+                # pass on those tasks at all.
+                if (not ok and golden_model is not None
+                        and out_ref_ieee.shape == out_kernel.shape):
+                    try:
+                        golden = golden_model(*[
+                            x.double() if isinstance(x, torch.Tensor)
+                            and x.is_floating_point() else x for x in inputs
+                        ])
+                        torch.cuda.synchronize(device=device)
+                        # tf32 is the reference the harness compares against and the
+                        # noisier of the two, so it sets the floor.
+                        #
+                        # Multiplier decided above from the materialized source; the
+                        # output dtype is still honoured when it is itself low precision.
+                        mult = fp64_mult_effective
+                        if out_kernel.dtype in (torch.float16, torch.bfloat16):
+                            mult = fp64_mult_lowp
+                        ok, fp64_metrics_last = _fp64_relative_ok(
+                            golden, out_ref_tf32, out_kernel, mult, elem_tol)
+                        del golden
+                    except Exception as exc:  # noqa: BLE001 -- absence of fp64 is not a failure
+                        fp64_unavailable = f"{type(exc).__name__}: {exc}"
+                        golden_model = None
+
                 if ok:
                     pass_count += 1
                 else:
@@ -600,6 +739,18 @@ def run_relaxed_correctness(job: dict) -> dict:
                                 f"  reference's OWN ieee-vs-tf32 spread (task noise "
                                 f"floor, NOT a bug): {floor}"
                             )
+                            if fp64_metrics_last:
+                                last_detail += (
+                                    "\n  fp64-relative arm ALSO failed (the candidate "
+                                    "must be within multiplier x the reference's own "
+                                    "rmse against an fp64 golden reference): "
+                                    f"{fp64_metrics_last}"
+                                )
+                            elif fp64_gate and fp64_unavailable:
+                                last_detail += (
+                                    "\n  fp64-relative arm unavailable: "
+                                    f"{fp64_unavailable}"
+                                )
                         except Exception as diag_exc:  # noqa: BLE001
                             md = (out_ref_ieee.float() - out_kernel.float()
                                   ).abs().max().item()

@@ -163,22 +163,31 @@ def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float,
       IS the minimum launch allocation — the analyst says so itself
       (`blocked_by: "threads"`, "further decrease is impossible"). Twice it was the only
       requested knob, so the whole expansion was a no-op that still cost 40 trials.
+
+      The wall list must cover every knob shape that HAS a floor, which is where it was
+      short: `BLOCK_K=[16,32,64]` was asked to add 8, which is ILLEGAL for a `tl.dot`
+      contraction dimension (`K >= 16`). It fails to compile and takes the whole
+      expansion down with it -- observed twice, on QKV_BLOCK_K and PV_BLOCK_K, each
+      costing a parameterizer call and 40 trials. That floor is a compiler fact of the
+      same kind as the warp floor, so it belongs in the same table.
     """
     if stats is None or not stats.param_stats:
         return []
-    # Hard limits per direction: a knob already at one of these cannot be extended that
-    # way whatever the latency trend says. Keyed by (name SUFFIX, direction) -> the value
-    # that is already the wall.
+    # Hard limits per direction: a value at or beyond one of these cannot be used,
+    # whatever the latency trend says. Keyed by (name SUFFIX, direction) -> the wall.
     #
     # Matched by suffix, not exact name, because agents prefix these freely: the runs so
     # far contain NUM_WARPS, NUM_STAGES, PW_WARPS, APPLY_WARPS, FINISH_WARPS, PW_STAGES,
     # EXPAND_NUM_STAGES, FUSED_NUM_WARPS, SUMMARY_NUM_WARPS, SCAN_NUM_WARPS and
-    # OUTPUT_NUM_WARPS. Exact matching covered 10 of the 11 historical min-at-1 requests
-    # and let `EXPAND_NUM_STAGES` through (L3:21 09-04, cand-82819823); suffix matching
-    # covers all 11. It cannot over-block, because the wall check still requires the
-    # domain's minimum to already BE 1 -- e.g. PW_WARPS=[2,4,8] (L3:21 09-05,
-    # cand-7dcdbd99) is a legitimate min-direction request and stays allowed.
-    HARD_EDGE = {("WARPS", "min"): 1, ("STAGES", "min"): 1}
+    # OUTPUT_NUM_WARPS, plus BLOCK_K shapes as QKV_BLOCK_K, PV_BLOCK_K, EXPAND_BLOCK_K.
+    # Exact matching covered 10 of the 11 historical min-at-1 requests and let
+    # `EXPAND_NUM_STAGES` through (L3:21 09-04, cand-82819823); suffix matching covers
+    # all 11.
+    #
+    # BLOCK_K's floor is 16 because `tl.dot` requires the CONTRACTION dim to be >= 16.
+    # That rule is ASYMMETRIC -- M and N have no such floor -- so only the K suffix is
+    # listed; see agents/prompts/triton_pitfalls.md rule 4.
+    HARD_EDGE = {("WARPS", "min"): 1, ("STAGES", "min"): 1, ("BLOCK_K", "min"): 16}
     res = stats.resource_at_best
     # Headroom = some resource is comfortably below its limit. If we can't tell
     # (no profile), be permissive — the guard + validation still gate the result.
@@ -201,7 +210,21 @@ def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float,
         return dom.kind in ("int", "float")
 
     def _at_hard_edge(name: str, direction: str) -> bool:
-        """True if the knob's offered range already touches an unextendable limit."""
+        """True if the knob's offered range already touches an unextendable limit.
+
+        The wall is the last USABLE value, so a range whose edge has reached it has
+        nothing further to offer in that direction and the request is a guaranteed
+        no-op. A range one step away is still allowed: NUM_WARPS=[2,4,8] may add 1,
+        because 1 is legal -- it is merely (measurably) slow, which is the tuner's
+        business rather than this filter's.
+
+        Note this is deliberately NOT a "would the next value cross the wall" test.
+        I implemented that variant first; checked exhaustively over 6392 candidate
+        domains it produces an identical verdict in every case, because a ladder whose
+        next step would cross the wall has its edge AT the wall already. The extra
+        arithmetic was dead code, so the real fix for the BLOCK_K=8 failures is the
+        HARD_EDGE entry above, not a cleverer predicate here.
+        """
         wall = next((v for (suffix, d), v in HARD_EDGE.items()
                      if d == direction and name.upper().endswith(suffix)), None)
         if wall is None or space is None:
@@ -1092,9 +1115,31 @@ class Orchestrator:
         `failed_hypotheses` is restored here too, from HYPOTHESES_FAILED: the rewriter
         reads it to avoid re-proposing a change already shown not to help, so losing it
         on resume spends rewrite rounds re-testing known dead ends.
+
+        This is also where `best_history` is SEEDED with the seed-phase result, which
+        fixes an off-by-one with two consequences. `ConvergencePolicy.family_verdict`
+        checks the round budget BEFORE testing convergence, and the convergence test
+        needs `no_improve_rounds + 1` history entries; with the shipped config (3 rounds,
+        no_improve_rounds 2) the budget freeze fires at round 4 while the history only
+        reaches 3 entries at that same moment, so `stop_kind="converged"` was
+        arithmetically unreachable -- confirmed over all 48 recorded families, whose
+        history lengths are 0, 1 or 3 and never more, every one `frozen_budget`.
+
+        The second consequence is larger. `_improvement_pct` needs two entries, so a
+        family's FIRST rewrite round -- the biggest gains on record, 22.5%/12.9%/15.0%/
+        23.9% on run-l3-43-20260905-091705 -- scored a 0.0% slope at the moment round 2
+        was allocated, making `active_families`'s slope rule blind exactly when it
+        matters most. Seeding gives every family a round-0 datum, so its first round's
+        gain counts toward its own ranking.
+
+        Seeded through an EVENT rather than from the live `family.best`, because on a
+        resume the live best is the best over ALL spaces including rewrites, which is
+        not the seed-phase value. FAMILY_SEEDED is written once per family and replayed
+        thereafter.
         """
         state = self.store.replay()
         rounds: dict[str, list[dict]] = {}
+        seeded: dict[str, float] = {}
         # Rebuilt from scratch rather than extended: this runs once before Loop C and
         # HYPOTHESES_FAILED is only emitted inside Loop C, so in a fresh run there is
         # nothing to double-count -- but assigning instead of extending keeps that true
@@ -1106,13 +1151,24 @@ class Orchestrator:
             elif ev.type == "HYPOTHESES_FAILED":
                 restored.setdefault(
                     ev.payload["family_id"], []).extend(ev.payload["hypotheses"])
+            elif ev.type == "FAMILY_SEEDED":
+                seeded[ev.payload["family_id"]] = ev.payload["best_ms"]
         for family_id, hyps in restored.items():
             self.failed_hypotheses[family_id] = hyps
-        for family_id, evs in rounds.items():
-            family = self.deps.families.families.get(family_id)
-            if family is None:
+        # Seed round 0 for every family that has a correct candidate. A family with no
+        # best has nothing to seed and cannot be rewritten anyway.
+        for family_id, family in self.deps.families.families.items():
+            if family_id in seeded or family.best is None:
                 continue
-            family.best_history = [e["best_ms"] for e in evs]
+            seed_ms = family.best.latency_ms
+            self.store.append("FAMILY_SEEDED", {"family_id": family_id,
+                                                "best_ms": seed_ms})
+            seeded[family_id] = seed_ms
+        for family_id, family in self.deps.families.families.items():
+            evs = rounds.get(family_id, [])
+            head = [seeded[family_id]] if family_id in seeded else []
+            family.best_history = head + [e["best_ms"] for e in evs]
+            # rewrite_rounds_used counts ROUNDS RUN, so the seed datum must not count.
             family.rewrite_rounds_used = len(evs)
 
     def _rewrite_round(self, round_no: int) -> bool:

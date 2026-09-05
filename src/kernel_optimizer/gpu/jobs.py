@@ -102,6 +102,9 @@ def make_relaxed_correctness_job(
     relaxed_elem_tol: float,
     relaxed_pass_frac: float,
     cosine_min: float,
+    fp64_relative_gate: bool = False,
+    fp64_rel_multiplier: float = 2.0,
+    fp64_rel_multiplier_lowp: float = 3.0,
 ) -> dict[str, Any]:
     """Improvement A: dual-precision witness relaxed correctness (no timing)."""
     return {
@@ -117,6 +120,9 @@ def make_relaxed_correctness_job(
         "relaxed_elem_tol": relaxed_elem_tol,
         "relaxed_pass_frac": relaxed_pass_frac,
         "cosine_min": cosine_min,
+        "fp64_relative_gate": fp64_relative_gate,
+        "fp64_rel_multiplier": fp64_rel_multiplier,
+        "fp64_rel_multiplier_lowp": fp64_rel_multiplier_lowp,
     }
 
 

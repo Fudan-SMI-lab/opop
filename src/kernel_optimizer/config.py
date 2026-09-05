@@ -101,6 +101,20 @@ class EvalConfig(BaseModel):
     relaxed_elem_tol: float = 0.01   # per-element relative error threshold
     relaxed_pass_frac: float = 0.99  # fraction of elements that must be within tol
     cosine_min: float = 0.99985      # second criterion: flattened cosine similarity
+    # Second acceptance path, following torch._dynamo.utils.same(): compute an fp64
+    # GOLDEN reference and accept when the candidate's RMSE against it is no more than
+    # `fp64_rel_multiplier` x the REFERENCE's own RMSE against it. The absolute gate
+    # above is unreachable on tasks whose own two-precision spread exceeds it -- all
+    # three L3 tasks measure floors of 0.9554/0.9767/0.9778 against a 0.99 requirement --
+    # and this measures the floor against TRUTH instead of comparing two imprecise
+    # results. Both PyTorch (multiplier 2.0, or 3.0 for fp16/bf16 results) and
+    # KernelBench (a 100x looser tolerance for a declared low-precision kernel) give a
+    # low-precision candidate more slack than an fp32 one; we applied one tolerance to
+    # every candidate. Does NOT replace the existing gate -- it is an additional way to
+    # pass, so nothing previously accepted becomes rejected.
+    fp64_relative_gate: bool = False
+    fp64_rel_multiplier: float = 2.0       # torch uses 2.0 for fp32-class results
+    fp64_rel_multiplier_lowp: float = 3.0  # ... and 3.0 for fp16/bf16 (avoids false alarms)
 
 
 class GpuConcurrencyConfig(BaseModel):
