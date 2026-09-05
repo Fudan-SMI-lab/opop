@@ -91,7 +91,7 @@ specific boundary flag, a specific added value that then won a fresh measurement
 them the best evidence for K in the record even though their magnitudes (−2.1%, −0.4%) are near
 the bottom of the improvement range.
 
-## The monotonicity holds across all six L3:43 runs — and it stops at 128
+## The monotonicity holds across all six L3:43 runs — but 256 is NOT a fair comparison
 
 `BLOCK_M` is the one row-tile name that recurs across runs, so it has a much larger sample
 (1618 trials, all six L3:43 runs, many candidates):
@@ -103,24 +103,76 @@ the bottom of the improvement range.
 | 32 | 443 | 135 | 308 | 19.3 |
 | 64 | 522 | 184 | 338 | 18.4 |
 | **128** | 372 | 171 | 201 | **17.9** ← the best L3:43 result ever published |
-| 256 | 63 | **47 (75%)** | 16 | 21.7 |
+| 256 | 63 | 47 (75%) | 16 | 21.7 |
 | 512 | 1 | 1 | 0 | — |
 
-Monotone down to 128 over five values and 1554 trials, then **it reverses at 256**. So the
-regularity is real and it has a located optimum rather than an open direction — which is the
-answer to the extrapolation question rather than a guess about it.
+Monotone down to 128 over five values and 1554 trials. **The reversal at 256 is real but it is
+not evidence about the tile size**, and I initially read it as if it were. Checking which
+candidates produced those 63 trials shows why:
+
+| candidate | BLOCK_M=128 best | BLOCK_M=256 best | its design |
+|---|---|---|---|
+| `cand-ab6fb8ec` | 21.3 | **21.7** | "splits each head's output dim across a third grid axis **so a BLOCK_M=256 program** …" |
+| `cand-913f73c9` | 21.4 | 25.0 | "partitions each **256-row** attention tile across output-dimension programs" |
+| `cand-cb7a07c1` | 22.3 | 23.1 | softmax-stat pass + output-fragment passes |
+| `cand-d257924a` | 28.6 | 26.2 | two-pass, low-register first pass |
+| `cand-c36d7820` | 21.0 | 27.4 | shards output dim, streams Q/K in BLOCK_K chunks |
+| `cand-1d133a4d` | 19.2 | 35.9 | materializes full QKV, no long-lived accumulator |
+| `cand-0c3b5820` | 20.0 | — (0 of 7) | split-K local softmax partials |
+| `cand-2246d8ea` | 19.7 | 25.7 (n=1) | splits output-feature ownership |
+
+**Every candidate that reached 256 is a different program from every candidate that set the
+128 record**, and most were *written specifically to make 256 feasible* — restructured to shed
+registers, which costs something elsewhere. None of the fast 128 programs (`cand-794dfc79` at
+17.9, `cand-b9b38e21` at 19.0) ever ran at 256 at all.
+
+So the honest statement is: **no program has ever been measured at both 128 and 256 with
+everything else held equal.** The 256 column is a comparison across *structures*, not across
+tile sizes, and 7 of 8 of those structures also failed to beat their own 128 result — which is
+at least consistent with the restructuring being what cost them, rather than the tile.
+
+The monotone 16 → 128 trend has the same confound in principle, but far less severely: it is
+averaged over 1554 trials and dozens of candidates, and within this run all three seeds show it
+*internally*, each program compared against itself. That within-candidate evidence is what
+carries the finding; the 256 row carries nothing.
 
 Note also that 0904's published best (17.9 tuned / 19.1 re-eval) is itself a `BLOCK_M=128`
 result, so the pattern is not new to today's run; today's cohort is the first where *three
 different seeds* exhibit it simultaneously under three different knob names.
 
+## The analyst reached the same conclusion from the same data, independently
+
+`cand-cb7be6b4`'s two `BOTTLENECK_REPORTED` (10:11:53, 10:23:44) both name the row tile as the
+one credible blocked knob, with the per-value progression I found:
+
+> "The best fp16 latency by row tile progresses from 25.0 ms at 32 to 18.6 ms at 64 and 14.2 ms
+> at the sampled maximum 128, **with cross-trial parameter confounding**."
+
+It flags the confound itself, correctly identifies `registers` as the blocker (255/thread, 12
+spills, with shared memory at only 64.6% and 256 of 1024 threads used), and declines to claim a
+numeric gain for `QKV_BLOCK_M` because "no controlled `QKV_BLOCK_M=256` trial exists". That is
+a more careful reading than my first draft of this document managed.
+
+Its hypotheses then go **past** the 128 optimum: H1 targets `ATTN_BLOCK_M=256` by distributing a
+larger query tile across more warps, and the two rewrites produced at 11:06:46 are
+`cand-13efdcd8` (persistent column-local QKV CTAs serializing multiple 128-row tiles) and
+`cand-919059a0` (a logical 256-row CTA built from two 128-row groups with 16 warps).
+
+**This is the right move, not a contradiction of the 256 data** — precisely because that data
+is a cross-structure comparison. Both rewrites are *new structures* designed to make 256
+affordable without the register cliff, which is exactly the class of program that has never
+been tested at 256 against its own 128 baseline. If either one beats `cand-cb7be6b4`'s 14.2, it
+also supplies the controlled 128-vs-256 comparison the record lacks.
+
 ## What I am not claiming
 
-- **Not** that larger is always better. **Corrected:** I first wrote that "no seed has ever
-  measured 256 on this task" and used that to decline extrapolating. That was wrong — 256 has
-  63 trials and 512 has one, across earlier runs. The data is better than my caution: 256 is
-  measurably *worse* (best 21.7 vs 17.9) and fails 75% of the time. The optimum is at 128 and
-  the monotone run ends there.
+- **Not** that larger is always better, and **not** that 256 is proven worse. My first draft
+  said "no seed has ever measured 256" (wrong — 63 trials exist), then said the reversal at 256
+  located the optimum (also wrong — those 63 trials are a *different set of programs*, most
+  written specifically to make 256 feasible, and none of the fast 128 programs was ever run at
+  256). The correct statement is that **no controlled 128-vs-256 comparison exists**, which is
+  what the analyst said before I did. Two errors in the same paragraph across two drafts, both
+  from treating a pooled cross-candidate table as a knob sweep.
 - **Not** that the parameterizer should always offer 128. On a task with different shapes the
   same choice could be uniformly bad; the evidence is that it should not stop at 64 *when the
   statistics show a boundary optimum there*, which is exactly K's existing trigger.
@@ -128,3 +180,6 @@ different seeds* exhibit it simultaneously under three different knob names.
   a 24% step, while the same step is 1.8% and 4.5% on the other two seeds. The tile direction is
   shared; the magnitude on that one candidate is not, and remains unexplained pending
   `final_reeval_ms`.
+- **Not** that the within-run monotonicity is confound-free either. Each column pools trials
+  that differ in other knobs too; what makes it stronger than the 256 row is that each column is
+  one program compared against itself, over 8–15 trials per value, in three programs at once.
