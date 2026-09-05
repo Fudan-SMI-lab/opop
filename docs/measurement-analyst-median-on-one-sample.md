@@ -168,3 +168,27 @@ On `cand-cb7be6b4` the analyst's register-pressure diagnosis had 15 completed tr
 Same agent, same prompt, same task — the difference is entirely in how much data the tuner
 managed to collect. The lesson is about *when* to trust a bottleneck report, and the answer is
 visible in the trial counts, which the report does not currently carry.
+
+## A third report, and it shows the agent is not systematically over-claiming
+
+`cand-de802450` (11:47), same task, same prompt. Also 4-for-4 exact on its numbers — medians
+43.30 / 29.60 / 24.20 / 23.60, the best `BLOCK_M=128` config at 98,304 B (97.0%) with 142 regs and
+zero spills, IEEE best 78.6 vs TF32 23.4, fp16 23.5 — but the *reasoning* is markedly more
+conservative in three ways that bear directly on the concern above:
+
+1. **Medians and bests agree here.** Bests run 43.0 → 29.4 → 23.5 → 23.4, monotone in the same
+   direction as the medians. Where the two statistics agreed, the report is trustworthy; the
+   `cand-6476b4cb` problem was specifically that they disagreed and only one was visible.
+2. **It refuses the register story on its own evidence.** Its first pass says the 255-register
+   reading is *not* the limiter, because "fp16 configurations using 164-183 registers/thread with
+   zero spills run at 23.6-23.9 ms, effectively matching the 23.5 ms best point at 255 registers
+   and 6 spills", and concludes "arithmetic/work-count limits rather than occupancy or a saturated
+   resource". That is the analyst declining the easy diagnosis.
+3. **The predicted gain is small and honest: 2.5–3.0%**, not 8.5%. The measured last step
+   (23.6 → 23.4) is 0.8%, so even 2.5% is generous — but it is the right order of magnitude, which
+   the `BLOCK_N` prediction was not.
+
+`BLOCK_M=128` still has only n=3 here. It does not matter, because the sparse point is not
+carrying the conclusion alone — which is the sharper form of the recommendation above: the risk
+is not "few trials" per se, it is **few trials at a point where the median and the best
+disagree**, and nothing in the current report lets a reader (or the agent) see either condition.
