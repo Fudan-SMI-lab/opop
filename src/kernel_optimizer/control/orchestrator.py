@@ -11,6 +11,7 @@ import ast
 import csv
 import hashlib
 import io
+import random
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -42,8 +43,10 @@ from kernel_optimizer.evaluation.profilerx import LightProfiler
 from kernel_optimizer.models.core import (
     Baseline,
     Candidate,
+    Constraint,
     ParameterSpace,
     ParamSet,
+    ParamValue,
     TaskSpec,
     TrialRecord,
 )
@@ -815,6 +818,8 @@ class Orchestrator:
             if not knobs:
                 return
             directive = self._expand_directive_text(crun, knobs)
+            prior_constraints = tuple(
+                (c.expr, c.rationale) for c in crun.space.constraints)
             # A rejected expansion is often a fixable formatting problem (e.g. an
             # unsupported constraint form), not a dead end — retry once with the
             # validator's reason as feedback before giving up.
@@ -830,6 +835,7 @@ class Orchestrator:
                             device=self.cfg.device, expand_directive=directive,
                             prior_feedback=feedback,
                             candidate_id=cand.candidate_id,
+                            prior_constraints=prior_constraints,
                         )
                     )
                 except AgentCallError as exc:
@@ -870,6 +876,12 @@ class Orchestrator:
                               f"identical domain set; skipping the re-tune"})
                 return
             work_dir = self.store.candidate_dir(cand.candidate_id)
+            restored = self._restore_dropped_constraints(crun.space, verdict.space)
+            if restored:
+                self.store.append("EXPANSION_CONSTRAINTS_RESTORED", {
+                    "candidate_id": cand.candidate_id,
+                    "space_id": verdict.space.space_id,
+                    "restored": [c.expr for c in restored]})
             # Accept the expanded space and re-tune once over it.
             prev_best = crun.best_ms
             crun.source = param_source
@@ -915,6 +927,76 @@ class Orchestrator:
             if (prev_best is not None and crun.best_ms is not None
                     and crun.best_ms > prev_best * (1 - self.cfg.budgets.min_improvement_pct / 100.0)):
                 return
+
+    def _restore_dropped_constraints(
+        self, old: ParameterSpace, new: ParameterSpace
+    ) -> list[Constraint]:
+        """Improvement K, part 2: re-add prior constraints the expansion dropped, but
+        ONLY where they do not strangle the expansion's own purpose.
+
+        An expansion is meant to be a pure relaxation of the domain: it adds choices and
+        keeps everything else. The agent has to re-declare the whole space to do that, and
+        the constraints are not in the file it reads, so it drops them. Measured over all
+        30 expansions on record: the replacement space admitted configurations its
+        predecessor had excluded in 21 of them, 15.7% of the shared sub-grid. Those
+        newly-admitted configurations paid nothing — 0 of 21 candidates found a better
+        latency there, 18 were strictly worse or failed outright — and they failed at
+        48.3% against 26.0% for the region both spaces allowed. The prompt now shows the
+        prior constraints, which is the real fix; this is the backstop for when it is
+        ignored.
+
+        The test for each dropped constraint is empirical rather than trusting either
+        side: re-add it only if every NEWLY ADDED choice still has at least one feasible
+        configuration under the restored set. That keeps a stale constraint from vetoing
+        the expansion it was requested for (the case on record: a rewritten body made an
+        N tile of 8 legal, and the old `BLOCK_N % 16 == 0` would have forbidden the only
+        value being added), while restoring the resource bounds, which do not interact
+        with the new choices that way.
+
+        Mutates `new.constraints` in place and returns what it restored.
+        """
+        have = {c.expr for c in new.constraints}
+        dropped = [c for c in old.constraints if c.expr not in have]
+        if not dropped:
+            return []
+        old_choices = {d.name: set(d.choices) for d in old.domains}
+        added: list[tuple[str, ParamValue]] = [
+            (d.name, v) for d in new.domains
+            for v in d.choices if v not in old_choices.get(d.name, set())
+        ]
+        restored: list[Constraint] = []
+        for cons in dropped:
+            trial = ParameterSpace(
+                space_id=new.space_id, candidate_id=new.candidate_id,
+                source_sha=new.source_sha, version=new.version,
+                domains=new.domains,
+                constraints=[*new.constraints, cons, *restored],
+            )
+            if all(self._choice_is_reachable(trial, name, value)
+                   for name, value in added):
+                restored.append(cons)
+        new.constraints.extend(restored)
+        return restored
+
+    def _choice_is_reachable(self, space: ParameterSpace, name: str,
+                             value: ParamValue, samples: int = 2000) -> bool:
+        """Does at least one config pinning `name=value` satisfy `space`'s constraints?
+
+        Random search rather than exhaustive: a 16-knob space has far too many
+        combinations to enumerate, and a false "unreachable" here only means a
+        constraint is not restored, which is the pre-existing behaviour.
+        """
+        rnd = random.Random(f"{space.space_id}:{name}:{value}")
+        choices = {d.name: list(d.choices) for d in space.domains}
+        if value not in choices.get(name, []):
+            return True
+        for _ in range(samples):
+            params = ParamSet(values={
+                n: (value if n == name else rnd.choice(vals))
+                for n, vals in choices.items()})
+            if check_config(space, params, self.cfg.device) is None:
+                return True
+        return False
 
     def _expand_directive_text(self, crun: CandidateRun, knobs: list[dict]) -> str:
         lines = ["The following knobs hit the edge of their offered range and latency "

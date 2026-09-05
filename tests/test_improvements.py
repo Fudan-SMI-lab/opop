@@ -2612,3 +2612,104 @@ def test_report_surfaces_dead_kernel_trials_next_to_the_verdict():
     assert "80 of 374 trials measured a candidate carrying a kernel that never launched" \
         in text.replace("**", "")
     assert "_depthwise_bn_relu6_kernel" in text
+
+
+# --- K part 2: an expansion must not silently relax the constraints -----------
+#
+# The two cases below are the two shapes actually observed on disk across the 30
+# recorded expansions: a resource bound that was dropped for no reason (must come
+# back), and a legality bound that the expansion's own new value contradicts
+# (must stay dropped, or the expansion is vetoed by a stale rule).
+
+def _task_spec():
+    from kernel_optimizer.models.core import TaskSpec
+    return TaskSpec(task_id="level3:43", name="MinGPTCausalAttention", level=3,
+                    problem_id=43, ref_path="ref.py", ref_src_sha="0" * 64,
+                    entry_point="Model")
+
+
+def _restore(old_constraints, new_constraints, old_choices, new_choices):
+    """Run Orchestrator._restore_dropped_constraints without building an Orchestrator."""
+    from types import SimpleNamespace
+
+    from kernel_optimizer.config import DeviceLimits
+    from kernel_optimizer.control.orchestrator import Orchestrator
+    from kernel_optimizer.models.core import Constraint, ParamDomain, ParameterSpace
+
+    def mk(choices, constraints, version):
+        return ParameterSpace(
+            space_id=f"sp-v{version}", candidate_id="c", source_sha="x", version=version,
+            domains=[ParamDomain(name=n, kind="int", choices=list(v))
+                     for n, v in choices.items()],
+            constraints=[Constraint(expr=e, rationale="") for e in constraints])
+
+    old = mk(old_choices, old_constraints, 1)
+    new = mk(new_choices, new_constraints, 2)
+    # Borrow the real methods onto a stub carrying only the config they read, so the
+    # test exercises the shipped logic without constructing the whole dependency graph.
+    fake = SimpleNamespace(cfg=SimpleNamespace(device=DeviceLimits()))
+    fake._choice_is_reachable = Orchestrator._choice_is_reachable.__get__(fake)
+    restored = Orchestrator._restore_dropped_constraints(fake, old, new)
+    return [c.expr for c in restored], [c.expr for c in new.constraints]
+
+
+def test_dropped_resource_constraint_is_restored():
+    # Shape of l3-43 cand-e3a5da01: the expansion widened ATTN_BLOCK_M and dropped
+    # every shared-memory and thread bound, re-admitting 16.6% of the shared sub-grid.
+    restored, final = _restore(
+        old_constraints=["NUM_WARPS * 32 <= MAX_THREADS_PER_BLOCK",
+                         "BLOCK_M * BLOCK_N <= 4096"],
+        new_constraints=[],
+        old_choices={"BLOCK_M": [16, 32, 64], "BLOCK_N": [16, 32], "NUM_WARPS": [2, 4]},
+        new_choices={"BLOCK_M": [16, 32, 64, 128], "BLOCK_N": [16, 32], "NUM_WARPS": [2, 4]},
+    )
+    assert restored == ["NUM_WARPS * 32 <= MAX_THREADS_PER_BLOCK",
+                        "BLOCK_M * BLOCK_N <= 4096"]
+    assert set(final) == set(restored)
+
+
+def test_stale_constraint_that_forbids_the_new_value_is_not_restored():
+    # Shape of l3-43 cand-88e76051: the body was rewritten so an N tile of 8 became
+    # legal, and BLOCK_N=8 is the value being added. Restoring `BLOCK_N % 16 == 0`
+    # would make the expansion pointless, so it must stay dropped.
+    restored, final = _restore(
+        old_constraints=["BLOCK_M % 16 == 0 and BLOCK_N % 16 == 0",
+                         "NUM_WARPS * 32 <= MAX_THREADS_PER_BLOCK"],
+        new_constraints=[],
+        old_choices={"BLOCK_M": [16, 32], "BLOCK_N": [16, 32], "NUM_WARPS": [2, 4]},
+        new_choices={"BLOCK_M": [16, 32], "BLOCK_N": [8, 16, 32], "NUM_WARPS": [2, 4]},
+    )
+    assert restored == ["NUM_WARPS * 32 <= MAX_THREADS_PER_BLOCK"]
+    assert "BLOCK_M % 16 == 0 and BLOCK_N % 16 == 0" not in final
+
+
+def test_constraints_the_agent_kept_are_not_duplicated():
+    restored, final = _restore(
+        old_constraints=["BLOCK_M * BLOCK_N <= 4096"],
+        new_constraints=["BLOCK_M * BLOCK_N <= 4096"],
+        old_choices={"BLOCK_M": [16, 32], "BLOCK_N": [16, 32]},
+        new_choices={"BLOCK_M": [16, 32, 64], "BLOCK_N": [16, 32]},
+    )
+    assert restored == []
+    assert final == ["BLOCK_M * BLOCK_N <= 4096"]
+
+
+def test_expansion_prompt_shows_the_prior_constraints():
+    from kernel_optimizer.agents.modules import ParameterizerAgent, ParameterizerInputs
+    from kernel_optimizer.config import DeviceLimits
+
+    inputs = ParameterizerInputs(
+        task=_task_spec(),
+        candidate_source="PARAMS = {'BLOCK_M': 16}\n",
+        device=DeviceLimits(),
+        expand_directive="- `BLOCK_M`: extend toward max",
+        prior_constraints=(("BLOCK_M * BLOCK_N <= 4096", "register budget"),),
+    )
+    text = ParameterizerAgent._render_expand_prompt(None, inputs)
+    assert "BLOCK_M * BLOCK_N <= 4096" in text
+    assert "register budget" in text
+    # and the no-constraint case must not emit a dangling header
+    bare = ParameterizerAgent._render_expand_prompt(
+        None, ParameterizerInputs(task=inputs.task, candidate_source="x",
+                                  device=inputs.device, expand_directive="d"))
+    assert "ALREADY HAS these constraints" not in bare

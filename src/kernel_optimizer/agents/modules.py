@@ -303,6 +303,16 @@ class ParameterizerInputs:
     # fresh parameterization. Describes which knobs hit the tried-range boundary
     # (with direction) so the agent extends only those choices, structure unchanged.
     expand_directive: str = ""
+    # The constraints of the space being expanded, as (expr, rationale) pairs.
+    # An expansion re-declares the WHOLE space, but the constraints live in the
+    # space object rather than in `candidate/source.py`, so without this the agent
+    # is asked to reproduce them from memory of a file it cannot see. It reliably
+    # cannot: measured over all 30 expansions on record, the replacement space
+    # admitted configurations its predecessor had excluded in 21 of them
+    # (15.7% of the shared sub-grid), and those newly-admitted configurations won
+    # nothing on any candidate (0 of 21) while failing at 48.3% against 26.0% for
+    # the doubly-legal region.
+    prior_constraints: tuple[tuple[str, str], ...] = ()
 
 
 class ParameterizerAgent(AgentModule[ParameterizerInputs, ParameterizationResult]):
@@ -418,6 +428,24 @@ Answer with JSON:
     def _render_expand_prompt(self, inputs: ParameterizerInputs) -> str:
         """Improvement K: focused space EXPANSION — extend only the boundary knobs'
         choices toward the improving direction, keeping structure and other knobs."""
+        if inputs.prior_constraints:
+            prior = "\n".join(
+                f"  - `{expr}`" + (f"  ({why})" if why else "")
+                for expr, why in inputs.prior_constraints
+            )
+            prior_block = (
+                "\nThe space you are expanding ALREADY HAS these constraints. They are part\n"
+                "of the space, not of `candidate/source.py`, so this listing is the only\n"
+                "place you can read them. Repeat every one that still applies verbatim in\n"
+                "your response:\n"
+                f"{prior}\n"
+                "\nDropping one silently re-admits configurations that were deliberately\n"
+                "excluded, and the tuner will spend trials launching them. If the kernel\n"
+                "body no longer matches a constraint, replace it with the corrected form and\n"
+                "say so in its rationale — but do not simply omit it.\n"
+            )
+        else:
+            prior_block = ""
         return f"""A candidate kernel is in `candidate/source.py` (already parameterized
 with a `PARAMS` dict). Read it plus `docs/candidate_contract.md` and `docs/device.md`.
 If the kernel is Triton, also read `docs/triton_pitfalls.md`: every value you ADD must
@@ -434,7 +462,7 @@ latency was still improving toward that edge, while hardware resources still had
 headroom. Your job is a FOCUSED EXPANSION, not a redesign:
 
 {inputs.expand_directive}
-
+{prior_block}
 Rules:
 - Keep the kernel STRUCTURE and all other knobs' choices UNCHANGED. Rewrite the file
   to `candidate/parameterized.py` (it may be nearly identical to the source — only
