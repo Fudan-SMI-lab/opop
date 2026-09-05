@@ -88,15 +88,52 @@ Spilling usually costs performance, so the fastest config spilling is mildly odd
 with a 128-row tile the register pressure is expected and the extra tile size can pay for
 the spills.
 
+## The analyst reached the same reading independently
+
+Its `BOTTLENECK_REPORTED` (10:11:53) had the same trial data and drew the same conclusion
+about the outlier, without being asked about it:
+
+> "The only credible blocked headroom is the flash-attention row tile: the actual best trial
+> uses `ATTN_BLOCK_M=128` and `ATTN_NUM_WARPS=8`, reaches 14.2 ms, and simultaneously
+> reaches 255 registers/thread with 12 spills. **The next-fastest trial is 29.8 ms, so a
+> lower-register configuration is not already as fast.** Shared memory is only 65,536/101,376
+> B (64.6%) and the block uses 256/1,024 threads, making register live state, not shared
+> memory or threads, the immediate obstacle to scaling the profitable attention tile."
+
+It reported `ATTN_BLOCK_M: increase, blocked_by: registers, predicted_gain 25%` and made H1
+"distribute a larger query tile across more consumer warps, targeting `ATTN_BLOCK_M=256`".
+
+That is corroboration of the *mechanism* from a different direction: the 2x gap is explained
+by the tile size, and the 12 spills — which I flagged as the odd detail — are the cost of
+that tile rather than evidence against it. It also noticed the same thing I did about the
+confounds, listing five other knobs whose apparent boundary signals "all lose to the 14.2 ms
+configuration at different values, so they are not demonstrated blockers".
+
+Both of its quantitative claims check out against the trial data exactly:
+
+| analyst said | measured |
+|---|---|
+| "IEEE dot has a 99.4 ms median versus 35.3 ms for fp16" | ieee median **99.4** (n=8), fp16 median **35.3** (n=17) |
+| "next-fastest trial is 29.8 ms" | 2nd best = **29.8** (255 regs, 34 spills) |
+
+Note the register story is not monotonic: the 3rd best (30.1 ms) uses 121 registers and
+**zero** spills, so spilling is not simply buying speed — the 128-row tile is.
+
 ## What would settle it
 
 1. **`final_reeval_ms`** — 100 samples in a fresh process, 5/5 correctness on new inputs.
    This is the number that decides, and on L3:21 the gap ran +1.9% while on L3:48 it ran
    −6.2%, so the direction is not predictable.
-2. **A second sample of `ATTN_BLOCK_M=128`.** Improvement K may expand and re-tune this
-   space (the analyst is running now), which would independently resample the region. If
-   14.2 reproduces across several trials, the outlier reading is wrong and this is simply a
-   much better configuration that TPE found late.
+2. **A second sample of `ATTN_BLOCK_M=128`** — but **this will not arrive automatically.**
+   No `SPACE_EXPANDED` fired for this candidate, so there is no K re-tune to resample the
+   region, and `ATTN_BLOCK_M=128` is already the top of its domain so K would have nothing
+   to widen toward. The analyst's suggested action is `rewrite`, which produces a *different*
+   program rather than more samples of this one.
+
+So the reproduction question stays open unless the rewrite round happens to land near the
+same configuration. `final_reeval_ms` on this candidate is the one check that is guaranteed
+to run, and it re-measures exactly this θ_best in a fresh process — which is the important
+half anyway, since it would catch a stale-buffer or skipped-work artifact.
 
 Until then the honest statement is: *a single trial measured 14.2 ms with stable per-sample
 timing and physically ordinary throughput; if it holds, it is the first L3:43 kernel to beat
