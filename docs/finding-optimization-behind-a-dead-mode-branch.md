@@ -1,9 +1,9 @@
 # Finding: an optimization can be gated behind a branch the harness never takes
 
 `run-l3-21-20260905-071312`, `cand-c0b3b7cd`. A rewrite advertised a fused
-depthwise+BN+ReLU6 Triton kernel, was published, tuned over a full 40-trial budget,
+depthwise+BN+ReLU6 Triton kernel, was published, tuned over **two** 40-trial budgets,
 and finished at **25.0 ms — the worst result in the run** (best was 15.50). The fused
-kernel **never executed once**. Every trial timed a plain depthwise fallback.
+kernel **never executed once**. All 80 trials timed a plain depthwise fallback.
 
 This is worse than a failure, because nothing in the pipeline reports a problem:
 correctness passes, timings are produced, the candidate is published, and the event log
@@ -28,7 +28,7 @@ contains either call. An `nn.Module` defaults to train mode, and
 `21_EfficientNetMBConv.py` never switches it. So `bn.training` is **always True**, the
 `else` branch is dead code, and the fallback is what gets measured.
 
-Proof from the trial profiles — all 31 completed trials, every one:
+Proof from the trial profiles — all 80 trials, every one:
 
 ```
 kernel_names: ["_depthwise_kernel"]
@@ -77,21 +77,40 @@ depend on the current batch's mean/var, which are unknown until the batch has be
 reduced, so they cannot be folded into preceding weights. The hypothesis was unbuildable
 from the start.
 
-## Cost
+## Cost — twice what I first recorded
+
+I first counted one 40-trial budget. The run then gave it a **second** one: improvement K
+saw `NUM_WARPS` at the boundary, expanded it, and re-tuned. Both budgets measured the
+same dead path, and both returned exactly 25.0 ms.
+
+```
+TUNING_DONE  sp-2f309139  25.0      <- first budget
+SPACE_EXPANDED  [{'name': 'NUM_WARPS', 'direction': 'max'}]
+TUNING_DONE  sp-155aa1e4  25.0      <- K re-tune, identical result
+```
 
 | | |
 |---|---|
 | rewrite agent calls wasted | 1 |
-| parameterizer + witness evaluations | 1 published space, 3 knobs |
-| tuning trials spent measuring the fallback | **31 completed (a full 40-trial budget)** |
-| result | 25.0 ms, worst in the run |
+| parameterizer calls | 2 (initial publish + K expansion) |
+| analyst calls spent analyzing a fallback | 2 |
+| tuning trials measuring the fallback | **80 — two full budgets** |
+| result | 25.0 ms both times, worst in the run |
+
+80 of the run's 334 trials — **24% of all GPU tuning work** — went to a kernel that
+never ran. The flatness across two budgets and a widened domain is exactly what a dead
+path looks like: nothing the tuner varied could matter, because none of it was reached.
+
+This also adds a second entry to improvement K's record: the expansion was not merely
+flat (as in `measurement-k-expansion-vs-analyst.md`), it was flat on unreachable code.
+K reads `at_boundary` from tuning statistics that were themselves measuring the fallback.
 
 A `fam-5dfc36d7` rewrite round produced this instead of a real candidate.
 
-## Two fixes, both applied
+## Three fixes, all applied
 
 Driver-side, so they take effect on the next run (L3:43 and any rerun), not on the
-L3:21 run in flight.
+L3:21 run in flight. The first two are in `44256cd`, the third in `0215b70`.
 
 **1. Wire `eval_semantics` to the three agents that lacked it** (`agents/modules.py`,
 `control/orchestrator.py`). `AnalystInputs`, `RewriterInputs` and `NoveltyInputs` gained
@@ -129,6 +148,30 @@ Measured over **213 distinct agent-output kernels** across all runs on disk:
 
 Of the 33 `.training` branches on disk, **16 launch no Triton kernel on either side** —
 the benign pattern of choosing between two torch formulations — and stay silent.
+
+**3. The harness detects a kernel that never ran** (`control/orchestrator.py`).
+
+The first two fixes are preventive; this one is a backstop, and it generalizes past mode
+branches to *any* unreachable kernel. It was prompted by watching the run repeat the
+mistake: at 08:57 the analyst ran again on this candidate and proposed "fuse the
+inference depthwise+BN+ReLU6" a second time — after 31 trials had all timed the fallback.
+
+It could not have known. `TuningStats` has no kernel field and `trials.csv` did not carry
+one, so the single fact that settles the question was structurally unavailable to it,
+even though `TrialRecord.profile.kernel_names` held it all along.
+
+`_unlaunched_kernels` compares the candidate's defined `@triton.jit` names against every
+trial's `profile.kernel_names` and appends a `KERNELS_NEVER_LAUNCHED` event. Being
+deterministic, it is journalled as fact rather than left to an agent's judgement — and the
+analyst now receives the list, seeded as `tuning/never_launched_kernels.md`, with an
+instruction to address it before any resource analysis, since an unreached kernel is not
+a slow kernel. `trials.csv` gained a `kernels_launched` column.
+
+One guard matters: it returns nothing when **no** trial carries kernel names (a CUDA
+backend, or profiling unavailable), so absence of data never reads as absence of
+launches. Verified by replay over real trial data — it names
+`_depthwise_bn_relu6_kernel` on `cand-c0b3b7cd` and stays silent on `cand-7dcdbd99` and
+`cand-fdb4dac6`, whose kernels all ran.
 
 ## Scope: L3:21 only, and L3:43 is safe
 
