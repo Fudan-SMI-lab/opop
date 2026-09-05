@@ -115,3 +115,13 @@ choice, not an afterthought:
   `torch.utils.cpp_extension.load_inline` is allowed if declared.
 - torch operations are allowed around the custom kernel(s) (layout, reshaping),
   but the core computation you claim to optimize must run in your kernel.
+- **Never call `torch.compile`, `torch.jit.script` or `torch.jit.trace`.** These are
+  rejected by a static check before evaluation, whatever else the file contains. The
+  reason is not style: the baseline your candidate is measured against IS
+  `torch.compile` on the reference module, so a candidate that compiles the same graph
+  is compared with itself and any difference it shows is scheduling noise. Adding a
+  small kernel next to a compiled graph does not change that — the compiled graph is
+  still doing the work — so this is rejected even when a `@triton.jit` kernel is
+  present. Plain eager torch ops around your kernel are fine.
+- A file that defines **no** kernel at all (no `@triton.jit`, no inline CUDA
+  extension) is rejected for the same reason.
