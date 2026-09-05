@@ -24,7 +24,13 @@ Cosine is 0.99999996 against a requirement of 0.99985, so it passes that arm by 
 orders of magnitude. `median_rel_err` is 1.781e-04 and `max_abs_diff` is 1.363e-03 on an
 output whose `ref_absmax` is 0.8305. Nothing here looks like a broken kernel.
 
-**14 of 14** bf16 mismatches this run are above the floor. Not one is below it.
+**17 of 17** bf16 mismatches this run are above the floor. Not one is below it. (Was 14 of
+14 when first written 25 minutes earlier; the tally grows as TPE keeps sampling the branch,
+and every new instance lands in the same 0.987202–0.987266 band.)
+
+The other precisions are not producing mismatches at all: bf16 is the only dtype with any
+`correctness_mismatch` in tuning, so this is not a general accuracy problem with the
+candidate.
 
 ## Why this case is cleaner than the earlier ones
 
