@@ -19,7 +19,7 @@ vs eager_tf32           1.866x
 vs eager                2.243x
 ```
 
-## Quote 1.32×, not 1.48×
+## Quote 1.32×, not 1.48× — and see the correction below
 
 The run recorded `torch_compile_tf32` at 16.4 ms; I measured **15.08**. That is the one baseline
 that disagrees:
@@ -34,10 +34,21 @@ torch_compile_tf32    16.4    15.08    -8.0%   <- the outlier
 
 Three baselines agree within 2%; the compiled tf32 one is 8% *faster* in my measurement, which
 makes the comparison **harder** for the candidate. It is also the noisiest of the four — std 0.80
-against 0.12–0.32, and a max of 17.23 well above its median of 14.76, which is what a
-recompilation or an autotune replay looks like inside a timed loop. So the conservative reading
-is mine: **1.32×**, not the 1.48× the run's own numbers would support. The smaller number is the
-one to report.
+against 0.12–0.32, and a max of 17.23 well above its median of 14.76. So the conservative reading
+is mine: **1.32×**, not the 1.48× the run's own numbers would support.
+
+**Correction to the explanation, not the number.** I attributed that 8% to the harness measuring
+the baseline too slowly. It does not: the compiled tf32 baseline is **bimodal**, settling at either
+~14.7 or ~16.7 ms depending on how long it has been running, with a violent transition between
+(`scripts/audit_baseline_warmup_sensitivity.py`; more warmup makes it *slower*, not faster). The
+harness's 16.4 is the slow regime and my 15.08 is the fast one — both real. Details in
+`finding-rescued-bests-are-tf32-and-tuner-walks-off-them.md`.
+
+This does not weaken the result here; it strengthens the reason to quote the smaller ratio. Against
+the fast regime measured directly (14.63 ms), `cand-f66890d0` at 11.40 is **1.28×** — still a win
+against the strongest thing torch.compile does on this task, which is the honest bar. Candidates
+within ~12% of this baseline cannot be judged from one measurement of either side; this one is not
+within 12%.
 
 Separately, `tuned_ms` 11.1 against my 11.40 makes the tuned figure **2.6% optimistic** — inside
 the 1.5–6.7% band `opop-v2-reeval-gap-is-the-real-number` documents. That band is behaving as
