@@ -2252,3 +2252,109 @@ def test_hard_edge_matches_prefixed_knob_names():
         "L3:21 (cand-7dcdbd99, PW_WARPS=[2,4,8]); the wall check must gate on the domain, "
         "not on the name"
     )
+
+
+# --- improvement M: mode-gated kernel branches (dead-code optimization) -------------
+# Found on L3:21 cand-c0b3b7cd: 31 trials, all `complete`, best 25.1 ms, and every one
+# launched only the train-mode fallback `_depthwise_kernel` while the advertised fused
+# kernel sat in the `else` branch. The harness never calls .eval()/.train(), so one
+# side of such a branch is always dead code.
+
+def _MODE_WARN(warns):
+    return [w for w in warns if "if ...training:" in w]
+
+
+def test_lint_warns_when_kernel_is_gated_on_training_mode():
+    src = """
+import triton
+import triton.language as tl
+PARAMS = {"BLOCK_X": 128}
+@triton.jit
+def _dw(x_ptr, y_ptr, BLOCK_X: tl.constexpr):
+    return tl.load(x_ptr)
+@triton.jit
+def _dw_fused(x_ptr, y_ptr, BLOCK_X: tl.constexpr):
+    return tl.load(x_ptr)
+class ModelNew:
+    def forward(self, x):
+        bn = self.bn
+        if bn.training:
+            _dw[(1,)](x, x, BLOCK_X=PARAMS["BLOCK_X"])
+            x = bn(x)
+        else:
+            _dw_fused[(1,)](x, x, BLOCK_X=PARAMS["BLOCK_X"])
+        return x
+"""
+    hard, warns = lint_triton_source(src)
+    assert hard == []                        # advisory only, never blocks
+    hits = _MODE_WARN(warns)
+    assert len(hits) == 1
+    # names both sides so the agent can tell which half is stranded
+    assert "_dw" in hits[0] and "_dw_fused" in hits[0]
+    assert "eval_semantics" in hits[0]
+
+
+def test_lint_no_mode_warn_when_branch_launches_no_kernel():
+    # The benign pattern: a .training branch choosing between two torch formulations.
+    # 16 of the 33 such branches on disk are this case and must stay silent.
+    src = """
+import triton
+import triton.language as tl
+PARAMS = {"BLOCK_X": 128}
+@triton.jit
+def _k(x_ptr, BLOCK_X: tl.constexpr):
+    return tl.load(x_ptr)
+class ModelNew:
+    def forward(self, x):
+        _k[(1,)](x, BLOCK_X=PARAMS["BLOCK_X"])
+        if self.bn.training:
+            x = self.bn(x)
+        else:
+            x = (x - self.bn.running_mean) * self.bn.weight
+        return x
+"""
+    hard, warns = lint_triton_source(src)
+    assert hard == []
+    assert _MODE_WARN(warns) == []
+
+
+def test_lint_mode_warn_ignores_subscript_calls_that_are_not_kernels():
+    # `self.depthwise_conv[2](...)` is a Subscript call but NOT a Triton launch; an
+    # earlier version of this check counted it and fired on 10.8% of candidates.
+    src = """
+import triton
+import triton.language as tl
+PARAMS = {"BLOCK_X": 128}
+class ModelNew:
+    def forward(self, x):
+        if self.bn.training:
+            x = self.depthwise_conv[2](x)
+        else:
+            x = self.other[1](x)
+        return x
+"""
+    hard, warns = lint_triton_source(src)
+    assert hard == []
+    assert _MODE_WARN(warns) == []
+
+
+def test_lint_mode_warn_handles_negated_test_and_autotuned_kernel():
+    src = """
+import triton
+import triton.language as tl
+PARAMS = {"BLOCK_X": 128}
+@triton.autotune(configs=[], key=["n"])
+@triton.jit
+def _fast(x_ptr, BLOCK_X: tl.constexpr):
+    return tl.load(x_ptr)
+class ModelNew:
+    def forward(self, x):
+        if not self.bn.training:
+            _fast[(1,)](x, BLOCK_X=PARAMS["BLOCK_X"])
+        else:
+            x = self.bn(x)
+        return x
+"""
+    hard, warns = lint_triton_source(src)
+    assert hard == []
+    assert len(_MODE_WARN(warns)) == 1

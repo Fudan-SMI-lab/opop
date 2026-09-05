@@ -442,6 +442,7 @@ class AnalystInputs:
     device: DeviceLimits
     # Attribution only (see RepairInputs.candidate_id).
     candidate_id: str | None = None
+    eval_semantics: dict | None = None
 
 
 class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
@@ -453,9 +454,10 @@ class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
         sb.write_input("tuning/stats.json", inputs.stats.model_dump_json(indent=2))
         sb.write_input("tuning/trials.csv", inputs.trials_csv)
         sb.write_input("docs/device.md", _device_doc(inputs.device))
+        sb.write_input("task/eval_semantics.md", _eval_semantics_doc(inputs.eval_semantics))
 
     def render_prompt(self, inputs: AnalystInputs, sb: Sandbox) -> str:
-        return """A kernel candidate was tuned over its parameter space. These four
+        return """A kernel candidate was tuned over its parameter space. These five
 files already exist in your working directory — read them with your file tools
 before answering; do NOT assume any are missing (a stale index may hide them,
 so read by path):
@@ -466,6 +468,8 @@ so read by path):
   best config, and failure clusters
 - `tuning/trials.csv` — the full trial log (params, status, latency, resources)
 - `docs/device.md` — hardware limits
+- `task/eval_semantics.md` — the run mode the harness evaluates the reference in
+  (train vs eval) and the state of each normalization layer
 
 Analyze which parameters still have headroom but are BLOCKED — i.e. the latency
 trend keeps improving toward a boundary value, and going further fails or is
@@ -503,6 +507,16 @@ each block needs less shared memory", "two-stage reduction to allow larger tiles
 Prefer a precision/tensor-core hypothesis when the evidence points to an arithmetic
 throughput floor.
 
+Every hypothesis must be EXECUTABLE UNDER THE RUN MODE in
+`task/eval_semantics.md`. A fusion that is only valid in the other mode is worth
+nothing here: if the reference runs in TRAIN mode, BatchNorm uses the CURRENT
+BATCH mean/var, so its scale/shift are not known until the batch has been reduced
+and CANNOT be folded into preceding weights. Do not propose folding
+`running_mean`/`running_var` (or any "inference batch-norm" fold) when the mode is
+TRAIN — a rewriter that implements it will produce a branch the harness never
+executes, and the whole rewrite is wasted. State the mode you assumed in the
+hypothesis `risk` field.
+
 Answer with JSON matching:
 {"summary": "...",
  "parameter_limits": [{"param": "...", "headroom_direction": "increase|decrease",
@@ -524,6 +538,7 @@ class RewriterInputs:
     failed_hypotheses: list[dict]
     device: DeviceLimits
     n_candidates: int
+    eval_semantics: dict | None = None
 
 
 class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
@@ -539,13 +554,15 @@ class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
         sb.write_input("docs/candidate_contract.md", _contract_doc())
         sb.write_input("docs/triton_pitfalls.md", _triton_pitfalls_doc())
         sb.write_input("docs/device.md", _device_doc(inputs.device))
+        sb.write_input("task/eval_semantics.md", _eval_semantics_doc(inputs.eval_semantics))
 
     def render_prompt(self, inputs: RewriterInputs, sb: Sandbox) -> str:
         return f"""`candidate/best.py` is the current best version of a kernel (already at
 its best-known PARAMS). `analysis/bottleneck.json` explains what limits it —
 which parameters wanted to go further and what resource blocked them.
 `history/failed_hypotheses.json` lists changes already tried that did NOT help;
-do not repeat them. Read `docs/candidate_contract.md` and `docs/device.md`. If
+do not repeat them. Read `docs/candidate_contract.md`, `docs/device.md`, and
+`task/eval_semantics.md` (the run mode the harness evaluates in). If
 your rewrite uses Triton, also read `docs/triton_pitfalls.md` and obey it.
 
 Produce up to {inputs.n_candidates} REWRITTEN kernel(s), each targeting a specific
@@ -568,6 +585,17 @@ Write each rewrite to `rewrites/rw_1.py`, `rewrites/rw_2.py`, ... following the
 contract (ModelNew + PARAMS dict). The rewrite does NOT need to be faster at the
 old default parameters — it needs to unlock the blocked region (e.g. allow a
 bigger tile that the parent could not compile/run).
+
+THE OPTIMIZED PATH MUST BE THE PATH THAT ACTUALLY EXECUTES. The harness always
+evaluates in the mode stated in `task/eval_semantics.md` — it never calls
+`.eval()` or `.train()`. So if you write `if module.training: <fallback> else:
+<your fast kernel>` and the mode is TRAIN, your kernel is dead code: the harness
+measures the fallback, every trial times the same unoptimized path, and the
+rewrite scores zero while looking correct. Do not guard your optimization behind
+a mode check that the harness's mode does not select. In TRAIN mode BatchNorm
+scale/shift depend on the current batch's mean/var, so they cannot be folded into
+preceding weights — reduce the batch statistics first (a two-pass or
+partial-reduction kernel) and fuse around that, or fuse something else.
 
 Answer with JSON:
 {{"candidates": [{{"file": "rewrites/rw_1.py", "hypothesis_id": "H1",
@@ -597,6 +625,7 @@ class NoveltyInputs:
     family_summaries: list[dict]  # {family_id, approach_summary, best_ms, anchor_source}
     device: DeviceLimits
     n_candidates: int
+    eval_semantics: dict | None = None
 
 
 class NoveltyGeneratorAgent(AgentModule[NoveltyInputs, NoveltyResult]):
@@ -608,6 +637,7 @@ class NoveltyGeneratorAgent(AgentModule[NoveltyInputs, NoveltyResult]):
         sb.write_input("docs/candidate_contract.md", _contract_doc())
         sb.write_input("docs/triton_pitfalls.md", _triton_pitfalls_doc())
         sb.write_input("docs/device.md", _device_doc(inputs.device))
+        sb.write_input("task/eval_semantics.md", _eval_semantics_doc(inputs.eval_semantics))
         for i, fam in enumerate(inputs.family_summaries, 1):
             sb.write_input(f"families/family_{i}/anchor.py", fam.get("anchor_source", ""))
             sb.write_input(
@@ -619,8 +649,12 @@ class NoveltyGeneratorAgent(AgentModule[NoveltyInputs, NoveltyResult]):
         return f"""We are optimizing the KernelBench task in `task/ref.py`. The approaches
 tried so far are documented under `families/family_*/` (anchor source +
 summary with measured performance). Read them, plus
-`docs/candidate_contract.md` and `docs/device.md`. If your candidate uses Triton,
-also read `docs/triton_pitfalls.md` and obey it.
+`docs/candidate_contract.md`, `docs/device.md`, and `task/eval_semantics.md`
+(the run mode the harness evaluates the reference in — your kernel must be
+correct AND optimized for THAT mode, not a guessed one; the harness never calls
+`.eval()`, so an optimization guarded behind a mode check the harness does not
+select is dead code that will be timed as the fallback). If your candidate uses
+Triton, also read `docs/triton_pitfalls.md` and obey it.
 
 Produce up to {inputs.n_candidates} NEW candidate kernel(s) whose core computational
 approach is CLEARLY DIFFERENT from every existing family — different work

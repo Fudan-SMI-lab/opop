@@ -91,6 +91,94 @@ def _params_has_dtype_knob(tree: ast.Module) -> bool:
     return False
 
 
+def _mode_gated_kernel_branches(tree: ast.Module) -> list[str]:
+    """Improvement M: flag `if <...>.training:` branches that launch a Triton kernel on
+    either side. The harness never calls `.eval()` or `.train()`, so the reference's
+    mode is FIXED for the whole run and exactly one side of such a branch is ever
+    executed — the other side is dead code. That is dangerous rather than merely
+    wasteful, because a candidate whose fast path sits on the dead side still passes
+    correctness (the live fallback is correct) and still produces timings, so nothing
+    in the pipeline reports a problem while every trial measures the unoptimized path.
+
+    Observed on L3:21 `cand-c0b3b7cd`: 31 trials, all `complete`, best 25.1 ms, and
+    every one launched only `_depthwise_kernel` — the train-mode fallback — while the
+    advertised fused `_depthwise_bn_relu6_kernel` sat in the `else` branch and never
+    ran. Both sides launch exactly one kernel, so an asymmetry test would miss it; the
+    branch existing at all is the signal.
+
+    A `.training` branch that launches NO Triton kernel on either side is the benign
+    pattern (choosing between two torch formulations) and is not reported: 16 of the
+    33 such branches on disk are that case. Branching on `.training` is legal, so this
+    is a WARNING and never a hard error.
+    """
+    jit_kernels = _jit_kernel_names(tree)
+    findings: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        test = node.test
+        # `if m.training:` / `if not m.training:` / `if self.bn.training:`
+        if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+            test = test.operand
+        if not (isinstance(test, ast.Attribute) and test.attr == "training"):
+            continue
+        launched_if = _launched_kernels(node.body, jit_kernels)
+        launched_else = _launched_kernels(node.orelse, jit_kernels)
+        if not launched_if and not launched_else:
+            continue  # benign: a pure-torch mode choice, no kernel is stranded
+        findings.append(
+            f"this file launches Triton kernels inside an `if ...training:` branch "
+            f"(`if` side: {sorted(launched_if) or 'none'}; `else` side: "
+            f"{sorted(launched_else) or 'none'}). The harness evaluates the reference in "
+            "ONE fixed mode and never calls `.eval()`/`.train()`, so only one side of "
+            "this branch EVER runs and the kernels on the other side are dead code. "
+            "That is the worst case to get wrong: correctness still passes (the live "
+            "branch is correct) and timings are still produced, so nothing reports an "
+            "error while every trial measures the unoptimized path. Read "
+            "`task/eval_semantics.md` for the mode the harness actually uses and put "
+            "your optimized kernel on THAT side. In TRAIN mode BatchNorm uses the "
+            "current batch's mean/var, so its scale/shift are unknown until the batch "
+            "has been reduced and CANNOT be folded into preceding weights — reduce the "
+            "batch statistics first (two-pass or partial reduction), then fuse."
+        )
+    return findings
+
+
+def _jit_kernel_names(tree: ast.Module) -> set[str]:
+    """Names of module-level functions decorated with `@triton.jit` (or `@jit`)."""
+    names: set[str] = set()
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        for dec in node.decorator_list:
+            target = dec.func if isinstance(dec, ast.Call) else dec  # @triton.autotune(...)
+            attr = target.attr if isinstance(target, ast.Attribute) else (
+                target.id if isinstance(target, ast.Name) else ""
+            )
+            if attr in ("jit", "autotune", "heuristics"):
+                names.add(node.name)
+                break
+    return names
+
+
+def _launched_kernels(body: list[ast.stmt], jit_kernels: set[str]) -> set[str]:
+    """Kernel names launched as `kernel[grid](...)` in a statement list. Matches only
+    names known to be `@triton.jit` functions, so ordinary subscript calls like
+    `self.layers[2](x)` are not mistaken for launches."""
+    found: set[str] = set()
+    for stmt in body:
+        for node in ast.walk(stmt):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Subscript)):
+                continue
+            base = node.func.value
+            name = base.id if isinstance(base, ast.Name) else (
+                base.attr if isinstance(base, ast.Attribute) else ""
+            )
+            if name in jit_kernels:
+                found.add(name)
+    return found
+
+
 def lint_triton_source(source: str) -> tuple[list[str], list[str]]:
     """Return (hard_errors, warnings). hard_errors are certain compile failures."""
     try:
@@ -115,4 +203,5 @@ def lint_triton_source(source: str) -> tuple[list[str], list[str]]:
             "tl.dot precision, so the tuner can compare precisions on real measurements "
             "instead of leaving fp16 hardcoded and unmeasured (accumulator stays fp32)."
         )
+    warnings.extend(_mode_gated_kernel_branches(tree))
     return (visitor.hard_errors, warnings)

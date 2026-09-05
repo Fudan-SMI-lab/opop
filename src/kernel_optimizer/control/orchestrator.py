@@ -767,6 +767,7 @@ class Orchestrator:
                     task=self.task, candidate_source=crun.source, stats=crun.stats,
                     trials_csv=self._trials_csv(crun), device=self.cfg.device,
                     candidate_id=crun.candidate.candidate_id,
+                    eval_semantics=self.eval_semantics,
                 )
             )
             crun.report = outcome.output
@@ -1046,6 +1047,7 @@ class Orchestrator:
                     failed_hypotheses=self.failed_hypotheses.get(family_id, []),
                     device=self.cfg.device,
                     n_candidates=self.cfg.agents.rewriter.n_candidates,
+                    eval_semantics=self.eval_semantics,
                 )
             )
         except AgentCallError as exc:
@@ -1112,6 +1114,7 @@ class Orchestrator:
                     ref_source=Path(self.task.ref_path).read_text(encoding="utf-8"),
                     family_summaries=summaries, device=self.cfg.device,
                     n_candidates=self.cfg.agents.novelty.n_candidates,
+                    eval_semantics=self.eval_semantics,
                 )
             )
         except AgentCallError as exc:

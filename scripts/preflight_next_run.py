@@ -135,6 +135,53 @@ def main() -> int:
           and "if mat_src == witness_sources_default:" in wit,
           "an alternative identical to the default is not accepted as a second witness")
 
+    # --- improvement M: the run mode reaches every agent that writes a kernel -------
+    # An analyst blind to train/eval mode proposed an inference-BN fold on a TRAIN-mode
+    # task; the rewriter implemented it behind `if bn.training:` and 31 trials timed the
+    # dead fallback (docs/finding-optimization-behind-a-dead-mode-branch.md).
+    import dataclasses
+
+    from kernel_optimizer.agents.modules import (
+        AnalystInputs,
+        GeneratorInputs,
+        NoveltyInputs,
+        RepairInputs,
+        RewriterInputs,
+    )
+    missing = [
+        c.__name__
+        for c in (GeneratorInputs, AnalystInputs, RewriterInputs, NoveltyInputs, RepairInputs)
+        if "eval_semantics" not in {f.name for f in dataclasses.fields(c)}
+    ]
+    check("eval_semantics on all 5 agent inputs", not missing,
+          f"missing: {missing}" if missing else "generator/analyst/rewriter/novelty/repair")
+    check("orchestrator passes eval_semantics 5x",
+          orch.count("eval_semantics=self.eval_semantics") == 5,
+          f"count={orch.count('eval_semantics=self.eval_semantics')} (a field not passed is the bug itself)")
+    check("analyst forbids inference-BN fold in TRAIN mode",
+          "EXECUTABLE UNDER THE RUN MODE" in mods and "inference batch-norm" in mods,
+          "hypotheses must be buildable in the probed mode")
+    check("rewriter told the optimized path must execute",
+          "THE OPTIMIZED PATH MUST BE THE PATH THAT ACTUALLY EXECUTES" in mods,
+          "a mode-guarded fast kernel is dead code, not a rewrite")
+
+    lint = src("src/kernel_optimizer/paramspace/triton_lint.py")
+    check("mode-gate lint is advisory, not blocking",
+          "_mode_gated_kernel_branches(tree)" in lint
+          and "warnings.extend(_mode_gated_kernel_branches(tree))" in lint,
+          "reaches the agent via soft_check; implementing both modes stays legal")
+    check("mode-gate lint resolves real jit kernels",
+          "_jit_kernel_names(tree)" in lint and "if name in jit_kernels:" in lint,
+          "counting bare Subscript calls fired on 10.8% of candidates; this fires on 0.5%")
+    # Live regression: the detector must still fire on the candidate that motivated it.
+    from kernel_optimizer.paramspace.triton_lint import lint_triton_source
+    culprit = REPO / "runs/run-l3-21-20260905-071312/sandboxes/rewriter-49aef04e/rewrites/rw_1.py"
+    if culprit.exists():
+        _hard, _warns = lint_triton_source(culprit.read_text(encoding="utf-8"))
+        fires = [w for w in _warns if "if ...training:" in w]
+        check("mode-gate lint fires on cand-c0b3b7cd", len(fires) == 1,
+              "the known true positive is still detected" if fires else "REGRESSION: no longer fires")
+
     width = max(len(n) for _, n, _ in RESULTS)
     bad = 0
     for ok, name, detail in RESULTS:
