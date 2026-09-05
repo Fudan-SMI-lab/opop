@@ -198,6 +198,10 @@ Note the register story is not monotonic: the 3rd best (30.1 ms) uses 121 regist
 
 ## Where this actually leaves the number
 
+Across all 31 measured trials on this candidate: best **14.2**, median **50.5**, worst
+**455.0**. Exactly three configurations reach sub-21 ms (14.2, 19.8, 20.8). This is a
+high-variance, sparsely-rewarding space, not a smooth surface with one lucky draw.
+
 **What is now settled:** the sub-20 ms region is **real and reachable by more than one
 configuration**. Three independently measured trials beat the 29.8 ms cluster (14.2, 19.8,
 20.8), from three different parameter vectors, with register counts of 255/213/255 and spills
@@ -223,8 +227,13 @@ to wait for. I will not call this a result before it lands.
 | 128 | 11 | 7/11 = 64% | **14.2**, **19.8**, 59.4 |
 
 The regularity worth keeping: **larger tiles reach the fast region but fail far more often.**
-The two best results in the run both come from tiles ≥64, and so does a 64% failure rate.
+The three best results in the run all come from tiles ≥64, and so does a ~64% failure rate.
 Every fast result is a large tile; not every large tile is fast.
+
+A fourth measured 128-tile sample then landed at **455.0 ms** — so the measured spread at a
+*single* tile size is **14.2 to 455.0 ms, a factor of 32**. Whatever the tile contributes, it
+explains none of the variance by itself, and I should not have offered it as the explanation
+two commits ago on the strength of two samples.
 
 That is a coherent picture of a real optimum in a fragile region, rather than a measurement
 artifact — and it is also why the winning config's n=1 is hard to improve on within this
