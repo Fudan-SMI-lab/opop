@@ -28,6 +28,78 @@ All five original constraints gone, one unrelated new one in their place. And it
 
 Not one expansion in any run preserved its constraint set.
 
+## What kind of constraints get dropped
+
+96 constraint instances have been discarded across the 26 expansions. Categorised:
+
+| kind | n | example |
+|---|---|---|
+| thread limit | 37 | `NUM_WARPS * 32 <= MAX_THREADS_PER_BLOCK` |
+| register capacity | 18 | `BLOCK_M*BLOCK_N + BLOCK_M*BLOCK_K + BLOCK_K*BLOCK_N <= MAX_REGS_PER_THREAD * NUM_WARPS * 32` |
+| **divisibility (structural)** | **18** | `EXPAND_BLOCK_M % 16 == 0 and EXPAND_BLOCK_N % 16 == 0 …` |
+| other numeric bound | 15 | `APPLY_BLOCK >= APPLY_WARPS * 32` |
+| shared memory | 8 | `NUM_STAGES * BLOCK_K * (BLOCK_M + BLOCK_N) * 4 <= MAX_SHARED_BYTES_OPTIN` |
+
+The **divisibility** group is the one that concerns me most, and it is why this is not purely an
+efficiency issue. Resource caps encode "this will not fit" — violating one produces a clean
+`OutOfResources` or a slow kernel, and the tuner learns. Divisibility constraints encode
+*structural invariants of the kernel*: `QK_ROW_GROUP % QK_SUB_M == 0` says the row group must
+partition evenly into subtiles, and `BLOCK_M % 16 == 0` typically reflects a `tl.dot` shape
+requirement or a masking assumption.
+
+A violated resource cap fails loudly. A violated structural invariant may instead produce a kernel
+that *runs* and computes the wrong thing on the ragged edge — which the correctness check should
+catch, since every trial re-runs correctness before timing, but which would show up as
+`correctness_mismatch` attributed to the candidate rather than to the missing constraint.
+
+**Checked, and the answer is reassuring.** Across all runs, 88 `correctness_mismatch` trials occurred
+in spaces that had lost a divisibility constraint. Exactly **one** of those actually violated the
+dropped rule — `cand-88e76051` `tr-5a20911f`, `BLOCK_M=128, BLOCK_N=8` against a dropped
+`BLOCK_N % 16 == 0` — and reading its failure detail shows it is **not** a divisibility failure at
+all:
+
+```
+vs ieee ref: frac_within_tol 0.98728, cosine 0.99999996, median_rel_err 1.778e-04
+floor:       frac_within_tol 0.976682
+COMPUTE_DTYPE: bf16
+```
+
+That is the bf16-above-the-floor pattern (`result-l3-43-bf16-rejected-above-the-floor.md`) —
+`max_abs_diff` 1.363e-03, identical to six digits to the 26 other bf16 rejections in this run, and
+*above* the task's noise floor. The dropped divisibility rule is coincidental to it.
+
+So: **1 of 88 candidate cases, and on inspection 0 of 88 attributable.** No correctness failure in
+the record is traceable to a dropped constraint. That keeps this an efficiency finding, which is
+where I wanted the evidence to land it rather than my prior. Two caveats: the divisibility rules that
+got dropped may simply never have been sampled in violation (only 116 trials violated *any* dropped
+constraint), and the correctness gate's own known weakness on this task means a marginal structural
+error could in principle hide inside the floor.
+
+## The sixth expansion dropped 8 of 8
+
+`cand-2cda23e2`, `sp-55d6cb75` → `sp-62258a50` at 13:10, is the most complete loss so far — every
+constraint gone, including both divisibility rules:
+
+```
+DROPPED  QK_ROW_GROUP % QK_SUB_M == 0
+DROPPED  PV_ROW_GROUP % PV_SUB_M == 0
+DROPPED  QK_SUB_M * QK_BLOCK_N <= 8192
+DROPPED  PV_SUB_M * PV_BLOCK_D <= 4096
+DROPPED  QK_NUM_WARPS * 32 <= MAX_THREADS_PER_BLOCK
+DROPPED  SOFTMAX_NUM_WARPS * 32 <= MAX_THREADS_PER_BLOCK
+DROPPED  PV_NUM_WARPS * 32 <= MAX_THREADS_PER_BLOCK
+DROPPED  (COMPUTE_DTYPE == "fp16" or ...) and (PV_SUB_M * PV_BLOCK_K ...)
+```
+
+This candidate's whole design is "repartition into sequential register-bounded subtiles", so
+`ROW_GROUP % SUB_M == 0` is the invariant the *rewrite itself* is built on. Three trials have run so
+far and none violates it yet.
+
+Worth noting what K did **not** do here: `QK_NUM_STAGES` stayed `[1,2,3,4]`, unchanged. Repair had cut
+its *default* from 4 to 1 to fit shared memory, and K left the domain alone — so the earlier worry
+that K systematically re-opens what repair closes does not hold for this case either
+(cf. the `STATS_BLOCK_M` correction below, where re-opening was actually right).
+
 ## Why it happens
 
 An expansion is not a patch to the existing space — it is a **fresh parameterizer call**.
