@@ -71,21 +71,42 @@ On L3:48 `fam-99aee6de` was 2.09 → 2.09 → 2.09 and still received a third ro
 **And the third round has never paid off — 0 for 13.** Counting improving steps (>0.5%) across
 every recorded family history:
 
+**SUPERSEDED at 14:53 — round 3 has now paid off once.** `cand-e3a5da01` improved
+`fam-4aea322a` 11.0 → **9.73 (−11.5%)** on its third round, and that is the project's best result on
+any task (`result-l3-43-973ms-round-three-win.md`). The record is **1 of 13**, and the one success is
+the largest single-round gain in this run's headline family.
+
+What that changes here, precisely:
+
+- **The unreachability proof is untouched** — it is arithmetic about when `len(best_history)`
+  reaches 3, machine-checked over 97 family decisions, and a productive round 3 does not bear on it.
+- **The seeding counterfactual is untouched** — 6 of 14 families would still freeze at `used=2`, and
+  all 6 still gained exactly 0.00% in their actual round 3. `fam-4aea322a` is **not** in that freeze
+  set (the seeded policy lets it continue on `[22.5, 0.0]`), so the fix would not have cost this
+  result.
+- **My cost framing was too strong.** I wrote that the harness "is structurally obliged to spend a
+  round that has a 0-for-13 record". At 1-for-13 that sentence overstates the case, and the single
+  exception is the most valuable round in the record. The argument for seeding now rests on the
+  counterfactual's 6-for-6 zero-gain freezes, not on round 3 being uniformly worthless.
+
+The table, corrected:
+
 | step | improved | flat |
 |---|---|---|
 | round 1 → round 2 | **4 of 13** (3.8%, 3.7%, 8.2%, 15.0%) | 9 |
-| round 2 → round 3 | **0 of 13** | 13 |
+| round 2 → round 3 | **1 of 13** (11.5% — `cand-e3a5da01`) | 12 |
 
-Not one family in any run has improved on its third round. Combined with the unreachable
-`converged` verdict, that is the sharpest statement of the cost: the harness is structurally
-obliged to spend a round that has a 0-for-13 record, on every family, in every run — roughly
-1.5 h per run at ~22 min per round across four families.
+So the cost is real but not total: the harness is structurally obliged to spend a round with a
+1-for-13 record, on every family, in every run — roughly 1.5 h per run at ~22 min per round across
+four families. The one hit is worth 11.5% on the project's best family, which is enough that
+"the third round is dead" is no longer a defensible way to argue for the fix.
 
-This strengthens the case for the fix rather than changing it: with `best_history` seeded, a
-family whose first two rounds gained less than `min_improvement_pct` would freeze at the right
-time and the dead third round would be skipped. Note the caveat below about a 2.1% re-tune swing
-against a 2.0% threshold still applies — but the 0-for-13 record means the risk of freezing one
-round *too early* is much smaller than the certainty of wasting one round *too late*.
+The case for seeding therefore rests on the counterfactual rather than on this base rate: with
+`best_history` seeded, the 6 families that would freeze at `used=2` all gained exactly 0.00% in
+their actual round 3, and `fam-4aea322a` — the one that paid — is **not** among them, so the fix
+would have kept funding it (`result-seeded-history-counterfactual.md`). Note the caveat below about
+a 2.1% re-tune swing against a 2.0% threshold still applies, and it now carries more weight: the
+downside of freezing one round too early is no longer hypothetical.
 
 **The reported `stop_kind` is wrong.** Every family in every report reads
 `budget_exhausted`, which tells a reader "we ran out of time here, there may be more
@@ -194,8 +215,13 @@ So `fam-4aea322a` now sits at `[11.0, 11.0]` with `rewrite_rounds_used: 2` — o
 no-improvement transition observed, `_improvement_pct` computing a *true* 0.0% for the first
 time in this run rather than the usual one-entry artifact. Per the table above it needs a third
 entry to test `converged`, and the third entry arrives with `rounds_used: 3`, so this family will
-freeze as `budget_exhausted` after spending a round with a 0-for-13 record. That will make it
-**14 of 14**.
+freeze as `budget_exhausted`. That will make it **14 of 14**.
+
+The pre-registration held, with one twist I did not predict: I wrote that the round would be spent
+"with a 0-for-13 record", and that round produced **9.73 ms** (`cand-e3a5da01`, −11.5%), the best
+result in the project. So the mechanism is confirmed exactly as stated — the family freezes on
+budget, not on convergence, and `converged` still never fires — while the *waste* framing fails on
+this instance. The structural claim and the cost claim are separable, and only the first survived.
 
 One correction to what I said when pre-registering this: I called `[11.0, 11.0]` "the first
 `best_history` in the project long enough for `_improvement_pct` to compute anything". That is

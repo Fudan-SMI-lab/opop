@@ -1,4 +1,10 @@
-# Measurement: the failed-hypothesis channel changes what the rewriter proposes, 9 of 11 — and 0 of 9 won
+# Measurement: the failed-hypothesis channel changes what the rewriter proposes, 9 of 11 — and 1 of 10 won
+
+**Updated 14:53.** This file was committed reporting `0 of 9`, with `cand-e3a5da01` listed as
+pending. It won — 9.73 ms, the project's best result
+(`result-l3-43-973ms-round-three-win.md`). The channel's first win is therefore *the* headline
+result, and the "never produced a win" reading below is superseded. Everything about the
+mechanism, and the confound analysis, stands.
 
 `cand-e3a5da01` (14:45, `fam-4aea322a` round 3) is the first rewrite whose `approach_summary`
 visibly reacts to a recorded failure:
@@ -40,7 +46,7 @@ but the in-memory dict has always been populated, and the trigger condition is r
 |---|---|
 | rewrites issued with failed-hypothesis context | **11** |
 | summary explicitly contrasts with a prior attempt | **9 (82%)** |
-| of the 9 measurable, child beat the family incumbent | **0** |
+| of the 10 now measurable, child beat the family incumbent | **1** (`cand-e3a5da01`, 11.0 → 9.73) |
 
 ```
 run                    candidate        cites   child  fam_best
@@ -53,31 +59,36 @@ l3-43-0903-145357      cand-dce0040b    True     21.3    19.4
 l3-43-0903-145357      cand-2246d8ea    False    19.7    19.5
 l3-43-0904-093730      cand-c36d7820    True     21.0    19.6
 l3-43-0904-093730      cand-d257924a    True     22.3    19.6
-l3-43-0905-091705      cand-e3a5da01    True     (pending) 11.0
+l3-43-0905-091705      cand-e3a5da01    True      9.73    11.0   <- WON
 l3-48-0905-010737      cand-ef6f0748    True     (pending) 2.09
 ```
 
-So the channel reliably changes the *proposal* and has never yet produced a *win*.
+So the channel reliably changes the *proposal*, and on the tenth attempt it produced a win — and
+not a marginal one.
 
 ## The confound, which makes the second number nearly uninterpretable
 
 The obvious comparison:
 
 ```
-WITH failed-hyp context    n=9   median -7.1%   beat incumbent 0/9
+WITH failed-hyp context    n=10  median -7.1%   beat incumbent 1/10
 WITHOUT (first round)      n=23  median -1.9%   beat incumbent 6/23
 ```
+
+(As committed this read `0/9`; `cand-e3a5da01` resolved to 9.73 and is now counted. The medians are
+recomputed by the script, so re-run it rather than trusting these figures after later resolutions.)
 
 **This does not show the context is harmful, and I will not report it that way.** The two groups
 differ in *round number*, not only in context: a rewrite has failed-hypothesis context precisely
 because its family already had a non-improving round, i.e. it is a round-2-or-later rewrite. And
-round 3 has an independent **0-for-13** record
+round 3 has an independent **1-for-13** record (0-for-12 when this was written; `cand-e3a5da01` broke it at 14:53 — see below)
 (`finding-converged-stop-kind-is-unreachable.md`) for reasons that have nothing to do with what the
 rewriter was told — by that point the family's easy structural wins are taken and the incumbent it
 must beat is the best of everything tried so far.
 
-The two effects are inseparable in this data. `0 of 9` is consistent with "the context does not
-help", with "late rounds are hard", and with both. What would separate them is a round-2 rewrite
+The two effects are inseparable in this data. `1 of 10` is consistent with "the context does not
+help much", with "late rounds are hard", and with both — and with a small n, one win does not
+separate them either. What would separate them is a round-2 rewrite
 issued *without* the context as a control, and the harness never does that — correctly, since
 withholding known-failed information to make a cleaner measurement would be a worse search.
 
@@ -88,8 +99,10 @@ withholding known-failed information to make a cleaner measurement would be a wo
    contrastive language. That was worth verifying because
    `finding-parameterizer-lacks-triton-pitfalls-doc.md` found a sandbox file that was silently
    never delivered; this one is delivered and consumed.
-2. **It does not rescue a stalled family.** Whatever the cause, no family in the record has been
-   turned around by a rewrite that had failed-hypothesis context. Combined with the seeding
+2. **It rescued a stalled family exactly once, and that once is the project's best result.**
+   `fam-4aea322a` sat flat at `[11.0, 11.0]` and its third round — the one carrying this context —
+   produced 9.73. Nine other rewrites with the same context did not turn their family around,
+   so the honest reading is "rarely, but not never, and the exception was large". Combined with the seeding
    counterfactual (`result-seeded-history-counterfactual.md`), where 6 of 14 families would have
    frozen at `used=2` and **all 6 gained exactly 0.00% in their actual round 3**, the picture is
    consistent: by the time this context exists, the family is usually done.
@@ -106,7 +119,8 @@ same 256-row goal H1 failed at, by a different decomposition, and that is a legi
 attempt rather than a repeat — the H1 refutation established that 256 rows *are* reachable and the
 gain was not there, which does not prove no decomposition reaches it profitably.
 
-Two open items to watch: `cand-e3a5da01` and `cand-ef6f0748` are the two pending children above. If
-either beats its incumbent, the `0 of 9` becomes `1 of 10` and the channel has its first win.
+Of the two pending children, `cand-e3a5da01` **beat** its incumbent (11.0 → 9.73), making the record
+`1 of 10`; `cand-ef6f0748` (L3:48) is still the open one. The pre-registered condition in this
+paragraph was met within the hour, which is the reason to state such conditions before the fact.
 
 Reproduce with `scripts/audit_failed_hypothesis_channel.py`.

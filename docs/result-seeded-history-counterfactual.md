@@ -70,8 +70,11 @@ fam-36474be2  [19.4, 19.4, 19.4]  0.00%     fam-74c41d8d  [2.46, 2.09, 2.09]  0.
 
 So the seeded policy would save 6 of the 12 provably-wasted rounds and still fund the other 6. It
 errs toward continuing, which is the right direction for a search, and it is nowhere near
-over-freezing. The 0-for-13 record on round 3
-(`finding-converged-stop-kind-is-unreachable.md`) is now 0-for-12 with two families' round 3 still
+over-freezing. The round-3 record
+(`finding-converged-stop-kind-is-unreachable.md`) is **1-for-13** — `cand-e3a5da01` improved
+fam-4aea322a 11.0 -> 9.73 on its third round at 14:53, and note that family is NOT in the freeze
+set above (the seeded policy lets it continue on `[22.5, 0.0]`), so the fix would not have cost
+that result. It was 0-for-12 when this was written, with two families' round 3 still
 pending in this run, and the counterfactual says the policy would have caught half of them.
 
 ## Two honest limits

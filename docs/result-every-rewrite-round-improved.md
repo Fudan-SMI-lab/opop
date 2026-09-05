@@ -68,17 +68,21 @@ improvements, two hypotheses confirmed as stated, one improved despite a wrong p
   | step | improved (>0.5%) | flat |
   |---|---|---|
   | round 1 → round 2 | **4 of 13** | 9 |
-  | round 2 → round 3 | **0 of 13** | 13 |
+  | round 2 → round 3 | **1 of 13** | 12 |
 
-  So **round 3 has never once improved a family**, on any task, in any run. Round 2 improves about
-  a third of the time (3.8%, 3.7%, 8.2%, 15.0%). Today's three first-round gains of 12.9–22.5% say
-  nothing about whether rounds 2 and 3 will add anything, and the base rate says round 3 will not.
+  Round 3 has improved a family **once** — `cand-e3a5da01`, 11.0 → 9.73, which happened in this run
+  after the paragraph below was written asserting it never had. Round 2 improves about a third of
+  the time (3.8%, 3.7%, 8.2%, 15.0%). Today's three first-round gains of 12.9–22.5% still say
+  nothing about whether rounds 2 and 3 will add anything; the base rate says round 3 usually will
+  not, and the one time it did was worth more than every round-2 gain combined.
 
   That is a sharper statement than the one I first wrote here ("the flat histories are mostly
-  rounds 2 and 3") — it is specifically round 3 that is dead, and it interacts directly with
+  rounds 2 and 3") — it is specifically round 3 that is nearly dead, and it interacts directly with
   `finding-converged-stop-kind-is-unreachable.md`: a family always *spends* its third round
   because `converged` cannot fire, and the third round has never paid off. At ~22 min per round
-  and four families, that is roughly 1.5 hours per run spent on a step with a 0-for-13 record.
+  and four families, that is roughly 1.5 hours per run spent on a step with a 1-for-13 record
+  (0-for-13 when written; `cand-e3a5da01` improved fam-4aea322a 11.0 -> 9.73 on round 3 at
+  14:53, see `result-l3-43-973ms-round-three-win.md`).
 
 - **Not** a claim about the harness's average. Three rounds in one run on one task; the
   cross-run picture is `scripts/audit_convergence_stop_kinds.py`, which is far less flattering.
