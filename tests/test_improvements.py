@@ -2802,6 +2802,25 @@ def test_torch_compile_around_a_real_kernel_is_allowed():
     assert declares_no_custom_kernel(_KERNEL_PLUS_COMPILE) is None
 
 
+def test_delegation_rule_is_blanket_even_beside_a_real_kernel():
+    """Pin the deliberate over-block: the delegation rule fires on ANY torch.compile.
+
+    A kernel beside a compiled graph is exactly the observed hack (a no-op copy kernel
+    bolted onto Inductor's output), and the AST cannot tell that shape from a legitimate
+    kernel with compiled glue. So the rule is blanket, and the has-a-kernel rule is the
+    one that is structural. This test exists so the trade is explicit rather than a
+    surprise: if a legitimate candidate is ever rejected this way, this is the line to
+    revisit.
+    """
+    from kernel_optimizer.paramspace.triton_lint import (
+        declares_no_custom_kernel, delegates_to_baseline_compiler)
+    # has a real kernel -> the structural rule passes it ...
+    assert declares_no_custom_kernel(_KERNEL_PLUS_COMPILE) is None
+    # ... but the integrity rule still rejects it, by design.
+    msg = delegates_to_baseline_compiler(_KERNEL_PLUS_COMPILE)
+    assert msg is not None and "torch.compile" in msg
+
+
 def test_inline_cuda_backend_passes():
     from kernel_optimizer.paramspace.triton_lint import declares_no_custom_kernel
     assert declares_no_custom_kernel(_CUDA_INLINE) is None

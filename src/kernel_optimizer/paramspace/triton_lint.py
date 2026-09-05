@@ -230,9 +230,19 @@ def delegates_to_baseline_compiler(source: str) -> str | None:
     19.4 ms with `profile.kernel_names == ['_copy_kernel']`. The copy was the only
     kernel launched; Inductor did all the work.
 
-    Safe as a blanket rule on the evidence: across 156 candidates on disk, exactly
-    the 2 above use a torch compiler or tracer, and no KernelBench reference does.
-    Nothing legitimate is caught.
+    Safe as a blanket rule on the evidence: across 160 candidates on disk, exactly
+    the 2 above use a torch compiler or tracer (both in the abandoned run), and 0 of
+    270 KernelBench references across all levels do. Nothing legitimate is caught.
+
+    Deliberately blanket, and the trade is worth stating: the rule rejects ANY
+    `torch.compile` call, including one on a glue path beside a genuine kernel that
+    does the real work. That shape is legitimate in principle and would be a false
+    positive. It is preferred over a narrower rule anyway, because "does the compiled
+    graph or the kernel do the work" is not decidable from the AST -- the observed hack
+    is exactly a real kernel next to a compiled graph -- and because the benchmark's
+    references never use a torch compiler, so the false-positive class is empty here
+    while the true-positive class is not. A candidate that hits it gets the message
+    below and can move the computation into its kernel.
     """
     try:
         tree = ast.parse(source)
