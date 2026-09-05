@@ -10,14 +10,14 @@ in one place with the evidence strength and the cost of leaving each as-is.
 
 ## 1. The correctness gate is a fixed 0.99 on tasks whose references self-agree less
 
-**Evidence: strongest of the five, and it grew today.**
+**Evidence: strongest of the five, and it grew again on 09-05.**
 
 `scripts/audit_noise_floors.py`, machine-verified across all runs:
 
 ```
 task    n   floor frac    gate 0.99 sits above the floor by
 L3:21  98   0.955360      +0.0346
-L3:43  17   0.976682      +0.0133
+L3:43  36   0.976682      +0.0133
 L3:48  15   0.977767      +0.0122
 ```
 
@@ -27,24 +27,48 @@ ieee-vs-tf32 disagreement — the harness already measures it at witness time.
 The sharpest case (`result-l3-43-bf16-rejected-above-the-floor.md`): an L3:43 bf16
 candidate matches the ieee reference at **0.987266** while the reference matches its own
 tf32 self at only **0.976682** — the candidate agrees with the reference *better than the
-reference agrees with itself* — and is rejected. 17 of 17 such rejections are above the
-floor. Its cosine is 0.99999996 against a 0.99985 requirement.
+reference agrees with itself* — and is rejected. Cosine 0.99999996 against a 0.99985
+requirement.
 
-And a control case from the same run, half an hour apart: `cand-cb7be6b4` at 0.963932 is
-**below** the floor, with `median_rel_err` an order of magnitude worse, and the gate
-correctly rejected it → repair → published. So the gate discriminates properly *when the
-comparison is floor-relative*; the fixed threshold is what produces the wrong verdict.
+**The decisive new evidence: the verdict is dtype-independent, and only the floor predicts
+it.** Four groups within L3:43's 09-05 run, one task, one reference, one measurement path:
+
+| group | trials | best-arm frac | vs floor | gate is |
+|---|---|---|---|---|
+| bf16 on `cand-6476b4cb` | 17 | 0.987266 | +0.0106 | **wrong** |
+| bf16 on `cand-3bf724d6` | 9 | 0.985624 | +0.0089 | **wrong** |
+| tf32 on `cand-cb7be6b4` | 3 | 0.963953 | −0.0128 | right |
+| bf16 on `cand-cb7be6b4` | 5 | 0.811958 | −0.165 | right |
+
+26 above the floor, 8 below, with a 0.17 gap between the nearest members of each side on
+the *same* dtype. This kills the two cheaper alternatives outright:
+
+- **A dtype rule** ("ban bf16") would discard 26 correct results *and* keep 5 badly wrong
+  ones — bf16 appears on both sides. This is independent confirmation that the user's
+  earlier call against a dtype-ban was correct, reached from the data rather than from
+  caution.
+- **Trusting cosine** fails too: all four groups pass the cosine arm, including both
+  genuinely-wrong ones (0.99999531, 0.99999987). Cosine cannot see these errors.
 
 **Cost of leaving it:** on L3:48, 8 of 8 tensor-core candidates rejected while 7 of 7
 scalar published (`result-every-tensor-core-candidate-was-rejected.md`); on L3:43's 09-04
-run, 190 bf16 trials all failed. Repair budget is spent "fixing" kernels that are not
-broken, and the fix sometimes makes them worse (0.976 → 0.844 + NaN on L3:48).
+run, all **154** bf16 mismatch trials are now traced to two `max_abs_diff` clusters that
+both reproduce above the floor today (123 + 31 = every one of them), while today's
+below-floor value appears there zero times. Repair budget is spent "fixing" kernels that
+are not broken, and the fix sometimes makes them worse (0.976 → 0.844 + NaN on L3:48).
 
 **What I would do:** compare against `max(threshold_floor_relative, cosine_arm)` where the
-floor is the already-measured per-task value, keeping cosine unchanged. **Why I stopped:**
-the user deferred this twice, explicitly ("问题4现阶段不要实施, 危险性过大"), and it is the
-one change that can admit a genuinely wrong kernel. It should not move without an explicit
-decision.
+floor is the already-measured per-task value, keeping cosine unchanged.
+
+**Why I stopped, and the honest argument against my own position:** the user deferred this
+twice, explicitly ("问题4现阶段不要实施, 危险性过大"), and that concern is not answered by any
+number above. A floor-relative gate admits *anything the reference cannot resolve*, so on a
+task with a loose floor it weakens the correctness guarantee by exactly that much — and a
+wrong kernel that happens to land inside the floor would be published, not repaired. What
+the evidence establishes is narrower than "the gate should be loosened": it establishes that
+the current rule's verdicts **do not track accuracy** — they track whether the task's
+arithmetic happens to be well-conditioned. Both facts are true at once, which is why this
+stays a decision rather than a fix.
 
 ---
 
