@@ -246,6 +246,20 @@ Pre-registered, so the results can falsify it:
 
 - fixes 1+3 should raise rewrite-round utilisation on L3:21 from 2 of 6 toward 6 of 6, and the
   run should last well beyond 2.05h without hitting the 12h wall.
+
+  **Correction to how this was stated.** "2 of 6" is one run — `260905-071312`, the one the
+  empty-family bug ended at 2.05h. Checking every L3:21 run that actually finished, two of them
+  reached **6 of 6 rounds without the fix** (`260903-071357` over 4.54h, `260904-013056` over
+  8.10h), and two more recorded 0 rounds because they ended before the rewrite phase. So the
+  baseline is not "2 of 6"; it is "6 of 6 unless an empty family ends the run early", and fix 1
+  is insurance against that ending rather than a general throughput improvement. The live run has
+  **0 empty families**, so the fix has nothing to bite on and cannot be confirmed by it — only
+  the `071312` replay evidences it. Writing the signal as a utilisation number implied a general
+  gain the data does not support.
+
+  (Two runs that appear to span 6-7h with 0 rounds, `260905-153452` and `260905-160156`, were
+  killed when experiments were paused; their spans are 0.43h and 0.89h and they are not evidence
+  of anything.)
 - `stop_kind="converged"` should appear for the first time on some family, or the arithmetic in
   fix 3 is wrong.
 - fix 2 should eliminate `min`-direction warp requests and `BLOCK_K`-below-16 requests entirely;

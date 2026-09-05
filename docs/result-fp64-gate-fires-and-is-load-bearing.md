@@ -1,4 +1,9 @@
-# Result: the fp64 relative gate fired on its first run, and it is load-bearing
+# Result: the fp64 relative gate fires often, admits only correct kernels, and has not produced a leader
+
+> Title corrected mid-document. It first read "…and it is load-bearing", which was true of the
+> fourth seed but became misleading once both leading candidates turned out to need no rescue.
+> See the update at the end.
+
 
 `configs/experiments_l3.yaml` turned `fp64_relative_gate` on as the next round's test
 configuration, with the falsification rule that a rescued candidate failing its final
@@ -94,7 +99,67 @@ perfect score on the criterion that rejects all 279 real candidates, and the tri
 rejected — by cosine, which is the only remaining arm. The two criteria catch different
 defects.
 
-## What would falsify it, and has not
+## Update: a rescued candidate reached a competitive latency, then lost on measurement
+
+`cand-8510db1b` (the second family's first rewrite, `COMPUTE_DTYPE=tf32`) tuned to **15.9 ms**
+with `rescued=3` on its best trial — the first time a rescue produced a number that looked
+competitive against the run's recorded 16.4 ms baseline. Verified in a fresh process:
+
+**Correctness — exactly the case the gate exists for.**
+
+```
+absolute gate passed 0/5 trials
+   vs tf32 ref : frac=0.9526   cosine=0.999999...
+   vs ieee ref : frac=0.9533   cosine=0.999999729
+   reference's OWN ieee-vs-tf32 floor : frac=0.9554
+   RMSE vs fp64: ieee-ref 7.05e-07   tf32-ref 7.03e-04   cand 7.36e-04
+   ratio 1.0469, stable across 5 trials (1.0466-1.0473)
+```
+
+The candidate is 4.7% less accurate than the tf32 reference, while that reference is ~1000×
+less accurate than ieee. It sits just outside the reference's own band rather than comfortably
+inside it — the first rescue in this run with ratio > 1.0, and it would pass at a multiplier of
+1.05, far below the configured 2.0.
+
+**Speed — it loses.** Timed at 100 samples:
+
+```
+candidate            16.36 ms  (std 0.22)
+torch_compile_tf32   15.10 ms  (std 0.84)   -> 0.923x, LOSES
+```
+
+Two errors compound in the optimistic direction: `tuned_ms` 15.9 is 2.8% below the measured
+16.36, and the run's recorded baseline of 16.4 is 8% slower than the 15.10 I measure. Against the
+run's own numbers this reads as a win; against a fresh measurement it is an 8% loss.
+
+## Does this trip the falsification rule? No — and that is worth stating carefully
+
+The pre-registered rule is: *"if a rescued candidate then fails the final 5-trial re-eval, the
+multiplier is too loose and `fp64_relative_gate` should go back off."* That is a **correctness**
+condition. This candidate's correctness is stable and well inside the gate (ratio 1.047 on 5/5
+trials), so the rule is not tripped and the flag stays on.
+
+But the case exposes a gap the rule does not cover: **the gate can admit candidates that are
+correct by the relative standard and simply not fast.** That spends search budget rather than
+producing a wrong answer. The tally in this run:
+
+```
+rescued, and their standing:
+  cand-61759130   22.8 ms tuned    far off the pace
+  cand-8510db1b   15.9 ms tuned / 16.36 measured    loses by 8%
+NOT rescued, and leading:
+  cand-f66890d0   11.0 ms tuned / 11.40 measured    1.32x, the run's best
+  cand-80bf3097   14.7 ms tuned
+```
+
+So on the evidence so far the gate has admitted two candidates, neither of which leads, while
+both leaders passed the absolute gate unaided. That does not argue for turning it off — admitting
+a correct candidate is the right behaviour whether or not it wins, and 93 of the 129 rescued
+trials are tf32, a class that previously could not compete at all. But it does correct an
+impression the earlier sections could leave: the gate's contribution to this run is **breadth of
+search, not the headline number**. If it never produces a leader across all three tasks, that is
+a result worth reporting plainly rather than a success to be assumed.
+
 
 - **A rescue with ratio near or above the multiplier.** None: the worst is 0.920.
 - **A rescued candidate failing the final 5-trial re-eval.** Not yet reachable — the run's
