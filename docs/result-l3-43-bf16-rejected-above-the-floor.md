@@ -126,6 +126,35 @@ Each floor is stable to six decimals across every measurement (n=98, 17, 15), so
 property of the task's arithmetic rather than a noisy estimate — and the harness already
 measures it at witness time. Whatever is decided, the floor is available to decide with.
 
+## The same run has a control case pointing the other way
+
+At 09:38:02, `cand-cb7be6b4` was rejected at its **default** witness (`COMPUTE_DTYPE:
+'tf32'`) with:
+
+```
+vs ieee ref: frac 0.963932   cosine 0.99999987   median_rel_err 2.056e-03
+vs tf32 ref: frac 0.951209   cosine 0.99999975   median_rel_err 2.118e-03
+floor:       frac 0.976682
+```
+
+Its best witness (0.963932) is **below** the floor by 0.0128, and its `median_rel_err` is
+an order of magnitude worse than the bf16 case's (2.056e-03 vs 1.781e-04). Here the gate is
+**right**: the candidate really does disagree with the reference by more than the
+reference's own precision spread, and it went to repair as it should.
+
+So within one task, one run, and half an hour:
+
+| candidate | best witness frac | vs floor 0.976682 | gate verdict |
+|---|---|---|---|
+| bf16 trials of `cand-6476b4cb` | 0.987266 | **+0.0106 above** | reject — **wrong** |
+| `cand-cb7be6b4` default (tf32) | 0.963932 | **−0.0128 below** | reject — **right** |
+
+That pairing is what makes the finding actionable rather than merely a complaint about
+strictness. The gate already discriminates correctly when the comparison is
+floor-relative; it is the *fixed* 0.99 that produces the wrong verdict on the first row.
+Both rows come from the same reference, the same task, the same measurement code, and the
+floor separates them cleanly.
+
 ## Caveats
 
 - One candidate, 0.3h into a run that has 11.7h to go. The 14/14 tally will grow and the
