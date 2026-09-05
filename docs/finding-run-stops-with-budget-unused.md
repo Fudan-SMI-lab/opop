@@ -178,6 +178,65 @@ Note this is a weaker test than L3:21/L3:48: those two sat on opposite sides of 
 families and a *long* elapsed time would be the observation that actually falsifies the
 threshold claim.
 
+### Status at 2.44h: two rounds done, and the budget demonstrably fits
+
+Both active families completed round 1 and both improved:
+
+| family | seed | after round 1 | gain | round took |
+|---|---|---|---|---|
+| fam-4aea322a | 14.2 | **11.0** | 22.5% | 31.0 min |
+| fam-92e7c576 | 22.5 | 19.6 | 12.9% | 12.5 min |
+
+Seed phase ended at 1.72h; the two rounds averaged **21.7 min**. With 4 families × 3 rounds = 12
+rounds and 10 remaining, the projection is a **6.1h finish against a 12h wall**.
+
+That matters for the prediction's testability: the full rewrite budget *fits*, with roughly six
+hours of slack. So if this run stops early it will not be because it ran out of wall clock, and
+the prediction is a real test rather than one that passes trivially. Conversely, if it does run
+all 12 rounds, that is the mechanism behaving as described with zero empty families.
+
+The global verdict at 2.44h reads `continue` with all four families `active`, so nothing has
+frozen yet.
+
+### The slope rule is currently inert — the seed off-by-one again
+
+Round-2 selection, computed from `active_families()`'s actual ranking rule:
+
+```
+ACTIVE  fam-7f682a54  unproven=0  slope=0.0%  incumbent=23.4
+ACTIVE  fam-ea7bc8bb  unproven=0  slope=0.0%  incumbent=28.0
+        fam-4aea322a  unproven=1  slope=0.0%  incumbent=11.0   <- improved 22.5%
+        fam-92e7c576  unproven=1  slope=0.0%  incumbent=19.6   <- improved 12.9%
+```
+
+The two never-rewritten families go first, which is the intended "no branch is dropped before it
+has had one chance" rule and is correct. But note **all four score `slope = 0.0`** — including the
+two that just improved 22.5% and 12.9% — because `_improvement_pct` needs two `best_history`
+entries and each has one (`finding-converged-stop-kind-is-unreachable.md`).
+
+So at *this* decision point the slope term contributes nothing, and the ordering is decided
+entirely by the unproven-first rule plus the latency tie-break.
+
+**Not a general claim, though.** I first wrote that the slope rule "has never actually run on this
+project's data"; checking every run's recorded histories, that is wrong. The slope term has
+differed between competing families at three decision points:
+
+| run | after 2 rounds | slopes |
+|---|---|---|
+| L3:21 09-04 | `fam-f14a294f` vs `fam-b278c226` | 3.76% vs 3.72% |
+| L3:43 09-04 | `fam-c9461c56` vs `fam-ff3ef34b` | 0.0% vs **8.21%** |
+| L3:48 09-05 | `fam-99aee6de` vs `fam-74c41d8d` | 0.0% vs **15.04%** |
+
+The last two are exactly the "stalled leader yields to a moving branch" case the docstring
+describes, and `fam-ff3ef34b` is the family that went on to produce L3:43's 17.9/19.1 winner. So
+the rule does fire and has plausibly earned its place.
+
+What *is* true generally: the slope is always **one round stale**, because the seed→round-1 step
+is missing from every history. A family's first round — often its biggest, as 22.5% here — never
+counts toward its own ranking, and by round 3 every history in the record has collapsed back to
+0.0 for both competitors. The rule works only in the narrow middle window, which is a milder
+statement than the one I made and still an argument for seeding `best_history`.
+
 Earlier runs cannot be checked this way — `rewrite_rounds_used` is absent from their
 `RUN_FINISHED` summaries (the field predates them), so `[None, None, None, None]` there
 means unrecorded, not zero.
