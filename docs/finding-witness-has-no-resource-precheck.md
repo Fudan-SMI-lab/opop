@@ -87,6 +87,48 @@ makes that tile the **default**, and the witness gate — which only ever tries 
 minimal corner — hits the one configuration guaranteed to be worst-case for shared memory. The
 larger the hypothesis, the likelier the default is infeasible.
 
+## And on the second instance, repair failed — with its own fix falsifying its diagnosis
+
+`cand-919059a0` recovered in one attempt. `cand-2d0194cc` did not, and the way it failed is more
+informative than the rejection itself.
+
+| attempt | default config (relevant knobs) | required |
+|---|---|---|
+| 0 | `STATS_BLOCK_M: 256, OUTPUT_BLOCK_M: 64, OUTPUT_NUM_STAGES: 3` | **139264** |
+| 1 | `STATS_BLOCK_M: 256, OUTPUT_BLOCK_M: 64, OUTPUT_NUM_STAGES: 1` | **139264** |
+
+The repair agent's diagnosis:
+
+> "The default output attention kernel launch used `OUTPUT_NUM_STAGES=3` with a 64×16 tile and
+> padded head dimension 128, causing Triton to allocate 139,264 bytes of shared memory …"
+
+and its change: "changing only the default `OUTPUT_NUM_STAGES` from 3 to 1 … differs from the
+broken candidate by only that parameter value."
+
+**The requirement did not move by a single byte.** 139264 before, 139264 after. So
+`OUTPUT_NUM_STAGES` is not what allocates that memory, and the fix disproved the diagnosis it was
+based on. The arithmetic points elsewhere: `STATS_BLOCK_M=256` with `D_PAD=128` is 256×128×4 =
+131072 on its own, and 139264 − 131072 = 8192 — i.e. the *stats* kernel's 256-row tile accounts for
+94% of the requirement, while the agent inspected the *output* kernel.
+
+Two lessons, and the second is the substantive one:
+
+1. **The repair agent had no measurement to check itself against.** It reasoned from the error text
+   — which names bytes but not which kernel or which term — made a plausible attribution, and could
+   not tell that its change was inert. A second identical `Required: 139264` is the only evidence
+   that anything was wrong, and only the *harness* sees that, one attempt later.
+2. **This is the category mismatch from the earlier section, biting.** Repair edits sources; the
+   defect is a default value chosen by the parameterizer against a device limit. On the first
+   instance repair guessed the right knob and looked effective. Here it guessed wrong, and the loop
+   is now spending a second (and possibly third) attempt of a 3-attempt budget on a problem that
+   `_next_witness` would have solved by trying a different config — which is what option (1) below
+   does.
+
+That moves this finding from "a ~3-minute efficiency item" to something with a measurable cost:
+2 of 3 repair attempts consumed, ~4.5 min of agent wall, and the candidate still unpublished. If
+attempt 2 also misses, the rewrite is lost — and it is the *only* child of `fam-7f682a54`'s round
+that targeted the stats kernel.
+
 ## What the harness did next — correctly
 
 `AGENT_CALL_STARTED repair cand-919059a0` at 11:18:20, one second after the rejection. The
@@ -116,8 +158,22 @@ that chose the default is the component that erred.
 
 **Why I stopped:** (1) touches the acceptance path — the same file and the same function whose
 threshold behaviour is item #1 in `decisions-awaiting-user.md`. I am not editing that gate while
-five decisions about it are outstanding, on n=1 evidence, mid-run. Recorded instead, with the
-repair attempt's outcome to follow.
+five decisions about it are outstanding, mid-run.
+
+**But the second instance changes the priority.** At n=1 with a 2-minute recovery this was worth
+recording and nothing more. Now: 2 of 2 cases hit "go bigger" rewrites, and the second has burned
+2 of 3 repair attempts on a misattributed knob with the requirement unmoved. A third option is
+also now clearly better than repair for this failure class:
+
+4. **Report the *failing term* in the error detail.** Triton's message gives bytes but not which
+   kernel or which allocation; the repair agent guessed `OUTPUT_NUM_STAGES` when the arithmetic
+   points at `STATS_BLOCK_M`. The witness already knows which config it ran — adding the
+   per-kernel shared-memory figures from the compile metadata, when available, would let repair
+   attribute correctly. Same shape as
+   `finding-failure-messages-must-carry-gate-criteria.md`, which changed no verdicts and made a
+   190-trial pattern legible.
+
+Recorded, with the repair outcome for attempt 2 still to come.
 
 ## Follow-up: repair recovered it in 2 minutes, and its fix confirms the diagnosis
 
