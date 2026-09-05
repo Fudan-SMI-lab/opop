@@ -115,26 +115,36 @@ is not a property of tensor-core kernels as such — those runs measured plenty 
 
 ### A candidate mechanism for the 28-vs-9 split: how many precisions it must clear
 
-The L3:21 rerun makes this testable, because the same task is now producing the L3:48 pattern:
-**0 of 2 tensor-core candidates published, 1 of 1 scalar published** (07:32), against 14 of 14
-tensor-core published yesterday.
+The L3:21 rerun initially looked like it was reproducing the L3:48 pattern: 0 of 2 tensor-core
+published against 14 of 14 yesterday.
+
+> **That reproduction did NOT hold, 08:00.** `cand-d31b0474` — 3 `tl.dot`, fp16 cast, dtype knob
+> — was published and tuned to **17.1 ms**, the best latency any L3:21 run has produced. The
+> task's tally is now **1 of 3 tensor-core published, 2 of 2 scalar published**, and
+> `audit_structural_coverage.py` no longer reports a wholly-rejected class for this run.
+>
+> So the acceptance path is **not** uniformly closed to tensor-core work on L3:21, and the
+> mechanism below explains a tendency rather than a wall. The L3:48 result (0 of 9) stands as
+> measured; it should not be generalized to other tasks, and the wholesale-rejection framing in
+> this document's title applies to L3:48 alone.
 
 Same task, same gate, same 0.95536 floor — so the difference is in the candidates. It is:
 
 | run | tensor-core candidates | `default == choices[0]` | published |
 |---|---|---|---|
 | l3-21 (09-04) | 14 | **12 of 14** (all fp16) | 14 of 14 |
-| l3-21 (09-05) | 2 | **0 of 2** (tf32/fp16, ieee/fp16) | **0 of 2** |
+| l3-21 (09-05) | 3 | 0 of 3 | **1 of 3** |
 
 Publication requires **both** witnesses to pass. When a candidate's `PARAMS` default equals
 `choices[0]`, both witnesses run the same dtype and the gate has to be cleared at **one**
 precision. When they differ, it must be cleared at **two**. Yesterday 12 of 14 were in the easy
-case; today neither is.
+case; today none of the three are.
 
-Stated as a mechanism, not a cause: n is 2 today, and the two candidates yesterday that *did*
-have `default=ieee != minimal=fp16` published anyway. So a two-precision pair is harder on
-L3:21, not impossible. The run will produce more candidates and this table should be re-checked
-against them.
+Stated as a mechanism, not a cause — and the run has already produced the counterexample that
+keeps it a tendency: `cand-d31b0474` had `default=ieee != minimal=fp16`, needed to clear the gate
+at two precisions, and **did** (after one repair fixed a real defect). Together with the two
+such candidates that published yesterday, the honest reading is that a two-precision pair is
+harder on L3:21, not impossible.
 
 What it is **not**: evidence that fp16 is the accurate configuration. It is worth noting
 separately that on `cand-6b313c39` the fp16 config outscored its own tf32 default (0.978946 vs

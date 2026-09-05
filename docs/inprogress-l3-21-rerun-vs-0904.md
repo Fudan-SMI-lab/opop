@@ -73,3 +73,49 @@ reaching the same hardware `torch.compile` uses — is the class the acceptance 
 **Provisional.** `tuned_ms` runs optimistic against `final_reeval_ms` (+1.5% here yesterday:
 20.5 → 20.8), the run has 3 more families to go, and the numbers above will move. The
 structural-class observation is the durable part.
+
+---
+
+## Superseded at 0.87h: a third candidate reached 17.1 ms
+
+`cand-d31b0474` — the below-floor candidate that one repair fixed
+(`finding-unreachable-correctness-gate.md`) — tuned to **17.10 ms**, the best latency any L3:21
+run has produced. That **corrects the claim above** that "the class that could plausibly close
+the gap is the class the acceptance path is rejecting": this candidate closed most of it, and it
+was *published*, not rejected.
+
+| | ms | vs 17.1 |
+|---|---|---|
+| eager | 25.30 | 1.480x |
+| eager_tf32 | 20.90 | 1.222x |
+| torch_compile | 22.20 | 1.298x |
+| **torch_compile_tf32** | 16.30 | **0.953x** |
+
+Its winning configuration is **`COMPUTE_PRECISION=fp16`**, and the tuner chose that on its own:
+22 of 28 completed trials selected fp16, and the best ieee trial was **21.6 ms** — so the fp16
+path is 26% faster on this very candidate. The knob did what the contract intends.
+
+### Under the same-precision rule it still does not beat its baseline
+
+Because it computes in fp16, its honest denominator is `torch_compile_tf32` (16.30), not
+`torch_compile`. All three L3:21 bests, judged by the rule the harness actually applies:
+
+| run | candidate | ms | precision | denominator | verdict |
+|---|---|---|---|---|---|
+| 09-04 | cand-05f1118a | 20.5 | fp16 | 16.40 tf32-compile | **0.789x fails** |
+| 09-05 | cand-1eee8139 | 20.5 | fp32 | 22.20 ieee-compile | **1.083x passes** |
+| 09-05 | cand-d31b0474 | **17.1** | fp16 | 16.30 tf32-compile | **0.953x fails** |
+
+So the run's fastest kernel is one the harness will report as *not* beating its baseline, while a
+kernel 20% slower passes. That is the rule applied correctly in all three cases — and it is
+still the right rule — but it means **raw latency and the harness verdict rank these candidates
+in opposite orders.**
+
+The honest summary of L3:21 so far: 17.1 ms is a real improvement over 20.5 (a 16.6% gain,
+closing the gap to the tf32-compile path from 26% to 4.7%), achieved by a *tensor-core* kernel
+that the acceptance path let through. The gate finding stands on its own four above-floor
+rejections; this candidate is evidence that the path is not uniformly closed to tensor-core work
+on this task.
+
+Still provisional: `tuned_ms`, 20 samples, and this run has four families and no rewrite rounds
+completed yet.
