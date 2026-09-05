@@ -20,7 +20,11 @@ from kernel_optimizer.models.reports import (
     RewriteResult,
     TuningStats,
 )
-from kernel_optimizer.paramspace.triton_lint import lint_triton_source
+from kernel_optimizer.paramspace.triton_lint import (
+    declares_no_custom_kernel,
+    delegates_to_baseline_compiler,
+    lint_triton_source,
+)
 
 
 def _contract_doc() -> str:
@@ -177,13 +181,25 @@ def _files_exist_check(files: list[str], sb: Sandbox) -> str | None:
 def _triton_lint_check(files: list[str], sb: Sandbox) -> str | None:
     """Improvement C: reject certain Triton compile-failures before the GPU sees
     them, feeding the specific problem back into the agent's own retry loop. A
-    no-op for non-Triton files (no @triton.jit body -> no findings)."""
+    no-op for non-Triton files (no @triton.jit body -> no findings).
+
+    Also enforces the contract's Backend rule that a candidate must contain a
+    kernel at all. That check has to live here rather than inside
+    `lint_triton_source`, because the lint walks `@triton.jit` bodies and a file
+    with none has nothing to walk — the absence is exactly what must be reported.
+    """
     problems: list[str] = []
     for f in files:
         try:
             src = sb.read_output(f)
         except (OSError, ValueError):
             continue  # existence is checked separately; don't double-fault here
+        no_kernel = declares_no_custom_kernel(src)
+        if no_kernel:
+            problems.append(f"{f}: {no_kernel}")
+        delegated = delegates_to_baseline_compiler(src)
+        if delegated:
+            problems.append(f"{f}: {delegated}")
         hard_errors, _warnings = lint_triton_source(src)
         for err in hard_errors:
             problems.append(f"{f}: {err}")
@@ -280,8 +296,12 @@ When done, answer with JSON:
         missing = _files_exist_check(files, sb)
         if missing:
             return missing
-        triton_files = [c.file for c in output.candidates if c.backend == "triton"]
-        return _triton_lint_check(triton_files, sb)
+        # Every candidate is checked for "has a kernel at all", regardless of the
+        # backend it declares — a `cuda`-declared file with neither a jit kernel nor
+        # an inline extension is the same contract violation. The Triton-specific
+        # compile-failure patterns are a no-op on a genuine CUDA file, so passing all
+        # files here costs nothing and closes the backend-label loophole.
+        return _triton_lint_check(files, sb)
 
     def soft_check(self, output: GenerationResult, sb: Sandbox) -> list[str]:
         triton_files = [c.file for c in output.candidates if c.backend == "triton"]
@@ -784,8 +804,9 @@ Answer with JSON:
         missing = _files_exist_check(files, sb)
         if missing:
             return missing
-        triton_files = [c.file for c in output.candidates if c.backend == "triton"]
-        return _triton_lint_check(triton_files, sb)
+        # See CandidateGeneratorAgent.check_output: the has-a-kernel rule is
+        # backend-independent, so every produced file is checked.
+        return _triton_lint_check([c.file for c in output.candidates], sb)
 
     def soft_check(self, output: NoveltyResult, sb: Sandbox) -> list[str]:
         triton_files = [c.file for c in output.candidates if c.backend == "triton"]

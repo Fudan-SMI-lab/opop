@@ -2713,3 +2713,208 @@ def test_expansion_prompt_shows_the_prior_constraints():
         None, ParameterizerInputs(task=inputs.task, candidate_source="x",
                                   device=inputs.device, expand_directive="d"))
     assert "ALREADY HAS these constraints" not in bare
+
+
+# --- contract enforcement: a candidate must actually contain a kernel ----------
+#
+# The contract says "the core computation you claim to optimize must run in your
+# kernel", and nothing checked it: lint_triton_source walks @triton.jit bodies, so
+# a file with zero kernels produced zero findings. Two of four seeds on L3:21 09-05
+# were torch.compile(reference) with no kernel at all.
+
+_NO_KERNEL = """
+import torch
+import torch.nn as nn
+
+PARAMS = {"DOT_PRECISION": "tf32", "COMPILE_MODE": "default"}
+
+
+class ModelNew(nn.Module):
+    def __init__(self, c):
+        super().__init__()
+        self.net = nn.Conv2d(c, c, 1)
+        self._f = torch.compile(self.net, mode=PARAMS["COMPILE_MODE"])
+
+    def forward(self, x):
+        return self._f(x)
+"""
+
+_WITH_KERNEL = """
+import torch
+import triton
+import triton.language as tl
+
+PARAMS = {"BLOCK": 128}
+
+
+@triton.jit
+def _k(x_ptr, y_ptr, n, BLOCK: tl.constexpr):
+    i = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    tl.store(y_ptr + i, tl.load(x_ptr + i, mask=i < n), mask=i < n)
+
+
+class ModelNew(torch.nn.Module):
+    def forward(self, x):
+        y = torch.empty_like(x)
+        _k[(1,)](x, y, x.numel(), BLOCK=PARAMS["BLOCK"])
+        return y
+"""
+
+# torch.compile AROUND a real kernel is explicitly allowed by the contract.
+_KERNEL_PLUS_COMPILE = _WITH_KERNEL.replace(
+    "    def forward(self, x):\n        y = torch.empty_like(x)",
+    "    def forward(self, x):\n        x = torch.compile(lambda t: t.contiguous())(x)\n"
+    "        y = torch.empty_like(x)",
+)
+
+_CUDA_INLINE = """
+import torch
+from torch.utils.cpp_extension import load_inline
+
+PARAMS = {"BLOCK": 256}
+
+_mod = load_inline(name="m", cpp_sources="", cuda_sources="__global__ void k(){}")
+
+
+class ModelNew(torch.nn.Module):
+    def forward(self, x):
+        return x
+"""
+
+
+def test_no_custom_kernel_is_rejected():
+    from kernel_optimizer.paramspace.triton_lint import declares_no_custom_kernel
+    msg = declares_no_custom_kernel(_NO_KERNEL)
+    assert msg is not None
+    assert "no custom kernel" in msg
+
+
+def test_triton_kernel_passes():
+    from kernel_optimizer.paramspace.triton_lint import declares_no_custom_kernel
+    assert declares_no_custom_kernel(_WITH_KERNEL) is None
+
+
+def test_torch_compile_around_a_real_kernel_is_allowed():
+    # The rule must be "is there a kernel", not "does it mention torch.compile" --
+    # wrapping torch ops around a kernel is permitted by the contract.
+    from kernel_optimizer.paramspace.triton_lint import declares_no_custom_kernel
+    assert "torch.compile" in _KERNEL_PLUS_COMPILE
+    assert declares_no_custom_kernel(_KERNEL_PLUS_COMPILE) is None
+
+
+def test_inline_cuda_backend_passes():
+    from kernel_optimizer.paramspace.triton_lint import declares_no_custom_kernel
+    assert declares_no_custom_kernel(_CUDA_INLINE) is None
+
+
+def test_unparseable_source_is_left_to_the_lint():
+    # a syntax error is already reported by lint_triton_source; don't double-fault
+    from kernel_optimizer.paramspace.triton_lint import declares_no_custom_kernel
+    assert declares_no_custom_kernel("def f(:\n  pass") is None
+
+
+def test_lint_check_reports_the_missing_kernel(tmp_path):
+    from kernel_optimizer.agents.modules import _triton_lint_check
+
+    class _SB:
+        def read_output(self, f):
+            return _NO_KERNEL
+
+    out = _triton_lint_check(["candidate/x.py"], _SB())
+    assert out is not None and "no custom kernel" in out
+
+
+def test_no_kernel_check_is_not_escapable_by_declaring_cuda():
+    """The has-a-kernel rule must not depend on the declared backend.
+
+    check_output previously linted only files whose candidate declared
+    backend="triton", so a kernel-less file declaring backend="cuda" would have
+    skipped the check entirely. The observed cases declared "triton", but the
+    label is the agent's own free choice and must not gate a contract rule.
+    """
+    from kernel_optimizer.agents.modules import CandidateGeneratorAgent
+    from kernel_optimizer.models.reports import GeneratedCandidate, GenerationResult
+
+    class _SB:
+        def exists(self, f):
+            return True
+
+        def read_output(self, f):
+            return _NO_KERNEL
+
+    out = GenerationResult(candidates=[
+        GeneratedCandidate(file="candidate/a.py", backend="cuda",
+                           approach_summary="x", structural_axes=[]),
+    ])
+    problem = CandidateGeneratorAgent.check_output(None, out, _SB())
+    assert problem is not None and "no custom kernel" in problem
+
+
+# --- and the escalation: a kernel beside a compiled graph is still delegation ---
+#
+# When declares_no_custom_kernel blocked the kernel-less shape, the repair agent
+# added a no-op elementwise copy kernel to the end of the same torch.compile graph.
+# It passed every check and became the run's best candidate at 19.4 ms with
+# profile.kernel_names == ['_copy_kernel'].
+
+_COPY_BESIDE_COMPILE = """
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+PARAMS = {"BLOCK_SIZE": 256}
+
+
+@triton.jit
+def _copy_kernel(in_ptr, out_ptr, n, BLOCK_SIZE: tl.constexpr):
+    o = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    tl.store(out_ptr + o, tl.load(in_ptr + o, mask=o < n), mask=o < n)
+
+
+class ModelNew(nn.Module):
+    def __init__(self, c):
+        super().__init__()
+        self.net = nn.Conv2d(c, c, 1)
+        self._f = torch.compile(self.net)
+
+    def forward(self, x):
+        x = self._f(x)
+        out = torch.empty_like(x)
+        _copy_kernel[(1,)](x, out, x.numel(), BLOCK_SIZE=PARAMS["BLOCK_SIZE"])
+        return out
+"""
+
+
+def test_copy_kernel_beside_a_compiled_graph_is_rejected():
+    from kernel_optimizer.paramspace.triton_lint import (
+        declares_no_custom_kernel,
+        delegates_to_baseline_compiler,
+    )
+    # it DOES define a kernel, so the has-a-kernel check alone cannot catch it
+    assert declares_no_custom_kernel(_COPY_BESIDE_COMPILE) is None
+    msg = delegates_to_baseline_compiler(_COPY_BESIDE_COMPILE)
+    assert msg is not None and "measured against" in msg
+
+
+def test_jit_script_and_trace_are_also_delegation():
+    from kernel_optimizer.paramspace.triton_lint import delegates_to_baseline_compiler
+    for call in ("torch.jit.script(self.net)", "torch.jit.trace(self.net, x)"):
+        src = _WITH_KERNEL.replace("PARAMS = {\"BLOCK\": 128}",
+                                   f"PARAMS = {{\"BLOCK\": 128}}\n_M = {call}")
+        assert delegates_to_baseline_compiler(src) is not None, call
+
+
+def test_plain_torch_ops_around_a_kernel_are_still_allowed():
+    from kernel_optimizer.paramspace.triton_lint import delegates_to_baseline_compiler
+    # eager torch around a kernel is explicitly permitted by the contract; only a
+    # compiler/tracer is not. A method merely NAMED .compile() on something else
+    # must not trip the rule either.
+    assert delegates_to_baseline_compiler(_WITH_KERNEL) is None
+    src = _WITH_KERNEL.replace("        y = torch.empty_like(x)",
+                               "        x = x.contiguous().to(torch.float16)\n"
+                               "        y = torch.empty_like(x)")
+    assert delegates_to_baseline_compiler(src) is None
+    unrelated = _WITH_KERNEL.replace("PARAMS = {\"BLOCK\": 128}",
+                                     "PARAMS = {\"BLOCK\": 128}\n_R = re.compile('x')")
+    assert delegates_to_baseline_compiler(unrelated) is None

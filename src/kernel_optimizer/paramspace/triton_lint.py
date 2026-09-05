@@ -9,6 +9,7 @@ anything merely suspicious is a warning that is surfaced but never blocks.
 from __future__ import annotations
 
 import ast
+import re
 
 
 class _JitBodyVisitor(ast.NodeVisitor):
@@ -200,6 +201,115 @@ def device_helper_names(tree: ast.Module, jit_names: set[str]) -> set[str]:
                 if inner.func.id in jit_names and inner.func.id != node.name:
                     helpers.add(inner.func.id)
     return helpers
+
+
+_BASELINE_COMPILERS = ("compile", "script", "trace")
+
+
+def delegates_to_baseline_compiler(source: str) -> str | None:
+    """Does the candidate hand its computation to the compiler it is measured against?
+
+    Returns a message if the source calls `torch.compile` / `torch.jit.script` /
+    `torch.jit.trace`, else None.
+
+    This is an integrity rule, not a performance one. The harness's own
+    same-precision baseline for these tasks is `torch.compile` on the reference
+    module, so a candidate that calls `torch.compile` is being compared against
+    itself: whatever latency difference it shows is scheduling noise plus a layout
+    change, and a favourable draw is reported as a speedup with a
+    `speedup_vs_compile` figure attached. It is the same class of problem the
+    10x-speedup hard failure exists for — a number that is not false but does not
+    measure what it claims.
+
+    It also defeats the has-a-kernel check on its own, which is why both exist.
+    Observed on L3:21 09-05: two seeds were `torch.compile(reference)` with no
+    kernel; `declares_no_custom_kernel` blocked that shape, and the repair agent's
+    response was to bolt a **no-op elementwise copy kernel** onto the end of the
+    same compiled graph. That passed every check — one `@triton.jit` kernel, correct
+    output, real timings — and immediately became the run's best candidate at
+    19.4 ms with `profile.kernel_names == ['_copy_kernel']`. The copy was the only
+    kernel launched; Inductor did all the work.
+
+    Safe as a blanket rule on the evidence: across 156 candidates on disk, exactly
+    the 2 above use a torch compiler or tracer, and no KernelBench reference does.
+    Nothing legitimate is caught.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        fn = node.func
+        if not isinstance(fn, ast.Attribute) or fn.attr not in _BASELINE_COMPILERS:
+            continue
+        # torch.compile(...) | torch.jit.script(...) | torch.jit.trace(...)
+        root = fn.value
+        if isinstance(root, ast.Name) and root.id == "torch":
+            called = f"torch.{fn.attr}"
+        elif (isinstance(root, ast.Attribute) and root.attr == "jit"
+              and isinstance(root.value, ast.Name) and root.value.id == "torch"):
+            called = f"torch.jit.{fn.attr}"
+        else:
+            continue
+        return (
+            f"This candidate calls `{called}`, which hands the computation to the "
+            "compiler it is being measured against — the harness's same-precision "
+            "baseline for this task IS `torch.compile` on the reference. Such a "
+            "candidate is compared with itself, so any difference it shows is noise "
+            "rather than an optimization, and adding a small kernel beside the "
+            "compiled graph does not change that (the compiled graph still does the "
+            "work). Write the hot computation as a Triton kernel and call it "
+            "directly. Plain eager torch ops around your kernel are fine; a torch "
+            "compiler or tracer is not."
+        )
+    return None
+
+
+def declares_no_custom_kernel(source: str) -> str | None:
+    """Does this candidate contain NO custom kernel at all?
+
+    Returns a message if the file defines neither a `@triton.jit` kernel nor an
+    inline CUDA extension, else None.
+
+    The candidate contract requires that "the core computation you claim to
+    optimize must run in your kernel" (candidate_contract.md, Backend). Nothing
+    enforced it: `lint_triton_source` walks `@triton.jit` bodies, so a file with
+    zero kernels has zero findings and passes every static check. Two of four
+    seeds on L3:21 09-05 were `torch.compile(reference_module)` with a PARAMS dict
+    of `{"DOT_PRECISION", "COMPILE_MODE"}` and no kernel.
+
+    That is worth blocking for a reason beyond wasted budget. The same-precision
+    baseline on these tasks IS `torch.compile`, so such a candidate is measured
+    against itself: any deviation it shows is noise, and a favourable noise draw
+    would be reported as a speedup with a `speedup_vs_compile` number attached.
+    The harness would not be lying about the latency, but the number would mean
+    nothing, and nothing downstream can tell the difference.
+
+    Deliberately structural rather than a `torch.compile` ban: wrapping torch ops
+    AROUND a real kernel is explicitly allowed by the contract, and a candidate may
+    legitimately use `torch.compile` for the layout code surrounding its kernel.
+    The test is whether a kernel exists at all.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None  # a parse failure is already reported by lint_triton_source
+    if jit_kernel_names(tree):
+        return None
+    if re.search(r"\bload_inline\b|\bcpp_extension\b|\bCUDAExtension\b", source):
+        return None
+    return (
+        "This candidate defines no custom kernel: no `@triton.jit` function and no "
+        "inline CUDA extension. The contract (docs/candidate_contract.md, 'Backend') "
+        "requires that the core computation you claim to optimize runs in YOUR kernel "
+        "— torch ops are allowed only around it. A file that just calls "
+        "`torch.compile` on the reference module measures the baseline against itself "
+        "(the same-precision baseline for these tasks IS torch.compile), so any "
+        "difference it shows is noise rather than an optimization. Write the hot "
+        "computation as a Triton kernel."
+    )
 
 
 def lint_triton_source(source: str) -> tuple[list[str], list[str]]:
