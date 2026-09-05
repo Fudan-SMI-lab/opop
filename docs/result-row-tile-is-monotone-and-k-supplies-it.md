@@ -164,6 +164,27 @@ affordable without the register cliff, which is exactly the class of program tha
 been tested at 256 against its own 128 baseline. If either one beats `cand-cb7be6b4`'s 14.2, it
 also supplies the controlled 128-vs-256 comparison the record lacks.
 
+### Resolved: 256 is infeasible on this device, so the comparison cannot exist
+
+`cand-13efdcd8` reached **11.0 ms** (`inprogress-l3-43-11ms-rewrite.md`) — but every one of its
+seven sub-15 ms configs uses `ATTN_BLOCK_M=128`, because `QKV_M_CTAS` *serializes* 128-row tiles
+rather than enlarging one.
+
+The sibling `cand-919059a0`, which did try to widen, was rejected at its witness with
+`OutOfResources: shared memory, Required: 131072, Hardware limit: 101376`
+(`finding-witness-has-no-resource-precheck.md`). The arithmetic is decisive: a 256-row tile with
+`D_PAD=128` needs a 256 × 128 fp32 accumulator = **131072 B** against this device's **101376 B**
+opt-in limit. Repair recovered the candidate by halving the default row group, and the
+republished space still *expresses* 256 (`ATTN_ROWS_PER_GROUP=64 × ATTN_ROW_GROUPS=4`) but that
+point remains infeasible.
+
+**So the controlled 128-vs-256 comparison does not exist and cannot be made on this hardware.**
+That is a better answer than either of my earlier ones — better than "256 is worse" (invalid,
+cross-structure) and better than "the comparison is missing" (it is impossible, not missing).
+The optimum at 128 is a **hardware ceiling**, and the analyst's hypothesis was right in
+substance: with 256 rows unreachable directly, distributing or serializing the work is the only
+route to that much reuse, which is what produced the 11.0 ms.
+
 ## What I am not claiming
 
 - **Not** that larger is always better, and **not** that 256 is proven worse. My first draft

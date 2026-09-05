@@ -24,8 +24,12 @@ ceiling from opposite directions:
 | `cand-919059a0` | **widen** to a logical 256-row CTA from two 128-row groups, 16 warps | rejected, 0 trials |
 
 So the run has a clean answer for the serialize branch and *no data at all* for the widen
-branch — which is exactly the controlled 128-vs-256 comparison the record has never had. The
-rejection did not merely lose a candidate; it lost the comparison.
+branch — which is exactly the controlled 128-vs-256 comparison the record has never had.
+
+**Update after repair (see the follow-up section): that framing was wrong.** 256 logical rows
+needs 131072 B of shared memory on a 101376 B device, so the widen branch is infeasible *by
+arithmetic* on this hardware, not merely un-run. The rejection cost ~3 minutes of agent wall; it
+did not cost the comparison, because the comparison was never available.
 
 ## The mechanism: the witness gate has no resource pre-check
 
@@ -97,10 +101,56 @@ threshold behaviour is item #1 in `decisions-awaiting-user.md`. I am not editing
 five decisions about it are outstanding, on n=1 evidence, mid-run. Recorded instead, with the
 repair attempt's outcome to follow.
 
-## Follow-up to watch
+## Follow-up: repair recovered it in 2 minutes, and its fix confirms the diagnosis
 
-- Does repair recover `cand-919059a0`? If it does, the cost is ~2 agent calls; if it does not,
-  the widen branch is lost for this run and the 256 question stays open.
-- If repair's fix is to shrink the default rather than the kernel, that is direct evidence for
-  option (1) or (3) over the current behaviour — the repair agent would be doing by hand what
-  the fallback would do automatically.
+`REPAIR_PRODUCED` at 11:20:22 — 2m02s after the rejection — and the space republished at
+11:23:21 as `sp-d0921062`. The repair agent's own diagnosis:
+
+> "The default attention launch formed BLOCK_M = ATTN_ROWS_PER_GROUP × ATTN_ROW_GROUPS =
+> 128 × 2 = 256. With D_PAD = 128, the flash-attention fp32 accumulator had 256 × 128 elements
+> and required 131072 bytes of shared memory, exceeding the hardware limit of 101376 bytes."
+
+Arithmetic exactly right (256 × 128 × 4 = 131072). And its change:
+
+> "changed **only the default ATTN_ROWS_PER_GROUP from 128 to 64** … Python syntax and diff
+> checks pass; the fixed file differs from the broken file only by this parameter value."
+
+**This is the evidence the "follow-up to watch" section asked for.** Repair did not fix the
+kernel — there was nothing wrong with the kernel. It changed **one default value**, which is
+precisely what a resource fallback in the witness gate would have done automatically by trying
+another config. Two agent calls (repair + re-parameterize, ~3 min of wall) were spent doing by
+hand what option (1) does for free. That is now direct evidence for option (1), not just an
+argument for it.
+
+The cost was small and the recovery was clean, so this stays a low-priority efficiency item
+rather than a defect. But the shape of the fix is unambiguous.
+
+### The 256-row experiment survived — the space still reaches it
+
+Worth checking rather than assuming, because a repair that shrinks a default could easily have
+shrunk the whole experiment. It did not. The republished domains are
+`ATTN_ROWS_PER_GROUP: [16, 32, 64]` × `ATTN_ROW_GROUPS: [1, 2, 4]`, and the logical row tile is
+their product:
+
+| RPG × RG | logical rows | fp32 accumulator | fits 101376? |
+|---|---|---|---|
+| 32 × 4 | 128 | 65536 | yes |
+| 64 × 2 | 128 | 65536 | yes |
+| **64 × 4** | **256** | **131072** | **no** |
+
+So 256 logical rows is still *expressible* (`64 × 4`) but not *feasible* — it is the same
+131072 B that caused the rejection. The tuner will sample it, get a `runtime_error`, and learn
+to avoid it, which costs trials but is exactly what `failure_kind` feedback is for.
+
+**Conclusion for the 256 question: this rewrite cannot answer it either.** Not because of the
+rejection, but because 256 rows × 128 D_PAD × 4 bytes exceeds this device's shared memory
+*as a matter of arithmetic*. The widen branch is not blocked by the harness; it is blocked by
+the hardware, and no repair or fallback changes that. Both witnesses passed at 128 logical rows
+(15.6 ms and 86.7 ms).
+
+That also retires the concern in the section above about "losing the comparison": the comparison
+was never available on this device via this structure. `cand-13efdcd8`'s serialization approach
+(`QKV_M_CTAS`, 11.0 ms) is not a second-best substitute for widening — on a 99 KiB shared-memory
+budget it is the *only* way to get 256 rows' worth of reuse, which is what the analyst's
+hypothesis said and why it proposed distributing work across warps rather than enlarging the
+accumulator.
