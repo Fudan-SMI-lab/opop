@@ -95,6 +95,29 @@ where the honest-verdict logic lives and I would rather have the batch of pendin
 resolved than add a sixth change to it. `scripts/audit_cached_bests.py` reproduces the table
 above.
 
+## A third instance, live, with the informative statistic separated out
+
+`run-l3-43-20260905-091705`, `cand-cb7be6b4`, 10:14–10:20. K expanded five knobs
+(`QKV_BLOCK_K` +256, `QKV_NUM_WARPS` +16, `ATTN_BLOCK_N` +256, `OUT_BLOCK_M` max,
+`OUT_NUM_WARPS` min) and the re-tune spent 40 trials to report **14.2 ms — identical to the
+pre-expansion best**, and again from the cached incumbent.
+
+But splitting the 40 trials by whether they used a newly-added choice shows the expansion was
+*not* useless, which the top-line number conceals entirely:
+
+| | trials | complete | best | best excluding cache hits |
+|---|---|---|---|---|
+| used a new choice | 28 | 6 | **18.6** | **18.6** |
+| only old choices | 12 | 7 | 14.2 | 19.8 |
+
+The widened region produced a genuine **18.6 ms** measurement — worse than the 14.2 incumbent,
+but *better* than the 19.8 ms best that the old choices reached under fresh measurement in this
+budget. Reading only "17.1 → 17.1" or "14.2 → 14.2" would have scored this expansion as a
+no-op three times over; it was not.
+
+Note also the failure cost: 28 of 40 trials went to new-choice territory and 22 of those 28
+failed, which is the real price of the expansion rather than the flat headline.
+
 ## Caveats
 
 - 2 of 108 is the count of reported bests that came from cache, not the count of cache hits
