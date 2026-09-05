@@ -139,8 +139,27 @@ their product:
 | **64 × 4** | **256** | **131072** | **no** |
 
 So 256 logical rows is still *expressible* (`64 × 4`) but not *feasible* — it is the same
-131072 B that caused the rejection. The tuner will sample it, get a `runtime_error`, and learn
-to avoid it, which costs trials but is exactly what `failure_kind` feedback is for.
+131072 B that caused the rejection.
+
+**Correction, from the trials that followed:** I wrote here that "the tuner will sample it, get a
+`runtime_error`, and learn to avoid it, which costs trials". It did not, and no trials were
+wasted. The republished space carries a guard constraint —
+`ATTN_ROWS_PER_GROUP * ATTN_ROW_GROUPS <= 128`, rationale "caps the fused attention row tile at
+the known-working default to avoid explosive score and output state" — so the 256 corner was
+never sampled in 40 trials. The guard did the work rather than the failure feedback.
+
+I could not establish whether that constraint predates the repair: `SPACE_REJECTED` does not
+carry the proposed space, and the parameterizer sandboxes keep only source files, not the emitted
+`space.json`. If the cap *was* already there before the rejection, then the parameterizer emitted
+a default that violated its own constraint, which would be a distinct and more interesting bug.
+No evidence either way, so it is recorded as an open question, not a claim.
+
+**That gap is itself worth noting as an observability limit:** a rejected space is the one case
+where the space definition would be most useful for diagnosis, and it is exactly the case where
+nothing is journalled. `SPACE_REJECTED` carries `candidate_id`, `attempt`, `reason`, `detail` —
+not the domains or constraints. Adding the space to that payload would be purely observational
+and is the same shape as the `REPAIR_REVERTED` proposal in
+`finding-parameterizer-reverts-the-repair.md`. Not applied.
 
 **Conclusion for the 256 question: this rewrite cannot answer it either.** Not because of the
 rejection, but because 256 rows × 128 D_PAD × 4 bytes exceeds this device's shared memory

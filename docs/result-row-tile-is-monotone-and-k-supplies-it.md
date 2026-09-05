@@ -185,6 +185,49 @@ The optimum at 128 is a **hardware ceiling**, and the analyst's hypothesis was r
 substance: with 256 rows unreachable directly, distributing or serializing the work is the only
 route to that much reuse, which is what produced the 11.0 ms.
 
+### The widen candidate then confirmed the ceiling from the inside
+
+`cand-919059a0` tuned to **14.6 ms** after repair, and its own row-tile sweep is the cleanest
+version of the monotone pattern yet, because here the tile is a *product* of two knobs:
+
+| logical rows (RPG × RG) | trials | fails | best ms |
+|---|---|---|---|
+| 16 | 2 | 0 | 47.3 |
+| 32 | 4 | **4** | — |
+| 64 | 13 | 6 | 17.1 |
+| **128** | 21 | 13 | **14.6** |
+| 256 | **0** | — | — |
+
+Monotone again, optimum again at 128, and **zero trials at 256** — TPE never sampled it, because
+the post-repair space carries an explicit constraint:
+
+```
+ATTN_ROWS_PER_GROUP * ATTN_ROW_GROUPS <= 128
+  "Caps the fused attention row tile at the known-working default to avoid explosive
+   score and output state."
+```
+
+So the 256 corner was ruled out by the *guard*, not merely left unsampled — which corrects the
+paragraph above: I wrote that the tuner would "sample it, get a `runtime_error`, and learn to
+avoid it". It never got the chance, and no trials were wasted at all. That is the better outcome,
+but it was the constraint doing the work, not the failure feedback.
+
+Two honest limits on this:
+
+- **I could not determine whether that cap predates the repair.** `SPACE_REJECTED` does not carry
+  the proposed space, and the parameterizer sandboxes retain only source files, not the emitted
+  `space.json`. So I cannot say whether the parameterizer learned the cap from the repair's
+  diagnosis or had it all along and the *default* simply violated it. The second would be a
+  parameterizer bug worth its own finding; I have no evidence either way and am not guessing.
+- The three seeds' monotonicity and this one's are not fully independent evidence: all four
+  programs run on the same device against the same shapes, so they share whatever the true cause
+  is. What they establish is that the effect is not specific to one program's structure.
+
+Note the winner here still spills (255 regs, 12 spills, 98304 B shared = 97% of the opt-in limit)
+and is 33% slower than the serializing sibling's 11.0 ms with 0 spills. On this device, the
+serialize route beat the widen route decisively — which is what the register-pressure diagnosis
+predicted.
+
 ## What I am not claiming
 
 - **Not** that larger is always better, and **not** that 256 is proven worse. My first draft
