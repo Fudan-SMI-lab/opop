@@ -53,8 +53,8 @@ already-fixed `NUM_WARPS=1` / `NUM_STAGES=1` cases are excluded:
 
 | requested direction | knobs widened | best used an added value |
 |---|---|---|
-| `max` | 38 | 5 (13%) |
-| `min` | **8** | **0 (0%)** |
+| `max` | 40 | 5 (12%) |
+| `min` | **9** | **0 (0%)** |
 
 The eight post-filter downward expansions, every one a miss:
 
@@ -75,6 +75,30 @@ Two independent mechanisms are visible, and both are general rather than task-sp
    already strengthened for this (`finding-parameterizer-lacks-triton-pitfalls-doc.md`), and it
    still happens because `boundary_knobs_to_expand` **asks** for the downward extension before
    any prompt gets a say.
+
+## A live instance, and it went the way the measurement predicts
+
+`cand-fe183b2d` on the clean L3:21 rerun expanded at 16:24 and its family best improved
+**22.9 → 22.2 ms (3.1%)**, `improved_family: true`. That reads as a win for improvement K and it
+is not one:
+
+```
+old space best : 22.9 ms  at EXPAND_NUM_WARPS=2, PROJECT_NUM_WARPS=8
+new space best : 22.2 ms  at EXPAND_NUM_WARPS=2, PROJECT_NUM_WARPS=8   <- the SAME config
+the two added values, measured:
+  EXPAND_NUM_WARPS=1     3 completions, best 26.7 ms   (+20% worse)
+  PROJECT_NUM_WARPS=16   3 completions, best 24.8 ms   (+12% worse)
+```
+
+The identical configuration was re-measured 0.7 ms faster. Neither added value helped, and both
+were measured enough times to say so. This is the 74% case in the table above, caught as it
+happened rather than in replay — and it is why the strict test requires the winning config to
+actually *use* an added value, rather than trusting `improved_family`.
+
+Worth noting against my own reading: when the event came in I flagged that the gain "came from a
+`min`-direction widening", which would have been a counter-example to the 0-for-8 record. Checking
+the winning trial's params showed the opposite. The record is now **0-for-9** on `min`, with
+`EXPAND_NUM_WARPS=1` losing by 20%.
 
 ## What I am not proposing yet
 
