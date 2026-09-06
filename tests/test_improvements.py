@@ -4826,3 +4826,67 @@ def test_triton_pitfalls_covers_the_compile_errors_actually_observed():
         name = s.splitlines()[0]
         assert "# BAD" in s or "BAD:" in s, f"pitfall lacks a BAD form: {name}"
         assert "# GOOD" in s or "GOOD:" in s, f"pitfall lacks a GOOD form: {name}"
+
+
+def test_convergence_judges_on_the_same_statistic_the_tuner_optimizes():
+    """`best_history` -- what min_improvement_pct is applied to -- must carry medians.
+
+    The chain is long and every link had to be converted together:
+      _tune -> update_best(robust_ms) -> Family.best.latency_ms -> record_round
+            -> best_history -> family_verdict's recent_improvements_pct
+    A single `.mean` left anywhere in it would make the convergence verdict judge a
+    different quantity than the tuner optimizes, and the failure would be silent: percentages
+    computed from means look exactly like percentages computed from medians.
+
+    Why it matters concretely, from run-l2-37-20260907-010645 (pre-fix): a round-over-round
+    change of 32.60 -> 30.70 read as a 5.83% gain and cleared min_improvement_pct 2.0,
+    earning the family another rewrite round -- while the difference was 1.90 us against a
+    combined standard error of 17.85 us, i.e. noise. Post-fix on the same task the same kind
+    of non-improvement reads as 1.56% and is correctly refused.
+    """
+    from pathlib import Path
+
+    orch = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
+
+    # The two update_best calls that feed Family.best must pass the robust statistic.
+    assert "best.params, best.latency_ms.robust_ms," in orch
+    assert ("cand.family_id, cand.candidate_id, best.params, best.latency_ms.robust_ms"
+            in orch)
+    # record_round takes Family.best.latency_ms, which the above now populate.
+    assert "self.deps.families.record_round(family.family_id, best_after)" in orch
+    assert "best.latency_ms\n" in orch or "best.latency_ms" in orch
+
+    # And nothing in the ranking/selection path may still read .mean. The remaining .mean
+    # uses are display, the trials CSV, and the deliberately-conservative headline speedup.
+    ranking_mean = [ln for ln in orch.splitlines()
+                    if ".latency_ms.mean" in ln
+                    and ("min(" in ln or "key=" in ln or "crun.best_ms =" in ln)]
+    assert not ranking_mean, f"ranking still uses the mean: {ranking_mean}"
+
+    # The convergence policy itself must read best_history and nothing else for the
+    # improvement test, so converting the producer is sufficient.
+    conv = Path("src/kernel_optimizer/control/convergence.py").read_text(encoding="utf-8")
+    assert "history = family.best_history" in conv
+    assert ".mean" not in conv, "convergence must not compute its own statistic"
+
+    # The arithmetic, end to end, on the real numbers from the two runs.
+    from kernel_optimizer.config import BudgetConfig
+    from kernel_optimizer.control.convergence import ConvergencePolicy
+    from kernel_optimizer.models.core import Family
+
+    cfg = BudgetConfig(rewrite_rounds_per_family=5, no_improve_rounds=1,
+                       min_improvement_pct=2.0)
+    policy = ConvergencePolicy(cfg)
+
+    # Medians: 15.344 -> 15.104 is 1.56%, under the threshold -> converged.
+    fam = Family(family_id="f", anchor_candidate_id="c",
+                 best_history=[15.344, 15.104], rewrite_rounds_used=1)
+    got = policy.family_verdict(fam)
+    assert got.verdict == "freeze" and got.stop_kind == "converged", got
+    assert got.evidence["recent_improvements_pct"] == [1.564], got.evidence
+
+    # Means on the SAME pair of trials: 32.60 -> 30.70 is 5.83%, which cleared the gate.
+    fam_mean = Family(family_id="f", anchor_candidate_id="c",
+                      best_history=[32.60, 30.70], rewrite_rounds_used=1)
+    assert policy.family_verdict(fam_mean).verdict == "continue", \
+        "the mean-based history is what wasted a rewrite round on noise"
