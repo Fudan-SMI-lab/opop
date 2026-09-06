@@ -67,18 +67,63 @@ file, fixed on one side. And the phrase "keep the full distribution for the reco
 actually honoured for either side — nothing persists per-sample data, so no robust statistic
 can be recomputed after the fact.
 
-## Fix (three generalized changes, not case-specific)
+## Resolution (implemented, `a98fa62`)
 
-1. **Retain per-sample timings in the worker result** — currently impossible to recompute
-   anything robust post hoc. This is open item #5, now with evidence for why it matters.
-2. **Make the tuning objective robust** (trimmed mean or median) at `tuning/tpe.py:85`,
-   which today passes `record.latency_ms.mean` to `study.tell`.
-3. **Compare candidates and baselines at the same sample count**, or make the report state
-   when they differ.
+The objective is now `LatencyStats.robust_ms` — the median, falling back to the mean when no
+median exists (older runs, and the two timing paths that return summary statistics only).
+Everything that ranks or selects uses it: `tpe.tell/best/snapshot`, the orchestrator's
+per-candidate and family bests, and `stats.py`'s per-knob curves. The headline speedup stays
+mean-over-mean (both sides are n=100 there, so it is already fair, and it is the more
+conservative claim), with `speedups_median` published beside it so a comparison against an
+externally-published median or min is possible at all.
 
-Deliberately NOT done yet: changing `quick_perf_trials` or the objective mid-flight would
-make this run incomparable to the gpt arm, and the cross-model comparison is the point of
-this experiment. A driver-side change cannot affect a running run anyway.
+Chosen by measurement — `scripts/probe_robust_objective.py`, 2000-sample ground truth per
+config, 400 windows of n=20:
+
+| estimator | bias | CV at n=20 | ranks a 7.6% true gap correctly |
+|---|---|---|---|
+| mean | ±1.7% | **24–37%** | **64.8%** (near a coin flip) |
+| median | ±1.0% | **3–8%** | **93.2%** |
+| trim10% | ±1.6% | 5.6–8.2% | 84.0% |
+| trim20% | ±2.1% | 3.7–7.8% | 90.8% |
+| min | **+9.8% to +156%** | 3.7–17% | 2.5–98% — **three of six pairs backwards** |
+
+Median over trimmed mean because the trim fraction is a knob that has to be fitted to the
+data, and the measured tail (8.9–13.2% of samples above 1.5x the median) straddles 10%: any
+fixed fraction is wrong for some configurations. `min` is rejected outright — at n=20 it
+reports the luckiest draw rather than the cost, and it ranked half the real config pairs
+backwards. Worth stating plainly because earlier notes in this repo (including my own
+comparisons above) used `min` as the informal robust reference; that was wrong.
+
+Note the residual: even the median's CV at n=20 is 3–8%, still above `min_improvement_pct:
+2.0`. This change greatly improves the search but does **not** by itself make a 2% threshold
+trustworthy on this task. Left alone deliberately — changing it would confound the
+cross-model comparison.
+
+## What retaining the samples immediately revealed
+
+The noise is **not** scattered jitter. From `tunefile-l2-37-20260907-020027`, all four
+trials:
+
+```
+trial 1: [370.3, 17.5, 18.2, 18.3, 18.3, 17.4, ... 17.4]   rest spans 17.3-19.3
+trial 2: [385.5, 42.0, 40.7, 40.7, 40.6, 40.0, ... 41.9]   rest spans 40.0-42.0
+trial 3: [372.4, 15.5, 15.4, 15.5, 16.1, 15.5, ... 15.3]   rest spans 15.3-16.3
+trial 4: [378.9, 19.5, 20.3, 20.3, 125.4, 21.5, ... 19.6]  one further mid-run stall
+```
+
+**Sample #1 is a 370–385 µs outlier every time**, and samples 2–20 are then extremely tight.
+`num_warmup=3` does not absorb the first timed launch. One deterministic artifact in 20
+samples was inflating every trial's mean by 1.7–2.9x. This diagnosis was impossible from
+mean/std/min/max, which is the concrete argument for keeping the samples.
+
+It also justifies the choice of median over any fixed rule: trial 4 carries a *second* stall
+mid-run, where the median (20.18) is correct and even "drop the first sample" (25.67) is not.
+
+A follow-up worth considering separately: raising `num_warmup` would remove the artifact at
+its source. That is a different change — it costs GPU time on the hot path and would alter
+every measurement — so it is not bundled here. The median makes the objective correct
+regardless.
 
 ## One consequence for the external comparison
 
