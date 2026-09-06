@@ -427,6 +427,52 @@ the fresh budget. n=3 in one run cannot carry a general claim — the retrospect
 whatever value expansion has lies mostly in re-tuning, which is an argument for keeping the
 floor and against ever making the aim a veto.
 
+### The floor's cost, live: it reintroduces exactly the bug the fix removed
+
+The run's fifth expansion is the case that shows what the fallback costs, and it is the fix's own
+motivating failure mode coming back through the second pass. `cand-9df6f133`, space
+`sp-94b5265d`:
+
+```
+BLOCK_M    n   median     min
+16         3    21.50    20.10
+32         9    19.90    19.20
+64         5    20.20    18.70   <- the WINNING trial
+128        9    18.90    18.80   <- median's pick, and its own best is WORSE than 64's
+```
+
+`best_value=128`, `best_trial_value=64`, `at_boundary=False` — the anchored pass correctly reports
+no boundary, because the winner sits interior. The whole-space anchored pass therefore returns
+nothing, the fallback fires, and it requests `BLOCK_M/max` from the median's 128.
+
+That is the `GEMM_STAGES` pathology restated: 128's median wins only because its 9 samples were
+quieter (18.9 vs 64's 20.2), while its best trial is 18.80 against 64's 18.70. The expansion will
+add `BLOCK_M=256`, pushing further past a value that is not actually the fastest.
+
+So the floor is not free. It buys the fresh tuning budget — worth 11.1% once and 1.9% once in the
+measurements above — at the price of occasionally aiming the widened range the way the pre-fix
+code did. Both effects are now observed live in the same run, which is the honest statement of the
+trade:
+
+```
+fallback SAVED an expansion   cand-a988ff79  21.3 -> 20.9  (budget paid, range unused)
+fallback MISAIMED one         cand-9df6f133  BLOCK_M/max from a median that a 0.1 ms
+                                             sampling difference decided
+```
+
+What keeps the floor defensible is that a misaimed request costs a *knob slot* in a request that
+was going to be spent anyway, whereas cancelling costs the whole expansion. And on this run's
+evidence the added values go unused regardless of aim (4 of 4), so the aim of the range matters
+less than whether the re-tune happens at all. It is worth revisiting if a future run shows the
+range paying often enough for direction to matter again.
+
+### And it is the second lineage repeat in one run
+
+`cand-8c64ccc3` was expanded on `BLOCK_M/max` at 22.7m; its child `cand-9df6f133` is now expanded
+on `BLOCK_M/max` again — with the parent's expansion having measured `BLOCK_M=128` at 19.80,
+exactly tying its 64. That is the pattern in
+`measurement-expansion-repeats-within-lineage.md`, now 2 of 5 expansions in this run alone.
+
 Reproduce with `python scripts/audit_fallback_vs_prefix_rule.py`,
 `python scripts/audit_shipped_vs_prefix_requests.py`,
 `python scripts/audit_fallback_prospective.py`.
