@@ -37,14 +37,55 @@ def _classify_exception(exc: BaseException) -> str:
     return "runtime_error"
 
 
-def _stats_to_dict(stats: dict) -> dict:
-    return {
+def _median(xs: list[float]) -> float:
+    s = sorted(xs)
+    n = len(s)
+    if not n:
+        return -1.0
+    return s[n // 2] if n % 2 else 0.5 * (s[n // 2 - 1] + s[n // 2])
+
+
+def _stats_to_dict(stats: dict, elapsed: list | None = None) -> dict:
+    """Summarize a timing run, keeping the raw samples so robust statistics stay available.
+
+    `median` and `samples` are additions, and both exist because a 20-sample MEAN is not a
+    usable tuning objective. Measured on level2:37 at pre-scaling sizes
+    (docs/finding-tuning-objective-is-a-20-sample-mean.md): a few 300-700 us scheduling
+    stalls drag a 20-sample mean 35-136% above the kernel's real cost, giving the objective
+    a 24-53% standard error against a `min_improvement_pct` of 2.0. The same stalls barely
+    move the 100-sample baselines (mean/min 1.04-1.15x), so candidates were being penalized
+    against baselines by construction.
+
+    Quantified with scripts/probe_robust_objective.py (2000-sample ground truth, 400 windows
+    of n=20, this machine): the mean's coefficient of variation at n=20 is 24-37%, the
+    median's is 3-8%. On a pair whose true costs differ by 7.6%, a 20-sample mean picks the
+    faster config 64.8% of the time -- near a coin flip -- while the median gets 93.2%.
+
+    `min` is deliberately NOT offered as an objective despite looking robust: at n=20 it is
+    biased +9.8% to +156% (20 samples rarely contain the true minimum) and it ranked three of
+    six config pairs BACKWARDS, below 50% agreement, because it reports the luckiest draw
+    rather than the configuration's cost.
+
+    `samples` is retained because without it no estimator choice can be re-examined after the
+    fact -- verifying the above required re-running the GPU, since the log held only
+    mean/std/min/max. It also honours the intent already stated for the reference side
+    ("keep the full distribution for the record"), which was never actually implemented.
+    """
+    out = {
         "mean": float(stats.get("mean", -1.0)),
         "std": float(stats.get("std", 0.0)),
         "min": float(stats.get("min", -1.0)),
         "max": float(stats.get("max", -1.0)),
         "n": int(stats.get("num_trials", 0)),
     }
+    if elapsed:
+        try:
+            vals = [float(v) for v in elapsed]
+            out["median"] = _median(vals)
+            out["samples"] = [round(v, 5) for v in vals]
+        except (TypeError, ValueError):
+            pass
+    return out
 
 
 def _classify_eval_failure(metadata: dict, compiled: bool, correct: bool) -> tuple[str, str]:
@@ -831,7 +872,7 @@ def run_relaxed_correctness(job: dict) -> dict:
                 elapsed = time_execution_with_cuda_event(
                     model_new, perf_inputs, num_warmup=3, num_trials=num_perf,
                     verbose=False, device=device)
-            latency_ms = _stats_to_dict(get_timing_stats(elapsed, device=device))
+            latency_ms = _stats_to_dict(get_timing_stats(elapsed, device=device), elapsed)
 
             # Anti-reward-hacking: KernelBench's own excessive-speedup check lives in
             # its strict eval path, which this relaxed handler deliberately bypasses
@@ -851,21 +892,15 @@ def run_relaxed_correctness(job: dict) -> dict:
                 ref_elapsed = time_execution_with_cuda_event(
                     ref_model, perf_inputs, num_warmup=3, num_trials=ref_trials,
                     verbose=False, device=device)
-            ref_latency_ms = _stats_to_dict(get_timing_stats(ref_elapsed, device=device))
-            # The guard compares against this number, so a single scheduling stall must
+            ref_latency_ms = _stats_to_dict(
+                get_timing_stats(ref_elapsed, device=device), ref_elapsed)
+            # The guard compares against a median, not a mean: a single scheduling stall must
             # not decide a verdict. Observed live on L3:48: a 10-sample reference came
             # back mean=609ms with min=29.8ms, max=5760ms, std=1720ms -- one ~5.8s
-            # outlier dragged the mean 20x, producing a bogus 115x "speedup". The MEDIAN
-            # is the robust estimator for an order-of-magnitude plausibility screen, so
-            # use it for the ratio and keep the full distribution for the record.
-            try:
-                ref_sorted = sorted(float(v) for v in ref_elapsed)
-                n = len(ref_sorted)
-                ref_median = (ref_sorted[n // 2] if n % 2
-                              else 0.5 * (ref_sorted[n // 2 - 1] + ref_sorted[n // 2]))
-                ref_latency_ms["median"] = round(ref_median, 4)
-            except (TypeError, ValueError, ZeroDivisionError):
-                pass
+            # outlier dragged the mean 20x, producing a bogus 115x "speedup".
+            # `_stats_to_dict` now computes that median (and keeps the samples, which the
+            # bespoke block here promised "for the record" but never actually did), so this
+            # side needs no special case -- the candidate above gets the same treatment.
             del ref_model
         except Exception as exc:  # noqa: BLE001 — timing failure is a runtime failure
             kind = _classify_exception(exc)

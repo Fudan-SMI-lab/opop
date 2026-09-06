@@ -19,8 +19,11 @@ def latency_from_result(result: dict[str, Any]) -> LatencyStats | None:
     lat = result.get("latency_ms")
     if not lat or lat.get("mean", -1) < 0:
         return None
+    samples = lat.get("samples")
     return LatencyStats(
-        mean=lat["mean"], std=lat["std"], min=lat["min"], max=lat["max"], n_samples=lat["n"]
+        mean=lat["mean"], std=lat["std"], min=lat["min"], max=lat["max"], n_samples=lat["n"],
+        median=lat.get("median"),
+        samples=tuple(samples) if samples else None,
     )
 
 

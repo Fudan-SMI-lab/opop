@@ -110,6 +110,32 @@ class LatencyStats(BaseModel):
     min: float
     max: float
     n_samples: int
+    # The robust location estimate, and the one the tuner optimizes. Optional because runs
+    # recorded before this field existed replay without it, and because two timing paths
+    # (the baseline helper and KernelBench's own runtime_stats) return summary statistics
+    # with no samples to compute it from. `robust_ms` is what callers should read: it falls
+    # back to the mean so an older record or a summary-only path still yields a number.
+    median: float | None = None
+    # The raw per-sample timings, when the timing path had them. Retained so an estimator
+    # choice can be re-examined from the log instead of by re-running the GPU: verifying that
+    # a median beats the mean as an objective required a fresh 2000-sample probe precisely
+    # because the log held only mean/std/min/max. Optional for the same reasons as `median`,
+    # and never used for a decision -- decisions read `robust_ms`; this is the evidence.
+    samples: tuple[float, ...] | None = None
+
+    @property
+    def robust_ms(self) -> float:
+        """Median when available, else the mean.
+
+        Prefer this over `.mean` for any comparison or objective. At the 20 samples a tuning
+        trial uses, the mean's coefficient of variation is 24-37% on level2:37 while the
+        median's is 3-8%, and on configurations whose true costs differ by 7.6% the mean
+        picks the faster one only 64.8% of the time against the median's 93.2%
+        (scripts/probe_robust_objective.py). Deliberately NOT `min`: at n=20 min is biased
+        +9.8% to +156% and ranks pairs backwards more often than not, because it reports the
+        luckiest sample rather than the cost.
+        """
+        return self.median if self.median is not None and self.median > 0 else self.mean
 
 
 class ProfileRecord(BaseModel):

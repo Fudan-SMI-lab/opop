@@ -82,10 +82,25 @@ class OptunaTPETuner:
         if trial is None:
             raise KeyError(f"unknown or already-told trial {trial_id}")
         if record.status == "complete" and record.latency_ms is not None:
-            self.study.tell(trial, record.latency_ms.mean)
+            # `robust_ms` (median, falling back to the mean) rather than `.mean`. A trial is
+            # timed with `quick_perf_trials` samples -- 20 by default -- and at that count a
+            # few 300-700 us scheduling stalls drag the mean 35-136% above the kernel's real
+            # cost. Measured with scripts/probe_robust_objective.py against a 2000-sample
+            # ground truth: the mean's CV at n=20 is 24-37% versus the median's 3-8%, and on
+            # a pair of configurations whose true costs differ by 7.6% the mean identifies
+            # the faster one 64.8% of the time -- barely above chance -- while the median
+            # manages 93.2%. Since TPE decides where to sample next from these comparisons,
+            # a near-coin-flip objective wastes the trial budget exploring noise.
+            #
+            # Live example this fixes (run-l2-37-20260907-010645): a space expansion was
+            # credited with 32.60 -> 30.70 us, a 5.8% "gain" that cleared
+            # min_improvement_pct 2.0 and earned the family another rewrite round -- while
+            # the difference was 1.90 us against a combined standard error of 17.85 us, and
+            # the supposedly-better point was SLOWER by min. 40 trials spent on noise.
+            self.study.tell(trial, record.latency_ms.robust_ms)
             if (
                 self._best_record is None
-                or record.latency_ms.mean < self._best_record.latency_ms.mean
+                or record.latency_ms.robust_ms < self._best_record.latency_ms.robust_ms
             ):
                 self._best_record = record
         else:
@@ -100,6 +115,6 @@ class OptunaTPETuner:
             "budget": self.budget,
             "pending": len(self._pending),
             "incumbent_ms": (
-                self._best_record.latency_ms.mean if self._best_record else None
+                self._best_record.latency_ms.robust_ms if self._best_record else None
             ),
         }

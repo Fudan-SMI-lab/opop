@@ -21,7 +21,10 @@ class TuningStatsAnalyzer:
     def analyze(self, space: ParameterSpace, trials: list[TrialRecord]) -> TuningStats:
         complete = [t for t in trials if t.status == "complete" and t.latency_ms]
         failed = [t for t in trials if t.status == "fail"]
-        best = min(complete, key=lambda t: t.latency_ms.mean) if complete else None
+        # robust_ms throughout: these curves are what the analyst reads to decide which
+        # knob is worth pushing, and a per-choice best driven by one scheduling stall
+        # points it at the wrong knob. Same statistic the tuner optimizes.
+        best = min(complete, key=lambda t: t.latency_ms.robust_ms) if complete else None
 
         param_stats = [
             self._param_stat(domain.name, domain.choices, complete, failed)
@@ -76,7 +79,7 @@ class TuningStatsAnalyzer:
         lat_by_value: dict[str, float] = {}
         grouped: dict[str, list[float]] = defaultdict(list)
         for t in complete:
-            grouped[repr(t.params.values.get(name))].append(t.latency_ms.mean)
+            grouped[repr(t.params.values.get(name))].append(t.latency_ms.robust_ms)
         for key, vals in grouped.items():
             lat_by_value[key] = statistics.median(vals)
 
@@ -102,7 +105,7 @@ class TuningStatsAnalyzer:
             effect_pct = 0.0 if lo <= 0 else (hi - lo) / lo * 100.0
 
             # The objective's own winner: the value used by the single fastest trial.
-            fastest = min(complete, key=lambda t: t.latency_ms.mean)
+            fastest = min(complete, key=lambda t: t.latency_ms.robust_ms)
             candidate_value = fastest.params.values.get(name)
             # Only usable as an anchor if it is one of this domain's measured choices.
             measured_choices = [c for c, _ in measured]

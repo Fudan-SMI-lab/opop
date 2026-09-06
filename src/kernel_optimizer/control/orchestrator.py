@@ -713,11 +713,13 @@ class Orchestrator:
                     crun.trials.append(TrialRecord.model_validate(t))
         complete = [t for t in crun.trials if t.status == "complete" and t.latency_ms]
         if complete:
-            best = min(complete, key=lambda t: t.latency_ms.mean)
-            crun.best_ms = best.latency_ms.mean
+            # Same statistic the tuner optimizes (models/core.py robust_ms), or the
+            # orchestrator's "best" and the tuner's incumbent can be different trials.
+            best = min(complete, key=lambda t: t.latency_ms.robust_ms)
+            crun.best_ms = best.latency_ms.robust_ms
             self.deps.families.update_best(
                 crun.candidate.family_id, crun.candidate.candidate_id,
-                best.params, best.latency_ms.mean,
+                best.params, best.latency_ms.robust_ms,
             )
         if crun.space is not None and crun.trials:
             crun.stats = self.deps.stats_analyzer.analyze(crun.space, crun.trials)
@@ -956,14 +958,14 @@ class Orchestrator:
             # crun.best_ms tracks the candidate's best over ALL its spaces, so a
             # re-tune (improvement K's expansion) that lands worse must not erase a
             # better earlier result. FamilyManager.update_best is already monotonic.
-            if crun.best_ms is None or best.latency_ms.mean < crun.best_ms:
-                crun.best_ms = best.latency_ms.mean
+            if crun.best_ms is None or best.latency_ms.robust_ms < crun.best_ms:
+                crun.best_ms = best.latency_ms.robust_ms
             improved = self.deps.families.update_best(
-                cand.family_id, cand.candidate_id, best.params, best.latency_ms.mean
+                cand.family_id, cand.candidate_id, best.params, best.latency_ms.robust_ms
             )
             self.store.append("TUNING_DONE", {
                 "candidate_id": cand.candidate_id, "space_id": space.space_id,
-                "best_ms": best.latency_ms.mean, "improved_family": improved,
+                "best_ms": best.latency_ms.robust_ms, "improved_family": improved,
                 "snapshot": tuner.snapshot(),
             })
         else:
@@ -1159,7 +1161,7 @@ class Orchestrator:
             prev_trials = list(crun.trials)
             prior_best = min(
                 (t for t in prev_trials if t.status == "complete" and t.latency_ms),
-                key=lambda t: t.latency_ms.mean, default=None)
+                key=lambda t: t.latency_ms.robust_ms, default=None)
             if prior_best is not None and check_config(
                     verdict.space, prior_best.params, self.cfg.device) is None:
                 key = prior_best.params.key()
@@ -1271,7 +1273,12 @@ class Orchestrator:
         buf = io.StringIO()
         names = crun.space.param_names() if crun.space else []
         writer = csv.writer(buf)
+        # Both statistics, deliberately: latency_median_ms is what the tuner optimized,
+        # latency_mean_ms is what a reader comparing against published numbers will expect.
+        # Emitting only one makes the trials.csv unable to answer "was this ranking driven
+        # by a stall?", which is the question that motivated the change.
         writer.writerow(["trial_id", *names, "status", "failure_kind", "latency_mean_ms",
+                         "latency_median_ms", "latency_min_ms", "latency_max_ms",
                          "latency_std_ms", "n_regs", "n_spills", "shared_bytes",
                          "kernels_launched"])
         for t in crun.trials:
@@ -1280,6 +1287,9 @@ class Orchestrator:
                 *[t.params.values.get(n) for n in names],
                 t.status, t.failure_kind or "",
                 t.latency_ms.mean if t.latency_ms else "",
+                (t.latency_ms.median if t.latency_ms else "") or "",
+                t.latency_ms.min if t.latency_ms else "",
+                t.latency_ms.max if t.latency_ms else "",
                 t.latency_ms.std if t.latency_ms else "",
                 t.profile.n_regs if t.profile else "",
                 t.profile.n_spills if t.profile else "",
@@ -1671,17 +1681,36 @@ class Orchestrator:
             "tuned_ms": best_family.best.latency_ms,
             "final_reeval_ok": bool(reeval.get("ok")),
             "final_reeval_ms": lat.mean if lat else None,
+            "final_reeval_median_ms": lat.median if lat else None,
             "excessive_speedup_flag": bool(reeval.get("excessive_speedup")),
             "precision": precision,
         }
         # Speedup vs every recorded baseline (4-way when dual-precision baselines
         # were measured: eager, eager_tf32, torch_compile, torch_compile_tf32).
+        #
+        # The headline `speedups` stay MEAN-over-mean deliberately, even though the tuner now
+        # optimizes a median. Here -- unlike in the tuning loop -- both sides are timed with
+        # the same `perf_trials` (100), so the mean comparison is already fair, and the mean
+        # is the more conservative claim: it includes the stalls a user would actually see.
+        # Switching the reported number to a median would raise every published speedup
+        # without any kernel getting faster, which is the kind of change that must never
+        # happen as a side effect of an internal fix. `speedups_median` is published
+        # alongside so the two conventions are visible and comparable -- external results
+        # often quote a median or min, and a comparison across conventions is meaningless
+        # unless both are on the table.
         if lat and lat.mean > 0:
             speedups: dict[str, float] = {}
             for b in self.baselines:
                 if b.latency_ms.mean > 0:
                     speedups[b.kind] = round(b.latency_ms.mean / lat.mean, 4)
             result["best"]["speedups"] = speedups
+            med = {}
+            for b in self.baselines:
+                bm, cm = b.latency_ms.robust_ms, lat.robust_ms
+                if bm > 0 and cm > 0:
+                    med[b.kind] = round(bm / cm, 4)
+            if med:
+                result["best"]["speedups_median"] = med
             # Back-compat scalar fields (vs the ieee/untagged baselines).
             if "eager" in speedups:
                 result["best"]["speedup_vs_eager"] = speedups["eager"]

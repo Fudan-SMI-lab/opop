@@ -1470,24 +1470,52 @@ def test_guard_uses_median_reference_not_outlier_corrupted_mean():
     verdict. Observed live on L3:48: a 10-sample reference returned mean=609ms with
     min=29.8ms / max=5760ms / std=1720ms -- one ~5.8s outlier dragged the mean 20x and
     manufactured a 115x 'speedup' against a candidate at 5.29ms. The reference's true
-    latency on this task is ~29ms (matching the eager baseline)."""
+    latency on this task is ~29ms (matching the eager baseline).
+
+    Tests the BEHAVIOUR (`_stats_to_dict` produces a median, and the ratio prefers it)
+    rather than the text of one bespoke block. That block used to live only on the
+    reference side; the median is now computed centrally for reference AND candidate, so an
+    assertion on `ref_latency_ms["median"]` would fail while the protection is strictly
+    stronger than before -- the classic test-the-implementation trap.
+    """
     from pathlib import Path
 
+    import ast
+
     src = Path("src/kernel_optimizer/gpu/worker_main.py").read_text(encoding="utf-8")
-    assert 'ref_latency_ms["median"]' in src, "median must be recorded"
-    # The ratio must read the median first.
+    # The ratio must still read the median first, whoever computed it.
     ratio_line = next(l for l in src.splitlines() if "ref_mean = ref_latency_ms" in l)
     assert '"median"' in ratio_line and ratio_line.index('"median"') < ratio_line.index('"mean"')
 
-    # The real distribution from the live run: median is ~29ms, mean is 609ms.
+    # And the median must actually be produced by the shared summarizer, for BOTH sides.
+    # `_stats_to_dict` and `_median` are pure dict/list code, but worker_main imports torch
+    # at module scope and torch is not installed on the orchestrator host -- so exec just
+    # those two functions rather than the module. That keeps the test running where the
+    # rest of the suite runs instead of being skipped exactly where it matters.
+    ns: dict = {}
+    tree = ast.parse(src)
+    wanted = {"_median", "_stats_to_dict"}
+    picked = [n for n in tree.body
+              if isinstance(n, ast.FunctionDef) and n.name in wanted]
+    assert {n.name for n in picked} == wanted, [n.name for n in picked]
+    exec(compile(ast.Module(body=picked, type_ignores=[]), "<worker_main>", "exec"), ns)
+    stats_to_dict = ns["_stats_to_dict"]
+
     samples = [29.8, 30.1, 29.9, 30.0, 5760.0, 29.7, 30.2, 29.8, 30.0, 90.0]
-    s = sorted(samples)
-    n = len(s)
-    median = s[n // 2] if n % 2 else 0.5 * (s[n // 2 - 1] + s[n // 2])
-    mean = sum(samples) / n
+    got = stats_to_dict({"mean": sum(samples) / len(samples), "std": 1720.0,
+                         "min": 29.7, "max": 5760.0, "num_trials": len(samples)},
+                        samples)
+    assert "median" in got, "the shared summarizer must record a median"
+    assert got["median"] == 30.0, got["median"]
+    assert got["samples"] == samples, "raw samples must be retained for re-analysis"
+    # Summary-only callers (the baseline helper, KernelBench runtime_stats) have no samples;
+    # they must still work and simply carry no median.
+    assert "median" not in stats_to_dict({"mean": 1.0, "std": 0.0, "min": 1.0,
+                                          "max": 1.0, "num_trials": 1})
+
     cand = 5.29
-    assert mean / cand > 100          # the bogus verdict the mean produced
-    assert median / cand < 10         # the median keeps it under the threshold
+    assert got["mean"] / cand > 100          # the bogus verdict the mean produced
+    assert got["median"] / cand < 10         # the median keeps it under the threshold
 
 
 # --- J: reused measurements must be journalled ------------------------------------
@@ -4654,3 +4682,102 @@ def test_a_nested_object_sent_as_json_text_is_decoded_not_rejected():
     for _ in range(30):
         deep = _json.dumps({"k": deep})
     _decode_stringified_objects(deep)      # must simply return, not raise
+
+
+def test_the_tuning_objective_is_robust_to_a_single_stall():
+    """A 20-sample MEAN is not a usable tuning objective; the median is.
+
+    Measured on run-l2-37-20260907-010645 and quantified with
+    scripts/probe_robust_objective.py against a 2000-sample ground truth (400 windows of
+    n=20): the mean's coefficient of variation at n=20 is 24-37% while the median's is
+    3-8%, and on a pair of configurations whose true costs differ by 7.6% a 20-sample mean
+    picks the faster one 64.8% of the time -- near a coin flip -- against the median's
+    93.2%. Since TPE chooses where to sample next from those comparisons, the mean spends
+    the trial budget exploring noise.
+
+    Live cost of the old objective, from that run: a space expansion was credited with
+    32.60 -> 30.70 us, a 5.8% "gain" that cleared min_improvement_pct 2.0 and earned the
+    family another rewrite round -- while the difference was 1.90 us against a combined
+    standard error of 17.85 us, and the supposedly-better point was SLOWER by min.
+    """
+    from kernel_optimizer.models.core import LatencyStats
+
+    # One stall in 20 samples: the real cost is ~16 us, the mean says 32.
+    stalled = LatencyStats(mean=32.60, std=64.80, min=16.00, max=315.00, n_samples=20,
+                           median=16.40)
+    clean = LatencyStats(mean=30.70, std=54.60, min=19.30, max=234.00, n_samples=20,
+                         median=19.80)
+
+    # The objective must prefer the genuinely faster kernel, which the MEAN gets backwards.
+    assert stalled.robust_ms < clean.robust_ms, "median must rank the faster kernel first"
+    assert stalled.mean > clean.mean, "the mean ranks them backwards -- the defect"
+
+    # Absent a median (older runs, and the two timing paths that return summary stats only),
+    # robust_ms must fall back to the mean rather than crash or return a sentinel.
+    legacy = LatencyStats(mean=7.5, std=0.2, min=7.1, max=8.0, n_samples=100)
+    assert legacy.median is None
+    assert legacy.robust_ms == 7.5
+    # A non-positive median is not a measurement; fall back too.
+    assert LatencyStats(mean=7.5, std=0.2, min=7.1, max=8.0, n_samples=100,
+                        median=-1.0).robust_ms == 7.5
+
+    # `min` must NOT be the objective, however robust it looks: measured at n=20 it is
+    # biased +9.8% to +156% (20 draws rarely contain the true minimum) and it ranked three
+    # of six real config pairs BACKWARDS, below 50% agreement, because it reports the
+    # luckiest draw rather than the cost. Guard the source so nobody "simplifies" to it.
+    from pathlib import Path
+    tpe_src = Path("src/kernel_optimizer/tuning/tpe.py").read_text(encoding="utf-8")
+    assert "robust_ms" in tpe_src
+    assert ".latency_ms.min" not in tpe_src, "min is a biased estimator at n=20; see probe"
+
+    # The tuner and the orchestrator must rank by the SAME statistic, or the tuner's
+    # incumbent and the reported best can be different trials.
+    orch = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
+    for frag in ("best = min(complete, key=lambda t: t.latency_ms.robust_ms)",
+                 "crun.best_ms = best.latency_ms.robust_ms"):
+        assert frag in orch, frag
+
+    # The headline speedup must stay MEAN-based: switching it to a median would raise every
+    # published number without any kernel getting faster. Both are reported side by side.
+    assert "speedups[b.kind] = round(b.latency_ms.mean / lat.mean, 4)" in orch
+    assert "speedups_median" in orch
+    assert "final_reeval_median_ms" in orch
+
+
+def test_raw_samples_survive_to_the_trial_record():
+    """The samples must reach LatencyStats, not be dropped at the parse boundary.
+
+    They were, on the first cut of this change: the worker emitted `samples` but
+    LatencyStats had no field for it, so `latency_from_result` silently discarded them and
+    the log was no more re-analysable than before. Caught only by looking at a real
+    tune-file run's events (`samples? False`), which is why this test exists.
+
+    What retention bought immediately, from run tunefile-l2-37-20260907-020027: the noise on
+    this task is NOT scattered jitter but a deterministic warmup artifact -- sample #1 is
+    370-385 us in all four trials while samples 2-20 sit inside 17.3-19.3 / 40.0-42.0 /
+    15.3-16.3 us. One artifact in 20 samples was inflating every trial's mean by 1.7-2.9x.
+    That diagnosis was impossible from mean/std/min/max alone.
+    """
+    from kernel_optimizer.evaluation.correctness import latency_from_result
+
+    worker_result = {"latency_ms": {
+        "mean": 0.03561, "std": 0.0788, "min": 0.0173, "max": 0.3703, "n": 20,
+        "median": 0.01811,
+        "samples": [0.3703, 0.0175, 0.0182, 0.0183, 0.0183, 0.0174, 0.0182, 0.0183,
+                    0.0184, 0.0181, 0.0175, 0.0174, 0.0174, 0.0173, 0.0181, 0.0191,
+                    0.0181, 0.0193, 0.0175, 0.0174]}}
+    lat = latency_from_result(worker_result)
+    assert lat is not None
+    assert lat.samples is not None, "samples dropped at the parse boundary"
+    assert len(lat.samples) == 20
+    assert lat.samples[0] == 0.3703, "the artifact itself must be preserved, not filtered"
+    # The objective ignores it; the record keeps it.
+    assert lat.robust_ms == 0.01811
+    assert abs(lat.mean / lat.robust_ms - 1.97) < 0.05, "mean is ~2x the real cost here"
+
+    # A worker result with no samples (the baseline helper, KernelBench runtime_stats) must
+    # still parse, carrying neither samples nor median.
+    plain = latency_from_result({"latency_ms": {"mean": 0.05, "std": 0.001, "min": 0.049,
+                                                "max": 0.052, "n": 100}})
+    assert plain is not None and plain.samples is None and plain.median is None
+    assert plain.robust_ms == 0.05

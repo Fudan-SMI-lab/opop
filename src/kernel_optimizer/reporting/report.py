@@ -392,6 +392,31 @@ class ReportGenerator:
                              "so NOT directly comparable; use the honest verdict above**:")
                 for kind in sorted(speedups):
                     lines.append(f"  - vs `{kind}`: **{speedups[kind]}x**")
+                # Both conventions, side by side, because a cross-framework comparison
+                # across conventions is meaningless. The mean figures above are the
+                # headline and the conservative claim (they include the scheduling stalls a
+                # user actually observes); the medians below are what the tuner optimized
+                # and what many kernel benchmarks publish. On a task whose stalls are large
+                # relative to the kernel the two diverge a lot -- on level2:37 a trial's
+                # mean/min ratio reached 2.04x -- and quoting one against the other's number
+                # invents a difference no kernel produced.
+                med = best.get("speedups_median")
+                if med:
+                    lines.append("- the same ratios computed from MEDIANS (robust to "
+                                 "scheduling stalls; this is the statistic the tuner "
+                                 "optimized, and the convention many published kernel "
+                                 "numbers use — compare like with like):")
+                    for kind in sorted(med):
+                        delta = ""
+                        if kind in speedups and speedups[kind]:
+                            pct = (med[kind] / speedups[kind] - 1) * 100
+                            delta = f" ({pct:+.1f}% vs the mean-based figure)"
+                        lines.append(f"  - vs `{kind}`: **{med[kind]}x**{delta}")
+                    if best.get("final_reeval_median_ms"):
+                        lines.append(
+                            f"  - re-eval latency: mean "
+                            f"{best.get('final_reeval_ms')} ms, median "
+                            f"{best.get('final_reeval_median_ms')} ms")
             else:
                 if "speedup_vs_eager" in best:
                     lines.append(f"- speedup vs eager: **{best['speedup_vs_eager']}x**")
