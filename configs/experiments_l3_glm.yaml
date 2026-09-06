@@ -45,17 +45,22 @@ opencode:
   # agent call. gpt-5.6-sol never came near the default (peak 6649 over 107 turns), which is
   # why 17 gpt runs gave no warning. See docs/finding-glm-truncated-before-acting.md.
   #
-  # The value is a CEILING, not a request: each model's own advertised output limit wins
-  # underneath it, so 200000 resolves to zhipuai's maximum of 131072 (asking for more returns
-  # HTTP 400 code 1210, `max_tokens参数非法:限制数值范围[1,131072]`). Nothing model-specific is
-  # encoded here, so this line is correct for any model this arm might use.
+  # The value is a CEILING, not a request. 131072 is zhipuai's advertised maximum (asking for
+  # more returns HTTP 400 code 1210).
+  #
+  # This was 200000, relying on opencode's `min(model.limit.output, THIS)` to clamp it down.
+  # That works only while opencode does not know this model's `limit.output`: the provider
+  # config (v2-glm/.opencode/opencode.jsonc) declares no `limit` for glm-5.3, so the env var
+  # is the only bound. Naming the real ceiling does not depend on that precondition, and
+  # 200000 would silently become the binding value if a provider config ever declared a
+  # larger limit. The L2:37 config already uses 131072.
   #
   # This does NOT replace the truncation-feedback fix in AgentModule.invoke -- that fix is what
   # makes a truncated turn recoverable at all, and it got a real L3:21 generator call to two
   # contract-valid candidates in 18m16s. The ceiling reduces how often truncation happens; the
   # feedback handles it when it does.
   server_env:
-    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "200000"
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
 
 agents:
   default_model: zhipuai/glm-5.3
