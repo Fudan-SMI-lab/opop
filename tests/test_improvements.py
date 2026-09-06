@@ -957,6 +957,105 @@ def test_transport_retries_are_capped(tmp_path):
     assert len(seen) == 2  # initial attempt + 1 transport retry, then stop
 
 
+# --- A truncated turn is not a formatting mistake ---------------------------------
+#
+# glm-5.3 killed run-l3-21-20260906-084636 outright: three generator attempts each spent
+# exactly 32000 output+reasoning tokens on planning, were cut off (`finish == "length"`)
+# before writing a single file, and were each told "no parseable JSON found ... emit a
+# fenced json block". That feedback describes a mistake the model did not make, so it
+# re-planned identically all three times, cost $0.44, and the run died at _generate_seeds.
+# The retry text must name truncation and ask for less deliberation instead.
+
+
+def _finish_module(tmp_path, finishes, structureds, tokens=None):
+    """An AgentModule whose successive replies carry given `finish`/`structured` values."""
+    from pydantic import BaseModel as _BM
+
+    from kernel_optimizer.agents.base import AgentModule
+    from kernel_optimizer.agents.runtime import PromptResult
+    from kernel_optimizer.config import AgentModuleConfig
+
+    class Out(_BM):
+        answer: str
+
+    seen: list[str] = []
+
+    class FakeClient:
+        def create_session(self, root, title=""):
+            return "ses_only"
+
+        def prompt(self, session_id, text, **kw):
+            i = len(seen)
+            seen.append(text)
+            return PromptResult(
+                text="", structured=structureds[i], tokens=(tokens or [{}] * 9)[i],
+                cost=0.0, session_id=session_id, message_id="m",
+                finish=finishes[i],
+            )
+
+    class Mod(AgentModule):
+        name = "generator"
+        output_model = Out
+
+        def seed_sandbox(self, inputs, sb):
+            pass
+
+        def render_prompt(self, inputs, sb):
+            return "ORIGINAL TASK TEXT"
+
+    store = _FakeStore()
+    mod = Mod(FakeClient(), _FakeSandboxes(tmp_path), store, AgentModuleConfig())
+    return mod, store, seen
+
+
+def test_a_truncated_turn_is_told_it_was_cut_off_not_that_its_json_was_malformed(tmp_path):
+    mod, _store, seen = _finish_module(
+        tmp_path,
+        finishes=["length", "stop"],
+        structureds=[None, {"answer": "ok"}],
+        tokens=[{"output": 14, "reasoning": 31986}, {}],
+    )
+    assert mod.invoke(None).output.answer == "ok"
+
+    retry = seen[1]
+    assert "CUT OFF" in retry
+    assert "32000" in retry, "the feedback should quantify the budget that was spent"
+    assert "Deliberate far less" in retry
+    # The misleading advice must be gone: the model's JSON was never the problem.
+    assert "fenced" not in retry
+
+
+def test_a_malformed_answer_still_gets_the_formatting_feedback(tmp_path):
+    """The truncation branch must not swallow the ordinary case: a reply that finished
+    normally but carried no JSON is a formatting mistake and should be told so."""
+    mod, _store, seen = _finish_module(
+        tmp_path, finishes=["stop", "stop"], structureds=[None, {"answer": "ok"}]
+    )
+    assert mod.invoke(None).output.answer == "ok"
+    assert "fenced" in seen[1] and "CUT OFF" not in seen[1]
+
+
+def test_the_final_failure_event_records_how_the_last_turn_ended(tmp_path):
+    """Diagnosing the GLM run needed a dig through opencode's sqlite store because
+    events.jsonl recorded only the (wrong) corrective text. The failure event must carry
+    `finish` so a truncation is visible from the run's own trace."""
+    from kernel_optimizer.agents.runtime import AgentCallError
+
+    mod, store, seen = _finish_module(
+        tmp_path,
+        finishes=["length", "length", "length"],
+        structureds=[None, None, None],
+        tokens=[{"output": 5, "reasoning": 31995}] * 3,
+    )
+    with pytest.raises(AgentCallError):
+        mod.invoke(None)
+
+    failed = [p for t, p in store.events if t == "AGENT_CALL_FAILED" and p.get("final")]
+    assert len(failed) == 1
+    assert failed[0]["finish"] == "length"
+    assert failed[0]["attempts"] == 3
+
+
 # --- R: repair agent must see the reference and its own rejected diagnoses --------
 #
 # Found in the L3:48 rerun. cand-0137895f was rejected three times with

@@ -28,6 +28,10 @@ class PromptResult(BaseModel):
     session_id: str
     message_id: str | None = None
     error: str | None = None
+    # Why the model stopped, verbatim from the server ("stop", "tool-calls", "length", ...).
+    # `length` means the answer was CUT OFF, which is a different failure from a badly
+    # formatted answer and needs different feedback -- see AgentModule.invoke.
+    finish: str | None = None
 
 
 def _free_port(preferred: int) -> int:
@@ -213,6 +217,7 @@ class OpencodeClient:
             session_id=session_id,
             message_id=info.get("id"),
             error=json.dumps(error)[:500] if error else None,
+            finish=info.get("finish") if isinstance(info.get("finish"), str) else None,
         )
 
     def abort(self, session_id: str) -> None:

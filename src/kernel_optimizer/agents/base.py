@@ -80,6 +80,11 @@ class AgentModule(ABC, Generic[TIn, TOut]):
         total_cost = 0.0
         feedback = ""
         last_error = ""
+        # Kept so the FINAL failure event records HOW the last turn ended. Without it the
+        # only surviving trace of a truncation is the corrective feedback text, which
+        # describes the wrong cause -- diagnosing run-l3-21-20260906-084636 needed a dig
+        # through opencode's sqlite store because events.jsonl said "no parseable JSON".
+        last_finish: str | None = None
         transport_retries = 0
         soft_retry_used = False  # improvement L: at most one advisory (non-blocking) retry
         for attempt in range(1, self.cfg.max_retries + 2):
@@ -126,13 +131,39 @@ class AgentModule(ABC, Generic[TIn, TOut]):
                 continue
 
             total_cost += result.cost
+            last_finish = result.finish
             for key, value in (result.tokens or {}).items():
                 if isinstance(value, (int, float)):
                     total_tokens[key] = total_tokens.get(key, 0) + value
 
             if result.structured is None:
-                feedback = ("no parseable JSON found in your response; emit a single "
-                            "fenced ```json block matching the required schema")
+                # A CUT-OFF answer and a MALFORMED answer are different failures and need
+                # different feedback. `finish == "length"` means the turn hit its token
+                # ceiling, usually deep in reasoning, so no closing fence was ever emitted.
+                # Telling that agent "emit a fenced json block" describes a mistake it did
+                # not make: it re-plans from scratch, spends the whole budget again, and
+                # every retry fails identically. Measured on glm-5.3 in
+                # run-l3-21-20260906-084636: 3 attempts x 32000 tokens, $0.44, zero files
+                # written, run dead. Naming the real cause and asking for less deliberation
+                # is the only feedback that can change the outcome.
+                if result.finish == "length":
+                    spent = result.tokens or {}
+                    budget = sum(
+                        v for k, v in spent.items()
+                        if k in ("output", "reasoning") and isinstance(v, (int, float))
+                    )
+                    feedback = (
+                        "your previous turn was CUT OFF at its token limit"
+                        + (f" (~{int(budget)} output+reasoning tokens)" if budget else "")
+                        + " while still deliberating, so it produced no answer at all. "
+                        "This is not a formatting problem. Deliberate far less: stop "
+                        "planning, act immediately with the tools, write the required "
+                        "files one at a time, and keep each step short. Emit the required "
+                        "JSON as soon as the files exist."
+                    )
+                else:
+                    feedback = ("no parseable JSON found in your response; emit a single "
+                                "fenced ```json block matching the required schema")
                 last_error = feedback
                 continue
             try:
@@ -185,7 +216,8 @@ class AgentModule(ABC, Generic[TIn, TOut]):
         self.store.append(
             "AGENT_CALL_FAILED",
             {"module": self.name, "call_id": call_id, "final": True,
-             "error": last_error[:1000]},
+             "attempts": attempt, "finish": last_finish, "cost": total_cost,
+             "tokens": total_tokens, "error": last_error[:1000]},
         )
         raise AgentCallError(
             f"{self.name} failed after {self.cfg.max_retries + 1} attempts: {last_error[:500]}"

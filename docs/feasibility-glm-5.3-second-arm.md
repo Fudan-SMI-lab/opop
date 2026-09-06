@@ -4,6 +4,19 @@ Asked: stand up a second experiment using `zhipuai/glm-5.3` at variant `xhigh`, 
 directory with its own opencode server, and **verify it works with real agent calls** before
 committing to it. Findings below are all from live calls, not from reading configs.
 
+> **RETRACTED VERDICT (2026-09-06).** The arm was cleared as feasible on the strength of a live
+> `level1:19` agent call. It then **died at its first agent call on the real `level3:21` task**
+> — three attempts, each truncated at exactly 32000 output+reasoning tokens, zero files
+> written, $0.4557 spent. The verdict below is wrong, and the reason is a flaw in how I
+> verified it: **the smoke prompt peaked at 5589 tokens against a 32000 ceiling, so it could
+> not have detected the failure mode that kills the real run.** Everything the checks below
+> assert about transport, provider resolution, the sandbox-config mechanism and the candidate
+> contract still holds and was independently confirmed by the real run reaching the generator
+> call at all. What was never tested is the one thing that mattered: whether GLM finishes an
+> L3-sized task inside its thinking budget. See
+> `finding-glm-truncated-before-acting.md`. Verifying an agent on a cheap task and
+> extrapolating to an expensive one is not verification.
+
 ## Verdict: feasible, with one correction to the request
 
 The arm works end to end. But **`glm-5.3` has no `xhigh` variant** — the repo's own config
