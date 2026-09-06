@@ -4781,3 +4781,48 @@ def test_raw_samples_survive_to_the_trial_record():
                                                 "max": 0.052, "n": 100}})
     assert plain is not None and plain.samples is None and plain.median is None
     assert plain.robust_ms == 0.05
+
+
+def test_triton_pitfalls_covers_the_compile_errors_actually_observed():
+    """Every entry in triton_pitfalls.md must be a failure the harness really saw.
+
+    Two were added from run-l2-37-20260907-020707, where glm-5.3 produced them on
+    independently generated candidates:
+
+    - `import triton.lang as tl` -- there is no such submodule; the correct name is
+      `triton.language`. It fails at IMPORT time, so a correct kernel is discarded for a
+      one-word mistake. Hit TWO of four seed candidates in that run (cand-4cdbf3fc and
+      cand-fba33b33), and never once in 17 gpt-arm runs, so it is a model-specific habit
+      worth naming explicitly rather than a one-off.
+    - `ng = BLOCK_N // GROUP_SIZE` then `tl.reshape(t, (BLOCK_M, ng, GROUP_SIZE))` --
+      floordiv between two `tl.constexpr` values does not fold to `constexpr[int]`, so the
+      shape tuple is rejected. Cost a repair round in run-l2-37-20260907-010645.
+
+    The doc is read from disk on every agent call (`_triton_pitfalls_doc`, no module-level
+    cache), so an addition reaches a RUNNING experiment on its next agent call. That is why
+    it was safe to add these mid-run.
+    """
+    from kernel_optimizer.agents.modules import _triton_pitfalls_doc
+
+    doc = _triton_pitfalls_doc()
+
+    # Pitfall 7: the import name. Must show the wrong spelling AND the right one, since a
+    # rule that only says "use triton.language" does not tell the model what it did wrong.
+    assert "triton.lang as tl" in doc, "the failing spelling must appear as the BAD form"
+    assert "import triton.language as tl" in doc, "the correct spelling must appear"
+    assert "No module named 'triton.lang'" in doc, "the actual error text helps recognition"
+
+    # Pitfall 8: constexpr arithmetic in a shape tuple.
+    assert "constexpr[int]" in doc
+    assert "tl.reshape" in doc
+    # It must point at the HOST as the fix, matching pitfall 6's existing rule.
+    assert "host" in doc.lower()
+
+    # Structure: every pitfall keeps the BAD/GOOD pairing the file's header promises, so a
+    # new entry cannot be a bare prohibition with no working alternative.
+    sections = [s for s in doc.split("\n## ") if s.strip()][1:]   # drop the title block
+    assert len(sections) >= 8, f"expected >=8 pitfalls, found {len(sections)}"
+    for s in sections:
+        name = s.splitlines()[0]
+        assert "# BAD" in s or "BAD:" in s, f"pitfall lacks a BAD form: {name}"
+        assert "# GOOD" in s or "GOOD:" in s, f"pitfall lacks a GOOD form: {name}"

@@ -105,6 +105,42 @@ def kernel(..., D: tl.constexpr, D_PADDED: tl.constexpr):
     mask = d < D
 ```
 
+## 7. The device-language module is `triton.language` — there is no `triton.lang`
+
+```python
+# BAD: no such submodule -> ModuleNotFoundError at import time, before any kernel runs
+import triton.lang as tl                          # ERROR: No module named 'triton.lang'
+
+# GOOD: the only correct spelling
+import triton
+import triton.language as tl
+```
+
+The import fails before a single line of the kernel executes, so a perfectly correct
+kernel is thrown away for a one-word mistake. Write the two imports above verbatim.
+
+## 8. Integer arithmetic between two `tl.constexpr` values is NOT itself a constexpr
+
+```python
+# BAD: `ng` is a value wrapping a tensor, not constexpr[int], so any shape built from
+#      it is rejected: "Shape element 1 must have type `constexpr[int]`"
+@triton.jit
+def kernel(..., BLOCK_N: tl.constexpr, GROUP_SIZE: tl.constexpr):
+    ng = BLOCK_N // GROUP_SIZE                     # floordiv of two constexprs
+    t = tl.reshape(t, (BLOCK_M, ng, GROUP_SIZE))   # ERROR
+
+# GOOD: do the arithmetic on the host and pass the result in as its own constexpr
+NG = block_n // group_size                         # host side (python)
+kernel[grid](..., BLOCK_N=block_n, GROUP_SIZE=group_size, NG=NG)
+@triton.jit
+def kernel(..., BLOCK_N: tl.constexpr, GROUP_SIZE: tl.constexpr, NG: tl.constexpr):
+    t = tl.reshape(t, (BLOCK_M, NG, GROUP_SIZE))   # OK
+```
+
+Same rule as pitfall 6, generalized: anything that has to appear in a **shape tuple** must
+arrive as a `tl.constexpr` parameter, not be computed from other constexprs inside the
+kernel. Applies to `tl.reshape`, `tl.view`, `tl.arange` bounds, and `tl.full` shapes.
+
 ---
 
 Not covered here (deliberately): performance-tuning choices such as `num_stages`,
