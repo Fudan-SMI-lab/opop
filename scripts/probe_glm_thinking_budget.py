@@ -10,12 +10,29 @@ This decides it from outside opencode: the same deliberately hard prompt at each
 `max_tokens` far above 32000 every time. If the stop lands at 32000 regardless of `max_tokens`
 and moves with the tier, the budget is the tier's.
 
-Streamed, because a non-streaming `max` call on this prompt exceeds a 900s read timeout (the
-first version of this probe died that way). Streaming also keeps the socket alive between
-chunks, so the only timeout that matters is the gap between chunks, not total wall time.
+Non-streaming with a long timeout and a transport retry. Three earlier shapes of this probe
+all died in the HTTP layer rather than producing a number, which is worth recording so nobody
+repeats them:
 
-Tiers run cheapest-first: `high` is the one that decides whether lowering the tier is even a
-viable option, so it should not be gated behind a 20-minute `max` call.
+  * non-streaming, 900s read timeout  -> TimeoutError (a max-tier call on this prompt is longer)
+  * streamed, 300s between-chunk       -> ReadTimeout (the endpoint BUFFERS reasoning; there is
+                                          no incremental traffic to satisfy a short gap timeout)
+  * streamed, 1800s between-chunk      -> RemoteProtocolError, incomplete chunked read
+
+So: no streaming (nothing is gained when the server buffers anyway), 2400s, and one retry on a
+transport error. Each attempt costs roughly $0.15 and up to 20 minutes.
+
+Two calls, both with `max_tokens: 40000` — above the observed 32000 stop, so `max_tokens` cannot
+be the binding constraint:
+
+  * `max`  — if it stops at exactly 32000, the ceiling is the tier's, not the request's.
+  * `high` — if it stops lower, the budget tracks the tier; if it completes, `high` fits and
+    lowering the tier is a viable option for the arm.
+
+Deliberately NOT tested with a real agent call: `agent-smoke` on an L3 task would take the GPU
+lock, and the two arms' `runs_dir` differ so their locks are different files that do not see
+each other. While a gpt run is live that would corrupt its timings, which costs far more than
+this probe answers.
 """
 from __future__ import annotations
 
@@ -23,7 +40,7 @@ import json
 import pathlib
 import sys
 
-sys.stdout.reconfigure(encoding="utf-8")
+sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 sys.path.insert(0, r"D:\Pyhon_projects\opop\v2\src")
 import httpx  # noqa: E402
 
@@ -52,57 +69,52 @@ HARD = (
 )
 
 
-def call(effort: str | None, max_tokens: int) -> dict:
+def call_once(effort: str | None, max_tokens: int) -> dict:
     body = {
         "model": "glm-5.3",
         "messages": [{"role": "user", "content": HARD}],
         "max_tokens": max_tokens,
-        "stream": True,
-        "stream_options": {"include_usage": True},
+        "stream": False,
     }
     if effort is not None:
         body["reasoning_effort"] = effort
-
-    usage: dict = {}
-    finish: list[str] = []
-    chunks = 0
-    # 300s between chunks is generous; a live stream emits far more often than that.
-    with httpx.Client(timeout=httpx.Timeout(300.0, connect=30.0)) as client:
-        with client.stream(
-            "POST",
+    with httpx.Client(timeout=httpx.Timeout(2400.0, connect=30.0)) as client:
+        resp = client.post(
             URL,
             json=body,
             headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"},
-        ) as resp:
-            if resp.status_code != 200:
-                return {"_http": resp.status_code, "_body": resp.read()[:400].decode("utf-8", "replace")}
-            for line in resp.iter_lines():
-                if not line.startswith("data:"):
-                    continue
-                payload = line[5:].strip()
-                if payload == "[DONE]":
-                    break
-                try:
-                    d = json.loads(payload)
-                except ValueError:
-                    continue
-                chunks += 1
-                if d.get("usage"):
-                    usage = d["usage"]
-                for ch in d.get("choices") or []:
-                    if ch.get("finish_reason"):
-                        finish.append(ch["finish_reason"])
-    return {"usage": usage, "finish": finish, "chunks": chunks}
+        )
+        if resp.status_code != 200:
+            return {"_http": resp.status_code, "_body": resp.text[:400]}
+        d = resp.json()
+    return {
+        "usage": d.get("usage") or {},
+        "finish": [c.get("finish_reason") for c in d.get("choices") or []],
+    }
 
 
-print(f"{'effort':>8} {'max_tokens':>11} {'completion':>11} {'reasoning':>10}  finish")
-for effort, mt in [("high", 120000), ("max", 120000), ("max", 40000), ("low", 120000)]:
+def call(effort: str | None, max_tokens: int) -> dict:
+    """One transport retry: three earlier probe shapes died in the HTTP layer, not upstream."""
+    last: dict = {}
+    for attempt in (1, 2):
+        try:
+            return call_once(effort, max_tokens)
+        except (httpx.HTTPError, httpx.RemoteProtocolError) as exc:
+            last = {"_transport": f"{type(exc).__name__}: {str(exc)[:200]}", "_attempt": attempt}
+            print(f"   attempt {attempt} transport failure: {last['_transport']}", flush=True)
+    return last
+
+
+print(f"{'effort':>8} {'max_tokens':>11} {'completion':>11} {'reasoning':>10}  finish", flush=True)
+for effort, mt in [("max", 40000), ("high", 40000)]:
     d = call(effort, mt)
     if "_http" in d:
-        print(f"{effort:>8} {mt:>11}  HTTP {d['_http']}: {d['_body'][:120]}")
+        print(f"{effort:>8} {mt:>11}  HTTP {d['_http']}: {d['_body'][:120]}", flush=True)
+        continue
+    if "_transport" in d:
+        print(f"{effort:>8} {mt:>11}  gave up after 2 transport failures", flush=True)
         continue
     u = d["usage"] or {}
     comp = u.get("completion_tokens")
     rea = (u.get("completion_tokens_details") or {}).get("reasoning_tokens")
-    print(f"{effort:>8} {mt:>11} {str(comp):>11} {str(rea):>10}  {d['finish']}")
-    sys.stdout.flush()
+    print(f"{effort:>8} {mt:>11} {str(comp):>11} {str(rea):>10}  {d['finish']}", flush=True)

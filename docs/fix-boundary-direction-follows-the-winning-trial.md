@@ -384,6 +384,49 @@ observations are consistent with the retrospective finding that 16 of 30 improvi
 were won by an already-reachable configuration — and they are the reason the anchored pass must
 stay a floor rather than a veto.
 
+### A steep monotone ladder does not predict that the range extends, either
+
+The run's third expansion is the one case where I expected the *range* rather than the budget to
+pay, and said so before the result existed. `cand-1129b4d9` (the run's 16.8 ms leader) had the
+cleanest possible boundary signal — a strictly monotone 3.1× descent straight into the edge:
+
+```
+BLOCK_N=16   n= 5  best 52.00
+BLOCK_N=32   n= 5  best 30.80
+BLOCK_N=64   n= 7  best 21.30
+BLOCK_N=128  n=22  best 16.80   <- the edge, and the run's best
+```
+
+Unlike the first two expansions (a flat tie, and a non-monotone median), this is a genuine trend
+with a large effect, sampled 39 times, pointing where both the median and the winner agree. The
+prediction was that `BLOCK_N=256` would continue it. It did not:
+
+```
+BLOCK_N=256  n= 2  best 17.90   <- 6.5% WORSE than 128; the ladder turned at the edge
+winner after re-tune: BLOCK_N=128, unchanged, 16.80 ms
+```
+
+So the expansion's third outcome is **16.8 → 16.8, no change**, and the added value is worse than
+the incumbent despite the strongest extrapolation signal available. That is a real limit on what
+the boundary flag can be expected to buy: monotone-to-the-edge is evidence the edge has not been
+*probed*, not evidence the trend continues past it. Tile sizes have hardware optima — 128 is a
+plausible sweet spot for this kernel's shared-memory and register budget, and 256 crossing it is
+ordinary, not surprising in hindsight.
+
+Tally for this run, all three expansions correctly aimed:
+
+```
+cand-8c64ccc3   BLOCK_M=128 added   tried  5x, tied      19.8 -> 19.8
+cand-a988ff79   5 values added      all 2-27% worse      21.3 -> 20.9  (won by old values)
+cand-1129b4d9   BLOCK_N=256 added   6.5% worse           16.8 -> 16.8
+```
+
+Three for three: the aim was right, the added value was never used, and the only gain came from
+the fresh budget. n=3 in one run cannot carry a general claim — the retrospective set has
+`cand-cf0f07e7` at 3.55 → 2.84 (20.0%) — but it is a consistent direction, and it argues that
+whatever value expansion has lies mostly in re-tuning, which is an argument for keeping the
+floor and against ever making the aim a veto.
+
 Reproduce with `python scripts/audit_fallback_vs_prefix_rule.py`,
 `python scripts/audit_shipped_vs_prefix_requests.py`,
 `python scripts/audit_fallback_prospective.py`.
