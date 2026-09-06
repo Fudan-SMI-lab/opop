@@ -26,13 +26,25 @@ WATCH = {
 
 
 def opencode_alive() -> bool:
-    """True if any opencode.exe is running. Windows `tasklist`, since the orchestrator is
-    a Windows process and a Bash `ps` cannot see it."""
+    """True if any opencode process is running.
+
+    Two probes because the orchestrator's OS decides which one works: `tasklist` on
+    Windows (a Bash `ps` cannot see a Windows process), `pgrep` on Linux. Whichever is
+    absent raises OSError and is skipped. If NEITHER can answer, return True -- a liveness
+    check that cannot observe must not claim the run is dead. But note the cost of that
+    choice: on a box where neither probe works, `PROCESS GONE` can never fire, so the
+    stall timeout becomes the only death detector. Say so rather than trusting silence.
+    """
     try:
         out = subprocess.run(["tasklist"], capture_output=True, timeout=30)
         return b"opencode.exe" in out.stdout
     except (OSError, subprocess.SubprocessError):
-        return True      # can't tell -> assume alive rather than cry wolf
+        pass
+    try:
+        out = subprocess.run(["pgrep", "-f", "opencode"], capture_output=True, timeout=30)
+        return out.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return True      # neither probe available -> cannot tell, so do not cry wolf
 
 
 def main() -> int:
