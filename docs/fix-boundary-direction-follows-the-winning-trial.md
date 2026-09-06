@@ -343,6 +343,47 @@ exercise of the fallback path — 11 knobs, 6 on a median edge, only 2 on the wi
 **cancelled** and its fresh 40-trial budget forfeited. That is the failure mode the floor was
 added to prevent, observed working rather than argued for.
 
+### And the floor is what produced the gain, exactly as predicted
+
+The re-tune of that space went **21.3 → 20.9 ms (1.9%)** — and every value in the winning
+configuration was already legal before the expansion:
+
+```
+winner: SCORE_BLOCK_M=64  SCORE_NUM_WARPS=2  VALUE_BLOCK_M=64
+        VALUE_BLOCK_D=128  VALUE_NUM_WARPS=4  COMPUTE_DTYPE=fp16
+        -> uses NO added value
+```
+
+The five added values were reached and are all clearly worse:
+
+```
+knob              added   n   best      vs 20.9
+SCORE_BLOCK_M       256   1   24.4      +17%
+SCORE_NUM_WARPS       1   6   22.3       +7%
+VALUE_BLOCK_M       256   1   26.5      +27%
+VALUE_BLOCK_D       256   1   23.4      +12%
+VALUE_NUM_WARPS      16   5   21.4       +2%
+```
+
+So the widened range contributed nothing and the **fresh tuning budget contributed everything** —
+the second of the two things an expansion delivers, and precisely the mechanism that made
+cancelling `cand-0d0dcd49`'s expansion cost the project its largest single gain. That case was
+retrospective; this one is prospective, on a space where the anchored pass was empty, and it
+lands the same way.
+
+It also sharpens what "correct aim" is worth. Across this run's three expansions the aim has
+been right every time and the added values have been used **zero** times:
+
+```
+cand-8c64ccc3  BLOCK_M=128 added, tried 5x, tied exactly     19.8 -> 19.8
+cand-a988ff79  5 values added, all worse                     21.3 -> 20.9  (won by old values)
+```
+
+Aim decides which values get *offered*; the fresh budget is what actually converts. Both
+observations are consistent with the retrospective finding that 16 of 30 improving expansions
+were won by an already-reachable configuration — and they are the reason the anchored pass must
+stay a floor rather than a veto.
+
 Reproduce with `python scripts/audit_fallback_vs_prefix_rule.py`,
 `python scripts/audit_shipped_vs_prefix_requests.py`,
 `python scripts/audit_fallback_prospective.py`.
