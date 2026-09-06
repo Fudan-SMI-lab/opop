@@ -55,11 +55,19 @@ contract, on a prompt an order of magnitude easier than the one the experiment r
 ## Where the 32000 comes from
 
 Not from an upstream request cap — a direct call to the same endpoint with
-`max_tokens: 120000` and `reasoning_effort: "max"` returns HTTP 200 normally. The cap sits
-between opencode and the provider; `probe_thinking_budget.py` measures whether it tracks the
-`reasoning_effort` tier. What is already certain, and sufficient for the operational decision,
-is that **`reasoningEffort: "max"` and an L3-sized prompt put glm-5.3 over the ceiling
-reliably** — 3 out of 3, at the very first call, on the easiest of the three L3 tasks.
+`max_tokens: 120000` and `reasoning_effort: "max"` returns HTTP 200 normally.
+
+Not from opencode's declared model limit either. The live server reports
+`glm-5.3: limit {context: 1000000, output: 131072}`, and our `prompt()` body sends no
+token-limit field at all, so nothing on our side asks for 32000.
+
+That leaves the provider: on this endpoint, `reasoning_effort: "max"` appears to come with a
+~32000-token thinking budget that the model spends in full on a hard prompt.
+`scripts/probe_glm_thinking_budget.py` measures whether the ceiling moves with the tier.
+
+What is already certain, and sufficient for the operational decision, is that
+**`reasoningEffort: "max"` and an L3-sized prompt put glm-5.3 over the ceiling reliably** —
+3 out of 3, at the very first call, on the easiest of the three L3 tasks.
 
 gpt-5.6-sol on the identical prompt has never done this in 17 runs.
 

@@ -266,6 +266,43 @@ pinned by `test_median_fallback_reads_edges_from_the_domain_not_the_latency_dict
 see `opop-v2-worker-vs-driver-fix-propagation`. The results that exposed it (9.78 ms, then 9.42 ms
 after the expansion) stand on their own; nothing about them is retroactively changed.
 
+## First run under the fix: correctly aimed, and it still bought nothing
+
+`run-l3-43-20260906-091019` is the first run whose driver carries this change. Its first
+expansion, on `cand-8c64ccc3`, is the clean case where median and winner agree:
+
+```
+knob             median   winner   flag
+BLOCK_M              64       64   True/max     <- the single requested knob
+BLOCK_N              32       64   False/None
+NUM_WARPS             4        4   False/None
+NUM_STAGES            2        1   False/None
+COMPUTE_DTYPE      bf16     fp16   False/None   (non-numeric; filtered before direction)
+```
+
+`BLOCK_M`'s anchor is the same under either rule, so the anchored pass fires directly and the
+median fallback is never consulted. The expansion added `BLOCK_M=128`, aimed at the edge the
+winner actually sits on — the fix working as intended.
+
+The outcome, which is the part worth recording: **19.8 → 19.8 ms, no improvement.**
+
+```
+sp-846dfad7  BLOCK_M=16 best 22.50   =32 best 20.80   =64 best 19.80
+sp-26f17306  BLOCK_M=16 best 22.80   =32 best 20.50   =64 best 19.80   =128 best 19.80
+```
+
+The added value was reached (5 trials) and tied exactly, so the widened range was genuinely
+exhausted rather than unexplored, and the fresh 40-trial budget found nothing either. Correct
+aim is not sufficient for a gain — it only removes one way of wasting the spend. That is
+consistent with the retrospective base rate (well-directed flags convert at 21.8%, so ~4 in 5
+well-aimed expansions are expected to miss), and it is a useful counterweight to reading the
+9.14 → 8.13 case as what expansions normally do.
+
+Also note `COMPUTE_DTYPE` in the second space: `effect_pct = 845.71` with the flag on the
+`min` edge, i.e. fp16 is enormously faster than the alternatives and `fp16` is already the
+first choice. Nothing to expand toward — the hard-edge filter is what stops that becoming a
+request.
+
 Tests: `tests/test_stats.py::test_boundary_follows_the_fastest_trial_not_the_median`,
 `::test_a_winner_the_median_trend_contradicts_is_withdrawn_not_flipped`,
 `::test_median_and_winner_agreeing_leaves_the_verdict_untouched`,
