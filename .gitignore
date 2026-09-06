@@ -1,27 +1,34 @@
-.venv/
+# Experiment output -- large, machine-specific, and contains plaintext API keys in
+# sandbox opencode.json files (the sandbox_config_path mechanism copies the whole
+# provider block including options.apiKey into every agent sandbox).
 runs/
-# Abandoned first location for the GLM arm's run dir; the arm now writes to
-# ../v2-glm/runs (see configs/experiments_l3_glm.yaml). Ignored rather than merely
-# deleted because sandbox opencode.json files under any run dir can now carry a
-# provider block WITH its apiKey — `sandbox_config_path` copies it in.
-runs-glm/
-__pycache__/
-*.pyc
-.pytest_cache/
-uv.lock
-# workspace / tooling artifacts that must never be committed
-.omo/
-.codegraph/
-.triton-cache-wsl/
-D:/
+runs-*/
 *.log
-opencode-server.log
-state.json
-# opencode config can carry plaintext API keys — never commit
+
+# Secrets. opencode provider configs carry API keys in plaintext.
 .opencode/
+opencode.json
 opencode.jsonc
-opencode_backup.jsonc
+*.jsonc
 kimi-provider.yaml
 
-# monitor dedup scratch files
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Local scratch
+.omo/
+.codegraph/
+uv.lock
+
+# Local caches and scratch that must never be committed
+.triton-cache-wsl/
 .tmp_*
+# A directory literally named "D:" (U+F03A fullwidth-colon substitute), created when a
+# script wrote a Windows absolute path through a POSIX API. Junk, not content.
+D/

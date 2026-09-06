@@ -94,14 +94,32 @@ def _detect_candidate_precision(source: str, params: ParamSet) -> str:
         return "tf32"
     if 'input_precision="ieee"' in text or "input_precision='ieee'" in text:
         return "ieee_fp32"
-    if "float16" in text or "tl.float16" in text or ".half(" in text or "torch.half" in text:
-        return "fp16"
+    # bfloat16 MUST be tested before float16: "bfloat16" contains "float16" as a
+    # substring, so the fp16 test matched first and labelled every bf16 kernel "fp16".
+    # Both map to the same tensor-core comparator in `_honest_verdict`, so no speedup was
+    # ever misjudged, but the reported precision was wrong -- and bf16 candidates do occur
+    # here (an L3:43 rewrite family used bf16 throughout).
     if "bfloat16" in text or "tl.bfloat16" in text:
         return "bf16"
+    if "float16" in text or "tl.float16" in text or ".half(" in text or "torch.half" in text:
+        return "fp16"
     if "tl.dot" in text:
         # tl.dot with no explicit precision: Triton defaults to the tf32 path on
         # fp32 inputs for this GPU generation.
         return "tf32"
+    # No dot product at all => no tensor-core path => the arithmetic precision IS the
+    # storage precision, and every low-precision construct was excluded above, so this
+    # is fp32. Reached by any pure elementwise/reduction kernel: scans, normalizations,
+    # reductions, pointwise fusions. L3:48's winner (a sequential selective scan,
+    # `state = state * e + bv * xv` + `tl.sum`) reported "unknown" for exactly this
+    # reason. `_honest_verdict` puts "unknown" and "ieee_fp32" on the same non-tensor-core
+    # branch, so this does not change any current comparison -- it makes the fp32
+    # comparator a decision instead of a default, which is what a precision claim in the
+    # paper has to rest on.
+    if "triton" in text or "tl." in text:
+        return "ieee_fp32"
+    # A CUDA (load_inline) backend has no `tl.` markers to read, so there is no evidence
+    # either way here. Guessing would be worse than admitting it.
     return "unknown"
 
 
@@ -138,7 +156,8 @@ def _honest_verdict(precision: str, speedups: dict[str, float]) -> dict[str, Any
 
 def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float,
                              space: ParameterSpace | None = None,
-                             min_effect_pct: float = 2.0) -> list[dict]:
+                             min_effect_pct: float = 2.0,
+                             max_edge_failure_frac: float = 1.0) -> list[dict]:
     """Improvement K: which knobs are at the tried-range boundary AND still improving,
     given that at least one hardware resource has headroom (< idle_frac of its limit).
 
@@ -193,6 +212,29 @@ def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float,
       the 7 requested knobs survive the filter, including the `OUT_BLOCK_M=256` that
       earned cand-45c3fd7d's 7.7% gain, and the winning trial of the run's best candidate
       (cand-e3a5da01, 9.73ms) used no added value at all.
+
+    Finally, `max_edge_failure_frac` is a PREFERENCE, not a fourth filter: among the knobs
+    that pass everything above, those whose boundary value already fails often are used
+    only if no healthier knob is available in the same expansion. Measured motivation:
+    values added beyond a failing edge fail 43% of the time (16/37) vs 15% (13/84) beyond a
+    healthy one, and a failed trial returns no latency at all.
+
+    It must not be a filter, and that is measured too
+    (`scripts/audit_expansion_failure_veto.py`, 19 runs / 523 aims):
+
+    - As a hard filter it suppresses all 155 failing-edge aims but EMPTIES the request list
+      on 8 expansions, and `_maybe_expand_space` cancels the round outright when this
+      returns [] -- forfeiting the fresh tuning budget that the fallback below exists to
+      protect. Two of those 8 are the best candidate of their run (cand-0d0dcd49 and
+      cand-60fdcae9, the 8.06 ms L3:43 winner).
+    - Applying it to the winner-anchored arm alone does not help: the median arm then
+      re-aims at THE SAME vetoed knobs in at least 5 of the 8, so the veto is defeated
+      exactly where it was meant to bite.
+    - As a preference it avoids 131 of the 155 failing-edge aims -- every one that had a
+      healthy alternative in the same expansion -- while the other 24 keep today's
+      behaviour exactly. Zero expansions are cancelled and zero re-tunes are lost.
+
+    Default 1.0 = disabled, so the shipped behaviour is opt-in via budgets.
     """
     if stats is None or not stats.param_stats:
         return []
@@ -290,6 +332,52 @@ def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float,
             return "max"
         return None
 
+    def _edge_failure_rate(ps) -> float:
+        """Historical failure rate of the boundary value this knob would widen past.
+
+        Ordering must come from the DOMAIN. `failure_rate_by_value` is keyed by
+        `repr(choice)` and built by iterating trials, so its key ORDER is trial order --
+        the same hazard `_median_direction` documents for `latency_by_value` (real observed
+        order ['128','64','256','512','1024'], whose first key is not the domain minimum).
+        Reading the edge off the dict would score the wrong value.
+
+        Returns 0.0 (i.e. "healthy", do not interfere) whenever the answer is unknown: no
+        space, no recorded rates, a non-numeric domain, or no direction. Absence of
+        evidence must not demote a knob.
+        """
+        rates = ps.failure_rate_by_value or {}
+        if space is None or not rates:
+            return 0.0
+        try:
+            choices = space.domain(ps.name).choices
+        except KeyError:
+            return 0.0
+        numeric = [c for c in choices
+                   if isinstance(c, (int, float)) and not isinstance(c, bool)]
+        if not numeric:
+            return 0.0
+        direction = ps.boundary_direction or _median_direction(ps)
+        if direction not in ("min", "max"):
+            return 0.0
+        edge = min(numeric) if direction == "min" else max(numeric)
+        return rates.get(repr(edge), 0.0)
+
+    def _prefer_healthy(reqs: list[dict]) -> list[dict]:
+        """Move failing-edge aims to the back of the queue, never off it.
+
+        `healthy or reqs` is the whole safety argument: this can never turn a non-empty
+        request list into an empty one, so it cannot reach `_maybe_expand_space`'s
+        `if not knobs: return` and cancel an expansion. See the docstring above for why a
+        filter here would cost more than it saves.
+        """
+        if max_edge_failure_frac >= 1.0 or not reqs:
+            return reqs
+        by_name = {ps.name: ps for ps in stats.param_stats}
+        healthy = [r for r in reqs
+                   if r["name"] not in by_name
+                   or _edge_failure_rate(by_name[r["name"]]) < max_edge_failure_frac]
+        return healthy or reqs
+
     def _requests(use_winner_anchor: bool) -> list[dict]:
         return [
             {"name": ps.name, "direction": ps.boundary_direction}
@@ -309,7 +397,7 @@ def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float,
             and not _at_hard_edge(ps.name, _median_direction(ps))
         ]
 
-    requests = _requests(True)
+    requests = _prefer_healthy(_requests(True))
     if requests:
         return requests
     # An expansion delivers TWO things: a widened range and a fresh tuning budget. The
@@ -328,7 +416,7 @@ def boundary_knobs_to_expand(stats: TuningStats, idle_frac: float,
     # So when the corrected aim has nothing to ask for, fall back to the median's aim rather
     # than skipping the round. The expansion still happens, the re-tune is preserved, and
     # the only thing lost is a knob request that was going to be a low-yield guess anyway.
-    return _requests(False)
+    return _prefer_healthy(_requests(False))
 
 
 
@@ -363,6 +451,17 @@ class CandidateRun:
 
 
 class Orchestrator:
+    # Consecutive outer-loop iterations that neither rewrite nor add a family before the
+    # loop gives up. This is a liveness backstop, not a budget: every legitimate ending
+    # already comes from `global_verdict` (wall clock, or nothing active) or from a
+    # family's own freeze. A run that reaches this bound has a defect -- and the point of
+    # the bound is that the defect costs a handful of events instead of hours of clock and
+    # a 991 MB log, which is what run-l1-19-20260906-192759 cost. The value only has to be
+    # above the number of consecutive barren rounds a *correct* run can have, and that is
+    # zero: a round which changes no family status and adds nothing is by construction
+    # identical to its predecessor, so it would repeat forever.
+    _MAX_IDLE_ROUNDS = 3
+
     def __init__(self, deps: Wiring, cfg: AppConfig, store: RunStore, task: TaskSpec):
         self.deps = deps
         self.cfg = cfg
@@ -424,6 +523,7 @@ class Orchestrator:
 
         # Loop C: rewrite rounds on active families, then Loop D: novelty rounds.
         round_no = 0
+        idle_rounds = 0
         while True:
             verdict = self.deps.convergence.global_verdict(
                 list(self.deps.families.families.values()), self._elapsed_hours()
@@ -436,11 +536,49 @@ class Orchestrator:
             if not progressed:
                 added = self._novelty_round(round_no)
                 if not added:
-                    # Nothing to rewrite and nothing novel accepted: freeze leftovers.
-                    for fam in self.deps.families.families.values():
-                        if fam.status == "active":
-                            fam.status = "frozen_budget"
+                    # D2: a novelty miss is NOT evidence that the rewrite budget is spent.
+                    # This branch used to freeze every still-active family, so the next
+                    # `global_verdict` saw nothing active and ended the run -- making the
+                    # run's ending depend on a Loop D outcome. And the LAST novelty attempt
+                    # always misses: each accepted family raises `len(families)` until
+                    # `_novelty_round`'s gate declines to call the agent at all. So every
+                    # Loop D run terminated one attempt after its last acceptance, however
+                    # much budget remained. Observed live in run-l1-19-20260906-183211 (the
+                    # first run where Loop D executed): one family accepted, second attempt
+                    # gated off, everything frozen, run over at 0.413 h of 3 h (13.8%).
+                    #
+                    # Termination does NOT come from a sweep here. Each active family ends
+                    # through its own bookkeeping: `_rewrite_round` freezes it on its
+                    # `family_verdict`, or advances `rewrite_rounds_used` toward the round
+                    # cap, or -- for a family `active_families()` filters out because it has
+                    # no rewrite parent -- `_freeze_unrewritable_families` freezes it. The
+                    # counter below is the backstop for a case none of those covers: it must
+                    # not be possible for a defect to spend hours of wall clock producing no
+                    # events but these. The first version of this fix had exactly that bug
+                    # (it omitted the unrewritable case), and the run spun 2.05M times.
+                    idle_rounds += 1
+                    if idle_rounds >= self._MAX_IDLE_ROUNDS:
+                        self.store.append("OUTER_LOOP_STUCK", {
+                            "round": round_no,
+                            "idle_rounds": idle_rounds,
+                            "families": {f.family_id: f.status for f
+                                         in self.deps.families.families.values()},
+                            "detail": "no rewrite, no novel family, and no family status "
+                                      "changed -- ending the loop rather than spinning",
+                        })
+                        break
+                    if not self.deps.families.active_families():
+                        # Belt and braces: if nothing is rewritable the next global_verdict
+                        # ends the run anyway; recording it makes the reason legible.
+                        self.store.append("OUTER_LOOP_EXHAUSTED", {
+                            "round": round_no,
+                            "detail": "no family is rewritable and no novel family was "
+                                      "accepted",
+                        })
                     continue
+            # Any productive round clears the strike count: the guard exists to catch a
+            # loop that cannot move at all, not one that is merely slow.
+            idle_rounds = 0
 
         # Drain the prefetch thread only once all pipelining is done — Loop C and D
         # pipeline candidates too, so shutting down after the seed loop would disable
@@ -922,7 +1060,8 @@ class Orchestrator:
         for _ in range(budget):
             knobs = boundary_knobs_to_expand(
                 crun.stats, self.cfg.budgets.space_expansion_idle_frac, crun.space,
-                min_effect_pct=self.cfg.budgets.min_improvement_pct)
+                min_effect_pct=self.cfg.budgets.min_improvement_pct,
+                max_edge_failure_frac=self.cfg.budgets.max_edge_failure_frac)
             if not knobs:
                 return
             directive = self._expand_directive_text(crun, knobs)
@@ -1256,10 +1395,46 @@ class Orchestrator:
             # rewrite_rounds_used counts ROUNDS RUN, so the seed datum must not count.
             family.rewrite_rounds_used = len(evs)
 
+    def _freeze_unrewritable_families(self) -> int:
+        """Freeze every active family that cannot be structurally rewritten.
+
+        A family with no correct candidate (`best is None`) cannot be rewritten at all --
+        `_do_rewrite` needs a correct parent to materialize -- and `active_families()`
+        deliberately filters it out so it does not consume a rewrite slot. But that filter
+        means the loop in `_rewrite_round` never *reaches* such a family: it is never frozen
+        there, and its `rewrite_rounds_used` never advances, so nothing in the family's own
+        bookkeeping will ever end it. Until 2026-09-06 the caller's blanket sweep froze it as
+        a side effect (`active_families()`'s docstring says as much: "Empty families are
+        still frozen (in `_rewrite_round`, when reached, and by the outer loop's sweep)").
+        Removing that sweep to fix D2 removed the only thing that ever froze them, and the
+        outer loop then spun: `global_verdict` sees one active family so it continues,
+        `productive_family_count()` counts it so novelty declines, `active_families()`
+        returns nothing so `progressed` is False -- two events per iteration and no work.
+        Observed live in run-l1-19-20260906-192759: 2,054,908 no-op iterations in 13 min
+        (991 MB of events) after `fam-92c506b3`'s space was rejected twice.
+
+        Freezing them here puts the decision where the un-rewritable predicate already is,
+        so it holds however the caller is written -- rather than depending on a sweep that
+        also destroyed families which still had budget. Returns how many were frozen.
+        """
+        frozen = 0
+        for family in self.deps.families.families.values():
+            if family.status == "active" and family.best is None:
+                family.status = "frozen_budget"
+                frozen += 1
+                self.store.append("FAMILY_FROZEN_UNREWRITABLE", {
+                    "family_id": family.family_id,
+                    "detail": "no correct candidate, so no rewrite parent exists",
+                })
+        return frozen
+
     def _rewrite_round(self, round_no: int) -> bool:
         """One rewrite round across active families. Returns True if any family
         actually attempted a rewrite this round."""
         progressed = False
+        # Do this first: these families are invisible to `active_families()`, so the loop
+        # below cannot reach them and nothing else will ever end them. See the helper.
+        self._freeze_unrewritable_families()
         for family in self.deps.families.active_families():
             verdict = self.deps.convergence.family_verdict(family)
             self.store.append("CONVERGENCE_DECIDED", {"decision": verdict.model_dump(),
@@ -1368,13 +1543,47 @@ class Orchestrator:
 
     def _novelty_round(self, round_no: int) -> bool:
         """Generate distinctly-different new family seeds. Returns True if any
-        novel candidate was accepted and pipelined."""
-        if len(self.deps.families.families) >= self.cfg.budgets.max_families_total:
+        novel candidate was accepted and pipelined.
+
+        `round_no` is the outer-loop iteration, kept for the NOVELTY_ROUND_STARTED record so
+        an attempt can be tied to the iteration that triggered it. It is deliberately NOT the
+        step key -- see D3 below.
+        """
+        # D1: count the same thing `accept_novel_seed` counts. This gate used to use
+        # `len(families)` while the inner gate uses `productive_family_count()`, which
+        # deliberately excludes families that are dead (nothing correct, already frozen) --
+        # that exclusion IS improvement E, added because "a batch of failed seeds
+        # permanently blocks novelty exploration". Implementing it only in the inner gate
+        # left it unreachable: the outer gate runs first, counts the corpses, and returns
+        # False. Measured over the 14 completed L3 runs, the two rules disagree in 5, and in
+        # 4 of those the inner rule would have allowed novelty while the run ended with
+        # 79-90% of its wall clock unspent -- twice with ZERO productive families, which is
+        # exactly the scenario improvement E names. The inner gate remains the authority
+        # (it also enforces max_families_total_hard); this one just stops being stricter.
+        if (self.deps.families.productive_family_count()
+                >= self.cfg.budgets.max_families_total):
             return False
-        key = f"novelty:{round_no}"
+        # D3: key on state that survives a restart. `round_no` is a local in `_run` that is
+        # reset to 0 on resume (`_restore_family_control_state` rebuilds best_history,
+        # rewrite_rounds_used and failed_hypotheses, but nothing rebuilds it), so
+        # `novelty:{round_no}` re-derived keys that were already in `steps_done` and this
+        # method returned False for a round it had never actually run -- which, before D2,
+        # also ended the run. Numbering attempts by how many are already in the log is
+        # resume-stable, the way `_rewrite_round` keys on `family.rewrite_rounds_used`.
+        #
+        # No "already done, skip" check is needed or possible here: the count is derived from
+        # the log, so the key is by construction one the log does not contain. Idempotency on
+        # resume comes from the count itself -- N recorded attempts means the next one is
+        # numbered N, and the work of attempts 0..N-1 is already reflected in the families
+        # rebuilt by `_generate_seeds`/`_restore_family_control_state`. What this must NOT do
+        # is re-run an attempt whose acceptance is already recorded, and it cannot: an
+        # accepted family raises `productive_family_count()`, which the gate above tests.
         state = self.store.replay()
-        if key in state.steps_done:
-            return False
+        key = f"novelty:{sum(1 for k in state.steps_done if k.startswith('novelty:'))}"
+        self.store.append("NOVELTY_ROUND_STARTED", {
+            "step_key": key, "round": round_no,
+            "productive_families": self.deps.families.productive_family_count(),
+            "families_total": len(self.deps.families.families)})
 
         summaries = []
         for fam in self.deps.families.families.values():

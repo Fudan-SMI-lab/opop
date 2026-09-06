@@ -1,0 +1,70 @@
+# Smoke config for the paths the NOVELTY smoke cannot reach.
+#
+# `smoke_l1_novelty.yaml` sets `rewrite_rounds_per_family: 0` so that round 1 must go to
+# Loop D. That is the right shape for testing Loop D, but it means Loop C never runs: the
+# 2026-09-06 verification run (`run-l1-19-20260906-202221`) recorded
+# FAMILY_ROUND_RECORDED=0, REWRITE_PRODUCED=0, and exercised only
+# generator/parameterizer/analyst/novelty -- never `rewriter`, never `repair`.
+#
+# So three things the D1-D4 fixes touch were verified only on the no-rewrite path:
+#   * `_rewrite_round`'s loop BODY (the rewrite branch, `record_round`,
+#     FAMILY_ROUND_RECORDED) -- with rounds=0 `family_verdict` freezes before it.
+#   * `idle_rounds = 0`, the guard's reset after a productive round. With no productive
+#     round it was never executed, so a *false* OUTER_LOOP_STUCK on a healthy run is still
+#     unfalsified.
+#   * `stop_kind = "converged"`, which needs `no_improve_rounds + 1` history entries and has
+#     never fired in 36 recorded family freezes.
+#
+# This config is the complement: 2 seeds so families compete for the active cap, 2 rewrite
+# rounds so Loop C actually runs, and `no_improve_rounds: 1` with a HIGH
+# `min_improvement_pct` so a second flat round must produce `converged` rather than
+# `budget_exhausted`. Loop D is left reachable (total 4 > seeds 2) but is not the point.
+#
+# Cheap on purpose: L1:19, 4 trials per space. The aim is to execute the branches, not to
+# produce a result worth reporting.
+run:
+  runs_dir: runs
+  seed: 0
+
+agents:
+  default_model: openai/gpt-5.6-sol
+  generator: {model: null, max_retries: 2, n_candidates: 2}
+  rewriter: {model: null, max_retries: 2, n_candidates: 1}
+  novelty: {model: null, max_retries: 2, n_candidates: 1}
+
+budgets:
+  trials_per_space: 4
+  # The whole point: Loop C must run. 2 rounds is the minimum that can produce a
+  # round-over-round comparison (round 1 vs round 2) for the convergence test.
+  rewrite_rounds_per_family: 2
+  # 1, with a high min_improvement_pct below: `family_verdict` needs
+  # `no_improve_rounds + 1` history entries, and FAMILY_SEEDED now supplies entry 0, so
+  # one completed round gives 2 entries -- enough to test convergence BEFORE the round
+  # budget runs out. This is the arithmetic that made `converged` unreachable.
+  no_improve_rounds: 1
+  # Deliberately high: on L1:19 a rewrite will not find 50% per round, so the improvement
+  # test must fail and `converged` must fire. If this run still reports only
+  # `budget_exhausted`, the off-by-one is NOT fixed and the FAMILY_SEEDED change did not
+  # achieve what its docstring claims.
+  min_improvement_pct: 50.0
+  max_families_total: 4
+  max_families_active: 2
+  max_seed_candidates: 2
+  repair_attempts: 2
+  wall_clock_hours: 3
+
+evaluation:
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+# load_config reads ONE file (default.yaml is not a base layer), and DeviceLimits.name
+# defaults to "unknown" -- which _device_doc() writes verbatim into every agent sandbox.
+device:
+  name: RTX 5080 Laptop (sm_120)
+  vram_gb: 16
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024

@@ -56,6 +56,24 @@ class Runtime:
         self.server.stop()
 
 
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    """Merge `overlay` into `base` recursively, in place.
+
+    A top-level `dict.update` would make `sandbox_extra_config` unable to express "add one
+    key inside the provider block": setting e.g.
+    `provider.zhipuai.models.glm-5.3.limit` would REPLACE the whole `provider` tree read
+    from `sandbox_config_path`, dropping the apiKey and baseURL with it. The agent call then
+    fails in seconds with an unparseable answer rather than a missing-provider error, which
+    reads like a model failure -- observed while probing the output-token ceiling.
+    """
+    for key, value in overlay.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
 def _sandbox_extra_config(cfg: AppConfig) -> dict:
     """Config merged into each sandbox's `opencode.json` (see SandboxFactory's docstring).
 
@@ -77,7 +95,7 @@ def _sandbox_extra_config(cfg: AppConfig) -> dict:
         # project config into a sandbox would change unrelated behaviour.
         if "provider" in loaded:
             extra["provider"] = loaded["provider"]
-    extra.update(cfg.opencode.sandbox_extra_config)
+    _deep_merge(extra, cfg.opencode.sandbox_extra_config)
     return extra
 
 

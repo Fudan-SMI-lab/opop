@@ -8,7 +8,10 @@ opencode:
   host: 127.0.0.1
   port: 4096
   agent: build
-  request_timeout_s: 1200
+  # 30 min. At 20 min, 8 agent calls across the five completed L3 runs were killed mid-work by
+  # `ReadTimeout` (5 repair, 2 rewriter, 1 generator, all three tasks); each kill costs a
+  # candidate or a rewrite round. See OpencodeConfig.request_timeout_s for the sizing.
+  request_timeout_s: 1800
   permission_mode: sandbox_config   # or sse_auto_approve
 
 agents:
@@ -22,11 +25,22 @@ agents:
 
 budgets:
   trials_per_space: 40
-  rewrite_rounds_per_family: 3
+  # 5, was 3: at 3 the per-family round cap fired before the convergence test it defers to.
+  # 3 of 16 budget-frozen families were still gaining >=2% on their final allowed round, and
+  # those 3 gains (47.7%, 44.5%, 11.5%) are the largest single-round improvements in the
+  # project -- while ~45% of the 12 h wall clock went unused. Cost: one round is 38.9 min
+  # median, so +2 rounds is ~+2.6 h for the 2 concurrently-active families.
+  # See docs/analysis-framework-defects-and-next-steps.md defect 0b.
+  rewrite_rounds_per_family: 5
   no_improve_rounds: 2
   min_improvement_pct: 2.0
-  max_families_total: 3
-  max_families_active: 2
+  # 6, was 3: at 3 Loop D was unreachable (max_seed_candidates=4 seeds -> 4 families, so the
+  # novelty gate `>= max_families_total` was already true). All 19 runs have origin:novelty = 0.
+  # 6 = 4 seeds + room for 2 novel families, and matches max_families_total_hard.
+  # Verified first with configs/smoke_l1_novelty.yaml (run-l1-19-20260906-183211): the whole
+  # NoveltyGeneratorAgent path works end to end.
+  max_families_total: 6
+  max_families_active: 3   # 3, was 2 -- see the comment in experiments_l3.yaml
   max_seed_candidates: 4
   repair_attempts: 2
   wall_clock_hours: 12

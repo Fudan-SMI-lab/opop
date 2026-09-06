@@ -32,6 +32,30 @@ opencode:
   # loaded. Pointing at the file (rather than inlining) keeps the API key out of this
   # config and out of git.
   sandbox_config_path: D:/Pyhon_projects/opop/v2-glm/.opencode/opencode.jsonc
+  # Per-turn output ceiling. opencode computes it as
+  #   min(model.limit.output, OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX ?? 32000)
+  # so this is the ONLY route: the setting has no config-file key at all (`maxTokens` and
+  # `maxOutputTokens` appear nowhere in opencode's schema, and `$AgentConfig.maxTokens` is a
+  # stub with a null spec that is silently dropped). Measured by capturing the upstream
+  # request bodies -- scripts/probe_glm_limit_output.py.
+  #
+  # WHY IT MATTERS HERE: glm-5.3 at `reasoningEffort: max` spent exactly 32000
+  # output+reasoning tokens on three consecutive L3:21 generator attempts and was cut off
+  # mid-planning each time, writing zero files -- run-l3-21-20260906-084636 died at its first
+  # agent call. gpt-5.6-sol never came near the default (peak 6649 over 107 turns), which is
+  # why 17 gpt runs gave no warning. See docs/finding-glm-truncated-before-acting.md.
+  #
+  # The value is a CEILING, not a request: each model's own advertised output limit wins
+  # underneath it, so 200000 resolves to zhipuai's maximum of 131072 (asking for more returns
+  # HTTP 400 code 1210, `max_tokens参数非法:限制数值范围[1,131072]`). Nothing model-specific is
+  # encoded here, so this line is correct for any model this arm might use.
+  #
+  # This does NOT replace the truncation-feedback fix in AgentModule.invoke -- that fix is what
+  # makes a truncated turn recoverable at all, and it got a real L3:21 generator call to two
+  # contract-valid candidates in 18m16s. The ceiling reduces how often truncation happens; the
+  # feedback handles it when it does.
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "200000"
 
 agents:
   default_model: zhipuai/glm-5.3
@@ -41,16 +65,31 @@ agents:
 
 budgets:
   trials_per_space: 40
-  rewrite_rounds_per_family: 3
+  # 5, was 3: at 3 the per-family round cap fired before the convergence test it defers to.
+  # 3 of 16 budget-frozen families were still gaining >=2% on their final allowed round, and
+  # those 3 gains (47.7%, 44.5%, 11.5%) are the largest single-round improvements in the
+  # project -- while ~45% of the 12 h wall clock went unused. Cost: one round is 38.9 min
+  # median, so +2 rounds is ~+2.6 h for the 2 concurrently-active families.
+  # See docs/analysis-framework-defects-and-next-steps.md defect 0b.
+  rewrite_rounds_per_family: 5
   no_improve_rounds: 2
   min_improvement_pct: 2.0
-  max_families_total: 3
-  max_families_active: 2
+  # 6, was 3: at 3 Loop D was unreachable (max_seed_candidates=4 seeds -> 4 families, so the
+  # novelty gate `>= max_families_total` was already true). All 19 runs have origin:novelty = 0.
+  # 6 = 4 seeds + room for 2 novel families, and matches max_families_total_hard.
+  # Verified first with configs/smoke_l1_novelty.yaml (run-l1-19-20260906-183211): the whole
+  # NoveltyGeneratorAgent path works end to end.
+  max_families_total: 6
+  # 3, was 2 -- see the same block in experiments_l3.yaml. Kept identical so the GLM arm
+  # differs from the gpt arm ONLY in the model and its transport settings; a budget
+  # difference would confound any cross-model comparison.
+  max_families_active: 3
   max_families_total_hard: 6
   max_seed_candidates: 4
   repair_attempts: 3          # improvement F: 2->3, compile+precision failures need >2 tries
   space_expansions_per_candidate: 1   # improvement K: extend boundary knobs once before rewrite
   space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30   # P4, see experiments_l3.yaml
   wall_clock_hours: 12
 
 evaluation:

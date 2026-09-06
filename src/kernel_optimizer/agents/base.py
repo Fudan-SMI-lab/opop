@@ -7,6 +7,7 @@ schema, retries with error feedback, and full event logging.
 
 from __future__ import annotations
 
+import json
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -31,6 +32,43 @@ class AgentOutcome(Generic[TOut]):
     attempts: int
     tokens: dict
     cost: float
+
+
+def _decode_stringified_objects(value, _depth: int = 0):
+    """Recursively decode values that are JSON *text* where an object/array belongs.
+
+    Some models emit a nested field as a JSON-encoded STRING rather than a nested object --
+    `{"space": "{\\"domains\\": [...]}"}` instead of `{"space": {"domains": [...]}}`. The
+    content is right and the schema is satisfied once the string is parsed; only the
+    encoding is wrong. Pydantic reports it as `Input should be a valid dictionary`, which
+    reads like a content error, so the retry feedback tells the agent its ANSWER was wrong.
+    It re-derives the same answer and re-encodes it the same way, so all attempts fail
+    identically and the candidate is discarded without ever reaching the GPU.
+
+    Measured on zhipuai/glm-5.3 in run-l2-37-20260907-003838: the parameterizer lost 3 of
+    4 seed candidates this way, 3 attempts each, ~$0.12 and ~250k tokens spent to produce
+    parameter spaces that were already correct. openai/gpt-5.6-sol nests properly, which is
+    why 17 runs on the gpt arm never saw it.
+
+    Only strings that parse as a JSON object or array are touched: a string field whose
+    value merely happens to be numeric or quoted text is left exactly as it was, so this
+    cannot rewrite a legitimately-string field. Depth-bounded against pathological nesting.
+    """
+    if _depth > 6:
+        return value
+    if isinstance(value, str):
+        s = value.strip()
+        if s[:1] in ("{", "[") and s[-1:] in ("}", "]"):
+            try:
+                return _decode_stringified_objects(json.loads(s), _depth + 1)
+            except ValueError:
+                return value          # looked like JSON but is not; leave it alone
+        return value
+    if isinstance(value, dict):
+        return {k: _decode_stringified_objects(v, _depth + 1) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_decode_stringified_objects(v, _depth + 1) for v in value]
+    return value
 
 
 class AgentModule(ABC, Generic[TIn, TOut]):
@@ -167,7 +205,8 @@ class AgentModule(ABC, Generic[TIn, TOut]):
                 last_error = feedback
                 continue
             try:
-                output = self.output_model.model_validate(result.structured)
+                output = self.output_model.model_validate(
+                    _decode_stringified_objects(result.structured))
             except ValidationError as exc:
                 feedback = f"JSON did not match the required schema:\n{exc}"[:2000]
                 last_error = feedback

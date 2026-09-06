@@ -1,0 +1,105 @@
+# Config for the GLM-5.3 arm on level2:37 at its PRE-SCALING sizes.
+#
+# Derived from configs/experiments_l3_glm.yaml. Every agent, budget and evaluation knob is
+# IDENTICAL to that file -- the only differences are `kernelbench_root` (below) and the
+# task passed on the command line. So this run is comparable to the L3 GLM runs as a task
+# swap, and to another team's numbers as a framework swap on the same problem.
+#
+# Launch:
+#   kernel-opt --config configs/experiments_l2_37_glm.yaml run --task level2:37
+#
+# WHY A SEPARATE ROOT: another team reports 8.85x (baseline 90.30 us) and 11.80x (8.37 us)
+# on a 4090 for this task, driven by glm-5.3 max. Those figures are impossible at the sizes
+# KernelBench ships today: 90.30 us would need 7.43 TB/s of DRAM bandwidth, and on this
+# machine the output copy alone measures 1507.8 us (16.7x their whole baseline). KernelBench
+# commit b08d959 ("scaled up the tensor sizes for level 1, 2 and 3, so that all problems run
+# above 1ms") changed this problem from 128/512/1024/32 to 32768/1024/4096/64 -- a 2048x
+# FLOP increase, measured at 1332x the wall time here. Their parameters, sent directly,
+# are batch_size=128 in_features=512 out_features=1024 num_groups=32: the pre-scaling
+# sizes. Reproducing on the shipped sizes would compare different problems.
+#
+# The root below is a full copy of the pinned tree (423217d) with EXACTLY ONE file
+# replaced -- level2/37 restored from git bb27f27. `diff -rq` shows no other difference in
+# either KernelBench/ (101 level-2 problems) or src/. See its README-provenance.md.
+# Expect TaskSpec.ref_src_sha = e8946e79d591ca80... (the pinned file is fe2e8dc5418f1549...).
+kernelbench_root: D:/Pyhon_projects/opop/KernelBench-l2-37-orig
+# NOTE: wsl.kernelbench_src is a DIFFERENT setting and is deliberately left at its default,
+# /mnt/d/Pyhon_projects/opop/KernelBench/src -- the evaluation library that runs on the GPU
+# stays the pinned one. This key only decides which reference problem FILE is loaded.
+
+run:
+  # Separate from the L3 GLM runs_dir so the two are never confused, but still under
+  # v2-glm: agent sessions run with directory=<sandbox> and opencode resolves providers by
+  # walking UP, so a sandbox that never passes v2-glm cannot find the zhipuai provider.
+  runs_dir: D:/Pyhon_projects/opop/v2-glm/runs-l2-37
+  seed: 0
+
+opencode:
+  server_url: null
+  launch_cwd: D:/Pyhon_projects/opop/v2-glm
+  sandbox_config_path: D:/Pyhon_projects/opop/v2-glm/.opencode/opencode.jsonc
+  # Per-turn output ceiling, and the ONLY route to it: opencode computes the cap as
+  #   min(model.limit.output, OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX ?? 32000)
+  # and the setting has no config-file key at all. Without it, glm-5.3 at reasoningEffort
+  # max spent all 32000 tokens on reasoning and wrote zero files on three consecutive
+  # attempts (run-l3-21-20260906-084636 died at its first agent call); gpt-5.6-sol peaked
+  # at 6649 over 107 turns, which is why 17 gpt runs gave no warning.
+  #
+  # 131072 is zhipuai's advertised maximum (asking for more returns HTTP 400 code 1210,
+  # `max_tokens参数非法:限制数值范围[1,131072]`). The L3 GLM config passes 200000 and relies
+  # on min() to clamp it -- which works only while opencode does not know this model's
+  # limit.output, since the smaller of the two wins. Naming the real ceiling here does not
+  # depend on that.
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  # NOTE, and the one number to watch on this task: at these sizes the measurement is
+  # noisy relative to this threshold. A 1000-sample probe of the reference
+  # (scripts/probe_l2_37_noise.py) gave min 45.98 / median 64.96 / p90 97.86 / max 579.26 us,
+  # with a 5-95% trimmed std of 15.16 us (22.2%), and only 29.10 us of summed device time
+  # per forward -- 55% of the wall time is launch/sync overhead, not kernel execution.
+  # The tuning objective is the MEAN of perf_trials samples (tpe.py:85), so its standard
+  # error is roughly 22.2%/sqrt(100) = 2.2%, i.e. the same size as this threshold. Left at
+  # 2.0 anyway: it is what both L3 arms use, and changing it here would confound the
+  # cross-task comparison. Read a sub-5% "improvement" on this task with that in mind.
+  min_improvement_pct: 2.0
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+
+# load_config reads ONE file -- default.yaml is not a base layer, so an omitted key falls
+# back to the pydantic field default, not to default.yaml. device.name defaults to
+# "unknown", which _device_doc() writes verbatim into every agent sandbox; stating it here
+# is what tells the agents the target is Blackwell sm_120.
+device:
+  name: RTX 5080 Laptop (sm_120)
+  vram_gb: 16
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024

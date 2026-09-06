@@ -2,10 +2,12 @@
 repair failure-class guidance (F), and the relaxed-correctness slack gate (A)."""
 
 import importlib.util
+import json
 
 import pytest
 
 from kernel_optimizer.agents.modules import _repair_guidance
+from kernel_optimizer.config import AppConfig, OpencodeConfig, load_config
 from kernel_optimizer.control.families import FamilyManager
 from kernel_optimizer.models.core import Candidate, Family
 from kernel_optimizer.paramspace.triton_lint import lint_triton_source
@@ -215,8 +217,49 @@ def test_detect_precision_from_source_literal():
         "x = tl.dot(a, b, input_precision='tf32')", empty) == "tf32"
     # bare tl.dot on fp32 inputs -> tf32 default path on this GPU generation
     assert _detect_candidate_precision("x = tl.dot(a, b)", empty) == "tf32"
-    # no dot at all -> unknown
+    # No dot in a NON-Triton source: nothing to read, so no claim. (Was "unknown" for
+    # every dotless kernel, including Triton ones -- see the next test.)
     assert _detect_candidate_precision("y = x + 1", empty) == "unknown"
+
+
+def test_a_dotless_triton_kernel_is_fp32_not_unknown():
+    """P5: a kernel with no tl.dot uses no tensor core, so its arithmetic IS fp32.
+
+    L3:48's winner is a sequential selective scan -- pure elementwise + tl.sum, zero dot
+    products -- and reported `precision: unknown`. That made `_honest_verdict` pick the
+    fp32 comparator by DEFAULT rather than by decision; the comparator happened to be
+    right, which is luck, not logic. Covers every scan / reduction / pointwise-fusion
+    kernel, i.e. every operator without a matmul.
+    """
+    from kernel_optimizer.control.orchestrator import (
+        _detect_candidate_precision, _honest_verdict,
+    )
+    from kernel_optimizer.models.core import ParamSet
+
+    empty = ParamSet(values={"BLOCK_S": 64})
+    scan = (
+        "import triton\nimport triton.language as tl\n"
+        "@triton.jit\ndef _scan(x_ptr, o_ptr, BLOCK_S: tl.constexpr):\n"
+        "    state = tl.zeros((BLOCK_S,), dtype=tl.float32)\n"
+        "    state = state * e + bv * xv\n"
+        "    o = tl.sum(state * cv, axis=0)\n"
+    )
+    assert _detect_candidate_precision(scan, empty) == "ieee_fp32"
+
+    # A low-precision dotless kernel must still classify by its dtype, not fall here.
+    assert _detect_candidate_precision(
+        scan + "    y = x.to(tl.bfloat16)\n", empty) == "bf16"
+
+    # And the relabel must not move the comparator: `unknown` and `ieee_fp32` are both
+    # on the non-tensor-core branch, so every existing number is unchanged. This is what
+    # makes the fix safe to ship without re-interpreting past runs.
+    sp = {"eager": 1.5, "eager_tf32": 1.2,
+          "torch_compile": 9.49, "torch_compile_tf32": 9.13}
+    assert (_honest_verdict("unknown", sp)["compared_against"]
+            == _honest_verdict("ieee_fp32", sp)["compared_against"]
+            == "torch_compile")
+    assert (_honest_verdict("unknown", sp)["same_precision_speedup"]
+            == _honest_verdict("ieee_fp32", sp)["same_precision_speedup"])
 
 
 def test_honest_verdict_compares_same_precision():
@@ -1054,6 +1097,110 @@ def test_the_final_failure_event_records_how_the_last_turn_ended(tmp_path):
     assert len(failed) == 1
     assert failed[0]["finish"] == "length"
     assert failed[0]["attempts"] == 3
+
+
+def test_the_agent_call_timeout_clears_the_slowest_measured_real_call(tmp_path):
+    """The 20-min timeout was killing real work, so it must not silently drift back.
+
+    Across the five completed L3 runs, 8 agent calls died at exactly 1200-1201s with
+    `prompt transport error (ReadTimeout)` -- 5 repair, 2 rewriter, 1 generator, on all three
+    tasks. Each kill discards a candidate or a whole rewrite round. The slowest SUCCESSFUL call
+    measured is 576s, and one glm-5.3 generator call on L3:21 needed 979s, so the floor here is
+    set well above both rather than just above the old value.
+    """
+    slowest_successful_call_s = 979.0   # glm-5.3 generator, L3:21, one large reasoning turn
+
+    for path in ("configs/default.yaml", "configs/experiments_l3.yaml",
+                 "configs/experiments_l3_glm.yaml"):
+        cfg = load_config(path)
+        assert cfg.opencode.request_timeout_s >= 1800.0, (
+            f"{path}: agent-call timeout dropped to {cfg.opencode.request_timeout_s}s; "
+            "at 1200s this killed 8 real calls"
+        )
+        # Headroom, not a bare pass: a timeout only a little above the slowest observed call
+        # will start killing work again as soon as a prompt grows.
+        assert cfg.opencode.request_timeout_s >= 1.8 * slowest_successful_call_s
+
+
+# --- the per-turn output-token ceiling has no config-file route, only an env var -----------
+#
+# opencode 1.18.18 computes the cap as `Math.min(model.limit.output, ENV ?? 32000)` where ENV
+# is OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX. Measured upstream `max_tokens` (see
+# scripts/probe_glm_limit_output.py): baseline 32000; `limit.output`=200000 alone STILL 32000;
+# env var alone 131072; env var + limit 200000. So the env var is a hard ceiling that config
+# can only lower, and both halves must be set together. These tests pin the two mechanisms
+# the harness needs for that -- a server env passthrough, and a sandbox config merge deep
+# enough to add one key inside the provider block without dropping its credentials.
+
+
+def test_server_env_is_layered_over_the_inherited_environment(monkeypatch, tmp_path):
+    from kernel_optimizer.agents import runtime as rt
+
+    monkeypatch.setenv("KOPT_PREEXISTING", "inherited")
+    captured: dict = {}
+
+    class _FakeProc:
+        returncode = None
+
+        def poll(self):
+            return None
+
+    def _fake_popen(cmd, **kwargs):
+        captured.update(kwargs)
+        return _FakeProc()
+
+    monkeypatch.setattr(rt.subprocess, "Popen", _fake_popen)
+    monkeypatch.setattr(rt.OpencodeServer, "_wait_healthy", lambda self: None)
+
+    cfg = OpencodeConfig(
+        server_url=None,
+        launch_cwd=tmp_path,
+        server_env={"OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX": "200000"},
+    )
+    rt.OpencodeServer(cfg, log_path=tmp_path / "srv.log").start()
+
+    env = captured["env"]
+    # The setting reaches the server process...
+    assert env["OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX"] == "200000"
+    # ...without discarding the environment the harness was started with (PATH must survive,
+    # or `opencode` itself becomes unresolvable).
+    assert env["KOPT_PREEXISTING"] == "inherited"
+    assert "PATH" in env or "Path" in env
+
+
+def test_sandbox_extra_config_adds_to_the_provider_block_without_dropping_its_credentials(
+    tmp_path,
+):
+    from kernel_optimizer.wiring import _sandbox_extra_config
+
+    provider_file = tmp_path / "opencode.jsonc"
+    provider_file.write_text(json.dumps({
+        "provider": {"zhipuai": {
+            "npm": "@ai-sdk/openai-compatible",
+            "options": {"baseURL": "https://example.invalid/v4", "apiKey": "SECRET"},
+            "models": {"glm-5.3": {"name": "GLM-5.3", "reasoning": True}},
+        }},
+        # Must NOT be copied into a sandbox even when present in the source file.
+        "permission": {"bash": "deny"},
+    }), encoding="utf-8")
+
+    cfg = AppConfig(opencode=OpencodeConfig(
+        sandbox_config_path=provider_file,
+        sandbox_extra_config={"provider": {"zhipuai": {"models": {"glm-5.3": {
+            "limit": {"context": 400000, "output": 200000}}}}}},
+    ))
+    merged = _sandbox_extra_config(cfg)
+
+    model = merged["provider"]["zhipuai"]["models"]["glm-5.3"]
+    # The added key is present...
+    assert model["limit"] == {"context": 400000, "output": 200000}
+    # ...and nothing that shared a parent dict with it was replaced. A shallow update would
+    # wipe all three of these, and the resulting call fails as "unparseable answer" rather
+    # than as a missing provider, which reads like a model failure.
+    assert model["name"] == "GLM-5.3"
+    assert merged["provider"]["zhipuai"]["options"]["apiKey"] == "SECRET"
+    assert merged["provider"]["zhipuai"]["options"]["baseURL"] == "https://example.invalid/v4"
+    assert "permission" not in merged
 
 
 # --- R: repair agent must see the reference and its own rejected diagnoses --------
@@ -2278,52 +2425,86 @@ def test_witness_fallback_is_bounded(tmp_path):
 # best_history excludes the seed, and the budget check runs before the converged check while
 # both conditions become true in the same round.
 # See docs/finding-converged-stop-kind-is-unreachable.md.
+#
+# RESOLVED 2026-09-06, as a side effect of raising `rewrite_rounds_per_family` 3 -> 5 for
+# defect 0b (families were being cut off mid-improvement; see
+# docs/analysis-framework-defects-and-next-steps.md). The two thresholds no longer coincide:
+# converged needs 3 rounds of history and budget now freezes at 5, so a family that goes flat
+# can reach `converged` before exhausting its rounds. The assertion below is inverted from
+# "documents the defect" to "guards the fix", exactly as the original note instructed.
 
-def test_converged_is_unreachable_at_the_l3_config():
+def test_converged_is_reachable_at_the_l3_config():
     """Pins the arithmetic rather than the outcome, so the guard survives a refactor.
 
     At the check, len(best_history) == rewrite_rounds_used (the round is recorded AFTER the
     verdict). Budget freezes at rounds_used >= rewrite_rounds_per_family; converged needs
-    len(history) >= no_improve_rounds + 1. When those thresholds coincide the budget test,
-    being first, always wins."""
+    len(history) >= no_improve_rounds + 1. While those thresholds coincided the budget test,
+    being first, always won -- so `converged` could never be emitted."""
     from kernel_optimizer.config import load_config
 
-    cfg = load_config("configs/experiments_l3.yaml").budgets
-    reachable = cfg.no_improve_rounds + 1 < cfg.rewrite_rounds_per_family
-    assert not reachable, (
-        "This test documents a KNOWN defect. If it now fails, the fix in "
-        "docs/finding-converged-stop-kind-is-unreachable.md has landed -- invert this "
-        "assertion and assert `reachable` instead."
-    )
+    for path in ("configs/experiments_l3.yaml", "configs/experiments_l3_glm.yaml"):
+        cfg = load_config(path).budgets
+        assert cfg.no_improve_rounds + 1 < cfg.rewrite_rounds_per_family, (
+            f"{path}: converged is unreachable again -- a family that stops improving will be "
+            f"reported as budget_exhausted. no_improve_rounds={cfg.no_improve_rounds} + 1 must "
+            f"be < rewrite_rounds_per_family={cfg.rewrite_rounds_per_family}. "
+            "See docs/finding-converged-stop-kind-is-unreachable.md."
+        )
 
 
-def test_a_flat_family_cannot_freeze_as_converged_today():
-    """The behavioural half: three identical bests, and the verdict is still budget."""
+def test_a_flat_family_now_freezes_as_converged_at_the_shipped_budget():
+    """The behavioural half of the fix, at the budget the L3 configs actually ship.
+
+    Kept alongside the arithmetic test because the arithmetic can hold while the ordering of
+    the two checks in `family_verdict` still gets it wrong.
+    """
     from kernel_optimizer.config import BudgetConfig
     from kernel_optimizer.control.convergence import ConvergencePolicy
     from kernel_optimizer.models.core import Family
 
-    cfg = BudgetConfig(rewrite_rounds_per_family=3, no_improve_rounds=2,
+    cfg = BudgetConfig(rewrite_rounds_per_family=5, no_improve_rounds=2,
                        min_improvement_pct=2.0)
     policy = ConvergencePolicy(cfg)
 
-    # Exactly the state of fam-99aee6de on L3:48 and fam-3dacc96b on L3:21: the family has
-    # not moved, and at the moment of the check history is one entry short of judgeable.
+    # Exactly the state of fam-99aee6de on L3:48 and fam-3dacc96b on L3:21: flat history.
     stalled = Family(family_id="f", anchor_candidate_id="c")
     stalled.best_history = [25.2, 25.2]
     stalled.rewrite_rounds_used = 2
-    v = policy.family_verdict(stalled)
-    assert v.verdict == "continue", \
-        "a family stalled for two rounds is granted a third -- this is the defect"
+    assert policy.family_verdict(stalled).verdict == "continue", \
+        "two flat rounds is one entry short of judgeable, so a third is granted"
 
-    # One round later both thresholds are met at once, and budget wins.
+    # At 3 flat rounds the converged test is satisfied and the budget cap (5) has NOT fired,
+    # so the family is finally reported for the right reason. Under the old cap of 3 both
+    # conditions became true in the same round and budget_exhausted won.
     stalled.best_history = [25.2, 25.2, 25.2]
     stalled.rewrite_rounds_used = 3
     v = policy.family_verdict(stalled)
     assert v.verdict == "freeze"
-    assert v.stop_kind == "budget_exhausted", (
-        "a flat history reported as budget_exhausted tells a reader there may be headroom "
-        "left, which is the opposite of the truth"
+    assert v.stop_kind == "converged", (
+        "a flat family must report `converged`; `budget_exhausted` tells a reader there may be "
+        "headroom left, which is the opposite of the truth"
+    )
+
+
+def test_a_still_improving_family_is_not_cut_off_at_three_rounds():
+    """Defect 0b: the round cap must not stop a family that is still gaining.
+
+    `fam-6eea8eac` on L3:43 went 18.6 -> 15.4 -> 8.06 -- accelerating -- and was frozen as
+    budget_exhausted at exactly 3 rounds with ~45% of the wall clock unused.
+    """
+    from kernel_optimizer.config import BudgetConfig
+    from kernel_optimizer.control.convergence import ConvergencePolicy
+    from kernel_optimizer.models.core import Family
+
+    policy = ConvergencePolicy(BudgetConfig(rewrite_rounds_per_family=5, no_improve_rounds=2,
+                                            min_improvement_pct=2.0))
+    improving = Family(family_id="f", anchor_candidate_id="c")
+    improving.best_history = [18.6, 15.4, 8.06]
+    improving.rewrite_rounds_used = 3
+    v = policy.family_verdict(improving)
+    assert v.verdict == "continue", (
+        "a family improving 47% on its latest round was frozen; the round cap fired before the "
+        "convergence test it exists to defer to"
     )
 
 
@@ -3678,3 +3859,798 @@ def test_median_fallback_reads_edges_from_the_domain_not_the_latency_dict():
                                      min_effect_pct=2.0)
     assert knobs and knobs[0]["direction"] == "max", \
         "direction must come from domain order, not from latency_by_value insertion order"
+
+
+def _best_result_section(md: str) -> str:
+    return md.split("## Best result")[1].split("\n## ")[0]
+
+
+def test_the_honest_verdict_is_printed_before_the_raw_speedups(tmp_path):
+    """P6: ordering decides which number a reader takes away, and the raw ones read high.
+
+    All three task references are plain fp32 while the winning candidates compute lower, so
+    most raw ratios compare ACROSS precisions. On L3:43 the baseline choice alone is worth
+    1.91x (4.23x vs torch_compile, 2.21x vs torch_compile_tf32) -- nearly the whole honest
+    speedup. The verdict itself is load-bearing: three historical runs are FAILS on it while
+    showing 1.08-1.86x against the fp32 baselines. Printing the raw block first is what let
+    a reader quote 4.23x.
+    """
+    from kernel_optimizer.reporting.report import ReportGenerator
+    from kernel_optimizer.store.run_store import RunStore
+
+    summary = {
+        "task": {"level": 3, "problem_id": 43, "name": "43_MinGPT", "ref_path": "x",
+                 "ref_src_sha": "abc"},
+        "baselines": [],
+        "best": {
+            "candidate_id": "cand-win", "family_id": "fam-1", "tuned_ms": 8.06,
+            "final_reeval_ok": True, "final_reeval_ms": 8.37, "precision": "fp16",
+            "params": {"values": {"BLOCK_M": 64}},
+            "speedups": {"eager": 4.97, "eager_tf32": 3.1,
+                         "torch_compile": 4.23, "torch_compile_tf32": 2.21},
+            "honest_verdict": {"candidate_precision": "fp16",
+                               "compared_against": "torch_compile_tf32",
+                               "same_precision_speedup": 2.21,
+                               "beats_same_precision_baseline": True},
+        },
+        "families": {},
+    }
+    store = RunStore.create(tmp_path, "run-order", {"task": summary["task"]})
+    store.append("RUN_FINISHED", {"summary": summary})
+    md = ReportGenerator().generate(store).read_text(encoding="utf-8")
+    sec = _best_result_section(md)
+
+    assert "honest same-precision verdict" in sec and "4.23x" in sec
+    assert sec.index("honest same-precision verdict") < sec.index("4.23x"), \
+        "the honest verdict must appear ABOVE the cross-precision speedups"
+    # The raw block must carry the warning, not just sit lower on the page.
+    assert "NOT directly comparable" in sec
+
+
+def test_the_report_names_the_kernels_the_winner_actually_launched(tmp_path):
+    """P3: the fastest candidate can delegate the dominant operator back to PyTorch.
+
+    L3:43's headline 8.06 ms (cand-60fdcae9) launches only `_fused_qkv_projection` and
+    `_head_layout_projection` -- the attention core is torch's SDPA -- while the best fully
+    hand-written candidate is 9.43 ms. Delegation is also not a family property: that
+    family's members flip between the two and the delegating one won, so it cannot be read
+    off the lineage. The report prints the launched kernels as a fact; it deliberately does
+    NOT classify them, because a keyword rule is task-specific and a wrong attribution label
+    is worse than none.
+    """
+    from kernel_optimizer.reporting.report import ReportGenerator
+    from kernel_optimizer.store.run_store import RunStore
+
+    summary = {
+        "task": {"level": 3, "problem_id": 43, "name": "43_MinGPT", "ref_path": "x",
+                 "ref_src_sha": "abc"},
+        "baselines": [],
+        "best": {"candidate_id": "cand-win", "family_id": "fam-1", "tuned_ms": 8.06,
+                 "precision": "fp16", "params": {"values": {"BLOCK_M": 64}}},
+        "families": {},
+    }
+    store = RunStore.create(tmp_path, "run-attr", {"task": summary["task"]})
+    # A slower trial of the same candidate must not be the one reported.
+    store.append("TRIAL_DONE", {"trial": {
+        "trial_id": "t-slow", "candidate_id": "cand-win", "space_id": "sp",
+        "params": {"values": {"BLOCK_M": 32}}, "status": "complete",
+        "latency_ms": {"mean": 19.0, "std": 0.1, "min": 18, "max": 20, "n_samples": 20},
+        "profile": {"kernel_names": ["_slow_variant"]}}})
+    store.append("TRIAL_DONE", {"trial": {
+        "trial_id": "t-win", "candidate_id": "cand-win", "space_id": "sp",
+        "params": {"values": {"BLOCK_M": 64}}, "status": "complete",
+        "latency_ms": {"mean": 8.06, "std": 0.1, "min": 8, "max": 8.3, "n_samples": 20},
+        "profile": {"kernel_names": ["_fused_qkv_projection", "_head_layout_projection"]}}})
+    store.append("RUN_FINISHED", {"summary": summary})
+    md = ReportGenerator().generate(store).read_text(encoding="utf-8")
+    sec = _best_result_section(md)
+
+    assert "_fused_qkv_projection" in sec and "_head_layout_projection" in sec
+    assert "_slow_variant" not in sec, "must report the WINNING trial's kernels"
+    assert "delegated to PyTorch" in sec, "the reader needs the reason this list matters"
+
+
+def test_attribution_is_silent_rather_than_wrong_without_profile_data(tmp_path):
+    """A CUDA (load_inline) candidate has no kernel_names, and inventing one would be worse.
+
+    The line must say the evidence is absent instead of implying the winner wrote nothing.
+    """
+    from kernel_optimizer.reporting.report import ReportGenerator
+    from kernel_optimizer.store.run_store import RunStore
+
+    summary = {
+        "task": {"level": 1, "problem_id": 19, "name": "19_ReLU", "ref_path": "x",
+                 "ref_src_sha": "abc"},
+        "baselines": [],
+        "best": {"candidate_id": "cand-cuda", "family_id": "fam-1", "tuned_ms": 1.0,
+                 "precision": "ieee_fp32", "params": {"values": {"BLOCK": 256}}},
+        "families": {},
+    }
+    store = RunStore.create(tmp_path, "run-cuda", {"task": summary["task"]})
+    store.append("TRIAL_DONE", {"trial": {
+        "trial_id": "t1", "candidate_id": "cand-cuda", "space_id": "sp",
+        "params": {"values": {"BLOCK": 256}}, "status": "complete",
+        "latency_ms": {"mean": 1.0, "std": 0.1, "min": 1, "max": 1.1, "n_samples": 20}}})
+    store.append("RUN_FINISHED", {"summary": summary})
+    md = ReportGenerator().generate(store).read_text(encoding="utf-8")
+    sec = _best_result_section(md)
+
+    assert "none recorded" in sec
+    assert "attribution cannot be read" in sec
+
+
+def test_bfloat16_is_not_mislabelled_fp16_by_substring_match():
+    """"bfloat16" CONTAINS "float16", so the fp16 test matched first and ate every bf16 kernel.
+
+    Found while adding the dotless-kernel branch: the fp16 check ran before the bf16 check,
+    so `x.to(tl.bfloat16)` classified as "fp16". Both map to the same tensor-core comparator
+    in `_honest_verdict`, so no speedup was ever misjudged -- but the reported precision was
+    wrong, and precision is exactly what the honest-verdict machinery is there to state.
+    """
+    from kernel_optimizer.control.orchestrator import _detect_candidate_precision
+    from kernel_optimizer.models.core import ParamSet
+
+    e = ParamSet(values={})
+    assert _detect_candidate_precision("x = y.to(tl.bfloat16)", e) == "bf16"
+    assert _detect_candidate_precision("x = y.to(torch.bfloat16)", e) == "bf16"
+    # ...without breaking genuine fp16 detection.
+    assert _detect_candidate_precision("x = y.to(tl.float16)", e) == "fp16"
+    assert _detect_candidate_precision("x = y.half()", e) == "fp16"
+
+
+def _fail_stat(name, latency_by_value, failure_rate_by_value, best_value,
+               best_trial_value, at_boundary, direction, effect_pct=25.0):
+    from kernel_optimizer.models.reports import ParamStat
+    return ParamStat(name=name, best_value=best_value, best_trial_value=best_trial_value,
+                     at_boundary=at_boundary, boundary_direction=direction,
+                     effect_pct=effect_pct, latency_by_value=latency_by_value,
+                     failure_rate_by_value=failure_rate_by_value)
+
+
+def test_a_failing_edge_yields_to_a_healthy_one_in_the_same_expansion():
+    """P4: a value added beyond a FAILING edge fails 43% of the time (16/37 across 19 runs)
+    vs 15% (13/84) beyond a healthy one, and a failed trial returns no latency at all -- so
+    the aim should go to the healthy knob whenever there is one."""
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    from kernel_optimizer.models.core import ParamDomain, ParameterSpace
+    from kernel_optimizer.models.reports import TuningStats
+
+    healthy = _fail_stat("BLOCK_M", {"64": 20.0, "128": 10.0},
+                         {"64": 0.0, "128": 0.05}, 128, 128, True, "max")
+    failing = _fail_stat("BLOCK_N", {"64": 21.0, "128": 11.0},
+                         {"64": 0.0, "128": 0.40}, 128, 128, True, "max")
+    space = ParameterSpace(
+        space_id="sp", candidate_id="c", source_sha="x",
+        domains=[ParamDomain(name="BLOCK_M", kind="int", choices=[64, 128]),
+                 ParamDomain(name="BLOCK_N", kind="int", choices=[64, 128])])
+    stats = TuningStats(candidate_id="c", space_id="sp", n_complete=30, n_fail=10,
+                        param_stats=[healthy, failing])
+
+    names = [k["name"] for k in boundary_knobs_to_expand(
+        stats, 0.8, space, min_effect_pct=2.0, max_edge_failure_frac=0.30)]
+    assert names == ["BLOCK_M"], f"the 40%-failing edge must yield, got {names}"
+
+    # Disabled (1.0) must reproduce today's behaviour exactly.
+    both = [k["name"] for k in boundary_knobs_to_expand(
+        stats, 0.8, space, min_effect_pct=2.0, max_edge_failure_frac=1.0)]
+    assert both == ["BLOCK_M", "BLOCK_N"]
+
+
+def test_an_all_failing_expansion_keeps_its_aim_rather_than_being_cancelled():
+    """The whole safety argument: this must NEVER turn a non-empty aim into an empty one.
+
+    `_maybe_expand_space` cancels the round when boundary_knobs_to_expand returns []
+    (`if not knobs: return`), forfeiting the fresh tuning budget as well as the widening.
+    Measured (scripts/audit_expansion_failure_veto.py, 19 runs / 523 aims): a hard filter
+    empties 8 of 177 expansions, and two of those 8 are their run's BEST candidate --
+    cand-0d0dcd49, and cand-60fdcae9 whose seven aims ALL sit on 24-40% failing edges and
+    which is the 8.06 ms L3:43 winner. Shaped after that candidate.
+    """
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    from kernel_optimizer.models.core import ParamDomain, ParameterSpace
+    from kernel_optimizer.models.reports import TuningStats
+
+    stats_list, domains = [], []
+    # All three ABOVE the 0.30 threshold, so nothing is healthy and there is no
+    # alternative to fall back to. (cand-60fdcae9's real spread is 24-40%, i.e. some of
+    # its knobs sit just under the threshold and would survive on their own merits; this
+    # fixture is the strictly harder case where none do.)
+    for i, rate in enumerate((0.40, 0.35, 0.31)):
+        name = f"QKV_BLOCK_{i}"
+        stats_list.append(_fail_stat(name, {"64": 20.0, "128": 10.0},
+                                     {"64": 0.0, "128": rate}, 128, 128, True, "max"))
+        domains.append(ParamDomain(name=name, kind="int", choices=[64, 128]))
+    stats = TuningStats(candidate_id="c", space_id="sp", n_complete=30, n_fail=12,
+                        param_stats=stats_list)
+    space = ParameterSpace(space_id="sp", candidate_id="c", source_sha="x",
+                           domains=domains)
+
+    knobs = boundary_knobs_to_expand(stats, 0.8, space, min_effect_pct=2.0,
+                                     max_edge_failure_frac=0.30)
+    assert len(knobs) == 3, \
+        f"every aim failing must leave the aim INTACT, not cancel the expansion: {knobs}"
+
+
+def test_edge_failure_rate_reads_the_edge_from_the_domain_not_the_dict():
+    """`failure_rate_by_value` is keyed by repr(choice) in TRIAL order, not domain order.
+
+    Same hazard `_median_direction` documents for latency_by_value (real observed key order
+    ['128','64','256','512','1024'], whose first key is not the domain minimum). Here the
+    domain max (1024) is healthy while an interior value (512) is both failing and the last
+    key inserted: reading the dict's tail would score the wrong value and demote a knob
+    that is fine.
+    """
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    from kernel_optimizer.models.reports import TuningStats
+
+    choices = [64, 128, 256, 512, 1024]
+    lat = {"128": 12.0, "64": 13.5, "1024": 9.0, "256": 13.6, "512": 13.4}
+    rates = {"128": 0.0, "64": 0.0, "1024": 0.02, "256": 0.0, "512": 0.90}
+    stats = TuningStats(
+        candidate_id="c", space_id="sp", n_complete=35, n_fail=5,
+        param_stats=[_fail_stat("FINAL_BLOCK", lat, rates, 1024, 1024, True, "max")])
+    knobs = boundary_knobs_to_expand(stats, 0.8, _fallback_space("FINAL_BLOCK", choices),
+                                     min_effect_pct=2.0, max_edge_failure_frac=0.30)
+    assert [k["name"] for k in knobs] == ["FINAL_BLOCK"], \
+        "the healthy domain-max edge must survive; only dict order says otherwise"
+
+
+def test_missing_failure_data_does_not_demote_a_knob():
+    """Absence of evidence must read as healthy, or the preference would fire on every knob
+    from a space with no recorded failures."""
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    from kernel_optimizer.models.reports import TuningStats
+
+    stats = TuningStats(
+        candidate_id="c", space_id="sp", n_complete=30, n_fail=0,
+        param_stats=[_fail_stat("BLOCK_M", {"64": 20.0, "128": 10.0}, {}, 128, 128,
+                                True, "max")])
+    knobs = boundary_knobs_to_expand(stats, 0.8, _fallback_space("BLOCK_M", [64, 128]),
+                                     min_effect_pct=2.0, max_edge_failure_frac=0.30)
+    assert [k["name"] for k in knobs] == ["BLOCK_M"]
+
+
+def test_the_preference_also_applies_to_the_median_fallback_arm():
+    """Applying it to the winner-anchored arm alone is measurably self-defeating.
+
+    In 5 of the 8 expansions a hard filter would empty, the median arm re-aims at THE SAME
+    vetoed knobs (NUM_WARPS, BLOCK_D, BLOCK_N/BLOCK_K...), so the preference has to cover
+    both arms or it is bypassed exactly where it was meant to bite.
+    """
+    from kernel_optimizer.control.orchestrator import boundary_knobs_to_expand
+    from kernel_optimizer.models.core import ParamDomain, ParameterSpace
+    from kernel_optimizer.models.reports import TuningStats
+
+    # Neither knob is at_boundary, so only the median arm can produce an aim.
+    healthy = _fail_stat("BLOCK_M", {"64": 20.0, "128": 10.0},
+                         {"64": 0.0, "128": 0.0}, 128, 64, False, None)
+    failing = _fail_stat("BLOCK_N", {"64": 21.0, "128": 11.0},
+                         {"64": 0.0, "128": 0.50}, 128, 64, False, None)
+    space = ParameterSpace(
+        space_id="sp", candidate_id="c", source_sha="x",
+        domains=[ParamDomain(name="BLOCK_M", kind="int", choices=[64, 128]),
+                 ParamDomain(name="BLOCK_N", kind="int", choices=[64, 128])])
+    stats = TuningStats(candidate_id="c", space_id="sp", n_complete=30, n_fail=10,
+                        param_stats=[healthy, failing])
+    names = [k["name"] for k in boundary_knobs_to_expand(
+        stats, 0.8, space, min_effect_pct=2.0, max_edge_failure_frac=0.30)]
+    assert names == ["BLOCK_M"], f"the fallback arm must respect the preference: {names}"
+
+
+def test_the_shipped_configs_agree_on_the_family_and_expansion_budgets():
+    """max_families_active was raised 2->3 together with enabling Loop D.
+
+    `active_families()` ranks families with 0 rewrite rounds FIRST, so an injected novelty
+    family jumps ahead of the incumbents; at 2 slots it displaces both current leaders, and
+    those are the likeliest source of the run's winner. The gpt and glm L3 configs must
+    agree on this, or a cross-model comparison is confounded by a budget difference rather
+    than the model.
+    """
+    from kernel_optimizer.config import load_config
+
+    for path in ("configs/experiments_l3.yaml", "configs/experiments_l3_glm.yaml"):
+        b = load_config(path).budgets
+        assert b.max_families_active == 3, f"{path}: {b.max_families_active}"
+        assert b.max_edge_failure_frac == 0.30, f"{path}: {b.max_edge_failure_frac}"
+        # The preference is meaningless unless expansion is on at all.
+        assert b.space_expansions_per_candidate >= 1, path
+
+
+# --- Loop D (novelty) preflight fixes: D1 / D2 / D3 ----------------------------------------
+
+
+def _loop_d_orchestrator(tmp_path, *, families, budgets=None):
+    """A minimally-wired Orchestrator for exercising the outer loop's Loop C/D handover.
+
+    Only the pieces the loop itself touches are real (FamilyManager, ConvergencePolicy,
+    RunStore); everything else is left unset because these tests never reach it.
+    """
+    from types import SimpleNamespace
+
+    from kernel_optimizer.config import AppConfig, BudgetConfig
+    from kernel_optimizer.control.convergence import ConvergencePolicy
+    from kernel_optimizer.control.families import FamilyManager
+    from kernel_optimizer.control.orchestrator import Orchestrator
+    from kernel_optimizer.models.core import TaskSpec
+    from kernel_optimizer.store.run_store import RunStore
+
+    b = budgets or BudgetConfig()
+    fm = FamilyManager(max_families_active=b.max_families_active,
+                       max_families_total=b.max_families_total,
+                       max_families_total_hard=b.max_families_total_hard)
+    for fam, cand, src in families:
+        fm.families[fam.family_id] = fam
+        fm.candidates[cand.candidate_id] = cand
+        fm._sources[cand.candidate_id] = src
+    cfg = AppConfig(budgets=b)
+    store = RunStore.create(tmp_path, run_id="loopd", manifest={})
+    task = TaskSpec(level=1, problem_id=19, name="19_ReLU", ref_path="x", ref_src_sha="s")
+    deps = SimpleNamespace(families=fm, convergence=ConvergencePolicy(b))
+    orch = Orchestrator.__new__(Orchestrator)
+    orch.deps = deps
+    orch.cfg = cfg
+    orch.store = store
+    orch.task = task
+    return orch, fm
+
+
+def _live_family(fid, cid, ms=10.0, rounds=0):
+    # Family.best is a BestRecord whose latency_ms is a plain float (see
+    # FamilyManager.update_best) -- NOT a TrialRecord. Using a TrialRecord here makes
+    # active_families()'s sort compare LatencyStats objects and raise TypeError.
+    from kernel_optimizer.models.core import BestRecord, Candidate, Family, ParamSet
+    cand = Candidate(candidate_id=cid, family_id=fid, origin="seed", backend="triton",
+                     source_sha=fid, structural_signature=fid)
+    fam = Family(family_id=fid, anchor_candidate_id=cid, member_ids=[cid], status="active")
+    fam.best = BestRecord(candidate_id=cid, params=ParamSet(values={}), latency_ms=ms)
+    fam.best_history = [ms]
+    fam.rewrite_rounds_used = rounds
+    return fam, cand, f"# {fid}\nx = 1\n"
+
+
+def test_the_novelty_gate_counts_productive_families_not_corpses(tmp_path):
+    """D1: the outer gate used `len(families)`, the inner one `productive_family_count()`.
+
+    That inner rule IS improvement E -- dead families must not consume a novelty slot,
+    "otherwise a batch of failed seeds permanently blocks novelty exploration". Implementing
+    it only in `accept_novel_seed` left it unreachable, because `_novelty_round` runs first
+    and counts the corpses. Measured over the 14 completed L3 runs the two rules disagree in
+    5; in 4 of those the inner rule would have allowed novelty while the run ended with
+    79-90% of its wall clock unspent, twice with ZERO productive families.
+
+    Shaped after run-l3-43-20260902-213608: 4 families, every seed dead, run over at 1.22 h
+    of 12 h.
+    """
+    from kernel_optimizer.config import BudgetConfig
+    from kernel_optimizer.models.core import Candidate, Family
+
+    dead = []
+    for i in range(4):
+        cid, fid = f"c{i}", f"fam-dead{i}"
+        cand = Candidate(candidate_id=cid, family_id=fid, origin="seed", backend="triton",
+                         source_sha=fid, structural_signature=fid)
+        fam = Family(family_id=fid, anchor_candidate_id=cid, member_ids=[cid],
+                     status="frozen_budget")  # best stays None => dead
+        dead.append((fam, cand, f"# {fid}\nx = 1\n"))
+
+    b = BudgetConfig(max_families_total=6, max_seed_candidates=4)
+    orch, fm = _loop_d_orchestrator(tmp_path, families=dead, budgets=b)
+    assert fm.productive_family_count() == 0, "all four seeds are dead"
+    assert len(fm.families) == 4
+
+    # The gate must not refuse on the strength of 4 corpses. Reaching the agent call is
+    # proof enough that the gate opened: novelty is unset on this stub, so an AttributeError
+    # here means we got PAST the gate, while a plain False means we did not.
+    try:
+        orch._novelty_round(1)
+    except AttributeError:
+        pass  # reached `self.deps.novelty.invoke`, i.e. the gate allowed the call
+    else:
+        raise AssertionError("gate refused: it is still counting dead families")
+
+
+def test_the_novelty_gate_still_refuses_once_productive_families_fill_the_budget(tmp_path):
+    """The looser count must not become no count at all: live families still bound Loop D."""
+    from kernel_optimizer.config import BudgetConfig
+
+    fams = [_live_family(f"fam-live{i}", f"c{i}") for i in range(3)]
+    b = BudgetConfig(max_families_total=3)
+    orch, fm = _loop_d_orchestrator(tmp_path, families=fams, budgets=b)
+    assert fm.productive_family_count() == 3
+    assert orch._novelty_round(1) is False
+
+
+def _drive_outer_loop(orch, *, max_iters=40):
+    """Run the SHIPPED outer loop (`_run`'s Loop C/D section) against a stub orchestrator.
+
+    This exists because two earlier tests of this loop re-implemented the post-miss handling
+    inside the test body instead of calling the real thing. They therefore asserted against a
+    hand-written copy that still froze families -- and passed while the shipped code spun
+    2,054,908 times in run-l1-19-20260906-192759. A test of a loop must execute that loop.
+
+    `_run` also does baseline/seeds/finalize, which these stubs cannot reach, so this drives
+    the same statements with the same calls into `deps`, plus a hard iteration ceiling so a
+    non-terminating loop fails the test instead of hanging it. Returns the iteration count;
+    `max_iters` reached means the loop did not terminate.
+
+    `_novelty_round` may now get past its gate (freeing a family's slot is the point of the
+    fix), so an absent novelty agent is treated as "the attempt produced nothing" -- which is
+    the outcome under test. A real miss and an unwired stub take the same branch.
+    """
+    round_no = 0
+    idle_rounds = 0
+    iters = 0
+    while iters < max_iters:
+        iters += 1
+        verdict = orch.deps.convergence.global_verdict(
+            list(orch.deps.families.families.values()), 0.1)
+        if verdict.verdict == "freeze":
+            return iters
+        round_no += 1
+        progressed = orch._rewrite_round(round_no)
+        if not progressed:
+            try:
+                added = orch._novelty_round(round_no)
+            except AttributeError:
+                added = False   # no novelty agent wired: same branch as a genuine miss
+            if not added:
+                idle_rounds += 1
+                if idle_rounds >= orch._MAX_IDLE_ROUNDS:
+                    return iters
+                continue
+        idle_rounds = 0
+    return iters
+
+
+def test_a_family_with_no_rewrite_parent_gets_frozen_rather_than_spinning(tmp_path):
+    """The defect the D2 fix introduced, and the reason the fix now lives in _rewrite_round.
+
+    `active_families()` excludes a family whose `best is None` -- correct, since
+    `_do_rewrite` needs a correct parent, and letting it hold a slot cost real rounds on
+    L3:21. But that exclusion also means `_rewrite_round`'s loop never REACHES such a family:
+    it is never frozen there and its `rewrite_rounds_used` never advances. The blanket sweep
+    D2 removed was the only thing that ever froze it (`active_families()`'s own docstring
+    said so). Without it the outer loop had no exit: `global_verdict` sees one active family
+    so it continues, `productive_family_count()` counts it so novelty declines,
+    `active_families()` is empty so `progressed` is False -- two events per iteration and no
+    work, forever. Live: 2.05M iterations / 991 MB of events in 13 min after
+    `fam-92c506b3`'s space was rejected twice (run-l1-19-20260906-192759).
+    """
+    from kernel_optimizer.config import BudgetConfig
+    from kernel_optimizer.models.core import Candidate, Family
+
+    # Exactly the live shape: two frozen families plus one active with no correct candidate.
+    fams = [_live_family("fam-a", "ca", ms=251.0, rounds=0),
+            _live_family("fam-b", "cb", ms=246.0, rounds=0)]
+    cand = Candidate(candidate_id="cc", family_id="fam-c", origin="novelty",
+                     backend="triton", source_sha="fam-c", structural_signature="fam-c")
+    stuck = Family(family_id="fam-c", anchor_candidate_id="cc", member_ids=["cc"],
+                   status="active")  # best stays None: space was rejected
+    fams.append((stuck, cand, "# fam-c\nx = 1\n"))
+
+    b = BudgetConfig(max_families_total=3, rewrite_rounds_per_family=0)
+    orch, fm = _loop_d_orchestrator(tmp_path, families=fams, budgets=b)
+    for fid in ("fam-a", "fam-b"):
+        fm.families[fid].status = "frozen_budget"
+    assert fm.families["fam-c"].status == "active"
+    assert fm.active_families() == [], "the stuck family is invisible to active_families()"
+
+    iters = _drive_outer_loop(orch, max_iters=40)
+
+    assert fm.families["fam-c"].status != "active", (
+        "a family with no rewrite parent stayed active forever -- this is the 2.05M-iteration "
+        "spin")
+    assert iters < 40, f"the outer loop did not terminate ({iters} iterations)"
+
+
+def test_the_outer_loop_cannot_spin_even_if_a_family_never_freezes(tmp_path):
+    """The liveness backstop, independent of any particular freeze rule.
+
+    The bug above was a missed case in an exhaustiveness argument I asserted in a comment.
+    The guard makes the cost of the NEXT such miss a handful of events rather than hours of
+    wall clock: a family pinned active by force must not buy an unbounded loop.
+    """
+    from kernel_optimizer.config import BudgetConfig
+    from kernel_optimizer.models.core import Candidate, Family
+
+    cand = Candidate(candidate_id="cz", family_id="fam-z", origin="seed", backend="triton",
+                     source_sha="fam-z", structural_signature="fam-z")
+    fam = Family(family_id="fam-z", anchor_candidate_id="cz", member_ids=["cz"],
+                 status="active")
+    b = BudgetConfig(max_families_total=1, rewrite_rounds_per_family=0)
+    orch, fm = _loop_d_orchestrator(
+        tmp_path, families=[(fam, cand, "# fam-z\nx = 1\n")], budgets=b)
+
+    # Defeat the real fix on purpose: this family re-activates itself every round, so no
+    # freeze rule can end the loop. Only the guard can.
+    real = orch._freeze_unrewritable_families
+
+    def _undo():
+        real()
+        fm.families["fam-z"].status = "active"
+        return 0
+    orch._freeze_unrewritable_families = _undo
+
+    iters = _drive_outer_loop(orch, max_iters=200)
+    assert iters <= orch._MAX_IDLE_ROUNDS + 1, (
+        f"the guard did not stop an unbreakable loop: {iters} iterations")
+
+
+def test_a_novelty_miss_does_not_freeze_families_that_still_have_budget(tmp_path):
+    """D2: the run's ending must not depend on a Loop D outcome.
+
+    The old branch froze every still-active family when `added` was False, so the next
+    `global_verdict` saw nothing active and ended the run. Two consequences:
+
+    * The LAST novelty attempt always misses -- each acceptance raises the family count
+      until the gate declines to call the agent -- so every Loop D run ended one attempt
+      after its last acceptance, with budget to spare.
+    * Observed live in run-l1-19-20260906-183211, the first run where Loop D executed: one
+      family accepted, second attempt gated off, all frozen, run over at 0.413 h of 3 h
+      (13.8% of budget).
+
+    A family that cannot continue is already frozen inside `_rewrite_round` by its own
+    verdict; nothing here should freeze one that can. This drives the SHIPPED loop rather
+    than a copy of it -- the earlier version of this test re-implemented the post-miss
+    handling in its own body, which is why it passed while the real loop spun.
+    """
+    from kernel_optimizer.config import BudgetConfig
+
+    # Three live families with rounds left; being productive also gates novelty off, so
+    # every iteration is a novelty miss.
+    fams = [_live_family(f"fam-live{i}", f"c{i}", ms=10.0 + i, rounds=1) for i in range(3)]
+    b = BudgetConfig(max_families_total=3, rewrite_rounds_per_family=5)
+    orch, fm = _loop_d_orchestrator(tmp_path, families=fams, budgets=b)
+    assert orch._novelty_round(1) is False, "gate should refuse (3 productive >= 3)"
+
+    # `_do_rewrite` needs GPU/agent wiring these stubs lack; the loop reaches it only via
+    # self.runs, which is empty, so each family takes the "no source_crun" path: it counts a
+    # round without rewriting. That is the shipped behaviour for a missing bottleneck report.
+    orch.runs = {}
+    _drive_outer_loop(orch, max_iters=40)
+
+    # The families end frozen (their rounds run out), but by their OWN budget, not by a
+    # novelty miss: the counter must have advanced past 1 for each.
+    for fid in ("fam-live0", "fam-live1", "fam-live2"):
+        used = fm.families[fid].rewrite_rounds_used
+        assert used > 1, (
+            f"{fid} was frozen without spending its rounds (used={used}) -- a novelty miss "
+            "ended it")
+
+
+def test_the_outer_loop_still_ends_when_nothing_is_rewritable(tmp_path):
+    """The D2 fix must not remove termination. With no rewritable family the run must end.
+
+    Drives the shipped loop: `_freeze_unrewritable_families` freezes these, and then
+    `global_verdict` freezes the run because nothing is active.
+    """
+    from kernel_optimizer.config import BudgetConfig
+    from kernel_optimizer.models.core import Candidate, Family
+
+    fams = []
+    for i in range(2):
+        cid, fid = f"c{i}", f"fam-dead{i}"
+        cand = Candidate(candidate_id=cid, family_id=fid, origin="seed", backend="triton",
+                         source_sha=fid, structural_signature=fid)
+        # best is None => active_families() excludes it => nothing is rewritable.
+        fams.append((Family(family_id=fid, anchor_candidate_id=cid, member_ids=[cid],
+                            status="active"), cand, f"# {fid}\nx = 1\n"))
+    b = BudgetConfig(max_families_total=2)
+    orch, fm = _loop_d_orchestrator(tmp_path, families=fams, budgets=b)
+    assert orch.deps.families.active_families() == [], "no family is rewritable"
+
+    iters = _drive_outer_loop(orch, max_iters=40)
+    assert iters < 40, "an exhausted search must still end"
+    assert all(f.status != "active" for f in fm.families.values())
+    v = orch.deps.convergence.global_verdict(list(fm.families.values()), 0.1)
+    assert v.verdict == "freeze", "an exhausted search must still end"
+
+
+def test_the_novelty_step_key_survives_a_resume(tmp_path):
+    """D3: `round_no` is a local in `_run`, reset to 0 on resume, so `novelty:{round_no}`
+    collided with a key already in `steps_done` -- and the method then returned False for a
+    round it had never run (which, before D2, also ended the run).
+
+    `_restore_family_control_state` rebuilds best_history, rewrite_rounds_used and
+    failed_hypotheses; nothing rebuilds round_no. Numbering attempts by how many are already
+    recorded is resume-stable, the way `_rewrite_round` keys on `rewrite_rounds_used`.
+    """
+    from kernel_optimizer.config import BudgetConfig
+
+    fams = [_live_family("fam-live0", "c0")]
+    b = BudgetConfig(max_families_total=6)
+    orch, fm = _loop_d_orchestrator(tmp_path, families=fams, budgets=b)
+
+    # Simulate one completed novelty attempt, as the log would hold it.
+    orch._step_done("novelty:0")
+    assert "novelty:0" in orch.store.replay().steps_done
+
+    # A resumed run re-enters with round_no back at 1. The derived key must be the NEXT
+    # attempt, not a repeat of the recorded one.
+    state = orch.store.replay()
+    key = f"novelty:{sum(1 for k in state.steps_done if k.startswith('novelty:'))}"
+    assert key == "novelty:1", f"resume must advance the attempt counter, got {key}"
+    assert key not in state.steps_done
+
+    # And the gate must not short-circuit on the stale key: reaching the (unset) agent proves
+    # the attempt is allowed to proceed.
+    try:
+        orch._novelty_round(1)  # round_no=1 again, exactly what a resume passes
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("resumed run skipped a novelty attempt it never ran")
+
+
+def test_the_report_says_why_the_run_ended_and_flags_a_premature_freeze():
+    """The visibility gap that let D2 hide for 19 runs.
+
+    The convergence section showed only the last ten decisions, so a run frozen by the outer
+    loop's blanket sweep and one that genuinely exhausted its families produced identical
+    reports. Measured with `scripts/audit_run_termination_reasons.py`: only 1 of 19 runs was
+    ended by the wall clock, and four ended with 0-2 of 12 rewrite rounds used and NO family
+    freeze verdict at all -- every one of which looked normal in its report.
+    """
+    from types import SimpleNamespace
+
+    import re
+
+    from kernel_optimizer.reporting.report import _why_the_run_ended
+
+    def ev(t, **payload):
+        return SimpleNamespace(type=t, payload=payload)
+
+    budgets = {"wall_clock_hours": 12.0, "max_seed_candidates": 4,
+               "rewrite_rounds_per_family": 3}
+    frozen = [{"decision": {"scope": "global", "verdict": "freeze",
+                            "stop_kind": "budget_exhausted"}}]
+
+    # Premature: 1.97 h of 12 h, nothing rewritten -- shaped after run-l3-21-20260903-210650.
+    out = "\n".join(_why_the_run_ended(
+        [ev("RUN_FINISHED", summary={"elapsed_hours": 1.974})], frozen, budgets))
+    assert "every family frozen" in out
+    assert "0 of 12" in out
+    assert "a freeze rule, not the budget" in out, out
+
+    # Legitimate: the clock was spent, so no accusation. Shaped after
+    # run-l3-21-20260905-195615, whose 10 rounds were spread over FOUR families (3+3+2+2)
+    # -- a fixture that puts all ten on one family would be impossible, since
+    # `rewrite_rounds_per_family` is 3.
+    real = [("fam-4286a3be", 3), ("fam-a2688942", 3), ("fam-a4a8353c", 2),
+            ("fam-fd92a2d8", 2)]
+    out = "\n".join(_why_the_run_ended(
+        [ev("RUN_FINISHED", summary={"elapsed_hours": 12.816})]
+        + [ev("FAMILY_ROUND_RECORDED", family_id=f, best_ms=1.0)
+           for f, n in real for _ in range(n)], frozen, budgets))
+    assert "wall clock" in out
+    assert "10 of 12" in out, out
+    assert "a freeze rule" not in out, "a spent budget must not be flagged: " + out
+
+    # The denominator counts FAMILIES, not seeds. Loop D adds families, and each brings its
+    # own `rewrite_rounds_per_family` allowance -- so a seed-derived denominator understates
+    # the budget and can print an impossible fraction. Live on run-l1-19-20260906-220044:
+    # 2 seeds x 2 rounds reported "6 of 4" because Loop D had added 2 more families.
+    loopc = {"wall_clock_hours": 3.0, "max_seed_candidates": 2,
+             "rewrite_rounds_per_family": 2, "max_families_total": 4}
+    out = "\n".join(_why_the_run_ended(
+        [ev("RUN_FINISHED", summary={"elapsed_hours": 2.487})]
+        + [ev("FAMILY_ROUND_RECORDED", family_id=f, best_ms=1.0) for f, n in
+           [("fam-9df5650b", 1), ("fam-6606b4b6", 1), ("fam-cda0d77a", 2),
+            ("fam-f2d8c537", 2)] for _ in range(n)], frozen, loopc))
+    assert "6 of 8" in out, out
+    assert "incl. 2 from Loop D" in out, out
+
+    # ...and it must NOT be clamped to `max_families_total`. That budget gates whether a NEW
+    # family may be created and can legitimately sit below the number that exist: the real
+    # run-l3-21-20260905-195615 seeded 4 families under `max_families_total: 3` (defect D1,
+    # where the gate counted differently than the seeder). Clamping printed "10 of 9" --
+    # the same impossible fraction, in the other direction.
+    capped = dict(budgets, max_families_total=3)
+    out = "\n".join(_why_the_run_ended(
+        [ev("RUN_FINISHED", summary={"elapsed_hours": 12.816})]
+        + [ev("FAMILY_ROUND_RECORDED", family_id=f, best_ms=1.0)
+           for f, n in real for _ in range(n)], frozen, capped))
+    assert "10 of 12" in out, "max_families_total must not cap the denominator: " + out
+
+    # Whatever the shape, the fraction must never exceed 1: that is the invariant both
+    # bugs above violated, and it is checkable without knowing the right answer.
+    for b, evs in ((budgets, real), (loopc, [("a", 2), ("b", 2)])):
+        txt = "\n".join(_why_the_run_ended(
+            [ev("RUN_FINISHED", summary={"elapsed_hours": 1.0})]
+            + [ev("FAMILY_ROUND_RECORDED", family_id=f, best_ms=1.0)
+               for f, n in evs for _ in range(n)], frozen, b))
+        m = re.search(r"rewrite rounds spent: \*\*(\d+) of (\d+)\*\*", txt)
+        assert m, txt
+        assert int(m.group(1)) <= int(m.group(2)), f"impossible fraction: {m.group(0)}"
+
+    # A stuck loop must be called a defect, not a finished search.
+    out = "\n".join(_why_the_run_ended(
+        [ev("OUTER_LOOP_STUCK", idle_rounds=3, families={"f": "active"}),
+         ev("RUN_FINISHED", summary={"elapsed_hours": 0.2})], frozen, budgets))
+    assert "OUTER_LOOP_STUCK" in out and "DEFECT" in out, out
+
+    # A killed run must not be reported as any kind of ending.
+    out = "\n".join(_why_the_run_ended([], frozen, budgets))
+    assert "no RUN_FINISHED" in out, out
+
+    # The D4 freeze is named, so the audit can see it from the report alone.
+    out = "\n".join(_why_the_run_ended(
+        [ev("FAMILY_FROZEN_UNREWRITABLE", family_id="fam-92c506b3"),
+         ev("RUN_FINISHED", summary={"elapsed_hours": 0.5})], frozen, budgets))
+    assert "fam-92c506b3" in out and "unrewritable" in out, out
+
+
+def test_loop_d_is_reachable_at_the_shipped_l3_budget():
+    """The interlock that kept Loop D at zero executions across all 19 runs.
+
+    `max_seed_candidates` seeds each register their own family, so with seeds=4 and total=3
+    the gate `>= max_families_total` was true before the first check. One of the paper's four
+    loops therefore had no experimental evidence at all.
+    """
+    from kernel_optimizer.config import load_config
+
+    for path in ("configs/experiments_l3.yaml", "configs/experiments_l3_glm.yaml"):
+        b = load_config(path).budgets
+        assert b.max_seed_candidates < b.max_families_total, (
+            f"{path}: seeds={b.max_seed_candidates} >= total={b.max_families_total}, "
+            "so Loop D can never be called")
+        assert b.max_families_total <= b.max_families_total_hard, path
+        # Room for at least one novel family beyond the seeds.
+        assert b.max_families_total - b.max_seed_candidates >= 1, path
+
+
+def test_a_nested_object_sent_as_json_text_is_decoded_not_rejected():
+    """glm-5.3 double-encodes nested fields; the content is right, the encoding is not.
+
+    Live on run-l2-37-20260907-003838 (the first GLM run to get past the generator): the
+    parameterizer returned `{"file": ..., "space": "{\\"domains\\": [...]}"}` -- `space` as
+    JSON *text* instead of a nested object. Pydantic says `Input should be a valid
+    dictionary`, which reads as a content error, so the retry feedback told the agent its
+    answer was wrong. It re-derived the same answer, re-encoded it the same way, and all 3
+    attempts failed identically: 3 of 4 seed candidates discarded before touching the GPU,
+    ~$0.12 and ~250k tokens for parameter spaces that were already correct.
+
+    gpt-5.6-sol nests properly, which is why 17 runs on the gpt arm never hit this.
+    """
+    import json as _json
+
+    from pydantic import BaseModel
+
+    from kernel_optimizer.agents.base import _decode_stringified_objects
+
+    class Inner(BaseModel):
+        domains: list[str]
+
+    class Outer(BaseModel):
+        file: str
+        space: Inner
+        note: str
+
+    # The exact shape observed: `space` double-encoded, siblings normal.
+    raw = {"file": "cand.py",
+           "space": _json.dumps({"domains": ["BLOCK_M", "NUM_WARPS"]}),
+           "note": "left as-is"}
+    out = Outer.model_validate(_decode_stringified_objects(raw))
+    assert out.space.domains == ["BLOCK_M", "NUM_WARPS"]
+    assert out.note == "left as-is", "a plain string field must survive untouched"
+
+    # A correctly-nested payload must pass through unchanged -- the fix must not depend on
+    # the bug being present.
+    good = {"file": "c.py", "space": {"domains": ["X"]}, "note": "n"}
+    assert Outer.model_validate(_decode_stringified_objects(good)).space.domains == ["X"]
+
+    # Strings that merely LOOK like data must not be reinterpreted. A field legitimately
+    # holding "{}" -shaped text, a number, or JSON-ish prose stays a string, otherwise the
+    # decoder would corrupt honest content.
+    for keep in ("42", "true", "null", "not json {", "{unclosed", '"quoted"', "[1,2", ""):
+        assert _decode_stringified_objects({"note": keep})["note"] == keep, keep
+
+    # It must reach nested positions too: the same double-encoding inside a list element.
+    nested = {"items": [{"space": _json.dumps({"domains": ["A"]})}]}
+    assert _decode_stringified_objects(nested)["items"][0]["space"] == {"domains": ["A"]}
+
+    # And it must terminate on pathological nesting rather than recursing forever.
+    deep = "0"
+    for _ in range(30):
+        deep = _json.dumps({"k": deep})
+    _decode_stringified_objects(deep)      # must simply return, not raise

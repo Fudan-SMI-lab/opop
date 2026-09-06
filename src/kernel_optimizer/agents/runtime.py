@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import socket
 import subprocess
@@ -60,12 +61,17 @@ class OpencodeServer:
         port = _free_port(self.cfg.port)
         self.base_url = f"http://{self.cfg.host}:{port}"
         self._log_handle = self.log_path.open("ab")
+        # Inherit our environment and layer `server_env` on top: a few opencode settings
+        # (notably the per-turn output-token ceiling) exist only as env vars, with no
+        # config-file route -- see OpencodeConfig.server_env.
+        env = {**os.environ, **{k: str(v) for k, v in self.cfg.server_env.items()}}
         self.proc = subprocess.Popen(
             ["opencode", "serve", "--hostname", self.cfg.host, "--port", str(port)],
             cwd=str(self.cfg.launch_cwd),
             stdout=self._log_handle,
             stderr=subprocess.STDOUT,
             shell=True,  # opencode is a .cmd shim on Windows
+            env=env,
         )
         self._wait_healthy()
         return self.base_url

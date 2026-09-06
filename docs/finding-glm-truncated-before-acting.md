@@ -190,13 +190,12 @@ Both changes are agent-side, so they reach a running experiment immediately
 
 ## The remedy, superseded: the arm already works without raising the cap
 
-> **Superseded by the live smoke above.** This section proposed raising `maxTokens` via the
-> sandbox config. That specific route does not work — `maxTokens` is an `$AgentConfig` key, not a
-> provider model option, so the value is dropped. And it turned out not to be needed: with the
-> truncation feedback in place, the arm produces two contract-valid candidates on the real L3:21
-> prompt in 18.2 min for $0.1584, absorbing one truncated attempt on the way. The reasoning below
-> about *sizing* a cap remains valid if the cap is ever set in the right place
-> (`agent.build.maxTokens`), which is untested.
+> **Superseded twice.** This section originally proposed raising `maxTokens` via the sandbox
+> config. That route does not exist at all — see **The cap's real route: an env var, not a
+> config key** below, which found the actual mechanism and the provider's own hard limit. The
+> arm also turned out not to need it: with the truncation feedback in place, it produces two
+> contract-valid candidates on the real L3:21 prompt in 18.2 min for $0.1584, absorbing one
+> truncated attempt on the way. The reasoning below about *sizing* a cap remains valid.
 
 Because the ceiling is `max_tokens` and nothing here sets it, the fix is a config addition rather
 than a model or tier change — the arm stays **glm-5.3 at `reasoningEffort: max`**, which is what
@@ -275,26 +274,155 @@ So the ordered options are now:
    overhead against a 12 h budget — so the arm will likely complete fewer family-rounds than the
    gpt arm, and any model-to-model comparison must say so rather than compare final numbers as if
    the search effort were equal.
-2. **Set `agent.build.maxTokens` (the correct key) and re-test.** If honoured, GLM's first attempt
-   would not truncate and the ~12 min penalty disappears, bringing throughput closer to the gpt
-   arm. Untested — one ~20 min, ~$0.3 probe would settle it.
+2. ~~**Set `agent.build.maxTokens` (the correct key) and re-test.**~~ That key does not exist.
+   **Done via the env var instead, and it is strictly better than option 1** — see the
+   measurement below.
 3. ~~**Lower the tier to `high`.**~~ Measured: `high` truncates identically at 39991/40000.
 4. **Drop GLM** and finish the two remaining gpt tasks.
 
-Option 2 is worth doing before option 1, because it is cheap and it removes the one asymmetry
-that would weaken the comparison the arm exists to make.
+### Measured: raising the ceiling beats absorbing the truncation
+
+With `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=200000` (resolving to zhipuai's 131072 maximum),
+one real `agent-smoke --module generator --task level3:21` call through the full agent loop:
+
+```
+                    32000 ceiling          131072 ceiling
+                    (truncation fix)       (this measurement)
+attempts            2 (1 wasted)           1
+wall clock          18 min 16 s            16 min 19 s
+cost                $0.1584                $0.0364
+candidates written  2                      2
+```
+
+Per-turn trace, and this is the whole story in one column:
+
+```
+turn  output  reason     sum  finish
+   1     229      12     241  tool-calls     <- read the task files
+   2      62      19      81  tool-calls
+   3      81   58778   58859  tool-calls     <- 58859 > 32000: the turn that used to die
+   4    4058     148    4206  tool-calls     <- writes cand_1.py
+   5    5335     243    5578  tool-calls     <- writes cand_2.py
+   6-12  ...                                 <- verification, then the JSON
+total output=11357 reasoning=63603 sum=74960
+```
+
+**Turn 3 is the one that was being truncated.** It needed 58859 output+reasoning tokens — 1.84x
+the old 32000 ceiling — and once allowed to finish it went straight to writing files. Every
+subsequent turn is small (81 to 5578). So the model was never in a planning loop; it had one
+genuinely large planning turn and the ceiling landed in the middle of it.
+
+**Cost fell 4.4x** ($0.1584 -> $0.0364) because the wasted 32000-token attempt is gone, and it
+was the expensive part. **This retracts my own prediction**: I argued a raised cap "would not
+have been the fix" and "would be worse", reasoning that GLM spends whatever it is given. That
+was generalised from the direct-HTTP probe, where a capless request did consume 100000 tokens.
+Inside the agent loop it does not — with tools available it stops deliberating and acts. The
+direct-HTTP measurement did not predict agent-loop behaviour, which is exactly why the user
+ruled that instrument out.
+
+**Consequence for the arm:** option 1's ~12 min/call penalty does not have to be paid. At
+16m19s/$0.0364 per generator call and no wasted attempt, the throughput asymmetry against the
+gpt arm is much smaller than the 8-9 h I estimated. `configs/experiments_l3_glm.yaml` carries
+the setting. The truncation feedback stays in place regardless — it is what makes a truncated
+turn recoverable when one does happen; the ceiling makes it happen rarely.
 
 Superseded options, kept for the record:
 
 1. ~~**Raise `maxTokens` in the provider model options.**~~ The value never reaches the API; see
-   the `$AgentConfig` note above.
+   the `$AgentConfig` note above, and the section below for the route that does work.
+
+## The cap's real route: an env var, not a config key
+
+The user asked me to check the web for a way to raise the cap in opencode's config. There is
+none — and the reason is worth stating precisely, because seven config placements failed for
+the same reason and I read the last five of them wrongly.
+
+**What the schema says.** `https://opencode.ai/config.json` (fetched live) contains exactly one
+output-token field in the entire document:
+
+```
+Config.provider.<id>.models.<id>.limit = {
+  "properties": {"context": {...}, "input": {...}, "output": {...}},
+  "required": ["context", "output"],
+  "additionalProperties": false
+}
+```
+
+`maxTokens` and `maxOutputTokens` do not appear anywhere in it. So `agent.build.maxTokens` was
+never going to work: the `$AgentConfig.maxTokens` stub with a `null` spec is a leftover, not a
+setting.
+
+**What the binary does.** Read out of `opencode.exe` 1.18.18:
+
+```js
+var MY = 32000                                          // OUTPUT_TOKEN_MAX default
+function Hy($, Z = MY) { return Math.min($.limit.output, Z) || Z }
+...  maxOutputTokens: ke.maxOutputTokens(e.model, e.flags.outputTokenMax)
+...  outputTokenMax: G("OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX")
+```
+
+The per-turn cap is `min(model.limit.output, ENV ?? 32000)`. Two consequences:
+
+* The env var is a hard **ceiling**; config can only lower it. Raising `limit.output` alone
+  cannot get past the 32000 default.
+* The real setting has **no config-file route at all**. It is an environment variable, which is
+  why every config placement failed and why no amount of searching the config docs would have
+  found it.
+
+**Measured, by capturing the exact JSON opencode sends upstream**
+(`scripts/probe_glm_limit_output.py`):
+
+| placement | `max_tokens` sent upstream |
+|---|---|
+| baseline (nothing set) | 32000 |
+| `limit{context,output} = 200000` | **32000** — config alone is inert |
+| env var alone | **131072** — clamped to the model's advertised output |
+| env var + `limit = 200000` | 200000 — but see below |
+
+**131072 is the real ceiling.** Asking for 200000 end-to-end returns
+`HTTP 400 code 1210: max_tokens参数非法:限制数值范围[1,131072]` and the turn spends zero tokens.
+So the env var alone is the correct setting: it resolves through the model's own advertised
+limit to 131072, the most zhipuai accepts. Because it is only a ceiling, it needs no per-model
+tuning — each model's advertised limit wins underneath it.
+
+### A retraction, and why the earlier probe was worthless
+
+`scripts/probe_glm_token_cap_placement.py` printed five "dropped" placements. **That table was
+invalid and I should have caught it from its own output:** every row, *including the baseline
+control*, read `(no upstream call)`. A baseline that never reaches the provider means the probe
+harness itself was broken, so the five negatives measured nothing.
+
+The bug: the probe wrote its throwaway config to `v2-glm/_captest/`, *inside* the arm's tree.
+opencode merges every `.opencode` config from the filesystem root down to cwd, so the parent's
+real `baseURL` was layered back over the proxy override and each turn went straight to zhipuai —
+costing $0.024 a row while capturing nothing. The replacement probe lives outside the tree,
+asserts the resolved `baseURL` is the proxy *before* spending a turn, and **exits non-zero if
+the baseline captures nothing** so the same mistake cannot be misread again.
+
+The general lesson, which is the reason this is written down: a probe whose negative result and
+whose own breakage look identical is not evidence. It needs a positive control that fails loudly.
+
+### Two harness changes this required
+
+1. **`OpencodeConfig.server_env`** — `opencode serve` was spawned with no `env=`, so there was no
+   way to pass it a setting that exists only in the environment. It now inherits the harness
+   environment with `server_env` layered on top. Generic: any env-only opencode setting is now
+   reachable from config.
+2. **`_sandbox_extra_config` deep-merges** — it used `dict.update`, so setting one key inside
+   `provider` replaced the *whole* provider tree read from `sandbox_config_path`, dropping the
+   `apiKey` and `baseURL` with it. The resulting call failed in six seconds as "no parseable
+   JSON" — indistinguishable from a model failure. This was a latent bug for any partial
+   override, not just this one.
+
+Both are pinned by tests in `tests/test_improvements.py`.
 
 ## Reproduce
 
 ```
 python scripts/dump_opencode_session.py ses_f8bd092d3ffeOPjvtUcytpvhyu   # the real run
 python scripts/dump_opencode_session.py ses_f8dd66365ffeUYOSETkrLAy42b   # the smoke test
-python scripts/probe_glm_thinking_budget.py                                     # tier vs ceiling
+python scripts/probe_glm_thinking_budget.py                              # tier vs ceiling
+python scripts/probe_glm_limit_output.py                                 # the env-var route
 ```
 
 Note: `v2-glm/runs/*/sandboxes/*/opencode.json` hold a plaintext zhipuai key, copied there by

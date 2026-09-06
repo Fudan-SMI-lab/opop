@@ -1,5 +1,16 @@
 # Finding: `stop_kind = "converged"` is structurally unreachable
 
+> **RESOLVED 2026-09-06** — as a side effect of raising `rewrite_rounds_per_family` from 3 to 5
+> for a different reason (defect 0b in `analysis-framework-defects-and-next-steps.md`: families
+> were being cut off while still improving). The root cause below is that the budget threshold and
+> the converged threshold coincided, so the budget test — which runs first — always won. They no
+> longer coincide: converged needs 3 rounds of flat history, the budget cap is now 5.
+>
+> The eight flat histories tabulated below would now all report `converged`. Guarded by
+> `test_converged_is_reachable_at_the_l3_config` (arithmetic, both L3 configs) and
+> `test_a_flat_family_now_freezes_as_converged_at_the_shipped_budget` (behaviour). Not yet
+> observed live — no run has completed since the change.
+
 Measured, not inferred: **13 of 13 family freezes across every L3 run are
 `budget_exhausted`. `converged` has never fired once**, including eight families whose history
 is completely flat.

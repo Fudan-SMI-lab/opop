@@ -1,0 +1,86 @@
+# Probe config: how long and how many tokens does ONE untruncated L3:21 generator call take?
+#
+# Copy of configs/experiments_l3_glm.yaml, differing ONLY by the token-ceiling settings
+# below. Separate file so the real GLM arm's config and v2-glm/.opencode/opencode.jsonc stay
+# untouched -- this is a one-shot measurement, not a run setting.
+#
+# HOW THE CEILING ACTUALLY WORKS (read out of the opencode 1.18.18 binary, then confirmed by
+# capturing the upstream request bodies -- scripts/probe_glm_limit_output.py):
+#
+#     var MY = 32000                                       // OUTPUT_TOKEN_MAX default
+#     function Hy($, Z = MY) { return Math.min($.limit.output, Z) || Z }
+#     ... maxOutputTokens: ke.maxOutputTokens(e.model, e.flags.outputTokenMax)
+#     ... outputTokenMax: G("OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX")
+#
+# So the per-turn cap is `min(model.limit.output, ENV ?? 32000)`. TWO consequences:
+#   1. The env var is a hard CEILING; config can only lower it. Raising `limit.output` alone
+#      still sent max_tokens=32000. This is why seven config-only placements all failed
+#      (`options.maxTokens`, `agent.build.maxTokens`, `agent.build.options.*`, ...): none of
+#      them is the setting, and the real setting has NO config-file route at all.
+#   2. Measured upstream `max_tokens` for each combination:
+#        baseline .................... 32000
+#        limit{context,output}=200000  32000   <- config alone is not enough
+#        env var only ................ 131072  <- clamped to the model's advertised output
+#        env var + limit=200000 ...... 200000  <- REJECTED by zhipuai, see below
+#
+# 131072 IS THE REAL CEILING. Asking for 200000 end-to-end returns HTTP 400 code 1210,
+# `max_tokens参数非法:限制数值范围[1,131072]`, and the turn spends zero tokens. So no `limit`
+# block is set here: the env var alone resolves to `min(131072, 200000) = 131072` via the
+# model's advertised output limit, which is the most the provider accepts. The env var is
+# left at 200000 deliberately -- it is only a ceiling, so it needs no per-model tuning and
+# any model's own advertised limit wins underneath it.
+#
+# `server_env` reaches `opencode serve` via its process environment.
+#
+# TIMING HAZARD: GLM generates ~4400-4974 tok/min, so a full 131072-token turn could run
+# ~30 min. request_timeout_s is raised ONLY so our own transport does not cut the measurement
+# short; it says nothing about what a real run should use.
+run:
+  runs_dir: D:/Pyhon_projects/opop/v2-glm/runs
+  seed: 0
+
+opencode:
+  server_url: null
+  launch_cwd: D:/Pyhon_projects/opop/v2-glm
+  sandbox_config_path: D:/Pyhon_projects/opop/v2-glm/.opencode/opencode.jsonc
+  # 50 min: enough for a full 131072-token turn plus the tool calls after it.
+  request_timeout_s: 3000
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "200000"
+
+agents:
+  default_model: zhipuai/glm-5.3
+  # 0 retries: this probe measures ONE uninterrupted call. A retry would append a second
+  # attempt's tokens and make the per-call figure unreadable.
+  generator: {model: null, max_retries: 0, n_candidates: 4, timeout_s: 3000}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 3
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 3
+  max_families_active: 2
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+
+device:
+  name: RTX 5080 Laptop (sm_120)
+  vram_gb: 16
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024

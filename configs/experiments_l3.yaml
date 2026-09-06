@@ -11,16 +11,44 @@ agents:
 
 budgets:
   trials_per_space: 40
-  rewrite_rounds_per_family: 3
+  # 5, was 3: at 3 the per-family round cap fired before the convergence test it defers to.
+  # 3 of 16 budget-frozen families were still gaining >=2% on their final allowed round, and
+  # those 3 gains (47.7%, 44.5%, 11.5%) are the largest single-round improvements in the
+  # project -- while ~45% of the 12 h wall clock went unused. Cost: one round is 38.9 min
+  # median, so +2 rounds is ~+2.6 h for the 2 concurrently-active families.
+  # See docs/analysis-framework-defects-and-next-steps.md defect 0b.
+  rewrite_rounds_per_family: 5
   no_improve_rounds: 2
   min_improvement_pct: 2.0
-  max_families_total: 3
-  max_families_active: 2
+  # 6, was 3: at 3 Loop D was unreachable (max_seed_candidates=4 seeds -> 4 families, so the
+  # novelty gate `>= max_families_total` was already true). All 19 runs have origin:novelty = 0.
+  # 6 = 4 seeds + room for 2 novel families, and matches max_families_total_hard.
+  # Verified first with configs/smoke_l1_novelty.yaml (run-l1-19-20260906-183211): the whole
+  # NoveltyGeneratorAgent path works end to end.
+  max_families_total: 6
+  # 3, was 2. Raised together with Loop D: active_families() puts families with 0 rewrite
+  # rounds FIRST (so a branch is never dropped before showing its headroom), which means an
+  # injected novelty family jumps ahead of the incumbents. At 2 slots it would displace both
+  # current leaders, and those are the likeliest source of the run's winner -- on
+  # run-l3-43-20260906-091019 all four families were still gaining >=2% when frozen.
+  #
+  # This does NOT lengthen the run. Rounds are serial and the total available is
+  # max_seed_candidates * rewrite_rounds_per_family = 20 regardless; at 38.8 min median a
+  # 12 h budget affords ~18, so wall clock binds either way (L3:21 already overshot at
+  # 12.82 h with active=2). It redistributes: more families reach a first round, each gets
+  # fewer. See the fuller note in config.py.
+  max_families_active: 3
   max_families_total_hard: 6
   max_seed_candidates: 4
   repair_attempts: 3          # improvement F: 2->3, compile+precision failures need >2 tries
   space_expansions_per_candidate: 1   # improvement K: extend boundary knobs once before rewrite
   space_expansion_idle_frac: 0.8
+  # P4: prefer widening knobs whose boundary value is not already failing. Values added
+  # beyond a FAILING edge fail 43% (16/37) vs 15% (13/84) beyond a healthy one. A
+  # preference, not a filter -- as a filter it would empty the request list on 8 of 177
+  # historical expansions and cancel them outright, two of those being their run's best
+  # candidate. See scripts/audit_expansion_failure_veto.py. 1.0 disables.
+  max_edge_failure_frac: 0.30
   wall_clock_hours: 12
 
 evaluation:

@@ -130,11 +130,146 @@ def _search_budget_lines(summary: dict | None, trials: list,
     return lines if substantive else []
 
 
+def _attribution_lines(best: dict, trials: list) -> list[str]:
+    """Which GPU kernels the winning configuration actually launched.
+
+    A candidate is free to hand part of the computation back to PyTorch and still win on
+    latency -- and on L3:43 the run's fastest candidate did exactly that: `cand-60fdcae9`
+    (8.06 ms) launches only `_fused_qkv_projection` and `_head_layout_projection`, so the
+    attention core is torch's `scaled_dot_product_attention`. Fusing c_attn + QKV packing
+    into one Triton GEMM is a real result, but it is not an attention kernel, and the best
+    FULLY hand-written candidate in that run was `cand-9f6af7bd` at 9.43 ms. Delegation is
+    also not a family-level property: that family's five members flip between hand-written
+    and delegating, and the delegating one won.
+
+    So this prints the launched kernel names as a FACT and does not classify them. A
+    keyword rule ("does one of these look like attention?") is task-specific by
+    construction -- it would need a different word list per operator -- and a wrong
+    attribution label is worse than none. Deciding whether the winner covers the
+    reference's dominant operator needs the reference's own operator profile, which the
+    harness does not record yet; until it does, the reader gets the raw evidence.
+    """
+    cand_id = best.get("candidate_id")
+    params = (best.get("params") or {}).get("values")
+    if not cand_id:
+        return []
+    # The winning trial is the one whose params match the reported best, falling back to
+    # this candidate's fastest completed trial (params round-trip through JSON, so compare
+    # decoded dicts rather than strings).
+    mine = [t for t in trials
+            if t.get("candidate_id") == cand_id and t.get("status") == "complete"]
+    if not mine:
+        return []
+    exact = [t for t in mine if (t.get("params") or {}).get("values") == params]
+    pool = exact or mine
+    winner = min(pool, key=lambda t: (t.get("latency_ms") or {}).get("mean") or float("inf"))
+    names = ((winner.get("profile") or {}).get("kernel_names")) or []
+    if not names:
+        return ["- kernels launched by the winning configuration: **none recorded** "
+                "(CUDA backend, or profiling unavailable) — attribution cannot be read "
+                "from this run"]
+    return [f"- kernels launched by the winning configuration: "
+            f"{', '.join(f'`{n}`' for n in names)}",
+            "  - a kernel the reference computes but that does not appear here was "
+            "delegated to PyTorch, not written by the search; check this list before "
+            "attributing the speedup"]
+
+
+def _why_the_run_ended(events, convergence: list[dict], budgets: dict) -> list[str]:
+    """Name the reason the outer loop stopped, and whether budget was left on the table.
+
+    The report used to show only the last ten convergence decisions, which never says *why*
+    the run ended. That is why the D2 defect survived 19 runs: a run frozen by the outer
+    loop's blanket sweep and a run that genuinely exhausted its families produced identical
+    reports. Measured afterwards with `scripts/audit_run_termination_reasons.py`: only 1 of
+    19 runs was ended by the wall clock, and four ended with 0-2 of 12 rewrite rounds used
+    and no family freeze verdict at all. Every one of those looked normal here.
+
+    So this states the ending, the clock spent, and the rewrite rounds spent -- the three
+    numbers that make a premature ending visible without a separate audit script.
+    """
+    out: list[str] = []
+    stuck = [e for e in events if e.type == "OUTER_LOOP_STUCK"]
+    unrewritable = [e.payload.get("family_id")
+                    for e in events if e.type == "FAMILY_FROZEN_UNREWRITABLE"]
+    finished = [e for e in events if e.type == "RUN_FINISHED"]
+    last_global = next((c["decision"] for c in reversed(convergence)
+                        if (c.get("decision") or {}).get("scope") == "global"), None)
+
+    rounds_used = sum(1 for e in events if e.type == "FAMILY_ROUND_RECORDED")
+    # The denominator is per-FAMILY, not per-seed. Seeds are only the families the run
+    # STARTS with: Loop D adds more, and each new family carries its own
+    # `rewrite_rounds_per_family` allowance. Deriving the total from `max_seed_candidates`
+    # therefore understates it by exactly the novel families' share -- which was invisible
+    # while Loop D never ran, and became wrong the moment it did. Observed on
+    # run-l1-19-20260906-220044: 2 seeds x 2 rounds printed "6 of 4", an impossible
+    # fraction, because Loop D had added 2 more families for a real total of 8.
+    #
+    # So count the families the log actually shows, falling back to the seed count only for
+    # a run that died before seeding. Do NOT clamp to `max_families_total`: that budget
+    # gates whether a NEW family may be created, and it can legitimately sit below the
+    # number that exist -- run-l3-21-20260905-195615 seeded 4 families under
+    # `max_families_total: 3` (the D1 defect: the gate counted differently than the seeder).
+    # Clamping there reintroduced the same impossible fraction in the other direction,
+    # printing "10 of 9". The log is the authority on how many families existed.
+    per_family = budgets.get("rewrite_rounds_per_family")
+    seeds = budgets.get("max_seed_candidates")
+    families_seen = {e.payload.get("family_id") for e in events
+                     if e.payload.get("family_id")} - {None}
+    n_families = len(families_seen) or seeds
+    rounds_avail = (n_families * per_family) if (n_families and per_family is not None) \
+        else None
+
+    elapsed = None
+    if finished:
+        elapsed = (finished[-1].payload.get("summary") or {}).get("elapsed_hours")
+    wc = budgets.get("wall_clock_hours")
+
+    if stuck:
+        pl = stuck[-1].payload
+        out.append(f"- **ended: OUTER_LOOP_STUCK** after {pl.get('idle_rounds')} idle "
+                   f"rounds — this is the liveness guard, so it indicates a DEFECT, not a "
+                   f"finished search. Family statuses at that point: "
+                   f"{pl.get('families')}")
+    elif not finished:
+        out.append("- **ended: no RUN_FINISHED event** — the run was killed or crashed; "
+                   "these numbers are partial")
+    elif last_global and last_global.get("stop_kind") == "budget_exhausted" and wc \
+            and elapsed is not None and elapsed >= wc * 0.98:
+        out.append(f"- ended: **wall clock** ({elapsed} h of {wc} h) — the budget was "
+                   f"actually spent")
+    elif last_global and last_global.get("verdict") == "freeze":
+        pct = f"{elapsed / wc * 100:.0f}%" if (wc and elapsed is not None) else "?"
+        out.append(f"- ended: **every family frozen** "
+                   f"(`{last_global.get('stop_kind')}`) at {elapsed} h of {wc} h ({pct} of "
+                   f"the clock)")
+
+    if rounds_avail:
+        left = rounds_avail - rounds_used
+        flag = ("  <- a freeze rule, not the budget, decided this ending"
+                if left > 0 and elapsed is not None and wc and elapsed < wc * 0.9 else "")
+        novel = max(0, len(families_seen) - (seeds or 0))
+        how = (f"{n_families} families x {per_family}"
+               + (f", incl. {novel} from Loop D" if novel else ""))
+        out.append(f"- rewrite rounds spent: **{rounds_used} of {rounds_avail}** "
+                   f"({how}){flag}")
+    if unrewritable:
+        out.append(f"- families frozen as unrewritable (no correct candidate, so no rewrite "
+                   f"parent): {', '.join(f'`{f}`' for f in unrewritable)}")
+    return out + [""] if out else []
+
+
 class ReportGenerator:
     def generate(self, store: RunStore) -> Path:
         events = store.iter_events()
         report_dir = store.run_dir / "report"
         report_dir.mkdir(exist_ok=True)
+        try:
+            manifest = json.loads(
+                (store.run_dir / "manifest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            manifest = {}
+        budgets = ((manifest.get("config") or {}).get("budgets") or {})
 
         baselines = [e.payload["baseline"] for e in events if e.type == "BASELINE_DONE"]
         candidates = {e.payload["candidate"]["candidate_id"]: e.payload["candidate"]
@@ -229,18 +364,14 @@ class ReportGenerator:
                              "progress); tuned_ms above is NOT a verified latency")
             if best.get("precision"):
                 lines.append(f"- candidate arithmetic precision: **{best['precision']}**")
-            speedups = best.get("speedups")
-            if speedups:
-                lines.append("- speedup vs each baseline "
-                             "(baseline_ms / candidate_ms, >1 = faster):")
-                for kind in sorted(speedups):
-                    lines.append(f"  - vs `{kind}`: **{speedups[kind]}x**")
-            else:
-                if "speedup_vs_eager" in best:
-                    lines.append(f"- speedup vs eager: **{best['speedup_vs_eager']}x**")
-                if "speedup_vs_compile" in best:
-                    lines.append(f"- speedup vs torch.compile: "
-                                 f"**{best['speedup_vs_compile']}x**")
+            # The honest same-precision verdict comes FIRST, before the raw per-baseline
+            # speedups. All three task references are plain fp32 while the winning
+            # candidates compute in a lower precision, so most of the raw ratios compare
+            # across precisions and read high: on L3:43 the baseline choice alone is worth
+            # 1.91x (4.23x vs torch_compile, 2.21x vs torch_compile_tf32), nearly the whole
+            # honest speedup. Three historical runs are recorded as FAILS on this verdict
+            # while showing 1.08-1.86x against the fp32 baselines, so the ordering decides
+            # which number a reader (or a paper draft) takes away first.
             hv = best.get("honest_verdict")
             if hv:
                 verdict = hv.get("same_precision_speedup")
@@ -253,9 +384,24 @@ class ReportGenerator:
                         f"{best.get('precision', '?')}; vs same-precision baseline "
                         f"`{against}` = **{verdict}x** — {mark} the same-precision "
                         f"baseline")
+            speedups = best.get("speedups")
+            if speedups:
+                lines.append("- raw speedup vs each baseline "
+                             "(baseline_ms / candidate_ms, >1 = faster) — **cross-precision "
+                             "where the baseline's precision differs from the candidate's, "
+                             "so NOT directly comparable; use the honest verdict above**:")
+                for kind in sorted(speedups):
+                    lines.append(f"  - vs `{kind}`: **{speedups[kind]}x**")
+            else:
+                if "speedup_vs_eager" in best:
+                    lines.append(f"- speedup vs eager: **{best['speedup_vs_eager']}x**")
+                if "speedup_vs_compile" in best:
+                    lines.append(f"- speedup vs torch.compile: "
+                                 f"**{best['speedup_vs_compile']}x**")
             if best.get("excessive_speedup_flag"):
                 lines.append("- ⚠ flagged: excessive speedup — inspect before trusting")
             lines.append(f"- best params: `{json.dumps(best['params']['values'])}`")
+            lines.extend(_attribution_lines(best, trials))
             lines.append("")
             lines.extend(_search_budget_lines(summary, trials, dead_kernels,
                                               provisional))
@@ -333,6 +479,7 @@ class ReportGenerator:
             lines.append("")
 
         lines.append("## Convergence decisions\n")
+        lines.extend(_why_the_run_ended(events, convergence, budgets))
         for c in convergence[-10:]:
             d = c["decision"]
             scope_id = c.get("family_id", "global")

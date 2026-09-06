@@ -22,7 +22,15 @@ class OpencodeConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 4096
     agent: str = "build"
-    request_timeout_s: float = 1200.0
+    # 30 min. Was 1200s (20 min), which was killing real work: across the five completed L3 runs
+    # 8 agent calls died at exactly 1200-1201s with `prompt transport error (ReadTimeout)` --
+    # 5 repairs, 2 rewriters, 1 generator, spread over all three tasks. Each kill discards a
+    # candidate or a whole rewrite round, so the cost is search progress, not just a retry.
+    # Sizing: the slowest SUCCESSFUL call measured is 576s (generator p90), and one glm-5.3
+    # generator call on L3:21 took 979s (16m19s) with a single large reasoning turn -- so 20 min
+    # left under 4 min of headroom for the reasoning-heavy arm. 1800s clears both by >=1.8x.
+    # This is model-agnostic: it is the transport read timeout, not a token or effort setting.
+    request_timeout_s: float = 1800.0
     permission_mode: str = "sandbox_config"  # or "sse_auto_approve"
     startup_timeout_s: float = 60.0
     # Merged into every agent sandbox's opencode.json. That file makes the sandbox a
@@ -33,12 +41,25 @@ class OpencodeConfig(BaseModel):
     # `sandbox_config_path` instead of inlining secrets in the experiment config.
     sandbox_extra_config: dict = Field(default_factory=dict)
     sandbox_config_path: Path | None = None
+    # Environment variables for the `opencode serve` process. Some opencode settings have
+    # NO config-file route and are read only from the environment; the one we need is
+    # OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX, which sets the per-turn output-token ceiling.
+    # The binary computes it as `Math.min(model.limit.output, ENV ?? 32000)`, so the env var
+    # is a hard CEILING that config can only lower: raising a model's `limit.output` alone
+    # cannot get past the 32000 default (measured, scripts/probe_glm_limit_output.py). A
+    # reasoning-heavy model that needs more than 32000 output+reasoning tokens per turn is
+    # truncated mid-thought without it.
+    server_env: dict[str, str] = Field(default_factory=dict)
 
 
 class AgentModuleConfig(BaseModel):
     model: str | None = None  # None => agents.default_model
     max_retries: int = 2
-    timeout_s: float = 1200.0
+    # NOT CONSUMED ANYWHERE (verified: nothing reads `AgentModuleConfig.timeout_s`). The single
+    # effective ceiling is OpencodeConfig.request_timeout_s, which sets the httpx client timeout
+    # in wiring.py. Kept in step with it so a reader who sets this per-module does not end up
+    # with a value that silently contradicts the real one -- but setting it changes nothing.
+    timeout_s: float = 1800.0
     n_candidates: int = 4  # generator / rewriter / novelty batch size
     # Transport (ReadTimeout / connection) failures retried on a FRESH session. Capped
     # separately from max_retries because a hung endpoint costs a full request_timeout_s
@@ -68,11 +89,56 @@ class AgentsConfig(BaseModel):
 
 class BudgetConfig(BaseModel):
     trials_per_space: int = 40
-    rewrite_rounds_per_family: int = 3
+    # 5, was 3. At 3 the round cap fired BEFORE the convergence test it exists to defer to:
+    # across 18 L3 runs, 16 families froze on `budget_exhausted` and 3 of them were still
+    # gaining >=2% on that final round -- and those 3 gains (47.7%, 44.5%, 11.5%) are the
+    # largest single-round improvements in the project. Their trajectories were accelerating
+    # (18.6 -> 15.4 -> 8.1), not plateauing. Meanwhile the wall clock was NOT the constraint:
+    # both runs froze their best families at ~6.3 h of a 12 h budget, leaving ~45% unused.
+    #
+    # `no_improve_rounds` + `min_improvement_pct` already stop a family that has stopped
+    # improving, so raising this cap hands the stopping decision back to the mechanism designed
+    # for it, with `wall_clock_hours` as the hard backstop. Measured cost of one round: 38.9 min
+    # median / 46.3 min mean, so +2 rounds is +2.6 h median for the 2 concurrently-active
+    # families (max_families_active=2) and +5.2 h in the pessimistic all-4 case.
+    #
+    # Why not a progress-conditional cap instead: `min_improvement_pct` is RELATIVE, so a 9.43 ms
+    # family must find 0.19 ms to qualify while an 18.6 ms family needs 0.37 ms. A conditional
+    # cap therefore penalises the fastest families -- exactly the ones most likely to produce the
+    # run's best result -- so it would cut off the families we most want to continue.
+    rewrite_rounds_per_family: int = 5
     no_improve_rounds: int = 2
     min_improvement_pct: float = 2.0
-    max_families_total: int = 3
-    max_families_active: int = 2
+    # 6, was 3. At 3 Loop D was unreachable: `max_seed_candidates: 4` produces 4 seed
+    # families, so the novelty gate's `>= max_families_total` was true before the first
+    # check. Across all 19 runs `origin:novelty` is 0 and `module=novelty` agent calls are 0
+    # -- one of the paper's four loops had no evidence at all. 6 leaves room for 2 novel
+    # families on top of 4 seeds, and matches `max_families_total_hard` so the two caps agree.
+    #
+    # Verified before raising it (configs/smoke_l1_novelty.yaml, run-l1-19-20260906-183211):
+    # the NoveltyGeneratorAgent path works end to end -- prompt, schema, sandbox seeding,
+    # similarity gate, registration, parameterization, tuning. Raising this without that
+    # smoke would have risked discovering a broken code path hours into an L3 run.
+    max_families_total: int = 6
+    # 3, was 2. Raised together with enabling Loop D (novelty). `active_families()` ranks
+    # families with `rewrite_rounds_used == 0` FIRST -- deliberately, so a branch is never
+    # dropped before it has shown its headroom -- which means a newly injected novelty
+    # family jumps the queue ahead of the incumbents. At 2 slots it would displace the two
+    # families currently holding the best latencies, and those are the ones most likely to
+    # produce the run's winner (on run-l3-43-20260906-091019 all four families were still
+    # improving >=2% when the budget froze them). A third slot lets a novel family be tried
+    # without evicting both leaders in the same round.
+    #
+    # It does NOT make the run longer, which is worth stating because the opposite is the
+    # intuitive guess. Rewrite rounds are SERIAL (`_rewrite_round` iterates
+    # `active_families()` and each `_do_rewrite` blocks on the GPU), and the total available
+    # is `max_seed_candidates * rewrite_rounds_per_family` = 20 either way. At a 38.8 min
+    # median per round a 12 h budget affords ~18 of them, so WALL CLOCK is the binding
+    # constraint in both settings -- run-l3-21-20260905-195615 already overshot at 12.82 h
+    # with active=2. What this changes is the DISTRIBUTION: more families reach a first
+    # round before the clock stops, each getting fewer rounds. That is the intended trade
+    # for giving Loop D somewhere to land.
+    max_families_active: int = 3
     max_families_total_hard: int = 6  # absolute cap once dead families stop counting
     max_seed_candidates: int = 4
     repair_attempts: int = 2
@@ -81,6 +147,20 @@ class BudgetConfig(BaseModel):
     # tried-range boundary and still improving with idle resources. 0 = disabled.
     space_expansions_per_candidate: int = 0
     space_expansion_idle_frac: float = 0.8  # resource must be < this frac of limit
+    # P4: among the knobs already cleared for widening, prefer those whose boundary value
+    # is not already failing. A value added beyond a FAILING edge fails 43% of the time
+    # (16/37 across 19 runs) vs 15% (13/84) beyond a healthy one, and a failed trial
+    # returns no latency, so those trials buy nothing.
+    #
+    # This is a PREFERENCE, not a filter, and the difference is measured
+    # (scripts/audit_expansion_failure_veto.py): as a filter it would empty the request
+    # list on 8 of 177 expansions, and an empty list cancels the expansion outright --
+    # losing the fresh tuning budget as well as the widening. Two of those 8 are their
+    # run's best candidate (cand-0d0dcd49, and cand-60fdcae9 = the 8.06 ms L3:43 winner).
+    # As a preference it avoids 131 of 155 failing-edge aims (every one with a healthy
+    # alternative in the same expansion) and leaves the other 24 exactly as today.
+    # 1.0 = disabled.
+    max_edge_failure_frac: float = 0.30
     # Improvement B1: how many upcoming candidates' parameterizer calls to run on a
     # background thread while the current candidate holds the GPU. 0 = disabled
     # (fully synchronous, the pre-B1 behaviour). Only parameterization is prefetched;
