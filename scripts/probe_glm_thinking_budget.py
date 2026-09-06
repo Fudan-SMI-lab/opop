@@ -2,30 +2,30 @@
 
 All three glm-5.3 generator attempts in `run-l3-21-20260906-084636` stopped at exactly
 `output + reasoning == 32000` with `finish: "length"`, mid-reasoning, before ever emitting a
-tool call. The endpoint accepts `max_tokens: 120000` for a trivial prompt, so 32000 is not a
-blanket request cap.
+tool call. The endpoint accepts `max_tokens: 120000` for a trivial prompt, and opencode sends
+no token-limit field at all, so 32000 is neither a blanket request cap nor something our side
+asks for. The remaining explanation is a per-tier thinking budget.
 
-Two hypotheses remain:
+This decides it from outside opencode: the same deliberately hard prompt at each tier, with
+`max_tokens` far above 32000 every time. If the stop lands at 32000 regardless of `max_tokens`
+and moves with the tier, the budget is the tier's.
 
-  A. the harness/opencode sends `max_tokens: 32000`;
-  B. `reasoning_effort: "max"` grants a 32000-token thinking budget the model spends in full
-     on a hard prompt, and truncation lands on the budget, not on a request field.
+Streamed, because a non-streaming `max` call on this prompt exceeds a 900s read timeout (the
+first version of this probe died that way). Streaming also keeps the socket alive between
+chunks, so the only timeout that matters is the gap between chunks, not total wall time.
 
-This decides between them from outside opencode: the same deliberately hard prompt at each
-effort tier, with `max_tokens` set far above 32000 in every case. If the stop lands at 32000
-regardless of `max_tokens`, and moves when the tier moves, it is B.
-
-Costs a few cents per tier.
+Tiers run cheapest-first: `high` is the one that decides whether lowering the tier is even a
+viable option, so it should not be gated behind a 20-minute `max` call.
 """
 from __future__ import annotations
 
 import json
 import pathlib
 import sys
-import urllib.error
-import urllib.request
 
 sys.stdout.reconfigure(encoding="utf-8")
+sys.path.insert(0, r"D:\Pyhon_projects\opop\v2\src")
+import httpx  # noqa: E402
 
 CFG = pathlib.Path(r"D:\Pyhon_projects\opop\v2-glm\.opencode\opencode.jsonc")
 cfg = json.loads(
@@ -57,31 +57,52 @@ def call(effort: str | None, max_tokens: int) -> dict:
         "model": "glm-5.3",
         "messages": [{"role": "user", "content": HARD}],
         "max_tokens": max_tokens,
-        "stream": False,
+        "stream": True,
+        "stream_options": {"include_usage": True},
     }
     if effort is not None:
         body["reasoning_effort"] = effort
-    req = urllib.request.Request(
-        URL,
-        data=json.dumps(body).encode(),
-        method="POST",
-        headers={"Content-Type": "application/json", "Authorization": "Bearer " + KEY},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=900) as r:
-            return json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        return {"_http_error": e.code, "_body": e.read()[:500].decode("utf-8", "replace")}
+
+    usage: dict = {}
+    finish: list[str] = []
+    chunks = 0
+    # 300s between chunks is generous; a live stream emits far more often than that.
+    with httpx.Client(timeout=httpx.Timeout(300.0, connect=30.0)) as client:
+        with client.stream(
+            "POST",
+            URL,
+            json=body,
+            headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"},
+        ) as resp:
+            if resp.status_code != 200:
+                return {"_http": resp.status_code, "_body": resp.read()[:400].decode("utf-8", "replace")}
+            for line in resp.iter_lines():
+                if not line.startswith("data:"):
+                    continue
+                payload = line[5:].strip()
+                if payload == "[DONE]":
+                    break
+                try:
+                    d = json.loads(payload)
+                except ValueError:
+                    continue
+                chunks += 1
+                if d.get("usage"):
+                    usage = d["usage"]
+                for ch in d.get("choices") or []:
+                    if ch.get("finish_reason"):
+                        finish.append(ch["finish_reason"])
+    return {"usage": usage, "finish": finish, "chunks": chunks}
 
 
-print(f"{'effort':>8} {'max_tokens':>11} {'completion':>11} {'reasoning':>10} {'finish':>10}")
-for effort, mt in [("max", 120000), ("max", 40000), ("high", 120000), ("low", 120000)]:
+print(f"{'effort':>8} {'max_tokens':>11} {'completion':>11} {'reasoning':>10}  finish")
+for effort, mt in [("high", 120000), ("max", 120000), ("max", 40000), ("low", 120000)]:
     d = call(effort, mt)
-    if "_http_error" in d:
-        print(f"{effort:>8} {mt:>11}  HTTP {d['_http_error']}: {d['_body'][:120]}")
+    if "_http" in d:
+        print(f"{effort:>8} {mt:>11}  HTTP {d['_http']}: {d['_body'][:120]}")
         continue
-    u = d.get("usage") or {}
+    u = d["usage"] or {}
     comp = u.get("completion_tokens")
     rea = (u.get("completion_tokens_details") or {}).get("reasoning_tokens")
-    fin = [c.get("finish_reason") for c in d.get("choices", [])]
-    print(f"{effort:>8} {mt:>11} {comp:>11} {rea:>10} {str(fin):>10}")
+    print(f"{effort:>8} {mt:>11} {str(comp):>11} {str(rea):>10}  {d['finish']}")
+    sys.stdout.flush()

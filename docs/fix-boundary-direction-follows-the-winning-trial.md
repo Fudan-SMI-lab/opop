@@ -260,6 +260,93 @@ order**, not domain order — the actual stored order for `FINAL_BLOCK` is
 label 128 the minimum and mislabel directions. The fallback reads the domain's `choices` instead,
 pinned by `test_median_fallback_reads_edges_from_the_domain_not_the_latency_dict`.
 
+## Correction: the fallback is not the pre-fix rule restored, and it is wider
+
+I described the second pass as falling back to "the median's aim", implying it reproduces
+pre-fix behaviour. It does not. The two live in different places and check different things:
+
+```
+_param_stat (stats.py, the pre-fix flag)  requires THREE things:
+   1. the anchor sits on the measured edge
+   2. the median curve's 3-value tail is MONOTONE toward that edge
+   3. the range beyond the edge is absent, or entirely failing
+
+_median_direction (orchestrator.py, the fallback)  checks only (1).
+```
+
+Measured per knob over all 184 spaces on disk (`audit_fallback_vs_prefix_rule.py`):
+
+```
+identical verdict                                        1306
+fallback flags a knob the pre-fix rule would not          219
+fallback withholds one the pre-fix rule would flag          0
+```
+
+Strictly more permissive, never less. So the honest description of the shipped code is: the
+first pass is the fix, and the second pass is a **wider** median rule than the one the fix
+replaced — not a restoration of it.
+
+### Why that does not change behaviour, measured rather than assumed
+
+The per-knob predicate is not the behaviour. `boundary_knobs_to_expand` runs the fallback only
+when the anchored pass returns **nothing for the whole space**, and then applies the same
+numeric / `min_effect_pct` / hard-edge filters. Replaying request SETS through the real
+predicate (`audit_shipped_vs_prefix_requests.py`):
+
+```
+spaces replayed                    184
+identical request set              183
+shipped requests MORE                1   (0 spaces gained a request from nothing)
+shipped requests fewer/different     0
+```
+
+Where the 219 wider flags go:
+
+```
+204  another knob in the space already carried the anchored flag -> fallback never runs
+  7  effect_pct below min_effect_pct
+  8  reached the fallback
+```
+
+So the widening is almost entirely masked by the whole-space gate: a space with any
+winner-anchored flag never consults the fallback, and 204 of the 219 are in exactly that
+situation. **No space goes from "no request" to "some request"**, which is the property that
+matters — the fallback cannot manufacture expansions the project would not have spent.
+
+The single space where the shipped rule asks for more is `sp-cc814089` in the live L3:43 run:
+
+```
+pre-fix aim : SCORE_BLOCK_M/max  SCORE_NUM_WARPS/min  VALUE_NUM_WARPS/max
+shipped     : SCORE_BLOCK_M/max  SCORE_NUM_WARPS/min  VALUE_NUM_WARPS/max
+                                 + VALUE_BLOCK_M/max  + VALUE_BLOCK_D/max
+```
+
+The two extra knobs are the ones whose **winner sits on the max edge too** (`VALUE_BLOCK_M=128`,
+`VALUE_BLOCK_D=128`) but whose median tail is not monotone, so the pre-fix monotone test
+withheld them. Adding them is aimed at the winner, i.e. the wider rule errs in the direction the
+fix argues for. That is a defensible accident rather than a designed one, and it is now recorded
+as such.
+
+### Prospective, predicted before the run acted
+
+This was written while `sp-cc814089` had tuned once and not yet been expanded, and
+`audit_fallback_prospective.py` printed the prediction. The run then emitted:
+
+```
+SPACE_EXPANDED cand-a988ff79 [SCORE_BLOCK_M/max, SCORE_NUM_WARPS/min,
+                              VALUE_BLOCK_M/max, VALUE_BLOCK_D/max, VALUE_NUM_WARPS/max]
+```
+
+Exactly the predicted set, in order. The reason this is worth stating: it is the first live
+exercise of the fallback path — 11 knobs, 6 on a median edge, only 2 on the winner's edge, and
+`at_boundary=False` on every one, so without the fallback this expansion would have been
+**cancelled** and its fresh 40-trial budget forfeited. That is the failure mode the floor was
+added to prevent, observed working rather than argued for.
+
+Reproduce with `python scripts/audit_fallback_vs_prefix_rule.py`,
+`python scripts/audit_shipped_vs_prefix_requests.py`,
+`python scripts/audit_fallback_prospective.py`.
+
 ## Propagation
 
 `tuning/stats.py` is driver-side, so this affects the **next** run, not the one in flight —
