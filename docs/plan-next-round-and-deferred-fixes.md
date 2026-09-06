@@ -66,9 +66,30 @@ with cross-arm comparability in mind.
 | Rewrite-round denominator counts families | `fa3e7ba` | all 24 runs, no impossible fractions |
 | Tuning objective is a median; samples retained | `a98fa62` | live GPU run selects a different, faster kernel |
 | Convergence judges on the same statistic | `b2ab4ba` | neutralization of one `update_best` call |
-| `triton_pitfalls.md` #7 (`triton.lang`) and #8 (constexpr floordiv) | `f0ddb20` | a live repair cited "#7" in its diagnosis |
+| `triton_pitfalls.md` #7 (`triton.lang`) and #8 (constexpr floordiv) | `f0ddb20` | a live repair cited "#7" in its diagnosis; 3 of 4 seeds hit it before, 0 of 2 rewrites after |
 | Preflight refusal when another run is active | `3febd60` | positive + negative controls |
 | GLM L3 token ceiling 200000 → 131072 | `3febd60` | config loads; matches the L2:37 arm |
+| A median-labelled speedup requires a median on both sides | `dbcc99b` | neutralization; the mixed ratio inflated 0.727x to 1.658x |
+| The deliverable trials.csv carries the median | `be3ae62` | on 280 real trials, mean-only sorting names a different winner, 44% off |
+
+### The `triton.lang` prompt fix, measured
+
+The one observation point that was still untested when the round began — all four seeds
+predated `f0ddb20`, so nothing had exercised the new pitfalls text.
+
+| Candidates | Generated | `triton.lang` occurrences |
+|---|---|---|
+| 4 seeds | before `f0ddb20` (02:51) | **3 of 4 failed to import** → 3 repair rounds spent |
+| 2 rewrites | after `f0ddb20` (03:53) | **0 of 2** |
+
+Same model, same task, same run. One repair's diagnosis text cites
+"docs/triton_pitfalls.md #7" directly, which independently confirms agent-side prompt files
+reach a *running* experiment (the worker-vs-driver propagation rule).
+
+**Do not over-read it**: n=2, and the rewriter prompt is not the generator prompt, so this is
+evidence rather than proof. The claim it supports is narrow — the defect that cost three
+repair rounds did not recur once the pitfall was named.
+
 
 ## Next round, in order
 
