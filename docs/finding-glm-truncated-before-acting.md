@@ -114,6 +114,65 @@ and act with the tools immediately. The ordinary malformed-answer branch is unch
 This is not GLM-specific. Any model, on a hard enough task, can be cut off mid-reasoning; the
 old code would send it in a loop of identical failures at full cost.
 
+#### Confirmed live on the real L3 prompt, and it is what fixed the arm
+
+`agent-smoke --module generator --task level3:21` against the glm arm's config — the same prompt
+that killed the run — now succeeds:
+
+```
+got 2 candidates (attempts=2, cost=$0.1584)
+  cand_1.py: PARAMS ok {10 knobs}   NCHW layer-by-layer, tl.dot 1x1 conv
+  cand_2.py: PARAMS ok { 8 knobs}   NHWC channels-last single pass
+```
+
+Per-turn, from opencode's store (`ses_f8ad6c04dffedOHyiDAbYLBzZm`):
+
+```
+ #   out  reason  out+rea    secs  tok/min  finish
+ 1   233      11      244     8.6     1697  tool-calls    read the task files
+ 2    63     348      411    13.0     1902  tool-calls    read triton_pitfalls
+ 3     5   31995    32000   729.4     2632  length        <- STILL truncated at 32000
+     --- attempt 2, now carrying the truncation feedback ---
+ 4    80   12756    12836   255.3     3016  tool-calls    <- stopped at 12.8k and ACTED
+ 5  2786       0     2786    34.0     4918  tool-calls    wrote cand_1.py
+ 6  2805      13     2818    30.9     5471  tool-calls    wrote cand_2.py
+ 7    47     105      152     4.3     2141  tool-calls
+ 8   598     111      709    13.4     3166  tool-calls    emitted the JSON
+```
+
+Total wall clock **18 min 16 s**, cost **$0.1584** against the failed run's $0.4557.
+
+Two things this settles:
+
+- **The feedback change is load-bearing, not speculative.** Attempt 1 was truncated exactly as
+  before; attempt 2, told it had been cut off and to act instead of planning, deliberated 12836
+  tokens and went straight to the tools. Under the old feedback it would have been told its JSON
+  was malformed and re-planned into the same wall — which is precisely how the run died.
+- **A truncation is survivable, so it need not be fatal.** The cost is one wasted ~12 min attempt
+  per call. Over the ~85 agent calls a 12 h L3 run makes that is ~8-9 h of pure overhead, which
+  is a real threat to finishing four families x three rounds inside the budget — the arm is
+  viable but slower than the gpt arm, and that asymmetry has to be stated when comparing them.
+
+#### `maxTokens` in a provider model's `options` is ignored
+
+I proposed raising the cap by putting `maxTokens: 100000` in the glm arm's
+`provider.zhipuai.models.glm-5.3.options`. The smoke above ran WITH that setting, and turn 3
+still stopped at exactly 32000 — so it never reached the API.
+
+The reason is that `maxTokens` is not a model option. opencode's own config schema
+(`https://opencode.ai/config.json`) lists it under `$AgentConfig.properties`
+(`color, description, disable, hidden, maxSteps, mode, model, options, permission, prompt,
+steps, temperature, tools, top_p, variant`), i.e. it belongs to an **agent** definition, not to a
+provider's model block. `$ProviderConfig` has no such key, so the value was carried into the
+sandbox config (verified) and silently dropped.
+
+I verified the setting reached the sandbox and did not verify that opencode would honour it
+there. Those are different checks, and only the second one mattered.
+
+It also means the earlier arithmetic about needing `request_timeout_s` raised above 1200 s does
+not apply on this path: the successful call took 18.2 min, and its single truncated turn took
+729 s, both inside the existing limit.
+
 ### 2. The run's own trace could not diagnose it
 
 `AGENT_CALL_FAILED` recorded only `module`, `call_id`, `final` and the corrective text, so the
@@ -129,7 +188,15 @@ Tests: `tests/test_improvements.py`
 Both changes are agent-side, so they reach a running experiment immediately
 (`opop-v2-worker-vs-driver-fix-propagation`) — but no GLM run is in flight to benefit.
 
-## The remedy: raise the cap, which keeps the arm's identity
+## The remedy, superseded: the arm already works without raising the cap
+
+> **Superseded by the live smoke above.** This section proposed raising `maxTokens` via the
+> sandbox config. That specific route does not work — `maxTokens` is an `$AgentConfig` key, not a
+> provider model option, so the value is dropped. And it turned out not to be needed: with the
+> truncation feedback in place, the arm produces two contract-valid candidates on the real L3:21
+> prompt in 18.2 min for $0.1584, absorbing one truncated attempt on the way. The reasoning below
+> about *sizing* a cap remains valid if the cap is ever set in the right place
+> (`agent.build.maxTokens`), which is untested.
 
 Because the ceiling is `max_tokens` and nothing here sets it, the fix is a config addition rather
 than a model or tier change — the arm stays **glm-5.3 at `reasoningEffort: max`**, which is what
@@ -183,19 +250,44 @@ cap 131072   $0.620/call   ~$53 per run
 Those are worst-case figures assuming every call spends the whole cap, which is what GLM did on
 three of three attempts. A cap is therefore also a budget decision, not only a correctness one.
 
-The honest caveat: raising the cap is necessary but might not be sufficient. It removes the
-truncation, and the new truncation feedback gives a cut-off agent a way to recover, but neither
-makes GLM *choose* to act earlier. If it simply deliberates for 100k tokens and then writes four
-candidates, the arm works and each generator call is expensive. If it deliberates without ever
-converging, the arm fails for a different reason. That is not knowable without trying.
+The measured reality, from the successful smoke, is cheaper than any of those rows: **$0.1584 per
+generator call** — one truncated 32000-token attempt plus a ~20000-token productive attempt. At
+~85 calls that is roughly **$13 per run**, i.e. the truncation-and-recover path costs less than
+letting the model spend a 100k cap freely would.
 
-Remaining options, now that (3) is confirmed available and (2) is confirmed useless:
+## Status: the arm is viable at `reasoningEffort: max`, with a throughput penalty
 
-1. **Raise `maxTokens` and re-run at `max`.** Preserves the experiment's identity. One config
-   line. Recommended, at ~$16–53 per run depending on the cap.
-2. ~~**Lower the tier to `high`.**~~ Measured above: `high` truncates identically at 39991/40000.
-   Not a fix.
-3. **Drop GLM** and finish the two remaining gpt tasks.
+Measured, not assumed:
+
+```
+                       failed run          after the fix
+outcome                dead at 1st call    2 valid candidates
+attempts               3 (all truncated)   2 (1 truncated, 1 productive)
+wall clock             23 min, then died   18 min 16 s
+cost                   $0.4557             $0.1584
+files written          0                   2
+```
+
+So the ordered options are now:
+
+1. **Re-run the GLM arm as-is.** No config change needed; the truncation fix carries it. The
+   penalty is ~12 min of wasted first attempt per agent call, which over ~85 calls is ~8-9 h of
+   overhead against a 12 h budget — so the arm will likely complete fewer family-rounds than the
+   gpt arm, and any model-to-model comparison must say so rather than compare final numbers as if
+   the search effort were equal.
+2. **Set `agent.build.maxTokens` (the correct key) and re-test.** If honoured, GLM's first attempt
+   would not truncate and the ~12 min penalty disappears, bringing throughput closer to the gpt
+   arm. Untested — one ~20 min, ~$0.3 probe would settle it.
+3. ~~**Lower the tier to `high`.**~~ Measured: `high` truncates identically at 39991/40000.
+4. **Drop GLM** and finish the two remaining gpt tasks.
+
+Option 2 is worth doing before option 1, because it is cheap and it removes the one asymmetry
+that would weaken the comparison the arm exists to make.
+
+Superseded options, kept for the record:
+
+1. ~~**Raise `maxTokens` in the provider model options.**~~ The value never reaches the API; see
+   the `$AgentConfig` note above.
 
 ## Reproduce
 
