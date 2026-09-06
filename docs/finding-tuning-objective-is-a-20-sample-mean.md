@@ -112,18 +112,33 @@ trial 3: [372.4, 15.5, 15.4, 15.5, 16.1, 15.5, ... 15.3]   rest spans 15.3-16.3
 trial 4: [378.9, 19.5, 20.3, 20.3, 125.4, 21.5, ... 19.6]  one further mid-run stall
 ```
 
-**Sample #1 is a 370–385 µs outlier every time**, and samples 2–20 are then extremely tight.
-`num_warmup=3` does not absorb the first timed launch. One deterministic artifact in 20
-samples was inflating every trial's mean by 1.7–2.9x. This diagnosis was impossible from
-mean/std/min/max, which is the concrete argument for keeping the samples.
+Sample #1 was a 370–385 µs outlier in all four, with samples 2–20 extremely tight. That
+diagnosis was impossible from mean/std/min/max, which is the concrete argument for keeping
+the samples.
 
-It also justifies the choice of median over any fixed rule: trial 4 carries a *second* stall
-mid-run, where the median (20.18) is correct and even "drop the first sample" (25.67) is not.
+**Corrected at n=158** (same run, later): the first sample is **not** a deterministic
+artifact. Across 158 trials with samples retained:
 
-A follow-up worth considering separately: raising `num_warmup` would remove the artifact at
-its source. That is a different change — it costs GPU time on the hot path and would alter
-every measurement — so it is not bundled here. The median makes the objective correct
-regardless.
+```
+first / median-of-rest:   <1.5x (not an artifact)  80 trials (50.6%)
+                           2-10x                    12 trials ( 7.6%)
+                            >10x                    66 trials (41.8%)
+92 outlier samples total; 84.8% sit at position 0, the rest at positions 3, 5, 6, 16, 17.
+```
+
+Half the trials have a perfectly normal first sample. This is a *probabilistic* cold-start
+effect whose highest-risk slot is position 0 — not a fixed per-launch cost. Recording the
+mistake because I made it twice: I called it deterministic from 7 trials ("7/7"), then again
+from 57 ("57/57"), and wrote that into this document. **"N/N" on a small sample is not
+evidence of determinism.**
+
+Consequences for `num_warmup`, which is the obvious follow-up: it would remove the 84.8% of
+outliers that sit at position 0, but not those at positions 3–17. Assuming the first sample
+were fully eliminated, `|mean/median − 1|` would still be median 0.67%, p90 2.18%, max 749%,
+with **10.8% of trials still above 2%**. So raising `num_warmup` is a worthwhile supplement —
+it would let the mean-based comparison work again, fixing the candidate-vs-baseline statistic
+mismatch — but it is **not** a substitute for the median, and the claim that it removes the
+noise "at its source" is wrong.
 
 ## One consequence for the external comparison
 
