@@ -52,24 +52,52 @@ is exactly why it passed and told us nothing about L3. That is the error in my f
 verdict: I validated the transport, the provider config, the sandbox config mechanism and the
 contract, on a prompt an order of magnitude easier than the one the experiment runs.
 
-## Where the 32000 comes from
+## Where the 32000 comes from: it is `max_tokens`, and it is ours to set
 
-Not from an upstream request cap — a direct call to the same endpoint with
-`max_tokens: 120000` and `reasoning_effort: "max"` returns HTTP 200 normally.
+Not an upstream request cap — a direct call to the same endpoint with `max_tokens: 120000` and
+`reasoning_effort: "max"` returns HTTP 200 normally. Not opencode's declared model limit either:
+the live server reports `glm-5.3: limit {context: 1000000, output: 131072}`.
 
-Not from opencode's declared model limit either. The live server reports
-`glm-5.3: limit {context: 1000000, output: 131072}`, and our `prompt()` body sends no
-token-limit field at all, so nothing on our side asks for 32000.
+**I first concluded it was a per-tier thinking budget belonging to the provider. That was wrong.**
+`scripts/probe_glm_thinking_budget.py`, same hard prompt, `reasoning_effort: "max"`, but
+`max_tokens: 40000`:
 
-That leaves the provider: on this endpoint, `reasoning_effort: "max"` appears to come with a
-~32000-token thinking budget that the model spends in full on a hard prompt.
-`scripts/probe_glm_thinking_budget.py` measures whether the ceiling moves with the tier.
+```
+effort  max_tokens  completion  reasoning  finish
+   max       40000       40000      39952  ['length']
+```
 
-What is already certain, and sufficient for the operational decision, is that
-**`reasoningEffort: "max"` and an L3-sized prompt put glm-5.3 over the ceiling reliably** —
-3 out of 3, at the very first call, on the easiest of the three L3 tasks.
+It stopped at **exactly 40000**, not 32000. So the ceiling tracks `max_tokens` precisely: the
+model spends whatever budget it is given and gets truncated at the limit, whatever the limit is.
+Raising it raises the stop.
 
-gpt-5.6-sol on the identical prompt has never done this in 17 runs.
+Which means 32000 is a **default**, and nothing in this project's own configs sets it:
+`v2-glm/.opencode/opencode.jsonc` has only `$schema` and `provider`, and the generated sandbox
+`opencode.json` adds only `permission` and that provider block — no `maxTokens` anywhere. The
+`maxTokens: 32000` visible in the live `/config` belongs to an unrelated agent definition
+(`Hephaestus - Deep Agent`) in the user's global config, not to `build`, which resolves to
+`{"mode": "subagent", "hidden": true}` with empty options. So the 32000 is opencode's own default
+output cap for a request that names none.
+
+That reframes the whole failure. It is not "GLM needs more thinking than the provider allows"; it
+is **"we never told opencode how many tokens this agent may spend, and the default is too small
+for an L3 prompt at `reasoningEffort: max`."**
+
+### Why gpt-5.6-sol never hit it
+
+Same default, nowhere near it. Across the live L3:43 run's 107 assistant turns:
+
+```
+finish reasons: {'tool-calls': 104, 'stop': 3}
+max output+reasoning in a single turn: 6649    (vs the 32000 ceiling)
+```
+
+gpt-5.6-sol acts after a few thousand tokens of deliberation; glm-5.3 at `max` writes ~100k
+characters of planning before its first tool call. The default was sufficient for one model and
+not the other, which is exactly why 17 gpt runs gave no warning.
+
+What remains certain either way: **`reasoningEffort: "max"` plus an L3-sized prompt put glm-5.3
+over a 32000 ceiling 3 out of 3**, at the very first call, on the easiest of the three L3 tasks.
 
 ## Two harness defects this exposed, both model-agnostic
 
@@ -101,25 +129,39 @@ Tests: `tests/test_improvements.py`
 Both changes are agent-side, so they reach a running experiment immediately
 (`opop-v2-worker-vs-driver-fix-propagation`) — but no GLM run is in flight to benefit.
 
-## What this does NOT fix
+## The remedy: raise the cap, which keeps the arm's identity
 
-The feedback change gives a truncated agent a chance to recover. It does not raise the ceiling,
-and on this evidence GLM at `reasoningEffort: "max"` needs ~100k characters of reasoning before
-it will write anything for an L3 task — so the recovery has to come from the model choosing to
-act sooner. Whether that works is untested and cannot be assumed.
+Because the ceiling is `max_tokens` and nothing here sets it, the fix is a config addition rather
+than a model or tier change — the arm stays **glm-5.3 at `reasoningEffort: max`**, which is what
+was asked for.
 
-The options for actually running the GLM arm, in increasing order of confidence:
+`OpencodeConfig.sandbox_extra_config` already exists for exactly this: it merges into every
+sandbox's `opencode.json`, on top of the provider block read from `sandbox_config_path`. Adding a
+`maxTokens` to the glm arm's model entry raises the cap at the point of use, changes nothing for
+the gpt arm, and needs no code.
 
-1. **Re-run as-is.** The new feedback may pull it out of the loop on attempt 2 or 3. Cheap to
-   try, unproven, and a failure costs another ~$0.45 and ~25 min.
-2. **Lower the tier to `high`.** If the ceiling tracks the effort tier, a smaller thinking
-   budget both fits and forces earlier action. This is a config change in
-   `v2-glm/.opencode/opencode.jsonc` (`options.reasoningEffort`), not a code change — but it
-   means the arm is no longer "glm-5.3 max", which is what was asked for.
-3. **Raise the ceiling.** Only viable if the cap is a request field opencode controls; the
-   probe settles that.
+Sizing it from measurement rather than taste: the three failed attempts spent 31986 / 31943 /
+31993 reasoning tokens **and were still not finished**, and at `max_tokens: 40000` the model
+consumed 39952 and was *still* truncated. So GLM at `max` will spend whatever it is given on this
+prompt, and the cap has to be set above what the task actually needs rather than above what the
+model will happily consume. The model's declared output limit is 131072; the L1 smoke, where it
+did finish, needed 5589. There is no measurement establishing where between 40000 and 131072 it
+would stop on its own, so a first attempt should use a generous cap (the declared limit, or close
+to it) and the run's own `AGENT_CALL_FINISHED` token records will then show what it really used.
 
-Option 2 changes the experiment's identity, so it is the user's call, not mine.
+The honest caveat: raising the cap is necessary but might not be sufficient. It removes the
+truncation, and the new truncation feedback gives a cut-off agent a way to recover, but neither
+makes GLM *choose* to act earlier. If it simply deliberates for 100k tokens and then writes four
+candidates, the arm works and each generator call is expensive. If it deliberates without ever
+converging, the arm fails for a different reason. That is not knowable without trying.
+
+Remaining options, now that (3) is confirmed available:
+
+1. **Raise `maxTokens` and re-run at `max`.** Preserves the experiment's identity. One config
+   line. Recommended.
+2. **Lower the tier to `high`.** Would also fit under a smaller budget, but changes the arm from
+   "glm-5.3 max" to something else — an experiment-identity change, so the user's call.
+3. **Drop GLM** and finish the two remaining gpt tasks.
 
 ## Reproduce
 
