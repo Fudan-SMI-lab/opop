@@ -49,6 +49,7 @@ from kernel_optimizer.models.core import (
     ParamValue,
     TaskSpec,
     TrialRecord,
+    latency_cell,
 )
 from kernel_optimizer.models.reports import BottleneckReport, TuningStats
 from kernel_optimizer.paramspace import materializer
@@ -1287,7 +1288,11 @@ class Orchestrator:
                 *[t.params.values.get(n) for n in names],
                 t.status, t.failure_kind or "",
                 t.latency_ms.mean if t.latency_ms else "",
-                (t.latency_ms.median if t.latency_ms else "") or "",
+                # Rounded to the same 4 decimals as every other latency column. Raw, the
+                # median printed 17 significant digits next to a 4-digit mean, which reads
+                # as precision the 20-sample estimate does not have and invites the analyst
+                # to compare two configs on digits far below the noise floor.
+                latency_cell(t.latency_ms.median if t.latency_ms else None),
                 t.latency_ms.min if t.latency_ms else "",
                 t.latency_ms.max if t.latency_ms else "",
                 t.latency_ms.std if t.latency_ms else "",

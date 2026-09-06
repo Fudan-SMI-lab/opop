@@ -138,6 +138,28 @@ class LatencyStats(BaseModel):
         return self.median if self.median is not None and self.median > 0 else self.mean
 
 
+def latency_cell(value: float | None, places: int = 4) -> str | float:
+    """Format a latency for a CSV cell: rounded, or empty when there is no value.
+
+    Lives here, beside `LatencyStats`, because both trials.csv writers need it (the
+    orchestrator's per-candidate file that the analyst agent reads, and the report's
+    deliverable one) and neither of those modules imports the other.
+
+    Why rounding matters rather than being cosmetic: every field the worker summarizes is
+    already rounded to 4 decimals, but `median` is computed from the raw samples and so
+    arrives at full float precision. Emitted as-is it printed 17 significant digits beside
+    a 4-digit mean in the same row -- presenting a 20-sample estimate whose coefficient of
+    variation is 3-8% as though it were exact, and inviting a comparison of two configs on
+    digits orders of magnitude below the noise floor.
+    """
+    if value is None or value == "":
+        return ""
+    try:
+        return round(float(value), places)
+    except (TypeError, ValueError):
+        return ""
+
+
 class ProfileRecord(BaseModel):
     model_config = ConfigDict(frozen=True)
 

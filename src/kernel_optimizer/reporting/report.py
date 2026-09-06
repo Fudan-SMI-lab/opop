@@ -6,6 +6,7 @@ import csv
 import json
 from pathlib import Path
 
+from kernel_optimizer.models.core import latency_cell
 from kernel_optimizer.store.run_store import RunStore
 
 
@@ -311,15 +312,23 @@ class ReportGenerator:
         # trials.csv
         with (report_dir / "trials.csv").open("w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
+            # latency_median_ms is here because it is the statistic that actually DECIDED
+            # every selection in the run (the tuning objective, the incumbent comparison
+            # and the convergence test all read `robust_ms`). Emitting only the mean left
+            # the deliverable trials.csv unable to explain any ranking it contains: on
+            # level2:37 the best trial's mean was 32.20 us and its median 14.11, so a
+            # reader sorting this file by mean gets a different winner than the run chose.
             writer.writerow(["trial_id", "candidate_id", "space_id", "status",
-                             "failure_kind", "latency_mean_ms", "latency_std_ms",
-                             "n_regs", "n_spills", "shared_bytes", "params"])
+                             "failure_kind", "latency_mean_ms", "latency_median_ms",
+                             "latency_std_ms", "n_regs", "n_spills", "shared_bytes",
+                             "params"])
             for t in trials:
                 lat = t.get("latency_ms") or {}
                 prof = t.get("profile") or {}
                 writer.writerow([
                     t["trial_id"], t["candidate_id"], t["space_id"], t["status"],
-                    t.get("failure_kind") or "", lat.get("mean", ""), lat.get("std", ""),
+                    t.get("failure_kind") or "", lat.get("mean", ""),
+                    latency_cell(lat.get("median")), lat.get("std", ""),
                     prof.get("n_regs", ""), prof.get("n_spills", ""),
                     prof.get("shared_bytes", ""),
                     json.dumps(t["params"]["values"]),

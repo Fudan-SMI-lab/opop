@@ -4932,3 +4932,53 @@ def test_a_median_labelled_speedup_needs_a_median_on_both_sides():
     assert abs(honest - 0.727) < 0.005, honest
     assert abs(mixed - 1.658) < 0.005, mixed
     assert mixed / honest > 2.2, "the mixed ratio more than doubles the reported speedup"
+
+
+def test_the_deliverable_trials_csv_carries_the_deciding_statistic():
+    """`report/trials.csv` must contain the median, because the median chose every winner.
+
+    The tuning objective, the incumbent comparison and the convergence test all read
+    `robust_ms`, i.e. the median. The report's trials.csv emitted only `latency_mean_ms`,
+    so the deliverable file could not explain its own run's result.
+
+    Measured on run-l2-37-20260907-020707 (280 trials on disk): sorting that file by mean
+    names tr-7f72ec7b at 20.3 us as the best trial, while the run actually selected
+    tr-417b0c73 -- whose mean is 32.5 us and whose median is 14.1. Different config, and
+    the mean-only reader is 44% off the latency the run reports.
+
+    Also pins the rounding. `median` is computed from raw samples, so unlike every other
+    latency field it arrives at full float precision: unrounded it printed
+    0.06931199878454208 beside a mean of 0.0828 in the same row, dressing a 20-sample
+    estimate with a 3-8% coefficient of variation as though it were exact.
+    """
+    from pathlib import Path
+
+    from kernel_optimizer.models.core import latency_cell
+
+    rep = Path("src/kernel_optimizer/reporting/report.py").read_text(encoding="utf-8")
+    header_start = rep.index('writer.writerow(["trial_id", "candidate_id"')
+    header = rep[header_start:header_start + 400]
+    assert "latency_median_ms" in header, \
+        "the deliverable trials.csv must carry the statistic that decided the run"
+    # Emitted through the shared formatter, so it cannot regress to raw precision.
+    assert 'latency_cell(lat.get("median"))' in rep
+
+    # The analyst's per-candidate CSV writer must round it too -- that file is read by an
+    # LLM, which is exactly the reader that will treat 17 digits as meaningful.
+    orch = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
+    assert "latency_cell(t.latency_ms.median if t.latency_ms else None)" in orch
+    assert "(t.latency_ms.median if t.latency_ms else \"\") or \"\"" not in orch, \
+        "the raw, unrounded median must not be written to a CSV"
+
+    # The formatter itself: rounds, and distinguishes "no value" from zero.
+    assert latency_cell(0.06931199878454208) == 0.0693
+    assert latency_cell(0.014112000353634357) == 0.0141
+    assert latency_cell(None) == ""
+    assert latency_cell("") == ""
+    assert latency_cell("not a number") == ""
+    # Zero is a value, not a blank: a 0.0 latency is a bug worth seeing, not hiding.
+    assert latency_cell(0.0) == 0.0
+
+    # The disagreement that motivated it, so the numbers cannot drift from the story.
+    by_mean_ms, by_median_ms = 20.3, 14.1
+    assert abs(by_mean_ms / by_median_ms - 1.44) < 0.01
