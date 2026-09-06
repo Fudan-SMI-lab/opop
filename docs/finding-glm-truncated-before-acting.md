@@ -149,18 +149,52 @@ did finish, needed 5589. There is no measurement establishing where between 4000
 would stop on its own, so a first attempt should use a generous cap (the declared limit, or close
 to it) and the run's own `AGENT_CALL_FINISHED` token records will then show what it really used.
 
+### The `high` tier does not help, so lowering the tier is not a remedy
+
+The same probe at `reasoning_effort: "high"`, `max_tokens: 40000`:
+
+```
+effort  max_tokens  completion  reasoning  finish
+   max       40000       40000      39952  ['length']
+  high       40000       40000      39991  ['length']
+```
+
+`high` spent **39991** — marginally *more* than `max` — and was truncated identically. So the
+effort tier is not a thinking budget on this endpoint: it does not cap deliberation, and dropping
+to `high` would have hit exactly the same wall. That removes option (2) below as a fix, and it
+retroactively justifies not having tried it blind: it looked like the safe conservative move and
+it would have failed the same way, at the same cost, while also changing what the experiment is.
+
+It also means the earlier tier measurement in `feasibility-glm-5.3-second-arm.md` — where `high`
+produced a *higher* median reasoning count than `max` (1443 vs 1022) — was not the anomaly it
+looked like. On a prompt hard enough to matter, both tiers simply spend everything available.
+
+### What raising the cap costs
+
+From the failed run's own billing: $0.4557 for 96375 output+reasoning tokens, i.e. **$4.73 per
+million**. Per generator/rewriter call, and scaled to the ~85 agent calls a 12 h L3 run makes:
+
+```
+cap  40000   $0.189/call   ~$16 per run
+cap  80000   $0.378/call   ~$32 per run
+cap 131072   $0.620/call   ~$53 per run
+```
+
+Those are worst-case figures assuming every call spends the whole cap, which is what GLM did on
+three of three attempts. A cap is therefore also a budget decision, not only a correctness one.
+
 The honest caveat: raising the cap is necessary but might not be sufficient. It removes the
 truncation, and the new truncation feedback gives a cut-off agent a way to recover, but neither
 makes GLM *choose* to act earlier. If it simply deliberates for 100k tokens and then writes four
 candidates, the arm works and each generator call is expensive. If it deliberates without ever
 converging, the arm fails for a different reason. That is not knowable without trying.
 
-Remaining options, now that (3) is confirmed available:
+Remaining options, now that (3) is confirmed available and (2) is confirmed useless:
 
 1. **Raise `maxTokens` and re-run at `max`.** Preserves the experiment's identity. One config
-   line. Recommended.
-2. **Lower the tier to `high`.** Would also fit under a smaller budget, but changes the arm from
-   "glm-5.3 max" to something else — an experiment-identity change, so the user's call.
+   line. Recommended, at ~$16–53 per run depending on the cap.
+2. ~~**Lower the tier to `high`.**~~ Measured above: `high` truncates identically at 39991/40000.
+   Not a fix.
 3. **Drop GLM** and finish the two remaining gpt tasks.
 
 ## Reproduce
