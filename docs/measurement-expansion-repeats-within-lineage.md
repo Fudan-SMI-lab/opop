@@ -61,6 +61,45 @@ What the numbers do NOT support is the strong claim I was tempted to make ("K wa
 budget re-testing known duds"). 12 of 57 expansions is 21%, and only if one accepts that a
 sibling's measurement transfers across a structural rewrite.
 
+## How the live repeat actually resolved: the tuner ignored the added value
+
+The repeat completed while this was being written, and it is a cleaner outcome than the
+retrospective categories allow for. `cand-3df5fd86`'s expanded space `sp-ecca8f39`:
+
+```
+BLOCK_N=16    n= 8  best 51.50
+BLOCK_N=32    n= 6  best 31.20
+BLOCK_N=64    n= 7  best 20.70
+BLOCK_N=128   n=19  best 16.70   <- winner
+BLOCK_N=256   n= 0  NEVER SAMPLED
+```
+
+Result 17.0 → **16.7 ms** (1.8%, below `min_improvement_pct`), winner
+`BLOCK_M=128 BLOCK_N=128 BLOCK_K=32 NUM_WARPS=4 NUM_STAGES=3 COMPUTE_DTYPE=fp16` — every value
+legal before the expansion.
+
+So the added value was not merely worse this time; **TPE never tried it at all.** Given anchors
+showing 128 fastest and a steep penalty below it, the sampler spent all 40 trials in the region it
+already believed in. That is the sampler behaving correctly, and it makes the repeat's cost
+concrete in a different way than the "reached and worse" category: the widened range was pure
+overhead — one parameterizer call, zero trials spent on what it bought.
+
+It also means the `NEVER SAMPLED` bucket in the table above (8 of 21) is not an absence of
+evidence about repeats; it is evidence that a widened range **frequently goes unexplored** because
+the tuner has already localized. Which weakens the case for expansion-by-widening generally, and
+strengthens the reading that the fresh budget is the part that pays — consistent with all four of
+this run's expansions:
+
+```
+cand-8c64ccc3  BLOCK_M=128 added   tried  5x, tied            19.8 -> 19.8
+cand-a988ff79  5 values added      all 2-27% worse            21.3 -> 20.9
+cand-1129b4d9  BLOCK_N=256 added   6.5% worse                 16.8 -> 16.8
+cand-3df5fd86  BLOCK_N=256 added   NEVER SAMPLED              17.0 -> 16.7
+```
+
+Four expansions, correctly aimed every time, added value used zero times, and every gain
+attributable to re-tuning.
+
 ## Why this is recorded rather than fixed
 
 - Any rule strong enough to stop the 12 duds also stops the 9 helpful repeats, at n=21 total.
