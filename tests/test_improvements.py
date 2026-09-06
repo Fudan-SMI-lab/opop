@@ -4890,3 +4890,45 @@ def test_convergence_judges_on_the_same_statistic_the_tuner_optimizes():
                       best_history=[32.60, 30.70], rewrite_rounds_used=1)
     assert policy.family_verdict(fam_mean).verdict == "continue", \
         "the mean-based history is what wasted a rewrite round on noise"
+
+
+def test_a_median_labelled_speedup_needs_a_median_on_both_sides():
+    """`speedups_median` must not be baseline_MEAN / candidate_MEDIAN.
+
+    `robust_ms` falls back to the mean when no median exists, and baselines come from
+    KernelBench's summary-only timing path which returns no samples -- so applying robust_ms
+    to both sides silently mixes conventions. With this run's real numbers that publishes
+    23.40 / 14.11 = 1.658x under a median label, against the mean-based 0.727x: 128% higher,
+    numerator inflated by scheduling stalls and denominator not.
+
+    That is precisely the failure the field was added to prevent -- every published speedup
+    rising without any kernel getting faster -- so the check is that the mixed ratio is
+    NEVER emitted, and that its absence is explained instead.
+    """
+    from pathlib import Path
+
+    orch = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
+
+    # The forbidden shape: robust_ms on the baseline side of the median ratio.
+    assert "b.latency_ms.robust_ms, lat.robust_ms" not in orch, \
+        "the median ratio must not use robust_ms, which falls back to the mean"
+    # Both sides must be gated on a real median.
+    assert "if lat.median and lat.median > 0:" in orch
+    assert "if b.latency_ms.median and b.latency_ms.median > 0" in orch
+    # And the absence must be stated, not silent.
+    assert "speedups_median_note" in orch
+
+    rep = Path("src/kernel_optimizer/reporting/report.py").read_text(encoding="utf-8")
+    assert "speedups_median_note" in rep, "the report must explain a missing median column"
+
+    # The headline stays mean-over-mean: the conservative claim, and already fair because
+    # both sides are timed with the same perf_trials.
+    assert "speedups[b.kind] = round(b.latency_ms.mean / lat.mean, 4)" in orch
+
+    # The arithmetic that motivated all of this, so the numbers cannot drift from the story.
+    base_mean, cand_mean, cand_median = 23.40, 32.20, 14.112
+    honest = base_mean / cand_mean
+    mixed = base_mean / cand_median
+    assert abs(honest - 0.727) < 0.005, honest
+    assert abs(mixed - 1.658) < 0.005, mixed
+    assert mixed / honest > 2.2, "the mixed ratio more than doubles the reported speedup"

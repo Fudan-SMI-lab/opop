@@ -1704,13 +1704,33 @@ class Orchestrator:
                 if b.latency_ms.mean > 0:
                     speedups[b.kind] = round(b.latency_ms.mean / lat.mean, 4)
             result["best"]["speedups"] = speedups
-            med = {}
-            for b in self.baselines:
-                bm, cm = b.latency_ms.robust_ms, lat.robust_ms
-                if bm > 0 and cm > 0:
-                    med[b.kind] = round(bm / cm, 4)
-            if med:
-                result["best"]["speedups_median"] = med
+            # A median-labelled ratio is only honest when BOTH sides really have a median.
+            # `robust_ms` falls back to the mean, and the baselines come from KernelBench's
+            # summary-only path which returns no samples -- so using robust_ms on both sides
+            # silently computes baseline_MEAN / candidate_MEDIAN. On this run that publishes
+            # 23.40 / 14.11 = 1.658x under the name `speedups_median`, against a mean-based
+            # 0.727x: 128% higher, with the numerator inflated by stalls and the denominator
+            # not. That is the exact failure this field was added to prevent -- every
+            # published speedup rising without any kernel getting faster.
+            #
+            # So require a real median on both sides, and say so in `speedups_median_note`
+            # when it is missing rather than emitting a mixed ratio. Raising `num_warmup`
+            # (docs/plan-next-round-and-deferred-fixes.md D-2) is what would let the mean
+            # comparison work on both sides again; until then the honest answer is to
+            # publish the mean-based number and state why the median one is absent.
+            if lat.median and lat.median > 0:
+                med = {b.kind: round(b.latency_ms.median / lat.median, 4)
+                       for b in self.baselines
+                       if b.latency_ms.median and b.latency_ms.median > 0
+                       and lat.median > 0}
+                if med:
+                    result["best"]["speedups_median"] = med
+                else:
+                    result["best"]["speedups_median_note"] = (
+                        "not computed: the candidate has a median but no baseline does "
+                        "(the baseline timing path returns summary statistics only), and "
+                        "baseline_mean / candidate_median is not a median comparison"
+                    )
             # Back-compat scalar fields (vs the ieee/untagged baselines).
             if "eager" in speedups:
                 result["best"]["speedup_vs_eager"] = speedups["eager"]

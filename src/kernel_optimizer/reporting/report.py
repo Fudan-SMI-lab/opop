@@ -417,6 +417,20 @@ class ReportGenerator:
                             f"  - re-eval latency: mean "
                             f"{best.get('final_reeval_ms')} ms, median "
                             f"{best.get('final_reeval_median_ms')} ms")
+                elif best.get("speedups_median_note"):
+                    # Say why the median column is absent rather than leaving the reader to
+                    # assume the two conventions agree. They do not: on level2:37 the
+                    # candidate's mean was 32.20 us against a median of 14.11, so a reader
+                    # comparing our mean-based figure to an externally published median or
+                    # min is comparing different quantities.
+                    lines.append(f"- median-based speedups: "
+                                 f"{best['speedups_median_note']}")
+                    if best.get("final_reeval_median_ms"):
+                        lines.append(
+                            f"  - the candidate's own re-eval latency, both ways: mean "
+                            f"{best.get('final_reeval_ms')} ms, median "
+                            f"{best.get('final_reeval_median_ms')} ms — quote the mean "
+                            f"against a mean, the median against a median")
             else:
                 if "speedup_vs_eager" in best:
                     lines.append(f"- speedup vs eager: **{best['speedup_vs_eager']}x**")
