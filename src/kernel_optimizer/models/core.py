@@ -180,6 +180,33 @@ class ProfileRecord(BaseModel):
     # cubin, which for CUTLASS can include template variants that never ran, so they are not
     # measurements of the executing kernel. "not_available" = no launch observation was made.
     launched_filter: str | None = None
+    # --- launch-overhead measurement (the harness's timing blind spot) -------------------
+    # KernelBench times `synchronize -> clear_l2_cache() -> record -> kernel -> record`, and the
+    # flush is enqueued without being waited on, so the GPU is busy flushing exactly while the
+    # CPU issues the launch: the CPU cost is hidden behind it. On level2:37 that is 66.6 us of
+    # real CPU issue time against a reported 37.9 us total. Without these fields the analyst
+    # cannot see the dominant cost of an overhead-bound task at all, and a rewrite that fuses
+    # away launches looks like it achieved nothing.
+    #
+    # Populated only on full_eval and baselines (never the 20-sample tuning trials), so None
+    # here means "not measured on this path", not "no overhead".
+    cpu_issue_ms: float | None = None
+    # Device time for the SAME loop, no L2 flush -- warm-cache, and therefore NOT comparable to
+    # the harness's headline latency. It exists only as the denominator of cpu_issue_ms/gpu_ms.
+    overhead_gpu_ms: float | None = None
+    # End-to-end wall clock per call with one sync at the end: what a calling program pays.
+    wall_ms: float | None = None
+
+    @property
+    def cpu_over_gpu(self) -> float | None:
+        """cpu_issue_ms / overhead_gpu_ms, or None when either is missing.
+
+        >= 1 means the CPU spends longer submitting the work than the GPU spends doing it, so
+        making the kernel faster cannot change what a caller observes.
+        """
+        if not self.cpu_issue_ms or not self.overhead_gpu_ms:
+            return None
+        return self.cpu_issue_ms / self.overhead_gpu_ms
 
 
 class TrialRecord(BaseModel):

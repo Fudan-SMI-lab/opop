@@ -5597,3 +5597,99 @@ def test_a_retry_reseeds_the_sandbox_so_guidance_fixes_reach_it():
         f"contract). seeds={len(seeds)}"
     )
     assert outcome.output is not None, "the retry should still succeed normally"
+
+
+def test_launch_overhead_reaches_the_profile_record_on_every_backend():
+    """The harness's timing blind spot must arrive as data, not stay a known-but-unmeasured fact.
+
+    KernelBench times `synchronize -> clear_l2_cache() -> record -> kernel -> record`, and the
+    flush is enqueued without being waited on, so the GPU is busy flushing exactly while the CPU
+    issues the launch -- the CPU cost hides behind it. Measured on level2:37: 66.6 us of real CPU
+    issue time against a reported 37.9 us, and an external candidate's claimed 8.85x became 1.53x
+    once the baseline was timed the same way.
+
+    Before this, `cpu_issue_ms` existed only in the bottleneck classifier's signature, so its
+    `launch_bound` branch could never fire -- the field was never collected anywhere. Drives the
+    real LightProfiler, including the case where NO resource metadata was collected (the overhead
+    numbers must still survive, since they are a property of the call, not of the backend).
+    """
+    from kernel_optimizer.evaluation.profilerx import LightProfiler
+
+    lp = LightProfiler()
+    overhead = {"cpu_issue_ms": 0.0666, "gpu_ms": 0.0379, "wall_ms": 0.0702, "iters": 50}
+
+    rec = lp.extract({
+        "triton": {"kernels": [{"name": "k", "n_regs": 40, "n_spills": 0, "shared": 8192}],
+                   "compile_s": 1.0},
+        "launch_overhead": overhead,
+    })
+    assert rec.cpu_issue_ms == 0.0666, "launch overhead lost on the triton path"
+    assert rec.overhead_gpu_ms == 0.0379
+    assert rec.wall_ms == 0.0702
+
+    rec_cuda = lp.extract({
+        "cubin": {"kernels": [{"name": "gemm", "n_regs": 120, "n_spills": 8, "shared": 32768}],
+                  "launched_filter": "applied"},
+        "launch_overhead": overhead,
+    })
+    assert rec_cuda.cpu_issue_ms == 0.0666, "launch overhead lost on the cubin path"
+
+    # no resource metadata at all -- overhead is a property of the CALL and must survive
+    rec_bare = lp.extract({"launch_overhead": overhead})
+    assert rec_bare.cpu_issue_ms == 0.0666, (
+        "overhead was dropped when no kernel metadata was collected, so an overhead-bound "
+        "candidate whose resources could not be read reports nothing at all"
+    )
+
+    assert rec.cpu_over_gpu is not None
+    assert abs(rec.cpu_over_gpu - 1.7573) < 0.01, f"got {rec.cpu_over_gpu}"
+
+    # not measured (a tuning trial) must be None, never 0.0 -- 0.0 would read as
+    # "measured, no overhead" and classify a launch-bound kernel as something else.
+    rec_none = lp.extract({"triton": {"kernels": [{"name": "k", "n_regs": 8}]}})
+    assert rec_none.cpu_issue_ms is None, "unmeasured overhead must be None, not a number"
+    assert rec_none.cpu_over_gpu is None
+
+    # the classifier's launch_bound branch can now actually fire on this record
+    from kernel_optimizer.evaluation.bottleneck import classify
+
+    verdict = classify(gpu_ms=rec.overhead_gpu_ms, cpu_issue_ms=rec.cpu_issue_ms,
+                       flop_count=None, byte_count=None, peaks=None)
+    assert verdict.kind == "launch_bound", (
+        f"the collected overhead does not reach a launch_bound verdict (got {verdict.kind}); "
+        "the classifier branch would stay dead"
+    )
+
+
+def test_full_eval_measures_launch_overhead_but_tuning_trials_do_not():
+    """Cost containment: the expensive path pays for it, the hot path does not.
+
+    ~150 extra model calls is marginal beside full_eval's 100 timed samples, and a real tax on
+    quick_test, which runs on every one of a run's hundreds of tuning trials (1960 in the L2:37
+    run). The job assertion is on the built JOB, so a refactor still has to keep the property.
+    """
+    import inspect
+
+    from kernel_optimizer.evaluation import correctness as cmod
+    from kernel_optimizer.gpu.jobs import make_eval_job
+
+    job_off = make_eval_job("ref.py", "k.py", measure_performance=True, num_correct_trials=5,
+                            num_perf_trials=100, timing_method="cuda_event", backend="triton",
+                            precision="fp32", seed=0, build_dir=None,
+                            collect_triton_metadata=True)
+    assert job_off["measure_launch_overhead"] is False, "must default OFF"
+
+    job_on = make_eval_job("ref.py", "k.py", measure_performance=True, num_correct_trials=5,
+                           num_perf_trials=100, timing_method="cuda_event", backend="triton",
+                           precision="fp32", seed=0, build_dir=None,
+                           collect_triton_metadata=True, measure_launch_overhead=True)
+    assert job_on["measure_launch_overhead"] is True
+
+    full_src = inspect.getsource(cmod.CorrectnessEvaluator.full_eval)
+    quick_src = inspect.getsource(cmod.CorrectnessEvaluator.quick_test)
+    assert "measure_launch_overhead=True" in full_src, \
+        "full_eval does not request launch overhead, so the number is never collected"
+    assert "measure_launch_overhead" not in quick_src, (
+        "quick_test requests launch overhead: that is ~150 extra model calls on every tuning "
+        "trial, hundreds per run"
+    )

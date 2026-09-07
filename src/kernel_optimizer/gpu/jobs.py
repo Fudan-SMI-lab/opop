@@ -73,6 +73,7 @@ def make_eval_job(
     build_dir: str | None,
     collect_triton_metadata: bool,
     excessive_speedup_threshold: float = 10.0,
+    measure_launch_overhead: bool = False,
 ) -> dict[str, Any]:
     return {
         "job_type": "eval_perf" if measure_performance else "eval_correctness",
@@ -87,6 +88,10 @@ def make_eval_job(
         "build_dir": build_dir,
         "collect_triton_metadata": collect_triton_metadata,
         "excessive_speedup_threshold": excessive_speedup_threshold,
+        # Off by default. Requested only by full_eval and the baselines: it costs ~150 extra
+        # model calls, which is negligible beside their 100 timed samples but would be a real
+        # tax on the 20-sample tuning trials, of which a run does hundreds.
+        "measure_launch_overhead": measure_launch_overhead,
     }
 
 

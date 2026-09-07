@@ -308,6 +308,117 @@ def _launched_kernel_names(kernel_src: str, ref_src: str, device_index: int) -> 
             pass
 
 
+def _measure_launch_overhead(kernel_src: str, ref_src: str, device_index: int,
+                             iters: int = 50) -> dict | None:
+    """CPU-side issue cost and true wall time per call — the harness's timing blind spot.
+
+    WHY THIS IS NOT ALREADY KNOWN. KernelBench times a call as
+    `synchronize -> clear_l2_cache() -> start_event.record() -> kernel_fn() -> end_event.record()`
+    (timing.py:251-263). The L2 flush is enqueued and never waited on, so it sits in the queue
+    while the CPU issues the kernel: the GPU is busy flushing exactly while the launch is being
+    submitted, and the CPU cost is hidden behind it. That is a reasonable way to measure a
+    kernel's GPU execution, but it means an op whose real cost is dominated by launching is
+    reported as fast. Measured on level2:37: 66.6 us of CPU issue time against a reported
+    37.9 us total, and an external candidate's claimed 8.85x became 1.53x once the baseline was
+    timed under the same convention.
+
+    So this returns three numbers per call, all for the SAME model, and their disagreement is
+    the signal:
+
+      cpu_issue_ms  -- CPU time to submit the work, measured with NO synchronization inside the
+                       loop. This is what a caller pays even if the GPU were infinitely fast.
+      gpu_ms        -- device time, from CUDA events, synchronized (comparable to what the
+                       harness reports).
+      wall_ms       -- end-to-end wall clock per call with a single sync at the end: what the
+                       calling program actually experiences.
+
+    `cpu_issue_ms / gpu_ms >= 1` means the CPU cannot keep the GPU fed and no amount of kernel
+    optimization will change what a caller observes -- the `launch_bound` verdict.
+
+    Deliberately NO L2 flush: the flush is what hides the cost, so measuring with it would
+    reproduce the blind spot instead of measuring it. That makes `gpu_ms` here warm-cache and
+    thus NOT a substitute for the harness's number; it is only the denominator of the ratio.
+    """
+    import importlib.util
+    import os
+    import tempfile
+
+    import torch
+
+    mod_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False,
+                                         encoding="utf-8") as f:
+            f.write(kernel_src)
+            mod_path = f.name
+        spec = importlib.util.spec_from_file_location("kopt_overhead_probe", mod_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        ref_ctx: dict = {}
+        exec(compile(ref_src, "<ref>", "exec"), ref_ctx)  # noqa: S102 — same trust as eval
+        get_inputs = ref_ctx["get_inputs"]
+        get_init_inputs = ref_ctx.get("get_init_inputs", lambda: [])
+
+        device = torch.device(f"cuda:{device_index}")
+        with torch.no_grad():
+            init_inputs = [x.to(device) if isinstance(x, torch.Tensor) else x
+                           for x in get_init_inputs()]
+            model = module.ModelNew(*init_inputs).to(device)
+            inputs = [x.to(device) if isinstance(x, torch.Tensor) else x
+                      for x in get_inputs()]
+            for _ in range(10):            # warm up: compile, autotune, allocate
+                model(*inputs)
+            torch.cuda.synchronize(device)
+
+            # 1) CPU issue cost: no sync inside the loop, so this measures submission only.
+            #    If the queue saturates, later iterations block on it and this becomes an upper
+            #    bound rather than pure issue cost -- which is still the right thing to compare,
+            #    since a caller pays that too.
+            t0 = time.perf_counter()
+            for _ in range(iters):
+                model(*inputs)
+            cpu_issue_ms = (time.perf_counter() - t0) / iters * 1e3
+            torch.cuda.synchronize(device)
+
+            # 2) Wall clock per call, one sync at the end: what the caller experiences.
+            t0 = time.perf_counter()
+            for _ in range(iters):
+                model(*inputs)
+            torch.cuda.synchronize(device)
+            wall_ms = (time.perf_counter() - t0) / iters * 1e3
+
+            # 3) Device time from CUDA events, for the ratio's denominator.
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            torch.cuda.synchronize(device)
+            start.record()
+            for _ in range(iters):
+                model(*inputs)
+            end.record()
+            torch.cuda.synchronize(device)
+            gpu_ms = start.elapsed_time(end) / iters
+
+        return {
+            "cpu_issue_ms": round(cpu_issue_ms, 6),
+            "gpu_ms": round(gpu_ms, 6),
+            "wall_ms": round(wall_ms, 6),
+            "iters": iters,
+            # Stated so a reader does not compare this gpu_ms with the harness's headline
+            # figure and conclude one of them is wrong.
+            "note": ("no L2 flush between calls (the flush is what hides launch cost), so "
+                     "gpu_ms here is warm-cache and is not comparable to the harness's "
+                     "reported latency; use it only as the denominator of cpu_issue_ms/gpu_ms"),
+        }
+    except Exception:  # noqa: BLE001 — best-effort, never fail an eval over a diagnostic
+        return None
+    finally:
+        if mod_path:
+            try:
+                os.unlink(mod_path)
+            except OSError:
+                pass
+
+
 def _extract_cubin_metadata(launched_names: list[str] | None = None,
                             build_dir: str | None = None) -> dict | None:
     """Resources for the kernels a load_inline / nvcc build produced.
@@ -603,6 +714,19 @@ def run_eval(job: dict, measure_performance: bool) -> dict:
         stats = exec_result.runtime_stats or {}
         result["latency_ms"] = _stats_to_dict(stats)
         result["excessive_speedup"] = bool((exec_result.metadata or {}).get("excessive_speedup"))
+
+    # Launch-overhead measurement, gated by the caller. Requested only on `full_eval` and
+    # baselines -- never on the 20-sample tuning trials, where it would add ~150 extra model
+    # calls to every one of hundreds of trials. On the paths that do ask for it the run is
+    # already doing 100 timed samples, so the marginal cost is close to nothing, and it is the
+    # only place the number is needed: the analyst compares a candidate against the baseline,
+    # both of which come from these paths.
+    if job.get("measure_launch_overhead"):
+        try:
+            result["launch_overhead"] = _measure_launch_overhead(kernel_src, ref_src, 0)
+        except Exception as exc:  # noqa: BLE001 — a diagnostic must never fail the eval
+            result["launch_overhead"] = None
+            result["launch_overhead_error"] = str(exc)[-1000:]
 
     if job.get("collect_triton_metadata"):
         if job["backend"] == "triton":

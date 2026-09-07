@@ -24,12 +24,21 @@ class LightProfiler:
     def extract(self, worker_result: dict[str, Any]) -> ProfileRecord:
         triton = worker_result.get("triton")
         cubin = worker_result.get("cubin")
+        # Launch overhead is backend-independent (it is a property of the CALL, not of how the
+        # kernel was written), so it is read outside the triton/cubin branch and survives even
+        # when no resource metadata could be collected at all.
+        over = worker_result.get("launch_overhead") or {}
+        overhead_fields = {
+            "cpu_issue_ms": over.get("cpu_issue_ms"),
+            "overhead_gpu_ms": over.get("gpu_ms"),
+            "wall_ms": over.get("wall_ms"),
+        }
         # Triton first: when both are present (a candidate mixing a jit kernel with an inline
         # CUDA helper) the Triton record carries num_warps/num_stages, which a cubin cannot --
         # those are properties of the LAUNCH, not of the compiled code.
         source = triton if (triton and triton.get("kernels")) else cubin
         if not source or not source.get("kernels"):
-            return ProfileRecord(compile_s=(triton or {}).get("compile_s"))
+            return ProfileRecord(compile_s=(triton or {}).get("compile_s"), **overhead_fields)
         kernels = source["kernels"]
 
         # Aggregate across kernels in the launch: max regs/shared is the binding value.
@@ -51,4 +60,5 @@ class LightProfiler:
             # ran, so a reader must not treat them as measured for the executing kernel.
             profile_source=("triton" if source is triton else "cubin"),
             launched_filter=source.get("launched_filter"),
+            **overhead_fields,
         )

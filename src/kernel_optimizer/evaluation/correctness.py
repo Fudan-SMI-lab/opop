@@ -110,7 +110,8 @@ class CorrectnessEvaluator:
         return result
 
     def _run(self, task: TaskSpec, kernel_src_path: Path, backend: str, tag: str,
-             correct_trials: int, perf_trials: int) -> dict[str, Any]:
+             correct_trials: int, perf_trials: int,
+             measure_launch_overhead: bool = False) -> dict[str, Any]:
         static = self._static_check(task, kernel_src_path, backend, tag)
         if not static.get("ok"):
             return static
@@ -131,6 +132,7 @@ class CorrectnessEvaluator:
                 fp64_rel_multiplier_lowp=self.cfg.fp64_rel_multiplier_lowp,
             )
             job["num_perf_trials"] = perf_trials
+            job["measure_launch_overhead"] = measure_launch_overhead
         else:
             job = make_eval_job(
                 str(task.ref_path), str(kernel_src_path),
@@ -144,6 +146,7 @@ class CorrectnessEvaluator:
                 build_dir=None,
                 collect_triton_metadata=(backend == "triton"),
                 excessive_speedup_threshold=self.cfg.excessive_speedup,
+                measure_launch_overhead=measure_launch_overhead,
             )
         result = self.worker.run_job(job, self.cfg.build_timeout_s + self.cfg.eval_timeout_s,
                                      f"{tag}-eval", lock_mode="exclusive")
@@ -158,5 +161,11 @@ class CorrectnessEvaluator:
 
     def full_eval(self, task: TaskSpec, kernel_src_path: Path, tag: str,
                   backend: str = "triton") -> dict[str, Any]:
+        # Launch overhead is measured HERE and not in quick_test: this path already runs
+        # `perf_trials` (100) timed samples, so ~150 extra model calls is marginal, whereas
+        # quick_test runs on every one of a run's hundreds of tuning trials. It is also the
+        # only path where the number is used -- the analyst compares a candidate against the
+        # baselines, and both come from full evaluations.
         return self._run(task, kernel_src_path, backend, tag,
-                         self.cfg.correctness_trials, self.cfg.perf_trials)
+                         self.cfg.correctness_trials, self.cfg.perf_trials,
+                         measure_launch_overhead=True)
