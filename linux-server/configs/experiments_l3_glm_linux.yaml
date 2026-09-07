@@ -140,8 +140,13 @@ opencode:
   # intermittent, which is exactly why a short smoke passing does not mean it is absent.
   # Confirm the fix is in the installed module before a 12-hour run:
   #   grep -n 'external_directory' src/kernel_optimizer/agents/sandbox.py
-  # It must be present AND set to "always". "always" is scoped per directory pattern, not
-  # per session.
+  # It must be present AND set to "allow". NOT "always" -- an earlier version of this comment
+  # said "always", which is a spelling probe_extdir_permission.py never tested. That probe ran
+  # three arms against a private server with the pre-fix config as the control: the control
+  # hung 240 s with one ask and no output, "allow" finished in 10.5 s with zero asks, and
+  # {"*": "allow"} in 10.1 s. The plain string is used as the narrower of the two verified
+  # spellings. Changing it to an untested value would re-open the exact 1800 s dead call this
+  # note exists to prevent.
 
 # The class name `wsl:` is a misnomer here -- there is no WSL on this box -- but these are
 # the keys the worker reads, so they still apply.
