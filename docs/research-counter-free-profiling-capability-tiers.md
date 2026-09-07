@@ -213,3 +213,40 @@ limiter   = 三者中取到最小值的那一个        ← 这是给 agent 的�
 **判据仍用实测值**(容器限频),这个推导值只用于"实测值是否明显低于规格"的健康检查 ——
 若实测只有规格的 50%,说明卡被限频或被抢占,校准结果不可信,应重跑。
 这给了校准器一个廉价的自检:**规格值是我们唯一不需要 GPU 就能算出的参照**。
+
+### 探针自身的两个 bug(实跑才暴露,值得记住)
+
+步骤 1 探针第一次真跑就崩了两次,都是我写的:
+
+**bug 1:`hasattr` 守卫对 `torch.cuda.clock_rate` 无效。**
+
+```python
+clock_hz = torch.cuda.clock_rate() * 1e3 if hasattr(torch.cuda, "clock_rate") else None
+#          ^ hasattr 返回 True,但 CALL 它抛 ModuleNotFoundError: nvidia-ml-py
+```
+
+`torch.cuda.clock_rate` **存在**(所以 `hasattr` 为真),但它内部走 pynvml,
+未装 `nvidia-ml-py` 时**调用**才炸。这类"属性在但不可调用"的 API,`hasattr` 守卫是假保护。
+改用 `device_properties.clock_rate`(无需额外包),实测 RTX 4090 = **2.520 GHz**。
+
+**教训**:守卫可用性要守在**调用**上(try/except),不是守在属性存在上 ——
+这与我们 `_memory_pressure` 的写法一致(try/except 而非 hasattr)。
+
+**bug 2:嵌套引号在 heredoc 里被剥掉,把字符串变成了变量名。**
+
+```
+print(f"L2 cache: {getattr(p, L2_cache_size, 0)/1e6:.1f} MB")
+                            ^^^^^^^^^^^^^ NameError: name 'L2_cache_size' is not defined
+```
+
+通过多层 shell heredoc 打补丁时 `'L2_cache_size'` 的引号被吃掉。**而且 `ast.parse` 一开始报
+syntax OK** —— 因为 Python 3.12 允许 f-string 内嵌同类引号,掩盖了问题。
+最终改成 `%` 格式化,避免依赖 3.12 的新语法。
+
+**教训**:不要用嵌套 heredoc 改远程文件里的带引号代码;`sed` 单点替换或直接 scp 整个文件更安全。
+语法检查通过不代表语义正确。
+
+**顺带产出**:补上的规格带宽自检已生效 —— 探针现在打印
+`spec DRAM bandwidth (derived): 1.008 TB/s`(与 4090 官方规格一致),
+并会在实测值低于规格 60% 时标记 `SUSPECT (throttled or contended -- recalibrate)`。
+这就是校准器的免费自检,**不需要 GPU 也能算出参照值**。
