@@ -1099,27 +1099,38 @@ def test_the_final_failure_event_records_how_the_last_turn_ended(tmp_path):
     assert failed[0]["attempts"] == 3
 
 
-def test_the_agent_call_timeout_clears_the_slowest_measured_real_call(tmp_path):
-    """The 20-min timeout was killing real work, so it must not silently drift back.
+def test_the_agent_call_timeout_is_not_raised_on_an_unverified_loss_claim(tmp_path):
+    """SUPERSEDED CLAIM, kept as a guard against restoring it.
 
-    Across the five completed L3 runs, 8 agent calls died at exactly 1200-1201s with
-    `prompt transport error (ReadTimeout)` -- 5 repair, 2 rewriter, 1 generator, on all three
-    tasks. Each kill discards a candidate or a whole rewrite round. The slowest SUCCESSFUL call
-    measured is 576s, and one glm-5.3 generator call on L3:21 needed 979s, so the floor here is
-    set well above both rather than just above the old value.
+    This test used to assert `request_timeout_s >= 1800`, on the reasoning that "8 agent calls
+    died at exactly 1200-1201s ... each kill discards a candidate or a whole rewrite round" and
+    that the slowest successful call was 979 s.
+
+    Both halves were wrong, re-measured over every run on disk
+    (scripts/probe_agent_timeouts.py):
+
+      - 7 of those 8 calls FINISHED on a retry. Only one call has ever been truly lost.
+      - The slowest successful call is 1167 s, not 979 s -- 979 was one L3:21 generator call,
+        not the maximum over the population of 982.
+
+    Since no successful call has ever exceeded 1200 s, no 1200 s timeout was cutting off work
+    in progress: a timed-out call is HUNG, and a fresh session finishes the same prompt in
+    ~4 min. Raising the ceiling rescued nothing and made every hang 50% dearer.
+
+    The live assertions moved to
+    `test_the_agent_timeout_is_priced_as_a_hang_not_a_work_budget`; what remains here is the
+    upper bound, so the >= 1800 floor cannot come back on the strength of the old story.
     """
-    slowest_successful_call_s = 979.0   # glm-5.3 generator, L3:21, one large reasoning turn
-
     for path in ("configs/default.yaml", "configs/experiments_l3.yaml",
                  "configs/experiments_l3_glm.yaml"):
         cfg = load_config(path)
-        assert cfg.opencode.request_timeout_s >= 1800.0, (
-            f"{path}: agent-call timeout dropped to {cfg.opencode.request_timeout_s}s; "
-            "at 1200s this killed 8 real calls"
+        assert cfg.opencode.request_timeout_s <= 1500.0, (
+            f"{path}: timeout raised to {cfg.opencode.request_timeout_s}s. The 1800s value was "
+            "justified by a lost-work claim that re-measurement disproved; 14 of 15 hung calls "
+            "recover on retry, so a higher ceiling only makes each hang more expensive."
         )
-        # Headroom, not a bare pass: a timeout only a little above the slowest observed call
-        # will start killing work again as soon as a prompt grows.
-        assert cfg.opencode.request_timeout_s >= 1.8 * slowest_successful_call_s
+        # Still above the slowest call ever observed to succeed, measured at 1167 s.
+        assert cfg.opencode.request_timeout_s > 1167.0
 
 
 # --- the per-turn output-token ceiling has no config-file route, only an env var -----------
@@ -4982,3 +4993,60 @@ def test_the_deliverable_trials_csv_carries_the_deciding_statistic():
     # The disagreement that motivated it, so the numbers cannot drift from the story.
     by_mean_ms, by_median_ms = 20.3, 14.1
     assert abs(by_mean_ms / by_median_ms - 1.44) < 0.01
+
+
+def test_the_agent_timeout_is_priced_as_a_hang_not_a_work_budget():
+    """`request_timeout_s` must sit above the slowest real call and below 1800.
+
+    Measured over every run on disk (scripts/probe_agent_timeouts.py, n=982 successful calls):
+    the slowest successful agent call is 1167 s and NOT ONE has ever exceeded 1200 s, while 14
+    of the 15 ReadTimeout kills finished on a retry in ~4 min median. A timed-out call is hung,
+    not slow, so the value is the price of noticing a hang -- 18 hangs cost 9.00 h at 1800 s
+    against 7.50 h at 1500 s.
+
+    This pins the correction: 1800 was chosen on the belief that the 1200 s kills destroyed
+    real work, and 7 of those 8 calls in fact recovered on retry.
+
+    Both bounds matter, which is why they are asserted separately:
+      - above 1167 s, or a call slower than anything yet observed is killed for being slow;
+      - at or below 1500 s, or every hang costs 50% more than it needs to.
+    """
+    from pathlib import Path
+
+    from kernel_optimizer.config import AgentModuleConfig, OpencodeConfig, load_config
+
+    slowest_successful_call_s = 1167.0
+
+    field_default = OpencodeConfig().request_timeout_s
+    assert field_default > slowest_successful_call_s, \
+        "the timeout must not kill the slowest call ever observed to succeed"
+    assert field_default <= 1500.0, \
+        "1800 was justified by a claim that re-measurement disproved; do not restore it"
+
+    # default.yaml sets it explicitly and therefore OVERRIDES the field default: a fix applied
+    # only to the pydantic field would be silently inert for anyone loading that config.
+    assert load_config("configs/default.yaml").opencode.request_timeout_s == field_default
+
+    # Every experiment config must resolve to the same value -- the arms have to stay
+    # comparable, and load_config reads ONE file (default.yaml is not a base layer), so a
+    # config that omits the key gets the field default rather than default.yaml's.
+    for cfg_path in sorted(Path("configs").glob("experiments_*.yaml")):
+        got = load_config(str(cfg_path)).opencode.request_timeout_s
+        assert got == field_default, f"{cfg_path.name} resolves to {got}, not {field_default}"
+
+    # The dead per-module field is kept in step, so a reader who sets it is not misled about
+    # the real ceiling (nothing consumes it -- see its comment).
+    assert AgentModuleConfig().timeout_s == field_default
+
+    # The probe that produced these numbers must stay runnable, and must carry the pairing
+    # trap that made the first measurement report the exact opposite conclusion.
+    probe = Path("scripts/probe_agent_timeouts.py").read_text(encoding="utf-8")
+    assert "start[key] = ts" in probe, "a failed attempt must re-arm the clock, not pop it"
+    assert "PAIRING BUG" in probe
+
+    # The arithmetic behind the choice, so the numbers cannot drift from the story.
+    hangs = 18
+    assert hangs * 1800 / 3600 == 9.0
+    assert hangs * 1500 / 3600 == 7.5
+    assert 1500 / slowest_successful_call_s > 1.28   # ~29% headroom
+    assert 1200 / slowest_successful_call_s < 1.03   # only ~2.8% at 1200

@@ -151,7 +151,7 @@ Ordered by wall clock or candidates lost, not by how easy they are to fix.
 | 2 | 22.4% of trials fail, consuming 13.6% of wall clock | 11.39 h of 83.7 h — but this is dominated by runs without the fp64 gate; the live rate is **13.5%** | largely addressed by the fp64 relative gate (see section 5) |
 | 3 | Expansion aims at already-failing edges | 10 of 24 widened knobs; added values fail 43% vs 15% | measured, fix deferred |
 | 4 | `minimal` witness is the fp16 corner | 42 rejections; half of L3:48's | documented, not fixed |
-| 5 | Agent-call timeout was 20 min | 8 real calls killed across 5 runs | **fixed this session** (1800 s) |
+| 5 | ~~Agent-call timeout was 20 min~~ **CORRECTED** | the "8 real calls killed" figure was wrong: 7 of the 8 finished on a retry | re-measured; timeout is now 1500 s, see below |
 | 6 | `precision: "unknown"` for no-`tl.dot` kernels | 1 of 3 tasks mislabelled | reporting only, not fixed |
 | 7 | `AgentModuleConfig.timeout_s` is dead config | none (never read) | documented this session |
 | 8 | **47% of families never get a single rewrite round, and runs end using 10-57% of the wall clock** | 17 of 36 families across 7 finished runs; L3:21 ended at 2.06 h of 12 h | **quantified this session**; root cause in `memory: opop-v2-run-stops-with-budget-unused` |
@@ -439,3 +439,52 @@ broken than is:
   exactly the predictor one would want.
 * **`novelty` never fired in 18 runs** — see defect 0. Whether loop D earns its budget cannot be
   measured until the gate is opened.
+
+## 7. Correction to defect #5: a timed-out agent call is hung, not slow
+
+Re-measured 2026-09-07 over every run on disk with `scripts/probe_agent_timeouts.py`, after
+four ReadTimeouts in `run-l2-37-20260907-020707` all recovered on retry. The row above claimed
+"8 real calls killed across 5 runs", and raised `request_timeout_s` from 1200 s to 1800 s on
+that basis. The claim does not survive re-measurement.
+
+```
+successful agent calls: n=982   p50 114s   p90 252s   p99 534s   MAX 1167s
+   exceeding 1200s: 0        exceeding 1800s: 0
+
+ReadTimeout: 15 calls hung (18 hangs -- three hung twice)
+   recovered on a retry: 14 of 15
+   never finished      :  1  (run-l3-21-20260903-210650, a repair that hung twice)
+   successful retry durations, min: 0.4 1.1 2.1 2.2 2.8 3.3 3.9 4.2 4.2 4.3 4.7 5.1 13.4 19.4
+```
+
+**Not one of the 982 successful calls has ever exceeded 1200 s.** So no timeout at 1200 s was
+cutting off work in progress: a call that times out is hung, and a fresh session finishes the
+same prompt in about 4 minutes. Raising the ceiling rescued nothing — it made every hang 50%
+more expensive. On this run alone the four hangs cost 2.00 h, 16.7% of a 12 h budget.
+
+Set to **1500 s**, not back to 1200 s: the slowest successful call is 1167 s, which leaves only
+33 s (2.9%) of headroom at 1200 s, so a call 3% slower than anything yet observed would be
+killed for being slow. 1500 s keeps 29% headroom and returns half the loss.
+
+### Two mistakes of mine worth keeping
+
+**The original diagnosis was never verified.** I wrote "each kill discards a candidate or a
+whole rewrite round" into `config.py` without checking whether those calls came back. They did.
+A retry-on-fresh-session mechanism *already existed and was working* — the claim of lost work
+was contradicted by the same event logs I was reading.
+
+**My first re-measurement said the opposite of the truth.** It reported "0 recovered, 15 lost",
+which I had already disproved by hand minutes earlier by reading two events with the same
+`call_id`. The bug: pairing attempts by `call_id` and popping the start timestamp on the first
+terminal event, so a retried call's `AGENT_CALL_FINISHED` had nothing left to pair with and was
+dropped. `scripts/probe_agent_timeouts.py` documents the trap at the top and accumulates
+per-`call_id` instead of popping. Had I trusted that script, I would have "confirmed" the wrong
+conclusion with a number attached.
+
+### D-4 (deferred): detect a hang by silence, not by duration
+
+Duration cannot separate "hung" from "thinking" — that is why the value is a compromise between
+two costs rather than a correct answer. The hung calls return zero bytes, while a healthy call
+streams tokens within seconds, so a token-level heartbeat on the transport would abort a hang in
+about a minute instead of 25. That needs a new SSE consumption path in `OpencodeClient.prompt`
+and would change how every agent call is driven: too large and too risky to land mid-round.

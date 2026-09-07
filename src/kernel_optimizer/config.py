@@ -22,15 +22,32 @@ class OpencodeConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 4096
     agent: str = "build"
-    # 30 min. Was 1200s (20 min), which was killing real work: across the five completed L3 runs
-    # 8 agent calls died at exactly 1200-1201s with `prompt transport error (ReadTimeout)` --
-    # 5 repairs, 2 rewriters, 1 generator, spread over all three tasks. Each kill discards a
-    # candidate or a whole rewrite round, so the cost is search progress, not just a retry.
-    # Sizing: the slowest SUCCESSFUL call measured is 576s (generator p90), and one glm-5.3
-    # generator call on L3:21 took 979s (16m19s) with a single large reasoning turn -- so 20 min
-    # left under 4 min of headroom for the reasoning-heavy arm. 1800s clears both by >=1.8x.
-    # This is model-agnostic: it is the transport read timeout, not a token or effort setting.
-    request_timeout_s: float = 1800.0
+    # 25 min. Measured over all 997 agent-call attempts on record (1000 minus 3 in-flight),
+    # scripts/probe_agent_timeouts.py:
+    #
+    #   successful calls: n=982, p50 114s, p90 252s, p99 534s, MAX 1167s
+    #   calls exceeding 1200s: 0.  Calls exceeding 1800s: 0.
+    #   ReadTimeout: 15 calls hung (18 hangs -- three hung twice), 14 of the 15 FINISHED on
+    #   a retry, the retries taking 0.4/1.1/2.1/2.2/2.8/3.3/3.9/4.2/4.2/4.3/4.7/5.1/13.4/19.4 min.
+    #
+    # So a timed-out call is HUNG, not slow: not one of the 15 was real work approaching the
+    # limit, and a fresh session completes the same prompt in ~4 min (median). The timeout's
+    # only job is to notice a hang, and its value is what each hang costs -- the 18 hangs on
+    # record cost 9.00 h at 1800s against 7.50 h at 1500s and 6.00 h at 1200s.
+    #
+    # This CORRECTS the reasoning that raised it from 1200 to 1800. That change was made on
+    # the belief that the 1200s kills were destroying real work ("each kill discards a
+    # candidate or a whole rewrite round"); re-measured, 7 of those 8 recovered on retry and
+    # only one call was ever truly lost (an L3:21 repair that timed out twice). Raising the
+    # ceiling did not rescue work -- it made every hang 50% more expensive.
+    #
+    # Not lowered to 1200 either: the slowest successful call is 1167s, leaving 33s (2.9%) of
+    # headroom, so a call 3% slower than anything yet seen would be killed for being slow.
+    # 1500s keeps 333s (29%) of headroom over that maximum while returning half the loss.
+    # A hang is still only detectable by its duration; distinguishing "hung" from "thinking"
+    # needs a token-level heartbeat on the transport, which is deferred (D-4).
+    # Model-agnostic: this is the transport read timeout, not a token or effort setting.
+    request_timeout_s: float = 1500.0
     permission_mode: str = "sandbox_config"  # or "sse_auto_approve"
     startup_timeout_s: float = 60.0
     # Merged into every agent sandbox's opencode.json. That file makes the sandbox a
@@ -59,7 +76,7 @@ class AgentModuleConfig(BaseModel):
     # effective ceiling is OpencodeConfig.request_timeout_s, which sets the httpx client timeout
     # in wiring.py. Kept in step with it so a reader who sets this per-module does not end up
     # with a value that silently contradicts the real one -- but setting it changes nothing.
-    timeout_s: float = 1800.0
+    timeout_s: float = 1500.0
     n_candidates: int = 4  # generator / rewriter / novelty batch size
     # Transport (ReadTimeout / connection) failures retried on a FRESH session. Capped
     # separately from max_retries because a hung endpoint costs a full request_timeout_s

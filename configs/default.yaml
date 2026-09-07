@@ -8,10 +8,13 @@ opencode:
   host: 127.0.0.1
   port: 4096
   agent: build
-  # 30 min. At 20 min, 8 agent calls across the five completed L3 runs were killed mid-work by
-  # `ReadTimeout` (5 repair, 2 rewriter, 1 generator, all three tasks); each kill costs a
-  # candidate or a rewrite round. See OpencodeConfig.request_timeout_s for the sizing.
-  request_timeout_s: 1800
+  # 25 min. A timed-out agent call is HUNG, not slow: over all 982 successful calls on record
+  # none exceeded 1200 s (max 1167 s), while 14 of the 15 ReadTimeout kills finished on a
+  # retry in ~4 min (median). So this value is not a work budget, it is the price of noticing
+  # a hang -- the 18 hangs on record cost 9.00 h at 1800 s against 7.50 h at 1500 s. Kept
+  # above 1200 s because the slowest successful call, 1167 s, leaves only 2.9% headroom
+  # there. See OpencodeConfig.request_timeout_s and scripts/probe_agent_timeouts.py.
+  request_timeout_s: 1500
   permission_mode: sandbox_config   # or sse_auto_approve
 
 agents:
