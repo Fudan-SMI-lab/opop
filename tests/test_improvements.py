@@ -5124,3 +5124,45 @@ def test_the_wall_clock_is_enforced_inside_a_round_not_only_between_rounds(tmp_p
                src.index("added = self._novelty_round(round_no)")]
     assert "wall_clock_hours" in loop, \
         "a budget-exhausted rewrite round must not fall through into a novelty round"
+
+
+def test_the_report_validates_a_stored_median_speedup_instead_of_trusting_it():
+    """`report` must not print a mixed ratio it finds in an old summary.
+
+    The orchestrator gained a both-sides gate (dbcc99b) so it will not COMPUTE
+    baseline_MEAN / candidate_MEDIAN. But `report` regenerates from the event log, and a log
+    written before that gate stores the mixed value already computed. run-l2-37-20260907-020707
+    is exactly that case -- the run started 02:07, the gate landed 03:40, the orchestrator
+    module was imported at launch -- and its stored medians were published under a "MEDIANS"
+    heading with a "+33.1% vs the mean-based figure" uplift on all four baselines:
+
+        eager              0.0520 mean / 0.012096 median = 4.2989  <- reported as a median ratio
+        torch_compile_tf32 0.0234 mean / 0.012096 median = 1.9345  <- mean-based is 1.4534
+
+    So the check has to sit on BOTH sides of the boundary. A median-labelled ratio requires a
+    median in the baseline record too, and the baseline timing path returns summary statistics
+    only, so the report must verify rather than trust.
+    """
+    from pathlib import Path
+
+    rep = Path("src/kernel_optimizer/reporting/report.py").read_text(encoding="utf-8")
+
+    # The baseline-side evidence must be derived from the events...
+    assert "baseline_medians = any(" in rep
+    # ...and gate the printing of the median block.
+    assert "if med and not baseline_medians:" in rep
+    assert "med = None" in rep, "a stored mixed ratio must be suppressed, not printed"
+    # The reason must be stated, not left silent.
+    assert "baseline_MEAN / candidate_MEDIAN" in rep
+
+    # The candidate's own median goes through the shared formatter in BOTH branches, so a
+    # 17-digit float cannot reach the report.
+    assert rep.count("latency_cell(best.get('final_reeval_median_ms'))") == 2
+
+    # The arithmetic that motivated it, so the numbers cannot drift from the story.
+    base_mean, cand_median, cand_mean = 0.0234, 0.012096, 0.0161
+    mixed = base_mean / cand_median
+    honest = base_mean / cand_mean
+    assert abs(mixed - 1.9345) < 0.001, mixed
+    assert abs(honest - 1.4534) < 0.001, honest
+    assert (mixed / honest - 1) > 0.33, "the mixed ratio inflates the claim by a third"

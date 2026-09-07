@@ -273,6 +273,13 @@ class ReportGenerator:
         budgets = ((manifest.get("config") or {}).get("budgets") or {})
 
         baselines = [e.payload["baseline"] for e in events if e.type == "BASELINE_DONE"]
+        # Whether ANY baseline carries a real median. A median-labelled speedup needs one on
+        # both sides; the baseline timing path returns summary statistics only, so usually
+        # none does, and a stored `speedups_median` from before the orchestrator's gate is
+        # then a baseline_MEAN / candidate_MEDIAN mixed ratio. See where this is used.
+        baseline_medians = any(
+            (b.get("latency_ms") or {}).get("median") for b in baselines
+        )
         candidates = {e.payload["candidate"]["candidate_id"]: e.payload["candidate"]
                       for e in events if e.type == "CANDIDATE_REGISTERED"}
         trials = [e.payload["trial"] for e in events if e.type == "TRIAL_DONE"]
@@ -410,6 +417,30 @@ class ReportGenerator:
                 # mean/min ratio reached 2.04x -- and quoting one against the other's number
                 # invents a difference no kernel produced.
                 med = best.get("speedups_median")
+                # VALIDATE, do not trust. `report` regenerates from the event log, including
+                # logs written before the orchestrator gained its both-sides gate -- and a
+                # summary from such a run stores `speedups_median` already computed as
+                # baseline_MEAN / candidate_MEDIAN. run-l2-37-20260907-020707 is exactly that
+                # case: the run started 02:07, the gate landed 03:40, the module was imported
+                # at launch, so its stored medians are the mixed ratio and this report
+                # published them under a MEDIANS heading with a "+33.1%" uplift.
+                #
+                # So the check belongs on both sides of the boundary: the orchestrator must
+                # not compute a mixed ratio, and the report must not print one it is handed.
+                # A median-labelled ratio requires a median in the BASELINE record too, which
+                # is what `baseline_medians` carries.
+                if med and not baseline_medians:
+                    med = None
+                    mixed_note = (
+                        "not shown: this run's stored `speedups_median` was computed before "
+                        "the both-sides gate existed, and its baselines carry no median (the "
+                        "baseline timing path returns summary statistics only). The stored "
+                        "values are baseline_MEAN / candidate_MEDIAN, which inflates the "
+                        "ratio because the numerator includes scheduling stalls and the "
+                        "denominator does not. Quote the mean-based figures above."
+                    )
+                else:
+                    mixed_note = ""
                 if med:
                     lines.append("- the same ratios computed from MEDIANS (robust to "
                                  "scheduling stalls; this is the statistic the tuner "
@@ -425,21 +456,21 @@ class ReportGenerator:
                         lines.append(
                             f"  - re-eval latency: mean "
                             f"{best.get('final_reeval_ms')} ms, median "
-                            f"{best.get('final_reeval_median_ms')} ms")
-                elif best.get("speedups_median_note"):
+                            f"{latency_cell(best.get('final_reeval_median_ms'))} ms")
+                elif mixed_note or best.get("speedups_median_note"):
                     # Say why the median column is absent rather than leaving the reader to
                     # assume the two conventions agree. They do not: on level2:37 the
                     # candidate's mean was 32.20 us against a median of 14.11, so a reader
                     # comparing our mean-based figure to an externally published median or
                     # min is comparing different quantities.
                     lines.append(f"- median-based speedups: "
-                                 f"{best['speedups_median_note']}")
+                                 f"{mixed_note or best['speedups_median_note']}")
                     if best.get("final_reeval_median_ms"):
                         lines.append(
                             f"  - the candidate's own re-eval latency, both ways: mean "
                             f"{best.get('final_reeval_ms')} ms, median "
-                            f"{best.get('final_reeval_median_ms')} ms — quote the mean "
-                            f"against a mean, the median against a median")
+                            f"{latency_cell(best.get('final_reeval_median_ms'))} ms — quote "
+                            f"the mean against a mean, the median against a median")
             else:
                 if "speedup_vs_eager" in best:
                     lines.append(f"- speedup vs eager: **{best['speedup_vs_eager']}x**")
