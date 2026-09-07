@@ -48,6 +48,20 @@ class OpencodeConfig(BaseModel):
     # needs a token-level heartbeat on the transport, which is deferred (D-4).
     # Model-agnostic: this is the transport read timeout, not a token or effort setting.
     request_timeout_s: float = 1500.0
+    # TOTAL wall clock for one agent call, enforced by the client independently of the read
+    # timeout above. These are NOT redundant, and the difference cost 68 minutes of a live run:
+    # `request_timeout_s` is httpx's per-READ idle timeout, so it only fires when the server
+    # goes quiet for that long. An agent that keeps emitting output -- tool call, a line of
+    # text, another tool call -- resets that clock on every chunk and can run without limit.
+    # Measured on run-l1-42-20260907-193510: one rewriter call ran 4057s (67.6 min) against a
+    # 1500s setting, 2.7x the configured value, because the agent was running its own
+    # parameter sweep and never went idle for a full 25 minutes. I had previously recorded
+    # 1500s as the hard ceiling on a call; it is not, and no `request_timeout_s` value fixes
+    # this, because the failure mode is a talkative call rather than a silent one.
+    #
+    # Set above request_timeout_s so an idle hang is still reported as the more specific
+    # ReadTimeout, and this bound only catches the case that one structurally cannot see.
+    total_call_timeout_s: float = 2100.0
     permission_mode: str = "sandbox_config"  # or "sse_auto_approve"
     startup_timeout_s: float = 60.0
     # Merged into every agent sandbox's opencode.json. That file makes the sandbox a

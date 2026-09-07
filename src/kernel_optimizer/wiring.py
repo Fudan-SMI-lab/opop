@@ -42,7 +42,11 @@ class Runtime:
 
     def __enter__(self) -> "Runtime":
         base_url = self.server.start()
-        self.client = OpencodeClient(base_url, timeout_s=self.cfg.opencode.request_timeout_s)
+        self.client = OpencodeClient(
+            base_url,
+            timeout_s=self.cfg.opencode.request_timeout_s,
+            total_timeout_s=self.cfg.opencode.total_call_timeout_s,
+        )
         if self.cfg.opencode.permission_mode == "sse_auto_approve":
             self.responder = PermissionAutoResponder(base_url)
             self.responder.start()

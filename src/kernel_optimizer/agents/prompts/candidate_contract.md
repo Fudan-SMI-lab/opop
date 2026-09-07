@@ -55,6 +55,35 @@ Rules:
   >99% of elements). Either way, do not assume loose slack — a numerically sloppy
   reduction (e.g. tf32 accumulation over a long dimension) will be rejected.
 
+## Your own testing: keep it small, and never sweep
+
+The harness evaluates every file you produce — correctness against the reference on
+its real input shapes, then timing over many samples, in its own clean process. You
+do not need to reproduce that, and you must not try to.
+
+A quick sanity check of ONE configuration on ONE small shape is welcome (it catches
+a typo before it costs a round). Past that, every additional check costs the round
+that produces your output, and buys nothing the harness is not about to measure
+anyway. **Concretely, in your own scratch scripts:**
+
+- Do NOT sweep parameter combinations to find a fast one. Parameter tuning is a
+  separate automatic stage that runs after you; picking values is not your job, and
+  a config that wins your 20-iteration timing is not the one it will pick.
+- Do NOT loop over many shapes, kernel sizes, strides, paddings, or dtypes. If you
+  test at all, test the shape in the task description.
+- Do NOT compile the same kernel more than a handful of times. Each JIT compile is
+  seconds of wall clock, and a nested loop reaches thousands without looking like it.
+- Never build a kernel with a huge grid, a huge unroll factor, or a loop bound
+  derived from a large shape just to see if it compiles. A single such kernel can
+  produce a PTX file hundreds of thousands of lines long, and the assembler will
+  then consume **more RAM than the machine has** trying to compile it. Measured: one
+  such kernel reached 111 GiB resident and stalled every other process on the box
+  for 47 minutes until it was killed. Your work was lost with it.
+
+The hard rule behind all of it: **your call has a wall-clock ceiling, and the file
+you never finished writing is worth nothing.** Write the file first. If you have
+budget left afterwards, then sanity-check it.
+
 ## Reference run mode (train vs eval) — read `task/eval_semantics.md`
 
 The reference model is evaluated in a specific run mode, and `task/eval_semantics.md`

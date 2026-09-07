@@ -5361,3 +5361,104 @@ def test_the_backend_is_part_of_a_candidates_structural_identity():
     reason = getattr(got, "reason", None)
     assert reason != "duplicate_signature", \
         "Loop D rejected a cross-backend seed as an identical signature"
+
+
+def test_a_talkative_agent_call_is_bounded_by_a_total_deadline():
+    """A per-read timeout does not bound a call that keeps producing output.
+
+    Measured on run-l1-42-20260907-193510: one rewriter call ran 4057s against a 1500s
+    `request_timeout_s` -- 2.7x the configured value -- because the agent was running its own
+    parameter sweep and never went silent for a full 25 minutes. httpx.Timeout is per-READ, so
+    it fires on silence only; no value of it fixes a talkative call. Meanwhile the agent's own
+    script drove the container's memory cgroup to its limit (125.5 GB against a 124.5 GB
+    memory.high, 16.0M throttle events) and stalled the orchestrator in D-state.
+
+    This drives the real OpencodeClient.prompt against a server that streams slowly forever,
+    and asserts the call is cut at the total deadline and the session is aborted (aborting is
+    what kills the agent's subprocesses). Before the fix the request had no total bound.
+    """
+    import threading
+    import time as _time
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from socketserver import ThreadingMixIn
+
+    from kernel_optimizer.agents.runtime import AgentCallError, OpencodeClient
+
+    aborted: list[str] = []
+    stop = threading.Event()
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):  # silence
+            pass
+
+        def do_POST(self):  # noqa: N802
+            if self.path.endswith("/abort"):
+                aborted.append(self.path)
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"{}")
+                return
+            # A talkative turn: never idle long enough to trip the read timeout, and never
+            # finishes. This is the shape of the real failure, not a silent hang.
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            try:
+                while not stop.wait(0.05):
+                    self.wfile.write(b" ")
+                    self.wfile.flush()
+            except OSError:
+                pass
+
+    # Threaded: the real server handles the abort while the message turn is still streaming,
+    # and a single-threaded mock would deadlock instead of reproducing the live behaviour.
+    class Server(ThreadingMixIn, HTTPServer):
+        daemon_threads = True
+
+    srv = Server(("127.0.0.1", 0), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_address[1]
+
+    # read timeout comfortably longer than the total deadline, so ONLY the total deadline can
+    # end this call -- exactly the regime the live failure was in.
+    client = OpencodeClient(f"http://127.0.0.1:{port}", timeout_s=30.0, total_timeout_s=1.5)
+    t0 = _time.monotonic()
+    with pytest.raises(AgentCallError) as excinfo:
+        client.prompt("ses_test", "go", model="p/m")
+    elapsed = _time.monotonic() - t0
+    stop.set()
+    srv.shutdown()
+    client.close()
+
+    assert elapsed < 12.0, (
+        f"the call ran {elapsed:.1f}s with a 1.5s total deadline: a talkative agent is still "
+        "unbounded (the live case reached 4057s against a 1500s read timeout)"
+    )
+    assert "total deadline" in str(excinfo.value), \
+        f"the error must name the real cause, got: {excinfo.value}"
+    assert aborted, \
+        "the session was not aborted: the agent's own subprocesses would keep running"
+
+
+def test_the_candidate_contract_bounds_agent_self_testing():
+    """The contract must tell agents not to sweep, and why.
+
+    Two live incidents from the same root cause: a rewriter compiled 1500+ Triton kernels in a
+    self-check and lost a finished rewrite to the ceiling; another built a kernel whose PTX ran
+    to 272,341 lines, and ptxas then reached 111 GiB resident and stalled the whole box for 47
+    minutes. Neither prompt said anything about the scale of self-testing. Checked as content
+    rather than prose so the rule cannot be quietly dropped in an edit.
+    """
+    from kernel_optimizer.agents.modules import _contract_doc
+
+    doc = _contract_doc().lower()
+    assert "do not sweep" in doc or "not sweep" in doc, \
+        "the contract does not tell the agent to avoid parameter sweeps in its own scripts"
+    for concept, needle in [
+        ("the harness does the evaluating", "harness evaluates"),
+        ("compiles are expensive", "compile"),
+        ("the assembler can exhaust RAM", "ram"),
+        ("write the file first", "write the file first"),
+    ]:
+        assert needle in doc, f"contract is missing: {concept} ({needle!r})"
