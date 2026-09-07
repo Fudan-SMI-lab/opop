@@ -283,3 +283,54 @@ roofline 的两个坐标轴就是它们:
   —— 时间预算是错误工具的最直接证据
 - 判读报告时的注意:若出现 `frozen_converged`,必须交叉检查该族是否有 `AGENT_CALL_FAILED final=true`,
   否则会把"调不通"读成"优化到头了"
+
+---
+
+# 修订版实施方案(2026-09-07 晚,合并调研结论)
+
+本节取代前文第 "待批准的实施顺序" 表。三份依据:
+- `docs/research-bottleneck-classification-and-portable-thresholds.md`(阈值可移植性 + KernelPro 调研)
+- `docs/research-counter-free-profiling-capability-tiers.md`(counters 不可用的挽回方案,全部 box 2 实测)
+- 本文档前半(混合架构分工、flop/byte 可自测性验证)
+
+## 三条被调研改掉的设计
+
+**(1) 门限不再硬编码,改为自校准。** 原方案"用步骤 1 观测值替换四个常数"会把一张 4090
+的数字烧进代码。修正为:天花板每机自测 + 门限由四个解析真值已知的标尺负载**自动导出**,
+代码里只留无量纲 margin。KernelPro 的门限(DRAM>80%、occupancy<50%、registers>96)
+也是硬编码的,所以这是我们相对该领域现状的一个改进点,而非补课。
+
+**(2) 新增双方法交叉验证 + 冲突仲裁。** 借用 KernelPro:解析 roofline 与实测吞吐两条独立判定,
+一致则高置信,**冲突时采信解析值**(它反映 kernel 固有上限,而非当前可能未优化的实现)。
+对我们更重要,因为我们的实测侧没有 ncu。
+
+**(3) 新增 profiling 能力分层 Tier 0-3。** 关键实测发现:**SASS 静态分析(`nvdisasm`)无需任何
+权限即可用**,能挽回张量核检测(`HMMA` 计数)、spill 交叉验证、共享内存流量、屏障密度;
+理论 occupancy 可解析计算。唯一真正不可得的是 **stall 原因分解**。
+
+## 需要修正的既有代码陈述
+
+`src/kernel_optimizer/evaluation/bottleneck.py` 的模块 docstring 现在写着
+"bank conflicts, warp divergence, instruction-cache pressure, L2 hit rate — 那些需要 counters"。
+**这个陈述过于悲观,实测后需要改**:张量核使用**可见**(SASS)、occupancy **可算**、
+L2 可用"工作集 vs 容量"解析判断、bank conflict 的**流量**可见(只有冲突倍数不可见)。
+唯一该保留为"不可见"的是 stall 分解。
+
+## 实施顺序(修订)
+
+| # | 内容 | 依赖 | GPU | 预估 |
+|---|---|---|---|---|
+| 0 | 清理 E1 五个 .ps1 + E2 `_proxytest/`(后者含明文 key,删除是安全收益) | 无 | 否 | 分钟 |
+| 1 | 跑 `probe_bottleneck_signals.py`,读 DISCRIMINATION CHECK | 独占 GPU | **是** | 2-4 min(已挂自动) |
+| 2 | **校准器**:四个标尺负载 + 空发射底噪 → 自动导出门限;结果缓存,可 `--recalibrate` | 1 | **是** | 1 天 |
+| 3 | `flop_count`/`byte_count` 运行时采集(在参考实现上测一次;已验证 ratio=1.0000) | 无 | 否 | 半天 |
+| 4 | 天花板 + 校准结果 + **tier 探测**进 doctor,写入 run 元数据 | 2 | 是(轻) | 半天 |
+| 5 | **Tier 1 采集器**:SASS 指令统计(HMMA/STL/LDL/LDS/STS/BAR.SYNC)+ 解析 occupancy | 无 | 否 | 1 天 |
+| 6 | 分类器改造:吃校准门限而非常数;加双方法交叉验证 + 冲突采信解析值;修正 docstring | 2,3,5 | 否 | 半天 |
+| 7 | **接线(问题 2 核心)**:verdict + evidence + tier 可用性 → analyst prompt + report,必须是 **detect-analyze-recommend** 结构(KernelPro 消融证明:原始 counter 直接给 LLM 会让性能**变差**),并明确写出"本机不可测"项 | 3,6 | 否 | 半天 |
+| 8 | 步骤 5:手写 CUDA 候选对比(排在 1 之后让开卡) | 1 | **是** | 30-50 min |
+
+## 不做(沿用既有决定)
+
+不改计时方法本身;不做任务分类→后端排序的搜索机制;不启用 CUTLASS/CuTe 生成;
+分类结论**永不参与门控**;Tier 3(ncu)只留接口,不在租用容器上尝试启用。
