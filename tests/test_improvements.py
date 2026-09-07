@@ -5305,3 +5305,59 @@ Function _Z14epilogue_normPfPKfi:
     launch_fn = src[src.index("def _launched_kernel_names"):src.index("def _extract_cubin_metadata")]
     assert "ncu" not in launch_fn.replace("NOT `ncu`", "").replace("ERR_NVGPUCTRPERM", "")
     assert "ProfilerActivity" in launch_fn
+
+
+def test_the_backend_is_part_of_a_candidates_structural_identity():
+    """The same algorithm in Triton and in CUDA must not be one structure.
+
+    `structural_signature` hashed the AST with PARAMS zeroed and docstrings dropped -- the
+    backend was not in it. So a novel seed whose whole IDEA is "this approach, expressed in CUDA
+    so the launch path can be hand-written" would be rejected by `accept_novel_seed` as a
+    `duplicate_signature`, and silently dropped by `register_candidate`, whenever its AST
+    happened to match an existing candidate's.
+
+    That has teeth now the profiler is backend-neutral: CUDA/CUTLASS/CuTe candidates carry real
+    registers/spills/shared, so the search can use them -- but only if the family machinery
+    treats the backend as a structural axis. Measured motivation: all 27 candidates of the
+    level2:37 run and every candidate across 19 L3 runs were Triton, and an external team's
+    hand-written CUDA kernel beat its own ATen fallback by 4.1x largely through a CPU-side
+    launch path Triton cannot express.
+    """
+    from kernel_optimizer.control.families import FamilyManager, structural_signature
+
+    src = (
+        "PARAMS = {'BLOCK': 64}\n"
+        "class ModelNew:\n"
+        "    def forward(self, x):\n"
+        "        return x\n"
+    )
+
+    # Same source, different backend -> different identity.
+    tri = structural_signature(src, "triton")
+    cud = structural_signature(src, "cuda")
+    assert tri != cud, "a backend change must change the structural signature"
+    assert tri.startswith("triton:") and cud.startswith("cuda:"), \
+        "the backend must be legible in the signature, not only folded into the hash"
+    # Same backend, same source -> still a duplicate (the dedup must keep working).
+    assert structural_signature(src, "cuda") == cud
+    # Omitted backend stays reproducible for the 20 runs of already-recorded signatures.
+    assert structural_signature(src) == structural_signature(src)
+    assert ":" not in structural_signature(src)
+
+    # register_candidate must now ACCEPT the cuda twin rather than returning None.
+    fm = FamilyManager()
+    a = fm.register_candidate(src, "seed", [], "triton", "triton version")
+    b = fm.register_candidate(src, "seed", [], "cuda", "same idea, hand-written CUDA")
+    assert a is not None
+    assert b is not None, "the CUDA twin was dropped as an exact structural duplicate"
+    assert a.family_id != b.family_id, "each should anchor its own family"
+    # And a true duplicate is still refused.
+    assert fm.register_candidate(src, "seed", [], "cuda", "again") is None
+
+    # The novelty gate must not call it a duplicate_signature either.
+    fm2 = FamilyManager(max_families_total=4)
+    fm2.register_candidate(src, "seed", [], "triton", "triton version")
+    got = fm2.accept_novel_seed(src, "cuda", "same idea in CUDA", "different launch path")
+    reason = getattr(got, "reason", None)
+    assert reason != "duplicate_signature", \
+        "Loop D rejected a cross-backend seed as an identical signature"

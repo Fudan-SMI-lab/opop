@@ -76,13 +76,33 @@ class _SignatureTransformer(ast.NodeTransformer):
         return self._strip_docstring(node)
 
 
-def structural_signature(source: str) -> str:
+def structural_signature(source: str, backend: str | None = None) -> str:
+    """Hash of the candidate's structure: AST with docstrings dropped and PARAMS zeroed.
+
+    `backend` is part of the structure, not incidental to it. Without it, two candidates
+    implementing the same algorithm in Triton and in CUDA C++ hash differently only by
+    accident of syntax -- and the reverse case is worse: a candidate whose *idea* is "the same
+    approach, expressed in CUDA so the launch path can be hand-written" is a genuinely
+    different structure with a different performance ceiling, yet `accept_novel_seed` would
+    reject it as a `duplicate_signature` if the AST happened to match, and `register_candidate`
+    would silently drop it.
+
+    That matters now the profiler is backend-neutral: CUDA/CUTLASS/CuTe candidates carry real
+    resources, so the search can actually use them -- but only if the family machinery treats
+    the backend as a structural axis. Optional argument (not required) so the 20 runs of
+    recorded signatures stay reproducible when replayed without one.
+    """
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return "syntaxerror:" + sha256_text(source)[:32]
     tree = _SignatureTransformer().visit(tree)
-    return hashlib.sha256(ast.dump(tree).encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(ast.dump(tree).encode("utf-8")).hexdigest()
+    if backend:
+        # Prefixed rather than folded into the hash so a signature stays legible in the event
+        # log: "cuda:9f3a..." says at a glance why two candidates are not duplicates.
+        return f"{backend}:{digest}"
+    return digest
 
 
 def similarity(a_source: str, b_source: str) -> float:
@@ -127,7 +147,7 @@ class FamilyManager:
         approach: str,
     ) -> Candidate | None:
         """Register a seed/rewrite/repair candidate. Returns None on exact-dup."""
-        sig = structural_signature(source)
+        sig = structural_signature(source, backend)
         for existing in self.candidates.values():
             if existing.structural_signature == sig:
                 return None  # exact structural duplicate
@@ -169,7 +189,10 @@ class FamilyManager:
             return NoveltyRejection(
                 reason="family_budget_hard",
                 detail=f"hit hard cap of {self.max_families_total_hard} families total")
-        sig = structural_signature(source)
+        # Backend included: a novel seed expressing the same approach in a DIFFERENT backend is
+        # a genuinely different structure with a different ceiling, and must not be rejected as
+        # a duplicate_signature. This gate is where Loop D would have refused exactly that.
+        sig = structural_signature(source, backend)
         for family in self.families.values():
             anchor_src = self._sources.get(family.anchor_candidate_id, "")
             anchor = self.candidates[family.anchor_candidate_id]
