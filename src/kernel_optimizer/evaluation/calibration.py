@@ -139,6 +139,10 @@ class Calibration(BaseModel):
     l2_bytes: int = 0
     yardsticks: list[Yardstick] = Field(default_factory=list)
     thresholds: Thresholds | None = None
+    # Which profiling tier this box supports (step 4). Carried with the calibration so a report
+    # read later can distinguish "no disassembler on that box" from "those kernels used no tensor
+    # cores" -- opposite conclusions that look identical in a log holding neither.
+    tiers: dict = Field(default_factory=dict)
 
     # Populated when a measured ceiling falls far short of the derived spec figure: the numbers
     # are still used (they are what this box gives) but every verdict resting on them is

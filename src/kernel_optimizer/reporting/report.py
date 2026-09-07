@@ -410,6 +410,20 @@ class ReportGenerator:
                              f"(measured on this box, not constants)")
             for s in (c.get("suspect") or []):
                 lines.append(f"- ⚠ **SUSPECT calibration**: {s}")
+            # Which signals this box could produce at all. Without it, a report showing no
+            # instruction mix is ambiguous between "the box had no disassembler" and "the kernels
+            # genuinely used no tensor cores" -- opposite conclusions.
+            tiers = c.get("tiers") or {}
+            if tiers and "error" not in tiers:
+                t1 = tiers.get("tier1_sass_and_occupancy")
+                lines.append(
+                    f"- profiling tiers: Tier 0 (timing, FLOP/byte) available; "
+                    f"Tier 1 (SASS instruction mix, occupancy) "
+                    f"**{'available' if t1 else 'UNAVAILABLE'}**"
+                    + ("" if t1 else " — tensor-core use, spills and access widths are reported "
+                                    "as unknown in this run, not as absent")
+                    + "; Tier 3 (hardware counters) unavailable "
+                      "(ERR_NVGPUCTRPERM: needs a host-side permission a container cannot set)")
             lines.append("")
         elif any(e.type == "CALIBRATION_FAILED" for e in events):
             lines.append("## Device calibration\n")

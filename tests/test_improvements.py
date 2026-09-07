@@ -7269,3 +7269,117 @@ def test_the_best_trials_profile_is_used_not_the_last():
     assert "latency_ms.median < best[0]" in src, (
         "the profile is not selected by lowest latency")
     assert 'status != "complete"' in src, "a failed trial's profile could be selected"
+
+
+# --- step 4: doctor integration and tier recording ----------------------------------------
+
+# Tier detection as box 2 actually reports it (2026-09-08). Note ncu IS present and Tier 3 is
+# still false: the two facts are independent, which is the trap this records.
+MEASURED_TIERS_BOX2 = {
+    "tier0_events_and_counts": True,
+    "tier1_sass_and_occupancy": True,
+    "nvdisasm": "/usr/local/cuda/bin/nvdisasm",
+    "cuobjdump": "/usr/local/cuda/bin/cuobjdump",
+    "ncu_present": True,
+    "tier3_counters": False,
+    "tier3_note": "hardware counters need NVreg_RestrictProfilingToAdminUsers on the HOST",
+}
+
+
+def test_ncu_being_installed_does_not_mean_counters_are_usable():
+    """The trap step 4 exists to avoid, recorded as a test.
+
+    `ncu` is on BOTH experiment boxes and returns ERR_NVGPUCTRPERM on each: counters need a
+    host-side kernel-module parameter that a container cannot set. A tier report that inferred
+    "counters available" from "ncu present" would promise signals that never arrive, and every
+    verdict resting on them would silently be `unknown`.
+    """
+    from kernel_optimizer.gpu.calibrate import calibration_from_worker
+
+    cal = calibration_from_worker(dict(MEASURED_4090, tiers=MEASURED_TIERS_BOX2))
+    assert cal.tiers["ncu_present"] is True
+    assert cal.tiers["tier3_counters"] is False, (
+        "ncu being present was read as counters being usable; they are independent facts")
+    assert "HOST" in cal.tiers["tier3_note"], (
+        "the note must say WHERE the permission lives, or an operator will try to fix it in the "
+        "container")
+
+
+def test_the_tier_report_distinguishes_missing_tooling_from_a_clean_kernel():
+    """The ambiguity this recording removes. A report with no instruction mix means either
+
+      (a) the box had no disassembler, so tensor-core use is UNKNOWN, or
+      (b) the kernels genuinely used no tensor cores,
+
+    and those are opposite conclusions. Without the tier record they look identical in the log,
+    which would make a months-old report unreadable.
+    """
+    from kernel_optimizer.gpu.calibrate import calibration_from_worker
+
+    with_tier1 = calibration_from_worker(dict(MEASURED_4090, tiers=MEASURED_TIERS_BOX2))
+    assert with_tier1.tiers["tier1_sass_and_occupancy"] is True
+    assert with_tier1.tiers["nvdisasm"], "the located tool path should be recorded, for auditing"
+
+    no_tools = dict(MEASURED_TIERS_BOX2, tier1_sass_and_occupancy=False, nvdisasm=None,
+                    cuobjdump=None)
+    without = calibration_from_worker(dict(MEASURED_4090, tiers=no_tools))
+    assert without.tiers["tier1_sass_and_occupancy"] is False
+
+    # And the report must SAY which case it is, in words, rather than leaving a blank.
+    import inspect
+
+    from kernel_optimizer.reporting.report import ReportGenerator
+
+    src = inspect.getsource(ReportGenerator.generate)
+    assert "tier1_sass_and_occupancy" in src, "the report never reads the tier record"
+    assert "as unknown in this run, not as absent" in src, (
+        "the report must state that missing tooling means UNKNOWN, not absent")
+
+
+def test_doctor_reports_the_tiers_and_the_cached_calibration():
+    """An operator who learns at hour 9 of a 12-hour run that the box was never calibrated has
+    learned it too late. Doctor is where that belongs.
+    """
+    import inspect
+
+    from kernel_optimizer.cli import cmd_doctor
+
+    src = inspect.getsource(cmd_doctor)
+    assert "find_cuda_tool" in src, "doctor does not probe for the Tier 1 tooling"
+    assert "Tier 1" in src and "Tier 3" in src
+    assert "ERR_NVGPUCTRPERM" in src, (
+        "doctor should explain why Tier 3 is expected to be unavailable, or an operator will "
+        "treat it as a fault to fix")
+    assert "load_cached" in src, "doctor does not report whether a calibration exists"
+    # Reporting must not silently MEASURE: that is two minutes of exclusive GPU time, so it is
+    # opt-in behind a flag.
+    assert "args, \"calibrate\"" in src or "getattr(args, 'calibrate'" in src, (
+        "doctor must only measure when explicitly asked; a health check should not take the GPU "
+        "for two minutes by surprise")
+
+
+def test_doctor_flags_a_calibration_measured_on_different_hardware():
+    """A cache from another card is worse than none: it is refused at run time (identity-keyed),
+    but an operator reading doctor's output would wrongly believe the box is ready.
+    """
+    import inspect
+
+    from kernel_optimizer.cli import cmd_doctor
+
+    src = inspect.getsource(cmd_doctor)
+    assert "cached calibration matches this GPU" in src, (
+        "doctor does not compare the cached calibration's device against the live one")
+    assert "refused and re-measured" in src, (
+        "the operator must be told what will happen, not just that something is wrong")
+
+
+def test_a_calibration_without_tiers_still_loads():
+    """Backward compatibility, and it is not cosmetic: the two calibrations already measured on
+    box 2 predate the tier field, and a validation error on load would make the harness
+    re-measure -- or worse, crash a run at start.
+    """
+    from kernel_optimizer.gpu.calibrate import calibration_from_worker
+
+    cal = calibration_from_worker(MEASURED_4090)     # no "tiers" key at all
+    assert cal.tiers == {}, "a missing tier record must be empty, not an error"
+    assert cal.thresholds is not None, "the rest of the calibration must still be usable"

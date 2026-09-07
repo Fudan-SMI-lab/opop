@@ -832,6 +832,32 @@ def run_calibrate(job: dict) -> dict:
         })
 
     result["yardsticks"] = yardsticks
+
+    # Which profiling tier this box actually supports (step 4). Recorded WITH the calibration
+    # rather than only printed by doctor, because a report read weeks later must be able to say
+    # why a run's verdicts carry no instruction mix -- "the box had no disassembler" and "the
+    # kernels genuinely used no tensor cores" are opposite conclusions that otherwise look
+    # identical in the log.
+    try:
+        from kernel_optimizer.evaluation.statics import find_cuda_tool
+
+        nvdisasm = find_cuda_tool("nvdisasm")
+        cuobjdump = find_cuda_tool("cuobjdump")
+        result["tiers"] = {
+            "tier0_events_and_counts": True,
+            "tier1_sass_and_occupancy": bool(nvdisasm or cuobjdump),
+            "nvdisasm": nvdisasm,
+            "cuobjdump": cuobjdump,
+            # Tier 3 is counters. `ncu` being present says nothing about whether counters work:
+            # it is installed on both experiment boxes and returns ERR_NVGPUCTRPERM on each.
+            "ncu_present": bool(find_cuda_tool("ncu")),
+            "tier3_counters": False,
+            "tier3_note": ("hardware counters need NVreg_RestrictProfilingToAdminUsers on the "
+                           "HOST, which cannot be set from inside a container; ncu being on the "
+                           "box does not mean counters are usable"),
+        }
+    except Exception as exc:  # noqa: BLE001
+        result["tiers"] = {"error": f"{type(exc).__name__}: {exc}"[:200]}
     return result
 
 

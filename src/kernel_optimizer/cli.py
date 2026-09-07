@@ -102,6 +102,78 @@ def cmd_doctor(args) -> int:
         check("WSL venv probe", False,
               f"{result.get('failure_kind')}: {str(result.get('log_tail'))[:300]}")
 
+    # --- step 4: which profiling TIER this box supports, and its measured ceilings ---------
+    # Reported here because every bottleneck verdict in a run is a fraction of these numbers, and
+    # an operator who learns at hour 9 of a 12-hour run that the box could not be calibrated has
+    # learned it too late. Informational, not a check(): a box with no disassembler still runs
+    # perfectly well, it just produces fewer signals -- and saying which signals are missing up
+    # front is the whole point.
+    print()
+    print("[info] profiling capability tiers (hardware counters need a host-side kernel-module")
+    print("       permission that cannot be set from inside a container, so Tier 3 is expected")
+    print("       to be unavailable here):")
+    from kernel_optimizer.evaluation.statics import find_cuda_tool
+
+    nvdisasm = find_cuda_tool("nvdisasm")
+    cuobjdump = find_cuda_tool("cuobjdump")
+    ncu_path = find_cuda_tool("ncu")
+    print(f"       Tier 0 (CUDA events, CPU-issue loop, FLOP/byte counts): available")
+    print(f"       Tier 1 (SASS instruction mix, analytic occupancy): "
+          f"{'available' if (nvdisasm or cuobjdump) else 'UNAVAILABLE'}"
+          + (f" — {nvdisasm or cuobjdump}" if (nvdisasm or cuobjdump) else
+             " — no nvdisasm/cuobjdump found; tensor-core use, spills, shared traffic and "
+             "access widths will all be reported as unknown"))
+    if ncu_path:
+        probe = subprocess.run([ncu_path, "--version"], capture_output=True, timeout=60)
+        print(f"       Tier 3 (hardware counters): ncu present at {ncu_path}, "
+              f"{'runs' if probe.returncode == 0 else 'not usable'} — counters themselves are "
+              f"gated by ERR_NVGPUCTRPERM in a container regardless")
+    else:
+        print("       Tier 3 (hardware counters): ncu not found (expected; not required)")
+
+    cal = None
+    try:
+        from kernel_optimizer.evaluation.calibration import cache_path, load_cached
+        from kernel_optimizer.gpu.calibrate import ensure_calibration
+
+        runs_dir = Path(cfg.run.runs_dir)
+        if not runs_dir.is_absolute():
+            runs_dir = Path(__file__).resolve().parents[2] / runs_dir
+        cal = load_cached(cache_path(runs_dir))
+        if cal is None and getattr(args, "calibrate", False):
+            cal = ensure_calibration(worker, runs_dir)
+    except Exception as exc:  # noqa: BLE001 — doctor must report, never crash
+        print(f"[info] calibration unreadable: {type(exc).__name__}: {exc}")
+
+    if cal is not None:
+        print()
+        print(f"[info] cached calibration for {cal.device_name} (measured {cal.measured_at}):")
+        print(f"       DRAM {cal.dram_tbs:.3f} TB/s, fp32 {cal.fp32_tflops:.1f} TFLOP/s"
+              + (f", tf32 {cal.tf32_tflops:.1f} TFLOP/s" if cal.tf32_tflops else "")
+              + f", launch floor {cal.empty_launch_floor_ms*1e3:.1f} us")
+        if cal.thresholds:
+            t = cal.thresholds
+            print(f"       thresholds: dram>={t.dram_saturated_frac} "
+                  f"compute>={t.compute_saturated_frac} idle<{t.idle_frac} "
+                  f"cpu/gpu>={t.launch_bound_cpu_ratio}")
+        for s in cal.suspect:
+            print(f"       ⚠ SUSPECT: {s}")
+        # A calibration measured on OTHER hardware is worse than none: it would be refused at
+        # run time (the cache is identity-keyed) but an operator seeing it here would wrongly
+        # believe the box is ready.
+        probe_result = result if result.get("ok") else {}
+        live_name = probe_result.get("device_name")
+        if live_name and live_name != cal.device_name:
+            check("cached calibration matches this GPU", False,
+                  f"cache is for {cal.device_name}, this box is {live_name} — it will be "
+                  f"refused and re-measured at run start")
+    else:
+        print()
+        print("[info] no cached calibration for this box. The first `run` will measure it "
+              "(~2 min of exclusive GPU time); `kernel-opt calibrate` does it now. Without one, "
+              "bottleneck verdicts report `unknown` rather than comparing against a guessed "
+              "ceiling.")
+
     print("\nall green" if ok else "\nsome checks FAILED", file=sys.stderr)
     return 0 if ok else 1
 
@@ -402,7 +474,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="dotted config override, e.g. budgets.trials_per_space=8")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("doctor", help="environment health check")
+    p = sub.add_parser("doctor", help="environment health check")
+    p.add_argument("--calibrate", action="store_true",
+                   help="also MEASURE this box's ceilings if no calibration is cached "
+                        "(~2 min of exclusive GPU time). Without it doctor only reports whether "
+                        "one exists.")
 
     p = sub.add_parser("baseline", help="measure reference baselines")
     p.add_argument("--task", required=True, help="e.g. level1:19")

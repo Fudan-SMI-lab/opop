@@ -54,6 +54,7 @@ def calibration_from_worker(result: dict) -> Calibration:
         l2_bytes=int(result.get("l2_bytes", 0) or 0),
         yardsticks=yardsticks,
         thresholds=derive_thresholds(yardsticks, dram_tbs, fp32_tflops),
+        tiers=dict(result.get("tiers") or {}),
         suspect=flag_suspect(dram_tbs, spec_dram),
         measured_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )
@@ -115,6 +116,7 @@ def ensure_calibration(
             "empty_launch_floor_ms": cal.empty_launch_floor_ms,
             "ridge_flop_per_byte": cal.ridge_flop_per_byte,
             "thresholds": cal.thresholds.model_dump() if cal.thresholds else None,
+            "tiers": cal.tiers,
             "suspect": cal.suspect,
         })
     return cal
