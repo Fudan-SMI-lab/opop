@@ -5166,3 +5166,46 @@ def test_the_report_validates_a_stored_median_speedup_instead_of_trusting_it():
     assert abs(mixed - 1.9345) < 0.001, mixed
     assert abs(honest - 1.4534) < 0.001, honest
     assert (mixed / honest - 1) > 0.33, "the mixed ratio inflates the claim by a third"
+
+
+def test_the_env_probe_imports_the_symbols_evaluation_actually_calls():
+    """`doctor`'s kernelbench check must fail for the same reason a run would.
+
+    The probe used to do `import kernelbench`, which only runs the package __init__. On the
+    pinned 423217d that never reaches `kernelbench.utils`, and THAT module imports litellm at
+    module scope. Measured on box 2 (2026-09-07): every doctor check was green while
+
+        from kernelbench.eval import eval_kernel_against_ref
+        ModuleNotFoundError: No module named 'litellm'
+
+    A run started in that state dies at its FIRST baseline, and the traceback never names the
+    missing module: `load_original_model_and_inputs` swallows the ImportError and returns None,
+    so the caller fails several frames away with `TypeError: cannot unpack non-iterable
+    NoneType object`. That is a 12-hour run lost to a pip install, which is exactly what the
+    check exists to prevent.
+
+    Generic by construction: importing the real entry points covers whatever they transitively
+    need, so a dependency added upstream later is checked too, with no list to maintain.
+    """
+    import ast
+    from pathlib import Path
+
+    src = Path("src/kernel_optimizer/gpu/worker_main.py").read_text(encoding="utf-8")
+    probe = src[src.index('result["kernelbench_importable"]') - 2000:
+                src.index('result["kernelbench_importable"] = True')]
+
+    # The three symbols the harness actually calls.
+    for symbol in ("eval_kernel_against_ref", "load_original_model_and_inputs",
+                   "time_execution_with_cuda_event"):
+        assert symbol in probe, f"the probe must import {symbol}"
+    # The bare package import is not sufficient evidence and must not be what is relied on.
+    tree = ast.parse(src)
+    bare_pkg = [
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.Import) and any(a.name == "kernelbench" for a in n.names)
+    ]
+    assert not bare_pkg, \
+        "`import kernelbench` alone passes while kernelbench.eval fails; import the symbols"
+    # The error must name the module, so the operator can act on it.
+    assert 'f"{type(exc).__name__}: {exc}"' in src, \
+        "the probe's error text must carry the exception type and message"

@@ -216,12 +216,30 @@ def run_env_probe(job: dict) -> dict:
         result["triton"] = None
         result["triton_error"] = str(exc)
     try:
-        import kernelbench  # noqa: F401
+        # Import the SYMBOLS THE HARNESS ACTUALLY CALLS, not just the package. `import
+        # kernelbench` only executes the package __init__, which on the pinned 423217d does
+        # not reach `kernelbench.utils` -- and that module imports litellm at module scope.
+        # So a box missing litellm (or dotenv, tqdm, openai...) passed this probe, doctor
+        # reported "kernelbench importable" green, and the run then died at its FIRST
+        # baseline: `load_original_model_and_inputs` swallows the ImportError and returns
+        # None, so the caller fails several frames away with `TypeError: cannot unpack
+        # non-iterable NoneType object` and the traceback never names the missing module.
+        # Measured on box 2 (2026-09-07): doctor was green while `from kernelbench.eval
+        # import eval_kernel_against_ref` raised ModuleNotFoundError: litellm.
+        #
+        # Importing the real entry points makes the probe fail for the same reason a run
+        # would, and the error text names the module. Generic by construction: it checks
+        # whatever those modules transitively need, so a future dependency is covered too.
+        from kernelbench.eval import (  # noqa: F401
+            eval_kernel_against_ref,
+            load_original_model_and_inputs,
+        )
+        from kernelbench.timing import time_execution_with_cuda_event  # noqa: F401
 
         result["kernelbench_importable"] = True
     except Exception as exc:  # noqa: BLE001
         result["kernelbench_importable"] = False
-        result["kernelbench_error"] = str(exc)
+        result["kernelbench_error"] = f"{type(exc).__name__}: {exc}"
     return result
 
 
