@@ -7965,3 +7965,113 @@ def test_the_auxiliary_output_count_survives_into_the_task_cost():
         "the counter fix must still hold: a 1-op reference has nothing to fuse")
     # An absent field must read 0, not raise: older recorded results have no such key.
     assert cost_from_worker({"task_cost": {"op_count": 3}}).aux_output_ops == 0
+
+
+def test_every_file_producing_module_can_rescue_its_work():
+    """Only the REWRITER had a rescue; novelty and generator discarded finished candidates.
+
+    Measured on run-l1-42-20260908-023039, which had two 1500 s transport timeouts:
+      - rewriter-d0d09c07: wrote rewrites/rw_1.py (8106 B) at 04:30:37, aborted 04:40:54
+        -> AGENT_ARTIFACT_RESCUE, recovered. The existing fix working.
+      - novelty-f47c7374: wrote novel/nv_1.py (5907 B) at 03:40:00, aborted 03:49:15
+        -> AGENT_SESSION_RESET, no rescue. A finished candidate discarded 9m15s after it was
+           complete, costing a second full attempt (which then took another 11 min).
+
+    The gap was structural, not incidental: `rescue_from_sandbox` returns None in the base class
+    and must be overridden per module, so each new file-producing module silently starts without
+    one. Generator matters most -- it produces the SEED candidates, so a discarded call costs the
+    run its whole starting population and every family that would have descended from it.
+
+    This drives the real methods against the real sandbox layout rather than asserting that the
+    overrides exist, so it fails if a rescue returns the wrong shape or misreads the backend.
+    """
+    import tempfile
+    from pathlib import Path as _P
+
+    from kernel_optimizer.agents.modules import (
+        CandidateGeneratorAgent,
+        NoveltyGeneratorAgent,
+        StructureRewriterAgent,
+    )
+    from kernel_optimizer.agents.sandbox import Sandbox
+
+    TRITON = ("import triton\nimport triton.language as tl\n"
+              "PARAMS = {'BLOCK': 64}\n"
+              "@triton.jit\ndef k(x, y, BLOCK: tl.constexpr):\n    pass\n"
+              "class ModelNew:\n    pass\n")
+    CUDA = ("from torch.utils.cpp_extension import load_inline\n"
+            "PARAMS = {'BLOCK': 64}\n"
+            "mod = load_inline(name='m', cpp_sources='', cuda_sources='')\n"
+            "class ModelNew:\n    pass\n")
+
+    # (module, its output directory, the prompt-specified filenames)
+    cases = [
+        (CandidateGeneratorAgent, "candidates", ["cand_1.py", "cand_2.py"]),
+        (NoveltyGeneratorAgent, "novel", ["nv_1.py"]),
+        (StructureRewriterAgent, "rewrites", ["rw_1.py"]),
+    ]
+    for agent_cls, outdir, names in cases:
+        with tempfile.TemporaryDirectory() as td:
+            sb = Sandbox(root=_P(td))
+            d = _P(td) / outdir
+            d.mkdir(parents=True)
+            for i, n in enumerate(names):
+                (d / n).write_text(CUDA if i == 1 else TRITON, encoding="utf-8")
+
+            agent = agent_cls.__new__(agent_cls)  # no runtime/store needed for a pure rescue
+            got = agent.rescue_from_sandbox(sb)
+            assert got is not None, (
+                f"{agent_cls.__name__} has no rescue: a transport failure discards finished "
+                f"candidate files, which is what cost run-l1-42-20260908-023039 a whole novelty "
+                f"attempt")
+            assert len(got.candidates) == len(names), (
+                f"{agent_cls.__name__} rescued {len(got.candidates)} of {len(names)} files")
+            for c in got.candidates:
+                assert c.file.startswith(f"{outdir}/"), (
+                    f"{agent_cls.__name__} returned {c.file!r}, not a path under {outdir}/")
+                assert sb.exists(c.file), f"{c.file} does not resolve in the sandbox"
+
+            # The backend must be READ, not defaulted: structural_signature hashes it, so a
+            # mislabelled CUDA candidate collides with a Triton one and the novelty gate rejects
+            # a genuinely new structure as a duplicate.
+            if len(names) > 1 and hasattr(got.candidates[0], "backend"):
+                kinds = [c.backend for c in got.candidates]
+                assert kinds == ["triton", "cuda"], (
+                    f"{agent_cls.__name__} misread the backends: {kinds}. The second file uses "
+                    f"load_inline, so it is cuda; structural_signature hashes this field")
+
+            # A rescued candidate must be MARKED as rescued, or the lineage in the report cannot
+            # distinguish it from one the agent actually described.
+            text = " ".join(str(getattr(c, f, "")) for c in got.candidates
+                            for f in ("approach_summary", "change_summary", "difference_claim"))
+            assert "recovered" in text.lower() or "not stated" in text.lower(), (
+                f"{agent_cls.__name__} produced an unmarked rescue: a reader of the lineage "
+                f"cannot tell it from a described candidate")
+
+    # An empty sandbox must rescue NOTHING rather than an empty result: `check_output` rejects an
+    # empty candidate list, but returning one would journal a bogus RESCUE event and hide that
+    # the agent never wrote anything.
+    for agent_cls, outdir, _ in cases:
+        with tempfile.TemporaryDirectory() as td:
+            sb = Sandbox(root=_P(td))
+            (_P(td) / outdir).mkdir(parents=True)
+            agent = agent_cls.__new__(agent_cls)
+            assert agent.rescue_from_sandbox(sb) is None, (
+                f"{agent_cls.__name__} rescued something from an empty output directory")
+
+
+def test_the_backend_detector_reads_the_source_rather_than_guessing():
+    """`backend` feeds structural_signature (families.py:79-91), so a rescue cannot default it.
+
+    Getting it wrong is not cosmetic: a CUDA candidate labelled triton hashes into the wrong
+    signature, and `accept_novel_seed` then rejects a genuinely different structure as a
+    `duplicate_signature` -- silently costing the run a family.
+    """
+    from kernel_optimizer.agents.modules import _detect_backend
+
+    assert _detect_backend("mod = load_inline(name='m', cuda_sources='...')") == "cuda"
+    assert _detect_backend("from torch.utils import cpp_extension") == "cuda"
+    assert _detect_backend("import triton\n@triton.jit\ndef k(): pass") == "triton"
+    # Neither marker: the documented default, and harmless because check_output rejects a file
+    # with no kernel whatever this returns.
+    assert _detect_backend("class ModelNew:\n    pass\n") == "triton"

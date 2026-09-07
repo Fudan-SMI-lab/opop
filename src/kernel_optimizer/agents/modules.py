@@ -13,7 +13,9 @@ from kernel_optimizer.agents.sandbox import Sandbox
 from kernel_optimizer.models.core import DeviceLimits, TaskSpec
 from kernel_optimizer.models.reports import (
     BottleneckReport,
+    GeneratedCandidate,
     GenerationResult,
+    NoveltyCandidate,
     NoveltyResult,
     ParameterizationResult,
     RepairResult,
@@ -358,6 +360,38 @@ def _files_exist_check(files: list[str], sb: Sandbox) -> str | None:
     return None
 
 
+def _detect_backend(source: str) -> str:
+    """Which backend a candidate file uses, read from the source rather than declared.
+
+    Needed by the sandbox rescues: when a transport failure kills a call, the agent's JSON --
+    which is where `backend` normally comes from -- never arrives, but the file it wrote is on
+    disk. And `backend` is NOT narration that can be left blank: `structural_signature` hashes
+    it (families.py:79-91), so guessing wrong would make a CUDA candidate collide with a Triton
+    one or vice versa, and `accept_novel_seed` would reject a genuinely new structure as a
+    duplicate.
+
+    The markers are unambiguous in the direction that matters: `load_inline`/`cpp_extension` is
+    the only way a candidate compiles CUDA C here, and `@triton.jit`/`tl.` is the only way it
+    writes a Triton kernel. Defaults to "triton" for a file with neither, matching both prompts'
+    stated default and the schema's own default -- a rescued file that has no kernel at all is
+    rejected by `check_output` regardless of what this returns, so the default cannot smuggle
+    anything past the gate.
+    """
+    if "load_inline" in source or "cpp_extension" in source or "CUDAExtension" in source:
+        return "cuda"
+    return "triton"
+
+
+def _rescued_files(sb: Sandbox, rel_dir: str) -> list[str]:
+    """Output files an agent wrote before a transport failure, or []. Shared by the rescues.
+
+    A single place so a new producing module gets the same behaviour by calling it rather than
+    by reimplementing the walk -- the defect this addresses was precisely that only ONE of the
+    three file-producing modules had a rescue.
+    """
+    return sb.list_outputs(rel_dir)
+
+
 def _triton_lint_check(files: list[str], sb: Sandbox) -> str | None:
     """Improvement C: reject certain Triton compile-failures before the GPU sees
     them, feeding the specific problem back into the agent's own retry loop. A
@@ -486,6 +520,35 @@ When done, answer with JSON:
     def soft_check(self, output: GenerationResult, sb: Sandbox) -> list[str]:
         triton_files = [c.file for c in output.candidates if c.backend == "triton"]
         return _triton_lint_warnings(triton_files, sb)
+
+    def rescue_from_sandbox(self, sb: Sandbox) -> GenerationResult | None:
+        """Rebuild the result from `candidates/*.py` the agent already wrote.
+
+        The same rescue the rewriter has, in the module where a loss is most expensive: these are
+        the SEED candidates, so a discarded generator call costs the run its entire starting
+        population for that attempt, and every family that would have descended from it.
+
+        `approach_summary` and `structural_axes` are narration -- nothing gates on them (they are
+        recorded for the report and the analyst's context). `backend` is read from the source,
+        because `structural_signature` hashes it. Whatever this returns still passes through
+        `check_output`, so a half-written file is rejected exactly as it would be on the normal
+        path.
+        """
+        files = _rescued_files(sb, "candidates")
+        if not files:
+            return None
+        out = []
+        for f in files:
+            try:
+                source = sb.read_output(f)
+            except OSError:
+                continue
+            out.append(GeneratedCandidate(
+                file=f, backend=_detect_backend(source),
+                approach_summary="[recovered from sandbox after a transport failure; the "
+                                 "agent's own summary never arrived]",
+                structural_axes=[]))
+        return GenerationResult(candidates=out) if out else None
 
 
 # --- 2. parameterizer -----------------------------------------------------------
@@ -1048,6 +1111,37 @@ Answer with JSON:
     def soft_check(self, output: NoveltyResult, sb: Sandbox) -> list[str]:
         triton_files = [c.file for c in output.candidates if c.backend == "triton"]
         return _triton_lint_warnings(triton_files, sb)
+
+    def rescue_from_sandbox(self, sb: Sandbox) -> NoveltyResult | None:
+        """Rebuild the result from `novel/*.py` the agent already wrote.
+
+        Same loss the rewriter's rescue addresses, in the module that had no rescue. Measured on
+        run-l1-42-20260908-023039: a novelty call started 03:24:14, wrote novel/nv_1.py (5907
+        bytes) at 03:40:00, and the read timeout killed it at 03:49:15 -- a finished candidate
+        discarded 9m15s after it was complete. That call then cost a second full attempt.
+
+        `approach_summary` and `difference_claim` are narration: the novelty GATE is
+        `structural_signature(source, backend)` plus a difflib similarity against every anchor
+        (families.py:181-205), both computed from the file, so a rescued candidate faces exactly
+        the same test as a described one. `backend` is not narration -- the signature hashes it --
+        so it is read from the source instead of defaulted (see `_detect_backend`).
+        """
+        files = _rescued_files(sb, "novel")
+        if not files:
+            return None
+        out = []
+        for f in files:
+            try:
+                source = sb.read_output(f)
+            except OSError:
+                continue
+            out.append(NoveltyCandidate(
+                file=f, backend=_detect_backend(source),
+                approach_summary="[recovered from sandbox after a transport failure; the "
+                                 "agent's own summary never arrived]",
+                difference_claim="[not stated: recovered from the sandbox. The structural "
+                                 "signature and similarity gate still applied.]"))
+        return NoveltyResult(candidates=out) if out else None
 
 
 # --- 6. repair ------------------------------------------------------------------------
