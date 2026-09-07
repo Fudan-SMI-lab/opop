@@ -5050,3 +5050,77 @@ def test_the_agent_timeout_is_priced_as_a_hang_not_a_work_budget():
     assert hangs * 1500 / 3600 == 7.5
     assert 1500 / slowest_successful_call_s > 1.28   # ~29% headroom
     assert 1200 / slowest_successful_call_s < 1.03   # only ~2.8% at 1200
+
+
+def test_the_wall_clock_is_enforced_inside_a_round_not_only_between_rounds(tmp_path):
+    """`wall_clock_hours` must stop work mid-round, or it is not a budget.
+
+    The clock used to be tested ONLY at the top of the outer loop. Measured on
+    run-l2-37-20260907-020707, consecutive global checks were 2.42, 2.35, 4.23 and 0.64 h
+    apart: that run passed its check at 11.26 h of a 12 h budget and was still working at
+    13.93 h -- 16% over, with no event marking it, because a round in flight runs to
+    completion whatever the clock says.
+
+    A round is not small. For each active family it spends a rewriter call, then for each
+    produced candidate a parameterize (plus up to `repair_attempts` repairs) and up to
+    `trials_per_space` GPU trials. So both loops need the check, and this drives BOTH real
+    methods rather than a copy of them -- a test that re-implements the loop it is testing
+    proves nothing about the shipped code.
+    """
+    from pathlib import Path
+
+    from kernel_optimizer.config import BudgetConfig
+
+    b = BudgetConfig(wall_clock_hours=12.0)
+    fams = [_live_family(f"fam-{i}", f"c{i}") for i in range(3)]
+    orch, fm = _loop_d_orchestrator(tmp_path, families=fams, budgets=b)
+
+    # --- 1. _rewrite_round stops at the first family boundary once the budget is gone.
+    orch._elapsed_hours = lambda: 13.93          # the real overrun
+    orch.runs = {}                                # no rewrite parents: the loop would
+    progressed = orch._rewrite_round(1)           # otherwise just bump rounds_used
+    kinds = [e.type for e in orch.store.replay().events]
+    assert "WALL_CLOCK_REACHED" in kinds, \
+        "a round in flight must stop when the wall clock is spent"
+    assert progressed is False
+    # It must stop BEFORE evaluating any family, not after all of them.
+    hit = [e for e in orch.store.replay().events if e.type == "WALL_CLOCK_REACHED"][0]
+    assert hit.payload["stopped_before_family"] in {f[0].family_id for f in fams}
+    assert hit.payload["elapsed_hours"] == 13.93
+    assert hit.payload["budget_hours"] == 12.0
+
+    # --- 2. Under budget, the same call proceeds (the check must not fire unconditionally).
+    orch2, _ = _loop_d_orchestrator(tmp_path / "b", families=fams, budgets=b)
+    orch2._elapsed_hours = lambda: 11.26          # the value that legitimately passed
+    orch2.runs = {}
+    orch2._rewrite_round(1)
+    assert "WALL_CLOCK_REACHED" not in [e.type for e in orch2.store.replay().events], \
+        "11.26 h of a 12 h budget must not be stopped"
+
+    # --- 3. _pipeline_batch stops between candidates, and always finishes the first one.
+    orch3, _ = _loop_d_orchestrator(tmp_path / "c", families=fams, budgets=b)
+    orch3._elapsed_hours = lambda: 13.93
+    done: list[str] = []
+    orch3._candidate_pipeline = done.append
+    orch3._prefetch_parameterization = lambda _cid: None
+    orch3._pipeline_batch(["ca", "cb", "cc", "cd"])
+    assert done == ["ca"], \
+        "the batch must finish the candidate it started and skip the rest, got %r" % done
+    ev = [e for e in orch3.store.replay().events if e.type == "WALL_CLOCK_REACHED"][0]
+    assert ev.payload["pipelined"] == 1 and ev.payload["skipped"] == 3
+
+    # A batch under budget pipelines everything.
+    orch4, _ = _loop_d_orchestrator(tmp_path / "d", families=fams, budgets=b)
+    orch4._elapsed_hours = lambda: 1.0
+    done4: list[str] = []
+    orch4._candidate_pipeline = done4.append
+    orch4._prefetch_parameterization = lambda _cid: None
+    orch4._pipeline_batch(["ca", "cb", "cc"])
+    assert done4 == ["ca", "cb", "cc"]
+
+    # --- 4. Hitting the budget must not hand control to Loop D, the more expensive branch.
+    src = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
+    loop = src[src.index("progressed = self._rewrite_round(round_no)"):
+               src.index("added = self._novelty_round(round_no)")]
+    assert "wall_clock_hours" in loop, \
+        "a budget-exhausted rewrite round must not fall through into a novelty round"

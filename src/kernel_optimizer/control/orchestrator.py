@@ -485,7 +485,20 @@ class Orchestrator:
     # ------------------------------------------------------------------ helpers
 
     def _elapsed_hours(self) -> float:
-        return (time.monotonic() - self.t0) / 3600.0
+        """Hours since the run started, or 0.0 if the clock was never started.
+
+        `t0` is set in `__init__`, so a real run always has it. The fallback exists because
+        the wall-clock budget is now checked inside `_rewrite_round` and `_pipeline_batch`,
+        which are reachable from partially-constructed orchestrators (`Orchestrator.__new__`
+        in tests, and any future call path that does not go through `run()`). Raising
+        AttributeError there would turn "the budget check has nothing to compare against"
+        into a crash mid-round; 0.0 means "no time has passed", so the budget cannot fire and
+        the caller behaves exactly as it did before the check existed.
+        """
+        t0 = getattr(self, "t0", None)
+        if t0 is None:
+            return 0.0
+        return (time.monotonic() - t0) / 3600.0
 
     def _step_done(self, key: str) -> None:
         self.store.append("STEP_DONE", {"step_key": key})
@@ -535,6 +548,14 @@ class Orchestrator:
             round_no += 1
             progressed = self._rewrite_round(round_no)
             if not progressed:
+                # Do not start a novelty round once the wall clock is spent. `_rewrite_round`
+                # returns False both when there was nothing to rewrite AND when it stopped
+                # itself at the budget, and Loop D is the more expensive branch of the two
+                # (a novelty call plus a full pipeline for any accepted family). Without this
+                # the mid-round budget check would hand control straight to the loop most
+                # likely to overrun it again. The outer check below then ends the run.
+                if self._elapsed_hours() >= self.cfg.budgets.wall_clock_hours:
+                    continue
                 added = self._novelty_round(round_no)
                 if not added:
                     # D2: a novelty miss is NOT evidence that the rewrite budget is spent.
@@ -1451,6 +1472,30 @@ class Orchestrator:
         # below cannot reach them and nothing else will ever end them. See the helper.
         self._freeze_unrewritable_families()
         for family in self.deps.families.active_families():
+            # The wall clock is otherwise tested ONLY at the top of the outer loop, so a
+            # round already under way runs to completion however far past the budget it
+            # goes -- and a round is not small: measured on run-l2-37-20260907-020707 the
+            # gaps between consecutive global checks were 2.42, 2.35, 4.23 and 0.64 h. That
+            # run passed its check at 11.26 h of a 12 h budget and was still working at
+            # 13.93 h, 16% over, because each family in the round spends a rewriter call, a
+            # parameterize (plus repairs), and up to trials_per_space GPU trials.
+            #
+            # Checked per family rather than per round because that is the unit of work: it
+            # stops at a boundary where nothing is half-done, and the cost of the check is a
+            # clock read. `wall_clock_hours` is the run's hard backstop -- the one budget a
+            # user sets expecting it to hold -- so overrunning it by hours makes every
+            # per-run cost figure in the paper an underestimate of what the harness will do.
+            if self._elapsed_hours() >= self.cfg.budgets.wall_clock_hours:
+                self.store.append("WALL_CLOCK_REACHED", {
+                    "elapsed_hours": round(self._elapsed_hours(), 3),
+                    "budget_hours": self.cfg.budgets.wall_clock_hours,
+                    "round": round_no,
+                    "stopped_before_family": family.family_id,
+                    "detail": "wall clock reached mid-round; ending this round here rather "
+                              "than starting another family's rewrite. The outer loop's own "
+                              "check then freezes the run.",
+                })
+                break
             verdict = self.deps.convergence.family_verdict(family)
             self.store.append("CONVERGENCE_DECIDED", {"decision": verdict.model_dump(),
                                                       "family_id": family.family_id})
@@ -1548,8 +1593,31 @@ class Orchestrator:
 
     def _pipeline_batch(self, cand_ids: list[str]) -> None:
         """Run the per-candidate pipeline over a batch, prefetching the next one's
-        parameterizer call while the current one occupies the GPU."""
+        parameterizer call while the current one occupies the GPU.
+
+        Stops early once the wall clock is spent. This is where a round's cost actually
+        lands -- a parameterize (plus up to `repair_attempts` repairs) and up to
+        `trials_per_space` GPU trials for EVERY candidate in the batch -- so bounding the
+        rewrite loop without bounding this leaves a round able to run hours past the budget
+        with four candidates queued behind it.
+
+        Deliberately NOT applied to the seed batch's first candidate: a run whose budget is
+        already gone before any candidate is pipelined should still produce one result rather
+        than an empty report. The check is per candidate, so the batch always completes the
+        one it has started.
+        """
         for i, cand_id in enumerate(cand_ids):
+            if i and self._elapsed_hours() >= self.cfg.budgets.wall_clock_hours:
+                self.store.append("WALL_CLOCK_REACHED", {
+                    "elapsed_hours": round(self._elapsed_hours(), 3),
+                    "budget_hours": self.cfg.budgets.wall_clock_hours,
+                    "pipelined": i,
+                    "skipped": len(cand_ids) - i,
+                    "detail": "wall clock reached; the remaining candidates in this batch "
+                              "were not tuned. They stay registered, so a resume with a "
+                              "larger budget picks them up.",
+                })
+                return
             for nxt in cand_ids[i + 1:][: self.cfg.budgets.prefetch_parameterization]:
                 self._prefetch_parameterization(nxt)
             self._candidate_pipeline(cand_id)
