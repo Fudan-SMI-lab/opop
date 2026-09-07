@@ -228,3 +228,32 @@ faster candidates. It is paying the traffic the 68.12x figure measured.
 
 Worth keeping for the paper: this is the task-cost measurement doing predictive work, not just
 describing a result after the fact.
+
+## CORRECTION: the L3:43 K-expansion causality claim was half wrong
+
+I reported that on `cand-6cf42e7d` all three expanded knobs took their newly-reachable extremes,
+making the 6.0% gain causally attributable to the expansion. Checking the published space versions
+against each other shows that is false for that candidate:
+
+    cand-6cf42e7d  STATS_BLOCK_M  [16,32,64,128] -> [...,256,512]   NEW: 256, 512
+                   APPLY_BLOCK_M  [16,32,64,128] -> [...,256,512]   NEW: 256, 512
+                   GEMM_GROUP_M   not widened at all
+
+The winner used STATS_BLOCK_M=128 and APPLY_BLOCK_M=128 -- both already in the ORIGINAL space -- and
+GEMM_GROUP_M=1, on a knob the expansion did not touch. So its 6.0% came from re-tuning within the
+existing space, not from any new value. I had inferred "new" from the values being at a boundary,
+without reading what the original range actually was.
+
+The other expansion does hold up:
+
+    cand-d71b18cd  QK_BLOCK_M  [16,32,64,128] -> [...,256]   NEW: 256
+                   winner uses QK_BLOCK_M = 256
+
+That one's 4.2% is attributable, because the winning configuration uses a value that did not exist
+before the expansion.
+
+**The general lesson, which is the reusable part:** "best improved after an expansion" is not
+evidence the expansion caused it -- re-tuning alone moves the number, and here it moved it 6.0%.
+The check that distinguishes them is diffing the space VERSIONS and confirming the winner uses a
+value from the added set. Any report of K's effect should carry that check, not just the delta.
+Two of two expansions improved the best; one of two is causally attributable.
