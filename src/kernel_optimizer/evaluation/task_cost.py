@@ -52,6 +52,15 @@ class TaskCost(BaseModel):
     reference_bytes: int = 0
     op_count: int = 0
 
+    # How many dispatched ops returned auxiliary tensors alongside their result, whose bytes are
+    # deliberately NOT counted as task traffic (max_pool2d_with_indices -> values, indices).
+    # Carried because a reader comparing `reference_bytes` against a hand calculation otherwise
+    # has no way to know an exclusion happened, and the exclusion looks like a defect. The
+    # worker has always reported it; an earlier version of `cost_from_worker` dropped it on the
+    # way in, so it read as None in the event log while the job output held 1 (observed on
+    # run-l1-42-20260908-023039).
+    aux_output_ops: int = 0
+
     # Populated when a count could not be taken, so a missing number is never mistaken for a
     # measured zero -- `flop_count = 0` is a legitimate result for maxpool and a failure result
     # for a matmul, and only this field distinguishes them.
@@ -124,5 +133,6 @@ def cost_from_worker(result: dict) -> TaskCost:
         compulsory_bytes=int(cost.get("compulsory_bytes", 0) or 0),
         reference_bytes=int(cost.get("reference_bytes", 0) or 0),
         op_count=int(cost.get("op_count", 0) or 0),
+        aux_output_ops=int(cost.get("aux_output_ops", 0) or 0),
         notes=list(cost.get("notes", []) or []),
     )

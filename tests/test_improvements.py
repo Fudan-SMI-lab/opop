@@ -7940,3 +7940,28 @@ def test_reporting_ranks_by_the_statistic_that_decided_the_run():
         f"the report published {out['best']['tuned_ms']} -- the mean-ranked winner. The "
         f"orchestrator selects on robust_ms, so a report must too or it contradicts the run")
     assert out["families"]["fam-1"]["best_ms"] == 5.0
+
+
+def test_the_auxiliary_output_count_survives_into_the_task_cost():
+    """The worker reported aux_output_ops 1 and cost_from_worker dropped it, so the event log
+    read None while the job output on disk held 1 (run-l1-42-20260908-023039).
+
+    Only the count was lost, not the explanation -- the note survives, so nothing was misleading.
+    But the count is what lets a reader reconcile reference_bytes against a hand calculation
+    without reading prose, and a silently-dropped field is how a measured 1 becomes
+    indistinguishable from an unmeasured 0.
+    """
+    from kernel_optimizer.evaluation.task_cost import cost_from_worker
+
+    # Verbatim from jobs/task-cost-ddbca59e.out.json of that run.
+    cost = cost_from_worker({"task_cost": {
+        "flop_count": 0, "compulsory_bytes": 4286586880, "reference_bytes": 4286586880,
+        "op_count": 1, "aux_output_ops": 1,
+        "notes": ["1 dispatched op(s) returned auxiliary tensors alongside their result"],
+    }})
+    assert cost.aux_output_ops == 1, (
+        "the worker measured 1 auxiliary-output op and the count did not survive the boundary")
+    assert abs(cost.fusion_headroom - 1.0) < 1e-9, (
+        "the counter fix must still hold: a 1-op reference has nothing to fuse")
+    # An absent field must read 0, not raise: older recorded results have no such key.
+    assert cost_from_worker({"task_cost": {"op_count": 3}}).aux_output_ops == 0
