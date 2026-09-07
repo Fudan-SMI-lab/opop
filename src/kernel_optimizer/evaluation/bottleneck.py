@@ -169,6 +169,36 @@ def classify(
     }}
     unmeasured = _unmeasured_signals()
 
+    # Tier 1 facts about the COMPILED KERNEL, recorded before any verdict can return.
+    #
+    # These describe the binary, not the bottleneck, so they are true regardless of which branch
+    # below fires -- and every branch's reader wants them. They were previously written only
+    # inside the `near_limit` block near the end, which four of the five verdicts return before
+    # reaching (`overhead_floor`, `launch_bound`, `memory_bound`, `compute_bound`). The effect was
+    # an inconsistent facts section: `uses_tensor_cores` appeared (recorded further down but still
+    # before those returns) while the equally-cheap, equally-Tier-1 occupancy did not.
+    #
+    # Observed on run-l1-42-20260908-023039: verdict `memory_bound` at 94.7% of the measured DRAM
+    # ceiling, whose advice reads "increase reuse (larger tiles, better blocking)" -- addressed to
+    # a kernel whose profile held `occupancy 0.3333, limiter blocks_per_sm` and was therefore
+    # already at the per-SM block cap. Tier 1 had measured it; the classifier dropped it.
+    #
+    # Recording the fact is deliberately NOT the same as making it a lever: occupancy stays out of
+    # `near_limit` for a saturated kernel. That separation is enforced by the early returns above,
+    # not by the `near_limit` gate's own fraction conditions -- swept across both fractions, no
+    # input reaches that gate with either fraction above its saturation line, because
+    # `memory_bound`/`compute_bound` already returned. Those conditions are therefore dead code
+    # kept as documentation of intent, and removing them changes no verdict. Facts here; the
+    # ranking of levers stays where it was.
+    occ_frac = (occupancy or {}).get("occupancy")
+    if occ_frac is not None:
+        ev["occupancy"] = round(float(occ_frac), 4)
+        ev["occupancy_limiter"] = (occupancy or {}).get("limiter")
+    if n_spills:
+        ev["n_spills"] = n_spills
+    if n_regs:
+        ev["n_regs"] = n_regs
+
     if gpu_ms <= 0:
         return BottleneckVerdict(kind="unknown", evidence=ev, unmeasured=unmeasured,
                                  suggests="no valid timing; nothing can be concluded")
@@ -305,15 +335,18 @@ def classify(
     if (shared_bytes and max_shared_bytes
             and shared_bytes >= max_shared_bytes * RESOURCE_NEAR_LIMIT_FRAC):
         near_limit.append(f"shared={shared_bytes}/{max_shared_bytes}")
-    # Occupancy is the Tier 1 addition here, and on Triton it is the signal that actually fires:
-    # measured on box 2, Triton's allocator caps registers and loses occupancy rather than
-    # spilling (218 regs, 0 spills, 16.7% occupancy), so a spills-only test misses the case
-    # entirely. The `limiter` is what makes it actionable.
-    occ_frac = (occupancy or {}).get("occupancy")
+    # Occupancy as a LEVER, which is separate from occupancy as a fact -- the fact is already in
+    # `ev`, recorded at the top so every verdict carries it. On Triton this is the signal that
+    # actually fires: measured on box 2, Triton's allocator caps registers and loses occupancy
+    # rather than spilling (218 regs, 0 spills, 16.7% occupancy), so a spills-only test misses the
+    # case entirely. The `limiter` is what makes it actionable.
+    #
+    # Reached only by the verdicts that fall through to here, which is what keeps a saturated
+    # kernel out: `memory_bound`/`compute_bound` have already returned. The gate below repeats the
+    # same requirement in its conditions, which measurement shows to be redundant -- no input
+    # reaches it with either fraction above a saturation line -- so those conditions document the
+    # intent rather than enforce it.
     limiter = (occupancy or {}).get("limiter")
-    if occ_frac is not None:
-        ev["occupancy"] = round(float(occ_frac), 4)
-        ev["occupancy_limiter"] = limiter
     if occ_frac is not None and float(occ_frac) < LOW_OCCUPANCY_FRAC:
         near_limit.append(f"occupancy={float(occ_frac)*100:.0f}% (limited by {limiter})")
 

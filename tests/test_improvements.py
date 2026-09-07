@@ -8075,3 +8075,153 @@ def test_the_backend_detector_reads_the_source_rather_than_guessing():
     # Neither marker: the documented default, and harmless because check_output rejects a file
     # with no kernel whatever this returns.
     assert _detect_backend("class ModelNew:\n    pass\n") == "triton"
+
+
+def test_occupancy_is_recorded_in_every_verdict_but_only_a_lever_when_it_can_be():
+    """Deferred from the L1:42 revalidation, then taken: the fact was dropped by four verdicts.
+
+    `classify()` wrote ev["occupancy"] only inside the `near_limit` block near the end, which four
+    of the five verdicts return before reaching (overhead_floor, launch_bound, memory_bound,
+    compute_bound). So the facts section was inconsistent -- `uses_tensor_cores` appeared while the
+    equally-cheap, equally-Tier-1 occupancy did not.
+
+    Observed on run-l1-42-20260908-023039 with the REAL numbers used below: verdict `memory_bound`
+    at 94.7% of the measured DRAM ceiling, advising "increase reuse (larger tiles, better
+    blocking)" to a kernel whose profile held occupancy 0.3333 limited by blocks_per_sm -- already
+    at the per-SM block cap. Tier 1 measured it; the classifier discarded it.
+
+    The test asserts BOTH halves, because the careless fix passes the first and fails the second:
+    recording the fact must not promote occupancy to a lever for a saturated kernel, where
+    "residency is your problem" is the wrong instruction and bytes are the wall.
+    """
+    from kernel_optimizer.evaluation.bottleneck import DevicePeaks, classify
+    from kernel_optimizer.evaluation.calibration import Thresholds
+
+    # Box 2 as measured, and the thresholds derived on it.
+    peaks = DevicePeaks(dram_tbs=0.9102221900268849, fp32_tflops=54.948151226599485,
+                        tf32_tflops=88.88)
+    th = Thresholds(dram_saturated_frac=0.8441, compute_saturated_frac=0.8047,
+                    idle_frac=0.1674, launch_bound_cpu_ratio=0.8807)
+    OCC = {"occupancy": 0.3333, "active_warps": 16, "max_warps_per_sm": 48,
+           "blocks_per_sm": 16, "limiter": "blocks_per_sm"}
+    SASS = {"instructions": 312, "tensor_core": 0, "global_load": 8, "global_store": 8,
+            "spill_load": 0, "spill_store": 0, "shared_load": 0, "shared_store": 0,
+            "vec_64": 0, "vec_128": 0, "barrier": 0}
+
+    # 1. memory_bound, the exact L1:42 case: 4286586880 bytes in 4.9715 ms = 94.7% of ceiling.
+    mem = classify(gpu_ms=4.971519947052002, cpu_issue_ms=None, flop_count=0,
+                   byte_count=4286586880, peaks=peaks, n_regs=64, n_spills=0, shared_bytes=0,
+                   max_regs_per_thread=255, max_shared_bytes=101376,
+                   empty_launch_floor_ms=0.0174, thresholds=th, sass=SASS, occupancy=OCC)
+    assert mem.kind == "memory_bound", f"the fixture no longer reproduces the run: {mem.kind}"
+    assert mem.evidence.get("occupancy") == 0.3333, (
+        "a memory_bound verdict still drops the occupancy fact -- the defect this fixes. Its own "
+        "advice recommends larger tiles to a kernel already at the per-SM block cap")
+    assert mem.evidence.get("occupancy_limiter") == "blocks_per_sm"
+    # ... and the verdict itself must be unchanged: recording a fact must not re-route the
+    # classification. A `memory_bound` kernel returns before the lever block is reached, so
+    # `at_limit` cannot appear here -- if it ever does, occupancy has been promoted to a lever for
+    # a saturated kernel, which would tell the agent to chase residency when bytes are the wall.
+    #
+    # NOTE this assertion is weak BY CONSTRUCTION and that is worth stating: `memory_bound`
+    # returns early, so no edit to the lever block can make it fire. An earlier version of this
+    # test claimed it as the guard against the careless fix, and it was vacuous -- verified by
+    # applying that fix (dropping the saturation conditions from the `near_limit` guard) and
+    # watching the test still pass. The real protection is
+    # `test_the_lever_block_still_requires_an_unsaturated_kernel` below, which exercises the path
+    # the guard actually governs.
+    assert "at_limit" not in mem.evidence, (
+        "a memory_bound verdict grew an at_limit lever list; the fact-recording change was not "
+        "supposed to alter any verdict's routing")
+
+    # 2. launch_bound and 3. overhead_floor: the two earliest returns, which never saw it either.
+    launch = classify(gpu_ms=1.0, cpu_issue_ms=0.95, flop_count=0, byte_count=1000,
+                      peaks=peaks, thresholds=th, sass=SASS, occupancy=OCC,
+                      empty_launch_floor_ms=0.0174)
+    assert launch.kind == "launch_bound", launch.kind
+    assert launch.evidence.get("occupancy") == 0.3333, "launch_bound drops the occupancy fact"
+
+    floor = classify(gpu_ms=0.018, cpu_issue_ms=None, flop_count=0, byte_count=1000,
+                     peaks=peaks, thresholds=th, sass=SASS, occupancy=OCC,
+                     empty_launch_floor_ms=0.0174)
+    assert floor.kind == "overhead_floor", floor.kind
+    assert floor.evidence.get("occupancy") == 0.3333, "overhead_floor drops the occupancy fact"
+
+    # 4. An UNSATURATED kernel with low occupancy: here it SHOULD be a lever, and that behaviour
+    # must be unchanged by moving the fact out of the block.
+    slow = classify(gpu_ms=50.0, cpu_issue_ms=0.1, flop_count=0, byte_count=1000,
+                    peaks=peaks, n_regs=64, n_spills=0, shared_bytes=0,
+                    max_regs_per_thread=255, max_shared_bytes=101376,
+                    empty_launch_floor_ms=0.0174, thresholds=th, sass=SASS, occupancy=OCC)
+    assert slow.evidence.get("occupancy") == 0.3333
+    assert "at_limit" in slow.evidence, (
+        "an unsaturated kernel at 33% occupancy must still surface occupancy as a lever; moving "
+        "the fact out of the near_limit block was not supposed to disable the lever")
+    assert any("occupancy" in s for s in slow.evidence["at_limit"])
+
+    # And the spill/register facts travel with it, for the same reason.
+    spilling = classify(gpu_ms=50.0, cpu_issue_ms=None, flop_count=0, byte_count=1000,
+                       peaks=peaks, n_regs=255, n_spills=88, shared_bytes=0,
+                       max_regs_per_thread=255, max_shared_bytes=101376, thresholds=th,
+                       sass=dict(SASS, spill_store=81, spill_load=80), occupancy=OCC)
+    assert spilling.evidence.get("n_spills") == 88, "the spill count is not recorded as a fact"
+    assert spilling.evidence.get("n_regs") == 255
+
+    # Absent occupancy must leave no key rather than a null: an unmeasured signal and a measured
+    # zero must stay distinguishable, which is the same rule the statics notes exist for.
+    none_occ = classify(gpu_ms=4.9715, cpu_issue_ms=None, flop_count=0, byte_count=4286586880,
+                        peaks=peaks, thresholds=th, sass=SASS, occupancy=None)
+    assert "occupancy" not in none_occ.evidence, (
+        "an unmeasured occupancy was recorded anyway; absent and zero must not look alike")
+
+
+def test_the_lever_block_still_requires_an_unsaturated_kernel():
+    """A saturated kernel with low occupancy must stay `memory_bound`, not become
+    `resource_limited`.
+
+    This pins the BOUNDARY behaviour, which is the part a future edit can plausibly break: the
+    saturation returns fire before the lever block, so 84.41% of the measured DRAM ceiling is where
+    the verdict flips from "you are at the ceiling" to "your tile caps residency". Both readings are
+    defensible; what matters is that the line stays where the calibration puts it.
+
+    A correction worth recording, because it reverses something I asserted while making this
+    change: I claimed the `near_limit` gate's own `frac_bw < dram_saturated_frac and frac_fl <
+    compute_saturated_frac` conditions were what stopped a saturated kernel from being called
+    `resource_limited`, and that dropping them would tell an agent to chase residency at 94.7% of
+    bandwidth. That is false. Removing those conditions changes NOTHING -- swept across both
+    fractions, no input reaches the lever block with either fraction above its saturation line,
+    because the early returns already took every such case. The conditions are dead code, kept
+    only as documentation of intent. So there is no "careless variant" of the occupancy fix for a
+    test to catch, and any test claiming to catch one is vacuous.
+    """
+    from kernel_optimizer.evaluation.bottleneck import DevicePeaks, classify
+    from kernel_optimizer.evaluation.calibration import Thresholds
+
+    peaks = DevicePeaks(dram_tbs=0.9102221900268849, fp32_tflops=54.948151226599485,
+                        tf32_tflops=88.88)
+    th = Thresholds(dram_saturated_frac=0.8441, compute_saturated_frac=0.8047,
+                    idle_frac=0.1674, launch_bound_cpu_ratio=0.8807)
+    OCC = {"occupancy": 0.3333, "limiter": "blocks_per_sm"}
+    SASS = {"instructions": 312, "tensor_core": 0}
+    B = 4286586880
+
+    def at_pct_of_dram(pct):
+        ms = B / (pct * peaks.dram_tbs * 1e12) * 1e3
+        return classify(gpu_ms=ms, cpu_issue_ms=None, flop_count=0, byte_count=B, peaks=peaks,
+                        n_regs=64, n_spills=0, shared_bytes=0, max_regs_per_thread=255,
+                        max_shared_bytes=101376, thresholds=th, sass=SASS, occupancy=OCC)
+
+    # Above the saturation line: the ceiling is the answer, and low occupancy must NOT redirect it.
+    for pct in (0.947, 0.90, 0.85):
+        v = at_pct_of_dram(pct)
+        assert v.kind == "memory_bound", (
+            f"at {pct*100:.0f}% of the measured DRAM ceiling the verdict is {v.kind!r}, not "
+            f"memory_bound. A saturated kernel with 33% occupancy is not resource_limited -- it is "
+            f"done, and telling it to shrink its tile sends the agent after the wrong thing")
+        assert "at_limit" not in v.evidence
+
+    # Below the line, with a resource genuinely near its cap: the lever is legitimate here, and
+    # this half must keep working -- moving the FACT out of the block was not meant to disable it.
+    v = at_pct_of_dram(0.30)
+    assert v.kind == "resource_limited", f"the lever path stopped firing entirely: {v.kind}"
+    assert any("occupancy" in s for s in v.evidence.get("at_limit", []))

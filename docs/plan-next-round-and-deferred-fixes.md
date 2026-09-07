@@ -133,7 +133,7 @@ still untested.
 
 ---
 
-## Deferred: occupancy is absent from the evidence of a SATURATED verdict
+## DONE (2026-09-08): occupancy is absent from the evidence of a SATURATED verdict
 
 Found on `run-l1-42-20260908-023039` (the L1:42 revalidation), by comparing what
 `BOTTLENECK_CLASSIFIED` recorded against what the trial profile held.
@@ -165,3 +165,27 @@ at 94.7% of ceiling is not "limited by occupancy", and promoting it to a lever w
 agent to chase residency when the bytes are the wall. Record the fact; do not re-rank the advice.
 Verify by rendering the L1:42 numbers through `_bottleneck_doc` and checking that the verdict
 prose is unchanged while the facts section gains the line.
+
+**Taken on 2026-09-08**, while L3:43 was running (so no validation was disturbed). The Tier 1 facts
+-- occupancy, its limiter, spills, registers -- are now recorded immediately after `ev` is
+initialized, before any verdict can return, so all five verdicts carry them. The lever logic is
+untouched.
+
+It was FOUR verdicts affected, not two: `overhead_floor` and `launch_bound` return even earlier
+than the two saturation branches.
+
+**One claim in the note above was wrong and is corrected here.** It said the careless version of
+this fix -- dropping the `near_limit` gate's `frac_bw < dram_saturated_frac and frac_fl <
+compute_saturated_frac` conditions -- would promote occupancy to a lever for a saturated kernel and
+tell an agent to chase residency at 94.7% of bandwidth. That is false. Those conditions are DEAD
+CODE: swept across both fractions, no input reaches the gate with either fraction above its
+saturation line, because the saturation returns already took every such case. Removing them changes
+no verdict. Found by applying the "careless" edit and watching the test that claimed to catch it
+pass anyway -- the test was vacuous, and the assertion has been replaced with one that pins the
+84.41% boundary instead (`test_the_lever_block_still_requires_an_unsaturated_kernel`).
+
+A separate observation, NOT acted on: at 84% of the measured DRAM ceiling -- just below the
+saturation line -- a kernel with 33% occupancy is classified `resource_limited` and advised to
+shrink its tile. That may be the wrong advice that close to a bandwidth ceiling, but it is
+pre-existing behaviour governed by the calibrated threshold, not by this change, and moving the line
+is a calibration question rather than a code one.
