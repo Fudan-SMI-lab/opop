@@ -377,3 +377,10 @@ sandboxes/rewriter-18766c25/rewrites/rw_1.py   7152 字节,写入时间 21:47:00
 这能把这次的 7152 字节救回来,而且对所有 agent 模块通用。
 风险:产物可能是半成品(写了一半就被砍),所以必须过 `check_output` + `_triton_lint_check`
 才能采信;这两个校验已经存在。
+
+---
+
+> **本文件的实施顺序表已过时。** 权威版本见
+> [`plan-final-implementation-order.md`](plan-final-implementation-order.md)。
+> 本文件保留作为分工设计(混合架构)与 flop/byte 自测性验证的依据。
+> 旧表的编号有歧义(第 8 项标题写着"步骤 5",沿用用户早期提问时的编号),新文件统一为 0-9。
