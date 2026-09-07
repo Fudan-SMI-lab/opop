@@ -129,3 +129,39 @@ Watch for: whether pitfalls #7/#8 stop the `triton.lang` habit in candidates gen
 still untested.
 
 **One run per GPU.** Run the preflight first, every time.
+
+
+---
+
+## Deferred: occupancy is absent from the evidence of a SATURATED verdict
+
+Found on `run-l1-42-20260908-023039` (the L1:42 revalidation), by comparing what
+`BOTTLENECK_CLASSIFIED` recorded against what the trial profile held.
+
+**The asymmetry.** `classify()` records `uses_tensor_cores`, `pct_of_dram_peak`,
+`compute_ceiling_used` and `ridge_flop_per_byte` unconditionally (bottleneck.py:196-228). But
+`ev["occupancy"]` and `ev["occupancy_limiter"]` are written only inside the `near_limit` block at
+bottleneck.py:300, and BOTH saturation verdicts return before reaching it (`memory_bound` at 255,
+`compute_bound` at 261). So the moment a kernel is judged saturated, the occupancy fact vanishes
+from its evidence -- while the equally-cheap, equally-Tier-1 tensor-core fact stays.
+
+**Measured on that run.** Verdict `memory_bound` at 94.7% of the measured DRAM ceiling. The
+winning trial's profile held `occupancy 0.3333, limiter "blocks_per_sm", 16/48 warp slots`, with
+empty `statics_notes` -- so Tier 1 collected it correctly and the classifier simply did not carry
+it. The verdict's own advice reads "Increase reuse (larger tiles, better blocking)", addressed to
+a kernel that is already at the per-SM block cap.
+
+**Why this is NOT urgent, and must not be "fixed" carelessly.** The information does reach the
+agent: `analysis/compiled_kernel.md` carries the occupancy line with its own correct caveat
+("THEORETICAL occupancy ... Low occupancy is not automatically bad -- a large-tile kernel can be
+fastest at low occupancy"), and the analyst prompt lists that file first. So this is a
+consistency and locality problem in `bottleneck.md`, not lost information -- which is exactly why
+it belongs here rather than in a mid-validation patch.
+
+**The shape of the fix**, when it is taken: move the two `ev[...]` occupancy assignments out of
+the `near_limit` block so they are recorded with the other unconditional facts, WITHOUT adding
+occupancy to `near_limit` for a saturated kernel. The distinction matters: a memory-bound kernel
+at 94.7% of ceiling is not "limited by occupancy", and promoting it to a lever would tell the
+agent to chase residency when the bytes are the wall. Record the fact; do not re-rank the advice.
+Verify by rendering the L1:42 numbers through `_bottleneck_doc` and checking that the verdict
+prose is unchanged while the facts section gains the line.
