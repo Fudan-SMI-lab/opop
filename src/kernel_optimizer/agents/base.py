@@ -155,6 +155,27 @@ class AgentModule(ABC, Generic[TIn, TOut]):
                 # repair burn 0.99h (two 20-min ReadTimeouts) before succeeding.
                 feedback = ""
                 transport_retries += 1
+                # Before spending another attempt -- or giving up -- check whether the agent
+                # ALREADY wrote a usable artifact. A transport failure means the response never
+                # arrived, NOT that no work was done: measured on run-l1-42-20260907-193510, a
+                # rewriter wrote rewrites/rw_1.py (7152 bytes) at 21:47:00 and the attempt was
+                # killed by the read timeout at 21:50:20 -- three minutes and twenty seconds
+                # later. That finished rewrite was discarded, its family therefore recorded no
+                # improvement, and `family_verdict` read that as `converged` although the
+                # family had never evaluated a single rewrite. So the loss is not just wasted
+                # work: it silently corrupts the convergence verdict.
+                #
+                # Rescue is opt-in per module (`rescue_from_sandbox`) because only the module
+                # knows its own artifact layout, and it goes through the SAME `check_output`
+                # every normal answer passes -- so a half-written file, cut off mid-flush, is
+                # rejected here rather than trusted.
+                rescued = self._rescue(sb, call_id, attempt)
+                if rescued is not None:
+                    return AgentOutcome(
+                        output=rescued,  # type: ignore[arg-type]
+                        sandbox=sb, session_id=session_id, attempts=attempt,
+                        tokens=total_tokens, cost=total_cost,
+                    )
                 if transport_retries > self.cfg.max_transport_retries:
                     break
                 try:
@@ -278,6 +299,58 @@ class AgentModule(ABC, Generic[TIn, TOut]):
     def check_output(self, output: TOut, sb: Sandbox) -> str | None:
         """Post-validate (e.g. referenced files exist). Return problem text or None."""
         return None
+
+    def rescue_from_sandbox(self, sb: Sandbox) -> TOut | None:
+        """Reconstruct an output from files the agent already wrote, or None.
+
+        Called ONLY after a transport failure, where no response ever arrived but the agent
+        may have finished its work before the connection died. Override in modules whose
+        artifacts are self-describing enough to rebuild without the model's JSON; return None
+        (the default) when they are not, and nothing changes.
+
+        Whatever this returns still goes through `check_output`, so a partially-written file
+        is rejected rather than trusted -- this must not become a way to admit work the normal
+        path would have refused.
+        """
+        return None
+
+    def _rescue(self, sb: Sandbox, call_id: str, attempt: int) -> TOut | None:
+        """Try `rescue_from_sandbox`, validate it like any other output, and journal either
+        way. Never raises: a failed rescue must leave the retry loop exactly as it was."""
+        try:
+            candidate = self.rescue_from_sandbox(sb)
+        except Exception as exc:  # noqa: BLE001 — a rescue attempt must not break the retry
+            self.store.append(
+                "AGENT_ARTIFACT_RESCUE",
+                {"module": self.name, "call_id": call_id, "attempt": attempt,
+                 "rescued": False, "reason": f"rescue raised {type(exc).__name__}: {exc}"[:300]},
+            )
+            return None
+        if candidate is None:
+            return None
+        problem = self.check_output(candidate, sb)
+        if problem:
+            # The artifact exists but does not pass the same gate a normal answer passes --
+            # most likely written only partway before the connection died. Recording WHY is
+            # what separates "nothing was there" from "something was there and was rejected".
+            self.store.append(
+                "AGENT_ARTIFACT_RESCUE",
+                {"module": self.name, "call_id": call_id, "attempt": attempt,
+                 "rescued": False, "reason": f"failed check_output: {problem[:300]}"},
+            )
+            return None
+        self.store.append(
+            "AGENT_ARTIFACT_RESCUE",
+            {"module": self.name, "call_id": call_id, "attempt": attempt, "rescued": True,
+             "detail": "transport failed after the agent had written a valid artifact; "
+                       "recovered it instead of discarding the work"},
+        )
+        self.store.append(
+            "AGENT_CALL_FINISHED",
+            {"module": self.name, "call_id": call_id, "attempt": attempt,
+             "via": "artifact_rescue"},
+        )
+        return candidate
 
     def soft_check(self, output: TOut, sb: Sandbox) -> list[str]:
         """Non-blocking advisory warnings about an otherwise-usable output. Never

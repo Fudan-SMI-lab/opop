@@ -2286,12 +2286,20 @@ def test_failed_hypotheses_survive_resume():
 
     src = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
 
-    # Emitted where a round failed to improve.
-    emit = src.split("if best_after >= best_before")[1][:900]
+    # Emitted where a round failed to improve. Anchored on the guard's tail rather than its
+    # full text: the condition gained an `evaluated and` prefix when non-evaluated rounds
+    # stopped counting as no-improvement rounds, and a test that pins the exact source line
+    # breaks on a correct change while telling you nothing about behaviour.
+    emit = src.split("best_after >= best_before")[1][:1600]
     assert '"HYPOTHESES_FAILED"' in emit
     assert '"hypotheses": tried' in emit
     # Only when there is something to record.
     assert "if tried:" in emit
+    # And ONLY when a rewrite was actually evaluated: marking a hypothesis failed after a
+    # round that never ran teaches the rewriter to avoid an idea nothing tested, permanently
+    # (failed_hypotheses is journalled and replayed).
+    guard = src.split("if evaluated and best_after >= best_before")
+    assert len(guard) == 2,         "the HYPOTHESES_FAILED guard must require that a rewrite was evaluated"
 
     # Restored before Loop C, in the same place as the other memory-only control state.
     restore = src.split("def _restore_family_control_state")[1].split("def _rewrite_round")[0]
@@ -5693,3 +5701,203 @@ def test_full_eval_measures_launch_overhead_but_tuning_trials_do_not():
         "quick_test requests launch overhead: that is ~150 extra model calls on every tuning "
         "trial, hundreds per run"
     )
+
+
+def test_a_finished_artifact_is_rescued_when_the_transport_dies():
+    """A transport failure means no response arrived, NOT that no work was done.
+
+    Measured on run-l1-42-20260907-193510: a rewriter wrote rewrites/rw_1.py (7152 bytes) at
+    21:47:00 and the attempt was killed by the read timeout at 21:50:20 -- three minutes and
+    twenty seconds later. The finished rewrite was discarded, its family therefore recorded no
+    improvement, and the run reported that family as converged having never evaluated a
+    rewrite. Drives the real AgentModule.invoke with a client that always fails on transport.
+    """
+    import tempfile
+    from dataclasses import dataclass
+    from pathlib import Path as _P
+
+    from kernel_optimizer.agents.base import AgentModule
+    from kernel_optimizer.agents.runtime import AgentCallError
+    from kernel_optimizer.agents.sandbox import SandboxFactory
+    from kernel_optimizer.config import AgentModuleConfig
+    from kernel_optimizer.models.reports import RewriteCandidate, RewriteResult
+
+    @dataclass
+    class In:
+        pass
+
+    class Mod(AgentModule):
+        name = "rw"
+        output_model = RewriteResult
+
+        def seed_sandbox(self, inputs, sb):
+            pass
+
+        def render_prompt(self, inputs, sb):
+            return "go"
+
+        def rescue_from_sandbox(self, sb):
+            files = sb.list_outputs("rewrites")
+            if not files:
+                return None
+            return RewriteResult(candidates=[
+                RewriteCandidate(file=f, change_summary="[recovered]") for f in files])
+
+    class DeadClient:
+        def create_session(self, directory, title):
+            # The agent "writes" its artifact, then the transport dies -- the real ordering.
+            (_P(directory) / "rewrites").mkdir(exist_ok=True)
+            (_P(directory) / "rewrites" / "rw_1.py").write_text(
+                "PARAMS = {}\n", encoding="utf-8")
+            return "ses_x"
+
+        def prompt(self, *a, **k):
+            raise AgentCallError("prompt transport error (ReadTimeout): timed out")
+
+    class Store:
+        def __init__(self):
+            self.events = []
+
+        def append(self, t, p):
+            self.events.append((t, p))
+
+        def put_artifact(self, *a, **k):
+            return "sha"
+
+    store = Store()
+    with tempfile.TemporaryDirectory() as td:
+        mod = Mod(client=DeadClient(), sandboxes=SandboxFactory(_P(td)), store=store,
+                  cfg=AgentModuleConfig(model="p/m", max_retries=2, max_transport_retries=2))
+        outcome = mod.invoke(In())
+
+    assert outcome.output is not None, (
+        "a finished artifact was discarded because the call did not return; that loss is what "
+        "produced a false converged verdict"
+    )
+    assert outcome.output.candidates[0].file == "rewrites/rw_1.py"
+    kinds = [t for t, _ in store.events]
+    assert "AGENT_ARTIFACT_RESCUE" in kinds, "the rescue must be journalled, not silent"
+    rescue = next(p for t, p in store.events if t == "AGENT_ARTIFACT_RESCUE")
+    assert rescue["rescued"] is True
+
+
+def test_a_rescued_artifact_still_has_to_pass_check_output():
+    """Rescue must not become a way to admit work the normal path would reject.
+
+    A file cut off mid-write is exactly what a transport death produces, so the rescued object
+    goes through the SAME check_output every answer passes.
+    """
+    import tempfile
+    from dataclasses import dataclass
+    from pathlib import Path as _P
+
+    from kernel_optimizer.agents.base import AgentModule
+    from kernel_optimizer.agents.runtime import AgentCallError
+    from kernel_optimizer.agents.sandbox import SandboxFactory
+    from kernel_optimizer.config import AgentModuleConfig
+    from kernel_optimizer.models.reports import RewriteCandidate, RewriteResult
+
+    @dataclass
+    class In:
+        pass
+
+    class Mod(AgentModule):
+        name = "rw"
+        output_model = RewriteResult
+
+        def seed_sandbox(self, inputs, sb):
+            pass
+
+        def render_prompt(self, inputs, sb):
+            return "go"
+
+        def check_output(self, output, sb):
+            return "the file is truncated"  # stands in for the real lint
+
+        def rescue_from_sandbox(self, sb):
+            files = sb.list_outputs("rewrites")
+            if not files:
+                return None
+            return RewriteResult(candidates=[
+                RewriteCandidate(file=f, change_summary="x") for f in files])
+
+    class DeadClient:
+        def create_session(self, directory, title):
+            (_P(directory) / "rewrites").mkdir(exist_ok=True)
+            (_P(directory) / "rewrites" / "rw_1.py").write_text(
+                "PARAMS = {", encoding="utf-8")
+            return "ses_x"
+
+        def prompt(self, *a, **k):
+            raise AgentCallError("prompt transport error (ReadTimeout): timed out")
+
+    class Store:
+        def __init__(self):
+            self.events = []
+
+        def append(self, t, p):
+            self.events.append((t, p))
+
+        def put_artifact(self, *a, **k):
+            return "sha"
+
+    store = Store()
+    with tempfile.TemporaryDirectory() as td:
+        mod = Mod(client=DeadClient(), sandboxes=SandboxFactory(_P(td)), store=store,
+                  cfg=AgentModuleConfig(model="p/m", max_retries=2, max_transport_retries=2))
+        with pytest.raises(AgentCallError):
+            mod.invoke(In())
+
+    rescues = [p for t, p in store.events if t == "AGENT_ARTIFACT_RESCUE"]
+    assert rescues, "a rejected rescue must still be journalled, or the reason is invisible"
+    assert all(r["rescued"] is False for r in rescues)
+    assert any("check_output" in (r.get("reason") or "") for r in rescues), \
+        f"the reason must say the artifact failed validation, got {rescues}"
+
+
+def test_a_round_that_evaluated_nothing_is_not_recorded_as_no_improvement():
+    """The false-converged defect itself, at the level that produces it.
+
+    `family_verdict` reads a flat `best_history` as convergence. So recording the unchanged
+    incumbent for a round whose rewrite never ran fabricates evidence of exhausted headroom.
+    Measured: fam-50ba7c87 got history [5.54, 5.54] and stop_kind="converged" after its
+    rewriter failed all three attempts -- it had never evaluated a single rewrite.
+    """
+    from kernel_optimizer.config import BudgetConfig
+    from kernel_optimizer.control.convergence import ConvergencePolicy
+    from kernel_optimizer.control.families import FamilyManager
+    from kernel_optimizer.models.core import ParamSet as _PS
+
+    fm = FamilyManager()
+    src = "PARAMS = {'A': 1}\nclass ModelNew:\n    pass\n"
+    cand = fm.register_candidate(src, "seed", [], "triton", "seed")
+    fid = cand.family_id
+    fm.update_best(fid, cand.candidate_id, _PS(values={"A": 1}), 5.54)
+    fm.record_round(fid, 5.54)  # the seed datum
+
+    cfg = BudgetConfig(rewrite_rounds_per_family=3, no_improve_rounds=1,
+                       min_improvement_pct=2.0)
+    policy = ConvergencePolicy(cfg)
+
+    # The round runs, the agent never answers, nothing is evaluated.
+    fm.record_round_not_evaluated(fid)
+    fm.families[fid].rewrite_rounds_used += 1
+
+    verdict = policy.family_verdict(fm.families[fid])
+    assert verdict.stop_kind != "converged", (
+        "a family whose rewrite was never evaluated was declared converged; the flat history "
+        "is the ABSENCE of evidence, not evidence of exhausted headroom"
+    )
+    assert fm.families[fid].best_history == [5.54], (
+        "a non-evaluated round must not append to history, got %s"
+        % fm.families[fid].best_history)
+    assert fm.families[fid].rounds_not_evaluated == 1
+    assert fm.families[fid].rewrite_rounds_used == 1, \
+        "the round must still count as budget spent, or a resume re-runs it forever"
+
+    # Control: an EVALUATED round with no improvement must still converge, or the fix would
+    # have disabled the mechanism instead of correcting it.
+    fm.record_round(fid, 5.54)
+    fm.families[fid].rewrite_rounds_used += 1
+    assert policy.family_verdict(fm.families[fid]).stop_kind == "converged", \
+        "a genuinely measured no-improvement round must still be able to converge"

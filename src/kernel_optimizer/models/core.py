@@ -241,6 +241,12 @@ class Family(BaseModel):
     # Best latency after each completed tuning round (per rewrite round), for convergence.
     best_history: list[float] = Field(default_factory=list)
     rewrite_rounds_used: int = 0
+    # Of those rounds, how many evaluated NO rewrite (the agent never answered, or every
+    # candidate was a structural duplicate). Tracked separately because such a round spends
+    # budget but produces no evidence: it must count against `rewrite_rounds_per_family` yet
+    # must NOT append a point to `best_history`, since a flat history is what
+    # `family_verdict` reads as `converged`.
+    rounds_not_evaluated: int = 0
     status: Literal["active", "frozen_converged", "frozen_budget"] = "active"
 
 

@@ -304,6 +304,17 @@ class FamilyManager:
     def record_round(self, family_id: str, best_latency_ms: float) -> None:
         self.families[family_id].best_history.append(best_latency_ms)
 
+    def record_round_not_evaluated(self, family_id: str) -> None:
+        """A round that spent budget without evaluating any rewrite.
+
+        Deliberately does NOT touch `best_history`. Appending the unchanged incumbent would
+        make the history flat, and `family_verdict` reads a flat history as `converged` -- so a
+        family whose rewriter simply never answered gets reported as having exhausted its
+        structural headroom. Measured on run-l1-42-20260907-193510: fam-50ba7c87 was reported
+        `frozen_converged` with history [5.54, 5.54] having never evaluated a single rewrite.
+        """
+        self.families[family_id].rounds_not_evaluated += 1
+
     def lineage_tree(self) -> dict:
         return {
             fid: {
@@ -316,6 +327,9 @@ class FamilyManager:
                 # every branch was explored: in both round-2 L3 runs, 2 of 4 families
                 # had rewrite_rounds_used == 0 and never invoked the rewriter at all.
                 "rewrite_rounds_used": f.rewrite_rounds_used,
+                # How many of those rounds evaluated nothing. A `converged` status is only
+                # meaningful when the flat history behind it came from measured rewrites.
+                "rounds_not_evaluated": f.rounds_not_evaluated,
                 "explored": f.rewrite_rounds_used > 0,
                 "members": [
                     {

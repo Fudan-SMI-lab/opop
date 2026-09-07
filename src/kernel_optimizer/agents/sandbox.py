@@ -32,6 +32,26 @@ class Sandbox:
         except ValueError:
             return False
 
+    def list_outputs(self, rel_dir: str, suffix: str = ".py") -> list[str]:
+        """Sandbox-relative paths of the agent's own output files, sorted.
+
+        Needed to recover work after a transport failure: the agent may have finished writing
+        its artifacts before the connection died, and without the model's JSON the only way to
+        find them is to look. Sorted so a rescue is deterministic, and confined to `rel_dir`
+        through the same escape check as every other path here.
+        """
+        try:
+            base = self._resolve(rel_dir)
+        except ValueError:
+            return []
+        if not base.is_dir():
+            return []
+        out = []
+        for path in sorted(base.iterdir()):
+            if path.is_file() and path.suffix == suffix:
+                out.append(f"{rel_dir.rstrip('/')}/{path.name}")
+        return out
+
     def _resolve(self, rel: str) -> Path:
         path = (self.root / rel).resolve()
         if not path.is_relative_to(self.root.resolve()):

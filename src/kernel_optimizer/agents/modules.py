@@ -17,6 +17,7 @@ from kernel_optimizer.models.reports import (
     NoveltyResult,
     ParameterizationResult,
     RepairResult,
+    RewriteCandidate,
     RewriteResult,
     TuningStats,
 )
@@ -744,6 +745,29 @@ Answer with JSON:
         if missing:
             return missing
         return _triton_lint_check(files, sb)
+
+    def rescue_from_sandbox(self, sb: Sandbox) -> RewriteResult | None:
+        """Rebuild the result from `rewrites/*.py` the agent already wrote.
+
+        This module is where the loss was measured: on run-l1-42-20260907-193510 a rewriter
+        wrote rewrites/rw_1.py (7152 bytes) at 21:47:00 and the attempt was killed by the read
+        timeout at 21:50:20. The rewrite was finished and discarded, so its family recorded no
+        improvement and was then declared `converged` without ever having evaluated a rewrite.
+
+        Only the files are needed to proceed -- `hypothesis_id` and `change_summary` are
+        narration the pipeline does not gate on -- so the artifact is self-describing enough to
+        recover. The empty `change_summary` is deliberate and marked: a reader of the lineage
+        must be able to tell a rescued candidate from one the agent described.
+        """
+        files = sb.list_outputs("rewrites")
+        if not files:
+            return None
+        return RewriteResult(candidates=[
+            RewriteCandidate(file=f, hypothesis_id="",
+                             change_summary="[recovered from sandbox after a transport "
+                                            "failure; the agent's own summary never arrived]")
+            for f in files
+        ])
 
     def soft_check(self, output: RewriteResult, sb: Sandbox) -> list[str]:
         return _triton_lint_warnings([c.file for c in output.candidates], sb)

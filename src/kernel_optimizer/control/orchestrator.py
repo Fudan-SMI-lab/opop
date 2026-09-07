@@ -1405,9 +1405,19 @@ class Orchestrator:
         # nothing to double-count -- but assigning instead of extending keeps that true
         # even if the call site ever moves.
         restored: dict[str, list[dict]] = {}
+        # Rounds that CONSUMED budget without producing evidence. Counted separately because
+        # `best_history` and `rewrite_rounds_used` answer different questions: history is
+        # evidence about a structure's headroom (a non-evaluated round contributes none, and
+        # appending a flat point to it reads as convergence), while rounds_used is budget spent
+        # (a failed round still cost one). Conflating them either fabricates convergence or
+        # lets a resumed run re-run rounds forever.
+        not_evaluated: dict[str, int] = {}
         for ev in state.events:
             if ev.type == "FAMILY_ROUND_RECORDED":
                 rounds.setdefault(ev.payload["family_id"], []).append(ev.payload)
+            elif ev.type == "FAMILY_ROUND_NOT_EVALUATED":
+                fid = ev.payload["family_id"]
+                not_evaluated[fid] = not_evaluated.get(fid, 0) + 1
             elif ev.type == "HYPOTHESES_FAILED":
                 restored.setdefault(
                     ev.payload["family_id"], []).extend(ev.payload["hypotheses"])
@@ -1428,8 +1438,11 @@ class Orchestrator:
             evs = rounds.get(family_id, [])
             head = [seeded[family_id]] if family_id in seeded else []
             family.best_history = head + [e["best_ms"] for e in evs]
-            # rewrite_rounds_used counts ROUNDS RUN, so the seed datum must not count.
-            family.rewrite_rounds_used = len(evs)
+            # rewrite_rounds_used counts ROUNDS RUN, so the seed datum must not count -- and a
+            # round that produced no evaluation still ran, so it must count here even though it
+            # contributed nothing to best_history. Without the second term a resumed run would
+            # under-count spent budget and re-run failed rounds indefinitely.
+            family.rewrite_rounds_used = len(evs) + not_evaluated.get(family_id, 0)
 
     def _freeze_unrewritable_families(self) -> int:
         """Freeze every active family that cannot be structurally rewritten.
@@ -1520,19 +1533,40 @@ class Orchestrator:
                 continue
 
             best_before = family.best.latency_ms
-            self._do_rewrite(family.family_id, source_crun)
+            evaluated = self._do_rewrite(family.family_id, source_crun)
             family.rewrite_rounds_used += 1
             best_after = (self.deps.families.families[family.family_id].best.latency_ms
                           if self.deps.families.families[family.family_id].best else
                           best_before)
-            self.deps.families.record_round(family.family_id, best_after)
-            # Persist the round's incumbent so best_history survives resume — it is
-            # otherwise memory-only, leaving `best history: []` after a restart and
-            # making the `converged` stop_kind unreachable on resumed runs.
-            self.store.append("FAMILY_ROUND_RECORDED", {
-                "family_id": family.family_id, "best_ms": best_after,
-                "round": round_no})
-            if best_after >= best_before and source_crun.report is not None:
+            if evaluated:
+                self.deps.families.record_round(family.family_id, best_after)
+                # Persist the round's incumbent so best_history survives resume — it is
+                # otherwise memory-only, leaving `best history: []` after a restart and
+                # making the `converged` stop_kind unreachable on resumed runs.
+                self.store.append("FAMILY_ROUND_RECORDED", {
+                    "family_id": family.family_id, "best_ms": best_after,
+                    "round": round_no})
+            else:
+                # NOTHING was evaluated this round: the rewriter never answered, or every
+                # candidate it produced was a structural duplicate. Recording the unchanged
+                # incumbent would append a flat point to best_history, and `family_verdict`
+                # reads flat history as `converged` -- which is how fam-50ba7c87 was reported
+                # as converged in run-l1-42-20260907-193510 having never evaluated a rewrite.
+                # The round is still CONSUMED (rewrite_rounds_used above) so the budget bounds
+                # the loop; it just is not evidence about this structure's headroom.
+                self.store.append("FAMILY_ROUND_NOT_EVALUATED", {
+                    "family_id": family.family_id, "round": round_no,
+                    "best_ms": best_after,
+                    "detail": "no rewrite reached evaluation (agent failure or all "
+                              "candidates duplicate); not recorded as a no-improvement "
+                              "round, which would read as convergence"})
+                self.deps.families.record_round_not_evaluated(family.family_id)
+            if evaluated and best_after >= best_before and source_crun.report is not None:
+                # `evaluated` guards this for the same reason it guards record_round: marking a
+                # hypothesis "failed" when it was never TRIED teaches the rewriter to avoid an
+                # idea that has no evidence against it, and permanently -- failed_hypotheses is
+                # journalled and replayed. An agent-failure round would otherwise burn every
+                # hypothesis the analyst had proposed.
                 tried = [{"id": hyp.id, "change": hyp.change, "round": round_no}
                          for hyp in source_crun.report.hypotheses]
                 self.failed_hypotheses.setdefault(family.family_id, []).extend(tried)
@@ -1547,7 +1581,17 @@ class Orchestrator:
             self._step_done(key)
         return progressed
 
-    def _do_rewrite(self, family_id: str, parent_crun: CandidateRun) -> None:
+    def _do_rewrite(self, family_id: str, parent_crun: CandidateRun) -> bool:
+        """Run one rewrite round. Returns whether a rewrite was actually EVALUATED.
+
+        The return value is load-bearing, not informational. A round in which no rewrite ever
+        reached evaluation must not be recorded as "the incumbent did not improve", because
+        `family_verdict` reads a flat `best_history` as `converged`. Measured on
+        run-l1-42-20260907-193510: fam-50ba7c87 got `[5.54, 5.54]` and `stop_kind="converged"`
+        after its rewriter call failed all three attempts -- the family had never evaluated a
+        single rewrite, yet the report says it converged. Two of that run's `frozen_converged`
+        families were real; one was this.
+        """
         parent = parent_crun.candidate
         family = self.deps.families.families[family_id]
         try:
@@ -1568,7 +1612,7 @@ class Orchestrator:
             self.store.append("AGENT_CALL_FAILED",
                               {"module": "rewriter", "final": True,
                                "family_id": family_id, "error": str(exc)[:500]})
-            return
+            return False
         registered: list[str] = []
         for rw in outcome.output.candidates:
             source = outcome.sandbox.read_output(rw.file)
@@ -1590,6 +1634,10 @@ class Orchestrator:
         # before any is pipelined, so the next one's parameterization can be issued
         # while the current one holds the GPU.
         self._pipeline_batch(registered)
+        # Every candidate being a structural duplicate also means nothing was evaluated: the
+        # incumbent cannot have moved, so calling that "no improvement" would be the same
+        # error as an agent failure.
+        return bool(registered)
 
     def _pipeline_batch(self, cand_ids: list[str]) -> None:
         """Run the per-candidate pipeline over a batch, prefetching the next one's

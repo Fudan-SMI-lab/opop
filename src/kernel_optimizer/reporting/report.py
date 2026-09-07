@@ -30,11 +30,21 @@ def _reconstruct_summary(events, candidates: dict, trials: list) -> dict:
 
     rounds: dict[str, int] = {}
     history: dict[str, list] = {}
+    # Rounds that spent budget without evaluating anything. Kept separate from `history` on
+    # purpose: a reader who sees a flat history concludes the structure has no headroom left,
+    # which is exactly the wrong reading when the rewrite never ran. Surfaced per family so a
+    # `frozen_converged` verdict can be checked against it -- in
+    # run-l1-42-20260907-193510 one of the two converged families was this case.
+    not_evaluated: dict[str, int] = {}
     for e in events:
         if e.type == "FAMILY_ROUND_RECORDED":
             fid = e.payload["family_id"]
             rounds[fid] = rounds.get(fid, 0) + 1
             history.setdefault(fid, []).append(e.payload.get("best_ms"))
+        elif e.type == "FAMILY_ROUND_NOT_EVALUATED":
+            fid = e.payload["family_id"]
+            rounds[fid] = rounds.get(fid, 0) + 1
+            not_evaluated[fid] = not_evaluated.get(fid, 0) + 1
 
     families: dict[str, dict] = {}
     for cid, cand in candidates.items():
@@ -42,6 +52,7 @@ def _reconstruct_summary(events, candidates: dict, trials: list) -> dict:
         fam = families.setdefault(fid, {
             "status": "active (run in progress)", "best_ms": None,
             "rewrite_rounds_used": rounds.get(fid, 0),
+            "rounds_not_evaluated": not_evaluated.get(fid, 0),
             "history": history.get(fid, []), "members": [],
         })
         fam["members"].append({
@@ -197,7 +208,12 @@ def _why_the_run_ended(events, convergence: list[dict], budgets: dict) -> list[s
     last_global = next((c["decision"] for c in reversed(convergence)
                         if (c.get("decision") or {}).get("scope") == "global"), None)
 
-    rounds_used = sum(1 for e in events if e.type == "FAMILY_ROUND_RECORDED")
+    rounds_used = sum(1 for e in events
+                      if e.type in ("FAMILY_ROUND_RECORDED", "FAMILY_ROUND_NOT_EVALUATED"))
+    # Both event types count as budget SPENT. A round whose rewrite never reached evaluation
+    # still consumed one of the family's rounds; it just contributed no point to best_history
+    # (appending one would read as convergence). Counting only the evaluated ones here would
+    # report a run as having used less budget than it did.
     # The denominator is per-FAMILY, not per-seed. Seeds are only the families the run
     # STARTS with: Loop D adds more, and each new family carries its own
     # `rewrite_rounds_per_family` allowance. Deriving the total from `max_seed_candidates`
@@ -526,6 +542,23 @@ class ReportGenerator:
                 )
             elif rounds is not None:
                 lines.append(f"- rewrite rounds used: {rounds}")
+            # A `converged` verdict rests on best_history being flat. If some of those rounds
+            # never evaluated a rewrite, the flatness is not evidence about this structure --
+            # it is the absence of evidence, and reads as the opposite of what it means. Stated
+            # next to the status because that is where a reader forms the conclusion.
+            # Measured: run-l1-42-20260907-193510 reported two frozen_converged families, and
+            # fam-50ba7c87 was this case (its rewriter call failed all three attempts).
+            unevaluated = fam.get("rounds_not_evaluated") or 0
+            if unevaluated:
+                lines.append(
+                    f"- ⚠ **{unevaluated} of these rounds evaluated no rewrite at all** "
+                    "(agent failure, or every candidate was a structural duplicate). Those "
+                    "rounds contribute no point to the history below, so a flat history here "
+                    "must NOT be read as exhausted headroom"
+                    + (" — and this family's `converged` status is therefore not supported "
+                       "by a measured rewrite." if "converged" in str(fam.get("status", ""))
+                       else ".")
+                )
             lines.append(f"- best history: {fam['history']}")
             for member in fam["members"]:
                 lines.append(f"  - `{member['id']}` ({member['origin']}"
