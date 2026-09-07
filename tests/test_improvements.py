@@ -5363,35 +5363,38 @@ def test_the_backend_is_part_of_a_candidates_structural_identity():
         "Loop D rejected a cross-backend seed as an identical signature"
 
 
-def test_a_talkative_agent_call_is_bounded_by_a_total_deadline():
-    """A per-read timeout does not bound a call that keeps producing output.
+def test_a_long_agent_call_is_not_cut_but_a_runaway_one_is():
+    """Duration must never end a call; resource exhaustion must.
 
-    Measured on run-l1-42-20260907-193510: one rewriter call ran 4057s against a 1500s
-    `request_timeout_s` -- 2.7x the configured value -- because the agent was running its own
-    parameter sweep and never went silent for a full 25 minutes. httpx.Timeout is per-READ, so
-    it fires on silence only; no value of it fixes a talkative call. Meanwhile the agent's own
-    script drove the container's memory cgroup to its limit (125.5 GB against a 124.5 GB
-    memory.high, 16.0M throttle events) and stalled the orchestrator in D-state.
+    An agent legitimately runs long -- it compiles kernels, launches them, reads results. Cutting
+    a call at a wall-clock deadline destroys exactly that work, measured twice: the 4057s call had
+    already written `rw_1.py` to disk 8 minutes before it returned, and an earlier 1500s ceiling
+    discarded a finished rewrite. So a total time budget is the WRONG instrument and this test
+    pins that down.
 
-    This drives the real OpencodeClient.prompt against a server that streams slowly forever,
-    and asserts the call is cut at the total deadline and the session is aborted (aborting is
-    what kills the agent's subprocesses). Before the fix the request had no total bound.
+    What must be bounded is an agent SUBPROCESS taking the machine down: one agent-written sweep
+    produced a 272,341-line PTX, ptxas reached 111 GiB resident, the container hit its memory
+    cgroup limit and the orchestrator was throttled into D-state -- 3 GB from a hard OOM.
+
+    Both halves are asserted against the real OpencodeClient.prompt, with the memory reader
+    patched so the condition is deterministic.
     """
     import threading
     import time as _time
     from http.server import BaseHTTPRequestHandler, HTTPServer
     from socketserver import ThreadingMixIn
 
+    from kernel_optimizer.agents import runtime as rt
     from kernel_optimizer.agents.runtime import AgentCallError, OpencodeClient
 
     aborted: list[str] = []
-    stop = threading.Event()
+    release = threading.Event()
 
     class Handler(BaseHTTPRequestHandler):
-        def log_message(self, *a):  # silence
+        def log_message(self, *a):
             pass
 
-        def do_POST(self):  # noqa: N802
+        def do_POST(self):
             if self.path.endswith("/abort"):
                 aborted.append(self.path)
                 self.send_response(200)
@@ -5399,46 +5402,90 @@ def test_a_talkative_agent_call_is_bounded_by_a_total_deadline():
                 self.end_headers()
                 self.wfile.write(b"{}")
                 return
-            # A talkative turn: never idle long enough to trip the read timeout, and never
-            # finishes. This is the shape of the real failure, not a silent hang.
+            # A talkative turn: streams for a while, then finishes normally when released.
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             try:
-                while not stop.wait(0.05):
+                while not release.wait(0.05):
                     self.wfile.write(b" ")
                     self.wfile.flush()
+                self.wfile.write(b'{"info": {}, "parts": []}')
+                self.wfile.flush()
             except OSError:
                 pass
 
-    # Threaded: the real server handles the abort while the message turn is still streaming,
-    # and a single-threaded mock would deadlock instead of reproducing the live behaviour.
     class Server(ThreadingMixIn, HTTPServer):
         daemon_threads = True
 
     srv = Server(("127.0.0.1", 0), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     port = srv.server_address[1]
+    orig_pressure = rt._memory_pressure
 
-    # read timeout comfortably longer than the total deadline, so ONLY the total deadline can
-    # end this call -- exactly the regime the live failure was in.
-    client = OpencodeClient(f"http://127.0.0.1:{port}", timeout_s=30.0, total_timeout_s=1.5)
+    # --- half 1: memory calm -> a long, chatty call is LEFT ALONE ---------------------
+    rt._memory_pressure = lambda: (10e9, 128e9)  # 7.8%, nowhere near the threshold
+    client = OpencodeClient(f"http://127.0.0.1:{port}", timeout_s=30.0,
+                            memory_abort_frac=0.92, resource_poll_s=0.1)
+    threading.Timer(1.2, release.set).start()
     t0 = _time.monotonic()
-    with pytest.raises(AgentCallError) as excinfo:
-        client.prompt("ses_test", "go", model="p/m")
-    elapsed = _time.monotonic() - t0
-    stop.set()
-    srv.shutdown()
+    try:
+        client.prompt("ses_ok", "go", model="p/m")
+        completed = True
+    except AgentCallError:
+        completed = False
+    long_elapsed = _time.monotonic() - t0
     client.close()
 
-    assert elapsed < 12.0, (
-        f"the call ran {elapsed:.1f}s with a 1.5s total deadline: a talkative agent is still "
-        "unbounded (the live case reached 4057s against a 1500s read timeout)"
+    assert completed, (
+        "a long call that used no memory was killed anyway: a time budget is back, and it "
+        "destroys the compile/benchmark work the agent was doing"
     )
-    assert "total deadline" in str(excinfo.value), \
-        f"the error must name the real cause, got: {excinfo.value}"
-    assert aborted, \
-        "the session was not aborted: the agent's own subprocesses would keep running"
+    assert long_elapsed > 1.0, "the mock did not actually stream for a while; test is vacuous"
+    assert not aborted, f"a healthy long call must not be aborted, got {aborted}"
+
+    # --- half 2: memory at the wall -> the call IS aborted ----------------------------
+    release.clear()
+    rt._memory_pressure = lambda: (125.5e9, 128e9)  # 98%, the observed runaway
+    client2 = OpencodeClient(f"http://127.0.0.1:{port}", timeout_s=30.0,
+                             memory_abort_frac=0.92, resource_poll_s=0.1)
+    t1 = _time.monotonic()
+    with pytest.raises(AgentCallError) as excinfo:
+        client2.prompt("ses_runaway", "go", model="p/m")
+    runaway_elapsed = _time.monotonic() - t1
+    release.set()
+    rt._memory_pressure = orig_pressure
+    srv.shutdown()
+    client2.close()
+
+    assert runaway_elapsed < 12.0, (
+        f"the runaway call ran {runaway_elapsed:.1f}s: memory pressure did not stop it, so the "
+        "box can still be driven to OOM by an agent subprocess"
+    )
+    msg = str(excinfo.value)
+    assert "memory" in msg.lower(), f"the error must name the real cause, got: {msg}"
+    assert "NOT stopped for taking too long" in msg, (
+        "the message must say the call was not killed for being slow, or the next reader will "
+        "conclude agents have a time budget and shorten their work"
+    )
+    assert aborted, "the session was not aborted: the agent's subprocesses would keep running"
+
+
+def test_the_memory_pressure_reader_reports_nothing_when_it_cannot_measure():
+    """It must return None rather than guess where there is no cgroup limit.
+
+    A bound that cannot be measured must not be approximated: on Windows/macOS, or an unlimited
+    cgroup, inventing a number would either abort healthy calls or silently enforce nothing while
+    appearing to work. None makes the caller enforce nothing, explicitly.
+    """
+    from kernel_optimizer.agents.runtime import _memory_pressure
+
+    got = _memory_pressure()
+    if got is None:
+        return  # correct on this platform (no readable cgroup limit)
+    used, limit = got
+    assert limit > 0 and used >= 0, f"nonsense cgroup reading: {got}"
+    assert used <= limit * 2, f"usage far above the limit suggests mismatched files: {got}"
 
 
 def test_the_candidate_contract_bounds_agent_self_testing():

@@ -45,7 +45,8 @@ class Runtime:
         self.client = OpencodeClient(
             base_url,
             timeout_s=self.cfg.opencode.request_timeout_s,
-            total_timeout_s=self.cfg.opencode.total_call_timeout_s,
+            memory_abort_frac=self.cfg.opencode.memory_abort_frac,
+            resource_poll_s=self.cfg.opencode.resource_poll_s,
         )
         if self.cfg.opencode.permission_mode == "sse_auto_approve":
             self.responder = PermissionAutoResponder(base_url)

@@ -48,20 +48,24 @@ class OpencodeConfig(BaseModel):
     # needs a token-level heartbeat on the transport, which is deferred (D-4).
     # Model-agnostic: this is the transport read timeout, not a token or effort setting.
     request_timeout_s: float = 1500.0
-    # TOTAL wall clock for one agent call, enforced by the client independently of the read
-    # timeout above. These are NOT redundant, and the difference cost 68 minutes of a live run:
-    # `request_timeout_s` is httpx's per-READ idle timeout, so it only fires when the server
-    # goes quiet for that long. An agent that keeps emitting output -- tool call, a line of
-    # text, another tool call -- resets that clock on every chunk and can run without limit.
-    # Measured on run-l1-42-20260907-193510: one rewriter call ran 4057s (67.6 min) against a
-    # 1500s setting, 2.7x the configured value, because the agent was running its own
-    # parameter sweep and never went idle for a full 25 minutes. I had previously recorded
-    # 1500s as the hard ceiling on a call; it is not, and no `request_timeout_s` value fixes
-    # this, because the failure mode is a talkative call rather than a silent one.
+    # An in-flight agent call is aborted when the CONTAINER's memory reaches this fraction of
+    # its cgroup limit. This deliberately replaced a total wall-clock deadline on a call, which
+    # was the wrong instrument: an agent legitimately runs long because it compiles kernels and
+    # benchmarks them, and cutting it at a deadline destroys that work. Measured twice -- the
+    # 4057s call had already written `rw_1.py` 8 minutes before it returned, and an earlier
+    # 1500s ceiling discarded a finished rewrite. Duration is not the failure.
     #
-    # Set above request_timeout_s so an idle hang is still reported as the more specific
-    # ReadTimeout, and this bound only catches the case that one structurally cannot see.
-    total_call_timeout_s: float = 2100.0
+    # The real failure is an agent SUBPROCESS taking the machine down: one agent-written sweep
+    # produced a 272,341-line PTX, ptxas reached 111 GiB resident, the container hit its memory
+    # cgroup limit (125.5 GB against a 124.5 GB memory.high, 16.0M throttle events) and the
+    # orchestrator itself was throttled into D-state -- 3 GB from a hard OOM where the kernel
+    # chooses the victim instead of us. That is a resource condition and it is observable, so
+    # that is what is bounded. A long call using nothing is left entirely alone.
+    #
+    # 0.0 disables the check. Ignored where there is no readable cgroup limit (Windows, macOS),
+    # since a bound that cannot be measured must not be approximated.
+    memory_abort_frac: float = 0.92
+    resource_poll_s: float = 20.0
     permission_mode: str = "sandbox_config"  # or "sse_auto_approve"
     startup_timeout_s: float = 60.0
     # Merged into every agent sandbox's opencode.json. That file makes the sandbox a

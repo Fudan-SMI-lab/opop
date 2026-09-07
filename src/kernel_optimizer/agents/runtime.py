@@ -149,19 +149,59 @@ def extract_fenced_json(text: str) -> dict | None:
     return None
 
 
+def _memory_pressure() -> tuple[float, float] | None:
+    """(bytes_used, bytes_limit) for this container, or None when unknowable.
+
+    Reads the cgroup rather than /proc/meminfo on purpose: the runaway that motivated this was
+    inside a container whose limit (128 GB) was far below the host's, so host-level free memory
+    looked fine while the cgroup was at 97.5% and throttling every process in it -- including
+    the orchestrator, which went into D-state on mem_cgroup_handle_over_high and merely LOOKED
+    like a stuck network call.
+
+    Returns None rather than guessing when there is no cgroup (Windows, macOS, an unlimited
+    cgroup): the caller then enforces nothing, which is correct -- a bound we cannot measure
+    must not be approximated.
+    """
+    # cgroup v2
+    try:
+        with open("/sys/fs/cgroup/memory.current", encoding="utf-8") as fh:
+            used = float(fh.read().strip())
+        with open("/sys/fs/cgroup/memory.max", encoding="utf-8") as fh:
+            raw = fh.read().strip()
+        if raw != "max":
+            limit = float(raw)
+            if limit > 0:
+                return used, limit
+    except (OSError, ValueError):
+        pass
+    # cgroup v1
+    try:
+        base = "/sys/fs/cgroup/memory"
+        with open(f"{base}/memory.usage_in_bytes", encoding="utf-8") as fh:
+            used = float(fh.read().strip())
+        with open(f"{base}/memory.limit_in_bytes", encoding="utf-8") as fh:
+            limit = float(fh.read().strip())
+        # v1 reports an absurd sentinel (~2^63) when unlimited; treat that as no limit.
+        if 0 < limit < 2**62:
+            return used, limit
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 class OpencodeClient:
     def __init__(self, base_url: str, timeout_s: float = 1200.0,
-                 total_timeout_s: float | None = None):
+                 memory_abort_frac: float = 0.92, resource_poll_s: float = 20.0):
         self.base_url = base_url.rstrip("/")
         self.timeout_s = timeout_s
-        # A TOTAL deadline per call, distinct from the read timeout below. httpx.Timeout is
-        # per-READ: it fires only when the server is silent that long, so a call that keeps
-        # streaming output has no bound at all. Measured: a rewriter call ran 4057s against a
-        # 1500s read timeout (2.7x) because the agent was running its own parameter sweep and
-        # never went quiet for 25 minutes straight. Defaults to 1.4x the read timeout so an
-        # idle hang still surfaces as the more specific ReadTimeout.
-        self.total_timeout_s = (total_timeout_s if total_timeout_s is not None
-                                else timeout_s * 1.4)
+        # Fraction of the container's memory limit at which an in-flight agent call is aborted.
+        # Deliberately NOT a time budget: an agent that runs an hour compiling and benchmarking
+        # is working, and cutting it discards that work. What must be bounded is an agent
+        # subprocess taking the machine down -- see the watchdog in `prompt`. 0.92 leaves room
+        # to act before the kernel's own OOM killer picks a victim for us (the observed runaway
+        # sat at 0.975 of the limit while ptxas kept growing).
+        self.memory_abort_frac = memory_abort_frac
+        self.resource_poll_s = resource_poll_s
         self._http = httpx.Client(base_url=self.base_url, timeout=httpx.Timeout(timeout_s))
 
     def close(self) -> None:
@@ -202,33 +242,53 @@ class OpencodeClient:
             body["format"] = {"type": "json_schema", "schema": schema, "retryCount": 2}
         params = {"directory": str(directory)} if directory else None
 
-        # Enforce the total deadline with a watchdog thread. `self._http.post` is a blocking
-        # call whose only internal bound is the per-read timeout, so a talkative agent cannot
-        # be stopped from this side of it.
+        # A watchdog, but NOT a time budget on the agent's thinking. An agent legitimately runs
+        # long: it compiles kernels, launches them, reads results. Cutting a call at a wall-clock
+        # deadline destroys exactly the work it was doing -- measured on the 4057s call whose
+        # `rw_1.py` was already complete on disk 8 minutes before it returned, and previously on
+        # a 1500s ceiling that discarded a finished rewrite. So duration alone must never end a
+        # call.
         #
-        # The watchdog does TWO things, and both are required. Measured: aborting the session
-        # alone returns 200 and ends the turn server-side, but the already-streaming POST never
-        # returns -- the client thread stays blocked forever, which is the very thing this
-        # deadline exists to prevent. So the watchdog aborts the session (which is what kills
-        # whatever the agent spawned: after an abort, opencode has zero child processes and the
-        # GPU returns to 0 MiB) and then closes the transport, which makes the blocked read
-        # fail and hands control back. The client is rebuilt afterwards so the next call, and
-        # the retry the module is about to make, still have a working transport.
+        # What DID need bounding is different: the agent's own subprocesses consuming the box.
+        # One agent-written sweep produced a 272,341-line PTX, ptxas reached 111 GiB resident,
+        # the container hit its memory cgroup limit (125.5 GB against a 124.5 GB memory.high,
+        # 16.0M throttle events) and the ORCHESTRATOR was throttled into D-state on
+        # mem_cgroup_handle_over_high -- 3 GB from a hard OOM where the kernel, not us, chooses
+        # the victim. That is a resource condition, is directly observable, and is what this
+        # watchdog checks. A long call using nothing is left alone; a call about to take the
+        # machine down is stopped however briefly it has run.
         done = threading.Event()
         fired = threading.Event()
+        fired_reason: list[str] = []
 
-        def _deadline() -> None:
-            if done.wait(self.total_timeout_s):
-                return  # completed normally
-            fired.set()
-            self.abort(session_id)   # ends the turn and its subprocesses
-            try:
-                self._http.close()   # unblocks the POST still reading the stream
-            except Exception:
-                pass
+        def _watch() -> None:
+            if self.memory_abort_frac <= 0:
+                return  # explicitly disabled
+            while not done.wait(self.resource_poll_s):
+                pressure = _memory_pressure()
+                if pressure is None:
+                    return  # no cgroup to read (not Linux, or v1): nothing to enforce
+                used, limit = pressure
+                if used / limit < self.memory_abort_frac:
+                    continue
+                fired.set()
+                fired_reason.append(
+                    f"container memory at {used / 1e9:.1f} GB of {limit / 1e9:.1f} GB "
+                    f"({used / limit * 100:.0f}% >= {self.memory_abort_frac * 100:.0f}%)"
+                )
+                # Abort ends the turn AND its subprocesses (verified: afterwards opencode has
+                # zero children and the GPU returns to 0 MiB). Closing the transport is also
+                # required -- abort alone returns 200 while the already-streaming POST never
+                # returns, leaving this thread blocked forever.
+                self.abort(session_id)
+                try:
+                    self._http.close()
+                except Exception:
+                    pass
+                return
 
-        watchdog = threading.Thread(target=_deadline, daemon=True,
-                                    name=f"agent-deadline-{session_id[:12]}")
+        watchdog = threading.Thread(target=_watch, daemon=True,
+                                    name=f"agent-resource-watch-{session_id[:12]}")
         watchdog.start()
         try:
             resp = self._http.post(f"/session/{session_id}/message", json=body, params=params)
@@ -237,22 +297,23 @@ class OpencodeClient:
             # transport failure must NOT crash the whole run. Abort the stuck
             # session and surface a typed error the AgentModule retry loop
             # handles (retry, then drop the candidate) — see plan risk #8.
-            hit_deadline = fired.is_set()
+            hit_resource_abort = fired.is_set()
             done.set()
-            if hit_deadline:
+            if hit_resource_abort:
                 # The watchdog closed the transport to break the blocked read; rebuild it so
                 # the retry the module is about to attempt has a working client. Skipped for
                 # ordinary transport errors, where the client is still usable.
                 self._http = httpx.Client(
                     base_url=self.base_url, timeout=httpx.Timeout(self.timeout_s)
                 )
-                # Name the real cause. Reported as a transport error the retry loop already
-                # handles, but a log saying only "ReadTimeout" sends the next reader looking
-                # for a slow endpoint when the agent was busy running its own work.
+                # Name the real cause. A log saying only "ReadTimeout" sends the next reader
+                # looking for a slow endpoint, when what happened is that the agent's own
+                # subprocesses were about to OOM the machine.
                 raise AgentCallError(
-                    f"agent call exceeded its total deadline of {self.total_timeout_s:.0f}s "
-                    f"(read timeout {self.timeout_s:.0f}s never fired: the call kept "
-                    f"producing output); session aborted"
+                    f"agent call aborted to protect the machine: "
+                    f"{fired_reason[0] if fired_reason else 'resource limit reached'}. "
+                    f"The agent's own subprocesses were consuming the container; the call was "
+                    f"NOT stopped for taking too long."
                 ) from exc
             self.abort(session_id)
             raise AgentCallError(
@@ -262,12 +323,12 @@ class OpencodeClient:
             done.set()  # release the watchdog on every path
         if fired.is_set():
             # The abort made the blocked POST return instead of raising. Whatever came back is
-            # a truncated turn, so it must be reported as the deadline failure rather than
-            # parsed -- a partial body would otherwise surface as a confusing schema error.
+            # a truncated turn, so report the abort rather than parsing a partial body.
             raise AgentCallError(
-                f"agent call exceeded its total deadline of {self.total_timeout_s:.0f}s "
-                f"(read timeout {self.timeout_s:.0f}s never fired: the call kept producing "
-                f"output); session aborted"
+                f"agent call aborted to protect the machine: "
+                f"{fired_reason[0] if fired_reason else 'resource limit reached'}. "
+                f"The agent's own subprocesses were consuming the container; the call was NOT "
+                f"stopped for taking too long."
             )
         if resp.status_code != 200:
             raise AgentCallError(f"prompt failed {resp.status_code}: {resp.text[:800]}")
