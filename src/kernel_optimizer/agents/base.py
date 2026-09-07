@@ -158,6 +158,19 @@ class AgentModule(ABC, Generic[TIn, TOut]):
                 if transport_retries > self.cfg.max_transport_retries:
                     break
                 try:
+                    # Re-seed the sandbox before retrying. The inputs are re-read from their
+                    # sources here (the prompt docs come off disk via `_contract_doc()` and
+                    # friends), so a guidance fix applied WHILE a call is retrying reaches the
+                    # next attempt instead of waiting for the next call. That is not
+                    # hypothetical: an agent whose self-written benchmark had just taken the box
+                    # to its memory-cgroup limit kept re-reading the contract that failed to
+                    # forbid it, across all three attempts, because seeding happened once above.
+                    # Cheap (writing a few input files) and safe on a retry, where a partial
+                    # previous attempt's outputs are exactly what we do NOT want to preserve --
+                    # note the agent's own OUTPUT files are left alone, so a finished artifact
+                    # from attempt 1 still survives for `check_output` to find.
+                    self.seed_sandbox(inputs, sb)
+                    prompt = self.render_prompt(inputs, sb)
                     session_id = self.client.create_session(sb.root, title=f"{call_id}-r{attempt}")
                     self.store.append(
                         "AGENT_SESSION_RESET",

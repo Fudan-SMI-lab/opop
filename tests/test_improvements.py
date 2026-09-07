@@ -5462,3 +5462,91 @@ def test_the_candidate_contract_bounds_agent_self_testing():
         ("write the file first", "write the file first"),
     ]:
         assert needle in doc, f"contract is missing: {concept} ({needle!r})"
+
+
+def test_a_retry_reseeds_the_sandbox_so_guidance_fixes_reach_it():
+    """A prompt/doc fix must reach the next ATTEMPT, not only the next call.
+
+    `invoke()` seeds the sandbox and renders the prompt once, before the retry loop. So when an
+    agent's self-written benchmark took the box to its memory-cgroup limit (111 GiB in ptxas,
+    orchestrator throttled into D-state), fixing the contract that failed to forbid it did NOT
+    reach the call in flight: all three attempts re-read the copy seeded before the fix. I had
+    said the fix would reach attempt 3; it would not have, and the sandboxes had to be patched
+    by hand.
+
+    Drives the real AgentModule.invoke with a client that fails the first attempt on transport
+    and succeeds on the second, and asserts the second attempt saw re-seeded inputs.
+    """
+    from dataclasses import dataclass
+
+    from pydantic import BaseModel as _BM
+
+    from kernel_optimizer.agents.base import AgentModule
+    from kernel_optimizer.agents.runtime import AgentCallError, PromptResult
+
+    class Out(_BM):
+        ok: bool = True
+
+    @dataclass
+    class In:
+        pass
+
+    seeds: list[int] = []
+
+    class Mod(AgentModule):
+        name = "probe"
+        output_model = Out
+
+        def seed_sandbox(self, inputs, sb):
+            seeds.append(1)
+            # Emulate reading guidance off disk: the content changes between attempts.
+            sb.write_input("docs/guide.md", f"version {len(seeds)}")
+
+        def render_prompt(self, inputs, sb):
+            return "go"
+
+    class Client:
+        def __init__(self):
+            self.calls = 0
+
+        def create_session(self, directory, title):
+            return f"ses_{title}"
+
+        def prompt(self, session_id, text, **kw):
+            self.calls += 1
+            if self.calls == 1:
+                raise AgentCallError("prompt transport error (ReadTimeout): timed out")
+            return PromptResult(text='{"ok": true}', structured={"ok": True},
+                                session_id=session_id)
+
+    class Store:
+        def __init__(self):
+            self.events = []
+
+        def append(self, t, p):
+            self.events.append((t, p))
+
+        def put_artifact(self, *a, **k):
+            return "sha"
+
+    import tempfile
+    from pathlib import Path as _P
+
+    from kernel_optimizer.agents.sandbox import SandboxFactory
+    from kernel_optimizer.config import AgentModuleConfig
+
+    with tempfile.TemporaryDirectory() as td:
+        mod = Mod(
+            client=Client(),
+            sandboxes=SandboxFactory(_P(td)),
+            store=Store(),
+            cfg=AgentModuleConfig(model="p/m", max_retries=2, max_transport_retries=2),
+        )
+        outcome = mod.invoke(In())
+
+    assert len(seeds) >= 2, (
+        "the sandbox was seeded once for the whole call, so a guidance fix applied during a "
+        "retry cannot reach the next attempt (measured: three attempts all read the stale "
+        f"contract). seeds={len(seeds)}"
+    )
+    assert outcome.output is not None, "the retry should still succeed normally"
