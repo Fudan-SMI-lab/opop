@@ -471,6 +471,10 @@ class Orchestrator:
         self.t0 = time.monotonic()
         self.baselines: list[Baseline] = []
         self.eval_semantics: dict = {}  # improvement J: reference train/eval semantics
+        # This box's measured ceilings and derived classification thresholds (step 2). None when
+        # calibration could not run: the classifier then reports `unknown` rather than comparing
+        # against a guessed ceiling, which is the whole reason the numbers are measured.
+        self.calibration = None
         self.runs: dict[str, CandidateRun] = {}
         self.failed_hypotheses: dict[str, list[dict]] = {}  # family_id -> tried-and-failed
         # Improvement B1: one worker thread that runs the NEXT candidate's
@@ -528,6 +532,10 @@ class Orchestrator:
 
     def _run(self) -> dict[str, Any]:
         self.store.write_state_snapshot({"phase": "started", "task": self.task.model_dump()})
+        # Before the baseline, because the baseline's own launch-overhead numbers are read
+        # against these ceilings and because a calibration measured while candidates are
+        # compiling would understate every ceiling it reports.
+        self._calibrate()
         self._baseline()
         self._generate_seeds()
 
@@ -609,6 +617,44 @@ class Orchestrator:
         result = self._finalize()
         self.store.append("RUN_FINISHED", {"summary": result})
         return result
+
+    def _calibrate(self) -> None:
+        """Obtain this box's measured ceilings before anything is classified against them.
+
+        Runs once per BOX, not per run: the result is cached beside the runs directory and keyed
+        on device identity, so a normal run pays nothing and a card change re-measures
+        automatically. Idempotent through the same step_key mechanism as every other stage, and
+        deliberately non-fatal -- a box whose calibration fails must still be able to run, with
+        the classifier reporting `unknown` instead of inventing a denominator.
+        """
+        key = "calibrate"
+        state = self.store.replay()
+        if key in state.steps_done:
+            # On resume, reload from the cache rather than re-measuring: the ceilings a resumed
+            # run classifies against must be the ones its earlier half used.
+            self._load_calibration()
+            return
+        self._load_calibration(measure=True)
+        self._step_done(key)
+
+    def _load_calibration(self, measure: bool = False) -> None:
+        from kernel_optimizer.evaluation.calibration import cache_path, load_cached
+        from kernel_optimizer.gpu.calibrate import ensure_calibration
+
+        runs_dir = self.store.run_dir.parent
+        try:
+            if measure:
+                # The evaluator already owns the only GPU worker; going through it keeps the
+                # single-worker invariant (one file lock, one queue) rather than constructing a
+                # second one that would time against the first.
+                self.calibration = ensure_calibration(
+                    self.deps.evaluator.worker, runs_dir, store=self.store)
+            else:
+                self.calibration = load_cached(cache_path(runs_dir))
+        except Exception as exc:  # noqa: BLE001 — never let a diagnostic end a run
+            self.store.append("CALIBRATION_FAILED",
+                              {"error": f"{type(exc).__name__}: {exc}"[:500]})
+            self.calibration = None
 
     def _baseline(self) -> None:
         key = "baseline"

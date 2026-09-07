@@ -5901,3 +5901,343 @@ def test_a_round_that_evaluated_nothing_is_not_recorded_as_no_improvement():
     fm.families[fid].rewrite_rounds_used += 1
     assert policy.family_verdict(fm.families[fid]).stop_kind == "converged", \
         "a genuinely measured no-improvement round must still be able to converge"
+
+
+# --- step 2: self-calibration -------------------------------------------------------------
+
+# The REAL worker result measured on box 2 (RTX 4090, 2026-09-08). Kept verbatim so the
+# threshold derivation is tested against numbers a GPU actually produced, not against numbers
+# invented to make it pass. Independently corroborated by
+# scripts/probes/probe_bottleneck_signals.py, which measured dram 0.9102 TB/s and fp32
+# 54.60 TFLOP/s on a separate run.
+MEASURED_4090 = {
+    "ok": True, "device_name": "NVIDIA GeForce RTX 4090", "capability": [8, 9],
+    "sm_count": 128, "torch_version": "2.13.0+cu129", "driver_version": "12.9",
+    "l2_bytes": 75497472, "spec_dram_tbs": 1.008096,
+    "dram_tbs": 0.9102221900268849, "fp32_tflops": 54.93976179332003,
+    "tf32_tflops": 88.8785549203062, "empty_launch_floor_ms": 0.01740800030529499,
+    "yardsticks": [
+        {"name": "COMPUTE 4096^3 fp32 matmul", "truth": "compute",
+         "gpu_ms": 2.6357760429382324, "cpu_issue_ms": 0.012677162885665894,
+         "flop_count": 137438953472, "byte_count": 201326592},
+        {"name": "MEMORY 256MB elementwise", "truth": "memory",
+         "gpu_ms": 0.5949440002441406, "cpu_issue_ms": 0.0067390501499176025,
+         "flop_count": 67108864, "byte_count": 536870912},
+        {"name": "LAUNCH 40 tiny ops", "truth": "launch",
+         "gpu_ms": 0.6400159895420074, "cpu_issue_ms": 0.6161164492368698,
+         "flop_count": 5242880, "byte_count": 20971520},
+        {"name": "UNSATURATED linear+silu+groupnorm", "truth": "unsaturated",
+         "gpu_ms": 0.09728000313043594, "cpu_issue_ms": 0.06671249866485596,
+         "flop_count": 134217728, "byte_count": 3932160},
+    ],
+}
+
+
+def test_derived_thresholds_reproduce_the_yardsticks_own_ground_truth():
+    """The acceptance test for calibration: do the derived lines classify the workloads whose
+    bottleneck is known analytically?
+
+    This is the whole point of measuring thresholds instead of guessing them. A 4096^3 matmul IS
+    compute-bound; a 512 MB copy IS memory-bound; 40 tiny ops ARE launch-bound. If the derived
+    lines cannot separate those three, no verdict downstream means anything.
+    """
+    from kernel_optimizer.gpu.calibrate import calibration_from_worker
+
+    cal = calibration_from_worker(MEASURED_4090)
+    t = cal.thresholds
+    assert t is not None
+    by = {y.truth: y for y in cal.yardsticks}
+
+    assert by["memory"].pct_of_dram(cal.dram_tbs) >= t.dram_saturated_frac, (
+        "the known memory-bound workload does not clear the derived DRAM line")
+    assert by["compute"].pct_of_fp32(cal.fp32_tflops) >= t.compute_saturated_frac, (
+        "the known compute-bound workload does not clear the derived compute line")
+    assert by["launch"].cpu_over_gpu >= t.launch_bound_cpu_ratio, (
+        "the known launch-bound workload does not clear the derived launch line -- exactly the "
+        "defect a guessed 1.0 had, since it measures 0.963")
+
+    # And the negative direction, which is what a too-low line breaks: workloads that are NOT of
+    # a class must fall below that class's line.
+    assert by["compute"].pct_of_dram(cal.dram_tbs) < t.dram_saturated_frac
+    assert by["memory"].pct_of_fp32(cal.fp32_tflops) < t.compute_saturated_frac
+    assert by["unsaturated"].cpu_over_gpu < t.launch_bound_cpu_ratio, (
+        "an ordinary fused op is being called launch-bound; the line is too low")
+    assert by["compute"].pct_of_fp32(cal.fp32_tflops) > t.idle_frac
+    assert by["unsaturated"].pct_of_dram(cal.dram_tbs) < t.idle_frac
+
+
+def test_a_guessed_compute_line_would_have_been_wrong_by_a_factor():
+    """Neutralization: show the disproved constants actually fail on measured data.
+
+    Without this, "we derive the thresholds" is an unfalsifiable claim about the code. The two
+    guesses that step 1 disproved are asserted to be wrong HERE, against the same numbers, so
+    reinstating either one fails a test rather than silently degrading classification.
+    """
+    from kernel_optimizer.gpu.calibrate import calibration_from_worker
+
+    cal = calibration_from_worker(MEASURED_4090)
+    compute_achieved = cal.yardsticks[0].pct_of_fp32(cal.fp32_tflops)
+    launch_ratio = cal.yardsticks[2].cpu_over_gpu
+
+    # The old COMPUTE_SATURATED_FRAC = 0.50 sits far below what a genuinely compute-bound kernel
+    # reaches, so a kernel at HALF the ceiling would be declared saturated and left alone.
+    assert compute_achieved > 0.50 * 1.5, (
+        "a 0.50 compute line is not merely imprecise: a kernel at 50% of peak still has ~2x of "
+        "headroom and would be reported as done")
+    assert cal.thresholds.compute_saturated_frac > 0.70, (
+        "the derived compute line collapsed toward the disproved guess")
+
+    # The old LAUNCH_BOUND_CPU_RATIO = 1.0 is ABOVE what a launch-bound workload exhibits, so
+    # the test judges backwards and can never fire.
+    assert launch_ratio < 1.0, (
+        "the indisputably launch-bound yardstick measures below 1.0, so a 1.0 line never fires")
+    assert cal.thresholds.launch_bound_cpu_ratio < launch_ratio, (
+        "the derived launch line must sit below what a launch-bound workload exhibits")
+
+
+def test_calibration_supplies_the_empty_launch_floor_the_classifier_was_missing():
+    """`overhead_floor` had no input before this. bottleneck_signals.json never measured a floor,
+    so the branch could not fire and a kernel already at the floor fell through to
+    `latency_bound` -- i.e. the agent was told to add parallelism to a kernel whose body no
+    longer costs anything.
+    """
+    from kernel_optimizer.evaluation.bottleneck import classify
+    from kernel_optimizer.gpu.calibrate import calibration_from_worker
+
+    cal = calibration_from_worker(MEASURED_4090)
+    assert cal.empty_launch_floor_ms > 0, "no floor measured; overhead_floor still cannot fire"
+
+    at_floor = classify(gpu_ms=cal.empty_launch_floor_ms * 1.05, cpu_issue_ms=None,
+                        flop_count=1000, byte_count=1000, peaks=None,
+                        empty_launch_floor_ms=cal.empty_launch_floor_ms)
+    assert at_floor.kind == "overhead_floor", (
+        f"a kernel at the measured floor was classified {at_floor.kind}")
+
+    # Control: a kernel well above the floor must NOT be excused as overhead.
+    far_above = classify(gpu_ms=cal.empty_launch_floor_ms * 50, cpu_issue_ms=None,
+                         flop_count=1000, byte_count=1000, peaks=None,
+                         empty_launch_floor_ms=cal.empty_launch_floor_ms)
+    assert far_above.kind != "overhead_floor"
+
+
+def test_both_compute_ceilings_are_measured_so_tensor_core_kernels_are_judged_fairly():
+    """One fp32 ceiling is not enough. A tf32/tensor-core kernel measured against the fp32
+    ceiling reports as >100% of peak (nonsense that reads as "done"), and a scalar kernel
+    measured against the tf32 ceiling reads as hopeless. On this card the two differ by 1.6x,
+    so the choice of denominator changes the verdict.
+    """
+    from kernel_optimizer.gpu.calibrate import calibration_from_worker
+
+    cal = calibration_from_worker(MEASURED_4090)
+    assert cal.tf32_tflops > cal.fp32_tflops * 1.2, (
+        "the tf32 ceiling is not meaningfully above fp32; the separation this relies on is gone")
+    assert cal.tf32_ridge_flop_per_byte > cal.ridge_flop_per_byte
+
+    # A kernel running at 80 TFLOP/s is impossible in fp32 and ordinary in tf32. Against the
+    # wrong ceiling it reads as 146% of peak.
+    assert 80.0 / cal.fp32_tflops > 1.0
+    assert 80.0 / cal.tf32_tflops < 1.0
+
+
+def test_a_cached_calibration_is_refused_on_different_hardware():
+    """Every classification is a fraction of these ceilings, so a calibration reused across a
+    card or driver change produces confident verdicts computed against another GPU's limits.
+    The cache is keyed on device identity for exactly that reason.
+    """
+    import tempfile
+    from pathlib import Path as _P
+
+    from kernel_optimizer.evaluation.calibration import cache_path, load_cached, save
+    from kernel_optimizer.gpu.calibrate import calibration_from_worker
+
+    cal = calibration_from_worker(MEASURED_4090)
+    with tempfile.TemporaryDirectory() as td:
+        path = cache_path(_P(td))
+        save(path, cal)
+
+        same = load_cached(path, cal.identity())
+        assert same is not None, "a calibration for the SAME box must be reused"
+        assert same.dram_tbs == cal.dram_tbs
+
+        other = load_cached(path, "NVIDIA GeForce RTX 5080 Laptop GPU|12.0|84|2.13.0+cu129|12.9")
+        assert other is None, (
+            "a calibration measured on a 4090 was served for a 5080; every %-of-peak verdict "
+            "downstream would be computed against the wrong ceiling")
+
+        # A corrupt cache must re-measure, not crash a 12-hour run.
+        path.write_text("{not json", encoding="utf-8")
+        assert load_cached(path, cal.identity()) is None
+
+
+def test_a_throttled_calibration_is_flagged_but_still_usable():
+    """A contended box is still the box the run happens on, and its achievable bandwidth is the
+    honest denominator -- so a low ceiling must NOT reject the calibration. What must not happen
+    is a verdict resting on a bad ceiling being reported as confidently as a good one.
+    """
+    from kernel_optimizer.evaluation.calibration import flag_suspect
+    from kernel_optimizer.gpu.calibrate import calibration_from_worker
+
+    assert flag_suspect(0.9102, 1.008) == [], "a healthy 90%-of-spec ceiling must not be flagged"
+
+    bad = dict(MEASURED_4090, dram_tbs=0.30)
+    cal = calibration_from_worker(bad)
+    assert cal.suspect, "a ceiling at 30% of spec was not flagged"
+    assert "recalibrate" in cal.suspect[0].lower()
+    assert cal.dram_tbs == 0.30, "the measured value must still be kept and used"
+    assert cal.thresholds is not None, "a suspect calibration must still yield thresholds"
+
+
+def test_no_classification_threshold_is_a_hardcoded_absolute():
+    """The portability requirement, enforced on the source rather than argued in a comment.
+
+    The user's constraint was explicit: thresholds must not be hardcoded constants decided on
+    one card, because the harness moves between GPUs and re-deriving by hand at each box is not
+    acceptable. So every threshold must be a fraction of a MEASURED ceiling, and the classifier
+    must contain no absolute bandwidth/FLOP/latency figure.
+    """
+    from pathlib import Path as _P
+
+    src = _P("src/kernel_optimizer/evaluation/bottleneck.py").read_text(encoding="utf-8")
+    for unit in ("TB/s", "GB/s", "TFLOP", "GFLOP"):
+        for line in src.splitlines():
+            if unit not in line:
+                continue
+            # Units may appear in prose (docstrings, `suggests` text); what must not appear is a
+            # numeric literal carrying one, which would be a spec figure baked into the logic.
+            head = line.split(unit)[0][-12:]
+            assert not any(ch.isdigit() for ch in head), (
+                f"an absolute {unit} figure appears in the classifier: {line.strip()[:100]}")
+
+
+def test_the_run_obtains_a_calibration_and_a_resume_does_not_remeasure():
+    """Wiring test: without this the calibrator is another isolated module.
+
+    Three properties, and the FIRST is the one a weaker test misses. An earlier version of this
+    test called `orch._calibrate()` directly, so it passed with the call removed from `_run`
+    entirely -- it verified the method, not the wiring. So this drives the real `_run`, with the
+    stages after calibration stubbed, and asserts the ORDER: the ceilings must exist before the
+    baseline, whose launch-overhead numbers are read against them.
+
+      1. `_run` actually calls `_calibrate`, before `_baseline`.
+      2. A resume reloads from cache instead of re-measuring. Re-measuring would cost exclusive
+         GPU time on every resume AND, worse, classify the run's second half against different
+         numbers than its first.
+      3. The result is cached, so a later run on the same box pays nothing.
+    """
+    import tempfile
+    from pathlib import Path as _P
+
+    from kernel_optimizer.control.orchestrator import Orchestrator
+    from kernel_optimizer.store.run_store import RunStore
+
+    class FakeWorker:
+        def __init__(self):
+            self.calls = 0
+
+        def run_job(self, job, timeout_s, tag, lock_mode="exclusive"):
+            assert job["job_type"] == "calibrate"
+            assert lock_mode == "exclusive", (
+                "calibration measures CEILINGS; a shared job would depress every number")
+            self.calls += 1
+            return dict(MEASURED_4090)
+
+    class Stop(Exception):
+        """Ends _run right after the stages under test, so no GPU/agent work is needed."""
+
+    def make(store, worker, order):
+        orch = Orchestrator.__new__(Orchestrator)
+        orch.store = store
+        orch.calibration = None
+        orch.task = type("T", (), {"model_dump": lambda self: {"task": "level1:19"}})()
+
+        class Deps:
+            pass
+
+        deps = Deps()
+        deps.evaluator = type("E", (), {"worker": worker})()
+        orch.deps = deps
+        orch._step_done = lambda key: store.append("STEP_DONE", {"step_key": key})
+
+        real_calibrate = Orchestrator._calibrate.__get__(orch)
+
+        def calibrate():
+            order.append("calibrate")
+            real_calibrate()
+
+        def baseline():
+            order.append("baseline")
+            raise Stop()
+
+        orch._calibrate = calibrate
+        orch._baseline = baseline
+        return orch
+
+    with tempfile.TemporaryDirectory() as td:
+        runs_dir = _P(td) / "runs"
+        store = RunStore.create(runs_dir, "run-x", {"task": "level1:19"})
+        worker = FakeWorker()
+
+        order: list[str] = []
+        orch = make(store, worker, order)
+        with pytest.raises(Stop):
+            orch._run()
+
+        assert order == ["calibrate", "baseline"], (
+            f"_run must calibrate BEFORE the baseline; got {order}. An empty list means the "
+            f"call site is missing and the calibrator is dead code.")
+        assert worker.calls == 1, "the run never measured a calibration"
+        assert orch.calibration is not None
+        assert orch.calibration.thresholds is not None, (
+            "a calibration without thresholds cannot classify anything")
+        assert (runs_dir / "calibration.json").exists(), (
+            "nothing was cached, so every later run re-measures")
+
+        # Resume: same store, so the step is already done.
+        order2: list[str] = []
+        orch2 = make(store, worker, order2)
+        with pytest.raises(Stop):
+            orch2._run()
+        assert worker.calls == 1, (
+            "a resume re-measured the ceilings; the run's two halves would then be classified "
+            "against different numbers")
+        assert orch2.calibration is not None, "the resume lost the calibration entirely"
+        assert orch2.calibration.dram_tbs == orch.calibration.dram_tbs
+
+        kinds = [e.type for e in store.replay().events]
+        assert "CALIBRATION_MEASURED" in kinds, "the measurement was not journalled"
+
+
+def test_a_failed_calibration_does_not_end_the_run():
+    """A box without a working calibration must still run. The classifier reports `unknown`; the
+    harness does not refuse to start. This is the same rule every other diagnostic follows here.
+    """
+    import tempfile
+    from pathlib import Path as _P
+
+    from kernel_optimizer.control.orchestrator import Orchestrator
+    from kernel_optimizer.store.run_store import RunStore
+
+    class BrokenWorker:
+        def run_job(self, job, timeout_s, tag, lock_mode="exclusive"):
+            raise RuntimeError("worker died")
+
+    with tempfile.TemporaryDirectory() as td:
+        store = RunStore.create(_P(td) / "runs", "run-y", {"task": "level1:19"})
+        orch = Orchestrator.__new__(Orchestrator)
+        orch.store = store
+        orch.calibration = None
+
+        class Deps:
+            pass
+
+        deps = Deps()
+        deps.evaluator = type("E", (), {"worker": BrokenWorker()})()
+        orch.deps = deps
+        orch._step_done = lambda key: store.append("STEP_DONE", {"step_key": key})
+
+        orch._calibrate()          # must not raise
+        assert orch.calibration is None
+        kinds = [e.type for e in store.replay().events]
+        assert "CALIBRATION_FAILED" in kinds, (
+            "a failed calibration must be journalled, or the report cannot say why every "
+            "verdict is `unknown`")

@@ -1,0 +1,120 @@
+"""Host side of self-calibration: run the measurement, derive the thresholds, cache the result.
+
+Split from `evaluation/calibration.py` deliberately. That module is pure -- models plus
+`derive_thresholds` -- so the threshold logic is testable with no GPU and no worker. This one is
+the part that needs a device, and it is thin: run the job, assemble, derive, flag, save.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+
+from kernel_optimizer.evaluation.calibration import (
+    Calibration,
+    Yardstick,
+    cache_path,
+    derive_thresholds,
+    flag_suspect,
+    load_cached,
+    save,
+)
+from kernel_optimizer.gpu.jobs import make_calibrate_job
+
+
+def calibration_from_worker(result: dict) -> Calibration:
+    """Assemble a Calibration from a raw worker result, deriving the thresholds.
+
+    Pure apart from reading the dict, so a recorded worker result replays into exactly the same
+    calibration -- which is what makes a cached calibration auditable after the fact.
+    """
+    yardsticks = [
+        Yardstick(
+            name=y["name"], truth=y["truth"], gpu_ms=y["gpu_ms"],
+            cpu_issue_ms=y["cpu_issue_ms"], flop_count=y["flop_count"],
+            byte_count=y["byte_count"],
+        )
+        for y in result.get("yardsticks", [])
+    ]
+    dram_tbs = float(result.get("dram_tbs", 0.0) or 0.0)
+    fp32_tflops = float(result.get("fp32_tflops", 0.0) or 0.0)
+    spec_dram = float(result.get("spec_dram_tbs", 0.0) or 0.0)
+
+    return Calibration(
+        device_name=result.get("device_name", "unknown"),
+        capability=list(result.get("capability", []) or []),
+        sm_count=int(result.get("sm_count", 0) or 0),
+        torch_version=str(result.get("torch_version", "") or ""),
+        driver_version=str(result.get("driver_version", "") or ""),
+        dram_tbs=dram_tbs,
+        fp32_tflops=fp32_tflops,
+        tf32_tflops=float(result.get("tf32_tflops", 0.0) or 0.0),
+        empty_launch_floor_ms=float(result.get("empty_launch_floor_ms", 0.0) or 0.0),
+        spec_dram_tbs=spec_dram,
+        l2_bytes=int(result.get("l2_bytes", 0) or 0),
+        yardsticks=yardsticks,
+        thresholds=derive_thresholds(yardsticks, dram_tbs, fp32_tflops),
+        suspect=flag_suspect(dram_tbs, spec_dram),
+        measured_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    )
+
+
+def ensure_calibration(
+    worker,
+    run_root: Path,
+    *,
+    recalibrate: bool = False,
+    timeout_s: float = 900.0,
+    identity_hint: str | None = None,
+    store=None,
+) -> Calibration | None:
+    """Return this box's calibration, measuring it only when the cache cannot serve.
+
+    Cached beside the runs rather than inside one: it describes the BOX, not the run, and
+    re-measuring costs a couple of minutes of exclusive GPU time that every run would pay.
+
+    The cache is keyed on device identity, so it is never silently reused across a hardware or
+    driver change -- every classification is a fraction of these ceilings, so a stale one
+    produces confident verdicts computed against a different card's limits.
+
+    Returns None (never raises) when the measurement fails: a box without a working calibration
+    must still be able to run, with the classifier reporting `unknown` rather than the harness
+    refusing to start.
+    """
+    path = cache_path(run_root)
+    if not recalibrate:
+        cached = load_cached(path, identity_hint)
+        if cached is not None:
+            if store is not None:
+                store.append("CALIBRATION_LOADED",
+                             {"source": "cache", "path": str(path),
+                              "device": cached.device_name,
+                              "dram_tbs": cached.dram_tbs,
+                              "fp32_tflops": cached.fp32_tflops,
+                              "suspect": cached.suspect})
+            return cached
+
+    # Exclusive: this measures ceilings, so a neighbour job would depress every number and the
+    # whole point is that these are what a kernel can actually get on an otherwise idle box.
+    result = worker.run_job(make_calibrate_job(), timeout_s=timeout_s, tag="calibrate",
+                            lock_mode="exclusive")
+    if not result.get("ok"):
+        if store is not None:
+            store.append("CALIBRATION_FAILED",
+                         {"failure_kind": result.get("failure_kind"),
+                          "log_tail": (result.get("log_tail") or "")[:1000]})
+        return None
+
+    cal = calibration_from_worker(result)
+    save(path, cal)
+    if store is not None:
+        store.append("CALIBRATION_MEASURED", {
+            "path": str(path), "device": cal.device_name,
+            "dram_tbs": cal.dram_tbs, "fp32_tflops": cal.fp32_tflops,
+            "tf32_tflops": cal.tf32_tflops,
+            "empty_launch_floor_ms": cal.empty_launch_floor_ms,
+            "ridge_flop_per_byte": cal.ridge_flop_per_byte,
+            "thresholds": cal.thresholds.model_dump() if cal.thresholds else None,
+            "suspect": cal.suspect,
+        })
+    return cal

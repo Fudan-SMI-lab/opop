@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 JOB_TYPES = ("baseline", "eval_correctness", "eval_perf", "static_check", "env_probe",
-             "eval_correctness_relaxed", "probe_semantics")
+             "eval_correctness_relaxed", "probe_semantics", "calibrate")
 
 FAILURE_KINDS = (
     "compile_error",
@@ -20,6 +20,16 @@ FAILURE_KINDS = (
 
 def make_env_probe_job() -> dict[str, Any]:
     return {"job_type": "env_probe"}
+
+
+def make_calibrate_job() -> dict[str, Any]:
+    """Measure this box's ceilings and yardstick workloads (step 2's calibrator).
+
+    Takes no parameters on purpose. Every size inside is derived from the card's own free VRAM
+    and L2, so the same job calibrates a 16 GB laptop GPU and a 24 GB datacenter-adjacent one
+    without a config knob to get wrong.
+    """
+    return {"job_type": "calibrate"}
 
 
 def make_probe_semantics_job(ref_src_path: str) -> dict[str, Any]:

@@ -381,6 +381,41 @@ class ReportGenerator:
                          f"(std {lat['std']}, n={lat['n_samples']}){note}")
         lines.append("")
 
+        # This box's measured ceilings. Reported because every bottleneck verdict in this run is
+        # a fraction of them: a reader who cannot see the denominators cannot check the
+        # classification, and a SUSPECT calibration silently inflates every %-of-peak figure.
+        cal_ev = [e for e in events
+                  if e.type in ("CALIBRATION_MEASURED", "CALIBRATION_LOADED")]
+        if cal_ev:
+            c = cal_ev[-1].payload
+            lines.append("## Device calibration\n")
+            lines.append(f"- source: **{'measured this run' if cal_ev[-1].type == 'CALIBRATION_MEASURED' else 'cached (same box)'}**"
+                         f" — {c.get('device', 'unknown')}")
+            if c.get("dram_tbs"):
+                lines.append(f"- measured DRAM ceiling: {c['dram_tbs']:.4f} TB/s")
+            if c.get("fp32_tflops"):
+                lines.append(f"- measured fp32 ceiling: {c['fp32_tflops']:.2f} TFLOP/s"
+                             + (f" · tf32 {c['tf32_tflops']:.2f} TFLOP/s"
+                                if c.get("tf32_tflops") else ""))
+            if c.get("empty_launch_floor_ms"):
+                lines.append(f"- empty-launch floor: "
+                             f"{c['empty_launch_floor_ms'] * 1e3:.1f} us "
+                             f"(a kernel at this is at the floor; no tiling change can help)")
+            th = c.get("thresholds") or {}
+            if th:
+                lines.append(f"- derived thresholds: dram≥{th.get('dram_saturated_frac')}, "
+                             f"compute≥{th.get('compute_saturated_frac')}, "
+                             f"idle<{th.get('idle_frac')}, "
+                             f"cpu/gpu≥{th.get('launch_bound_cpu_ratio')} "
+                             f"(measured on this box, not constants)")
+            for s in (c.get("suspect") or []):
+                lines.append(f"- ⚠ **SUSPECT calibration**: {s}")
+            lines.append("")
+        elif any(e.type == "CALIBRATION_FAILED" for e in events):
+            lines.append("## Device calibration\n")
+            lines.append("- ⚠ **calibration FAILED** — bottleneck verdicts in this run report "
+                         "`unknown` rather than comparing against a guessed ceiling.\n")
+
         if summary and summary.get("best"):
             best = summary["best"]
             lines.append("## Best result\n")

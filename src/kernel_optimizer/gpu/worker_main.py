@@ -570,6 +570,217 @@ def run_env_probe(job: dict) -> dict:
     return result
 
 
+def run_calibrate(job: dict) -> dict:
+    """Measure this box's ceilings and the four yardstick workloads.
+
+    Every number the bottleneck classifier compares against comes from here. Nothing is read
+    from a datasheet, because a datasheet describes a card and this describes a container: the
+    same 4090 gives materially different achievable bandwidth depending on clocks and who else
+    is on the PCIe root.
+
+    The yardstick workloads exist so the classification THRESHOLDS can also be measured instead
+    of guessed. Each has an analytically known bottleneck, so the separation between them is the
+    evidence for where each line belongs; `evaluation/calibration.derive_thresholds` turns that
+    separation into dimensionless fractions. Two guessed constants were disproved this way on
+    the 4090 (a 0.50 compute line against a measured 0.975; a 1.0 launch ratio against a
+    measured 0.973 for an indisputably launch-bound workload).
+
+    Sizes are chosen relative to the CARD, not fixed: the streaming buffer is sized off free
+    VRAM and the matmul off the L2, so this is not a measurement that only works on 24 GB.
+    """
+    import statistics as _stats
+
+    import torch
+
+    if not torch.cuda.is_available():
+        return {"ok": False, "failure_kind": "worker_crash",
+                "log_tail": "no CUDA device; cannot calibrate"}
+
+    device = _pick_device()               # already a torch.device, not an index
+    torch.cuda.set_device(device)
+    device_index = device.index or 0
+    props = torch.cuda.get_device_properties(device_index)
+
+    def timed(fn, n: int, warmup: int) -> float:
+        for _ in range(warmup):
+            fn()
+        torch.cuda.synchronize(device)
+        samples = []
+        for _ in range(n):
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            start.record()
+            fn()
+            end.record()
+            torch.cuda.synchronize(device)
+            samples.append(start.elapsed_time(end))
+        return _stats.median(samples)
+
+    def cpu_issue(fn, n: int) -> float:
+        torch.cuda.synchronize(device)
+        samples = []
+        for _ in range(n):
+            t0 = time.perf_counter()
+            fn()
+            samples.append((time.perf_counter() - t0) * 1e3)
+        torch.cuda.synchronize(device)
+        return _stats.median(samples)
+
+    result: dict = {
+        "ok": True,
+        "device_name": props.name,
+        "capability": [props.major, props.minor],
+        "sm_count": props.multi_processor_count,
+        "torch_version": torch.__version__,
+        "driver_version": getattr(torch, "version", None)
+        and getattr(torch.version, "cuda", "") or "",
+        # `L2_cache_size` -- capital L. The lowercase spelling silently returns the default and
+        # a calibration would then report an L2 of zero without erroring.
+        "l2_bytes": int(getattr(props, "L2_cache_size", 0) or 0),
+    }
+
+    # Derived spec bandwidth: 2 (DDR) x memory clock x bus width / 8. Used ONLY to detect a
+    # throttled or contended calibration, never as the denominator -- what a kernel can actually
+    # get is the honest ceiling.
+    mem_clock_khz = int(getattr(props, "memory_clock_rate", 0) or 0)
+    bus_width = int(getattr(props, "memory_bus_width", 0) or 0)
+    result["spec_dram_tbs"] = (
+        (2 * mem_clock_khz * 1e3 * bus_width / 8 / 1e12) if (mem_clock_khz and bus_width) else 0.0
+    )
+
+    free_bytes, _total = torch.cuda.mem_get_info(device_index)
+
+    with torch.no_grad():
+        # --- DRAM ceiling: a streaming add sized off FREE VRAM, so this works on a 16 GB card
+        # as well as a 24 GB one, and never OOMs the box it is measuring.
+        stream_elems = int(min(128 * 1024 * 1024, max(4 * 1024 * 1024,
+                                                      free_bytes * 0.15 / 4 / 2)))
+        big = torch.randn(stream_elems, device=device)
+        out = torch.empty_like(big)
+        ms = timed(lambda: torch.add(big, 1.0, out=out), n=30, warmup=10)
+        result["dram_tbs"] = (2 * stream_elems * 4) / (ms * 1e-3) / 1e12
+        result["dram_probe_bytes"] = 2 * stream_elems * 4
+        del big, out
+        torch.cuda.empty_cache()
+
+        # --- fp32 and tf32 ceilings from the same matmul. Both are needed: comparing a
+        # tensor-core kernel against the fp32 ceiling reports >100% of peak, and comparing a
+        # scalar kernel against the tf32 ceiling reports it as hopeless. The classifier must
+        # know which ceiling applies to the kernel in front of it.
+        mm_n = 8192
+        while mm_n > 1024 and (3 * mm_n * mm_n * 4) > free_bytes * 0.35:
+            mm_n //= 2
+        a = torch.randn(mm_n, mm_n, device=device)
+        b = torch.randn(mm_n, mm_n, device=device)
+        prev_tf32 = torch.backends.cuda.matmul.allow_tf32
+        try:
+            torch.backends.cuda.matmul.allow_tf32 = False
+            ms = timed(lambda: a @ b, n=20, warmup=8)
+            result["fp32_tflops"] = (2 * mm_n ** 3) / (ms * 1e-3) / 1e12
+            torch.backends.cuda.matmul.allow_tf32 = True
+            ms = timed(lambda: a @ b, n=20, warmup=8)
+            result["tf32_tflops"] = (2 * mm_n ** 3) / (ms * 1e-3) / 1e12
+        finally:
+            torch.backends.cuda.matmul.allow_tf32 = prev_tf32
+        result["matmul_probe_n"] = mm_n
+        del a, b
+        torch.cuda.empty_cache()
+
+        # --- Empty-launch floor: what a launch costs when the body does nothing. This is the
+        # input `overhead_floor` has been missing. Without it, a kernel already at the floor
+        # shows near-zero throughput fractions and lands in `latency_bound`, so the agent is
+        # told to add parallelism to a kernel whose body is no longer what costs.
+        #
+        # Measured on a real launch (a 1-element op), not on an empty CUDA graph: what matters
+        # is the floor a torch-level candidate can reach, which includes torch's own dispatch.
+        tiny = torch.zeros(1, device=device)
+        tiny_out = torch.empty_like(tiny)
+        floor_ms = timed(lambda: torch.add(tiny, 1.0, out=tiny_out), n=200, warmup=50)
+        result["empty_launch_floor_ms"] = floor_ms
+        result["empty_launch_floor_note"] = (
+            "median GPU-event time for a 1-element elementwise op: the smallest latency any "
+            "single torch-level launch can have on this box. A kernel at or near this is at the "
+            "floor and no tiling or precision change can help it.")
+        del tiny, tiny_out
+
+        # --- The four yardsticks. `truth` is decided analytically BEFORE measuring; it is an
+        # input to placing the thresholds, not a prediction to be checked against them.
+        yardsticks = []
+
+        a = torch.randn(4096, 4096, device=device)
+        b = torch.randn(4096, 4096, device=device)
+        prev_tf32 = torch.backends.cuda.matmul.allow_tf32
+        torch.backends.cuda.matmul.allow_tf32 = False
+        try:
+            fn = lambda: a @ b  # noqa: E731
+            yardsticks.append({
+                "name": "COMPUTE 4096^3 fp32 matmul", "truth": "compute",
+                "gpu_ms": timed(fn, n=40, warmup=10), "cpu_issue_ms": cpu_issue(fn, n=40),
+                "flop_count": 2 * 4096 ** 3, "byte_count": 3 * 4096 * 4096 * 4,
+            })
+        finally:
+            torch.backends.cuda.matmul.allow_tf32 = prev_tf32
+        del a, b
+        torch.cuda.empty_cache()
+
+        copy_elems = int(min(64 * 1024 * 1024, max(2 * 1024 * 1024,
+                                                   free_bytes * 0.08 / 4 / 2)))
+        big = torch.randn(copy_elems, device=device)
+        out = torch.empty_like(big)
+        fn = lambda: torch.add(big, 1.0, out=out)  # noqa: E731
+        yardsticks.append({
+            "name": f"MEMORY {copy_elems*4//(1024*1024)}MB elementwise", "truth": "memory",
+            "gpu_ms": timed(fn, n=40, warmup=10), "cpu_issue_ms": cpu_issue(fn, n=40),
+            "flop_count": copy_elems, "byte_count": 2 * copy_elems * 4,
+        })
+        del big, out
+        torch.cuda.empty_cache()
+
+        small = torch.randn(256, 256, device=device)
+
+        def many():
+            y = small
+            for _ in range(40):
+                y = torch.relu(y) + 1.0
+            return y
+
+        yardsticks.append({
+            "name": "LAUNCH 40 tiny ops", "truth": "launch",
+            "gpu_ms": timed(many, n=40, warmup=10), "cpu_issue_ms": cpu_issue(many, n=40),
+            "flop_count": 40 * 2 * 256 * 256, "byte_count": 40 * 2 * 256 * 256 * 4,
+        })
+
+        # A realistic fused-op shape. Its analytic truth is `unsaturated`: neither ceiling is
+        # anywhere near reached and the host side is non-trivial. Two jobs here -- it keeps the
+        # launch line from swallowing ordinary kernels (its cpu/gpu is high but not launch-bound),
+        # and it keeps the idle line honest. NOT labelled "mixed": the classifier has a `mixed`
+        # class meaning "partially saturated", and this workload is measurably below the idle
+        # line on both axes (3.7% of bandwidth, 2.1% of compute on the 4090). That is also the
+        # evidence that the residual classes are the NORM for real fused tasks, not edge cases.
+        m_, k_, n_, g_ = 128, 512, 1024, 32
+        x = torch.randn(m_, k_, device=device)
+        w = torch.randn(n_, k_, device=device)
+        wb = torch.randn(n_, device=device)
+        bias = torch.randn(n_, device=device)
+        gnw = torch.randn(n_, device=device)
+        gnb = torch.randn(n_, device=device)
+
+        def mixed():
+            z = torch.nn.functional.linear(x, w, wb)
+            h = torch.sigmoid(z) * z
+            return torch.nn.functional.group_norm(h + bias, g_, gnw, gnb, 1e-5)
+
+        yardsticks.append({
+            "name": "UNSATURATED linear+silu+groupnorm", "truth": "unsaturated",
+            "gpu_ms": timed(mixed, n=40, warmup=10), "cpu_issue_ms": cpu_issue(mixed, n=40),
+            "flop_count": 2 * m_ * k_ * n_,
+            "byte_count": (m_ * k_ + n_ * k_ + 3 * m_ * n_) * 4,
+        })
+
+    result["yardsticks"] = yardsticks
+    return result
+
+
 def run_probe_semantics(job: dict) -> dict:
     """Improvement J: report the reference model's runtime eval semantics so the
     agent can reproduce them. Reads the LIVE model object's .training flag (the
@@ -1375,6 +1586,7 @@ HANDLERS = {
     "eval_correctness": lambda job: run_eval(job, measure_performance=False),
     "eval_perf": lambda job: run_eval(job, measure_performance=True),
     "eval_correctness_relaxed": run_relaxed_correctness,
+    "calibrate": run_calibrate,
 }
 
 

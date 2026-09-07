@@ -330,6 +330,68 @@ def cmd_report(args) -> int:
     return 0
 
 
+def cmd_calibrate(args) -> int:
+    """Measure this box's ceilings and derive the classification thresholds.
+
+    Runnable on its own so an operator can see, and audit, the numbers every bottleneck verdict
+    will be computed against -- before a 12-hour run rests on them.
+    """
+    cfg = _cfg(args)
+    from kernel_optimizer.gpu.calibrate import ensure_calibration
+    from kernel_optimizer.gpu.worker_client import WslGpuWorker
+
+    runs_dir = Path(cfg.run.runs_dir)
+    if not runs_dir.is_absolute():
+        runs_dir = Path(__file__).resolve().parents[2] / runs_dir
+    jobs = runs_dir / "_calibrate-jobs"
+    worker = WslGpuWorker(cfg.wsl, cfg.gpu.concurrency, jobs_dir=jobs)
+
+    cal = ensure_calibration(worker, runs_dir, recalibrate=args.recalibrate)
+    if cal is None:
+        print("calibration FAILED — the classifier will report `unknown` rather than guess",
+              file=sys.stderr)
+        return 1
+
+    print(f"device      {cal.device_name} sm_{''.join(str(c) for c in cal.capability)}"
+          f"  {cal.sm_count} SMs")
+    print(f"measured at {cal.measured_at}")
+    print()
+    print("--- measured ceilings (what a kernel can actually get here, not datasheet) ---")
+    print(f"  DRAM                 {cal.dram_tbs:.4f} TB/s"
+          + (f"   ({cal.dram_tbs / cal.spec_dram_tbs * 100:.1f}% of derived spec "
+             f"{cal.spec_dram_tbs:.3f})" if cal.spec_dram_tbs else ""))
+    print(f"  fp32 (tf32 off)      {cal.fp32_tflops:.2f} TFLOP/s")
+    print(f"  tf32 (tensor cores)  {cal.tf32_tflops:.2f} TFLOP/s")
+    print(f"  empty-launch floor   {cal.empty_launch_floor_ms*1e3:.1f} us")
+    print(f"  L2                   {cal.l2_bytes/1e6:.1f} MB")
+    print(f"  roofline ridge       {cal.ridge_flop_per_byte:.1f} FLOP/byte (fp32)"
+          + (f", {cal.tf32_ridge_flop_per_byte:.1f} (tf32)"
+             if cal.tf32_ridge_flop_per_byte else ""))
+    print()
+    print("--- yardsticks (analytic truth on the left, what this box did on the right) ---")
+    for y in cal.yardsticks:
+        print(f"  {y.truth:12} {y.name:36} {y.gpu_ms:8.4f} ms  "
+              f"cpu/gpu {y.cpu_over_gpu:6.3f}  "
+              f"dram {y.pct_of_dram(cal.dram_tbs)*100:5.1f}%  "
+              f"fp32 {y.pct_of_fp32(cal.fp32_tflops)*100:5.1f}%")
+    print()
+    if cal.thresholds:
+        t = cal.thresholds
+        print("--- derived thresholds (dimensionless, so they travel to the next card) ---")
+        print(f"  dram_saturated_frac    {t.dram_saturated_frac}")
+        print(f"  compute_saturated_frac {t.compute_saturated_frac}")
+        print(f"  idle_frac              {t.idle_frac}")
+        print(f"  launch_bound_cpu_ratio {t.launch_bound_cpu_ratio}")
+        print()
+        for key, why in t.derivation.items():
+            print(f"  {key}:\n    {why}")
+    if cal.suspect:
+        print()
+        for s in cal.suspect:
+            print(f"[SUSPECT] {s}", file=sys.stderr)
+    return 0
+
+
 # ------------------------------------------------------------------ entry
 
 
@@ -363,6 +425,12 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("resume", help="resume an interrupted run")
     p.add_argument("--run", required=True, help="run directory")
 
+    p = sub.add_parser("calibrate",
+                       help="measure this box's ceilings and derive classification thresholds")
+    p.add_argument("--recalibrate", action="store_true",
+                   help="ignore the cached calibration and measure again (use after a driver "
+                        "change, or when a previous calibration was flagged SUSPECT)")
+
     p = sub.add_parser("report", help="regenerate report from events.jsonl")
     p.add_argument("--run", required=True)
 
@@ -375,6 +443,7 @@ def main(argv: list[str] | None = None) -> int:
         "run": cmd_run,
         "resume": cmd_resume,
         "report": cmd_report,
+        "calibrate": cmd_calibrate,
     }
     return commands[args.cmd](args)
 
