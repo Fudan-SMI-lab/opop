@@ -1112,6 +1112,17 @@ class Orchestrator:
             })
         if crun.best_ms is None:
             return  # nothing correct; analysis would have no signal
+        # Steps 6+7: classify what limits this candidate, from measurements, BEFORE the analyst
+        # sees it. Journalled whether or not the analyst call then succeeds, so the harness's own
+        # analysis survives an agent failure -- it is the deterministic half of the loop.
+        verdict = self._classify_bottleneck(crun)
+        if verdict is not None:
+            self.store.append("BOTTLENECK_CLASSIFIED", {
+                "candidate_id": crun.candidate.candidate_id,
+                "kind": verdict.kind,
+                "evidence": verdict.evidence,
+                "disagreement": verdict.disagreement,
+            })
         try:
             outcome = self.deps.analyst.invoke(
                 AnalystInputs(
@@ -1120,6 +1131,10 @@ class Orchestrator:
                     candidate_id=crun.candidate.candidate_id,
                     eval_semantics=self.eval_semantics,
                     never_launched_kernels=sorted(unlaunched),
+                    bottleneck_verdict=verdict,
+                    task_cost=self.task_cost,
+                    calibration=self.calibration,
+                    profile=self._best_profile(crun),
                 )
             )
             crun.report = outcome.output
@@ -1131,6 +1146,65 @@ class Orchestrator:
                               {"module": "analyst", "final": True,
                                "candidate_id": crun.candidate.candidate_id,
                                "error": str(exc)[:500]})
+
+    def _best_profile(self, crun: CandidateRun):
+        """The ProfileRecord of the fastest correct trial, or None.
+
+        The fastest trial rather than the last: the analyst is reasoning about the configuration
+        that WON, and a different trial's registers/occupancy describe a configuration nobody
+        will ship.
+        """
+        best = None
+        for t in crun.trials:
+            if t.status != "complete" or t.latency_ms is None or t.profile is None:
+                continue
+            if best is None or t.latency_ms.median < best[0]:
+                best = (t.latency_ms.median, t.profile)
+        return best[1] if best else None
+
+    def _classify_bottleneck(self, crun: CandidateRun):
+        """Run the measured bottleneck classifier for this candidate's best trial.
+
+        Returns None rather than raising when the inputs are not there: classification is
+        advisory, and a box without a calibration must still complete a run. The `task_cost`
+        supplies the FLOP/byte numerator and denominator -- deliberately the TASK's, not the
+        candidate's, so two candidates for the same task are compared on the same basis.
+        """
+        if self.calibration is None or crun.best_ms is None:
+            return None
+        try:
+            from kernel_optimizer.evaluation.bottleneck import DevicePeaks, classify
+
+            profile = self._best_profile(crun)
+            cost = self.task_cost
+            peaks = DevicePeaks(dram_tbs=self.calibration.dram_tbs,
+                                fp32_tflops=self.calibration.fp32_tflops,
+                                tf32_tflops=self.calibration.tf32_tflops)
+            return classify(
+                gpu_ms=crun.best_ms,
+                cpu_issue_ms=(profile.cpu_issue_ms if profile else None),
+                flop_count=(cost.flop_count if cost else None),
+                # The task's COMPULSORY traffic, not the reference's materialized traffic: the
+                # denominator has to be what this candidate must move, and a candidate that fuses
+                # well moves close to the compulsory figure. Using the reference's number would
+                # credit every candidate with traffic a good one avoids.
+                byte_count=(cost.compulsory_bytes if cost else None),
+                peaks=peaks,
+                n_regs=(profile.n_regs if profile else None),
+                n_spills=(profile.n_spills if profile else None),
+                shared_bytes=(profile.shared_bytes if profile else None),
+                max_regs_per_thread=self.cfg.device.max_regs_per_thread,
+                max_shared_bytes=self.cfg.device.max_shared_bytes_optin,
+                empty_launch_floor_ms=self.calibration.empty_launch_floor_ms,
+                thresholds=self.calibration.thresholds,
+                sass=(profile.sass if profile else None),
+                occupancy=(profile.occupancy if profile else None),
+            )
+        except Exception as exc:  # noqa: BLE001 — advisory; never break a run over a diagnostic
+            self.store.append("BOTTLENECK_CLASSIFY_FAILED",
+                              {"candidate_id": crun.candidate.candidate_id,
+                               "error": f"{type(exc).__name__}: {exc}"[:300]})
+            return None
 
     def _maybe_expand_space(self, crun: CandidateRun) -> None:
         """Improvement K: if a knob hit the tried-range boundary while still improving

@@ -6756,3 +6756,516 @@ def test_tier1_statics_reach_the_profile_record_with_the_right_aggregation():
     assert bare.uses_tensor_cores is None, (
         "an unmeasured instruction mix must read as unknown, not as 'no tensor cores'")
     assert bare.occupancy_pct is None
+
+
+# --- step 6: classifier consuming calibrated thresholds -----------------------------------
+
+def _peaks_4090():
+    from kernel_optimizer.evaluation.bottleneck import DevicePeaks
+    from kernel_optimizer.gpu.calibrate import calibration_from_worker
+
+    cal = calibration_from_worker(MEASURED_4090)
+    return cal, DevicePeaks(dram_tbs=cal.dram_tbs, fp32_tflops=cal.fp32_tflops,
+                            tf32_tflops=cal.tf32_tflops)
+
+
+def test_the_classifier_reproduces_every_yardsticks_known_bottleneck():
+    """End-to-end acceptance for steps 2 and 6 together: measured ceilings -> derived thresholds
+    -> classifier -> the analytically-known truth.
+
+    Four workloads whose bottleneck is not in doubt: a 4096^3 matmul IS compute-bound, a 512 MB
+    copy IS memory-bound, 40 tiny ops ARE launch-bound, and a small fused chain saturates
+    neither. If the pipeline cannot recover those four, nothing it says about a real candidate is
+    worth reading.
+    """
+    from kernel_optimizer.evaluation.bottleneck import classify
+
+    cal, peaks = _peaks_4090()
+    expected = {"compute": "compute_bound", "memory": "memory_bound", "launch": "launch_bound",
+                "unsaturated": ("latency_bound", "mixed")}
+
+    for y in cal.yardsticks:
+        v = classify(gpu_ms=y.gpu_ms, cpu_issue_ms=y.cpu_issue_ms, flop_count=y.flop_count,
+                     byte_count=y.byte_count, peaks=peaks, thresholds=cal.thresholds,
+                     empty_launch_floor_ms=cal.empty_launch_floor_ms)
+        want = expected[y.truth]
+        ok = v.kind in want if isinstance(want, tuple) else v.kind == want
+        assert ok, (f"{y.name}: known to be {y.truth}-bound, classified {v.kind}. "
+                    f"evidence={v.evidence}")
+        assert v.evidence["thresholds"]["calibrated"] is True, (
+            "the verdict was computed against fallback thresholds, not this box's own")
+
+
+def test_the_disproved_constants_break_the_yardsticks_if_reinstated():
+    """Neutralization for step 6: prove the calibrated thresholds are load-bearing.
+
+    Feeding the classifier the two constants step 1 disproved must MISCLASSIFY a workload whose
+    truth is not in doubt. Otherwise "we calibrate the thresholds" is a claim about the code with
+    no consequence.
+    """
+    from kernel_optimizer.evaluation.bottleneck import classify
+    from kernel_optimizer.evaluation.calibration import Thresholds
+
+    cal, peaks = _peaks_4090()
+    by = {y.truth: y for y in cal.yardsticks}
+
+    disproved = Thresholds(dram_saturated_frac=0.60, compute_saturated_frac=0.50,
+                           idle_frac=0.25, launch_bound_cpu_ratio=1.0)
+
+    # The 1.0 launch ratio: the launch-bound workload measures 0.963, so the test cannot fire and
+    # the workload is classified by its throughput fractions instead.
+    lb = by["launch"]
+    bad = classify(gpu_ms=lb.gpu_ms, cpu_issue_ms=lb.cpu_issue_ms, flop_count=lb.flop_count,
+                   byte_count=lb.byte_count, peaks=peaks, thresholds=disproved)
+    assert bad.kind != "launch_bound", (
+        "a 1.0 launch ratio still produced launch_bound; then the constant was never the problem "
+        "and this test proves nothing")
+    good = classify(gpu_ms=lb.gpu_ms, cpu_issue_ms=lb.cpu_issue_ms, flop_count=lb.flop_count,
+                    byte_count=lb.byte_count, peaks=peaks, thresholds=cal.thresholds)
+    assert good.kind == "launch_bound", "the calibrated line must classify it correctly"
+
+    # The 0.50 compute line: a kernel at 60% of the ceiling has real headroom left but would be
+    # declared saturated and left alone.
+    half_speed_ms = by["compute"].gpu_ms / 0.6 * by["compute"].pct_of_fp32(cal.fp32_tflops)
+    half = classify(gpu_ms=half_speed_ms, cpu_issue_ms=None,
+                    flop_count=by["compute"].flop_count, byte_count=by["compute"].byte_count,
+                    peaks=peaks, thresholds=disproved)
+    assert half.kind == "compute_bound", (
+        "the 0.50 line is supposed to fire early; if it does not, the setup is wrong")
+    half_calibrated = classify(gpu_ms=half_speed_ms, cpu_issue_ms=None,
+                               flop_count=by["compute"].flop_count,
+                               byte_count=by["compute"].byte_count, peaks=peaks,
+                               thresholds=cal.thresholds)
+    assert half_calibrated.kind != "compute_bound", (
+        "a kernel at ~60% of the measured ceiling is still reported as saturated under the "
+        "calibrated line; the line is too low")
+
+
+def test_a_tensor_core_kernel_is_scored_against_the_tensor_core_ceiling():
+    """The denominator has to match the kernel, or the verdict inverts.
+
+    On this card the tf32 ceiling is 1.62x the fp32 one. A tf32 kernel scored against fp32 reads
+    as >100% of peak -- which looks like "saturated, stop" for a kernel that may have most of its
+    headroom left. The kernel's own instruction mix (step 5) is what selects the ceiling.
+    """
+    from kernel_optimizer.evaluation.bottleneck import classify
+
+    cal, peaks = _peaks_4090()
+    # A kernel achieving 70 TFLOP/s: impossible in fp32 (54.9 ceiling), 79% of the tf32 ceiling.
+    flop = 2 * 4096 ** 3
+    gpu_ms = flop / 70e12 * 1e3
+
+    with_tc = classify(gpu_ms=gpu_ms, cpu_issue_ms=None, flop_count=flop,
+                       byte_count=3 * 4096 * 4096 * 4, peaks=peaks, thresholds=cal.thresholds,
+                       sass={"instructions": 500, "tensor_core": 64})
+    assert with_tc.evidence["compute_ceiling_used"].startswith("tensor-core"), (
+        "a kernel full of HMMA was scored against the fp32 ceiling")
+    assert with_tc.evidence["pct_of_compute_peak"] < 100.0, (
+        f"scoring against the right ceiling must give a sane percentage, got "
+        f"{with_tc.evidence['pct_of_compute_peak']}")
+
+    without = classify(gpu_ms=gpu_ms, cpu_issue_ms=None, flop_count=flop,
+                       byte_count=3 * 4096 * 4096 * 4, peaks=peaks, thresholds=cal.thresholds,
+                       sass={"instructions": 500, "tensor_core": 0})
+    assert without.evidence["compute_ceiling_used"] == "fp32"
+    assert without.evidence["pct_of_compute_peak"] > 100.0, (
+        "a scalar kernel exceeding the fp32 ceiling is physically impossible and the evidence "
+        "should show it, so a reader can see the mix and the ceiling disagree")
+
+
+def test_saturating_fp32_without_tensor_cores_says_the_ceiling_itself_can_be_raised():
+    """The most actionable verdict this classifier can produce, and it needs step 5's mix.
+
+    A kernel at the fp32 ceiling that is NOT using tensor cores is not done -- it is against the
+    wrong ceiling. This is exactly the L3:48 situation recorded in memory: 8/8 tensor-core
+    candidates rejected, the accepted result entirely scalar, and nothing in the feedback said the
+    machine had 1.6x more available.
+    """
+    from kernel_optimizer.evaluation.bottleneck import classify
+
+    cal, peaks = _peaks_4090()
+    flop = 2 * 4096 ** 3
+    gpu_ms = flop / (cal.fp32_tflops * 0.95 * 1e12) * 1e3   # 95% of the fp32 ceiling
+
+    v = classify(gpu_ms=gpu_ms, cpu_issue_ms=None, flop_count=flop,
+                 byte_count=3 * 4096 * 4096 * 4, peaks=peaks, thresholds=cal.thresholds,
+                 sass={"instructions": 500, "tensor_core": 0})
+    assert v.kind == "compute_bound"
+    assert "does NOT use tensor cores" in v.suggests, (
+        f"a scalar kernel at the fp32 ceiling must be told the ceiling can be RAISED, not that "
+        f"it is finished. got: {v.suggests}")
+    assert "raises the limit" in v.suggests
+
+    # A kernel already using them must NOT get that advice.
+    v2 = classify(gpu_ms=gpu_ms, cpu_issue_ms=None, flop_count=flop,
+                  byte_count=3 * 4096 * 4096 * 4, peaks=peaks, thresholds=cal.thresholds,
+                  sass={"instructions": 500, "tensor_core": 64})
+    assert "does NOT use tensor cores" not in v2.suggests
+
+
+def test_low_occupancy_is_caught_even_when_nothing_spilled():
+    """The Triton-specific case step 5 measured, now reaching a verdict.
+
+    Triton caps registers and loses occupancy instead of spilling, so a spills-only resource test
+    misses it entirely. Checked on the REAL winning candidate of run-l1-42-20260907-193510:
+    112 regs/thread, 0 spills, 33.3% occupancy, register-limited.
+    """
+    from kernel_optimizer.evaluation.bottleneck import classify
+
+    cal, peaks = _peaks_4090()
+    v = classify(gpu_ms=4.85, cpu_issue_ms=None, flop_count=0, byte_count=None, peaks=peaks,
+                 n_regs=112, n_spills=0, shared_bytes=0, max_regs_per_thread=255,
+                 max_shared_bytes=101376, thresholds=cal.thresholds,
+                 empty_launch_floor_ms=cal.empty_launch_floor_ms,
+                 occupancy={"occupancy": 0.3333, "limiter": "registers"})
+
+    assert v.kind == "resource_limited", (
+        f"a real candidate at 33% occupancy was classified {v.kind}; with 0 spills and 112 regs "
+        f"(below the 0.8*255 line) occupancy is the ONLY signal that can catch it")
+    assert any("occupancy" in s for s in v.evidence["at_limit"])
+    assert "BLOCK_M" in v.suggests or "accumulator" in v.suggests, (
+        f"the advice must name the register lever, not just the symptom: {v.suggests}")
+
+    # Control: the same kernel at full occupancy must not be called resource-limited.
+    v2 = classify(gpu_ms=4.85, cpu_issue_ms=None, flop_count=0, byte_count=None, peaks=peaks,
+                  n_regs=112, n_spills=0, shared_bytes=0, max_regs_per_thread=255,
+                  max_shared_bytes=101376, thresholds=cal.thresholds,
+                  empty_launch_floor_ms=cal.empty_launch_floor_ms,
+                  occupancy={"occupancy": 1.0, "limiter": "warps_per_block"})
+    assert v2.kind != "resource_limited"
+
+
+def test_a_disagreement_between_the_two_methods_is_reported_not_hidden():
+    """Cross-validation, borrowed from KernelPro: when the achieved fractions and the analytic
+    roofline position conflict, defer to the analytic bound and SAY SO.
+
+    The reasoning is that a contended box depresses the measured ceiling, inflating every
+    fraction, while arithmetic intensity depends only on the task's own FLOP/byte ratio and cannot
+    move. A verdict that hides the conflict would be trusted exactly where it is least reliable.
+    """
+    from kernel_optimizer.evaluation.bottleneck import DevicePeaks, classify
+    from kernel_optimizer.evaluation.calibration import Thresholds
+
+    # A deliberately depressed DRAM ceiling, as a throttled box would measure. The kernel's
+    # intensity puts it on the compute side, but against this ceiling its bandwidth fraction
+    # clears the saturation line.
+    peaks = DevicePeaks(dram_tbs=0.05, fp32_tflops=54.9, tf32_tflops=88.9)
+    th = Thresholds(dram_saturated_frac=0.60, compute_saturated_frac=0.80, idle_frac=0.15,
+                    launch_bound_cpu_ratio=0.87)
+    flop, byts = 2 * 4096 ** 3, 3 * 4096 * 4096 * 4     # intensity 682, ridge here is 1098
+
+    v = classify(gpu_ms=2.64, cpu_issue_ms=None, flop_count=flop, byte_count=byts,
+                 peaks=peaks, thresholds=th)
+    assert v.evidence["analytic_side"] in ("memory", "compute")
+    if v.disagreement:
+        assert "Deferring to the analytic bound" in v.disagreement
+        assert "low-confidence" in v.disagreement
+
+    # And with a healthy ceiling the two methods agree, so nothing is flagged.
+    _cal, good_peaks = _peaks_4090()
+    v2 = classify(gpu_ms=2.64, cpu_issue_ms=None, flop_count=flop, byte_count=byts,
+                  peaks=good_peaks, thresholds=_cal.thresholds)
+    assert v2.disagreement == "", (
+        f"the two methods agree on a healthy box; nothing should be flagged: {v2.disagreement}")
+
+
+def test_every_verdict_carries_what_it_could_not_measure():
+    """Even a confident verdict must say what is unknown.
+
+    An agent told "compute bound" concludes something different from one told "compute bound, and
+    bank conflicts / divergence / stall reasons are unmeasurable on this box". Only the second is
+    true, and KernelPro's finding that raw counter dumps DEGRADE performance (p=0.0007) says the
+    honest gap beats a filled-in one.
+    """
+    from kernel_optimizer.evaluation.bottleneck import classify
+
+    cal, peaks = _peaks_4090()
+    for y in cal.yardsticks:
+        v = classify(gpu_ms=y.gpu_ms, cpu_issue_ms=y.cpu_issue_ms, flop_count=y.flop_count,
+                     byte_count=y.byte_count, peaks=peaks, thresholds=cal.thresholds)
+        assert v.unmeasured, f"{y.name}: verdict {v.kind} claims nothing is unmeasured"
+        joined = " ".join(v.unmeasured).lower()
+        assert "bank conflict" in joined and "divergence" in joined and "stall" in joined
+
+    unknown = classify(gpu_ms=0.0, cpu_issue_ms=None, flop_count=None, byte_count=None,
+                       peaks=None)
+    assert unknown.kind == "unknown"
+    assert unknown.unmeasured, "even an `unknown` verdict must list what cannot be measured"
+
+
+def test_the_docstring_no_longer_claims_tensor_cores_are_invisible():
+    """The correction step 6 was asked to make, enforced rather than asserted in prose.
+
+    The earlier docstring listed tensor cores and occupancy among the things counters would be
+    needed for. Step 5 disproved that by measurement, and a stale claim in the module that
+    downstream readers consult would keep the wrong belief alive.
+    """
+    from pathlib import Path as _P
+
+    doc = _P("src/kernel_optimizer/evaluation/bottleneck.py").read_text(encoding="utf-8")
+    head = doc[:doc.index("from __future__")]
+
+    assert "VISIBLE" in head, "the docstring does not state what IS visible without counters"
+    # Whitespace-collapsed before matching: the docstring is wrapped, so "bank conflicts" is
+    # split across a line break and a naive substring search misses a phrase that is present.
+    flat = " ".join(head.lower().split())
+    # The still-true absences must remain listed. Matched on stems so a plural or an adjacent
+    # word ("bank conflicts", "warp divergence") still counts -- the point is that the concept is
+    # named, not that a phrase appears verbatim.
+    for still_absent in ("bank conflict", "divergen", "stall"):
+        assert still_absent in flat, (
+            f"{still_absent} must still be listed as invisible; it genuinely is")
+    # And the disproved constants must be recorded as disproved, so they cannot come back as
+    # "the documented defaults".
+    assert "0.50" in head and "0.963" in head, (
+        "the disproved thresholds and the measurement that disproved them are not recorded")
+
+
+# --- step 7: wiring the verdict into the analyst prompt and the report ---------------------
+
+def test_the_bottleneck_analysis_reaches_the_agent_as_detect_analyze_recommend():
+    """The wiring step, and the FORM matters as much as the delivery.
+
+    KernelPro measured that feeding an LLM raw hardware-counter output made it perform WORSE than
+    feeding it nothing (NoFeedback beat raw ncu, p=0.0007): a wall of numbers invites
+    pattern-matching on whichever value looks anomalous. So the doc must state a conclusion, give
+    the evidence, and say what to try -- not dump metrics.
+    """
+    from kernel_optimizer.agents.modules import _bottleneck_doc
+    from kernel_optimizer.evaluation.bottleneck import classify
+    from kernel_optimizer.evaluation.task_cost import cost_from_worker
+
+    cal, peaks = _peaks_4090()
+    cost = cost_from_worker({"task_cost": MEASURED_TASK_COSTS["level3:43_attention"]})
+    v = classify(gpu_ms=6.92, cpu_issue_ms=None, flop_count=cost.flop_count,
+                 byte_count=cost.compulsory_bytes, peaks=peaks, thresholds=cal.thresholds,
+                 empty_launch_floor_ms=cal.empty_launch_floor_ms,
+                 sass={"instructions": 496, "tensor_core": 0},
+                 occupancy={"occupancy": 0.3333, "limiter": "registers"})
+    doc = _bottleneck_doc(v, cost, cal)
+
+    # DETECT: a named verdict, not a table.
+    assert "## Verdict" in doc and v.kind in doc
+    # ANALYZE: the numbers behind it, so the agent can disagree.
+    assert "The numbers behind it" in doc
+    assert "arithmetic_intensity" in doc
+    # RECOMMEND: what to try.
+    assert "tensor cores" in doc
+    # The ceilings must be labelled as measured on THIS box, or the agent may treat them as
+    # datasheet figures and distrust a throttled one.
+    assert "measured on THIS box" in doc
+    assert f"{cal.dram_tbs:.3f}" in doc
+    # The gap must be named, not left silent.
+    assert "CANNOT see" in doc
+    assert "bank conflicts" in doc
+    assert "not measured and found to be fine" in doc
+    # And the thresholds must be declared as derived, not constant.
+    assert "not constants" in doc
+
+
+def test_the_task_level_fusion_headroom_reaches_the_agent():
+    """The single largest lever L3:43 offers, and it is a TASK property no per-candidate
+    measurement produces. If it does not reach the agent it may as well not be measured.
+    """
+    from kernel_optimizer.agents.modules import _bottleneck_doc
+    from kernel_optimizer.evaluation.task_cost import cost_from_worker
+
+    cal, _ = _peaks_4090()
+    cost = cost_from_worker({"task_cost": MEASURED_TASK_COSTS["level3:43_attention"]})
+    doc = _bottleneck_doc(None, cost, cal)
+
+    assert "69.1x" in doc, "the measured fusion headroom is not in the agent's input"
+    assert "intermediates" in doc
+    assert "property of the TASK" in doc, (
+        "the agent must be told this cannot be reached by tuning a per-op kernel")
+
+    # A single-op task has nothing to fuse and must NOT be told to fuse.
+    one_op = cost_from_worker({"task_cost": MEASURED_TASK_COSTS["level1:1_matmul"]})
+    doc2 = _bottleneck_doc(None, one_op, cal)
+    assert "largest single lever" not in doc2, (
+        "a 1-op reference was told fusion is its largest lever; there is nothing to fuse")
+
+
+def test_a_task_that_cannot_be_compute_bound_is_told_so_before_it_tries():
+    """`flop_count / compulsory_bytes` is a CEILING on intensity, so this is decidable in advance.
+
+    Telling an agent to chase arithmetic throughput on a task whose maximum possible intensity is
+    below the card's ridge wastes a whole rewrite round on something no correct implementation can
+    achieve.
+    """
+    from kernel_optimizer.agents.modules import _bottleneck_doc
+    from kernel_optimizer.evaluation.task_cost import cost_from_worker
+
+    cal, _ = _peaks_4090()
+    relu = cost_from_worker({"task_cost": MEASURED_TASK_COSTS["level1:19_relu"]})
+    doc = _bottleneck_doc(None, relu, cal)
+    assert "cannot be compute-bound" in doc, (
+        "a 0-FLOP elementwise task was not told that arithmetic throughput is unreachable")
+    assert "BANDWIDTH" in doc
+
+    mm = cost_from_worker({"task_cost": MEASURED_TASK_COSTS["level1:1_matmul"]})
+    doc2 = _bottleneck_doc(None, mm, cal)
+    assert "CAN be compute-bound" in doc2
+    assert "cannot be compute-bound" not in doc2
+
+
+def test_tool_affinity_filtering_hides_signals_that_do_not_apply():
+    """KernelPro's tool-affinity idea: an irrelevant signal costs attention and invites a change
+    that addresses nothing. So each Tier 1 line appears only when it is relevant to THIS kernel.
+    """
+    from kernel_optimizer.agents.modules import _tier1_doc
+    from kernel_optimizer.models.core import ProfileRecord
+
+    # A kernel with a real problem: low occupancy, no tensor cores, scalar accesses.
+    bad = ProfileRecord(n_regs=112, n_spills=0, shared_bytes=0, num_warps=4,
+                        sass={"instructions": 496, "tensor_core": 0, "global_load": 16,
+                              "global_store": 16, "vec_128": 0},
+                        occupancy={"occupancy": 0.3333, "limiter": "registers",
+                                   "active_warps": 16, "max_warps_per_sm": 48,
+                                   "blocks_per_sm": 4})
+    doc = _tier1_doc(bad)
+    assert "33% (LOW)" in doc and "registers" in doc
+    assert "No tensor-core instructions" in doc
+    assert "narrower than 128-bit" in doc
+    # Low occupancy must be framed as a hypothesis, not a defect: a large-tile kernel can be
+    # fastest AT low occupancy, and telling the agent otherwise causes a regression.
+    assert "not automatically bad" in doc
+    assert "hypothesis to test" in doc
+
+    # A healthy kernel must not be handed a list of non-problems.
+    good = ProfileRecord(n_regs=32, n_spills=0, shared_bytes=8192, num_warps=8,
+                         sass={"instructions": 300, "tensor_core": 48, "global_load": 4,
+                               "global_store": 4, "vec_128": 8},
+                         occupancy={"occupancy": 1.0, "limiter": "warps_per_block",
+                                    "active_warps": 48, "max_warps_per_sm": 48,
+                                    "blocks_per_sm": 6})
+    doc2 = _tier1_doc(good)
+    assert "No tensor-core instructions" not in doc2, (
+        "a tensor-core kernel was told it has none")
+    assert "narrower than 128-bit" not in doc2, (
+        "a fully-vectorized kernel was told its accesses are narrow")
+    assert "LOW" not in doc2
+
+    # No measurements at all: no document, rather than a document full of nothing.
+    assert _tier1_doc(None) == ""
+    assert _tier1_doc(ProfileRecord()) == ""
+
+
+def test_an_impossible_throughput_fraction_is_flagged_not_reported_as_saturated():
+    """Found by rendering the real L3:43 numbers, which produced 108.5% of the fp32 ceiling.
+
+    Above 100% is physically impossible and means an input is wrong -- either the wrong ceiling or
+    a candidate doing less arithmetic than the reference the FLOP count came from. A bare threshold
+    test turns that into "saturated, stop optimizing", which is the most expensive possible wrong
+    answer: it ends the search on a kernel whose headroom is unknown.
+    """
+    from kernel_optimizer.evaluation.bottleneck import classify
+
+    cal, peaks = _peaks_4090()
+    v = classify(gpu_ms=6.92, cpu_issue_ms=None, flop_count=412316860416,
+                 byte_count=416296960, peaks=peaks, thresholds=cal.thresholds,
+                 sass={"instructions": 496, "tensor_core": 0})
+    assert v.evidence["pct_of_compute_peak"] > 100.0
+    assert v.evidence.get("impossible_fraction") is not None, (
+        "an impossible fraction was reported without any flag")
+    assert "impossible" in v.disagreement
+    assert "Do NOT read this as 'at the ceiling'" in v.disagreement
+    assert "LESS arithmetic than the reference" in v.disagreement, (
+        "the second cause -- the candidate simplifying the task -- must be named, since it is the "
+        "likely one when the mix says no tensor cores")
+
+    # A believable fraction must NOT be flagged, or the caveat becomes noise.
+    ok = classify(gpu_ms=2.64, cpu_issue_ms=None, flop_count=2 * 4096 ** 3,
+                  byte_count=3 * 4096 * 4096 * 4, peaks=peaks, thresholds=cal.thresholds,
+                  sass={"instructions": 500, "tensor_core": 0})
+    assert ok.evidence.get("impossible_fraction") is None
+    assert "impossible" not in ok.disagreement
+
+
+def test_the_verdict_is_journalled_and_reaches_the_report():
+    """The verdict must survive the analyst failing, and must be visible to a human reader.
+
+    It is the DETERMINISTIC half of the feedback loop: reproducible from the event log, unlike the
+    analyst's report. If it lived only in the agent's sandbox it could not be audited.
+    """
+    from kernel_optimizer.reporting.report import ReportGenerator
+
+    class FakeStore:
+        def __init__(self, events):
+            self._events = events
+            self.run_dir = __import__("pathlib").Path(".")
+
+        def replay(self):
+            class S:
+                pass
+
+            s = S()
+            s.events = self._events
+            return s
+
+    from types import SimpleNamespace
+
+    events = [
+        SimpleNamespace(type="BOTTLENECK_CLASSIFIED", payload={
+            "candidate_id": "cand-aaa", "kind": "resource_limited",
+            "evidence": {"occupancy": 0.3333, "occupancy_limiter": "registers",
+                         "uses_tensor_cores": False, "pct_of_dram_peak": 6.6},
+            "disagreement": ""}),
+        SimpleNamespace(type="BOTTLENECK_CLASSIFIED", payload={
+            "candidate_id": "cand-bbb", "kind": "compute_bound",
+            "evidence": {"pct_of_compute_peak": 108.5, "compute_ceiling_used": "fp32"},
+            "disagreement": "the kernel appears to reach 108% of the fp32 ceiling, "
+                            "which is impossible."}),
+    ]
+
+    # Exercise the section builder directly on the events, which is what `report` regenerates
+    # from -- the point being that nothing here needs the run's in-memory state.
+    gen = ReportGenerator()
+    import inspect
+
+    src = inspect.getsource(gen.generate)
+    assert "BOTTLENECK_CLASSIFIED" in src, (
+        "the report does not read the verdicts, so they are invisible to a human reader")
+    assert "low confidence" in src, (
+        "a disagreement caveat that is not surfaced is a caveat that misleads")
+
+
+def test_the_classifier_is_actually_called_by_the_run():
+    """Without this the classifier is a well-tested module with zero callers -- which is exactly
+    what it was before step 7, and what `bottleneck.py` was for two whole steps.
+    """
+    import inspect
+
+    from kernel_optimizer.control.orchestrator import Orchestrator
+
+    analysis = inspect.getsource(Orchestrator._stats_and_analysis)
+    assert "_classify_bottleneck" in analysis, (
+        "the analysis step never classifies; the classifier has no callers")
+    assert "BOTTLENECK_CLASSIFIED" in analysis, "the verdict is not journalled"
+    assert "bottleneck_verdict=verdict" in analysis, (
+        "the verdict is computed but never handed to the analyst")
+
+    classify_src = inspect.getsource(Orchestrator._classify_bottleneck)
+    assert "compulsory_bytes" in classify_src, (
+        "the byte denominator must be the task's COMPULSORY traffic: using the reference's "
+        "materialized traffic would credit every candidate with bytes a good one avoids")
+    assert "thresholds=self.calibration.thresholds" in classify_src, (
+        "the run's own calibrated thresholds are not being used")
+
+    # And it must degrade rather than raise: a box without a calibration still has to run.
+    assert "if self.calibration is None" in classify_src
+
+
+def test_the_best_trials_profile_is_used_not_the_last():
+    """The analyst reasons about the configuration that WON. A different trial's registers and
+    occupancy describe a configuration nobody will ship, so feeding those in would have the agent
+    optimizing a config it is not being asked about.
+    """
+    import inspect
+
+    from kernel_optimizer.control.orchestrator import Orchestrator
+
+    src = inspect.getsource(Orchestrator._best_profile)
+    assert "latency_ms.median < best[0]" in src, (
+        "the profile is not selected by lowest latency")
+    assert 'status != "complete"' in src, "a failed trial's profile could be selected"

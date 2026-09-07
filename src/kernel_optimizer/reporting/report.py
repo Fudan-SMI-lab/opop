@@ -455,6 +455,38 @@ class ReportGenerator:
                 lines.append(f"- note: {n}")
             lines.append("")
 
+        # The harness's own bottleneck verdicts (steps 6+7). Reported because they are the
+        # deterministic half of the feedback loop: unlike the analyst's report they are
+        # reproducible from the event log, so a reader can check them.
+        bn = [e.payload for e in events if e.type == "BOTTLENECK_CLASSIFIED"]
+        if bn:
+            lines.append("## Measured bottleneck verdicts\n")
+            kinds: dict[str, int] = {}
+            for b in bn:
+                kinds[b.get("kind", "?")] = kinds.get(b.get("kind", "?"), 0) + 1
+            lines.append("- distribution: "
+                         + ", ".join(f"**{k}** x{v}" for k, v in sorted(kinds.items())) + "\n")
+            for b in bn:
+                ev = b.get("evidence") or {}
+                bits = []
+                if ev.get("pct_of_dram_peak") is not None:
+                    bits.append(f"{ev['pct_of_dram_peak']}% DRAM")
+                if ev.get("pct_of_compute_peak") is not None:
+                    bits.append(f"{ev['pct_of_compute_peak']}% "
+                                f"{ev.get('compute_ceiling_used', 'compute')}")
+                if ev.get("occupancy") is not None:
+                    bits.append(f"occupancy {ev['occupancy']*100:.0f}% "
+                                f"({ev.get('occupancy_limiter')})")
+                if ev.get("uses_tensor_cores") is not None:
+                    bits.append("tensor cores"
+                                + ("" if ev["uses_tensor_cores"] else " NOT used"))
+                lines.append(f"- `{b.get('candidate_id')}`: **{b.get('kind')}**"
+                             + (f" — {', '.join(bits)}" if bits else ""))
+                if b.get("disagreement"):
+                    # A caveat that is not surfaced is a caveat that misleads.
+                    lines.append(f"  - ⚠ low confidence: {b['disagreement']}")
+            lines.append("")
+
         if summary and summary.get("best"):
             best = summary["best"]
             lines.append("## Best result\n")

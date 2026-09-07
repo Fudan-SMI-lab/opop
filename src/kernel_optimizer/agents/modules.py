@@ -44,6 +44,185 @@ def _triton_pitfalls_doc() -> str:
     )
 
 
+def _bottleneck_doc(verdict, task_cost, calibration) -> str:
+    """Render the harness's MEASURED bottleneck analysis for the agent (steps 6+7).
+
+    DETECT -> ANALYZE -> RECOMMEND, deliberately not a metric dump. KernelPro measured that
+    feeding an LLM raw hardware-counter output made it perform WORSE than feeding it nothing at
+    all (NoFeedback beat raw ncu, p=0.0007): a wall of numbers invites the model to pattern-match
+    on whichever one looks anomalous. So each section states a conclusion, then the numbers behind
+    it so the agent can disagree, then what the conclusion implies is worth trying.
+
+    Three things are stated that a metric dump would omit, and each has cost us a run:
+
+      * WHICH CEILING the percentages are against, and that it was measured on this box rather
+        than read off a datasheet. A container's achievable bandwidth is not the card's.
+      * WHAT IS UNMEASURABLE here, explicitly. An agent told "nothing is wrong" reasons
+        differently from one told "bank conflicts and stalls are unknown on this box".
+      * WHETHER the two classification methods agreed. A verdict presented without its
+        uncertainty gets trusted exactly where it is least reliable.
+    """
+    if verdict is None and task_cost is None:
+        return ("# Measured bottleneck analysis\n\n"
+                "Not available for this run: the harness could not measure this box's ceilings, "
+                "so no throughput fraction can be computed. Reason from `tuning/stats.json` and "
+                "`tuning/trials.csv` alone, and do NOT assume the absence of a verdict means the "
+                "kernel is fine.\n")
+
+    out = ["# Measured bottleneck analysis\n",
+           "Produced by the harness from measurements, not by a model. Every number here is "
+           "either a direct measurement or a ratio of two measurements; nothing is estimated. "
+           "It is ADVISORY -- you may disagree with the verdict, and the evidence is given so "
+           "that you can.\n"]
+
+    if task_cost is not None and (task_cost.flop_count or task_cost.compulsory_bytes):
+        out.append("## What this task requires (measured on the REFERENCE, so it applies to "
+                   "every candidate)\n")
+        out.append(f"- {task_cost.summary_line()}\n")
+        if task_cost.fusion_headroom > 1.5:
+            out.append(
+                f"- **The reference materializes {task_cost.fusion_headroom:.1f}x the traffic it "
+                f"cannot avoid**, across {task_cost.op_count} ops. That difference is "
+                f"intermediates written and re-read. Fusing them away is the largest single lever "
+                f"this task offers, and it is a property of the TASK -- no amount of tuning a "
+                f"per-op kernel reaches it.\n")
+        if calibration is not None and task_cost.compulsory_bytes:
+            # NOT guarded on flop_count being nonzero. A 0-FLOP task is the CLEAREST case of
+            # "cannot be compute-bound" -- a pure elementwise or pooling op has no
+            # multiply-accumulate at all -- and an earlier version of this guard skipped exactly
+            # that case, so the one task where the statement is certain was the one task that
+            # never got told.
+            ridge = calibration.ridge_flop_per_byte
+            ai = task_cost.max_arithmetic_intensity
+            if ridge > 0 and ai < ridge:
+                zero = ("This task performs no multiply-accumulate arithmetic at all. "
+                        if task_cost.flop_count == 0 else "")
+                out.append(
+                    f"- {zero}**This task cannot be compute-bound on this GPU** under any correct "
+                    f"implementation: its highest possible intensity is {ai:.2f} FLOP/byte and "
+                    f"this card's roofline ridge is {ridge:.1f}. Optimize for BANDWIDTH and for "
+                    f"fewer launches; chasing arithmetic throughput cannot pay here.\n")
+            elif ridge > 0:
+                out.append(
+                    f"- This task CAN be compute-bound here ({ai:.2f} FLOP/byte against a ridge "
+                    f"of {ridge:.1f}), so arithmetic throughput is a legitimate target.\n")
+        out.append("")
+
+    if calibration is not None:
+        out.append("## What this GPU can actually do (measured on THIS box, not a datasheet)\n")
+        out.append(f"- DRAM: **{calibration.dram_tbs:.3f} TB/s**\n")
+        out.append(f"- fp32 (no tensor cores): **{calibration.fp32_tflops:.1f} TFLOP/s**\n")
+        if calibration.tf32_tflops > 0:
+            out.append(
+                f"- tensor cores (tf32): **{calibration.tf32_tflops:.1f} TFLOP/s** "
+                f"= {calibration.tf32_tflops / max(calibration.fp32_tflops, 1e-9):.2f}x the fp32 "
+                f"figure. A kernel not using them is limited by the lower number.\n")
+        if calibration.empty_launch_floor_ms > 0:
+            out.append(
+                f"- smallest possible launch: **{calibration.empty_launch_floor_ms*1e3:.1f} us**. "
+                f"Nothing on this box can be faster than this per launch.\n")
+        for s in calibration.suspect:
+            out.append(f"- ⚠ {s}\n")
+        out.append("")
+
+    if verdict is not None:
+        out.append(f"## Verdict: **{verdict.kind}**\n")
+        out.append(f"{verdict.suggests}\n")
+        if verdict.disagreement:
+            out.append(f"\n**Confidence caveat.** {verdict.disagreement}\n")
+        out.append("\n### The numbers behind it\n")
+        for key, value in verdict.evidence.items():
+            if key == "thresholds":
+                continue
+            out.append(f"- `{key}` = {value}\n")
+        th = (verdict.evidence.get("thresholds") or {})
+        if th:
+            out.append(
+                f"\nThresholds used: DRAM saturated at >= {th.get('dram_saturated_frac')} of the "
+                f"measured ceiling, compute at >= {th.get('compute_saturated_frac')}, nothing "
+                f"saturated below {th.get('idle_frac')}, launch-bound at cpu/gpu >= "
+                f"{th.get('launch_bound_cpu_ratio')}. "
+                + ("These were DERIVED on this box from workloads whose bottleneck is known "
+                   "analytically -- they are not constants.\n" if th.get("calibrated")
+                   else "⚠ These are uncalibrated fallbacks; this box's own separation was not "
+                        "measured.\n"))
+        if verdict.unmeasured:
+            out.append(
+                "\n### What this analysis CANNOT see\n"
+                "Hardware counters need a host-side permission that cannot be set from inside a "
+                "container, so the following are **unknown** on this box -- not measured and "
+                "found to be fine:\n")
+            for item in verdict.unmeasured:
+                out.append(f"- {item}\n")
+            out.append(
+                "\nDo not propose a change whose entire justification is one of these, and do "
+                "not treat their absence as evidence that the kernel is clean.\n")
+    return "".join(out)
+
+
+def _tier1_doc(profile) -> str:
+    """What the compiled kernel's own instructions say. Step 5's signals, for the agent.
+
+    Separate from the verdict because it answers a different question: the verdict says what
+    limits the kernel, this says what the kernel IS. Tool-affinity filtering (KernelPro's term)
+    is applied here -- a signal is only shown when it is relevant to this kernel, since an
+    irrelevant one costs attention and invites a change that addresses nothing.
+    """
+    if profile is None:
+        return ""
+    lines: list[str] = []
+    occ_pct = profile.occupancy_pct
+    if occ_pct is not None:
+        limiter = profile.occupancy_limiter
+        lever = {
+            "registers": "reduce live values per thread -- a smaller BLOCK_M/BLOCK_N, or fewer "
+                         "simultaneous accumulators",
+            "shared_memory": "reduce shared usage -- a smaller tile, or fewer pipeline stages",
+            "warps_per_block": "raise num_warps, or launch more blocks",
+            "blocks_per_sm": "already at the per-SM block cap; occupancy is not the lever",
+        }.get(limiter or "", "reduce the per-thread footprint")
+        verdict_word = "LOW" if occ_pct < 50 else "adequate"
+        lines.append(
+            f"- **Theoretical occupancy {occ_pct:.0f}% ({verdict_word})**, limited by "
+            f"`{limiter}`. {profile.occupancy.get('active_warps')} of "
+            f"{profile.occupancy.get('max_warps_per_sm')} warp slots per SM are usable, at "
+            f"{profile.occupancy.get('blocks_per_sm')} blocks/SM. To raise it: {lever}.\n")
+        if occ_pct < 50:
+            lines.append(
+                "  Note this is THEORETICAL occupancy, computed from resource use. Low occupancy "
+                "is not automatically bad -- a large-tile kernel can be fastest at low occupancy "
+                "because each thread does more work. Treat it as a hypothesis to test, not a "
+                "defect to fix.\n")
+    tc = profile.uses_tensor_cores
+    if tc is False:
+        lines.append(
+            "- **No tensor-core instructions** in the compiled kernel (checked by disassembling "
+            "the cubin: no HMMA/IMMA/BMMA/OMMA). If this task's arithmetic is a matmul-like inner "
+            "product, moving it onto tensor cores raises the ceiling rather than approaching it.\n")
+    elif tc is True:
+        lines.append(f"- Tensor cores ARE in use ({profile.sass.get('tensor_core')} instructions "
+                     f"of {profile.sass.get('instructions')}).\n")
+    if profile.n_spills:
+        lines.append(
+            f"- **Register spills: {profile.n_spills}**. Spilled values go to local memory, which "
+            f"is DRAM-backed, so a spill inside the inner loop can cost more than the arithmetic "
+            f"it was making room for.\n")
+    sass = profile.sass or {}
+    gl = (sass.get("global_load") or 0) + (sass.get("global_store") or 0)
+    if gl and sass.get("instructions"):
+        vec = sass.get("vec_128") or 0
+        if vec == 0:
+            lines.append(
+                f"- All {gl} global memory accesses are narrower than 128-bit. Wider accesses "
+                f"move the same bytes in fewer transactions, though this is usually a small win "
+                f"compared with occupancy or fusion.\n")
+    if not lines:
+        return ""
+    return ("# What the compiled kernel actually is\n\n"
+            "Read from the compiled code itself (disassembly + compiler metadata), so these are "
+            "facts about the binary rather than inferences:\n\n" + "".join(lines))
+
+
 def _device_doc(device: DeviceLimits) -> str:
     return (
         f"# Target device\n\n"
@@ -550,6 +729,13 @@ class AnalystInputs:
     eval_semantics: dict | None = None
     # Improvement M: @triton.jit kernels defined in the source that NO trial launched.
     never_launched_kernels: list[str] = field(default_factory=list)
+    # Steps 6+7: the harness's own MEASURED bottleneck analysis, the task's cost, this box's
+    # ceilings, and what the compiled kernel is. All optional -- the prompt degrades to "not
+    # available" rather than assuming, because a box that could not be calibrated must still run.
+    bottleneck_verdict: object | None = None
+    task_cost: object | None = None
+    calibration: object | None = None
+    profile: object | None = None
 
 
 class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
@@ -562,6 +748,15 @@ class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
         sb.write_input("tuning/trials.csv", inputs.trials_csv)
         sb.write_input("docs/device.md", _device_doc(inputs.device))
         sb.write_input("task/eval_semantics.md", _eval_semantics_doc(inputs.eval_semantics))
+        # Steps 6+7. Written unconditionally (the renderer says "not available" when it has
+        # nothing) so the agent's reading list is the same shape on every box -- a file that
+        # sometimes does not exist is a file the agent learns to stop opening.
+        sb.write_input("analysis/bottleneck.md",
+                       _bottleneck_doc(inputs.bottleneck_verdict, inputs.task_cost,
+                                       inputs.calibration))
+        tier1 = _tier1_doc(inputs.profile)
+        if tier1:
+            sb.write_input("analysis/compiled_kernel.md", tier1)
         if inputs.never_launched_kernels:
             sb.write_input(
                 "tuning/never_launched_kernels.md",
@@ -591,10 +786,19 @@ class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
                 "number below measures a different path. Address that before any "
                 "resource analysis: an unreached kernel is not a slow kernel."
             )
-        return """A kernel candidate was tuned over its parameter space. These five
-files already exist in your working directory — read them with your file tools
+        return """A kernel candidate was tuned over its parameter space. These files
+already exist in your working directory — read them with your file tools
 before answering; do NOT assume any are missing (a stale index may hide them,
 so read by path):
+- `analysis/bottleneck.md` — the HARNESS'S OWN measured analysis: what this task
+  requires, what this GPU can actually do (measured on this box, not a datasheet),
+  which resource limits this kernel, and explicitly what could NOT be measured
+  here. Read this FIRST: it is measurement, and it tells you which of your
+  hypotheses are already ruled out.
+- `analysis/compiled_kernel.md` — what the compiled binary actually is: occupancy
+  and its limiting resource, whether tensor cores are used, spills, access widths.
+  Read from the disassembly, so these are facts about the binary. (Absent when the
+  compiled code could not be read.)
 - `candidate/source.py` — the kernel (PARAMS dict = tunable knobs)
 - `tuning/stats.json` — per-parameter statistics: best value, whether the optimum
   sits at a boundary of the tried range (`at_boundary` + direction), effect size,
