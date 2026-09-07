@@ -193,6 +193,196 @@ def _opt_int(value) -> int | None:
     return value if value >= 0 else None
 
 
+# --- cubin metadata: CUDA C++, and CUTLASS / CuTe for free ---------------------
+#
+# WHY THIS IS NOT A CUDA-SPECIFIC PATH. CUDA C++, CUTLASS and CuTe all compile through nvcc
+# to a cubin, so ONE reader covers all three: `cuobjdump -res-usage` prints per-kernel
+# registers / stack / shared / local out of the compiled object regardless of which of them
+# wrote the source. Writing a "CUDA extractor" would mean rewriting it for CUTLASS later.
+#
+# WHY IT MATTERS THAT THIS EXISTS AT ALL. Before it, `ProfileRecord` was populated only from
+# Triton's compiled-kernel object, so a `cuda` candidate got NOTHING: no registers, no spills,
+# no shared. That is not a property of the backend, it is a shortcut in our profiler -- and it
+# degraded the paper's own feedback loop (tuning evidence -> bottleneck report -> rewrite) on
+# the backend with the HIGHER expressiveness ceiling, which is exactly backwards.
+
+
+def _parse_res_usage(text: str) -> list[dict]:
+    """Parse `cuobjdump -res-usage` output into per-kernel resource dicts.
+
+    The format is a `Function <mangled>:` line followed by a line of KEY:VALUE pairs:
+
+        Function _Z6kernelPfS_i:
+          REG:42 STACK:0 SHARED:16384 LOCAL:0 CONSTANT[0]:380 TEXTURE:0 ...
+
+    Parsed with a regex over the whole block rather than by column position, because the field
+    set varies by architecture and by nvcc version (CONSTANT[n] banks come and go) -- a
+    positional parse would silently mis-assign on the next toolkit.
+    """
+    import re
+
+    out: list[dict] = []
+    # Split on the Function header, keeping the name; DOTALL so the body may span lines.
+    for match in re.finditer(r"Function\s+([^\s:]+):(.*?)(?=Function\s+[^\s:]+:|\Z)",
+                             text, re.DOTALL):
+        name, body = match.group(1), match.group(2)
+        fields = {k.upper(): int(v) for k, v in re.findall(r"([A-Z]+)(?:\[\d+\])?:(\d+)", body)}
+        if "REG" not in fields:
+            continue
+        out.append({
+            "name": name,
+            "n_regs": fields.get("REG"),
+            # STACK is the per-thread stack frame; a non-zero value means the compiler could
+            # not keep everything in registers, which is the same signal as a Triton spill.
+            # LOCAL is spilled local memory. Report their sum so the field means the same
+            # thing on both backends: "the compiler ran out of registers".
+            "n_spills": (fields.get("STACK", 0) or 0) + (fields.get("LOCAL", 0) or 0),
+            "shared": fields.get("SHARED"),
+            # nvcc does not record a launch geometry in the cubin -- warps/stages are
+            # properties of the LAUNCH, not the compiled code. Left None rather than guessed;
+            # the runtime path below fills them when a launch is observed.
+            "num_warps": None,
+            "num_stages": None,
+        })
+    return out
+
+
+def _launched_kernel_names(kernel_src: str, ref_src: str, device_index: int) -> list[str]:
+    """Which kernels a candidate ACTUALLY launches, observed with torch.profiler.
+
+    Needed because a cubin records no launch: it holds whatever nvcc emitted, and for CUTLASS
+    that is dozens of template instantiations of which one runs. Aggregating resources over the
+    whole cubin would report a variant that never executed -- the same class of error as timing
+    a fallback path and calling it the kernel.
+
+    Uses torch.profiler (CUPTI), NOT `ncu`. Hardware performance counters are unavailable on a
+    rented container (ERR_NVGPUCTRPERM needs a host-side kernel-module parameter), but per-kernel
+    timing and launch counts do not require them -- so this works on the machines the experiments
+    actually run on. Returns [] on any failure: an empty list means "not observed", and the
+    caller must not treat it as "nothing launched".
+    """
+    import importlib.util
+    import os
+    import tempfile
+
+    import torch
+    from torch.profiler import ProfilerActivity, profile
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+        f.write(kernel_src)
+        mod_path = f.name
+    try:
+        spec = importlib.util.spec_from_file_location("kopt_launch_probe", mod_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        ref_ctx: dict = {}
+        exec(compile(ref_src, "<ref>", "exec"), ref_ctx)
+        get_inputs = ref_ctx["get_inputs"]
+        get_init_inputs = ref_ctx.get("get_init_inputs", lambda: [])
+
+        device = torch.device(f"cuda:{device_index}")
+        torch.cuda.set_device(device)
+        with torch.no_grad():
+            init_inputs = [x.to(device) if isinstance(x, torch.Tensor) else x
+                           for x in get_init_inputs()]
+            model = module.ModelNew(*init_inputs).to(device)
+            inputs = [x.to(device) if isinstance(x, torch.Tensor) else x
+                      for x in get_inputs()]
+            model(*inputs)                      # warm up / compile before profiling
+            torch.cuda.synchronize(device)
+            with profile(activities=[ProfilerActivity.CUDA]) as prof:
+                model(*inputs)
+                torch.cuda.synchronize(device)
+        names = []
+        for evt in prof.key_averages():
+            if getattr(evt, "self_device_time_total", 0) and evt.key:
+                names.append(evt.key)
+        return names
+    except Exception:  # noqa: BLE001 — observation is best-effort
+        return []
+    finally:
+        try:
+            os.unlink(mod_path)
+        except OSError:
+            pass
+
+
+def _extract_cubin_metadata(launched_names: list[str] | None = None,
+                            build_dir: str | None = None) -> dict | None:
+    """Resources for the kernels a load_inline / nvcc build produced.
+
+    `launched_names` MUST be passed when known: CUTLASS instantiates many template variants
+    and a cubin can hold dozens of kernels of which one actually runs. Aggregating over the
+    whole cubin would report a variant that never executed -- the same class of error as
+    timing a fallback path and calling it the kernel. When it is given, kernels whose name
+    does not contain any launched name are dropped.
+
+    Returns None (not an empty dict) when there is nothing to read, so the caller can tell
+    "no CUDA backend here" from "a CUDA backend with no resources", which would be a bug.
+    """
+    import glob
+    import os
+    import shutil
+    import subprocess
+
+    cuobjdump = shutil.which("cuobjdump")
+    if not cuobjdump:
+        try:
+            from torch.utils.cpp_extension import CUDA_HOME
+
+            cand = os.path.join(CUDA_HOME or "", "bin", "cuobjdump")
+            cuobjdump = cand if os.path.exists(cand) else None
+        except Exception:  # noqa: BLE001
+            cuobjdump = None
+    if not cuobjdump:
+        return None
+
+    # torch's load_inline builds into TORCH_EXTENSIONS_DIR (default ~/.cache/torch_extensions),
+    # one directory per extension name, containing the .so. The cubin is embedded in the .so,
+    # and cuobjdump reads it directly out of the host binary.
+    roots = [build_dir] if build_dir else []
+    roots.append(os.environ.get("TORCH_EXTENSIONS_DIR")
+                 or os.path.expanduser("~/.cache/torch_extensions"))
+    objects: list[str] = []
+    for root in roots:
+        if not root or not os.path.isdir(root):
+            continue
+        objects.extend(sorted(glob.glob(os.path.join(root, "**", "*.so"), recursive=True),
+                              key=os.path.getmtime, reverse=True))
+    if not objects:
+        return None
+
+    kernels: list[dict] = []
+    seen: set[str] = set()
+    for obj in objects[:4]:      # newest few: an older extension in the cache is not ours
+        try:
+            proc = subprocess.run([cuobjdump, "-res-usage", obj],
+                                  capture_output=True, timeout=60)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if proc.returncode != 0:
+            continue
+        for k in _parse_res_usage(proc.stdout.decode("utf-8", "replace")):
+            if k["name"] in seen:
+                continue
+            seen.add(k["name"])
+            kernels.append(k)
+    if not kernels:
+        return None
+
+    if launched_names:
+        keep = [k for k in kernels
+                if any(ln and ln in k["name"] for ln in launched_names)]
+        # Only narrow when the intersection is non-empty: a mangled C++ name may not contain
+        # the profiler's demangled name, and reporting nothing would be worse than reporting
+        # the union. Say which happened so the report cannot present a guess as a measurement.
+        if keep:
+            return {"kernels": keep, "launched_filter": "applied"}
+        return {"kernels": kernels, "launched_filter": "no_name_match"}
+    return {"kernels": kernels, "launched_filter": "not_available"}
+
+
 # --- job handlers -------------------------------------------------------------
 
 
@@ -414,12 +604,21 @@ def run_eval(job: dict, measure_performance: bool) -> dict:
         result["latency_ms"] = _stats_to_dict(stats)
         result["excessive_speedup"] = bool((exec_result.metadata or {}).get("excessive_speedup"))
 
-    if job.get("collect_triton_metadata") and job["backend"] == "triton":
-        try:
-            result["triton"] = _extract_triton_metadata(kernel_src, ref_src, 0)
-        except Exception as exc:  # noqa: BLE001 — metadata is best-effort, never fail the eval
-            result["triton"] = None
-            result["triton_error"] = str(exc)[-1000:]
+    if job.get("collect_triton_metadata"):
+        if job["backend"] == "triton":
+            try:
+                result["triton"] = _extract_triton_metadata(kernel_src, ref_src, 0)
+            except Exception as exc:  # noqa: BLE001 — best-effort, never fail the eval
+                result["triton"] = None
+                result["triton_error"] = str(exc)[-1000:]
+        else:
+            try:
+                launched = _launched_kernel_names(kernel_src, ref_src, 0)
+                result["cubin"] = _extract_cubin_metadata(launched_names=launched or None)
+                result["cubin_launched_observed"] = launched
+            except Exception as exc:  # noqa: BLE001 — best-effort, never fail the eval
+                result["cubin"] = None
+                result["cubin_error"] = str(exc)[-1000:]
     return result
 
 
@@ -1023,12 +1222,24 @@ def run_relaxed_correctness(job: dict) -> dict:
                     )
             else:
                 result["excessive_speedup"] = False
-    if correct and job.get("collect_triton_metadata") and backend == "triton":
-        try:
-            result["triton"] = _extract_triton_metadata(kernel_src, ref_src, 0)
-        except Exception as exc:  # noqa: BLE001 — metadata is best-effort
-            result["triton"] = None
-            result["triton_error"] = str(exc)[-1000:]
+    if correct and job.get("collect_triton_metadata"):
+        if backend == "triton":
+            try:
+                result["triton"] = _extract_triton_metadata(kernel_src, ref_src, 0)
+            except Exception as exc:  # noqa: BLE001 — metadata is best-effort
+                result["triton"] = None
+                result["triton_error"] = str(exc)[-1000:]
+        else:
+            # Every non-triton backend compiles through nvcc to a cubin, so ONE reader serves
+            # cuda, cutlass and cute. Before this, `backend == "triton"` gated the whole block
+            # and a cuda candidate carried no resources at all.
+            try:
+                launched = _launched_kernel_names(kernel_src, ref_src, 0)
+                result["cubin"] = _extract_cubin_metadata(launched_names=launched or None)
+                result["cubin_launched_observed"] = launched
+            except Exception as exc:  # noqa: BLE001 — best-effort, never fail the eval
+                result["cubin"] = None
+                result["cubin_error"] = str(exc)[-1000:]
     return result
 
 

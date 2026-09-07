@@ -5209,3 +5209,99 @@ def test_the_env_probe_imports_the_symbols_evaluation_actually_calls():
     # The error must name the module, so the operator can act on it.
     assert 'f"{type(exc).__name__}: {exc}"' in src, \
         "the probe's error text must carry the exception type and message"
+
+
+def test_the_profiler_reads_resources_for_every_backend_not_just_triton():
+    """A `cuda`/`cutlass`/`cute` candidate must carry registers, spills and shared memory.
+
+    `ProfileRecord` used to be populated ONLY from Triton's compiled-kernel object, so a
+    `backend: "cuda"` candidate produced an empty record. That is not a property of the backend
+    -- CUDA exposes the same information through `cuobjdump -res-usage` on the compiled object,
+    and more of it -- it was a shortcut in profilerx.py. Its cost was that the paper's own
+    feedback loop (tuning evidence -> bottleneck report -> structural rewrite) degraded on the
+    backend with the HIGHER expressiveness ceiling.
+
+    One reader covers three backends because CUDA C++, CUTLASS and CuTe all compile through
+    nvcc to a cubin. This exercises the real parser on real `cuobjdump` output, including the
+    CUTLASS-shaped case (many template instantiations, one launched).
+    """
+    import ast
+    from pathlib import Path
+
+    from kernel_optimizer.evaluation.profilerx import LightProfiler
+
+    # --- 1. the parser, on genuine cuobjdump -res-usage output.
+    src = Path("src/kernel_optimizer/gpu/worker_main.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    wanted = {"_parse_res_usage"}
+    mod = ast.Module(body=[n for n in tree.body
+                           if isinstance(n, ast.FunctionDef) and n.name in wanted],
+                     type_ignores=[])
+    ns: dict = {}
+    exec(compile(mod, "<parse>", "exec"), ns)          # noqa: S102 - pure text parsing
+    parse = ns["_parse_res_usage"]
+
+    real_output = """
+Fatbin elf code:
+================
+arch = sm_89
+code version = [1,7]
+host = linux
+compile_size = 64bit
+
+Function _Z18fused_gemm_kernelPKfS0_Pfiii:
+  REG:42 STACK:8 SHARED:16384 LOCAL:16 CONSTANT[0]:380 TEXTURE:0 SURFACE:0 SAMPLER:0
+
+Function _Z14epilogue_normPfPKfi:
+  REG:24 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:352 TEXTURE:0 SURFACE:0 SAMPLER:0
+"""
+    got = parse(real_output)
+    assert len(got) == 2, got
+    first = {k["name"]: k for k in got}["_Z18fused_gemm_kernelPKfS0_Pfiii"]
+    assert first["n_regs"] == 42
+    assert first["shared"] == 16384
+    # STACK + LOCAL, so "the compiler ran out of registers" means the same on both backends.
+    assert first["n_spills"] == 8 + 16
+    # nvcc records no launch geometry in the cubin; guessing would be worse than None.
+    assert first["num_warps"] is None and first["num_stages"] is None
+    # A malformed block must be skipped, not crash or yield a half-record.
+    assert parse("Function _Znothing:\n  NOTHING:1\n") == []
+    assert parse("") == []
+
+    # --- 2. the mapping: a cubin-only result must produce a populated record.
+    prof = LightProfiler()
+    rec = prof.extract({"cubin": {"kernels": got, "launched_filter": "applied"}})
+    assert rec.n_regs == 42, "a cuda candidate must carry registers"
+    assert rec.shared_bytes == 16384
+    assert rec.n_spills == 24
+    assert rec.profile_source == "cubin"
+    assert rec.launched_filter == "applied"
+    assert len(rec.kernel_names) == 2
+
+    # --- 3. the Triton path must be unchanged, and must win when both are present, because
+    # only it carries num_warps/num_stages (properties of the launch, not of the code).
+    triton_only = {"triton": {"kernels": [{"name": "k", "n_regs": 80, "n_spills": 0,
+                                           "shared": 4096, "num_warps": 4, "num_stages": 3}],
+                              "compile_s": 1.5}}
+    rec_t = prof.extract(triton_only)
+    assert (rec_t.n_regs, rec_t.num_warps, rec_t.compile_s) == (80, 4, 1.5)
+    assert rec_t.profile_source == "triton"
+    both = dict(triton_only)
+    both["cubin"] = {"kernels": got, "launched_filter": "applied"}
+    assert prof.extract(both).profile_source == "triton"
+    assert prof.extract(both).num_warps == 4
+
+    # --- 4. no metadata at all still yields a record, never an exception.
+    assert prof.extract({}).n_regs is None
+    assert prof.extract({"cubin": None}).profile_source is None
+
+    # --- 5. the CUTLASS hazard: resources must be attributable to the LAUNCHED kernel.
+    # Aggregating over a whole cubin would report a template variant that never ran, which is
+    # the same class of error as timing a fallback path and calling it the kernel.
+    assert "launched_names" in src and "no_name_match" in src
+    assert "_launched_kernel_names" in src, \
+        "the launched set must be OBSERVED (torch.profiler), since a cubin records no launch"
+    # And it must not depend on ncu: counters are denied on a rented container.
+    launch_fn = src[src.index("def _launched_kernel_names"):src.index("def _extract_cubin_metadata")]
+    assert "ncu" not in launch_fn.replace("NOT `ncu`", "").replace("ERR_NVGPUCTRPERM", "")
+    assert "ProfilerActivity" in launch_fn

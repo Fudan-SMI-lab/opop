@@ -170,6 +170,16 @@ class ProfileRecord(BaseModel):
     num_stages: int | None = None
     compile_s: float | None = None
     kernel_names: list[str] = Field(default_factory=list)
+    # Which backend's compiler produced these numbers: "triton" (JIT object) or "cubin"
+    # (cuobjdump on an nvcc-built object, covering cuda / cutlass / cute). Recorded because a
+    # reader cannot otherwise tell an absent measurement from an unsupported backend -- the
+    # confusion that let a `cuda` candidate carry an empty record unnoticed.
+    profile_source: str | None = None
+    # For a cubin only: whether the resources could be narrowed to the kernels that actually
+    # LAUNCHED. "applied" = yes. "no_name_match" = the numbers are the union over the whole
+    # cubin, which for CUTLASS can include template variants that never ran, so they are not
+    # measurements of the executing kernel. "not_available" = no launch observation was made.
+    launched_filter: str | None = None
 
 
 class TrialRecord(BaseModel):
