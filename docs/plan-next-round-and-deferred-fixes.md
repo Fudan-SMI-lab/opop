@@ -257,3 +257,23 @@ evidence the expansion caused it -- re-tuning alone moves the number, and here i
 The check that distinguishes them is diffing the space VERSIONS and confirming the winner uses a
 value from the added set. Any report of K's effect should carry that check, not just the delta.
 Two of two expansions improved the best; one of two is causally attributable.
+
+## L3:43 reached Loop C with its budget intact (a first)
+
+At 1.802 h of 12 h, `CONVERGENCE_DECIDED` recorded global `continue` with all four families active,
+and family `fam-e4df6e17` (the 5.142 ms winner) `continue` at `rewrite_rounds_used: 0`. The first
+rewriter call followed.
+
+Why this is worth marking: the two budget findings this config was meant to address are
+- `run-l3-21-20260905-071312` stopped at 2.05 h of 12 h having used 2 of 6 rewrite rounds, because
+  families with no correct candidate filled the active slots and ended the loop;
+- 4 of 19 prior runs "converged" on 0-2 rounds, and only 1 of 19 was ever ended by wall clock.
+
+Here all four families have a correct, tuned, classified candidate before Loop C begins, 10.2 h
+remain, and `rewrite_rounds_per_family` is 5. So for the first time the structure-search claim gets
+a real test rather than being cut short by the seeding phase.
+
+What to check when the run ends: the total rounds used across families (the prior high-water mark is
+low single digits), whether any family freezes as `converged` versus `budget_exhausted`, and whether
+Loop D ever fires -- `max_families_total` is 6 against 4 seed families, so novelty has room for the
+first time in 19 runs.
