@@ -7383,3 +7383,84 @@ def test_a_calibration_without_tiers_still_loads():
     cal = calibration_from_worker(MEASURED_4090)     # no "tiers" key at all
     assert cal.tiers == {}, "a missing tier record must be empty, not an error"
     assert cal.thresholds is not None, "the rest of the calibration must still be usable"
+
+
+def test_the_worker_can_import_its_own_statics_module_without_help():
+    """The defect this catches was live and silent: Tier 1 collected nothing in a real run.
+
+    The GPU worker is launched with PYTHONPATH set to KernelBench ONLY
+    (worker_client._build_command), because it is deliberately a stdlib+torch+triton process with
+    no dependency on the harness package -- and the worker venv on box 2 confirms it: `find_spec
+    ("kernel_optimizer")` is None there. Step 5 broke that assumption: the SASS counting and
+    occupancy arithmetic live in `kernel_optimizer.evaluation.statics` so they can be unit-tested
+    without a GPU, so a plain import fails when the worker runs for real. And because Tier 1 is
+    best-effort, it fails SILENTLY -- every kernel gets a `statics_note` and no instruction mix,
+    indistinguishable in the log from a box with no disassembler.
+
+    THE TEST HAS TO WORK FOR IT. A first version of this test ran the worker as a subprocess with
+    an empty PYTHONPATH and passed with the fix reverted, because THIS venv has the harness
+    installed as an editable package, so the plain import succeeds however PYTHONPATH is set. The
+    worker venv does not have it installed, which is the condition that matters. So the subprocess
+    runs with `-S -I` (no site-packages, isolated) to reproduce a venv where the package is not
+    installed, and PYTHONPATH carries only a KernelBench-like path.
+    """
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path as _P
+
+    worker = _P("src/kernel_optimizer/gpu/worker_main.py").resolve()
+    assert worker.exists()
+
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(_P("tests").resolve())   # stands in for KernelBench: not the src root
+    code = (
+        "import importlib.util, sys\n"
+        f"spec = importlib.util.spec_from_file_location('wm', r'{worker}')\n"
+        "m = importlib.util.module_from_spec(spec)\n"
+        "sys.modules['wm'] = m\n"
+        "spec.loader.exec_module(m)\n"
+        "s = m._import_statics()\n"
+        "assert s.count_sass is not None and s.compute_occupancy is not None\n"
+        "assert s.find_cuda_tool is not None\n"
+        "print('STATICS_OK')\n"
+    )
+    # -S: no site-packages, so an editable install of this very package cannot mask the bug.
+    # -I: isolated, so neither the invoking venv nor a user site directory leaks in.
+    out = subprocess.run([sys.executable, "-S", "-I", "-c", code],
+                         capture_output=True, env=env,
+                         cwd=str(_P(".").resolve()), timeout=120)
+    assert b"STATICS_OK" in out.stdout, (
+        "the worker cannot import its own statics module under the launcher's PYTHONPATH, so "
+        "Tier 1 silently collects nothing in every real run.\n"
+        f"stdout={out.stdout[-800:]!r}\nstderr={out.stderr[-1500:]!r}")
+
+
+def test_tier1_reports_a_note_rather_than_dying_when_statics_is_unreachable():
+    """The degradation path still has to be honest. If the import genuinely cannot resolve, the
+    kernel row must carry a NOTE saying so -- not an empty dict that reads like "measured, nothing
+    found". That distinction is the whole reason `statics_notes` exists.
+    """
+    import importlib.util
+    from pathlib import Path as _P
+
+    spec = importlib.util.spec_from_file_location(
+        "wm_note", str(_P("src/kernel_optimizer/gpu/worker_main.py").resolve()))
+    wm = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(wm)
+
+    original = wm._import_statics
+    try:
+        def boom():
+            raise ImportError("simulated: statics unreachable")
+
+        wm._import_statics = boom
+        row = wm._tier1_statics(compiled=object(), row={"n_regs": 64, "num_warps": 4},
+                                props=object())
+        assert "statics_note" in row, (
+            "an unreachable statics module produced no note; the absence of a mix would then read "
+            "as 'the kernel uses no tensor cores'")
+        assert "tier1 unavailable" in row["statics_note"]
+        assert "sass" not in row and "occupancy" not in row
+    finally:
+        wm._import_statics = original

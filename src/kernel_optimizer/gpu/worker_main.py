@@ -113,6 +113,36 @@ def _classify_eval_failure(metadata: dict, compiled: bool, correct: bool) -> tup
 # --- triton metadata (duck-typed; pattern validated on triton 3.5 / sm_120) ---
 
 
+def _import_statics():
+    """Import evaluation.statics from inside the worker, whatever PYTHONPATH it was given.
+
+    The worker is launched with PYTHONPATH set to KernelBench only (worker_client._build_command),
+    because it is deliberately a stdlib+torch+triton process that does not depend on the harness
+    package. Tier 1 broke that assumption: the counting and occupancy arithmetic live in
+    `kernel_optimizer.evaluation.statics` so they can be unit-tested without a GPU, and a plain
+    import therefore fails in a real run -- silently, since Tier 1 is best-effort. It only worked
+    in manual testing because I had added the source root to PYTHONPATH by hand.
+
+    Rather than adding a config knob someone has to remember (or duplicating the logic here, which
+    would let the tested copy and the running copy drift), the worker locates its own package:
+    worker_main.py lives at <root>/src/kernel_optimizer/gpu/, so the source root is three parents
+    up. That works for every launcher -- WSL, the Linux port, a bare `python worker_main.py` -- and
+    keeps ONE implementation under test.
+    """
+    try:
+        from kernel_optimizer.evaluation import statics  # noqa: PLC0415
+
+        return statics
+    except ImportError:
+        pass
+    src_root = Path(__file__).resolve().parents[2]
+    if str(src_root) not in sys.path:
+        sys.path.insert(0, str(src_root))
+    from kernel_optimizer.evaluation import statics  # noqa: PLC0415
+
+    return statics
+
+
 def _tier1_statics(compiled, row: dict, props) -> dict:
     """SASS instruction mix + analytic occupancy for one compiled Triton kernel (step 5).
 
@@ -124,11 +154,10 @@ def _tier1_statics(compiled, row: dict, props) -> dict:
     out: dict = {}
     notes: list[str] = []
     try:
-        from kernel_optimizer.evaluation.statics import (
-            compute_occupancy,
-            count_sass,
-            disassemble_cubin,
-        )
+        statics = _import_statics()
+        compute_occupancy = statics.compute_occupancy
+        count_sass = statics.count_sass
+        disassemble_cubin = statics.disassemble_cubin
     except Exception as exc:  # noqa: BLE001 — the worker may run without the package importable
         return {"statics_note": f"tier1 unavailable: {type(exc).__name__}: {exc}"[:200]}
 
@@ -839,7 +868,7 @@ def run_calibrate(job: dict) -> dict:
     # kernels genuinely used no tensor cores" are opposite conclusions that otherwise look
     # identical in the log.
     try:
-        from kernel_optimizer.evaluation.statics import find_cuda_tool
+        find_cuda_tool = _import_statics().find_cuda_tool
 
         nvdisasm = find_cuda_tool("nvdisasm")
         cuobjdump = find_cuda_tool("cuobjdump")

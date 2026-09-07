@@ -42,7 +42,19 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field
+# NO pydantic import at module scope, and that is a hard constraint rather than a style choice.
+# This module is imported BY THE GPU WORKER, which is documented as stdlib + torch + triton +
+# kernelbench only (worker_main.py's own docstring) and whose venv does not have the harness
+# installed. pydantic happens to be present in the worker venv on box 2, so a top-level import
+# works there -- by luck. On a box provisioned strictly to the stated contract it would raise, and
+# since Tier 1 is best-effort the failure would be SILENT: every kernel would carry a
+# `statics_note` and no instruction mix, indistinguishable in the log from a box with no
+# disassembler.
+#
+# So the counting and occupancy arithmetic below use plain dataclasses, which are stdlib. The
+# pydantic models that the rest of the harness validates against are built from these by
+# `SassCounts.model_validate(...)` at the call sites that already depend on pydantic.
+from dataclasses import asdict, dataclass, field
 
 # Instruction families, matched on disassembled SASS. Each pattern covers the whole family
 # deliberately: matching only "HMMA" would report "no tensor cores" on an int8 kernel full of
@@ -62,11 +74,15 @@ SASS_PATTERNS: dict[str, re.Pattern] = {
 }
 
 
-class SassCounts(BaseModel):
+@dataclass(frozen=True)
+class SassCounts:
     """Instruction counts for one kernel's SASS. All zero is a legitimate result for a simple
-    kernel; `instructions == 0` means disassembly failed and is the only "unknown"."""
+    kernel; `instructions == 0` means disassembly failed and is the only "unknown".
 
-    model_config = ConfigDict(frozen=True)
+    A stdlib dataclass, not a pydantic model, because the GPU worker imports this module -- see the
+    note on the dataclass import above. `model_dump`/`model_validate` are provided so call sites
+    read the same as they do for the harness's genuine pydantic models.
+    """
 
     instructions: int = 0
     tensor_core: int = 0
@@ -79,6 +95,20 @@ class SassCounts(BaseModel):
     global_store: int = 0
     vec_128: int = 0
     vec_64: int = 0
+
+    def model_dump(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def model_validate(cls, data: dict) -> "SassCounts":
+        """Build from a dict, ignoring unknown keys.
+
+        Tolerant on purpose: these dicts cross a process boundary (worker -> host) and are replayed
+        from event logs written by earlier versions, so a field added later must not make an older
+        record unreadable.
+        """
+        names = set(cls.__dataclass_fields__)
+        return cls(**{k: v for k, v in (data or {}).items() if k in names})
 
     @property
     def uses_tensor_cores(self) -> bool:
@@ -98,10 +128,9 @@ class SassCounts(BaseModel):
         return min(1.0, self.vec_128 / total)
 
 
-class Occupancy(BaseModel):
+@dataclass(frozen=True)
+class Occupancy:
     """Theoretical occupancy and the resource that binds it. Analytic -- no counters."""
-
-    model_config = ConfigDict(frozen=True)
 
     occupancy: float
     active_warps: int
@@ -114,11 +143,18 @@ class Occupancy(BaseModel):
     by_shared: int
     by_warps: int
 
+    def model_dump(self) -> dict:
+        return asdict(self)
 
-class KernelStatics(BaseModel):
+    @classmethod
+    def model_validate(cls, data: dict) -> "Occupancy":
+        names = set(cls.__dataclass_fields__)
+        return cls(**{k: v for k, v in (data or {}).items() if k in names})
+
+
+@dataclass(frozen=True)
+class KernelStatics:
     """Everything Tier 1 knows about one compiled kernel."""
-
-    model_config = ConfigDict(frozen=True)
 
     name: str = ""
     n_regs: int | None = None
@@ -127,7 +163,7 @@ class KernelStatics(BaseModel):
     num_warps: int | None = None
     sass: SassCounts | None = None
     occupancy: Occupancy | None = None
-    notes: list[str] = Field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
 
 def find_cuda_tool(name: str) -> str | None:
