@@ -189,3 +189,19 @@ saturation line -- a kernel with 33% occupancy is classified `resource_limited` 
 shrink its tile. That may be the wrong advice that close to a bandwidth ceiling, but it is
 pre-existing behaviour governed by the calibrated threshold, not by this change, and moving the line
 is a calibration question rather than a code one.
+
+**Confirmed load-bearing in production the same day** (run-l3-43-20260908-053708, candidate
+`cand-6cf42e7d`). Verdict `compute_bound` at 84.6% of the measured tensor-core ceiling, and the
+brief its analyst received now carries `occupancy = 0.0833`, `occupancy_limiter = shared_memory`,
+`n_spills = 10`, `n_regs = 255`.
+
+Why that matters concretely: `compute_bound`'s advice is "the levers are arithmetic: tensor cores /
+lower precision if the accuracy gate allows, and **more independent accumulators for ILP**".
+Without these four facts the agent would act on that while blind to being at 255/255 registers with
+10 spills and 8% occupancy -- where adding accumulators makes the kernel strictly worse. The fix
+turned advice-that-would-backfire into advice the agent can weigh against a measured constraint.
+
+Also the first real register SPILLS in the project (8 then 10). Prior measurement on box 2 found
+Triton caps registers rather than spilling (218 regs, 0 spills, 16.7% occupancy), which is why
+occupancy rather than spills was called the signal that fires. On this task it does both at once,
+at 97% of the shared-memory opt-in limit -- so the spill detector is not dead code after all.
