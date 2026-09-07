@@ -130,3 +130,61 @@ RTX 4090 / box 2,`bottleneck_signals.json` 已存盘:
 不改计时方法本身;不做任务分类→后端排序的搜索机制;不启用 CUTLASS/CuTe 生成;
 分类结论**永不参与门控**;Tier 3(ncu)只留接口,不在租用容器上尝试启用;
 不做 search memory(接近用户已否决的跨候选共享;且其消融结论是"统计等价",代价低)。
+
+
+---
+
+# 实施完成记录(2026-09-08)
+
+九项全部完成,推荐顺序 **9 → 8 → 2 → 0 → 3 → 5 → 6 → 4 → 7** 依次执行。测试从 276 增到 321。
+所有测量都在 box 2 (RTX 4090, sm_89) 上真机跑过,关键数字全部落盘留档。
+
+| 步骤 | commit | 结论 |
+|---|---|---|
+| 9 抢救产物 + 真假收敛 | `8ea5858` | 传输失败后已写完的产物被救回;未评测的轮次不再伪造 `converged` |
+| 8 手写 CUDA vs Triton | `0d418c1` | **0.874x —— 手写 CUDA 慢 13%**;给"教 agent 写 CUDA"定价,不是授权 |
+| 2 自校准 | `0d418c1` | DRAM 0.9102 TB/s、fp32 54.94、tf32 88.88、launch floor 17.4us;两个常数被实测推翻 |
+| 0 清理 | `2e530ba` | 5 个 .ps1 + `_proxytest/`(含明文 key)已删 |
+| 3 任务代价 | `2e530ba` | 三处解析式交叉验证 ratio 1.0000;**L3:43 融合头寸 69.09x** |
+| 5 Tier 1 静态分析 | `2f3fc9f` | SASS 指令混合 + 解析式 occupancy;实测 winner 33.3% occupancy / 零向量化 |
+| 6 分类器重做 | `0cf471c` | 四个基准工况全部复原自身 ground truth;推翻的常数会让它们错判 |
+| 4 doctor 集成 | `03da61c` | tier 可用性随校准落盘;ncu 存在 ≠ counters 可用 |
+| 7 接线 | `0cf471c` | detect→analyze→recommend;tool-affinity 过滤;分类器不再是死代码 |
+
+## 实测推翻的三个我自己的判断
+
+1. **`COMPUTE_SATURATED_FRAC = 0.50`** —— 真正 compute-bound 的 matmul 达到 fp32 天花板的
+   **94.9%**。0.50 的线会把还有 2x 余量的 kernel 判成"已饱和、别动了"。派生值 0.807。
+2. **`LAUNCH_BOUND_CPU_RATIO = 1.0`** —— 无可争议的 launch-bound 工况实测 cpu/gpu = **0.963**,
+   **在线以下**,所以这个判据方向是反的、永远不会触发。派生值 0.866。
+3. **"没有 counters 就看不到张量核/occupancy/spill"** —— 步骤 5 用实测推翻:nvdisasm 反汇编
+   cubin 就能拿到 HMMA/STL/LDL/LDS/STS,occupancy 可以纯解析算出来还能给出 limiter。
+   真正看不到的只剩:bank conflict、warp divergence、i-cache、L1/L2 命中率、stall 分解、
+   **achieved**(而非理论)occupancy。
+
+## 过程中我自己犯并修正的错(留档,因为它们都是"测量自己坏掉"的形态)
+
+- **第一版手写 CUDA kernel 是错的**(max rel err 1.26:8 个 warp 映射到 2x2 warp-tile 网格,
+  warp 4-7 写到 tile 外),而脚本照样打印了它的延迟并算出 0.276x —— 违反了脚本自己写下的规则。
+  现在正确性是硬门,错的配置进不了对比。
+- **第一版只给 Triton 扫配置、给 CUDA 一个固定配置**。方向恰好和我可能希望的结论相反,
+  但仍然是被制造出来的结论。现在两边都扫。
+- **我说 nvdisasm"不需要权限"** —— 对,但无关:box 2 上它根本不在 login shell 的 PATH 上
+  (在 `/usr/local/cuda/bin/`)。只查 PATH 会把一个能用的工具报成缺失,和 opencode 的 PATH bug
+  同一类。现在 `find_cuda_tool` 查 PATH + CUDA_HOME + 版本化目录。
+- **两个我专门写来 spill 的 kernel 都没 spill**,而 Triton 自己的 `n_spills` 两次都和 SASS
+  一致报 0 —— 所以是探测器对、我的预期错。由此得到的发现:**Triton 的寄存器分配器宁愿把寄存器
+  顶到上限、丢掉 occupancy,也不 spill**(128x128 fp32 累加器 → 218 regs / 0 spills /
+  16.7% occupancy)。所以在 Triton 上 occupancy 才是会触发的信号。
+- **第一版 wiring 测试直接调 `orch._calibrate()`**,所以把 `_run` 里的调用点删掉它照样过 ——
+  它测的是方法,不是接线。改成驱动真实 `_run` 并断言顺序后,删调用点会失败。
+- **渲染真实 L3:43 数据时发现 108.5% 的 fp32 天花板占用率**,而指令混合说没用张量核。
+  超过 100% 物理上不可能,而裸阈值判据会把它变成"已饱和、停止优化" —— 最贵的错误答案。
+  现在会标记,并点名两个可能原因(用了更快的算术路径 / 候选比参考做了**更少**的算术)。
+
+## 遗留(不在本轮范围)
+
+- `WarpStall`(KernelPro 命中率第三高 11.0%、平均增益 1.41x)需要 ncu stall 分解,
+  租用容器上不可复现。我先前把它评为"中低价值"**偏低了**。
+- CuTe/CUTLASS 生成:步骤 8 的结论指向"若要投后端工作应冲 CuTe 而非裸 CUDA C",
+  但那是独立的、更大的决定。
