@@ -47,6 +47,60 @@ def _median(xs: list[float]) -> float:
     return s[n // 2] if n % 2 else 0.5 * (s[n // 2 - 1] + s[n // 2])
 
 
+def capture_timing_samples() -> bool:
+    """Make KernelBench's own timing paths retain their raw samples. Idempotent.
+
+    WHY THIS IS NEEDED AT ALL. The tuning objective must be a median: on level2:37 a 20-sample
+    MEAN has a 24-37% coefficient of variation against the median's 3-8%, and on a pair whose
+    true costs differ by 7.6% the mean picks the faster configuration 64.8% of the time while
+    the median gets 93.2% (scripts/probe_robust_objective.py). `robust_ms` reads the median and
+    falls back to the mean, so a missing median is not an error -- it is a SILENT downgrade to
+    the estimator that is barely better than a coin flip.
+
+    And it was missing on the main path. `_stats_to_dict` can only compute a median when it is
+    handed the samples, and only ONE of the four timing paths had them: the relaxed-correctness
+    handler, which times the model itself. The strict `eval_perf` path, the reference-baseline
+    path, and `measure_ref_program_time` all read KernelBench's returned summary dict --
+    and KernelBench computes `elapsed_times`, passes it to `get_timing_stats`, then drops it
+    (eval.py:625-632, 671-678; timing.py:95-103). So every strict-mode run has been tuning on
+    the 20-sample mean. Verified on run-l1-42-20260908-015408: all five eval_perf outputs carry
+    keys ['max','mean','min','n','std'] and `median: None`.
+
+    WHY INTERCEPT `get_timing_stats` rather than patch the callers. It is the single funnel --
+    all four sites that hold an `elapsed_times` list pass it to exactly this function, and both
+    modules resolve it as an attribute at call time (`timing.get_timing_stats` in eval.py, a
+    module global in timing.py), so one wrapper reaches all of them. Patching call sites would
+    mean editing vendored KernelBench, which is pinned at 423217d precisely so the evaluation
+    口径 stays comparable across every run.
+
+    The wrapper adds a key and changes nothing else: KernelBench's own mean/std/min/max are
+    still ITS numbers, computed by its own code, so the pinned evaluation semantics are intact.
+    The extra key rides in the dict KernelBench returns and is read by `_stats_to_dict`.
+    Returns True if the patch is in place.
+    """
+    try:
+        from kernelbench import timing as kb_timing
+    except Exception:
+        return False
+    if getattr(kb_timing.get_timing_stats, "_kopt_captures_samples", False):
+        return True
+    original = kb_timing.get_timing_stats
+
+    def get_timing_stats(elapsed_times, device=None):
+        stats = original(elapsed_times, device=device)
+        # Never let a diagnostic addition break timing: on any surprise, return KernelBench's
+        # dict untouched and let the median stay absent rather than failing the measurement.
+        try:
+            stats["_samples"] = [float(v) for v in elapsed_times]
+        except Exception:
+            pass
+        return stats
+
+    get_timing_stats._kopt_captures_samples = True
+    kb_timing.get_timing_stats = get_timing_stats
+    return True
+
+
 def _stats_to_dict(stats: dict, elapsed: list | None = None) -> dict:
     """Summarize a timing run, keeping the raw samples so robust statistics stay available.
 
@@ -80,6 +134,12 @@ def _stats_to_dict(stats: dict, elapsed: list | None = None) -> dict:
         "max": float(stats.get("max", -1.0)),
         "n": int(stats.get("num_trials", 0)),
     }
+    # `elapsed` is the explicit path, used where this worker did its own timing. The
+    # `_median`/`_samples` keys are what `capture_timing_samples` smuggles through
+    # KernelBench's summary dict on paths where the samples exist inside KernelBench and are
+    # discarded before it returns -- see that function for why the interception is necessary.
+    if elapsed is None and stats.get("_samples"):
+        elapsed = stats["_samples"]
     if elapsed:
         try:
             vals = [float(v) for v in elapsed]
@@ -1899,6 +1959,11 @@ def main() -> int:
     result: dict
     try:
         _ensure_optional_deps()
+        # Before any handler runs: make KernelBench retain its raw timing samples, so every
+        # timing path can report a median rather than only the paths that time the model
+        # themselves. Installed here rather than per-handler so no future handler can miss it.
+        # Idempotent and best-effort -- a failure leaves timing exactly as KernelBench does it.
+        samples_captured = capture_timing_samples()
         with open(args.job, encoding="utf-8") as f:
             job = json.load(f)
         handler = HANDLERS.get(job.get("job_type"))
@@ -1910,6 +1975,11 @@ def main() -> int:
             }
         else:
             result = handler(job)
+        # Recorded so a run whose trials lack a median can be told apart from one where the
+        # interception failed -- otherwise a silent downgrade to the mean objective looks
+        # identical to a task that legitimately has no samples.
+        if isinstance(result, dict):
+            result.setdefault("timing_samples_captured", samples_captured)
     except BaseException as exc:  # noqa: BLE001 — always write a result
         result = {
             "ok": False,

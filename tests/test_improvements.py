@@ -7260,15 +7260,49 @@ def test_the_best_trials_profile_is_used_not_the_last():
     """The analyst reasons about the configuration that WON. A different trial's registers and
     occupancy describe a configuration nobody will ship, so feeding those in would have the agent
     optimizing a config it is not being asked about.
+
+    This test used to assert the SOURCE TEXT `latency_ms.median < best[0]`, and that was a
+    mistake worth recording: it pinned the implementation instead of the behaviour, and the exact
+    line it pinned was the defect. `median` is Optional, so the raw read crashed
+    run-l1-42-20260908-015408 with `TypeError: '<' not supported between instances of NoneType
+    and NoneType` -- and this test PASSED on the broken code while failing on the fix. A
+    source-string assertion can only ever confirm that the code says what it says.
+
+    So it now checks the two properties that actually matter, and
+    `test_the_best_profile_ranks_trials_without_a_median` drives the real function against the
+    latencies that crashed it.
     """
     import inspect
 
     from kernel_optimizer.control.orchestrator import Orchestrator
+    from kernel_optimizer.models.core import LatencyStats, ParamSet, ProfileRecord, TrialRecord
 
     src = inspect.getsource(Orchestrator._best_profile)
-    assert "latency_ms.median < best[0]" in src, (
-        "the profile is not selected by lowest latency")
     assert 'status != "complete"' in src, "a failed trial's profile could be selected"
+
+    class Run:
+        pass
+
+    def trial(tid, ms, regs, status="complete"):
+        return TrialRecord(
+            trial_id=tid, candidate_id="c", space_id="s", params=ParamSet(values={}),
+            status=status,
+            latency_ms=LatencyStats(mean=ms, std=0.1, min=ms - 0.1, max=ms + 0.1, n_samples=20),
+            profile=ProfileRecord(n_regs=regs, n_spills=0, shared_bytes=0, num_warps=4,
+                                  num_stages=2))
+
+    crun = Run()
+    # The fastest trial is neither first nor last, so neither "take the first" nor "take the
+    # last" can pass by accident.
+    crun.trials = [trial("a", 9.0, 11), trial("b", 4.0, 22), trial("c", 6.0, 33)]
+    assert Orchestrator._best_profile(None, crun).n_regs == 22, (
+        "the profile is not selected by lowest latency")
+
+    # A FAILED trial that happens to be the fastest must not win: a crashed or incorrect trial
+    # can report an absurdly low latency precisely because it did not do the work.
+    crun.trials = [trial("a", 9.0, 11), trial("fast-but-failed", 0.1, 99, status="fail")]
+    assert Orchestrator._best_profile(None, crun).n_regs == 11, (
+        "a failed trial's profile was selected")
 
 
 # --- step 4: doctor integration and tier recording ----------------------------------------
@@ -7701,3 +7735,208 @@ def test_a_cache_hit_journals_the_same_fields_as_a_fresh_measurement():
         assert payload["tiers"]["tier1_sass_and_occupancy"] is True, (
             "the tier record read as falsy on a cache hit -- the exact symptom observed live")
         assert payload["thresholds"]["compute_saturated_frac"] > 0.7
+
+
+# ---------------------------------------------------------------------------------------------
+# The two defects that ended run-l1-42-20260908-015408 at its first analyst step (14 min in).
+#
+# Both are about ONE statistic, `LatencyStats.median`, and they sit either side of it: nothing
+# produced it on the main timing path, and one consumer read it as if it were mandatory.
+# ---------------------------------------------------------------------------------------------
+
+# Verbatim from run-l1-42-20260908-015408: the four TRIAL_DONE payloads' latency_ms. Every one
+# has `median: None` and `samples: None`, which is what made the crash inevitable and the
+# objective a mean. Kept as data so the tests below argue against a real log, not a mock.
+L142_TRIAL_LATENCIES = [
+    {"mean": 5.09, "std": 0.442, "min": 4.98, "max": 7.01, "n_samples": 20,
+     "median": None, "samples": None},
+    {"mean": 5.43, "std": 0.361, "min": 5.34, "max": 7.01, "n_samples": 20,
+     "median": None, "samples": None},
+    {"mean": 5.13, "std": 0.672, "min": 4.97, "max": 8.06, "n_samples": 20,
+     "median": None, "samples": None},
+    {"mean": 7.01, "std": 0.508, "min": 6.71, "max": 9.11, "n_samples": 20,
+     "median": None, "samples": None},
+]
+
+
+def test_the_best_profile_ranks_trials_without_a_median():
+    """The crash: TypeError comparing NoneType with NoneType, at orchestrator.py:1161.
+
+    `_best_profile` read `t.latency_ms.median` directly while every other selection in the run
+    reads `robust_ms`. `median` is Optional BY DESIGN -- the strict `eval_perf` path produces
+    none -- so the raw read was a latent crash on the ordinary path, and it fired at
+    orchestrator.py:1137 (`_stats_and_analysis`), OUTSIDE the try/except that had already logged
+    it once from `_classify_bottleneck`. 14 minutes of GPU time and four agent calls were lost
+    after every piece of real work in the run had already succeeded.
+
+    Two assertions, because not crashing is the smaller half: the ranking must also agree with
+    the trial the run actually selected. Ranking a profile by a different statistic than the one
+    that chose the winner would hand the analyst the registers of a configuration nobody ships.
+    """
+    from kernel_optimizer.control.orchestrator import Orchestrator
+    from kernel_optimizer.models.core import LatencyStats, ParamSet, ProfileRecord, TrialRecord
+
+    trials = [
+        TrialRecord(
+            trial_id=f"tr-{i}", candidate_id="cand-3727e71a", space_id="sp-a59b6c8b",
+            params=ParamSet(values={"NUM_WARPS": w}), status="complete",
+            latency_ms=LatencyStats(**lat),
+            profile=ProfileRecord(n_regs=regs, n_spills=0, shared_bytes=0,
+                                  num_warps=w, num_stages=2),
+        )
+        for i, (lat, w, regs) in enumerate(
+            zip(L142_TRIAL_LATENCIES, (4, 1, 8, 4), (64, 64, 64, 255)))
+    ]
+
+    class Run:
+        pass
+
+    crun = Run()
+    crun.trials = trials
+
+    got = Orchestrator._best_profile(None, crun)
+    assert got is not None, (
+        "_best_profile returned nothing for four complete, profiled trials -- with medians "
+        "absent it must fall back to the mean, not give up")
+    # Trial 0 has the lowest mean (5.09) and therefore the lowest robust_ms. Its profile is the
+    # 4-warp / 64-register one; the 255-register spilling trial is the SLOWEST (7.01) and must
+    # not be what the analyst is shown.
+    assert got.num_warps == 4 and got.n_regs == 64, (
+        f"ranked to the wrong trial: got num_warps={got.num_warps} n_regs={got.n_regs}, "
+        f"expected the fastest trial 4/64. The run selected 5.09 ms as best_ms, so anything "
+        f"else means the profile and the incumbent disagree")
+
+    # And the ranking must still be right when medians ARE present and disagree with the means,
+    # which is the case `capture_timing_samples` now creates. Here trial b's median is the
+    # lowest while its mean is the highest, so a mean-ranking implementation picks trial a.
+    swapped = [
+        TrialRecord(
+            trial_id="tr-a", candidate_id="c", space_id="s",
+            params=ParamSet(values={}), status="complete",
+            latency_ms=LatencyStats(mean=5.0, std=0.1, min=4.9, max=5.2, n_samples=20,
+                                    median=9.0),
+            profile=ProfileRecord(n_regs=11, n_spills=0, shared_bytes=0, num_warps=1,
+                                  num_stages=1)),
+        TrialRecord(
+            trial_id="tr-b", candidate_id="c", space_id="s",
+            params=ParamSet(values={}), status="complete",
+            latency_ms=LatencyStats(mean=9.0, std=0.1, min=4.9, max=20.0, n_samples=20,
+                                    median=5.0),
+            profile=ProfileRecord(n_regs=22, n_spills=0, shared_bytes=0, num_warps=2,
+                                  num_stages=1)),
+    ]
+    crun.trials = swapped
+    got2 = Orchestrator._best_profile(None, crun)
+    assert got2.n_regs == 22, (
+        "with medians present the ranking must follow the median (robust_ms), the statistic the "
+        "tuner optimizes -- got the mean winner instead")
+
+
+def test_the_strict_timing_path_produces_a_median():
+    """The silent defect, and the worse of the two: the tuning objective was the 20-sample MEAN.
+
+    `robust_ms` reads the median and FALLS BACK to the mean, so a missing median is not an error
+    anywhere -- it is an invisible downgrade to the estimator this project measured at 64.8%
+    ranking accuracy against the median 93.2% (scripts/probe_robust_objective.py). And the
+    median was missing on the main path: `_stats_to_dict` can only compute one when handed the
+    samples, and only the relaxed-correctness handler had them. KernelBench computes
+    `elapsed_times`, hands it to `get_timing_stats`, and drops it (eval.py:625-632, 671-678;
+    timing.py:95-103), so the strict `eval_perf` path, the reference-baseline path and
+    `measure_ref_program_time` all saw summary statistics only.
+
+    Measured on run-l1-42-20260908-015408: all five eval_perf outputs carry exactly
+    [max, mean, min, n, std] with median None. Every strict-mode run before this fix -- which
+    is every run with fp64_relative_gate false -- tuned on the mean.
+
+    This test drives the real interception against a stand-in KernelBench timing module, because
+    the defect is precisely that the samples exist one frame below where the code could see them.
+    """
+    import sys
+    import types
+
+    kb = types.ModuleType("kernelbench")
+    kb.__path__ = []
+    kb_timing = types.ModuleType("kernelbench.timing")
+
+    def get_timing_stats(elapsed_times, device=None):
+        # KernelBench's real shape: summary statistics, samples discarded.
+        return {"mean": sum(elapsed_times) / len(elapsed_times),
+                "std": 0.5, "min": min(elapsed_times), "max": max(elapsed_times),
+                "num_trials": len(elapsed_times)}
+
+    kb_timing.get_timing_stats = get_timing_stats
+    saved = {k: sys.modules.get(k) for k in ("kernelbench", "kernelbench.timing")}
+    sys.modules["kernelbench"] = kb
+    sys.modules["kernelbench.timing"] = kb_timing
+    try:
+        from kernel_optimizer.gpu.worker_main import _stats_to_dict, capture_timing_samples
+
+        # A distribution with the shape the finding describes: a tight kernel plus two
+        # scheduling stalls. mean 7.80, median 5.00 -- far apart, either side of the 2.0%
+        # min_improvement_pct that decides whether a rewrite counts as progress.
+        elapsed = [5.0, 4.9, 5.1, 5.0, 4.95, 5.05, 5.0, 20.0, 18.0, 5.0]
+
+        assert capture_timing_samples() is True
+        assert capture_timing_samples() is True, "must be idempotent: the worker may call it twice"
+
+        # The route the strict path actually takes: KernelBench times, returns its summary, and
+        # the worker converts that summary with no samples of its own to pass.
+        summary = kb_timing.get_timing_stats(elapsed)
+        out = _stats_to_dict(summary)
+        assert out.get("median") is not None, (
+            "the strict eval_perf path still yields no median, so robust_ms silently falls back "
+            "to the 20-sample mean -- the 64.8%-accuracy objective this project measured")
+        assert abs(out["median"] - 5.0) < 1e-9, f"median mis-computed: {out['median']}"
+        assert out["samples"], "samples must be retained so an estimator choice stays auditable"
+        assert len(out["samples"]) == len(elapsed)
+
+        # KernelBench own numbers must stay ITS numbers: the pin (423217d) exists so the
+        # evaluation criteria stay comparable across runs, and a wrapper that changed the mean
+        # would break every cross-run comparison.
+        assert abs(out["mean"] - sum(elapsed) / len(elapsed)) < 1e-9, (
+            "the interception altered the KernelBench mean; it must only ADD a key")
+
+        # The two statistics must actually differ here, or this test would pass on a broken
+        # implementation that returned the mean under the name median.
+        assert abs(out["mean"] - out["median"]) / out["median"] > 0.2, (
+            "the fixture no longer distinguishes mean from median; it cannot detect the defect")
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
+
+
+def test_reporting_ranks_by_the_statistic_that_decided_the_run():
+    """Once every path has a median, a mean-based report names a different winner than the run.
+
+    `_reconstruct_summary` ranked trials on latency_ms["mean"] while the orchestrator ranks on
+    `robust_ms`. That divergence was invisible only while no timing path produced a median at
+    all -- exactly the condition the fix above removes. So this is a consequence of that fix,
+    not an independent defect, and it has to land with it.
+    """
+    from kernel_optimizer.reporting.report import _reconstruct_summary, _robust_ms
+
+    assert _robust_ms({"mean": 6.3, "median": 5.0}) == 5.0
+    assert _robust_ms({"mean": 6.3, "median": None}) == 6.3, "must fall back to the mean"
+    assert _robust_ms({"mean": 6.3}) == 6.3, "an older record has no median key at all"
+    assert _robust_ms(None) is None
+    assert _robust_ms({"mean": 6.3, "median": 0}) == 6.3, (
+        "a zero median is not a measurement; robust_ms treats it as absent and so must this")
+
+    trials = [
+        {"trial_id": "slow-mean-fast-median", "candidate_id": "c1", "space_id": "s",
+         "status": "complete", "params": {"values": {"BLOCK": 64}},
+         "latency_ms": {"mean": 9.0, "std": 5.0, "min": 4.9, "max": 20.0, "median": 5.0}},
+        {"trial_id": "fast-mean-slow-median", "candidate_id": "c1", "space_id": "s",
+         "status": "complete", "params": {"values": {"BLOCK": 32}},
+         "latency_ms": {"mean": 5.0, "std": 0.1, "min": 4.9, "max": 5.2, "median": 9.0}},
+    ]
+    candidates = {"c1": {"family_id": "fam-1", "origin": "seed", "approach_summary": ""}}
+    out = _reconstruct_summary([], candidates, trials)
+    assert out["best"]["candidate_id"] == "c1"
+    assert out["best"]["tuned_ms"] == 5.0, (
+        f"the report published {out['best']['tuned_ms']} -- the mean-ranked winner. The "
+        f"orchestrator selects on robust_ms, so a report must too or it contradicts the run")
+    assert out["families"]["fam-1"]["best_ms"] == 5.0

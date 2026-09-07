@@ -1153,13 +1153,22 @@ class Orchestrator:
         The fastest trial rather than the last: the analyst is reasoning about the configuration
         that WON, and a different trial's registers/occupancy describe a configuration nobody
         will ship.
+
+        Ranks on `robust_ms`, the same statistic every other selection in the run reads
+        (`_tune`'s incumbent, the convergence test, `TuningStats`). An earlier version read
+        `.median` directly and killed run-l1-42-20260908-015408 at its first analyst step with
+        `TypeError: '<' not supported between instances of 'NoneType' and 'NoneType'`: `median`
+        is Optional by design, and the whole strict `eval_perf` path leaves it None. Beyond the
+        crash, reading a raw field here would also have ranked this profile by a DIFFERENT
+        statistic than the one that chose the winning trial, so the analyst could be handed the
+        registers of a configuration the run did not pick.
         """
         best = None
         for t in crun.trials:
             if t.status != "complete" or t.latency_ms is None or t.profile is None:
                 continue
-            if best is None or t.latency_ms.median < best[0]:
-                best = (t.latency_ms.median, t.profile)
+            if best is None or t.latency_ms.robust_ms < best[0]:
+                best = (t.latency_ms.robust_ms, t.profile)
         return best[1] if best else None
 
     def _classify_bottleneck(self, crun: CandidateRun):
@@ -1962,19 +1971,21 @@ class Orchestrator:
                     speedups[b.kind] = round(b.latency_ms.mean / lat.mean, 4)
             result["best"]["speedups"] = speedups
             # A median-labelled ratio is only honest when BOTH sides really have a median.
-            # `robust_ms` falls back to the mean, and the baselines come from KernelBench's
-            # summary-only path which returns no samples -- so using robust_ms on both sides
-            # silently computes baseline_MEAN / candidate_MEDIAN. On this run that publishes
+            # `robust_ms` falls back to the mean, so using it on both sides can silently compute
+            # baseline_MEAN / candidate_MEDIAN. On run-l1-42-20260907-193510 that published
             # 23.40 / 14.11 = 1.658x under the name `speedups_median`, against a mean-based
             # 0.727x: 128% higher, with the numerator inflated by stalls and the denominator
             # not. That is the exact failure this field was added to prevent -- every
             # published speedup rising without any kernel getting faster.
             #
             # So require a real median on both sides, and say so in `speedups_median_note`
-            # when it is missing rather than emitting a mixed ratio. Raising `num_warmup`
-            # (docs/plan-next-round-and-deferred-fixes.md D-2) is what would let the mean
-            # comparison work on both sides again; until then the honest answer is to
-            # publish the mean-based number and state why the median one is absent.
+            # when it is missing rather than emitting a mixed ratio. This guard is what makes
+            # `capture_timing_samples` (gpu/worker_main.py) a safe change: that patch gives the
+            # BASELINE path a median too, which is why the field can now be populated at all --
+            # and the reason it is safe is that the check below is symmetric, so the field only
+            # ever appears when both numbers are the same kind of statistic. The headline
+            # `speedups` and `honest_verdict` stay mean-over-mean regardless, so no published
+            # speedup moves as a side effect of medians becoming available.
             if lat.median and lat.median > 0:
                 med = {b.kind: round(b.latency_ms.median / lat.median, 4)
                        for b in self.baselines

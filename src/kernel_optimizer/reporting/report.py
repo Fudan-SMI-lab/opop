@@ -10,6 +10,24 @@ from kernel_optimizer.models.core import latency_cell
 from kernel_optimizer.store.run_store import RunStore
 
 
+def _robust_ms(lat: dict | None) -> float | None:
+    """The statistic that DECIDED the run, read from a raw event payload.
+
+    The dict mirror of `LatencyStats.robust_ms` (models/core.py): median when present, else the
+    mean. Reporting must rank by the same statistic the orchestrator ranked by, or a report
+    names a different winner than the run chose. That divergence was harmless only while no
+    timing path produced a median at all; once `capture_timing_samples` gives every path one,
+    a mean-based reconstruction would start disagreeing with the live summary.
+    """
+    if not lat:
+        return None
+    med = lat.get("median")
+    if med is not None and med > 0:
+        return float(med)
+    mean = lat.get("mean")
+    return float(mean) if mean is not None else None
+
+
 def _reconstruct_summary(events, candidates: dict, trials: list) -> dict:
     """Rebuild the RUN_FINISHED summary shape from events, for a run still in flight.
 
@@ -25,7 +43,11 @@ def _reconstruct_summary(events, candidates: dict, trials: list) -> dict:
             continue
         cid = t["candidate_id"]
         cur = best_per_cand.get(cid)
-        if cur is None or t["latency_ms"]["mean"] < cur["latency_ms"]["mean"]:
+        cur_ms = _robust_ms(cur.get("latency_ms")) if cur else None
+        t_ms = _robust_ms(t.get("latency_ms"))
+        if t_ms is None:
+            continue
+        if cur_ms is None or t_ms < cur_ms:
             best_per_cand[cid] = t
 
     rounds: dict[str, int] = {}
@@ -60,17 +82,18 @@ def _reconstruct_summary(events, candidates: dict, trials: list) -> dict:
             "approach": cand.get("approach_summary") or "",
         })
         t = best_per_cand.get(cid)
-        if t and (fam["best_ms"] is None or t["latency_ms"]["mean"] < fam["best_ms"]):
-            fam["best_ms"] = t["latency_ms"]["mean"]
+        t_ms = _robust_ms(t.get("latency_ms")) if t else None
+        if t_ms is not None and (fam["best_ms"] is None or t_ms < fam["best_ms"]):
+            fam["best_ms"] = t_ms
 
     out: dict = {"families": families, "best": None}
     if best_per_cand:
-        winner = min(best_per_cand.values(), key=lambda t: t["latency_ms"]["mean"])
+        winner = min(best_per_cand.values(), key=lambda t: _robust_ms(t["latency_ms"]))
         cand = candidates.get(winner["candidate_id"], {})
         out["best"] = {
             "candidate_id": winner["candidate_id"],
             "family_id": cand.get("family_id", "?"),
-            "tuned_ms": winner["latency_ms"]["mean"],
+            "tuned_ms": _robust_ms(winner["latency_ms"]),
             "params": winner["params"],
         }
     return out
