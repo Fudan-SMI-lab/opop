@@ -82,6 +82,13 @@ class TaskCost(BaseModel):
 
         1.0 means the reference already materializes only what it must. Large values mean most of
         the reference's traffic is intermediates, which is the case fusion addresses.
+
+        NOT capped by op_count. A first attempt capped it there, reasoning that N ops cannot offer
+        more than N ops' worth of fusable traffic -- which is false: a reference that re-reads the
+        SAME tensor across many ops legitimately exceeds that ratio, and the cap dropped L3:43 from
+        69.09x to 40x, destroying the very signal this measures. The actual defect it was papering
+        over (a multi-output aten op inflating reference_bytes) is fixed in the worker's counter,
+        where it belongs.
         """
         if self.compulsory_bytes <= 0:
             return 0.0

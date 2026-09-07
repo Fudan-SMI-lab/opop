@@ -7464,3 +7464,240 @@ def test_tier1_reports_a_note_rather_than_dying_when_statics_is_unreachable():
         assert "sass" not in row and "occupancy" not in row
     finally:
         wm._import_statics = original
+
+
+def test_the_linux_port_files_are_importable_and_name_complete():
+    """The Linux port lives as separate files, so nothing else compiles them.
+
+    A hand-merge dropped `import threading` from linux-server/runtime.linux.py -- the watchdog
+    needed it and box 2's version had never imported it. Nothing caught that: the file is not on
+    any import path, so neither pytest nor a linter looked at it, and the run died at its FIRST
+    agent call with `NameError: name 'threading' is not defined`.
+
+    A compile alone would NOT have caught it either -- a missing import is a runtime NameError, not
+    a syntax error. So this walks the AST and checks that every module-level name the code
+    references is either imported, defined locally, or a builtin. That is the class of defect a
+    merge introduces, and the only reason it was cheap this time is that it fired 12 seconds in
+    rather than at hour 3.
+    """
+    import ast
+    import builtins
+    from pathlib import Path as _P
+
+    ported = sorted(_P("linux-server").glob("*.linux.py"))
+    assert ported, "no ported files found; this test would silently pass forever"
+
+    for path in ported:
+        src = path.read_text(encoding="utf-8")
+        tree = ast.parse(src, filename=str(path))
+
+        bound: set[str] = set(dir(builtins))
+        # __future__ and friends
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for a in node.names:
+                    bound.add((a.asname or a.name).split(".")[0])
+            elif isinstance(node, ast.ImportFrom):
+                for a in node.names:
+                    bound.add(a.asname or a.name)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                bound.add(node.name)
+            elif isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+                bound.add(node.id)
+            elif isinstance(node, ast.arg):
+                bound.add(node.arg)
+            elif isinstance(node, ast.ExceptHandler) and node.name:
+                bound.add(node.name)
+            elif isinstance(node, ast.Global):
+                bound.update(node.names)
+            elif isinstance(node, (ast.comprehension,)):
+                for t in ast.walk(node.target):
+                    if isinstance(t, ast.Name):
+                        bound.add(t.id)
+        bound.update({"__file__", "__name__", "__doc__", "self", "cls"})
+
+        used = {n.id for n in ast.walk(tree)
+                if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+        missing = sorted(used - bound)
+        assert not missing, (
+            f"{path.name} references names that are never imported or defined: {missing}. "
+            f"This is exactly the merge defect that killed a run at its first agent call "
+            f"(`import threading` dropped from runtime.linux.py) -- a NameError at runtime, "
+            f"invisible to a syntax check.")
+
+
+def test_the_ported_runtime_keeps_both_sides_of_the_merge():
+    """The port and the 0-9 work were disjoint, so a merge can silently lose either half.
+
+    Losing the watchdog means an agent subprocess can take the box down again (the 111 GiB ptxas
+    incident); losing resolve_opencode means a run launched from tmux dies with a bare
+    FileNotFoundError. Both have happened, so both are asserted.
+    """
+    from pathlib import Path as _P
+
+    runtime = _P("linux-server/runtime.linux.py").read_text(encoding="utf-8")
+
+    # From the 0-9 work.
+    assert "_memory_pressure" in runtime, "the cgroup watchdog was lost in the merge"
+    assert "memory_abort_frac" in runtime
+    assert "threading" in runtime, "the watchdog needs threading; this is the import that was lost"
+    # From the Linux port.
+    assert "resolve_opencode" in runtime, "the opencode PATH fix was lost in the merge"
+    assert "miniconda3" in runtime, "the fallback search paths were lost"
+    # And the port's own deliberate removal must NOT come back: shell=True on POSIX with a list
+    # argv swallows --hostname/--port. Checked on the AST rather than the text, because the file
+    # legitimately DISCUSSES shell=True in a docstring explaining why it was removed -- and a
+    # naive text scan flags that prose, which is how this assertion first failed.
+    import ast as _ast
+
+    live_shell_true = []
+    for node in _ast.walk(_ast.parse(runtime)):
+        if not isinstance(node, _ast.Call):
+            continue
+        for kw in node.keywords:
+            if kw.arg == "shell" and isinstance(kw.value, _ast.Constant) and kw.value.value:
+                live_shell_true.append(getattr(node.func, "attr", "<call>"))
+    assert not live_shell_true, (
+        f"shell=True came back into the Linux runtime as a real call argument: {live_shell_true}")
+
+
+def test_the_ported_sandbox_declares_every_permission_opencode_asks_about():
+    """A permission key omitted from the block does not default to allow -- it falls through to
+    opencode's `{"*": "ask"}`, and an ask is fatal in a headless run: nobody answers, the turn
+    idles to the request timeout, and the retry hits the same wall. Measured three times in
+    run-l1-42-20260907-022528 (one call idled 28 minutes).
+    """
+    from kernel_optimizer.agents.sandbox import PERMISSION_CONFIG
+
+    perms = PERMISSION_CONFIG["permission"]
+    for key in ("edit", "bash", "webfetch", "external_directory"):
+        assert key in perms, (
+            f"`{key}` is not declared, so opencode falls back to its own default; for "
+            f"external_directory that default is `ask`, which hangs a headless run")
+    assert perms["external_directory"] == "allow"
+    assert perms["webfetch"] == "deny", "webfetch must stay denied"
+
+
+def test_a_single_op_reference_has_no_fusion_headroom():
+    """Found by the L1:42 validation run, not by any test: a ONE-op reference reported 2.0x.
+
+    `aten.max_pool2d_with_indices` returns (values, indices), and the byte counter summed every
+    output -- so a reference with literally nothing to fuse looked like it materialized twice its
+    unavoidable traffic, and `_bottleneck_doc` would have told the agent that fusion was its
+    largest available lever.
+
+    The measured numbers, before and after, on the real level1:42 reference (32x64x512x512 fp32,
+    k=4 s=1 p=1 d=1 -> 511x511 output):
+        compulsory  4286.587 MB   (= input 2147.484 + output 2139.103, exact)
+        reference   8564.793 MB   before  -> 1.998x
+        reference   4286.587 MB   after   -> 1.000x
+
+    A FIRST ATTEMPT AT THIS FIX WAS WRONG and the wrongness is worth keeping: capping
+    fusion_headroom at op_count also capped the multi-op tasks, dropping L3:43 from 69.09x to
+    40.00x and destroying the signal. A reference that re-reads the SAME tensor across many ops
+    legitimately exceeds that ratio. The defect was in the counter, not in the ratio.
+    """
+    from kernel_optimizer.evaluation.task_cost import TaskCost
+
+    B, C, H, W = 32, 64, 512, 512
+    k, s, p, d = 4, 1, 1, 1
+    ho = (H + 2 * p - d * (k - 1) - 1) // s + 1
+    expected_compulsory = (B * C * H * W + B * C * ho * ho) * 4
+    assert expected_compulsory == 4286586880, "the analytic figure moved; recheck the shapes"
+
+    fixed = TaskCost(flop_count=0, compulsory_bytes=expected_compulsory,
+                     reference_bytes=expected_compulsory, op_count=1,
+                     notes=["auxiliary outputs excluded"])
+    assert abs(fixed.fusion_headroom - 1.0) < 1e-9, (
+        f"a 1-op reference must have exactly 1.0x fusion headroom, got {fixed.fusion_headroom}")
+    assert "largest single lever" not in _doc_for(fixed), (
+        "a single-op reference is being told to fuse; there is nothing to fuse")
+
+    # And the ratio must NOT be capped at op_count, or the multi-op signal dies. These are the
+    # real measured numbers after the counter fix.
+    for name, comp, ref, ops, floor in (
+        ("level2:37", 687931392, 5552398336, 6, 8.0),
+        ("level3:21", 322035200, 10630205440, 11, 32.0),
+        ("level3:43", 416296960, 28356870144, 40, 67.0),
+    ):
+        t = TaskCost(flop_count=1, compulsory_bytes=comp, reference_bytes=ref, op_count=ops)
+        assert t.fusion_headroom > floor, (
+            f"{name}: fusion headroom {t.fusion_headroom:.2f}x collapsed below {floor}x -- a cap "
+            f"at op_count would do exactly this, and it destroys the signal")
+        assert t.fusion_headroom > ops or name == "level2:37", (
+            f"{name}: a reference re-reading the same tensor across ops SHOULD exceed op_count "
+            f"({t.fusion_headroom:.2f}x vs {ops} ops)")
+
+
+def _doc_for(cost):
+    """Render the agent-facing bottleneck doc for a TaskCost, with no verdict or calibration."""
+    from kernel_optimizer.agents.modules import _bottleneck_doc
+
+    return _bottleneck_doc(None, cost, None)
+
+
+def test_the_auxiliary_output_exclusion_is_recorded_not_silent():
+    """A reader comparing reference_bytes against a hand calculation must be told that an op's
+    auxiliary tensor was excluded -- otherwise the numbers look wrong and the exclusion looks like
+    a bug. `aux_output_ops` plus a note carry it.
+    """
+    from kernel_optimizer.evaluation.task_cost import cost_from_worker
+
+    worker_result = {"task_cost": {
+        "flop_count": 0, "compulsory_bytes": 4286586880, "reference_bytes": 4286586880,
+        "op_count": 1, "aux_output_ops": 1,
+        "notes": ["1 dispatched op(s) returned auxiliary tensors alongside their result "
+                  "(e.g. max_pool2d_with_indices -> values, indices); only the primary output "
+                  "is counted as task traffic, since the rest is implementation bookkeeping."],
+    }}
+    cost = cost_from_worker(worker_result)
+    assert cost.notes, "the exclusion must be journalled"
+    assert any("auxiliary" in n for n in cost.notes)
+    assert any("primary output" in n for n in cost.notes)
+
+
+def test_a_cache_hit_journals_the_same_fields_as_a_fresh_measurement():
+    """Found by the validation run: `tier1` read as None in the event log while the cache file on
+    disk held `tier1_sass_and_occupancy: true`.
+
+    Calibration is per-BOX, so a cache hit is the normal case -- which means the thin
+    CALIBRATION_LOADED payload was what almost every run would report. The report reads the event,
+    not the cache, so a run that reused a calibration produced no tier line and no thresholds while
+    a run that re-measured produced a full one. The data was never lost; only the event was thin.
+    """
+    import tempfile
+    from pathlib import Path as _P
+
+    from kernel_optimizer.evaluation.calibration import cache_path, save
+    from kernel_optimizer.gpu.calibrate import calibration_from_worker, ensure_calibration
+
+    cal = calibration_from_worker(dict(MEASURED_4090, tiers=MEASURED_TIERS_BOX2))
+
+    class Store:
+        def __init__(self):
+            self.events = []
+
+        def append(self, t, p):
+            self.events.append((t, p))
+
+    class NeverCalled:
+        def run_job(self, *a, **k):
+            raise AssertionError("a valid cache must not be re-measured")
+
+    with tempfile.TemporaryDirectory() as td:
+        root = _P(td)
+        save(cache_path(root), cal)
+        store = Store()
+        got = ensure_calibration(NeverCalled(), root, store=store)
+        assert got is not None
+
+        kind, payload = store.events[-1]
+        assert kind == "CALIBRATION_LOADED"
+        for key in ("tiers", "thresholds", "tf32_tflops", "empty_launch_floor_ms",
+                    "ridge_flop_per_byte", "measured_at"):
+            assert key in payload, (
+                f"a cache hit does not journal `{key}`, so a report on the normal path is thinner "
+                f"than one on the re-measure path")
+        assert payload["tiers"]["tier1_sass_and_occupancy"] is True, (
+            "the tier record read as falsy on a cache hit -- the exact symptom observed live")
+        assert payload["thresholds"]["compute_saturated_frac"] > 0.7

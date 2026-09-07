@@ -87,11 +87,26 @@ def ensure_calibration(
         cached = load_cached(path, identity_hint)
         if cached is not None:
             if store is not None:
+                # The SAME fields a fresh measurement journals. An earlier version omitted
+                # `tiers`, `tf32_tflops`, `empty_launch_floor_ms` and `thresholds` here, so a run
+                # that hit the cache -- which is the normal case, since calibration is per-box --
+                # produced a report with no tier line and no thresholds, while a run that
+                # re-measured produced a full one. The data was in the cache all along; only the
+                # event was thin, and the report reads the event. Observed live on
+                # run-l1-42-20260908-015408: tier1 read as None in the log while the cache file
+                # held tier1_sass_and_occupancy: true.
                 store.append("CALIBRATION_LOADED",
                              {"source": "cache", "path": str(path),
                               "device": cached.device_name,
                               "dram_tbs": cached.dram_tbs,
                               "fp32_tflops": cached.fp32_tflops,
+                              "tf32_tflops": cached.tf32_tflops,
+                              "empty_launch_floor_ms": cached.empty_launch_floor_ms,
+                              "ridge_flop_per_byte": cached.ridge_flop_per_byte,
+                              "thresholds": (cached.thresholds.model_dump()
+                                             if cached.thresholds else None),
+                              "tiers": cached.tiers,
+                              "measured_at": cached.measured_at,
                               "suspect": cached.suspect})
             return cached
 

@@ -966,6 +966,9 @@ def _measure_task_cost(ref_src: str, device) -> dict:
                 super().__init__()
                 self.total = 0
                 self.ops = 0
+                # How many dispatched ops returned auxiliary tensors alongside their result.
+                # Reported so the exclusion above is visible rather than silent.
+                self.aux_outputs = 0
 
             def __torch_dispatch__(self, func, types, args=(), kwargs=None):
                 out = func(*args, **(kwargs or {}))
@@ -979,9 +982,24 @@ def _measure_task_cost(ref_src: str, device) -> dict:
                             for e in a:
                                 if isinstance(e, torch.Tensor):
                                     self.total += e.numel() * e.element_size()
-                    for o in (out if isinstance(out, (list, tuple)) else [out]):
+                    # Only the op's PRIMARY output counts as traffic the task requires. Several
+                    # aten ops return auxiliary tensors alongside their result -- most visibly
+                    # `max_pool2d_with_indices`, which returns (values, indices) -- and those are
+                    # implementation bookkeeping, not part of what the task computes. Counting
+                    # them made a ONE-op reference report 2.0x its own compulsory traffic
+                    # (level1:42 in run-l1-42-20260908-015408: 8564.79 MB against 4286.59 MB),
+                    # which `_bottleneck_doc` would have turned into "fusion is your largest
+                    # lever" advice on a kernel with nothing whatsoever to fuse.
+                    #
+                    # Taking the first tensor rather than filtering by name or dtype: the primary
+                    # result is first by aten convention, and an int64 index tensor is
+                    # indistinguishable from a legitimate integer output on dtype alone.
+                    outs = out if isinstance(out, (list, tuple)) else [out]
+                    for o in outs[:1]:
                         if isinstance(o, torch.Tensor):
                             self.total += o.numel() * o.element_size()
+                    if len(outs) > 1:
+                        self.aux_outputs += 1
                 except Exception:  # noqa: BLE001 — accounting must never break the forward
                     pass
                 return out
@@ -999,7 +1017,9 @@ def _measure_task_cost(ref_src: str, device) -> dict:
             notes.append(f"byte counting failed: {type(exc).__name__}: {exc}")
             out = model(*inputs)
 
-        for o in (out if isinstance(out, (list, tuple)) else [out]):
+        # Same rule for the model's own output: the task's result, not an op's bookkeeping.
+        final_outs = out if isinstance(out, (list, tuple)) else [out]
+        for o in final_outs[:1]:
             compulsory += account_once(o)
 
         flop_count = 0
@@ -1019,13 +1039,23 @@ def _measure_task_cost(ref_src: str, device) -> dict:
         except Exception as exc:  # noqa: BLE001
             notes.append(f"FLOP counting unavailable: {type(exc).__name__}: {exc}")
 
-    return {
+    result_cost = {
         "flop_count": flop_count,
         "compulsory_bytes": compulsory,
         "reference_bytes": counter.total,
         "op_count": counter.ops,
         "notes": notes,
     }
+    if counter.aux_outputs:
+        # Visible, not silent: an op returning (values, indices) had its auxiliary tensor
+        # excluded from the traffic count, and a reader comparing this against a hand
+        # calculation needs to know that happened.
+        result_cost["aux_output_ops"] = counter.aux_outputs
+        notes.append(
+            f"{counter.aux_outputs} dispatched op(s) returned auxiliary tensors alongside their "
+            f"result (e.g. max_pool2d_with_indices -> values, indices); only the primary output "
+            f"is counted as task traffic, since the rest is implementation bookkeeping.")
+    return result_cost
 
 
 def run_task_cost(job: dict) -> dict:
