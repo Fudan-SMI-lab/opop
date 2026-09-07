@@ -6453,3 +6453,306 @@ def test_the_task_cost_reaches_the_run_and_survives_a_resume():
             "different denominators")
         assert orch2.task_cost.compulsory_bytes == cost.compulsory_bytes
         assert abs(orch2.task_cost.fusion_headroom - cost.fusion_headroom) < 1e-9
+
+
+# --- step 5: Tier 1 statics (SASS instruction mix + analytic occupancy) --------------------
+
+# Real SASS counts measured on box 2 (RTX 4090, 2026-09-08) by
+# linux-server/scripts/probes/probe_sass_and_occupancy.py. Kept verbatim: the separation these
+# assert is one a GPU actually exhibited, and the spill row is cross-validated against Triton's
+# own n_spills (STL=2/LDL=1 vs n_spills=2, agreeing exactly).
+MEASURED_SASS = {
+    "tensor_core_fp16_dot": {
+        "n_regs": 80, "n_spills": 2, "shared": 16384, "num_warps": 4,
+        "sass": {"instructions": 360, "tensor_core": 16, "spill_store": 2, "spill_load": 1,
+                 "shared_store": 8, "shared_load": 14, "barrier": 7, "global_load": 0,
+                 "global_store": 8, "vec_128": 20, "vec_64": 0},
+    },
+    "large_tile_dot": {
+        "n_regs": 218, "n_spills": 0, "shared": 32768, "num_warps": 4,
+        "sass": {"instructions": 872, "tensor_core": 64, "spill_store": 0, "spill_load": 0,
+                 "shared_store": 32, "shared_load": 70, "barrier": 11, "global_load": 0,
+                 "global_store": 32, "vec_128": 56, "vec_64": 0},
+    },
+    "plain_elementwise": {
+        "n_regs": 18, "n_spills": 0, "shared": 0, "num_warps": 4,
+        "sass": {"instructions": 48, "tensor_core": 0, "spill_store": 0, "spill_load": 0,
+                 "shared_store": 0, "shared_load": 0, "barrier": 0, "global_load": 2,
+                 "global_store": 2, "vec_128": 4, "vec_64": 0},
+    },
+    # The actual winning candidate of run-l1-42-20260907-193510, collected through the real
+    # eval path. 33.3% occupancy, register-limited, zero vectorized global access.
+    "real_l1_42_winner": {
+        "n_regs": 112, "n_spills": 0, "shared": 0, "num_warps": 4,
+        "sass": {"instructions": 496, "tensor_core": 0, "spill_store": 0, "spill_load": 0,
+                 "shared_store": 0, "shared_load": 0, "barrier": 0, "global_load": 16,
+                 "global_store": 16, "vec_128": 0, "vec_64": 0},
+    },
+}
+
+# RTX 4090 (sm_89) limits, as torch reports them.
+SM89 = {"max_threads_per_sm": 1536, "regs_per_sm": 65536, "shared_per_sm": 102400,
+        "max_blocks_per_sm": 16}
+
+
+def test_sass_counting_separates_tensor_core_from_scalar_kernels():
+    """The signal we claimed counters were needed for, recovered without them.
+
+    `ncu` returns ERR_NVGPUCTRPERM in these containers and cannot be enabled from inside one, so
+    if disassembly could not answer "does this kernel use tensor cores", the answer would be
+    unavailable on every real box. Measured separation: an fp16 tl.dot kernel shows 16 tensor-core
+    instructions, a scalar elementwise kernel shows 0.
+    """
+    from kernel_optimizer.evaluation.statics import SassCounts
+
+    tc = SassCounts.model_validate(MEASURED_SASS["tensor_core_fp16_dot"]["sass"])
+    plain = SassCounts.model_validate(MEASURED_SASS["plain_elementwise"]["sass"])
+
+    assert tc.uses_tensor_cores, "an fp16 tl.dot kernel was reported as not using tensor cores"
+    assert not plain.uses_tensor_cores, (
+        "a scalar elementwise kernel was reported as using tensor cores; a false positive here "
+        "would tell the agent to stop pursuing the single largest lever it has")
+    assert tc.shared_load + tc.shared_store > 0 and tc.barrier > 0, (
+        "a tl.dot kernel stages through shared memory and synchronizes; neither was detected")
+    assert plain.shared_load + plain.shared_store == 0 and plain.barrier == 0
+
+
+def test_the_sass_counter_does_not_count_symbol_names_as_instructions():
+    """A kernel NAMED after a tensor-core op must not be reported as using one.
+
+    Only lines carrying a ';' are instructions; section headers, symbol names and branch labels
+    are not. Without that filter a kernel called `my_hmma_helper` would report tensor cores it
+    does not have, and the agent would be told to stop pursuing its largest lever.
+    """
+    from kernel_optimizer.evaluation.statics import count_sass
+
+    sass = """
+        .headerflags @"EF_CUDA_SM89"
+        .global _Z18my_hmma_fake_helperPf
+    .text._Z18my_hmma_fake_helperPf:
+        /*0000*/    MOV R1, c[0x0][0x28] ;
+        /*0010*/    LDG.E.128 R4, [R2.64] ;
+        /*0020*/    STG.E.128 [R6.64], R4 ;
+        /*0030*/    EXIT ;
+    .L_x_0:
+    """
+    counts = count_sass(sass)
+    assert counts.instructions == 4, f"expected 4 instruction lines, got {counts.instructions}"
+    assert counts.tensor_core == 0, (
+        "the kernel's NAME was counted as a tensor-core instruction")
+    assert counts.vec_128 == 2, "128-bit global accesses were not detected"
+    assert counts.global_load == 1 and counts.global_store == 1
+
+
+def test_occupancy_names_the_binding_resource_not_just_a_percentage():
+    """"Occupancy 33%" names no knob; "limited by registers at 112/thread" does.
+
+    Checked against the REAL winning candidate of run-l1-42-20260907-193510, whose 112 registers
+    per thread cap it at 4 blocks/SM. This was entirely invisible before step 5: the run reported
+    a 1.967x speedup with no indication that two thirds of the machine's warp slots were unused.
+    """
+    from kernel_optimizer.evaluation.statics import compute_occupancy
+
+    k = MEASURED_SASS["real_l1_42_winner"]
+    occ = compute_occupancy(k["n_regs"], k["shared"], k["num_warps"], **SM89)
+    assert occ is not None
+    assert abs(occ.occupancy - 0.3333) < 0.001, f"occupancy {occ.occupancy} != measured 0.3333"
+    assert occ.limiter == "registers", f"limiter {occ.limiter}; the 112 regs/thread are binding"
+    assert occ.by_regs == 4 and occ.blocks_per_sm == 4
+    assert occ.active_warps == 16 and occ.max_warps_per_sm == 48
+
+    # A small kernel is not register-limited, so the limiter must MOVE -- a limiter that always
+    # says "registers" would be a constant dressed up as a diagnosis.
+    small = MEASURED_SASS["plain_elementwise"]
+    occ2 = compute_occupancy(small["n_regs"], small["shared"], small["num_warps"], **SM89)
+    assert occ2.occupancy == 1.0, f"an 18-register kernel should reach full occupancy, got {occ2}"
+    assert occ2.limiter != "registers", (
+        f"an 18-register kernel is reported register-limited: {occ2.limiter}")
+
+    # And shared memory must be able to bind too.
+    occ3 = compute_occupancy(32, 51200, 4, **SM89)
+    assert occ3.limiter == "shared_memory", (
+        f"50 KB of shared memory per block must bind before registers, got {occ3.limiter}")
+
+
+def test_occupancy_is_computed_from_device_limits_not_baked_constants():
+    """The portability requirement again: the same kernel on a different card gives a different
+    occupancy, so the device limits must be arguments rather than constants.
+
+    A 5080 Laptop (sm_120) has fewer threads per SM than a 4090. If the arithmetic ignored that,
+    every occupancy figure on the next box would be silently wrong -- and occupancy is KernelPro's
+    highest-GAIN signal, so a wrong one is actively harmful.
+    """
+    from kernel_optimizer.evaluation.statics import compute_occupancy
+
+    k = MEASURED_SASS["real_l1_42_winner"]
+    on_4090 = compute_occupancy(k["n_regs"], k["shared"], k["num_warps"], **SM89)
+    on_small = compute_occupancy(k["n_regs"], k["shared"], k["num_warps"],
+                                 max_threads_per_sm=1024, regs_per_sm=65536,
+                                 shared_per_sm=102400, max_blocks_per_sm=16)
+    assert on_4090.max_warps_per_sm != on_small.max_warps_per_sm, (
+        "the device limits are being ignored; occupancy would be wrong on every other card")
+    assert on_4090.occupancy != on_small.occupancy
+
+
+def test_triton_caps_registers_instead_of_spilling_so_occupancy_carries_the_signal():
+    """A measured finding that reorders the priorities, asserted so it is not forgotten.
+
+    KernelPro rates spills their highest-HIT tool (18.2%). But on Triton, extreme register
+    pressure does not become spills: the 128x128 fp32 accumulator on 4 warps compiles to 218
+    registers, ZERO spills, and 16.7% occupancy. Two synthetic kernels written to spill both
+    failed to, and Triton's own n_spills agreed with the SASS at 0 each time -- so the detector
+    was right and the expectation was wrong.
+
+    Consequence: on our Triton candidates, occupancy is the signal that fires. Spills stay
+    collected for the CUDA backend, which does spill.
+    """
+    from kernel_optimizer.evaluation.statics import SassCounts, compute_occupancy
+
+    big = MEASURED_SASS["large_tile_dot"]
+    sass = SassCounts.model_validate(big["sass"])
+    assert sass.spill_instructions == 0, "the large-tile kernel did spill after all"
+    assert big["n_spills"] == 0, "Triton reported spills; the finding no longer holds"
+    assert big["n_regs"] >= 200, (
+        "the register cap is not visible; the finding rests on Triton pinning registers high")
+
+    occ = compute_occupancy(big["n_regs"], big["shared"], big["num_warps"], **SM89)
+    assert occ.occupancy < 0.25, (
+        f"the pressure must surface as LOW OCCUPANCY since it does not surface as spills; "
+        f"got {occ.occupancy}")
+    assert occ.limiter == "registers"
+
+
+def test_sass_and_triton_spill_counts_cross_validate():
+    """Two independent sources agreeing is the positive control for the spill detector.
+
+    STL/LDL comes from disassembled SASS; n_spills comes from the Triton compiler. On the
+    tensor-core kernel both report spilling (STL=2, LDL=1, n_spills=2). A detector validated only
+    against itself would be indistinguishable from one that always returns zero -- which is the
+    mistake this project has already made once (five negative results that were one broken
+    probe).
+    """
+    from kernel_optimizer.evaluation.statics import SassCounts
+
+    for name, k in MEASURED_SASS.items():
+        sass = SassCounts.model_validate(k["sass"])
+        triton_spills = k["n_spills"]
+        if triton_spills > 0:
+            assert sass.spill_instructions > 0, (
+                f"{name}: Triton reports {triton_spills} spilled bytes but SASS shows no "
+                f"local-memory traffic; one of the two is broken")
+        else:
+            assert sass.spill_instructions == 0, (
+                f"{name}: SASS shows local-memory traffic but Triton reports no spills")
+
+
+def test_the_vectorization_fraction_is_not_read_off_a_kernel_with_no_global_access():
+    """A guard against a plausible misreading. `vectorized_frac` divides by global accesses, so a
+    kernel with none would otherwise report 0.0 -- indistinguishable from fully scalar access.
+    """
+    from kernel_optimizer.evaluation.statics import SassCounts
+
+    none_at_all = SassCounts(instructions=100, global_load=0, global_store=0, vec_128=0)
+    assert none_at_all.vectorized_frac == 0.0
+    assert none_at_all.global_load + none_at_all.global_store == 0, (
+        "the caller must be able to tell 'no global access' from 'scalar global access'")
+
+    # The real L1:42 winner: 32 global accesses, none of them vectorized. This is a real finding
+    # about a real candidate, not a synthetic case.
+    winner = SassCounts.model_validate(MEASURED_SASS["real_l1_42_winner"]["sass"])
+    assert winner.global_load + winner.global_store == 32
+    assert winner.vectorized_frac == 0.0, (
+        "the run's winning candidate does 32 scalar global accesses; that is the finding")
+
+    fully = SassCounts.model_validate(MEASURED_SASS["plain_elementwise"]["sass"])
+    assert fully.vectorized_frac == 1.0, (
+        "a kernel whose every access is 128-bit must report full vectorization")
+
+
+def test_cuda_tools_are_found_off_path_because_that_is_where_they_are():
+    """Measured on box 2: nvdisasm and cuobjdump live in /usr/local/cuda/bin/ and are NOT on the
+    login shell's PATH. A `shutil.which`-only lookup reported them missing, and the first run of
+    the probe concluded "no disassembler available" about a working tool -- the same class of bug
+    as the opencode PATH failure, where an available capability read as a missing one.
+    """
+    import inspect
+
+    from kernel_optimizer.evaluation import statics
+
+    src = inspect.getsource(statics.find_cuda_tool)
+    assert "/usr/local/cuda" in src, (
+        "the toolkit directory is not searched, so a box with CUDA off PATH loses Tier 1 "
+        "entirely -- which is what happened on box 2")
+    assert "CUDA_HOME" in src, "the CUDA_HOME environment variable is not consulted"
+
+    # A name that cannot exist must return None rather than raising: Tier 1 is a diagnostic and
+    # its absence must degrade, not crash.
+    assert statics.find_cuda_tool("nvdisasm-that-does-not-exist-9f3a") is None
+
+
+def test_unmeasurable_signals_are_named_rather_than_silently_absent():
+    """An agent told "nothing is wrong" reasons differently from one told "this cannot be
+    measured here". The second is the true statement, and KernelPro's data says the distinction
+    matters: raw counter dumps DEGRADED their LLM's performance (NoFeedback beat raw ncu,
+    p=0.0007), so naming a gap is better than filling it with noise.
+    """
+    from kernel_optimizer.evaluation.statics import UNMEASURABLE_ON_THIS_TIER, unmeasurable_note
+
+    note = unmeasurable_note()
+    for item in ("bank conflict", "divergence", "stall"):
+        assert any(item in entry for entry in UNMEASURABLE_ON_THIS_TIER), (
+            f"{item} is not listed as unmeasurable, so its absence looks like a clean result")
+    assert "unknown" in note.lower(), (
+        f"the note must say these are UNKNOWN, not fine: {note}")
+    assert "container" in note.lower(), "the note should say why they are unavailable"
+
+
+def test_tier1_statics_reach_the_profile_record_with_the_right_aggregation():
+    """Wiring, and the aggregation is the part that can be wrong silently.
+
+    A launch has several kernels. Instruction counts SUM (the launch's mix is the sum of its
+    parts). Occupancy takes the WORST kernel, because the launch is limited by its least
+    occupant -- averaging would hide a kernel stuck at 17% behind one at 100%.
+    """
+    from kernel_optimizer.evaluation.profilerx import LightProfiler
+
+    worker_result = {
+        "triton": {
+            "compile_s": 1.5,
+            "kernels": [
+                {"name": "k_fast", "n_regs": 18, "n_spills": 0, "shared": 0, "num_warps": 4,
+                 "sass": MEASURED_SASS["plain_elementwise"]["sass"],
+                 "occupancy": {"occupancy": 1.0, "active_warps": 48, "max_warps_per_sm": 48,
+                               "blocks_per_sm": 12, "limiter": "warps_per_block",
+                               "by_regs": 28, "by_shared": 16, "by_warps": 12}},
+                {"name": "k_slow", "n_regs": 218, "n_spills": 0, "shared": 32768,
+                 "num_warps": 4,
+                 "sass": MEASURED_SASS["large_tile_dot"]["sass"],
+                 "occupancy": {"occupancy": 0.1667, "active_warps": 8, "max_warps_per_sm": 48,
+                               "blocks_per_sm": 2, "limiter": "registers",
+                               "by_regs": 2, "by_shared": 3, "by_warps": 12}},
+            ],
+        }
+    }
+    rec = LightProfiler().extract(worker_result)
+
+    assert rec.sass is not None, "Tier 1 statics never reached the ProfileRecord"
+    assert rec.sass["tensor_core"] == 0 + 64, (
+        "instruction counts must SUM across the launch's kernels")
+    assert rec.sass["instructions"] == 48 + 872
+    assert rec.uses_tensor_cores is True, (
+        "a launch containing a tensor-core kernel must report using them")
+
+    assert rec.occupancy is not None
+    assert abs(rec.occupancy["occupancy"] - 0.1667) < 1e-6, (
+        f"occupancy must come from the WORST kernel, not an average; got {rec.occupancy}")
+    assert rec.occupancy_limiter == "registers"
+    assert abs(rec.occupancy_pct - 16.67) < 0.01
+
+    # An absent measurement must stay absent rather than becoming a zero.
+    bare = LightProfiler().extract({"triton": {"compile_s": 1.0, "kernels": [
+        {"name": "k", "n_regs": 32, "n_spills": 0, "shared": 0, "num_warps": 4}]}})
+    assert bare.sass is None and bare.occupancy is None
+    assert bare.uses_tensor_cores is None, (
+        "an unmeasured instruction mix must read as unknown, not as 'no tensor cores'")
+    assert bare.occupancy_pct is None

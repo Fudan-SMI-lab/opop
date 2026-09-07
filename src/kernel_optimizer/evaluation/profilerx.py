@@ -46,6 +46,25 @@ class LightProfiler:
             vals = [k[key] for k in kernels if k.get(key) is not None]
             return max(vals) if vals else None
 
+        # Tier 1 statics (step 5). Aggregated across the launch's kernels the way the resource
+        # figures are, but with the aggregation matched to what each number MEANS:
+        #   sass       summed -- the instruction mix of the whole launch is the sum of its parts,
+        #              and "does this launch use tensor cores at all" is then just > 0.
+        #   occupancy  taken from the WORST kernel, because the launch is limited by its least
+        #              occupant. Averaging would hide a kernel stuck at 17% behind one at 100%.
+        sass_total: dict | None = None
+        sass_rows = [k["sass"] for k in kernels if k.get("sass")]
+        if sass_rows:
+            keys = {key for row in sass_rows for key in row}
+            sass_total = {key: sum(int(row.get(key) or 0) for row in sass_rows) for key in keys}
+        occ_rows = [k["occupancy"] for k in kernels if k.get("occupancy")]
+        worst_occ = min(occ_rows, key=lambda o: o.get("occupancy", 1.0)) if occ_rows else None
+        notes: list[str] = []
+        for k in kernels:
+            notes.extend(k.get("statics_notes") or [])
+            if k.get("statics_note"):
+                notes.append(k["statics_note"])
+
         return ProfileRecord(
             n_regs=_agg("n_regs"),
             n_spills=_agg("n_spills"),
@@ -60,5 +79,8 @@ class LightProfiler:
             # ran, so a reader must not treat them as measured for the executing kernel.
             profile_source=("triton" if source is triton else "cubin"),
             launched_filter=source.get("launched_filter"),
+            sass=sass_total,
+            occupancy=worst_occ,
+            statics_notes=sorted(set(notes)),
             **overhead_fields,
         )

@@ -113,6 +113,57 @@ def _classify_eval_failure(metadata: dict, compiled: bool, correct: bool) -> tup
 # --- triton metadata (duck-typed; pattern validated on triton 3.5 / sm_120) ---
 
 
+def _tier1_statics(compiled, row: dict, props) -> dict:
+    """SASS instruction mix + analytic occupancy for one compiled Triton kernel (step 5).
+
+    Best-effort by construction: every failure path returns {} or a note, because this is a
+    diagnostic and must never turn a working evaluation into a failed one. The counting and
+    occupancy arithmetic live in evaluation/statics.py so they are unit-testable without a GPU;
+    this function only supplies the cubin and the device limits.
+    """
+    out: dict = {}
+    notes: list[str] = []
+    try:
+        from kernel_optimizer.evaluation.statics import (
+            compute_occupancy,
+            count_sass,
+            disassemble_cubin,
+        )
+    except Exception as exc:  # noqa: BLE001 — the worker may run without the package importable
+        return {"statics_note": f"tier1 unavailable: {type(exc).__name__}: {exc}"[:200]}
+
+    asm = getattr(compiled, "asm", None) or {}
+    cubin = asm.get("cubin") if isinstance(asm, dict) else None
+    if cubin:
+        sass = disassemble_cubin(cubin)
+        if sass:
+            out["sass"] = count_sass(sass).model_dump()
+        else:
+            notes.append("no disassembler available (nvdisasm/cuobjdump not found) or "
+                         "disassembly failed; instruction mix unknown")
+    else:
+        notes.append("no cubin in the compiled kernel's asm dict; instruction mix unknown")
+
+    n_regs, num_warps = row.get("n_regs"), row.get("num_warps")
+    if n_regs and num_warps:
+        occ = compute_occupancy(
+            n_regs, row.get("shared") or 0, num_warps,
+            max_threads_per_sm=int(getattr(props, "max_threads_per_multi_processor", 0) or 0),
+            regs_per_sm=int(getattr(props, "regs_per_multiprocessor", 65536) or 65536),
+            shared_per_sm=int(getattr(props, "shared_memory_per_multiprocessor", 102400)
+                              or 102400),
+            max_blocks_per_sm=int(getattr(props, "max_blocks_per_multi_processor", 16) or 16),
+        )
+        if occ is not None:
+            out["occupancy"] = occ.model_dump()
+    else:
+        notes.append("n_regs or num_warps missing; occupancy not computable")
+
+    if notes:
+        out["statics_notes"] = notes
+    return out
+
+
 def _extract_triton_metadata(kernel_src: str, ref_src: str, device_index: int) -> dict | None:
     """Load the kernel module fresh, launch forward once, then walk JIT caches."""
     import importlib.util
@@ -149,6 +200,7 @@ def _extract_triton_metadata(kernel_src: str, ref_src: str, device_index: int) -
             model(*inputs)
             torch.cuda.synchronize(device)
         compile_s = time.monotonic() - t0
+        props = torch.cuda.get_device_properties(device_index)
 
         kernels = []
         for attr_name in dir(module):
@@ -164,21 +216,23 @@ def _extract_triton_metadata(kernel_src: str, ref_src: str, device_index: int) -
                 continue
             for compiled in entry[0].values():
                 meta = getattr(compiled, "metadata", None)
-                kernels.append(
-                    {
-                        "name": getattr(compiled, "name", None)
-                        or (getattr(meta, "name", None) if meta else None),
-                        "n_regs": _opt_int(getattr(compiled, "n_regs", None)),
-                        "n_spills": _opt_int(getattr(compiled, "n_spills", None)),
-                        "shared": _opt_int(getattr(meta, "shared", None) if meta else None),
-                        "num_warps": _opt_int(
-                            getattr(meta, "num_warps", None) if meta else None
-                        ),
-                        "num_stages": _opt_int(
-                            getattr(meta, "num_stages", None) if meta else None
-                        ),
-                    }
-                )
+                row = {
+                    "name": getattr(compiled, "name", None)
+                    or (getattr(meta, "name", None) if meta else None),
+                    "n_regs": _opt_int(getattr(compiled, "n_regs", None)),
+                    "n_spills": _opt_int(getattr(compiled, "n_spills", None)),
+                    "shared": _opt_int(getattr(meta, "shared", None) if meta else None),
+                    "num_warps": _opt_int(
+                        getattr(meta, "num_warps", None) if meta else None
+                    ),
+                    "num_stages": _opt_int(
+                        getattr(meta, "num_stages", None) if meta else None
+                    ),
+                }
+                # Tier 1 (step 5): instruction mix from the cubin, and analytic occupancy.
+                # Both need no privileges, unlike ncu -- see evaluation/statics.py.
+                row.update(_tier1_statics(compiled, row, props=props))
+                kernels.append(row)
         return {"kernels": kernels, "compile_s": compile_s}
     finally:
         try:

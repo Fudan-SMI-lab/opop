@@ -208,6 +208,40 @@ class ProfileRecord(BaseModel):
             return None
         return self.cpu_issue_ms / self.overhead_gpu_ms
 
+    # --- Tier 1 static analysis (step 5): instruction mix and analytic occupancy ----------
+    # Both come from sources that need NO privileges: disassembling the cubin (nvdisasm /
+    # cuobjdump) and arithmetic on the resource figures above. `ncu` returns ERR_NVGPUCTRPERM in
+    # these containers and cannot be enabled from inside one, so this is the whole of what is
+    # observable about a kernel's internals here.
+    #
+    # None means "not collected on this path" -- the same convention as the overhead fields --
+    # NOT "the kernel has none of this". A SassCounts with every count at 0 is a measurement.
+    sass: dict | None = None
+    # {"occupancy", "active_warps", "max_warps_per_sm", "blocks_per_sm", "limiter", ...}. The
+    # `limiter` is the actionable half: a bare occupancy percentage names no knob to turn.
+    occupancy: dict | None = None
+    # Why a Tier 1 signal is missing, when it is. Recorded because "no tensor cores detected" and
+    # "no disassembler on this box" are opposite conclusions that would otherwise look identical.
+    statics_notes: list[str] = Field(default_factory=list)
+
+    @property
+    def uses_tensor_cores(self) -> bool | None:
+        """True/False when the instruction mix was read, None when it could not be."""
+        if not self.sass or not self.sass.get("instructions"):
+            return None
+        return bool(self.sass.get("tensor_core", 0) > 0)
+
+    @property
+    def occupancy_pct(self) -> float | None:
+        if not self.occupancy:
+            return None
+        value = self.occupancy.get("occupancy")
+        return None if value is None else float(value) * 100.0
+
+    @property
+    def occupancy_limiter(self) -> str | None:
+        return (self.occupancy or {}).get("limiter")
+
 
 class TrialRecord(BaseModel):
     trial_id: str
