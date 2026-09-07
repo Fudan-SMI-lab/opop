@@ -146,6 +146,27 @@ roofline 的两个坐标轴就是它们:
 - GEMM/conv 类任务(异构显卡实验的重点):FLOP 精确 + 字节精确 → 六类全可判
 - 纯数据搬运类任务(maxpool 等):FLOP=0 + 字节精确 → 正确落到 memory_bound 一侧
 
+### 泛化性验证(补做,不能只靠一个 case 就写进计划)
+
+我最初只用单输入 maxpool 验证过 `byte_count`,这不足以支撑"框架自测"的结论。已在 box 2 上补测:
+
+| 情形 | 结果 | 说明 |
+|---|---|---|
+| 含可学习参数的 conv2d | in 205.5 + **params 0.3** + out 411.0 MB | 参数被正确计入(它们也要被读) |
+| 多输入(matmul) | in 8.4 / out 4.2 MB | 多个输入张量正确求和 |
+| 多输出(`torch.topk` 返回 named tuple) | 0.0614 MB,类型 `topk` | 递归遍历到 tuple 内部,不漏 |
+| 非 fp32(fp16 1024²) | 2.10 MB(fp32 同尺寸 4.19) | `element_size()` 让 dtype 自动正确 |
+
+`FlopCounterMode` 也在**我们真实的 L3 任务形状**上验证,而非只在教科书 matmul 上:
+
+| 任务类型 | counter vs 解析真值 | ratio |
+|---|---|---|
+| L3:43 类 causal attention(含 softmax / masked_fill) | 2,147,483,648 vs 2,147,483,648 | **1.0000** |
+| L3:21 类 depthwise conv + BatchNorm | 57,802,752 vs 57,802,752 | **1.0000** |
+
+注意第一行的读法:softmax 与 masked_fill **不计入**(它们没有 mul-add),两个 matmul 精确。
+这正是 roofline 想要的语义 —— 这些算子的成本在字节侧,不在 FLOP 侧。
+
 **在参考实现上测,不在候选上测**:`flop_count`/`byte_count` 是**任务的属性**(要做多少数学、
 搬多少数据),不是某个实现的属性。在参考实现上测一次,所有候选共用同一个分母 ——
 这样"候选 A 达到 60% 带宽、候选 B 达到 30%"才是可比的。
