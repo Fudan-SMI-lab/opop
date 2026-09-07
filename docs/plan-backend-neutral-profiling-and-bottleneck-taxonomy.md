@@ -170,3 +170,78 @@ is 1.05x, the case for backend search weakens sharply; if it is 2x, it is settle
 - **Changing the timing method.** Wall-clock is added as a reported convention and an analyst
   signal. It must never become the tuning objective: it is noisier (CPU scheduling enters the
   measurement), and the search objective stays median-of-events.
+
+---
+
+## Progress log
+
+### 2026-09-07 — step 2 and step 4 done, step 3 structured, step 1 still blocked
+
+**Step 2 (backend-neutral profiling), commit `6efa850`.** `_parse_res_usage` +
+`_launched_kernel_names` + `_extract_cubin_metadata` in `worker_main.py`; `profilerx.py`
+consumes whichever source is present; `ProfileRecord` gained `profile_source` and
+`launched_filter`. One reader (`cuobjdump -res-usage`) covers CUDA, CUTLASS and CuTe because all
+three compile through nvcc to a cubin. The test exercises the real parser on genuine `cuobjdump`
+output rather than a hand-written fixture.
+
+**Step 4 (backend in the structural identity), commit `1a2d450`.** `structural_signature` now
+prefixes the backend (`cuda:9f3a…`). Optional argument, so the 20 runs of recorded signatures
+replay unchanged. This was the user's counterargument #3 and it was correct: without it, Loop D
+would reject "the same approach expressed in CUDA" as a `duplicate_signature`, which is exactly
+the exploration the backend work is meant to enable.
+
+**Step 3 (classification) — structure written, thresholds deliberately not.**
+`src/kernel_optimizer/evaluation/bottleneck.py` holds the six-class classifier with its
+discriminator order, its evidence dict, and its advisory `suggests` text. The ordering is by
+REMEDY, not magnitude, and each step is justified in the docstring:
+
+1. `overhead_floor` first — if GPU time is at the empty-launch floor, nothing about the kernel
+   body matters, so no later test should get to speak.
+2. `launch_bound` before the throughput tests — otherwise a launch-bound kernel reports "nothing
+   saturated" and the agent is sent looking for parallelism it does not need.
+3. `memory_bound` / `compute_bound` — against MEASURED ceilings, never spec-sheet ones.
+4. `resource_limited` after saturation — a saturated kernel with high register use is not
+   register-limited, it is finished.
+5. `latency_bound` last, as the residual.
+
+The thresholds in that file are provisional and marked as such. A sanity check on analytically
+known inputs already shows why they must be measured rather than chosen: a 4096³ fp32 matmul at
+10 ms on a 30 TFLOPS ceiling lands at **45.8% of peak**, which falls on the wrong side of a
+provisional 50% `COMPUTE_SATURATED_FRAC` and classifies as `mixed` instead of `compute_bound`.
+That is one guessed constant deciding a verdict, which is the failure this step's ordering exists
+to prevent.
+
+**Step 1 is still blocked, and the blocker is the point.** `probe_bottleneck_signals.py` is
+staged on box 2 but must not run while anything else owns the GPU: it measures ceilings, so a
+concurrent tenant silently lowers every number it reports and would bake a too-low ceiling into
+the thresholds permanently. The harness's GPU lock is per-run, so nothing prevents the collision
+mechanically — it has to be sequenced by hand. A momentarily idle card during an agent call is
+NOT a free card; tuning trials resume the instant the call returns.
+
+### Unplanned: two live defects found while waiting, commit `792bc10`
+
+Both were found on run-l1-42-20260907-193510 and neither is specific to that task.
+
+**A read timeout is not a call ceiling.** `request_timeout_s` is httpx's per-READ idle timeout,
+so it fires only on silence. One rewriter call ran **4057 s (67.6 min) against a 1500 s setting**
+— 2.7× — because the agent kept emitting tool calls throughout. I had previously recorded 1500 s
+as the hard ceiling on an agent call; that is wrong, and no value of `request_timeout_s` fixes
+it, because the failure mode is a talkative call rather than a silent one. Added
+`total_call_timeout_s` (2100 s), enforced by a watchdog that aborts the session **and closes the
+transport** — measured, not assumed: abort alone returns 200 and ends the turn server-side while
+the already-streaming POST never returns, leaving the client thread blocked forever.
+
+**An agent's own script can take the machine down.** The same rewriter wrote a parameter sweep
+whose kernels included one producing a **272,341-line PTX**; `ptxas` then reached **111 GiB
+resident**, drove the container's memory cgroup to its limit (125.5 GB against a 124.5 GB
+`memory.high`, 16.0M throttle events) and put the orchestrator in **D-state on
+`mem_cgroup_handle_over_high`** — which presents as "the agent call is stuck on the socket" and is
+not. Three GB from a hard OOM. This is the **second** occurrence of this root cause; the first
+(1500+ Triton compiles in a self-check) lost a finished rewrite to the ceiling, and the fix
+recorded then was never implemented. Now in the candidate contract's "Your own testing" section,
+which binds every code-writing agent rather than the rewriter alone.
+
+Relevance to this plan: the profiler being built here measures ceilings and per-kernel time, and
+both are meaningless if a neighbouring process is competing for the GPU or the box is being
+throttled. The same discipline that makes step 1 wait is what these two fixes enforce
+automatically.
