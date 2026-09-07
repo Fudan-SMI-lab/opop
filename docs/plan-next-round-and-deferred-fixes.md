@@ -277,3 +277,43 @@ What to check when the run ends: the total rounds used across families (the prio
 low single digits), whether any family freezes as `converged` versus `budget_exhausted`, and whether
 Loop D ever fires -- `max_families_total` is 6 against 4 seed families, so novelty has room for the
 first time in 19 runs.
+
+## HIGH PRIORITY, next round: calibration has no fp16/bf16 ceiling, so fp16 kernels read >100%
+
+Found on run-l3-43-20260908-053708, candidate `cand-ec42408b` (the run's best at 4.297 ms):
+
+    pct_of_compute_peak  107.8
+    impossible_fraction  1.078
+    uses_tensor_cores    true
+    compute_ceiling_used tensor-core (tf32)
+    COMPUTE_DTYPE        fp16      <-- from the winning trial's params
+
+`run_calibrate` measures exactly two arithmetic ceilings, fp32 and tf32 (worker_main.py:816-825).
+So an fp16 or bf16 kernel is scored against the tf32 number, and on a 4090 fp16 dense throughput is
+roughly 2x tf32. The consequence is not a cosmetic overshoot -- it inverts the advice:
+
+    denominator                achieved 95.95 TFLOP/s reads as
+    tf32 88.88 (current)       107.8%  -> "compute_bound, at the ceiling, stop optimizing"
+    fp16 ~160 (1.8x tf32)       60.0%  -> "40% of the ceiling still available"
+    fp16 ~177.8 (2.0x tf32)     54.0%  -> "46% still available"
+
+This is EXACTLY the bug the tf32 ceiling was introduced to fix, one precision further down. The
+existing code comment states the principle -- "comparing a tensor-core kernel against the fp32
+ceiling reports >100% of peak" -- and then implements it for a single tensor-core precision.
+
+Mitigating facts, which are why this is next-round rather than mid-run:
+- `impossible_fraction` fired and the `disagreement` text explicitly told the agent NOT to read it
+  as "at the ceiling", naming both candidate causes. So the harness degraded loudly, as designed.
+- It is driver+worker side (calibration), so it cannot reach a running experiment.
+- Changing calibration shifts derived thresholds, so it must not land between tasks of one chain if
+  those results are to stay comparable.
+
+The fix, when taken: measure an fp16 (and bf16) matmul ceiling in `run_calibrate` alongside fp32 and
+tf32, add the fields to `Calibration`/`DevicePeaks`, and have `classify` pick the denominator from
+the candidate's precision as detected by `_candidate_precision` (orchestrator.py:105-124) rather
+than from the binary tensor-core/no-tensor-core split it uses now. Note the existing
+`_candidate_precision` ALREADY distinguishes fp16/bf16/tf32/ieee_fp32 -- the information is
+available; only the ceiling to compare against is missing.
+
+Watch for: whether the same >100% appears on L3:21 and L3:48. Memory records fp16 being the fastest
+path on these tasks, so it should recur wherever a winner picks fp16.
