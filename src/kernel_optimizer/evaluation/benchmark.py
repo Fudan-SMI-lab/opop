@@ -7,7 +7,12 @@ from typing import Any
 
 from kernel_optimizer.config import EvalConfig
 from kernel_optimizer.evaluation.correctness import CorrectnessEvaluator, latency_from_result
-from kernel_optimizer.gpu.jobs import make_baseline_job, make_probe_semantics_job
+from kernel_optimizer.evaluation.task_cost import TaskCost, cost_from_worker
+from kernel_optimizer.gpu.jobs import (
+    make_baseline_job,
+    make_probe_semantics_job,
+    make_task_cost_job,
+)
 from kernel_optimizer.gpu.worker_client import WslGpuWorker
 from kernel_optimizer.models.core import Baseline, LatencyStats, TaskSpec
 
@@ -17,6 +22,25 @@ class Benchmarker:
         self.worker = worker
         self.evaluator = evaluator
         self.cfg = cfg
+
+    def measure_task_cost(self, task: TaskSpec) -> TaskCost:
+        """Step 3: how much arithmetic and traffic this TASK requires, from its reference.
+
+        Shared/advisory like `probe_semantics`: a failure returns an empty TaskCost whose
+        `summary_line()` says "not measured", so a box where this cannot run loses the
+        denominators and nothing else. Never fatal.
+        """
+        job = make_task_cost_job(str(task.ref_path))
+        try:
+            result = self.worker.run_job(
+                job, self.cfg.eval_timeout_s, "task-cost", lock_mode="shared")
+        except Exception as exc:  # noqa: BLE001 — advisory, never fatal
+            return TaskCost(notes=[f"task cost job failed: {type(exc).__name__}: {exc}"[:300]])
+        if not result.get("ok"):
+            return TaskCost(notes=[
+                f"task cost job failed: {result.get('failure_kind')}: "
+                f"{str(result.get('log_tail'))[-300:]}"])
+        return cost_from_worker(result)
 
     def probe_semantics(self, task: TaskSpec) -> dict[str, Any]:
         """Improvement J: probe the reference's runtime eval semantics (train/eval

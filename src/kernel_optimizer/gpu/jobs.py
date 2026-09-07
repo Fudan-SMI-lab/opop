@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 JOB_TYPES = ("baseline", "eval_correctness", "eval_perf", "static_check", "env_probe",
-             "eval_correctness_relaxed", "probe_semantics", "calibrate")
+             "eval_correctness_relaxed", "probe_semantics", "calibrate", "task_cost")
 
 FAILURE_KINDS = (
     "compile_error",
@@ -30,6 +30,16 @@ def make_calibrate_job() -> dict[str, Any]:
     without a config knob to get wrong.
     """
     return {"job_type": "calibrate"}
+
+
+def make_task_cost_job(ref_src_path: str) -> dict[str, Any]:
+    """Count the arithmetic and traffic this task requires, from its REFERENCE (step 3).
+
+    On the reference, so the numbers are a property of the TASK and identical for every candidate
+    optimizing it -- which is what makes them a usable shared denominator for "% of peak".
+    Counting a candidate instead would measure the quantity being optimized.
+    """
+    return {"job_type": "task_cost", "ref_src_path": ref_src_path}
 
 
 def make_probe_semantics_job(ref_src_path: str) -> dict[str, Any]:

@@ -781,6 +781,166 @@ def run_calibrate(job: dict) -> dict:
     return result
 
 
+def _measure_task_cost(ref_src: str, device) -> dict:
+    """Count the arithmetic and traffic this TASK requires, by running the reference once.
+
+    Two counts from the same dispatch-level view of the program, so they are consistent with each
+    other:
+
+      FLOP     via torch.utils.flop_counter.FlopCounterMode -- torch's own accounting, not a
+               hand-derived formula. Verified against analytic values for matmul, conv, attention
+               and depthwise (ratio 1.0000). It returns 0 for ops with no multiply-accumulate,
+               which is the correct roofline answer: a maxpool's ceiling is bandwidth.
+
+      bytes    via a __torch_dispatch__ mode that records every aten op's input and output
+               tensors. Module hooks would miss a reference written with functional calls, which
+               most KernelBench references are.
+
+    `compulsory_bytes` counts each distinct storage ONCE (by data_ptr), so a tensor read by five
+    ops is one unavoidable read -- that is what makes it a floor no implementation can go below.
+    `reference_bytes` sums per-op traffic, so the same tensor read five times counts five times;
+    the ratio between them is the fusion headroom.
+    """
+    import torch
+    from torch.utils._python_dispatch import TorchDispatchMode
+
+    notes: list[str] = []
+
+    ref_ctx: dict = {}
+    exec(compile(ref_src, "<ref>", "exec"), ref_ctx)  # noqa: S102 — same trust as every eval
+    get_inputs = ref_ctx["get_inputs"]
+    get_init_inputs = ref_ctx.get("get_init_inputs", lambda: [])
+    Model = ref_ctx["Model"]
+
+    with torch.no_grad():
+        init_inputs = [x.to(device) if isinstance(x, torch.Tensor) else x
+                       for x in get_init_inputs()]
+        model = Model(*init_inputs).to(device)
+        inputs = [x.to(device) if isinstance(x, torch.Tensor) else x for x in get_inputs()]
+
+        # Traffic the task cannot avoid: the inputs it is given, the parameters it must read, and
+        # the output it must produce. Deduplicated by storage so a shared tensor is one cost.
+        seen: set[int] = set()
+        compulsory = 0
+
+        def account_once(t) -> int:
+            """Bytes for a tensor, counted only the first time its storage is seen.
+
+            Deduplication is by STORAGE, not by tensor object: a view, a transpose and a slice of
+            the same buffer are one unavoidable read, and counting them separately would inflate
+            the floor above what any implementation could achieve. Every dtype counts -- an int
+            index tensor is traffic exactly like a float one.
+            """
+            if not isinstance(t, torch.Tensor) or t.numel() == 0:
+                return 0
+            try:
+                ptr = t.untyped_storage().data_ptr()
+            except Exception:  # noqa: BLE001 — exotic tensors (meta, sparse) have no storage
+                return 0
+            if ptr in seen:
+                return 0
+            seen.add(ptr)
+            return t.numel() * t.element_size()
+
+        for x in inputs:
+            compulsory += account_once(x)
+        for p in model.parameters():
+            compulsory += account_once(p)
+        for b in model.buffers():
+            compulsory += account_once(b)
+
+        class ByteCounter(TorchDispatchMode):
+            """Sum every dispatched op's tensor traffic. Sees functional calls and module calls
+            alike, because it hooks the dispatcher rather than nn.Module boundaries."""
+
+            def __init__(self):
+                super().__init__()
+                self.total = 0
+                self.ops = 0
+
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                out = func(*args, **(kwargs or {}))
+                try:
+                    self.ops += 1
+                    flat = list(args) + list((kwargs or {}).values())
+                    for a in flat:
+                        if isinstance(a, torch.Tensor):
+                            self.total += a.numel() * a.element_size()
+                        elif isinstance(a, (list, tuple)):
+                            for e in a:
+                                if isinstance(e, torch.Tensor):
+                                    self.total += e.numel() * e.element_size()
+                    for o in (out if isinstance(out, (list, tuple)) else [out]):
+                        if isinstance(o, torch.Tensor):
+                            self.total += o.numel() * o.element_size()
+                except Exception:  # noqa: BLE001 — accounting must never break the forward
+                    pass
+                return out
+
+        # Warm up outside both modes: the first call may allocate, autotune or compile, and that
+        # traffic is not part of the task's cost.
+        model(*inputs)
+        torch.cuda.synchronize(device)
+
+        counter = ByteCounter()
+        try:
+            with counter:
+                out = model(*inputs)
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"byte counting failed: {type(exc).__name__}: {exc}")
+            out = model(*inputs)
+
+        for o in (out if isinstance(out, (list, tuple)) else [out]):
+            compulsory += account_once(o)
+
+        flop_count = 0
+        try:
+            from torch.utils.flop_counter import FlopCounterMode
+
+            fc = FlopCounterMode(display=False)
+            with fc:
+                model(*inputs)
+            flop_count = int(fc.get_total_flops())
+            if flop_count == 0:
+                notes.append(
+                    "FlopCounterMode reports 0 FLOP: this task has no multiply-accumulate ops "
+                    "(e.g. pooling, elementwise, normalization-only). That is the correct "
+                    "roofline answer -- its ceiling is bandwidth, not FLOP/s -- NOT a "
+                    "measurement failure.")
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"FLOP counting unavailable: {type(exc).__name__}: {exc}")
+
+    return {
+        "flop_count": flop_count,
+        "compulsory_bytes": compulsory,
+        "reference_bytes": counter.total,
+        "op_count": counter.ops,
+        "notes": notes,
+    }
+
+
+def run_task_cost(job: dict) -> dict:
+    """Measure the task's required arithmetic and traffic from its REFERENCE.
+
+    On the reference deliberately: these are properties of the TASK, identical for every candidate
+    optimizing it, which is what makes them a usable shared denominator. Counting a candidate
+    instead would measure the very thing being optimized.
+    """
+    import torch
+
+    if not torch.cuda.is_available():
+        return {"ok": False, "failure_kind": "worker_crash", "log_tail": "no CUDA device"}
+    device = _pick_device()
+    torch.cuda.set_device(device)
+    ref_src = open(job["ref_src_path"], encoding="utf-8").read()
+    try:
+        cost = _measure_task_cost(ref_src, device)
+    except Exception as exc:  # noqa: BLE001 — a diagnostic must not fail the run
+        return {"ok": False, "failure_kind": _classify_exception(exc),
+                "log_tail": _log_tail(exc)}
+    return {"ok": True, "task_cost": cost}
+
+
 def run_probe_semantics(job: dict) -> dict:
     """Improvement J: report the reference model's runtime eval semantics so the
     agent can reproduce them. Reads the LIVE model object's .training flag (the
@@ -1587,6 +1747,7 @@ HANDLERS = {
     "eval_perf": lambda job: run_eval(job, measure_performance=True),
     "eval_correctness_relaxed": run_relaxed_correctness,
     "calibrate": run_calibrate,
+    "task_cost": run_task_cost,
 }
 
 

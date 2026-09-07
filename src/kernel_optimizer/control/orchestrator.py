@@ -475,6 +475,11 @@ class Orchestrator:
         # calibration could not run: the classifier then reports `unknown` rather than comparing
         # against a guessed ceiling, which is the whole reason the numbers are measured.
         self.calibration = None
+        # What this TASK requires: arithmetic, unavoidable traffic, and how much more the
+        # reference materializes (step 3). A property of the task, measured once and shared by
+        # every candidate -- which is what makes "% of peak" comparable across them and across
+        # rewrite rounds. None until `_baseline` measures it.
+        self.task_cost = None
         self.runs: dict[str, CandidateRun] = {}
         self.failed_hypotheses: dict[str, list[dict]] = {}  # family_id -> tried-and-failed
         # Improvement B1: one worker thread that runs the NEXT candidate's
@@ -666,12 +671,23 @@ class Orchestrator:
             for ev in state.events:
                 if ev.type == "SEMANTICS_PROBED":
                     self.eval_semantics = ev.payload.get("semantics", {}) or {}
+                elif ev.type == "TASK_COST_MEASURED":
+                    from kernel_optimizer.evaluation.task_cost import TaskCost
+
+                    self.task_cost = TaskCost.model_validate(ev.payload.get("task_cost", {}))
             return
         # Improvement J: probe the reference's runtime eval semantics (train/eval +
         # norm-layer flags) before generation, so agents can match them. Advisory —
         # an empty dict degrades gracefully in the contract doc.
         self.eval_semantics = self.deps.benchmarker.probe_semantics(self.task)
         self.store.append("SEMANTICS_PROBED", {"semantics": self.eval_semantics})
+        # Step 3: the task's required arithmetic and traffic, from the REFERENCE. Advisory in the
+        # same way -- an unmeasured cost degrades to "not measured" in the prompt and report.
+        self.task_cost = self.deps.benchmarker.measure_task_cost(self.task)
+        self.store.append("TASK_COST_MEASURED", {
+            "task_cost": self.task_cost.model_dump(),
+            "summary": self.task_cost.summary_line(),
+        })
         self.baselines = self.deps.benchmarker.measure_baseline(self.task)
         for b in self.baselines:
             self.store.append("BASELINE_DONE", {"baseline": b.model_dump()})

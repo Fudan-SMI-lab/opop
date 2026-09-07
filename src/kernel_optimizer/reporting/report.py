@@ -416,6 +416,45 @@ class ReportGenerator:
             lines.append("- ⚠ **calibration FAILED** — bottleneck verdicts in this run report "
                          "`unknown` rather than comparing against a guessed ceiling.\n")
 
+        # What the TASK requires (step 3). Reported next to the ceilings because the two together
+        # are what any "% of peak" claim in this run means, and because `fusion headroom` is the
+        # one number here that points at an action.
+        tc_ev = [e for e in events if e.type == "TASK_COST_MEASURED"]
+        if tc_ev:
+            tc = tc_ev[-1].payload.get("task_cost") or {}
+            flop = tc.get("flop_count", 0) or 0
+            comp = tc.get("compulsory_bytes", 0) or 0
+            ref_b = tc.get("reference_bytes", 0) or 0
+            lines.append("## Task cost (measured on the reference)\n")
+            if flop:
+                lines.append(f"- required arithmetic: {flop/1e9:.3f} GFLOP")
+            else:
+                lines.append("- required arithmetic: **0 FLOP** — no multiply-accumulate, so "
+                             "this task's ceiling is bandwidth, not FLOP/s")
+            if comp:
+                lines.append(f"- unavoidable traffic: {comp/1e6:.2f} MB "
+                             f"(inputs + parameters + outputs, each counted once)")
+            if comp and ref_b:
+                lines.append(f"- reference materializes: {ref_b/1e6:.2f} MB over "
+                             f"{tc.get('op_count', 0)} ops = **{ref_b/comp:.1f}x** the "
+                             f"unavoidable traffic (fusion headroom)")
+            if flop and comp:
+                ai = flop / comp
+                ridge = None
+                if cal_ev:
+                    ridge = (cal_ev[-1].payload or {}).get("ridge_flop_per_byte")
+                side = ""
+                if ridge:
+                    side = (f" — above this card's ridge of {ridge:.1f}, so this task CAN be "
+                            f"compute-bound" if ai > ridge else
+                            f" — below this card's ridge of {ridge:.1f}, so no correct "
+                            f"implementation of this task can be compute-bound here")
+                lines.append(f"- highest intensity any correct implementation can reach: "
+                             f"{ai:.2f} FLOP/byte{side}")
+            for n in (tc.get("notes") or []):
+                lines.append(f"- note: {n}")
+            lines.append("")
+
         if summary and summary.get("best"):
             best = summary["best"]
             lines.append("## Best result\n")

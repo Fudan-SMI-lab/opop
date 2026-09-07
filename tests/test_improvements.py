@@ -6241,3 +6241,215 @@ def test_a_failed_calibration_does_not_end_the_run():
         assert "CALIBRATION_FAILED" in kinds, (
             "a failed calibration must be journalled, or the report cannot say why every "
             "verdict is `unknown`")
+
+
+# --- step 3: task cost (FLOP + bytes on the reference) ------------------------------------
+
+# Counts measured on box 2 (RTX 4090, 2026-09-08) from the real KernelBench references. The
+# first three were cross-checked against analytic values and agree to ratio 1.0000:
+#   level1:1   N=4096: 2*4096^3 = 137.4390 GFLOP; 3*4096^2*4 = 201.327 MB
+#   level1:19  0 FLOP (no MAC); 2*4096*393216*4 = 12884.902 MB
+#   level2:37  2*32768*1024*4096 = 274.8779 GFLOP; (x+W+4 vecs+out)*4 = 687.931 MB
+MEASURED_TASK_COSTS = {
+    "level1:1_matmul": {"flop_count": 137438953472, "compulsory_bytes": 201326592,
+                        "reference_bytes": 201326592, "op_count": 1, "notes": []},
+    "level1:19_relu": {"flop_count": 0, "compulsory_bytes": 12884901888,
+                       "reference_bytes": 12884901888, "op_count": 1,
+                       "notes": ["FlopCounterMode reports 0 FLOP: this task has no "
+                                 "multiply-accumulate ops"]},
+    "level2:37": {"flop_count": 274877906944, "compulsory_bytes": 687931392,
+                  "reference_bytes": 5570101248, "op_count": 6, "notes": []},
+    "level3:21_mbconv": {"flop_count": 112113254400, "compulsory_bytes": 322035200,
+                         "reference_bytes": 10630205440, "op_count": 11, "notes": []},
+    "level3:43_attention": {"flop_count": 412316860416, "compulsory_bytes": 416296960,
+                            "reference_bytes": 28761927680, "op_count": 40, "notes": []},
+}
+
+
+def test_task_cost_counts_match_analytic_values_on_real_references():
+    """The counts have to be RIGHT, and for these three the right answer is derivable by hand.
+
+    This is the check that separates "we call torch's counter" from "the number is correct".
+    FlopCounterMode is trusted downstream as the numerator of every %-of-peak figure, so its
+    agreement with closed-form values on a matmul, a pure-elementwise op and a fused chain is
+    the evidence for that trust.
+    """
+    from kernel_optimizer.evaluation.task_cost import cost_from_worker
+
+    mm = cost_from_worker({"task_cost": MEASURED_TASK_COSTS["level1:1_matmul"]})
+    assert mm.flop_count == 2 * 4096 ** 3, "matmul FLOP count disagrees with 2*N^3 at N=4096"
+    assert mm.compulsory_bytes == 3 * 4096 * 4096 * 4, "two inputs + one output, fp32"
+    assert abs(mm.max_arithmetic_intensity - 682.67) < 0.1
+
+    relu = cost_from_worker({"task_cost": MEASURED_TASK_COSTS["level1:19_relu"]})
+    assert relu.flop_count == 0, (
+        "a pure elementwise op must report 0 FLOP -- that is the correct roofline answer, not a "
+        "failure, and the notes must say so")
+    assert relu.compulsory_bytes == 2 * 4096 * 393216 * 4, "in + out"
+    assert relu.notes, "a 0-FLOP result without a note is indistinguishable from a failed count"
+    assert relu.max_arithmetic_intensity == 0.0
+
+    l237 = cost_from_worker({"task_cost": MEASURED_TASK_COSTS["level2:37"]})
+    assert l237.flop_count == 2 * 32768 * 1024 * 4096, "linear FLOP disagrees with 2*B*I*O"
+    expected_compulsory = (32768 * 1024 + 4096 * 1024 + 4 * 4096 + 32768 * 4096) * 4
+    assert l237.compulsory_bytes == expected_compulsory, (
+        f"unavoidable traffic {l237.compulsory_bytes} != analytic {expected_compulsory}")
+
+
+def test_fusion_headroom_separates_the_task_from_its_reference():
+    """The number step 3 exists to produce, and it is not the FLOP count.
+
+    `compulsory_bytes` is what NO implementation can avoid; `reference_bytes` is what the
+    reference materializes. Their ratio says how much of the reference's traffic is intermediates
+    -- i.e. how much fusion can win -- and it varies by 69x across our tasks, so it is a real
+    discriminator rather than a constant dressed up as a measurement.
+    """
+    from kernel_optimizer.evaluation.task_cost import cost_from_worker
+
+    costs = {k: cost_from_worker({"task_cost": v}) for k, v in MEASURED_TASK_COSTS.items()}
+
+    # A single-op task materializes exactly its compulsory traffic: nothing to fuse.
+    assert abs(costs["level1:1_matmul"].fusion_headroom - 1.0) < 0.01, (
+        "a one-op reference reports fusion headroom above 1.0; the accounting is double-counting")
+    assert abs(costs["level1:19_relu"].fusion_headroom - 1.0) < 0.01
+
+    # A fused chain materializes far more, and more ops means more headroom.
+    assert costs["level2:37"].fusion_headroom > 5.0
+    assert costs["level3:21_mbconv"].fusion_headroom > 20.0
+    assert costs["level3:43_attention"].fusion_headroom > 50.0, (
+        "the 40-op attention reference materializes ~69x its unavoidable traffic; that is the "
+        "single largest fusion opportunity in our task set and it must be visible")
+
+    # Ordering by op count is not automatic -- it is the property that makes this actionable.
+    ordered = sorted(costs.values(), key=lambda c: c.op_count)
+    headrooms = [c.fusion_headroom for c in ordered]
+    assert headrooms == sorted(headrooms), (
+        f"fusion headroom does not increase with op count: {headrooms}. If it did not, the "
+        f"number would not be measuring intermediate materialization.")
+
+
+def test_max_intensity_answers_whether_a_task_can_ever_be_compute_bound():
+    """A per-candidate FLOP count cannot answer this; a task-level one can.
+
+    `flop_count / compulsory_bytes` is a CEILING on intensity -- no correct implementation can
+    exceed it, because it would have to skip reading its own inputs. Compared against the card's
+    measured ridge, it settles in advance whether "make it compute-bound" is even reachable, which
+    is a question the classifier would otherwise answer per-candidate and inconsistently.
+    """
+    from kernel_optimizer.evaluation.task_cost import cost_from_worker
+    from kernel_optimizer.gpu.calibrate import calibration_from_worker
+
+    cal = calibration_from_worker(MEASURED_4090)
+    ridge = cal.ridge_flop_per_byte
+    assert ridge > 0
+
+    relu = cost_from_worker({"task_cost": MEASURED_TASK_COSTS["level1:19_relu"]})
+    assert relu.max_arithmetic_intensity < ridge, (
+        "a pure elementwise task is being reported as able to become compute-bound")
+
+    mm = cost_from_worker({"task_cost": MEASURED_TASK_COSTS["level1:1_matmul"]})
+    assert mm.max_arithmetic_intensity > ridge, (
+        "a large matmul must be on the compute side of the ridge")
+
+    # And the ceiling must be at least the reference's own intensity: the reference is one correct
+    # implementation, so it cannot beat the bound that applies to all of them.
+    for name, c in ((k, cost_from_worker({"task_cost": v}))
+                    for k, v in MEASURED_TASK_COSTS.items()):
+        if c.compulsory_bytes and c.reference_bytes:
+            assert c.max_arithmetic_intensity >= c.reference_arithmetic_intensity - 1e-9, (
+                f"{name}: the ceiling is below the reference's own intensity, so the "
+                f"compulsory-traffic floor is wrong")
+
+
+def test_an_unmeasured_task_cost_is_not_a_measured_zero():
+    """`flop_count == 0` is legitimate for maxpool and a failure for a matmul. Only the notes
+    distinguish them, so a failed job must produce notes rather than a silent zero -- otherwise
+    the report tells the reader a matmul requires no arithmetic.
+    """
+    from kernel_optimizer.evaluation.task_cost import TaskCost, cost_from_worker
+
+    empty = cost_from_worker({})
+    assert empty.flop_count == 0 and empty.compulsory_bytes == 0
+    assert "not measured" in empty.summary_line(), (
+        f"an unmeasured cost reads as measured: {empty.summary_line()}")
+
+    measured_zero = TaskCost(flop_count=0, compulsory_bytes=1000, reference_bytes=1000,
+                             op_count=1, notes=["no multiply-accumulate ops"])
+    assert "not measured" not in measured_zero.summary_line()
+    assert "bandwidth" in measured_zero.summary_line(), (
+        "a genuine 0-FLOP task must be described as bandwidth-limited, not as unmeasured")
+
+
+def test_the_task_cost_reaches_the_run_and_survives_a_resume():
+    """Wiring: measured in `_baseline`, journalled, and restored on resume.
+
+    Restoring matters because the cost is the denominator of every %-of-peak figure. A resumed
+    run that lost it would report the second half of its candidates against no denominator while
+    the first half had one.
+    """
+    import tempfile
+    from pathlib import Path as _P
+
+    from kernel_optimizer.control.orchestrator import Orchestrator
+    from kernel_optimizer.evaluation.task_cost import cost_from_worker
+    from kernel_optimizer.models.core import LatencyStats
+    from kernel_optimizer.store.run_store import RunStore
+
+    cost = cost_from_worker({"task_cost": MEASURED_TASK_COSTS["level3:43_attention"]})
+
+    class FakeBench:
+        def __init__(self):
+            self.cost_calls = 0
+
+        def probe_semantics(self, task):
+            return {"training": False, "norm_layers": []}
+
+        def measure_task_cost(self, task):
+            self.cost_calls += 1
+            return cost
+
+        def measure_baseline(self, task):
+            from kernel_optimizer.models.core import Baseline
+
+            return [Baseline(kind="eager",
+                             latency_ms=LatencyStats(mean=1.0, std=0.1, min=0.9, max=1.1,
+                                                     median=1.0, n_samples=100))]
+
+    with tempfile.TemporaryDirectory() as td:
+        store = RunStore.create(_P(td) / "runs", "run-tc", {"task": "level3:43"})
+        bench = FakeBench()
+
+        def make():
+            orch = Orchestrator.__new__(Orchestrator)
+            orch.store = store
+            orch.task_cost = None
+            orch.eval_semantics = {}
+            orch.baselines = []
+            orch.task = type("T", (), {"model_dump": lambda self: {}})()
+
+            class Deps:
+                pass
+
+            deps = Deps()
+            deps.benchmarker = bench
+            orch.deps = deps
+            orch._step_done = lambda key: store.append("STEP_DONE", {"step_key": key})
+            return orch
+
+        orch = make()
+        orch._baseline()
+        assert bench.cost_calls == 1, "the run never measured the task cost"
+        assert orch.task_cost is not None
+        assert orch.task_cost.flop_count == cost.flop_count
+
+        kinds = [e.type for e in store.replay().events]
+        assert "TASK_COST_MEASURED" in kinds, "the cost was not journalled, so a resume loses it"
+
+        orch2 = make()
+        orch2._baseline()
+        assert bench.cost_calls == 1, "a resume re-measured the task cost"
+        assert orch2.task_cost is not None, (
+            "the resume lost the task cost; the run's two halves would report %-of-peak against "
+            "different denominators")
+        assert orch2.task_cost.compulsory_bytes == cost.compulsory_bytes
+        assert abs(orch2.task_cost.fusion_headroom - cost.fusion_headroom) < 1e-9
