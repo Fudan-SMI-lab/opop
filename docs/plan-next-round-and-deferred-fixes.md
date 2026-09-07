@@ -205,3 +205,26 @@ Also the first real register SPILLS in the project (8 then 10). Prior measuremen
 Triton caps registers rather than spilling (218 regs, 0 spills, 16.7% occupancy), which is why
 occupancy rather than spills was called the signal that fires. On this task it does both at once,
 at 97% of the shared-memory opt-in limit -- so the spill detector is not dead code after all.
+
+## Evidence: the measured fusion headroom predicted the candidate ordering (L3:43)
+
+run-l3-43-20260908-053708 produced an unplanned controlled comparison. `task_cost` measured the
+reference at **68.12x** its compulsory traffic (416296960 B), and `_bottleneck_doc` told every agent
+that fusing was the largest lever this task offers. The four seeds happened to span that axis, and
+the ordering came out as the measurement predicted:
+
+| candidate | structure | best | regs/spills | verdict |
+|---|---|---|---|---|
+| cand-6cf42e7d | two-pass, fused | **5.142 ms** | 255 / 6 | compute_bound 90.1% |
+| cand-c8830fe8 | cuBLAS + one fused attention kernel | 8.108 ms | 255 / - | resource_limited 57.1% |
+| cand-da341a61 | 3-kernel pipeline | 8.369 ms | 255 / 8 | resource_limited 55.3% |
+| cand-d71b18cd | **unfused, materializes (B*nh,T,T) scores** | **15.790 ms** | 128 / 0 | - |
+
+3.07x between the most- and least-fused candidate on one task. What makes it evidence rather than
+coincidence is the loser's profile: `kernel_names` = ['_pv', '_row_softmax', '_scores'] confirms the
+score matrix really is written and re-read, and at 128 registers with 0 spills it is NOT
+resource-starved -- so its 15.79 ms cannot be attributed to the register pressure that limits the
+faster candidates. It is paying the traffic the 68.12x figure measured.
+
+Worth keeping for the paper: this is the task-cost measurement doing predictive work, not just
+describing a result after the fact.
