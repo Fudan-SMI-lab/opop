@@ -85,6 +85,19 @@ def cmd_doctor(args) -> int:
         check("kernelbench importable in WSL", bool(result.get("kernelbench_importable")),
               str(result.get("kernelbench_error", "")))
         check("CUDA available", bool(result.get("cuda_available")))
+        # INFORMATIONAL, deliberately not a check(): a Triton-only box is perfectly valid, and
+        # every candidate produced across 20 runs so far has been Triton. But `load_inline`
+        # (the whole `cuda` backend) needs nvcc AND ninja on PATH, and when ninja is missing
+        # every CUDA candidate dies at the witness gate with a compile_error that reads like
+        # the agent wrote bad code. Say up front which backends this box can build.
+        if result.get("cuda_backend_buildable"):
+            print(f"[info] cuda backend buildable — nvcc {result.get('nvcc')}, "
+                  f"ninja {result.get('ninja')}")
+        else:
+            missing = [n for n in ("nvcc", "ninja") if not result.get(n)]
+            print(f"[info] cuda backend NOT buildable — missing {', '.join(missing) or '?'}. "
+                  f"Triton candidates are unaffected; a `backend: cuda` candidate would fail "
+                  f"to compile at the witness gate. Fix: install ninja / put nvcc on PATH.")
     else:
         check("WSL venv probe", False,
               f"{result.get('failure_kind')}: {str(result.get('log_tail'))[:300]}")

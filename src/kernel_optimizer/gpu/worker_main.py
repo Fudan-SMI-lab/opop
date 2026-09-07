@@ -9,9 +9,11 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import shutil
 import sys
 import time
 import traceback
+from pathlib import Path
 
 
 def _log_tail(exc: BaseException) -> str:
@@ -240,6 +242,30 @@ def run_env_probe(job: dict) -> dict:
     except Exception as exc:  # noqa: BLE001
         result["kernelbench_importable"] = False
         result["kernelbench_error"] = f"{type(exc).__name__}: {exc}"
+    # The `cuda` backend compiles through torch.utils.cpp_extension.load_inline, which needs
+    # BOTH nvcc and ninja on PATH. Neither is required by the triton backend, so a box can be
+    # fully green and still be unable to build a single CUDA candidate -- and the failure
+    # arrives as a per-candidate compile_error at the witness gate, which reads like the
+    # agent wrote bad code. Measured on box 2 (2026-09-07): ninja was pip-installed into the
+    # venv but not on PATH, so `load_inline` raised "Ninja is required to load C++ extensions"
+    # for every cuda candidate while doctor reported all green.
+    #
+    # Reported, not fatal: a Triton-only run is perfectly valid, and every candidate produced
+    # across 20 runs so far has been Triton. The point is that the operator learns which
+    # backends this box can actually build BEFORE an agent spends a call writing one.
+    try:
+        from torch.utils.cpp_extension import CUDA_HOME  # noqa: PLC0415
+
+        result["cuda_home"] = CUDA_HOME
+        result["nvcc"] = shutil.which("nvcc") or (
+            f"{CUDA_HOME}/bin/nvcc" if CUDA_HOME
+            and Path(f"{CUDA_HOME}/bin/nvcc").exists() else None
+        )
+        result["ninja"] = shutil.which("ninja")
+        result["cuda_backend_buildable"] = bool(result["nvcc"] and result["ninja"])
+    except Exception as exc:  # noqa: BLE001
+        result["cuda_backend_buildable"] = False
+        result["cuda_backend_error"] = f"{type(exc).__name__}: {exc}"
     return result
 
 
