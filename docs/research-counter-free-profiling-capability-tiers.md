@@ -156,3 +156,60 @@ Tier 3(需要 counters,box 2 不可用,自有机器可用)
 **诚实结论**:在**有 counters 的机器上** KernelPro 的 profiling 深度高于我们;
 在**租用容器(我们的实验环境,也是多数人的环境)上他们的方案跑不起来**,而我们的能跑。
 Tier 3 留好接口,自有机器上可补齐。
+
+---
+
+## 落地前的字段核实(实测,修正本文两处错误)
+
+写方案时我按印象写了属性名和依赖,核实后有两处要改。
+
+### 错误 1:属性名是 `L2_cache_size`,不是 `l2_cache_size`
+
+`torch 2.13.0+cu129` 上 `device_properties` 的**全部**可读属性:
+
+```
+L2_cache_size, clock_rate, gcnArchName, is_integrated, is_multi_gpu_board, major,
+max_threads_per_block, max_threads_per_multi_processor, memory_bus_width,
+memory_clock_rate, minor, multi_processor_count, name, pci_bus_id, pci_device_id,
+pci_domain_id, regs_per_multiprocessor, shared_memory_per_block,
+shared_memory_per_block_optin, shared_memory_per_multiprocessor, total_memory, uuid,
+warp_size
+```
+
+我先前在计划里写的 `device_properties.l2_cache_size`(小写 l2)**取不到**,会静默返回缺失 ——
+正是"没有这项证据被读成这项没问题"的那类 bug。实测值:RTX 4090 **L2 = 75.5 MB**。
+
+同时确认 `regs_per_block` **不存在**(只有 `regs_per_multiprocessor`),
+所以 occupancy 的寄存器约束必须按 per-SM 寄存器文件算,不能按 per-block。
+
+### 错误 2:"理论 occupancy 可解析计算"—— 结论成立,但要说清用哪些字段
+
+已实测跑通,三个约束取最小,并且**能报出 limiter 是谁**:
+
+```
+BLOCK= 256 nw=4 regs=26 shmem=0 -> 理论 occupancy 100.0%  (limiter: warps/threads)
+BLOCK=1024 nw=8 regs=39 shmem=0 -> 理论 occupancy 100.0%  (limiter: warps/threads)
+```
+
+公式(全部输入我们**已经在采集**):
+
+```
+threads   = num_warps × warp_size
+by_warp   = max_threads_per_multi_processor // threads
+by_reg    = regs_per_multiprocessor // (n_regs × threads)
+by_shmem  = shared_memory_per_multiprocessor // shared_bytes
+blocks    = min(by_warp, by_reg, by_shmem)
+occupancy = blocks × threads / max_threads_per_multi_processor
+limiter   = 三者中取到最小值的那一个        ← 这是给 agent 的可行动信息
+```
+
+`limiter` 字段的价值在于:它把我们现有的 `at_boundary`(参数想再往前但被顶住)从**猜**变成**算** ——
+直接说出"被寄存器顶住"还是"被共享内存顶住",这正是 KernelPro 那个关键案例
+(occupancy 18.8%,limited by 168 registers/thread → 换小 footprint 配置)所依赖的信息。
+
+### 顺带确认:规格带宽可推导,但仍只作交叉核对
+
+`2 × memory_clock_rate × memory_bus_width / 8` 得 RTX 4090 = **1.008 TB/s**,与官方规格一致。
+**判据仍用实测值**(容器限频),这个推导值只用于"实测值是否明显低于规格"的健康检查 ——
+若实测只有规格的 50%,说明卡被限频或被抢占,校准结果不可信,应重跑。
+这给了校准器一个廉价的自检:**规格值是我们唯一不需要 GPU 就能算出的参照**。
