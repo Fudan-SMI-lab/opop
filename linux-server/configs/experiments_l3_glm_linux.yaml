@@ -1,0 +1,215 @@
+# GLM-5.3 arm on the L3 tasks (21 / 43 / 48), LINUX SERVER.
+#
+# Derived from configs/experiments_l3_glm.yaml, which is Windows-only. Every budget and
+# evaluation knob is copied verbatim from that file so this arm stays comparable to the
+# 19 existing L3 runs as a machine swap and nothing else. What changed and why:
+#
+#   run.runs_dir            D:/Pyhon_projects/opop/v2-glm/runs -> /root/autodl-tmp/opop-workspace/opop-glm/runs-l3
+#   opencode.launch_cwd     D:/Pyhon_projects/opop/v2-glm      -> /root/autodl-tmp/opop-workspace/opop-glm
+#   sandbox_config_path     ditto
+#   kernelbench_root        ADDED. The Windows file omits it, so it fell back to the
+#                           pydantic default D:/Pyhon_projects/opop/KernelBench. On this
+#                           box that path does not exist and the run would die at load --
+#                           loudly, which is the harmless kind of failure.
+#   wsl.*                   ADDED, same reason, and these are the DANGEROUS ones: the
+#                           defaults are /mnt/d/... which do not exist here either.
+#   device:                 REPLACED. This is the one that fails SILENTLY and is the whole
+#                           reason a Linux L3 config had to be written rather than reusing
+#                           the Windows one with different paths. The Windows file names
+#                           "RTX 5080 Laptop (sm_120) / 16GB"; _device_doc()
+#                           (agents/modules.py:46-55) writes those six values verbatim into
+#                           every agent sandbox, and DeviceLimits.as_env() exposes them as
+#                           names inside agent-authored constraint expressions. Reused
+#                           here, every agent would be told it is on Blackwell sm_120 with
+#                           16 GB while actually running on Ada sm_89 with 23.5 GB -- which
+#                           decides which tensor-core paths and instructions exist at all.
+#                           No error, no warning, just wrong kernels and mis-calibrated
+#                           guards. Values below are MEASURED on this card (docs C3).
+#   evaluation trials       STATED rather than omitted. The Windows file sets only the
+#                           tolerance knobs, so correctness_trials/perf_trials fall back to
+#                           field defaults (config.py:172-175 = 5/100/3/20). Those defaults
+#                           are what the 19 prior runs used, so the values below are those
+#                           same numbers written down -- no behaviour change, but the file
+#                           now says what it runs instead of relying on a default that a
+#                           reader has to go and look up.
+#   OUTPUT_TOKEN_MAX        200000 -> 131072. NOT a bug fix: the env var is a CEILING,
+#                           clamped by min(model.limit.output, ENV), so both values resolve
+#                           to zhipuai's 131072 and behave identically. Written as the
+#                           resolved number so the file states what actually happens. (The
+#                           HTTP 400 code 1210 comes from raising limit.output in the
+#                           PROVIDER config, which neither file does.)
+#
+# ---------------------------------------------------------------------------------------
+# WHAT IS UNVERIFIED ON THIS BOX (do not read a passing L1 smoke as clearance for this)
+#
+# 1. glm-5.3 truncation at L3 prompt scale. The L1:42 smoke's peak output+reasoning was
+#    4383 tokens = 3.3% of the 131072 ceiling. On L3:21, glm-5.3 at reasoningEffort max
+#    (pinned at model level in /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc) spent exactly 32000
+#    tokens with finish=length on three consecutive generator attempts and wrote ZERO
+#    files. Both mitigations are present here -- the raised ceiling above, and the
+#    truncation-specific feedback at agents/base.py:187 -- but NEITHER has run at L3 scale
+#    on this machine. A 3.3%-load smoke cannot tell you anything about the 100% case.
+#
+# 2. The relaxed + fp64 witness path has never executed on this box. The smoke used strict
+#    (it sets no correctness_mode). This config uses dual_witness_relaxed plus the fp64
+#    golden arm -- different code, higher memory multiplier (10.02x total input bytes vs
+#    7.00x strict), and the known-hazardous path.
+#
+# Memory is NOT a blocker and is the one item settled by arithmetic rather than guesswork:
+# level3:21 = 0.21 GiB, 43 = 0.19 GiB, 48 = 0.13 GiB of input, all far under the 2.35
+# GiB/tensor limit that the relaxed+fp64 arm implies on a 23.52 GiB card. Unlike level1,
+# where 34 of 78 tasks cannot be evaluated here at all.
+# ---------------------------------------------------------------------------------------
+#
+# PER-TASK CORRECTNESS HAZARDS -- these are properties of the TASKS, not of this config,
+# and no knob here fixes them. Recorded so a failure is read correctly rather than blamed
+# on the candidate:
+#
+#   level3:21 EfficientNetMBConv -- contains nn.BatchNorm2d and the reference runs in TRAIN
+#     mode, so BN uses BATCH statistics, not running stats, AND mutates running_mean/var on
+#     every forward. A candidate that reads running stats is wrong but looks arithmetically
+#     reasonable. This is the recorded root cause of repeated L3:21 correctness failures;
+#     it is an information gap in what the agent is told, not a harness bug.
+#
+#   level3:43 MinGPTCausalAttention -- contains nn.Dropout(attn_pdrop) and
+#     nn.Dropout(resid_pdrop) applied in forward, and the reference runs in train mode, so
+#     the module tree LOOKS nondeterministic. It is not: the task's own constants are
+#     attn_pdrop = 0.0 and resid_pdrop = 0.0, and dropout at p=0 draws no RNG. The hazard
+#     is present in the module list and INERT in practice.
+#     Why it is written down anyway: the witness loop (gpu/worker_main.py:640-726) seeds
+#     once before each model's .to() and then calls the reference TWICE -- tf32 then ieee --
+#     with no re-seed between, plus the candidate a third time. Any active RNG inside
+#     forward would therefore be compared against a moving target, and the measured
+#     "ieee vs tf32 noise floor" would be RNG noise misread as precision noise. That makes
+#     it a real structural weakness of the harness that this task happens not to trigger --
+#     so do not reuse "43 was fine" as evidence for a task whose p > 0.
+#     MEASURED, not assumed: /root/autodl-tmp/opop-workspace/prep/baselines.json field determinism.identical, with
+#     two same-precision calls and no re-seed. level3:43 is bit-identical, which is what
+#     makes the p=0 no-op a measurement rather than a library-docs claim.
+#
+# Both are argued from the reference source and from the witness loop, and both are then
+# checked by measurement rather than left as inference -- the determinism probe runs the
+# reference twice at ONE precision (so a difference cannot be blamed on precision) and
+# fails loudly if a task with no active dropout also differs.
+#
+# WRITTEN FOR THE LINUX SERVER -- `load_config` reads exactly ONE file (config.py:257-268);
+# `configs/default.yaml` is NOT a base layer, so every path below is stated explicitly.
+#
+# Layout on this box:
+#   /root/autodl-tmp/opop-workspace/opop                        the harness (this repo, v2 branch, ported to Linux)
+#   /root/autodl-tmp/opop-workspace/KernelBench                 pinned at 423217d
+#   /root/autodl-tmp/opop-workspace/opop-glm/.opencode/         the zhipuai provider config (plaintext API key, 0600)
+#   /root/autodl-tmp/opop-workspace/opop-glm/runs-*             run output; secret-bearing (sandbox copies of the key)
+#   /root/autodl-tmp/kernel-opt-venv  GPU worker venv (torch 2.9+cu129 / triton 3.5)
+#   /root/autodl-tmp/orch-venv        orchestrator venv
+# Both venvs live on the 250G data disk: the 30G system disk cannot hold torch twice.
+#
+# Launch (ONE task at a time -- two concurrent runs on one GPU time kernels simultaneously
+# and silently corrupt each other's measurements):
+#   kernel-opt --config configs/experiments_l3_glm_linux.yaml run --task level3:21
+#   kernel-opt --config configs/experiments_l3_glm_linux.yaml run --task level3:43
+#   kernel-opt --config configs/experiments_l3_glm_linux.yaml run --task level3:48
+run:
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-l3
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench          # which reference PROBLEM FILE is loaded
+                                             # (config.py:245 default is D:/...)
+opencode:
+  server_url: null
+  # launch_cwd and runs_dir must both sit under the tree containing .opencode/, because
+  # opencode resolves providers by walking UP from the session's working directory, and
+  # each agent sandbox gets its own opencode.json which makes it a project root and STOPS
+  # that search (docs B4). Get this wrong and every call fails with
+  # ProviderModelNotFoundError: Model not found: zhipuai/glm-5.3.
+  launch_cwd: /root/autodl-tmp/opop-workspace/opop-glm
+  sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
+  # NOTE: sandbox_config_path copies the WHOLE provider block, including the plaintext API
+  # key, into every agent sandbox under runs_dir as a 0644 .json. Verified live: 10 of 10
+  # sandbox copies contained the key. The count grows per agent call, so a 12-hour L3 run
+  # multiplies it, and a tar/scp of runs_dir would carry the key off the box. Rotate the
+  # key rather than assuming the runs directory is private.
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+  # PERMISSION ASKS: sandbox.py's PERMISSION_CONFIG is an ALLOW-LIST, and any tool key it
+  # omits falls back to opencode's default, which for external_directory is
+  # {"*": "ask"}. Headless `opencode serve` has nobody to answer an ask, so the turn idles
+  # until request_timeout_s (1800s) aborts it -- three attempts = ~90 minutes burned for
+  # zero output. Measured live on the L1 smoke: two of three attempts died this way while a
+  # third, same module and same prompt, never asked at all. It is agent-chosen and
+  # intermittent, which is exactly why a short smoke passing does not mean it is absent.
+  # Confirm the fix is in the installed module before a 12-hour run:
+  #   grep -n 'external_directory' src/kernel_optimizer/agents/sandbox.py
+  # It must be present AND set to "always". "always" is scoped per directory pattern, not
+  # per session.
+
+# The class name `wsl:` is a misnomer here -- there is no WSL on this box -- but these are
+# the keys the worker reads, so they still apply.
+wsl:
+  venv: /root/autodl-tmp/kernel-opt-venv
+  kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src     # the evaluation LIBRARY on PYTHONPATH
+                                             # (worker_client.py:136); independent of
+                                             # kernelbench_root above
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-kopt
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  # 5, was 3: at 3 the per-family round cap fired before the convergence test it defers to.
+  # 3 of 16 budget-frozen families were still gaining >=2% on their final allowed round, and
+  # those 3 gains (47.7%, 44.5%, 11.5%) are the largest single-round improvements in the
+  # project -- while ~45% of the 12 h wall clock went unused.
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  # 6, was 3: at 3 Loop D was unreachable (max_seed_candidates=4 seeds -> 4 families, so the
+  # novelty gate `>= max_families_total` was already true). All 19 prior runs have
+  # origin:novelty = 0.
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed   # tf32|ieee dual-witness relaxed gate
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  # Second acceptance path. Follows torch._dynamo.utils.same(): build an fp64 golden
+  # reference and accept when the candidate's RMSE against it is within multiplier x the
+  # REFERENCE's own RMSE. Only consulted AFTER the absolute gate has already failed, so it
+  # can add acceptances but never remove one. All three L3 tasks have ieee-vs-tf32 floors
+  # BELOW the 0.99 that relaxed_pass_frac demands (0.9554 / 0.9767 / 0.9778), which makes
+  # the absolute gate unreachable for a low-precision candidate however correct it is.
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  # Stated, not omitted -- these four equal the field defaults (config.py:172-175) that the
+  # 19 prior L3 runs used, so this is a documentation change and not a behaviour change.
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+# MEASURED on this GPU (docs C3), not copied -- see the device: note in the header for why
+# reusing the Windows block is the silent failure this file exists to avoid.
+#   max_regs_per_thread / max_threads_per_block are NOT readable device properties
+#   (regs_per_multiprocessor is per-SM, 65536; max_threads_per_multi_processor is a
+#   different quantity) -- 255 and 1024 are correct on sm_89 and are kept as constants.
+device:
+  name: NVIDIA GeForce RTX 4090 (sm_89)
+  vram_gb: 23
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024

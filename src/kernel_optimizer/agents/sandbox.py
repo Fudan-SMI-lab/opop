@@ -61,7 +61,37 @@ class Sandbox:
 
 PERMISSION_CONFIG = {
     "$schema": "https://opencode.ai/config.json",
-    "permission": {"edit": "allow", "bash": "allow", "webfetch": "deny"},
+    # Every permission opencode asks about must be named here. A key omitted from this block
+    # does NOT default to allow -- it falls through to opencode's own default, and for
+    # external_directory that default is `{"*": "ask"}`. An ask is fatal in this harness: the
+    # server is headless, so nobody ever answers, the turn idles until request_timeout_s
+    # (1800 s) aborts it, and the retry walks into the same wall.
+    #
+    # Measured on run-l1-42-20260907-022528: the rewriter used its Read tool on the run's own
+    # manifest.json, which lives outside its sandbox. opencode logged `asking
+    # permission=external_directory` and the call sat idle for 28 min until the ceiling killed
+    # it; attempt 3 hit the identical ask 41 s in. L1:19's repair agent died the same way on
+    # /root/KernelBench/src/*. Three asks in the whole log, zero replies, three dead calls.
+    #
+    # Two reasons this hid for so long: `bash` never triggers it (`grep -rn /root/KernelBench`
+    # from the same agent was allowed with no prompt), so only the read/edit tool path is
+    # affected; and nothing in any prompt asks for an outside path -- the model chooses to look,
+    # which makes the failure intermittent and module-independent.
+    #
+    # Verified by probe_extdir_permission.py: three arms on a private server, the pre-fix config
+    # as the control. Control hung 240 s with 1 ask and no output; "allow" finished in 10.5 s
+    # with 0 asks and correct output; {"*": "allow"} in 10.1 s, likewise. The plain string is
+    # used as the narrower of the two working spellings.
+    #
+    # runtime.py has respond_permission(), which could answer an ask over REST instead -- but
+    # nothing calls it, and answering mid-turn would need an event watcher. Declaring the
+    # permission is the cheaper route; that method remains unused.
+    "permission": {
+        "edit": "allow",
+        "bash": "allow",
+        "webfetch": "deny",
+        "external_directory": "allow",
+    },
 }
 
 

@@ -1,0 +1,117 @@
+# Cheap L1 smoke on the Linux server: Loop C (rewrite) + convergence verdict.
+#
+# WRITTEN FOR THE LINUX SERVER -- do not reuse a Windows config here. `load_config` reads
+# exactly ONE file (config.py:257-268); `configs/default.yaml` is not a base layer, so
+# every path below must be stated explicitly or it falls back to a pydantic default that
+# points at D:/... or /mnt/d/... (docs/deploy-on-a-linux-gpu-server.md B5).
+#
+# Layout on this box:
+#   /root/autodl-tmp/opop-workspace/opop                        the harness (this repo, v2 branch, ported to Linux)
+#   /root/autodl-tmp/opop-workspace/KernelBench                 pinned at 423217d
+#   /root/autodl-tmp/opop-workspace/opop-glm/.opencode/         the zhipuai provider config (plaintext API key, 0600)
+#   /root/autodl-tmp/opop-workspace/opop-glm/runs-*             run output; secret-bearing (sandbox copies of the key)
+#   /root/autodl-tmp/kernel-opt-venv  GPU worker venv (torch 2.9+cu129 / triton 3.5)
+#   /root/autodl-tmp/orch-venv        orchestrator venv
+# Both venvs live on the 250G data disk: the 30G system disk cannot hold torch twice.
+#
+# Derived from configs/smoke_l1_loopc.yaml, which sets NO paths at all and would inherit
+# the Windows defaults, and whose default_model is openai/gpt-5.6-sol -- this box only has
+# the zhipuai provider. Everything else (budgets, the deliberately high
+# min_improvement_pct that forces `converged` rather than `budget_exhausted`) is unchanged
+# from that file, so its reasoning still holds; see its header for why each number is what
+# it is.
+#
+#
+# ---------------------------------------------------------------------------------------
+# WHY THIS FILE EXISTS (read before changing the task)
+#
+# The first smoke run used level1:19 and could never have passed on this 24 GiB card:
+#   level1:19 is 4096 x 393216 fp32 = 6.00 GiB per tensor. KernelBench's strict
+#   run_and_check_correctness (eval.py:780-812) holds `inputs`, `output` and `output_new`
+#   live, and on a mismatch materialises (output - output_new) and .abs() on top -- 24-30
+#   GiB against 23.52 GiB of VRAM.
+# Observed live: run-l1-19-20260907-015243 rejected cand-a8952ab7 with
+#   reason="witness_default_failed", detail "oom ... tried to allocate 6.00 GiB", and then
+#   opened a repair call. The candidate was fine; the TASK does not fit. The harness has no
+#   category for "the task is too large for this GPU", so it reports OOM as a candidate
+#   defect and spends repair budget on it.
+# 21 of 66 level1 tasks are too big for this card the same way (level1:19-32 are all the
+#   same 4096x393216 shape; 35/36/37 are 7.00 GiB; 33/43/84/87 are 4.00 GiB).
+#
+# level1:42 Max_Pooling_2D is [32, 64, 512, 512] = 2.00 GiB/tensor, ~10 GiB live: the
+# largest level1 task with real bandwidth-bound work that still leaves headroom.
+# ---------------------------------------------------------------------------------------
+#
+# Launch:  kernel-opt --config configs/smoke_l1_42_linux.yaml run --task level1:42
+run:
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-smoke42
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench          # which reference PROBLEM FILE is loaded
+                                             # (config.py default is D:/...)
+opencode:
+  server_url: null
+  # launch_cwd and runs_dir must both sit under the tree containing .opencode/, because
+  # opencode resolves providers by walking UP from the session's working directory, and
+  # each agent sandbox gets its own opencode.json which makes it a project root and STOPS
+  # that search (docs B4). Get this wrong and every call fails with
+  # ProviderModelNotFoundError: Model not found: zhipuai/glm-5.3.
+  launch_cwd: /root/autodl-tmp/opop-workspace/opop-glm
+  sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
+  server_env:
+    # The ONLY route to the per-turn output ceiling: opencode computes it as
+    # min(model.limit.output, OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX ?? 32000) and there is
+    # no config-file key. At the 32000 default, glm-5.3 at reasoningEffort max spent its
+    # whole budget on reasoning and wrote ZERO files on three consecutive attempts.
+    # 131072 is zhipuai's advertised maximum (more returns HTTP 400 code 1210).
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+
+# The class name `wsl:` is now a misnomer -- there is no WSL here -- but the keys are what
+# the worker reads, so they still apply.
+wsl:
+  venv: /root/autodl-tmp/kernel-opt-venv
+  kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src     # the evaluation LIBRARY on PYTHONPATH;
+                                             # independent of kernelbench_root above
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-kopt
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 2}
+  rewriter: {model: null, max_retries: 2, n_candidates: 1}
+  novelty: {model: null, max_retries: 2, n_candidates: 1}
+
+budgets:
+  trials_per_space: 4
+  rewrite_rounds_per_family: 2
+  no_improve_rounds: 1
+  # Deliberately high: on L1:19 a rewrite will not find 50% per round, so the improvement
+  # test must fail and `converged` must fire. If this run reports only budget_exhausted,
+  # the convergence off-by-one is not fixed.
+  min_improvement_pct: 50.0
+  max_families_total: 4
+  max_families_active: 2
+  max_seed_candidates: 2
+  repair_attempts: 2
+  wall_clock_hours: 3
+
+evaluation:
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+# MEASURED on this GPU (docs C3), not copied. These six values are written verbatim into
+# every agent sandbox by _device_doc() (agents/modules.py:46-55) and are exposed as names
+# inside agent-authored constraint expressions via DeviceLimits.as_env(). A stale value
+# does two kinds of damage: the guard admits configurations that then fail to compile with
+# OutOfResources, and the model is told it is on the wrong architecture.
+#   max_regs_per_thread / max_threads_per_block are NOT readable device properties
+#   (regs_per_multiprocessor is per-SM, 65536; max_threads_per_multi_processor is a
+#   different quantity) -- 255 and 1024 are correct on sm_89 and are kept as constants.
+device:
+  name: NVIDIA GeForce RTX 4090 (sm_89)
+  vram_gb: 23
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024

@@ -1,0 +1,179 @@
+# GLM-5.3 arm on level2:37 at the PRE-SCALING sizes, Linux server.
+#
+# This file differs from configs/experiments_l2_37_glm_linux.yaml in exactly one line:
+# kernelbench_root. Everything else is copied verbatim so the two are comparable as a
+# problem-size swap and nothing else.
+#
+# ---------------------------------------------------------------------------------------
+# WHY A SEPARATE ROOT (and why the shipped sizes cannot answer the question)
+#
+# KernelBench pinned at 423217d ships level2/37 as
+#     batch_size=32768, in_features=1024, out_features=4096, num_groups=64
+# The cross-framework comparison this arm exists for is against a 90.30us baseline, which
+# was measured at the PRE-SCALING sizes
+#     batch_size=128, in_features=512, out_features=1024, num_groups=32
+# Those are 1332x apart in work. At the shipped sizes a 90.30us baseline would require
+# 7.43 TB/s of DRAM bandwidth; this card has ~1.01 TB/s. So running the shipped sizes and
+# comparing to 90.30us is not a hard comparison, it is an impossible one.
+#
+# The pre-scaling file is recoverable from git history at bb27f27. Built as:
+#   cp -r /root/autodl-tmp/opop-workspace/KernelBench /root/autodl-tmp/opop-workspace/KernelBench-l2-37-orig
+#   cd /root/autodl-tmp/opop-workspace/KernelBench && git show bb27f27:KernelBench/level2/37_Matmul_Swish_Sum_GroupNorm.py \
+#     > /root/autodl-tmp/opop-workspace/KernelBench-l2-37-orig/KernelBench/level2/37_Matmul_Swish_Sum_GroupNorm.py
+#   diff -rq /root/autodl-tmp/opop-workspace/KernelBench /root/autodl-tmp/opop-workspace/KernelBench-l2-37-orig   # exactly one file differs
+#
+# VERIFIED ON DISK, not assumed:
+#   sha256 of the restored file = e8946e79d591ca80b2ac5c6504a69c1a875d8ea273a88ef7d63cb3bb97b2b2c0
+#   `diff -rq` between the two roots lists exactly one differing file
+#   the restored file's own constants read batch_size=128 / 512 / 1024 / num_groups=32
+#
+# HOW TO TELL, AT RUN TIME, THAT THIS LINE ACTUALLY TOOK EFFECT -- because a config key
+# that nothing reads would look identical to a working one. kernelbench_root is consumed
+# by wiring.py:150 -> KernelBenchAdapter -> tasks/kernelbench.py:23-30, which reads the
+# problem file and hashes it into TaskSpec.ref_src_sha. So:
+#     the run's TASK_LOADED / spec.json ref_src_sha MUST start e8946e79d591ca80
+# If it starts 30b2c8... (the shipped file) this config did nothing and every number the
+# run produces is at the wrong problem size. Check it before trusting a single latency.
+#
+# The other KernelBench path below (wsl.kernelbench_src) is DELIBERATELY left pointing at
+# /root/autodl-tmp/opop-workspace/KernelBench/src. That key is the evaluation LIBRARY on PYTHONPATH
+# (worker_client.py:136), not the problem file, and `diff -rq` proved the two trees'
+# libraries are byte-identical. Pointing it at the copy would suggest the library was
+# forked too, which it was not.
+# ---------------------------------------------------------------------------------------
+#
+# WRITTEN FOR THE LINUX SERVER -- do not reuse a Windows config here. `load_config` reads
+# exactly ONE file (config.py:257-268); `configs/default.yaml` is not a base layer, so
+# every path below must be stated explicitly or it falls back to a pydantic default that
+# points at D:/... or /mnt/d/... (docs/deploy-on-a-linux-gpu-server.md B5).
+#
+# Layout on this box:
+#   /root/autodl-tmp/opop-workspace/opop                        the harness (this repo, v2 branch, ported to Linux)
+#   /root/autodl-tmp/opop-workspace/KernelBench                 pinned at 423217d (SHIPPED sizes)
+#   /root/autodl-tmp/opop-workspace/KernelBench-l2-37-orig      same tree, level2/37 restored from bb27f27
+#   /root/autodl-tmp/opop-workspace/opop-glm/.opencode/         the zhipuai provider config (plaintext API key, 0600)
+#   /root/autodl-tmp/opop-workspace/opop-glm/runs-*             run output; secret-bearing (sandbox copies of the key)
+#   /root/autodl-tmp/kernel-opt-venv  GPU worker venv (torch 2.9+cu129 / triton 3.5)
+#   /root/autodl-tmp/orch-venv        orchestrator venv
+# Both venvs live on the 250G data disk: the 30G system disk cannot hold torch twice.
+#
+# Launch:  kernel-opt --config configs/experiments_l2_37_orig_glm_linux.yaml run --task level2:37
+run:
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-l2-37-orig
+  seed: 0
+
+# THE PRE-SCALING ROOT. This is the one line that differs from the shipped-size config.
+kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench-l2-37-orig
+
+opencode:
+  server_url: null
+  # launch_cwd and runs_dir must both sit under the tree containing .opencode/, because
+  # opencode resolves providers by walking UP from the session's working directory, and
+  # each agent sandbox gets its own opencode.json which makes it a project root and STOPS
+  # that search (docs B4). Get this wrong and every call fails with
+  # ProviderModelNotFoundError: Model not found: zhipuai/glm-5.3.
+  launch_cwd: /root/autodl-tmp/opop-workspace/opop-glm
+  sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
+  server_env:
+    # The ONLY route to the per-turn output ceiling: opencode computes it as
+    # min(model.limit.output, OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX ?? 32000) and there is
+    # no config-file key. At the 32000 default, glm-5.3 at reasoningEffort max spent its
+    # whole budget on reasoning and wrote ZERO files on three consecutive attempts.
+    # 131072 is zhipuai's advertised maximum (more in the PROVIDER's limit.output returns
+    # HTTP 400 code 1210; this env var is a ceiling and is merely clamped, so a larger
+    # value here is harmless, not a defect).
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+
+# The class name `wsl:` is now a misnomer -- there is no WSL here -- but the keys are what
+# the worker reads, so they still apply.
+wsl:
+  venv: /root/autodl-tmp/kernel-opt-venv
+  kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src     # the evaluation LIBRARY on PYTHONPATH;
+                                             # independent of kernelbench_root above, and
+                                             # byte-identical in both roots (diff -rq)
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-kopt
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  # Kept at 2.0 to match both L3 arms so the cross-task comparison is not confounded.
+  # AT THESE SIZES THIS NEEDS CHECKING BEFORE IT IS TRUSTED: the whole problem is ~90us,
+  # so 2% is ~1.8us -- the same order as per-sample timing jitter on a microsecond-scale
+  # kernel, and the timing harness makes that jitter worse rather than better here:
+  # KernelBench's cuda_event path calls clear_l2_cache() INSIDE the trial loop
+  # (src/kernelbench/timing.py:126-142, 201-275) -- a 256 MB int64 fill before every single
+  # timed trial, on a card with 72 MB of L2, with the comment "measuring cold cache
+  # performance". The fill is enqueued before start_event.record(), so it is not itself
+  # inside the timed window; what IS timed is the kernel running against a cold L2. This
+  # problem's whole PERSISTENT working set is 2.766 MB (input 0.250 + Linear.weight 2.000 +
+  # output 0.500 + biases and GroupNorm affine 0.016), so it would otherwise be L2-resident
+  # after warmup. Two consequences for this arm:
+  #   (1) every trial pays DRAM for data a warm run would have had resident, and
+  #   (2) any candidate that wins by improving LOCALITY is under-credited, because the
+  #       flush discards the locality before each measurement.
+  #
+  # WHAT THE ~90us ACTUALLY MEASURES -- work this out before reading any speedup, because it
+  # decides which optimizations can possibly help. The matmul is 134.2 MFLOP and the eager
+  # traffic lower bound is 4.766 MB (2.766 persistent + four 128x1024 intermediates, one per
+  # eager op). At 90.30us that is:
+  #     1.486 TFLOP/s = 1.81% of this card's ~82 TFLOP/s fp32 peak
+  #       55.34 GB/s  = 5.49% of its ~1008 GB/s DRAM peak
+  # Neither roofline bound is remotely active, so this task is OVERHEAD-bound: per-kernel
+  # launch and sync plus the cold-L2 refill dominate. The available win is FUSION (five eager
+  # kernels collapsed toward one), NOT tiling, tensor cores or bandwidth tricks. A bottleneck
+  # report recommending occupancy or tile tuning here is reading the wrong regime.
+  # Neither is a defect to fix here -- it is the benchmark's definition of the number, and
+  # baseline and candidate are measured the same way -- but it must not be discovered later
+  # as a mystery. /root/autodl-tmp/opop-workspace/prep/baselines.json records both: eager_ieee (cold, matching the
+  # harness) and eager_ieee_warm (same kernel, L2 left warm), so the ratio is measured.
+  # If the trimmed std over sqrt(perf_trials) approaches 2%, raise perf_trials rather than
+  # lowering the threshold, because a lower threshold accepts noise as progress.
+  min_improvement_pct: 2.0
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  # RAISED from the 100 default because this problem is ~1000x cheaper than the L3 tasks:
+  # at ~90us a 300-sample timing pass costs ~27ms, so stability is nearly free here, while
+  # at 100 samples the median can still move enough to be confused with a 2% win.
+  perf_trials: 300
+  quick_perf_trials: 60
+  correctness_trials: 5
+  quick_correctness_trials: 3
+
+# MEASURED on this GPU (docs C3), not copied. These six values are written verbatim into
+# every agent sandbox by _device_doc() (agents/modules.py:46-55) and are exposed as names
+# inside agent-authored constraint expressions via DeviceLimits.as_env(). A stale value
+# does two kinds of damage: the guard admits configurations that then fail to compile with
+# OutOfResources, and the model is told it is on the wrong architecture.
+#   max_regs_per_thread / max_threads_per_block are NOT readable device properties
+#   (regs_per_multiprocessor is per-SM, 65536; max_threads_per_multi_processor is a
+#   different quantity) -- 255 and 1024 are correct on sm_89 and are kept as constants.
+device:
+  name: NVIDIA GeForce RTX 4090 (sm_89)
+  vram_gb: 23
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024
