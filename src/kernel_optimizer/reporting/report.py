@@ -210,6 +210,142 @@ def _attribution_lines(best: dict, trials: list) -> list[str]:
             "attributing the speedup"]
 
 
+def _precision_of(params: dict) -> str | None:
+    """The arithmetic-precision value a trial's params carry, or None if it declares none.
+
+    Name-agnostic on purpose: candidates have used COMPUTE_DTYPE, PREC, DOT_PRECISION and
+    BC_CACHE_DTYPE for this, so keying on one spelling would silently report "no precision
+    knob" for most of them. A knob counts when its VALUE is one of the precision tokens --
+    that set is small, closed, and does not collide with tile sizes or warp counts.
+    """
+    tokens = {"fp16", "bf16", "tf32", "ieee", "fp32", "float16", "bfloat16", "float32",
+              "tf32x3", "half"}
+    for name, value in (params.get("values") or {}).items():
+        if isinstance(value, str) and value.lower() in tokens:
+            # A cache/IO dtype is secondary to the compute precision; prefer a knob that
+            # names the arithmetic when both are present.
+            upper = name.upper()
+            if "COMPUTE" in upper or "PREC" in upper or "DOT" in upper:
+                return value.lower()
+    for value in (params.get("values") or {}).values():
+        if isinstance(value, str) and value.lower() in tokens:
+            return value.lower()
+    return None
+
+
+def _trials_by_precision(trials: list[dict]) -> list[str]:
+    """F6: trials grouped by the precision they ran at.
+
+    WHY. The run-level line above is `N total, C complete, F failed`, and precision appears
+    nowhere except on the single best candidate. That made a specific failure invisible:
+    L3:43's theta_best declared four precisions in its own space and could only LAUNCH at
+    one -- its tile was chosen at fp16 (2 bytes/element) and needs 131072-164352 bytes of
+    shared memory at 4 bytes/element against a 101376 limit. Every tf32 and ieee trial
+    failed, and in the report that was indistinguishable from ordinary noise among the
+    other failures.
+
+    A precision whose `complete` count is 0 is the signal to look for here: it means the
+    candidate cannot run at a precision it claims to support, so the tuner never compared
+    it against the alternatives.
+    """
+    groups: dict[str, dict] = {}
+    for t in trials:
+        prec = _precision_of(t.get("params") or {}) or "(no precision knob)"
+        g = groups.setdefault(prec, {"n": 0, "complete": 0, "best": None, "kinds": {}})
+        g["n"] += 1
+        if t.get("status") == "complete":
+            g["complete"] += 1
+            lat = t.get("latency_ms") or {}
+            ms = lat.get("median") or lat.get("mean")
+            if ms is not None and (g["best"] is None or ms < g["best"]):
+                g["best"] = ms
+        else:
+            kind = t.get("failure_kind") or "unknown"
+            g["kinds"][kind] = g["kinds"].get(kind, 0) + 1
+    if len(groups) <= 1 and "(no precision knob)" in groups:
+        return []  # nothing to say: no candidate in this run exposed a precision knob
+    out = ["### Trials by precision\n",
+           "| precision | trials | complete | best ms | dominant failure |",
+           "|---|---|---|---|---|"]
+    for prec, g in sorted(groups.items(), key=lambda kv: -kv[1]["n"]):
+        top = max(g["kinds"].items(), key=lambda kv: kv[1]) if g["kinds"] else None
+        best = f"{g['best']:.3f}" if g["best"] is not None else "—"
+        out.append(f"| `{prec}` | {g['n']} | {g['complete']} | {best} | "
+                   f"{f'{top[0]} ({top[1]})' if top else '—'} |")
+    dead = [(p, g) for p, g in groups.items()
+            if g["complete"] == 0 and p != "(no precision knob)"]
+    if dead:
+        out.append("")
+        names = ", ".join(f"`{p}`" for p, _ in dead)
+        out.append(f"- **{names}: zero completed trials.** A precision the space offers but "
+                   f"that never produced one measurement is not evidence that it is slower "
+                   f"-- it is a precision the tuner could not evaluate, so the winning "
+                   f"configuration was never compared against it.")
+        # The cause is in the dominant failure, and it is NOT always the same one. Measured
+        # across the L3:43 runs on disk: bf16 died 190-208 times per run with
+        # `correctness_mismatch` (a numerical problem -- and on L3:48 bf16 genuinely cannot
+        # hold that task's exponent range), while the shared-memory story belongs to trials
+        # that fail `infeasible_shared_memory` because the tile was sized for a narrower
+        # dtype. Naming one cause for both would send the reader to the wrong fix, so the
+        # hint is derived per precision from what actually failed.
+        for prec, g in dead:
+            top = max(g["kinds"].items(), key=lambda kv: kv[1]) if g["kinds"] else None
+            if not top:
+                continue
+            kind = top[0]
+            if kind == "infeasible_shared_memory":
+                why = ("the tile does not fit at this dtype's byte width -- it was sized "
+                       "for a narrower one and cannot launch here. A tile/stage domain "
+                       "that is feasible at 2 bytes/element is often infeasible at 4.")
+            elif kind == "correctness_mismatch":
+                why = ("the arithmetic, not the configuration: this precision does not "
+                       "hold the task's numerics. Check the task's own two-precision "
+                       "noise floor before reading it as a candidate defect.")
+            elif kind == "runtime_error":
+                why = "it failed at launch or during execution; read a trial's log tail."
+            else:
+                why = "see the trial records for this precision."
+            out.append(f"  - `{prec}` ({kind}): {why}")
+    out.append("")
+    return out
+
+
+def _vendor_library_usage(events) -> list[str]:
+    """F8: which candidates handed computation to cuBLAS/cuDNN, from the static warnings.
+
+    KernelBench reports `torch_computation_ops` and `pytorch_wrap` as WARNINGS, never
+    errors, which is what makes delegating a large regular GEMM to the vendor library a
+    legal choice -- and the contract now says so explicitly, because at strict IEEE fp32
+    cuBLAS beat a hand-written Triton GEMM by 1.33x on a real task.
+
+    The warnings were already being recorded on the worker result and read by nobody, so
+    that choice was invisible. This surfaces it. Visibility, NOT enforcement: promoting the
+    check would re-forbid the route the contract just opened, and the hard floor (a real
+    kernel must exist, and must do the work the candidate claims) is enforced elsewhere.
+    """
+    seen: dict[str, set[str]] = {}
+    for e in events:
+        if e.type != "QUICKTEST_DONE":
+            continue
+        warns = (e.payload or {}).get("static_warnings") or []
+        relevant = {w for w in warns
+                    if "computation op" in w.lower() or "compute layer" in w.lower()}
+        if relevant:
+            seen.setdefault(e.payload.get("candidate_id", "?"), set()).update(relevant)
+    if not seen:
+        return []
+    out = ["### Vendor-library delegation\n",
+           "These candidates call a torch computation op (cuBLAS/cuDNN through "
+           "`F.linear`/`F.conv2d`/`torch.matmul`, or an `nn` compute layer). This is "
+           "PERMITTED and often correct — the library is usually near the hardware roof "
+           "for a large regular GEMM — and is listed so the speedup can be attributed "
+           "honestly, not as a defect.\n"]
+    for cid, warns in sorted(seen.items()):
+        out.append(f"- `{cid}`: {'; '.join(sorted(warns))}")
+    out.append("")
+    return out
+
+
 def _why_the_run_ended(events, convergence: list[dict], budgets: dict) -> list[str]:
     """Name the reason the outer loop stopped, and whether budget was left on the table.
 
@@ -725,6 +861,8 @@ class ReportGenerator:
                          f"{expanded}: best {t.get('best_ms')} ms "
                          f"({(t.get('snapshot') or {}).get('asked', '?')} asked)")
         lines.append("")
+        lines.extend(_trials_by_precision(trials))
+        lines.extend(_vendor_library_usage(events))
 
         if bottlenecks:
             lines.append("## Bottleneck reports\n")

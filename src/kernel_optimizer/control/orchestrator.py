@@ -923,6 +923,17 @@ class Orchestrator:
                         "candidate_id": cand.candidate_id,
                         "params": witness.params.model_dump(),
                         "latency_mean_ms": witness.latency_mean_ms,
+                        # F8: KernelBench's static checker reports `torch_computation_ops`
+                        # and `pytorch_wrap` as WARNINGS, never errors -- which is exactly
+                        # what makes handing a large regular GEMM to cuBLAS a legal choice
+                        # (the contract now says so explicitly). Those warnings were being
+                        # recorded on the worker result and read by nobody, so which
+                        # sub-ops a candidate delegated to the vendor library was invisible
+                        # in the report. Journalled here so the report can show it: the
+                        # point is visibility, NOT enforcement -- promoting it to a
+                        # rejection would re-forbid the route the contract just opened.
+                        "static_warnings": list(
+                            (witness.worker_result or {}).get("static_warnings") or []),
                     })
                 return verdict
 

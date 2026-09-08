@@ -162,8 +162,27 @@ choice, not an afterthought:
 
 - Prefer `triton` (`@triton.jit` kernels). CUDA via
   `torch.utils.cpp_extension.load_inline` is allowed if declared.
-- torch operations are allowed around the custom kernel(s) (layout, reshaping),
-  but the core computation you claim to optimize must run in your kernel.
+- torch operations are allowed around and between your custom kernel(s) — layout,
+  reshaping, and also **computation**, including the vendor libraries.
+  **When to hand a sub-op to the vendor library.** A large, regular GEMM or convolution
+  through `F.linear` / `F.conv2d` runs on cuBLAS/cuDNN, which is usually already near
+  the hardware roof for that shape. Rewriting it yourself often just reproduces it more
+  slowly; writing your kernel for what *surrounds* it can be the larger win. Measured on
+  this project: at strict IEEE fp32, cuBLAS beat a hand-written Triton GEMM by 1.33x on
+  the two projections of an attention block — while at tf32/fp16/bf16 the hand-written
+  Triton GEMM matched cuBLAS to within 5% and reached 87–93% of the measured roof, so
+  there the library buys nothing.
+  **When to write it yourself instead.** The library call is a hard boundary: nothing
+  fuses across it. If you can fold the surrounding elementwise work, normalization
+  statistics, or a reduction *into* the matmul kernel and save a full read/write of a
+  large tensor, your own kernel can beat the library even when it is slower in isolation.
+  That is a real result on this project too — the winning MBConv candidate made the
+  BatchNorm statistics a by-product of a kernel that was already reading the data.
+  **This is your judgement to make, and you must state it**: say in
+  `approach_summary` which sub-ops you handed to the library and which you kept, and why.
+  **The hard floor does not move**: your file must define at least one real kernel, and
+  the computation you claim to optimize must run in it. A file that only calls torch ops
+  is rejected.
 - **Never call `torch.compile`, `torch.jit.script` or `torch.jit.trace`.** These are
   rejected by a static check before evaluation, whatever else the file contains. The
   reason is not style: the baseline your candidate is measured against IS

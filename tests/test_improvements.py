@@ -9036,3 +9036,129 @@ def test_the_contract_states_both_halves_of_the_relaxed_gate():
     assert "cosine" in doc, (
         "the contract omits the cosine criterion, so a candidate cannot know both halves "
         "must hold")
+
+
+def test_the_contract_permits_the_vendor_library_and_keeps_its_floor():
+    """F2: torch ops may do COMPUTATION, not only layout -- with the hard floor intact.
+
+    The old wording restricted torch ops to "(layout, reshaping)", which excluded calling
+    cuBLAS for a sub-op. Nothing in the code ever enforced that: KernelBench reports
+    `torch_computation_ops` as a WARNING (see the F10 test), so the restriction lived only in
+    our text. Measured cost of the restriction: at strict IEEE fp32, cuBLAS beat our
+    hand-written Triton GEMM by 1.33x on L3:43's two projections, which are 85.7% of that
+    task's FLOPs.
+
+    The permission must arrive WITH both halves of the trade and the floor, or it turns into
+    "always call the library" -- which would be the opposite error, since at tf32/fp16/bf16
+    our Triton GEMM is within 5% of cuBLAS and fusion across the boundary is worth more.
+    """
+    from kernel_optimizer.agents.modules import _contract_doc
+
+    doc = _contract_doc()
+    low = doc.lower()
+    # The permission itself.
+    assert "vendor librar" in low, "the contract never mentions the vendor libraries"
+    assert "f.linear" in low or "F.linear" in doc, (
+        "the contract should name the actual call an agent would make")
+    # It must NOT still say torch ops are only for layout/reshaping.
+    assert "(layout, reshaping)" not in doc, (
+        "the parenthetical that excluded computation is still present")
+    # Both directions of the trade, so this does not read as 'always use the library'.
+    assert "fuse" in low or "fusion" in low, (
+        "the contract must say the library call is a fusion barrier, or an agent will "
+        "delegate work that was worth keeping")
+    # And the floor.
+    assert "at least one real kernel" in low or "must define at least one" in low, (
+        "the hard floor -- a real kernel must exist -- has to survive the relaxation")
+    assert "only calls torch ops is rejected" in low or "only calls torch" in low, (
+        "the contract must still reject a file that is nothing but torch calls")
+
+
+def test_trials_are_reported_per_precision_with_the_cause_of_a_dead_one():
+    """F6: a precision with zero completed trials must be visible, and named by its cause.
+
+    Replayed over the real L3:43 runs on disk, this table shows bf16 taking 190-208 trials
+    per run and completing NONE of them -- invisible before, because the report's only trial
+    statistic is one run-level `N total, C complete, F failed` line.
+
+    The cause is deliberately derived per precision rather than asserted: on those runs the
+    dominant failure for the dead precision is `correctness_mismatch` (an arithmetic
+    problem), NOT `infeasible_shared_memory` (a tile problem). An earlier draft of this
+    hint named the tile cause for every dead precision and would have sent the reader to
+    the wrong fix.
+    """
+    from kernel_optimizer.reporting.report import _trials_by_precision
+
+    def trial(prec, status, ms=None, kind=None):
+        return {"params": {"values": {"COMPUTE_DTYPE": prec, "BLOCK_M": 64}},
+                "status": status, "failure_kind": kind,
+                "latency_ms": ({"median": ms} if ms is not None else None)}
+
+    rows = ([trial("fp16", "complete", 8.0) for _ in range(3)]
+            + [trial("tf32", "fail", kind="infeasible_shared_memory") for _ in range(4)]
+            + [trial("bf16", "fail", kind="correctness_mismatch") for _ in range(5)])
+    text = "\n".join(_trials_by_precision(rows))
+
+    assert "fp16" in text and "tf32" in text and "bf16" in text
+    assert "zero completed trials" in text, "a precision that never completed is not flagged"
+    # The two dead precisions must get DIFFERENT explanations, keyed to what actually failed.
+    assert "byte width" in text, (
+        "the shared-memory case must say the tile does not fit at this dtype's width")
+    assert "does not hold the task's numerics" in text, (
+        "the correctness case must point at the arithmetic, not at the tile")
+    # A precision that did complete must not be flagged as dead.
+    dead_section = text.split("zero completed trials")[1]
+    assert "`fp16`" not in dead_section, "a precision that completed trials is called dead"
+
+
+def test_a_precision_knob_is_found_whatever_the_candidate_named_it():
+    """`_precision_of` must not key on one spelling.
+
+    Real candidates have used COMPUTE_DTYPE, PREC, DOT_PRECISION and BC_CACHE_DTYPE. Keying
+    on a single name would report "(no precision knob)" for most of the fleet and make the
+    F6 table useless exactly where it matters.
+    """
+    from kernel_optimizer.reporting.report import _precision_of
+
+    assert _precision_of({"values": {"COMPUTE_DTYPE": "fp16"}}) == "fp16"
+    assert _precision_of({"values": {"PREC": "bf16"}}) == "bf16"
+    assert _precision_of({"values": {"DOT_PRECISION": "tf32"}}) == "tf32"
+    assert _precision_of({"values": {"BC_CACHE_DTYPE": "fp16"}}) == "fp16"
+    # Compute precision wins over a cache dtype when both are present.
+    assert _precision_of({"values": {"BC_CACHE_DTYPE": "fp32",
+                                     "COMPUTE_DTYPE": "fp16"}}) == "fp16"
+    # Tile sizes and warp counts must not be mistaken for a precision.
+    assert _precision_of({"values": {"BLOCK_M": 64, "NUM_WARPS": 4}}) is None
+    assert _precision_of({"values": {"X_EVICT": "evict_last"}}) is None
+
+
+def test_vendor_library_delegation_is_reported_not_punished():
+    """F8: the static warning that names a torch computation op must reach the report.
+
+    It was recorded on the worker result (`static_warnings`) and read by nobody, so which
+    sub-ops a candidate delegated to cuBLAS was invisible -- which matters now that F2
+    permits it. Surfaced as attribution, never as a rejection: the whole point of F2 is that
+    this is a legal choice.
+    """
+    from kernel_optimizer.reporting.report import _vendor_library_usage
+
+    class E:
+        def __init__(self, type_, payload):
+            self.type = type_
+            self.payload = payload
+
+    events = [
+        E("QUICKTEST_DONE", {"candidate_id": "cand-aaa",
+                             "static_warnings": ["Uses torch computation op: torch.matmul"]}),
+        E("QUICKTEST_DONE", {"candidate_id": "cand-bbb", "static_warnings": []}),
+        E("QUICKTEST_DONE", {"candidate_id": "cand-ccc",
+                             "static_warnings": ["Uses torch.nn compute layer (only "
+                                                 "containers, Parameter, init allowed)"]}),
+    ]
+    text = "\n".join(_vendor_library_usage(events))
+    assert "cand-aaa" in text and "cand-ccc" in text
+    assert "cand-bbb" not in text, "a candidate with no such warning must not be listed"
+    assert "PERMITTED" in text, (
+        "the section must say this is allowed, or a reader takes it for a defect list")
+    # Silence when nothing delegated: no empty section.
+    assert _vendor_library_usage([E("QUICKTEST_DONE", {"candidate_id": "x"})]) == []
