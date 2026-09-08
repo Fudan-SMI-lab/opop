@@ -33,6 +33,15 @@ Two caveats that matter more than the ranking:
   search-time figures are not GPU0 remeasurements, so this is expected rather than a discrepancy to
   chase — but the 99.2x figure is off by 7x and should not be repeated anywhere.
 
+**On the cuDNN TF32 trap, checked rather than assumed.** L3:21 is convolution-dense, and torch 2.9
+defaults `matmul.allow_tf32=False` but `cudnn.allow_tf32=True`, so a convolutional reference can
+silently run TF32 convolutions and make a true-fp32 candidate look numerically wrong. Our
+`_set_matmul_precision` sets both (through the 2.9 `fp32_precision` API), and the measurement
+confirms it took effect: the L3:21 reference came out at 15.56 ms in both jobs, matching the
+"both flags off" figure of 15.576 ms rather than the 13.885 ms that cuDNN TF32 alone produces. So
+both sides of the L3:21 comparison ran against the same true-fp32 reference, and both passed 5/5
+with zero fp64 rescues.
+
 ## 2. L3:43 at matched precision — where CUDA genuinely wins
 
 The overall L3:43 win above is not an apples-to-apples kernel comparison: our candidate computes in
