@@ -210,6 +210,63 @@ def _attribution_lines(best: dict, trials: list) -> list[str]:
             "attributing the speedup"]
 
 
+def _fp64_rescue_line(best: dict, trials: list[dict], eval_cfg: dict) -> list[str]:
+    """F7: how much of the winner's correctness came from the fp64 relative arm.
+
+    WHY. `fp64_rescued_trials` reached the event log and stopped there -- no reader, no
+    report line, no effect on ranking. That hid one half of a comparison we actually made:
+    our L3:48 winner at 1.411 ms passes correctness on 5 of 5 trials ONLY through the fp64
+    relative arm, while an external CUDA kernel at 1.477 ms passes the primary gate outright
+    with zero rescues. At 4.5% apart, theirs is the more accurate kernel, and quoting our
+    number against theirs without this is quoting half the result.
+
+    Absence is reported as carefully as presence. A run with the gate DISABLED has no
+    rescues by construction, and printing "0 rescues" there would read as a clean bill of
+    health for a check that never ran -- the same mistake as an unmeasurable signal left
+    blank. So the gate's configured state is stated first, and it is read from the config
+    rather than inferred from the counts.
+
+    This is reporting only. Correctness still decides acceptance, deliberately: the rescues
+    are not a defect to tune away. Measured on L3:48, switching that candidate to bf16 to
+    avoid them fails outright (0 of 5, correctness_mismatch) -- fp16 is necessary there, so
+    the rescues are a real cost of the task and exactly the kind of thing a reader must see.
+    """
+    if not eval_cfg.get("fp64_relative_gate"):
+        # Only worth a line when a reader might otherwise assume the arm was available.
+        return ["- fp64 relative gate: **disabled** for this run, so no candidate could be "
+                "accepted by it (the absence of rescues below is not evidence of accuracy)"]
+
+    cid = best.get("candidate_id")
+    counted = [t for t in trials
+               if t.get("candidate_id") == cid
+               and t.get("fp64_rescued_trials") is not None]
+    if not counted:
+        return ["- fp64 relative gate: enabled, but no trial of the winning candidate "
+                "recorded a rescue count (older run, or the field was not journalled)"]
+    worst = max(t["fp64_rescued_trials"] for t in counted)
+    # The denominator is `quick_correctness_trials`, NOT `correctness_trials`: these counts
+    # come from TUNING trials, which run the quick path (3 trials by default), while the
+    # final re-eval runs the full one (5). Dividing a quick-path count by the full-path
+    # total produced "3 of 5 rescued" for a candidate whose quick trials were 3 of 3 --
+    # understating it, and mixing two different measurements in one ratio.
+    total = eval_cfg.get("quick_correctness_trials")
+    if worst <= 0:
+        return ["- fp64 relative gate: enabled, **0 rescues** — the winner passed the "
+                "primary relaxed gate on its own"]
+    of = f" of {total}" if total else ""
+    line = (f"- fp64 relative gate: **{worst}{of} correctness trials rescued** by the "
+            f"relative arm during tuning (the primary relaxed gate had already failed on "
+            f"them)")
+    out = [line]
+    if total and worst >= total:
+        out.append("  - ⚠ **this candidate's correctness rests entirely on the fp64 "
+                   "relative arm.** It is accepted -- the arm is a legitimate pass, not a "
+                   "loophole -- but a competing kernel of similar speed that clears the "
+                   "primary gate outright is numerically the better result, and a "
+                   "like-for-like comparison must say so.")
+    return out
+
+
 def _precision_of(params: dict) -> str | None:
     """The arithmetic-precision value a trial's params carry, or None if it declares none.
 
@@ -446,6 +503,7 @@ class ReportGenerator:
         except (OSError, ValueError):
             manifest = {}
         budgets = ((manifest.get("config") or {}).get("budgets") or {})
+        eval_cfg = ((manifest.get("config") or {}).get("evaluation") or {})
 
         baselines = [e.payload["baseline"] for e in events if e.type == "BASELINE_DONE"]
         # Whether ANY baseline carries a real median. A median-labelled speedup needs one on
@@ -679,6 +737,7 @@ class ReportGenerator:
                              "progress); tuned_ms above is NOT a verified latency")
             if best.get("precision"):
                 lines.append(f"- candidate arithmetic precision: **{best['precision']}**")
+            lines.extend(_fp64_rescue_line(best, trials, eval_cfg))
             # The honest same-precision verdict comes FIRST, before the raw per-baseline
             # speedups. All three task references are plain fp32 while the winning
             # candidates compute in a lower precision, so most of the raw ratios compare

@@ -9258,3 +9258,80 @@ def test_the_default_config_states_its_correctness_mode():
         cfg = load_config(cfg_dir / name)
         assert cfg.evaluation.correctness_mode == "dual_witness_relaxed", (
             f"{name} no longer uses the relaxed gate: {cfg.evaluation.correctness_mode}")
+
+
+def test_the_winners_fp64_rescue_count_reaches_the_report():
+    """F7: `fp64_rescued_trials` was journalled and read by nobody.
+
+    That hid half of a real comparison: our L3:48 winner at 1.411 ms passes correctness only
+    through the fp64 relative arm on every quick trial, while an external CUDA kernel at
+    1.477 ms clears the primary gate with zero rescues. 4.5% apart, and theirs is the more
+    accurate kernel.
+
+    Three properties:
+      - a full-dependency case escalates with the warning, because that is the case where a
+        like-for-like comparison would otherwise mislead;
+      - 0 rescues says so plainly rather than staying silent;
+      - the gate being DISABLED is reported as such -- printing "0 rescues" for a check that
+        never ran would read as a clean bill of health, the same error as leaving an
+        unmeasurable signal blank.
+
+    The denominator is `quick_correctness_trials`, not `correctness_trials`: these counts come
+    from tuning trials (quick path, 3 by default) while the final re-eval runs the full path
+    (5). Verified against the real run-l3-48-20260907-202457 event log, where mixing the two
+    rendered "3 of 5" for a candidate that was rescued on 3 of 3.
+    """
+    from kernel_optimizer.reporting.report import _fp64_rescue_line
+
+    cfg = {"fp64_relative_gate": True, "quick_correctness_trials": 3,
+           "correctness_trials": 5}
+    best = {"candidate_id": "cand-win"}
+
+    def tr(cid, rescued):
+        return {"candidate_id": cid, "fp64_rescued_trials": rescued}
+
+    # Fully dependent on the relative arm -> the escalation must fire.
+    full = "\n".join(_fp64_rescue_line(best, [tr("cand-win", 3), tr("cand-win", 3)], cfg))
+    assert "3 of 3" in full, f"wrong denominator or count: {full}"
+    assert "rests entirely on the fp64" in full, (
+        "a candidate whose correctness depends wholly on the relative arm must be flagged")
+
+    # Partially dependent -> reported, not escalated.
+    part = "\n".join(_fp64_rescue_line(best, [tr("cand-win", 1), tr("cand-win", 0)], cfg))
+    assert "1 of 3" in part
+    assert "rests entirely" not in part, "a partial dependency must not read as a total one"
+
+    # Zero rescues -> stated, so the reader knows the arm was available and unused.
+    zero = "\n".join(_fp64_rescue_line(best, [tr("cand-win", 0)], cfg))
+    assert "0 rescues" in zero and "on its own" in zero
+
+    # Gate disabled -> say so; never imply accuracy from an absence.
+    off = "\n".join(_fp64_rescue_line(best, [tr("cand-win", 0)],
+                                     {**cfg, "fp64_relative_gate": False}))
+    assert "disabled" in off and "not evidence of accuracy" in off
+
+    # Only the WINNER's trials count.
+    other = "\n".join(_fp64_rescue_line(best, [tr("cand-other", 3), tr("cand-win", 0)], cfg))
+    assert "0 rescues" in other, "another candidate's rescues were attributed to the winner"
+
+
+def test_the_report_reads_the_evaluation_config_it_needs():
+    """The rescue line needs the gate's configured state, which must come from the manifest.
+
+    Inferring "gate off" from a zero count is exactly the confusion the line exists to
+    prevent, so the config has to be threaded through rather than guessed.
+    """
+    import ast
+    import inspect
+
+    from kernel_optimizer.reporting import report
+
+    src = inspect.getsource(report.ReportGenerator.generate)
+    assert "evaluation" in src, (
+        "the report generator does not read the evaluation config, so the rescue line "
+        "cannot tell a disabled gate from an unused one")
+    tree = ast.parse(src.lstrip())
+    calls = [n for n in ast.walk(tree)
+             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+             and n.func.id == "_fp64_rescue_line"]
+    assert calls, "the rescue line is computed but never rendered"
