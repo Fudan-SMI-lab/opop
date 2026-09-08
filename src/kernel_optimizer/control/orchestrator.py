@@ -1764,9 +1764,21 @@ class Orchestrator:
             cand = self._register(source, "rewrite", [parent.candidate_id],
                                   parent.backend, rw.change_summary)
             if cand is None:
-                self.store.append("NOVELTY_REJECTED", {
+                # REWRITE_REJECTED, not NOVELTY_REJECTED. This site used to borrow the novelty
+                # event type, distinguished only by an `origin: "rewrite"` field -- so any count
+                # of NOVELTY_REJECTED conflated two different loops, and Loop D's activity (which
+                # has been ZERO in every run so far, making its first firing the thing to watch)
+                # could not be counted without inspecting each payload. Observed on
+                # run-l3-43-20260908-053708, where a round-3 rewrite rejection made the log look
+                # as though novelty had run.
+                #
+                # `origin` is kept so an older reader keying on it still works.
+                self.store.append("REWRITE_REJECTED", {
                     "origin": "rewrite", "reason": "duplicate_signature",
-                    "family_id": family_id})
+                    "family_id": family_id,
+                    "detail": "the rewrite is structurally identical to an existing candidate "
+                              "(same signature after normalization), so it would re-measure a "
+                              "structure the run already has"})
                 continue
             self.store.append("REWRITE_PRODUCED", {
                 "candidate_id": cand.candidate_id, "family_id": family_id,

@@ -8225,3 +8225,55 @@ def test_the_lever_block_still_requires_an_unsaturated_kernel():
     v = at_pct_of_dram(0.30)
     assert v.kind == "resource_limited", f"the lever path stopped firing entirely: {v.kind}"
     assert any("occupancy" in s for s in v.evidence.get("at_limit", []))
+
+
+def test_a_rewrite_rejection_is_not_recorded_as_a_novelty_rejection():
+    """Loop D has fired ZERO times in every run so far, so its first firing is the thing to watch --
+    and a count of NOVELTY_REJECTED could not answer that, because the REWRITE path borrowed the
+    same event type.
+
+    Observed on run-l3-43-20260908-053708: at 09:45:46 a round-3 rewrite was refused as a
+    structural duplicate and logged as NOVELTY_REJECTED with `origin: "rewrite"`. Reading the log
+    made it look as though novelty had run when it never had. The payload field distinguished them,
+    so no data was lost -- but the event TYPE is what anyone counts.
+
+    Asserts on the emitted EVENTS, not on source text. A first version of this test grepped the
+    function source for the absent string and failed on the word appearing in the explanatory
+    comment -- the same trap that made an earlier test in this file pin a defect as its spec.
+    """
+    import ast
+    import inspect
+
+    from kernel_optimizer.control.orchestrator import Orchestrator
+
+    def emitted_types(fn):
+        """Event type strings this function passes to store.append, ignoring comments."""
+        tree = ast.parse(inspect.getsource(fn).lstrip())
+        out = set()
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "append" and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)):
+                out.add(node.args[0].value)
+        return out
+
+    rewrite_events = emitted_types(Orchestrator._do_rewrite)
+    assert "REWRITE_REJECTED" in rewrite_events, (
+        f"the rewrite path does not emit its own rejection event; it emits {rewrite_events}")
+    assert "NOVELTY_REJECTED" not in rewrite_events, (
+        "the rewrite path still EMITS NOVELTY_REJECTED, so counting that event conflates Loop C "
+        "with Loop D and cannot answer whether novelty ever ran")
+
+    novelty_events = emitted_types(Orchestrator._novelty_round)
+    assert "NOVELTY_REJECTED" in novelty_events, (
+        f"the novelty path lost its rejection event; it emits {novelty_events}")
+
+    # A report must still surface a rejection under EITHER name: existing logs carry the old type,
+    # and silently dropping them would make a replayed report thinner than the run it describes.
+    from kernel_optimizer.reporting import report as report_mod
+
+    rep_src = inspect.getsource(report_mod)
+    reads_both = ('"REWRITE_REJECTED"' in rep_src and '"NOVELTY_REJECTED"' in rep_src)
+    assert reads_both, ("report.py must read both names: the new one for current runs, the old one "
+                        "so a replay of an existing log still shows its rejections")

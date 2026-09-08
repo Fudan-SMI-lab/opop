@@ -328,8 +328,12 @@ class ReportGenerator:
         agent_calls = [e.payload for e in events if e.type == "AGENT_CALL_FINISHED"]
         agent_failures = [e.payload for e in events
                           if e.type == "AGENT_CALL_FAILED" and e.payload.get("final")]
+        # REWRITE_REJECTED is listed alongside the older two because a rewrite refused as a
+        # structural duplicate is a rejection the reader wants to see. It used to be recorded as
+        # NOVELTY_REJECTED, so both names are read: an older run's log still has the old type,
+        # and dropping it here would make those rejections disappear from a replayed report.
         rejected = [e.payload for e in events
-                    if e.type in ("SPACE_REJECTED", "NOVELTY_REJECTED")]
+                    if e.type in ("SPACE_REJECTED", "NOVELTY_REJECTED", "REWRITE_REJECTED")]
         dead_kernels = [e.payload for e in events if e.type == "KERNELS_NEVER_LAUNCHED"]
         # SPACE_EXPANDED names the candidate, not the space; the expanded space is the one
         # published immediately before it.
