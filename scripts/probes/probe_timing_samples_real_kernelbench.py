@@ -10,9 +10,17 @@ So this asserts on the real module: patch, then call through eval.py's own refer
 timing.py's module global, and require the samples to arrive both ways.
 """
 
+import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, "/root/autodl-tmp/opop-workspace/opop/src")
+# Locate this repo's `src` from the script's own position, not from a hardcoded path. An earlier
+# version pinned /root/autodl-tmp/opop-workspace/opop/src, which works on exactly one box -- and a
+# probe that cannot run on the box you are checking is worse than no probe, because "it errored"
+# reads like a negative result. Override with KOPT_SRC if you are running it from elsewhere.
+_src = os.environ.get("KOPT_SRC") or str(Path(__file__).resolve().parents[2] / "src")
+sys.path.insert(0, _src)
+print(f"[probe] using harness source: {_src}")
 
 from kernel_optimizer.gpu.worker_main import _stats_to_dict, capture_timing_samples  # noqa: E402
 
