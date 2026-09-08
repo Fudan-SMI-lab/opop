@@ -248,6 +248,93 @@ WARNING_CHECKS = ["pytorch_wrap",            # nn.Linear / nn.Conv2d 等计算�
 
 ---
 
+## H0(最高风险,代码强制,契约完全未提)`try` / `except` / `pass` / `threading` 一律拒绝
+
+**这条是并行审计找到的,不在我原先的清单里,而且风险高于 H1。**
+
+**位置**:`worker_main.py:1470-1472` 调 `validate_kernel_static(code, backend, precision)`,
+不传 `forbidden`,于是用 `STRICT_CHECKS`。其中 `code_bypass` 的实现是**纯正则**:
+
+```python
+TRY_EXCEPT_PATTERNS = [r"\btry\s*:", r"\bexcept\s*:", r"\bexcept\s+\w+"]
+PASS_PATTERN = r"\bpass\b"
+```
+
+`_strip_comments` **只剥注释,不剥字符串字面量**。
+
+**代码强制?是** —— 而且是在**每一次 GPU 评估的第一步**(`correctness.py:129, 173`:
+`if not static.get("ok"): return static`),即 quick_test / full_eval / screen 全都过这道门。
+
+**实测(`test_bypass_check.py`,用 harness 相同的 `backend="triton", precision="fp32"`)**:
+
+```
+baseline (无 try/pass)                  valid=True
+host 侧 try/except 做缓存回退            valid=False  'Contains try-except block'
+if 分支里一个 pass                       valid=False  "Contains 'pass' statement"
+字符串字面量里出现 "pass"                valid=False  <- 误报,与代码语义无关
+"passed"(词边界)                       valid=True
+import threading(甚至没用)              valid=False  'Uses threading'
+```
+
+**过度限制:是。** 三个理由:
+
+1. 合法写法被无条件拒:host 侧的 `try/except` 回退、`if ...: pass` 的空分支、以及一个**根本没使用的
+   `import threading`**。
+2. **字符串字面量里的 "pass" 就足以拒掉整个候选** —— 这与代码行为完全无关,是纯误报。
+3. **契约从未告知。** `candidate_contract.md:46-48` 只说 timing patch 会被静态检查抓,
+   通读全文没有一处提到 try/except/pass/threading。agent 只能在被拒之后从 `static_check_failed`
+   的错误文本里学到 —— 而那要花掉一整个 repair 轮次。
+
+**它为什么至今没咬到我们(以及为什么这不等于无害)**:我扫了本机 20 个真实候选源码,
+`try:` 0 个、`except` 0 个、`pass` 命中 2 个 —— 但复查那 2 个都是**我自己扫描的假警报**
+(一个是注释里的 "single-pass"/"3-pass",一个是函数名 `_twopass_attn_kernel`,都不满足词边界)。
+用 `validate_kernel_static` 实跑,**0/20 被拒**。
+
+所以这道门**从未开火,纯属运气**:一个候选只要在注释里写 "single-pass" 再手滑写成一个裸 `pass`,
+或者为 host 侧回退写一个 `try`,就会被拒,而它收到的错误信息是"inheritance bypass"
+—— 一个与它实际所做的事毫无关系的指控。
+
+**修法(两步,都便宜)**:
+
+1. **把这四项写进契约。** 这是最低成本的修复:agent 事先知道就不会写,不必靠一轮 repair 去发现。
+   措辞要连**原因**一起给(否则它读起来像武断规定):"这些是反作弊检查 ——
+   `try/except` 曾被用来在 kernel 失败时静默回退到 PyTorch,`pass` 曾被用来继承参考类什么都不做。
+   即使你的用法是正当的,检查是正则匹配,无法区分,所以请不要写。**注意字符串和注释里的
+   `pass` 一词也会命中** —— 用 'single-stage' 之类的词代替。"
+2. **显式传 `forbidden`**(与 H7 合并做)。传入我们要的清单,并**在注释里写明我们审视过这四项**。
+   这样上游改动 `STRICT_CHECKS` 时我们的口径不会静默漂移。
+
+**不建议**把 `code_bypass` 从 strict 降级 —— 它防的两种作弊都真实存在(`triton_lint.py:225-235`
+记录的 L3:21 那个"把 no-op copy kernel 焊在 compiled graph 上"就是同类)。这里要修的是
+**"契约没说"** 和 **"字符串误报"**,不是这道门本身。
+
+---
+
+## H4b(中风险,配置默认值)`correctness_mode` 出厂默认是 `strict`
+
+**位置**:`config.py:223`:`correctness_mode: str = "strict"`。strict 走 KernelBench 的
+`torch.allclose(atol=1e-4, rtol=1e-4)` 全张量门。
+
+**与契约直接矛盾**:`candidate_contract.md:106-119` 告诉 agent tf32/低精度"通常是最大杠杆"、
+"prefer it for matmul/conv-bound work" —— 而在 strict 下这类候选几乎必拒(已记录:三个 L3 任务自身的
+两精度噪声底是 0.9554/0.9767/0.9778,全部低于门要求)。
+
+**实际风险有多大**:我核查了全部配置文件 —— 5 个 yaml 显式写了
+`correctness_mode: dual_witness_relaxed`(含全部三个 L3 实验配置),所以**正式实验没有踩到**。
+但 `configs/default.yaml` **完全没有这个键**,而 `load_config` 只读一个 yaml、没有 base 层
+(见 `opop-v2-single-file-config-no-base-layer`),**省略的键静默回落到字段默认值** ——
+也就是 `strict`。`configs/smoke_l1.yaml` 同样没写。
+
+**过度限制:是,但只在默认路径上。** 任何用 `default.yaml` 或未写该键的新配置起的 run,都会拿到一个
+与契约措辞自相矛盾的门。
+
+**修法**:把 `default.yaml` 里这个键**显式写出来**(无论写哪个值),让它不再依赖字段默认值。这与
+"单文件配置无 base 层"那条已知陷阱是同一类修复:**凡是行为关键的键,配置文件里必须显式出现**。
+是否要把字段默认值本身从 `strict` 改成 `dual_witness_relaxed` 需要单独决定 —— strict 对 L1 那类
+纯 elementwise 任务是正确的门,不该一刀切改掉。
+
+---
+
 ## H1(高风险,措辞)"torch 算子只允许 layout/reshaping"
 
 **位置**:`candidate_contract.md:145`
@@ -359,18 +446,26 @@ KernelBench 升级改动这个列表,我们的接受口径会静默改变。
 
 | | 项 | 类型 | 风险 | 成本 |
 |---|---|---|---|---|
-| 1 | **H1** 契约放宽厂商库(带权衡说明+硬底线) | 措辞 | 高 | 低 |
-| 2 | **H2** `Prefer triton` / `prefer tf32` 改成带依据的选择 | 措辞 | 高 | 低 |
-| 3 | **P5 A-D** 批量 compile screen + 撤下手算教学 | 代码+措辞 | 高 | 中 |
-| 4 | **H3** `torch_computation_ops` warning 进报告 | 代码(读侧) | 中 | 低 |
-| 5 | **H4** 删掉 tilelang/cute 死分支 + 契约说明支持范围 | 代码 | 中 | 低 |
-| 6 | **H7** 显式传 `forbidden` 清单 + 注释 | 代码 | 低 | 极低 |
-| 7 | **H5** accumulator 语气降级 | 措辞 | 低 | 极低 |
+| 1 | **H0** 契约写明 try/except/pass/threading 被禁(含字符串误报警告) | 措辞 | **最高** | 极低 |
+| 2 | **H1** 契约放宽厂商库(带权衡说明+硬底线) | 措辞 | 高 | 低 |
+| 3 | **H2** `Prefer triton` / `prefer tf32` 改成带依据的选择 | 措辞 | 高 | 低 |
+| 4 | **H4b** `default.yaml` 显式写出 `correctness_mode` | 配置 | 中 | 极低 |
+| 5 | **P5 A-D** 批量 compile screen + 撤下手算教学 | 代码+措辞 | 高 | 中 |
+| 6 | **H3** `torch_computation_ops` warning 进报告 | 代码(读侧) | 中 | 低 |
+| 7 | **H4** 删掉 tilelang/cute 死分支 + 契约说明支持范围 | 代码 | 中 | 低 |
+| 8 | **H7+H0-2** 显式传 `forbidden` 清单 + 注释 | 代码 | 低 | 极低 |
+| 9 | **H5** accumulator 语气降级 | 措辞 | 低 | 极低 |
 
-**明确不动**:H6(`torch.compile` 禁令,论证充分且假阳性类为空)、`STRICT_CHECKS` 的四项反作弊。
+**明确不动**:H6(`torch.compile` 禁令,论证充分且假阳性类为空)、`code_bypass` 本身
+(它防的两种作弊真实存在,要修的是"契约没说"和字符串误报)、`STRICT_CHECKS` 的四项反作弊。
 
-1、2、4 可在实验运行期做(措辞和读侧);3 有 worker+driver 两侧,需重启才全生效
+1–4 是纯措辞/配置,可在实验运行期做;5 有 worker+driver 两侧,需重启才全生效
 (见 `opop-v2-worker-vs-driver-fix-propagation`)。
+
+**一条值得单独记住的模式**:这次审计里风险最高的两条(H0 和 H1)是**同一个错误的两个方向** ——
+H0 是**代码比契约严**(代码拒 try/except,契约没说),H1 是**契约比代码严**(契约禁 cuBLAS,
+代码只警告)。两者都让 agent 在一个与真实规则不符的世界里工作。所以修法的共同点不是"放宽"或"收紧",
+而是**让契约文字与代码实际强制的东西对齐**。
 
 ## 复现本文档的实测
 
@@ -379,4 +474,6 @@ ssh autodl2 'cd /root/autodl-tmp/ext-eval && python confusion.py'      # 约束 
 ssh autodl2 'cd /root/autodl-tmp/ext-eval && python probe_cost.py'     # 单次探测 16.7s
 ssh autodl2 'cd /root/autodl-tmp/ext-eval && python probe_batch.py'    # 批量 7ms,73x
 ssh autodl  'python /root/grid_sizes.py'                               # 子网格规模,穷举不可行
+ssh autodl  'python /root/test_bypass_check.py'   # H0: try/except/pass/threading 实测被拒
+ssh autodl  'python /root/why_pass_ok.py'         # H0: 为何 20 个真实候选一个都没触发
 ```
