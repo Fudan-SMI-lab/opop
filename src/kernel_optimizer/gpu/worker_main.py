@@ -769,6 +769,46 @@ def _kernel_identifiers(name: str) -> set[str]:
     return out
 
 
+def _cubin_sass(obj_path: str, _cache: dict = {}) -> dict:  # noqa: B006 — intentional memo
+    """Instruction mix for a nvcc-built object, so a CUDA candidate is not judged blind.
+
+    Without it `uses_tensor_cores` is None for every non-Triton candidate, and `classify`
+    then falls back to the fp32 compute ceiling. Measured consequence on an identical kernel
+    (same latency, registers and shared bytes): Triton got `resource_limited` with
+    "shrink the tile", CUDA got `compute_bound` at 89.7% of fp32 with "move onto tensor cores"
+    -- advice for something the kernel was already doing. The verdict differed by BACKEND, not
+    by kernel, which makes any backend comparison meaningless.
+
+    Cached per object because several kernels share one .so and disassembly is not cheap. The
+    mix is therefore per-OBJECT, not per-kernel: for a single-kernel extension that is exact,
+    and for a multi-kernel one it answers "does this binary use tensor cores at all", which is
+    what selects the ceiling. `num_warps` is deliberately NOT recoverable this way -- it is a
+    launch parameter chosen at the call site (`<<<grid, block>>>`), so no compiled artifact
+    records it, which is why occupancy stays unavailable for this backend.
+    """
+    if obj_path in _cache:
+        return _cache[obj_path]
+    out: dict = {}
+    try:
+        statics = _import_statics()
+        text = statics.disassemble_object(obj_path)
+        if text:
+            out["sass"] = statics.count_sass(text).model_dump()
+        else:
+            out["statics_notes"] = ["no disassembler available or disassembly of the built "
+                                    "object failed; instruction mix unknown"]
+    except Exception as exc:  # noqa: BLE001 — a diagnostic must never fail an evaluation
+        out["statics_notes"] = [f"tier1 unavailable: {type(exc).__name__}: {exc}"[:150]]
+    # A cubin records no launch geometry, so occupancy cannot be computed for this backend.
+    # Said explicitly rather than left blank, so a reader does not mistake an unmeasurable
+    # signal for a measured-and-fine one.
+    out.setdefault("statics_notes", []).append(
+        "occupancy not computable for a cubin backend: num_warps is a launch parameter and is "
+        "not recorded in any compiled artifact")
+    _cache[obj_path] = out
+    return out
+
+
 def _extract_cubin_metadata(launched_names: list[str] | None = None,
                             build_dir: str | None = None) -> dict | None:
     """Resources for the kernels a load_inline / nvcc build produced.
@@ -829,6 +869,7 @@ def _extract_cubin_metadata(launched_names: list[str] | None = None,
             if k["name"] in seen:
                 continue
             seen.add(k["name"])
+            k.update(_cubin_sass(obj))
             kernels.append(k)
     if not kernels:
         return None

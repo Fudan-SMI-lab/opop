@@ -195,6 +195,33 @@ def find_cuda_tool(name: str) -> str | None:
     return None
 
 
+def disassemble_object(path: str, timeout_s: float = 120.0) -> str | None:
+    """SASS text out of an already-on-disk object (a .so, .o, or .cubin), or None.
+
+    Exists because a nvcc/load_inline candidate has no `compiled.asm["cubin"]` to hand to
+    `disassemble_cubin` -- its cubin is embedded in the host `.so` that torch built. Without
+    this, a CUDA/CUTLASS candidate reached the classifier with no instruction mix, so
+    `uses_tensor_cores` was None and the compute ceiling defaulted to fp32. Measured: an
+    identical kernel classified `resource_limited` as Triton and `compute_bound` as CUDA, with
+    advice to move onto tensor cores it was already using.
+
+    cuobjdump first here, not nvdisasm: nvdisasm takes a bare cubin, while a host binary needs
+    cuobjdump to pull the SASS out of it. Verified on box 2 against a real load_inline
+    extension: 7508 characters of SASS, counted to 32 instructions.
+    """
+    dump = find_cuda_tool("cuobjdump")
+    if dump is None:
+        return None
+    try:
+        out = subprocess.run([dump, "-sass", path], capture_output=True, timeout=timeout_s)
+        if out.returncode == 0:
+            text = out.stdout.decode("utf-8", errors="replace")
+            return text if text.strip() else None
+        return None
+    except Exception:  # noqa: BLE001 — a diagnostic must never fail an evaluation
+        return None
+
+
 def disassemble_cubin(cubin: bytes, timeout_s: float = 120.0) -> str | None:
     """SASS text for a cubin, or None when no disassembler is available or it fails.
 

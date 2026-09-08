@@ -8855,3 +8855,92 @@ def test_an_interrupted_run_still_writes_its_report():
                                lambda: FakeReport())
     assert rc == 0 and calls["report"] == 1
     assert "RUN_INTERRUPTED" not in calls["appended"]
+
+
+def test_a_cuda_candidate_is_not_judged_blind_against_a_triton_one():
+    """The verdict must not depend on which backend wrote the kernel.
+
+    Measured before this fix, on identical inputs (same latency, registers, shared bytes) with
+    the only difference being what the profiler could collect:
+
+        Triton  -> resource_limited, 30.0% of the fp16 ceiling, "shrink the tile"
+        CUDA    -> compute_bound,    89.7% of the FP32 ceiling, "move onto tensor cores"
+
+    The CUDA reading was wrong twice over: it was already using tensor cores, and it was
+    nowhere near a ceiling. Cause: `uses_tensor_cores` comes from the SASS instruction mix,
+    which was only ever read from `compiled.asm["cubin"]` -- a Triton object. A nvcc build's
+    cubin lives inside the .so torch links, so it needs `disassemble_object`.
+
+    Any backend comparison run before this would have measured the profiler's coverage rather
+    than the kernels.
+    """
+    from kernel_optimizer.evaluation.bottleneck import DevicePeaks, Thresholds, classify
+
+    peaks = DevicePeaks(dram_tbs=0.9102, fp32_tflops=54.95, tf32_tflops=89.06,
+                        fp16_tflops=164.4, bf16_tflops=166.7)
+    th = Thresholds(dram_saturated_frac=0.8449, compute_saturated_frac=0.8101,
+                    idle_frac=0.1675, launch_bound_cpu_ratio=0.8737)
+    common = dict(gpu_ms=8.369, flop_count=412_316_860_416, byte_count=416_296_960,
+                  peaks=peaks, thresholds=th, n_regs=255, n_spills=8, shared_bytes=98304,
+                  max_regs_per_thread=255, max_shared_bytes=101376, cpu_issue_ms=None,
+                  precision="fp16")
+    mix = {"instructions": 3960, "tensor_core": 128}
+
+    triton = classify(**common, sass=mix,
+                      occupancy={"occupancy": 0.0833, "limiter": "shared_memory"})
+    cuda = classify(**common, sass=mix, occupancy=None)   # cubin: SASS yes, occupancy never
+
+    assert triton.kind == cuda.kind, (
+        f"the same kernel is classified {triton.kind} as Triton and {cuda.kind} as CUDA, so the "
+        f"harness compares profiler coverage rather than kernels")
+    assert triton.evidence["compute_ceiling_used"] == cuda.evidence["compute_ceiling_used"]
+    assert triton.evidence["pct_of_compute_peak"] == cuda.evidence["pct_of_compute_peak"]
+    assert cuda.evidence["uses_tensor_cores"] is True
+
+    # Without the instruction mix the fp32 ceiling is used and the verdict flips -- the defect,
+    # pinned so a regression is visible rather than merely worse. (The label here is the plain
+    # "fp32" set before the tensor-core branch, not the fallback name from
+    # `compute_ceiling_for`, which is only consulted once tensor-core use is confirmed.)
+    blind = classify(**common, sass=None, occupancy=None)
+    assert blind.evidence["compute_ceiling_used"] == "fp32"
+    assert blind.evidence.get("uses_tensor_cores") is None, (
+        "with no instruction mix the field must be absent or None -- never guessed")
+    assert blind.kind != triton.kind, (
+        "the blind reading must differ, or this test cannot show what the SASS buys")
+
+
+def test_sass_is_read_from_a_built_object_not_only_a_triton_cubin():
+    """`disassemble_object` must exist and be what the cubin path uses.
+
+    Verified against a real load_inline extension on box 2: `cuobjdump -sass` on the .so
+    returned 7508 characters, counted to 32 instructions with tensor_core=0 (correct for a
+    plain elementwise add). And `num_warps` is deliberately NOT recovered this way -- it is a
+    launch parameter (`<<<grid, block>>>`), absent from every compiled artifact, which is why
+    occupancy stays unavailable for this backend and is reported as unmeasurable rather than
+    left blank.
+    """
+    import ast
+    import inspect
+
+    from kernel_optimizer.evaluation import statics
+    from kernel_optimizer.gpu import worker_main
+
+    assert hasattr(statics, "disassemble_object")
+    assert "cuobjdump" in inspect.getsource(statics.disassemble_object), (
+        "a host binary needs cuobjdump to extract its SASS; nvdisasm takes a bare cubin")
+
+    # The cubin extractor must actually call it, via the per-object helper.
+    tree = ast.parse(inspect.getsource(worker_main))
+    callers = {node.name for node in ast.walk(tree)
+               if isinstance(node, ast.FunctionDef)
+               for inner in ast.walk(node)
+               if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name)
+               and inner.func.id == "_cubin_sass"}
+    assert "_extract_cubin_metadata" in callers, (
+        f"the cubin path does not attach an instruction mix; callers found: {callers}")
+
+    # And it must say WHY occupancy is missing, not silently omit it.
+    helper_src = inspect.getsource(worker_main._cubin_sass)
+    assert "num_warps is a launch parameter" in helper_src, (
+        "an unmeasurable signal must be reported as unmeasurable, or a reader takes its "
+        "absence for a clean bill of health")
