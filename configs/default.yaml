@@ -55,6 +55,20 @@ evaluation:
   quick_perf_trials: 20
   timing_method: cuda_event
   precision: fp32
+  # Stated explicitly rather than left to the field default, because `load_config` reads ONE
+  # yaml with no base layer: an omitted key falls back to the dataclass default silently, and
+  # for this key that default is `strict` -- a whole-tensor allclose(atol=1e-4, rtol=1e-4).
+  # That gate contradicts this file's own advice to reach for the tensor cores: all three L3
+  # tasks measure a two-precision noise floor (0.9554/0.9767/0.9778) BELOW what strict
+  # requires, so a correct tf32/fp16 kernel is rejected for being a tf32/fp16 kernel.
+  #
+  # `strict` is kept here as the default anyway, and that is a deliberate choice, not
+  # inertia: on elementwise L1-style tasks the tight gate is the right one and catches real
+  # numerical sloppiness. Every L3 experiment config overrides this with
+  # `dual_witness_relaxed`. If you write a new config for a task whose reference has a
+  # non-trivial two-precision spread, override it there too -- and measure that spread first
+  # (scripts/ has probes for it), because it is the number this gate has to clear.
+  correctness_mode: strict
   eval_timeout_s: 600
   build_timeout_s: 1200
   suspicious_speedup: 2.0

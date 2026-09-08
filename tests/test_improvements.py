@@ -9162,3 +9162,99 @@ def test_vendor_library_delegation_is_reported_not_punished():
         "the section must say this is allowed, or a reader takes it for a defect list")
     # Silence when nothing delegated: no empty section.
     assert _vendor_library_usage([E("QUICKTEST_DONE", {"candidate_id": "x"})]) == []
+
+
+def test_the_contract_names_the_supported_backends_and_when_cuda_wins():
+    """F3: replace the bare "Prefer triton" with the reason, and with when NOT to.
+
+    35 of 35 candidates across the whole project were Triton, which is compliance with the
+    old wording rather than a finding. And the wording was wrong in at least one measured
+    place: at strict IEEE fp32 a hand-written CUDA attention kernel reached 55-74% of this
+    card's fp32 roof where the best of 36 Triton tile configurations reached 18%, and no tile
+    closed it -- `tl.dot(input_precision="ieee")` has no fast path here.
+
+    The contract must also stop implying CUTLASS/CuTe are options: `Backend` admits only
+    triton and cuda, and the dependency is not installed in the worker venv, so a CUTLASS
+    candidate is a compile error dressed up as a candidate defect.
+    """
+    from kernel_optimizer.agents.modules import _contract_doc
+
+    doc = _contract_doc()
+    low = doc.lower()
+    assert "prefer `triton`" not in low, (
+        "the unconditional preference is still there; it should give the reason and the "
+        "counter-case instead")
+    # The reason to start from Triton must be stated, not assumed.
+    assert "bottleneck report" in low or "resource profile" in low, (
+        "the contract should say WHY Triton is the default starting point (the harness "
+        "reads its compiler metadata), or the choice stays a superstition")
+    # The measured counter-case.
+    assert "ieee" in low and "18%" in doc, (
+        "the strict-IEEE case where CUDA measurably wins must be named")
+    # And the unavailable backends must be called out rather than silently unavailable.
+    assert "cutlass" in low, (
+        "CUTLASS is not installed in the worker venv; the contract must say so instead of "
+        "letting a candidate discover it as a compile error")
+    # cp.async must NOT be sold as a reason to leave Triton -- Triton emits it.
+    assert "cp.async" in low, (
+        "num_stages already emits cp.async double-buffering; saying so prevents a candidate "
+        "switching backends for a feature it already has")
+
+
+def test_the_contract_defers_precision_to_measurement_and_warns_about_the_tile():
+    """F3 (second half) + the L3:43 lesson: do not prescribe a precision in the source.
+
+    The old line said to "prefer" tf32 for matmul/conv-bound work. Measured, the winner is
+    task-dependent: fp16 and bf16 tied on one attention task (3.03 vs 3.01 ms), bf16 failed
+    correctness outright on a state-space task where fp16 passed. The tuner decides this.
+
+    The more expensive half is the tile interaction: L3:43's winning candidate declared four
+    precisions and could launch at one, because its tile was sized at 2 bytes/element and
+    needs 131072-164352 bytes at 4. The contract must warn about that AND say the agent does
+    not have to compute the figure -- it cannot, reliably (measured: hand-written constraints
+    ran at a median 32% of the compiler's own number).
+    """
+    from kernel_optimizer.agents.modules import _contract_doc
+
+    doc = _contract_doc()
+    low = doc.lower()
+    assert "prefer it\nfor matmul" not in low and "prefer it for matmul" not in low, (
+        "the prescriptive tf32 preference is still present")
+    assert "decided by the tuner" in low or "decided by the tuner on real" in low, (
+        "the contract must hand the precision choice to the tuner's measurements")
+    assert "cannot launch at another" in low or "131072" in doc, (
+        "the tile-vs-precision trap that cost L3:43 two precision branches is not warned "
+        "about")
+    assert "you do not need to compute the shared-memory" in low, (
+        "the agent must be told the harness gets this from the compiler, or it will keep "
+        "writing constraints that are wrong")
+
+
+def test_the_default_config_states_its_correctness_mode():
+    """F4: `correctness_mode` must be explicit in default.yaml, not left to the field default.
+
+    `load_config` reads ONE yaml with no base layer, so an omitted key silently takes the
+    dataclass default -- here `strict`, a whole-tensor allclose(1e-4) that all three L3 tasks
+    cannot clear (their own two-precision floors are 0.9554/0.9767/0.9778). Every L3
+    experiment config overrides it; default.yaml did not mention it at all, so anything based
+    on default.yaml inherited a gate that contradicts the contract's own advice.
+    """
+    import pathlib
+
+    import yaml
+
+    from kernel_optimizer.config import load_config
+
+    raw = yaml.safe_load(
+        (pathlib.Path(__file__).resolve().parents[1] / "configs" / "default.yaml")
+        .read_text(encoding="utf-8"))
+    assert "correctness_mode" in (raw.get("evaluation") or {}), (
+        "default.yaml does not state correctness_mode, so it falls back silently")
+
+    # And the experiment configs must still be the relaxed ones -- this fix must not have
+    # quietly changed what the L3 runs do.
+    cfg_dir = pathlib.Path(__file__).resolve().parents[1] / "configs"
+    for name in ("experiments_l3.yaml", "experiments_l3_glm.yaml"):
+        cfg = load_config(cfg_dir / name)
+        assert cfg.evaluation.correctness_mode == "dual_witness_relaxed", (
+            f"{name} no longer uses the relaxed gate: {cfg.evaluation.correctness_mode}")

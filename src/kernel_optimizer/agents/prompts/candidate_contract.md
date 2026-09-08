@@ -138,8 +138,22 @@ choice, not an afterthought:
 
 - Under the dual-precision correctness mode (the L3 experiments use it) the
   harness accepts a result that matches the reference computed at **tf32**. A
-  tf32 tensor-core kernel is therefore a legal, accepted candidate — prefer it
-  for matmul/conv-bound work unless a diff-test shows it drifts out of tolerance.
+  tf32 tensor-core kernel is therefore a legal, accepted candidate. Make the
+  tensor-core path *reachable* for matmul/conv-bound work — but **do not commit to one
+  precision in the source**: which precision actually wins is decided by the tuner on
+  real measurements, and it varies by task. Measured here: fp16 and bf16 tied on one
+  attention task (3.03 vs 3.01 ms), bf16 failed correctness outright on a state-space
+  task where fp16 passed, and on a third task tf32 and fp32 differ by 1.6x in throughput.
+  None of that is predictable from the source, which is why the next bullet matters more
+  than any default you might pick.
+- **A tile chosen for one precision often cannot launch at another, and that has cost us
+  a whole precision branch.** A tile sized at 2 bytes/element (fp16/bf16) can need
+  131072–164352 bytes of shared memory at 4 bytes/element (tf32/ieee) against a
+  ~101376-byte limit — so the candidate simply fails to launch there, the tuner never
+  measures it, and the winning configuration was never compared against that precision.
+  Keep the tile domain wide enough at the low end that every precision you offer has at
+  least one launchable configuration. **You do not need to compute the shared-memory
+  figure** — the harness gets it from the compiler (see the note under constraints).
 - Make the compute precision a SINGLE tunable knob that controls the WHOLE
   precision path — both the input cast and the `tl.dot` precision — e.g.
   `PARAMS["COMPUTE_DTYPE"] = "tf32"` with choices `["fp16", "bf16", "tf32", "ieee"]`:
@@ -160,8 +174,25 @@ choice, not an afterthought:
 
 ## Backend
 
-- Prefer `triton` (`@triton.jit` kernels). CUDA via
-  `torch.utils.cpp_extension.load_inline` is allowed if declared.
+- **Two backends are supported: `triton` (`@triton.jit` kernels) and `cuda` (via
+  `torch.utils.cpp_extension.load_inline`).** Declare which one you used. CUTLASS/CuTe
+  and TileLang are NOT available in this harness's worker environment — a candidate
+  using them fails to compile, so do not reach for them.
+  **Start from Triton** for a practical reason, not a stylistic one: the harness reads
+  register counts, shared-memory usage and pipelining depth straight out of the Triton
+  compiler, so a Triton candidate gets a resource profile and a bottleneck report that a
+  CUDA candidate gets less of; and its compile cycle is seconds rather than a minute.
+  **Choose `cuda` when Triton cannot express or cannot reach what you need**, and say so
+  in `approach_summary`. Two cases measured on this hardware:
+  - **Strict IEEE fp32 dot products.** `tl.dot(..., input_precision="ieee")` has no fast
+    path here; a hand-written CUDA attention kernel reached 55–74% of this card's fp32
+    CUDA-core roof where the best of 36 Triton tile configurations reached 18%, and no
+    tile closed the gap. If the task genuinely needs full fp32 arithmetic, CUDA is the
+    stronger backend.
+  - **Warp-level primitives or memory instructions Triton does not expose** (explicit
+    `__shfl_*`, a specific `cp.async` shape, `__launch_bounds__`). Note that Triton's
+    `num_stages` already emits `cp.async` double-buffering — verified in SASS — so
+    pipelining alone is not a reason to leave Triton.
 - torch operations are allowed around and between your custom kernel(s) — layout,
   reshaping, and also **computation**, including the vendor libraries.
   **When to hand a sub-op to the vendor library.** A large, regular GEMM or convolution
