@@ -80,8 +80,38 @@ if started:
         print(f"VERDICT: HEALTHY -- {inflight/60:.1f} min in flight is within this run's "
               f"own range (slowest completed {longest/60:.1f} min).")
 else:
-    if age > 600:
-        print(f"VERDICT: SUSPICIOUS -- no agent call in flight and no event for "
-              f"{age/60:.1f} min. Check for a GPU job or a wedged worker.")
+    # "No agent call in flight" does NOT mean nothing is happening: a GPU job holds no
+    # AGENT_CALL_STARTED event, and F5's batch prescreen legitimately runs for minutes on a
+    # multi-kernel candidate (measured on L3:21: 76-260 s per prescreen, one observed at 19 min
+    # while ptxas was actively compiling). An earlier version of this check ignored that and
+    # cried SUSPICIOUS twice on a perfectly healthy run, which is worse than useless -- a
+    # monitor that fires on healthy states trains you to ignore it.
+    #
+    # So look for the worker process before judging, and report a live worker as WORKING with
+    # what it is doing. Only silence with NO worker and NO agent call is actually suspicious.
+    worker = ""
+    try:
+        import subprocess  # noqa: PLC0415
+
+        out = subprocess.run(["pgrep", "-af", "worker_main"], capture_output=True,
+                             text=True, timeout=10).stdout
+        for line in out.splitlines():
+            if "pgrep" in line or "run_progress" in line:
+                continue
+            worker = line.strip()
+            break
+    except Exception:  # noqa: BLE001 — no pgrep, or not on the box; fall through
+        worker = ""
+
+    if worker:
+        job = ""
+        for tok in worker.split():
+            if tok.endswith(".json") and "--out" not in tok:
+                job = pathlib.Path(tok).name
+        print(f"VERDICT: WORKING -- a GPU worker is running ({job or 'job unknown'}); "
+              f"no event for {age/60:.1f} min is expected while it compiles.")
+    elif age > 900:
+        print(f"VERDICT: SUSPICIOUS -- no agent call, NO GPU worker, and no event for "
+              f"{age/60:.1f} min. This one is worth investigating.")
     else:
         print(f"VERDICT: HEALTHY -- last event {age/60:.1f} min ago, between calls.")
