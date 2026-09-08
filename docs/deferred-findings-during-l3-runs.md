@@ -49,45 +49,58 @@ disproved for that candidate.
 
 ---
 
-## D2. `STORE_DTYPE=fp16` is a genuine defect the space still offers
+## D2. bf16 is 0-for-22 on this task, across two candidates and two knob names
 
-**Evidence.** L3:21, per-combination outcomes over 40 trials:
+**Corrected 2026-09-09.** An earlier version of this entry was titled "`STORE_DTYPE=fp16` is a
+genuine defect the space still offers" and concluded that storing intermediates in fp16 destroys
+this task's result. **That was wrong**, and it was wrong because I read a 40-trial slice as if it
+were the run. With 149 trials the same knob is 36 complete / 22 failed, and the run's **best
+trial uses `STORE_DTYPE=fp16`** (5.2741 ms, with `COMPUTE_DTYPE=fp16`). The 1184x failures I
+attributed to the store dtype belong to the combinations that also set bf16 or ieee compute; fp16
+store is not the variable that separates them.
 
-| compute / store | complete | failed |
-|---|---|---|
-| fp16 / fp16 | 7 | 0 |
-| fp16 / fp32 | 2 | 0 |
-| tf32 / fp16 | 12 | 1 |
-| tf32 / fp32 | 4 | 0 |
-| ieee / fp16 | 3 | 2 |
-| ieee / fp32 | 1 | 0 |
-| **bf16 / fp16** | **0** | **5** |
-| **bf16 / fp32** | **0** | **3** |
+**What the fuller data actually shows.** L3:21 at 149 trials, per (knob, value) across both
+candidates:
 
-The failure detail shows two different magnitudes. `bf16/fp32` fails at
-`ratio_to_reference: 8.000` against a 3.0 multiplier — a real but modest error. Several
-`*/fp16` store combinations fail at `ratio_to_reference: 1184` to `1237` — three orders of
-magnitude out, with `frac_within_tol: 0.007` and `cosine: 0.653`. That is not a tolerance
-question; storing an intermediate in fp16 destroys the result for this task.
+| knob | value | complete | failed |
+|---|---|---|---|
+| COMPUTE_DTYPE | **bf16** | **0** | **14** |
+| COMPUTE_DTYPE | fp16 | 27 | 7 |
+| COMPUTE_DTYPE | tf32 | 21 | 3 |
+| COMPUTE_DTYPE | ieee | 5 | 3 |
+| GEMM_PRECISION | **bf16** | **0** | **8** |
+| GEMM_PRECISION | fp16 | 8 | 4 |
+| GEMM_PRECISION | tf32 | 32 | 14 |
+| GEMM_PRECISION | ieee | 8 | 2 |
+| STORE_DTYPE | fp16 | 36 | 22 |
+| STORE_DTYPE | fp32 | 17 | 5 |
 
-**The gate is behaving correctly here** — this is worth stating explicitly, because the
-opposite (a correct kernel rejected by an over-tight gate) has happened before on other tasks
-and is recorded in memory. Both the absolute arm and the fp64-relative arm reject these, the
-reference's own ieee-vs-tf32 noise floor is reported alongside (`frac 0.955`, `cosine
-0.99999975`), and the failing candidates are 8x to 1237x worse than the reference's own
-distance from an fp64 golden. Nothing here needs loosening.
+`COMPUTE_DTYPE` and `GEMM_PRECISION` are the **same knob independently named by two different
+candidates** (cand-2d4e1574 and cand-37572704). bf16 is 0-for-14 under one name and 0-for-8 under
+the other: **22 failures, zero successes, two agents, one task.** Every other value passes
+somewhere. That pattern points at the task, not at a candidate defect — which is the opposite of
+what the earlier entry concluded.
 
-**Why not now.** The candidate offering a fatal store dtype is a candidate-quality issue, and
-the harness handles it correctly by rejecting those trials. The cost is the same budget waste
-as D1 and is counted there.
+Failures are also spread rather than concentrated: 21 mismatches on one candidate and 28 on the
+other, so this is not one broken candidate dragging the rate up.
 
-**What a fix might do.** This is really the same lever as D1 — a store dtype that never once
-passes is a hopeless categorical value. It is listed separately because it also suggests a
-*prompt* change: the contract tells candidates to keep the accumulator in fp32 but says nothing
-about intermediates written to global memory between kernels, which is what `STORE_DTYPE`
-controls here. A sentence naming that distinction is low risk, but it is a prompt edit that
-would reach a running experiment mid-flight (the `.md` files are re-read per call), so it waits
-until no run is in progress.
+**The gate is behaving correctly.** Worth stating explicitly, because the opposite failure — a
+correct kernel rejected by an over-tight gate — has happened on other tasks and would otherwise
+be the assumed diagnosis. `bf16/fp32` fails at `ratio_to_reference: 8.000` against a 3.0
+multiplier, and the reference's own ieee-vs-tf32 noise floor is reported alongside every rejection
+(`frac 0.955`, `cosine 0.99999975`). The candidates are 8x worse than the reference's own distance
+from an fp64 golden. Nothing needs loosening.
+
+**Why not now.** MBConv in train mode normalizes with batch statistics, so the reduction runs over
+values whose magnitudes bf16's 8-bit mantissa cannot hold — a plausible mechanism, but I have not
+demonstrated it, and a task-specific numerical claim is exactly what must not be acted on
+mid-experiment. The cost is the budget waste counted in D1.
+
+**What a fix would need first.** A demonstration, not this inference: compute the reference's
+batch statistics in bf16 against fp64 on this task's real shapes and show the error exceeds the
+gate. Only then is a prompt sentence about bf16's mantissa in normalization reductions justified,
+and prompt edits reach a running experiment mid-flight (the `.md` files are re-read per call), so
+it waits regardless.
 
 ---
 
