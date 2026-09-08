@@ -29,6 +29,12 @@ FailureKind = Literal[
     # >=10x faster than the reference: treated as not doing the reference's work
     # (anti-reward-hacking), not as a legitimate result.
     "excessive_speedup",
+    # Refused by the compile-only feasibility screen: the Triton compiler reported a
+    # shared-memory requirement above this device's per-block opt-in limit, so a launch could
+    # only ever raise `out of resource: shared memory`. Distinct from `compile_error` (the
+    # kernel compiles fine) and from `runtime_error` (it never ran). Measured on L3:43: 180 of
+    # 1004 trials were this, 18% of the budget, every one predictable without a GPU launch.
+    "infeasible_shared_memory",
 ]
 
 

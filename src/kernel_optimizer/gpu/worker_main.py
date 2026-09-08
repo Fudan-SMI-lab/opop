@@ -471,6 +471,143 @@ def _launched_kernel_names(kernel_src: str, ref_src: str, device_index: int) -> 
             pass
 
 
+def _attach_launch_overhead(job: dict, result: dict, kernel_src: str, ref_src: str) -> None:
+    """Attach the launch-overhead probe to a result, if the job asked for it.
+
+    A shared helper because the block used to live only inside `run_eval`, while BOTH L3
+    configs set `correctness_mode: dual_witness_relaxed` and therefore route to
+    `run_relaxed_correctness` -- a handler that mentioned neither the flag nor the field. So
+    passing `measure_launch_overhead: True` on the configs the experiments actually use
+    returned nothing, which is what the L3:43 final re-eval measured: flag True, value None.
+
+    That was one of THREE independent reasons `launch_bound` had never fired in any run. The
+    other two: only `full_eval` set the flag (and its sole caller is the final re-eval, while
+    every verdict comes from a tuning trial), and `classify()` divided by the wrong `gpu_ms`.
+    Fixing the other two without this one would have reproduced the same None.
+    """
+    if not job.get("measure_launch_overhead"):
+        return
+    try:
+        result["launch_overhead"] = _measure_launch_overhead(kernel_src, ref_src, 0)
+    except Exception as exc:  # noqa: BLE001 — a diagnostic must never fail the eval
+        result["launch_overhead"] = None
+        result["launch_overhead_error"] = str(exc)[-1000:]
+
+
+def run_compile_probe(job: dict) -> dict:
+    """Compile a candidate's Triton kernels WITHOUT launching them, and report shared bytes.
+
+    WHY THIS EXISTS. On run-l3-43-20260908-053708, 180 of 1004 tuning trials (18% of the
+    budget, 0.93 h of 11.73 h wall clock) failed with Triton's
+    `out of resource: shared memory`. Every one was predictable before touching the GPU: the
+    compiler fills in `metadata.shared`, and the launch merely compares it against the device
+    limit. Probed on box 2 across 6 configurations of a real pipelined `tl.dot` matmul, the
+    compile-time figure equals the runtime `Required:` value byte-for-byte.
+
+    Worse than the wasted time, those trials were reported to Optuna as FAIL, which EXCLUDES
+    them from the TPE model rather than treating them as bad objectives -- so 18% of the
+    samples produced neither a measurement nor an avoidance signal, which is why the
+    per-candidate failure rate (21-33%) never decayed over a run.
+
+    WHY NOT A GUARD CONSTRAINT. Shared usage is not a closed-form function of the knobs.
+    Audited across all 16 L3:43 candidates, `BLOCK_M * BLOCK_N * stages` has failing-min BELOW
+    passing-max in 15 of 15 -- the feasible and infeasible sets overlap in any such product, so
+    no arithmetic constraint can separate them and asking the parameterizer agent to write one
+    would be asking it to guess. The number has to come from the compiler.
+
+    HOW IT AVOIDS THE LAUNCH. `JITFunction.run` takes a `warmup` flag and returns the compiled
+    kernel before its launch block (`if not warmup:`), so forcing it True compiles every kernel
+    the forward pass reaches and launches none. The forward then produces garbage or raises --
+    both fine and both ignored, since the only output wanted is metadata.
+
+    Returns `{"ok": True, "kernels": [...], "max_shared": N}`. `ok: False` means the probe
+    could not answer, and the caller MUST fall through to a real trial: this screen may never
+    be the thing that rejects a candidate.
+    """
+    import importlib.util
+    import os
+    import tempfile
+
+    import torch
+
+    kernel_src = open(job["kernel_src_path"], encoding="utf-8").read()
+    ref_src = open(job["ref_src_path"], encoding="utf-8").read()
+
+    try:
+        from triton.runtime.jit import JITFunction
+    except Exception as exc:  # noqa: BLE001 — a non-Triton candidate has nothing to probe
+        return {"ok": False, "reason": f"triton unavailable: {type(exc).__name__}: {exc}"[:200]}
+
+    seen: list[dict] = []
+    original_run = JITFunction.run
+
+    def run_compile_only(self, *args, grid=None, warmup=False, **kwargs):
+        kernel = original_run(self, *args, grid=grid, warmup=True, **kwargs)
+        try:
+            meta = kernel.metadata
+            seen.append({
+                "name": getattr(self, "__name__", "?"),
+                "shared": int(getattr(meta, "shared", 0) or 0),
+                "n_regs": _opt_int(getattr(meta, "num_regs", None)),
+                "n_spills": _opt_int(getattr(meta, "num_spills", None)),
+                "num_warps": _opt_int(getattr(meta, "num_warps", None)),
+                "num_stages": _opt_int(getattr(meta, "num_stages", None)),
+            })
+        except Exception:  # noqa: BLE001 — one unreadable kernel must not lose the others
+            seen.append({"name": getattr(self, "__name__", "?"), "shared": None})
+        return kernel
+
+    mod_path = None
+    try:
+        JITFunction.run = run_compile_only
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False,
+                                         encoding="utf-8") as f:
+            f.write(kernel_src)
+            mod_path = f.name
+        spec = importlib.util.spec_from_file_location("kopt_compile_probe", mod_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        ref_ctx: dict = {}
+        exec(compile(ref_src, "<ref>", "exec"), ref_ctx)  # noqa: S102 — same trust as eval
+        get_inputs = ref_ctx["get_inputs"]
+        get_init_inputs = ref_ctx.get("get_init_inputs", lambda: [])
+
+        device = torch.device(f"cuda:{job.get('device_index', 0)}")
+        torch.cuda.set_device(device)
+        with torch.no_grad():
+            init_inputs = [x.to(device) if isinstance(x, torch.Tensor) else x
+                           for x in get_init_inputs()]
+            model = module.ModelNew(*init_inputs).to(device)
+            inputs = [x.to(device) if isinstance(x, torch.Tensor) else x
+                      for x in get_inputs()]
+            try:
+                model(*inputs)
+            except Exception:  # noqa: BLE001, S110
+                # EXPECTED and deliberately ignored. Nothing launched, so downstream torch ops
+                # see uninitialized buffers and may raise anything. A raise here says nothing
+                # about whether the config is feasible -- only `seen` does.
+                pass
+    except Exception as exc:  # noqa: BLE001 — probe failure is "cannot answer", never a verdict
+        return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"[:300],
+                "kernels": seen}
+    finally:
+        JITFunction.run = original_run
+        if mod_path:
+            try:
+                os.unlink(mod_path)
+            except OSError:
+                pass
+
+    if not seen:
+        # No Triton kernel was reached: a CUDA/CUTLASS candidate, or a forward that failed
+        # before its first kernel. Either way the screen has no opinion.
+        return {"ok": False, "reason": "no triton kernel compiled during the forward pass"}
+    shared_vals = [k["shared"] for k in seen if k.get("shared") is not None]
+    return {"ok": True, "kernels": seen,
+            "max_shared": max(shared_vals) if shared_vals else None}
+
+
 def _measure_launch_overhead(kernel_src: str, ref_src: str, device_index: int,
                              iters: int = 50) -> dict | None:
     """CPU-side issue cost and true wall time per call — the harness's timing blind spot.
@@ -904,6 +1041,27 @@ def run_calibrate(job: dict) -> dict:
         result["matmul_probe_n"] = mm_n
         del a, b
         torch.cuda.empty_cache()
+
+        # --- fp16 and bf16 ceilings (P3). Without these, a low-precision candidate was scored
+        # against the tf32 figure, and on a 4090 fp16 dense throughput is roughly 2x tf32. The
+        # consequence INVERTS the advice: L3:43's best candidate read 140.7% of its ceiling --
+        # "saturated, stop" -- when it was plausibly around 70%. 13 of 25 verdicts in that run
+        # carried `impossible_fraction` for this reason, and the defect got worse as candidates
+        # got faster, since every candidate good enough to lead was fp16 or bf16.
+        #
+        # Measured the same way as fp32/tf32 (same shape, same `timed`, same median), so the
+        # four numbers are comparable and a ratio between them means something.
+        for name, dtype in (("fp16", torch.float16), ("bf16", torch.bfloat16)):
+            try:
+                ah = torch.randn(mm_n, mm_n, device=device, dtype=dtype)
+                bh = torch.randn(mm_n, mm_n, device=device, dtype=dtype)
+                ms = timed(lambda: ah @ bh, n=20, warmup=8)  # noqa: B023
+                result[f"{name}_tflops"] = (2 * mm_n ** 3) / (ms * 1e-3) / 1e12
+                del ah, bh
+                torch.cuda.empty_cache()
+            except Exception as exc:  # noqa: BLE001 — a missing dtype must not lose the rest
+                result[f"{name}_tflops"] = 0.0
+                result[f"{name}_error"] = f"{type(exc).__name__}: {exc}"[:200]
 
         # --- Empty-launch floor: what a launch costs when the body does nothing. This is the
         # input `overhead_floor` has been missing. Without it, a kernel already at the floor
@@ -1367,12 +1525,7 @@ def run_eval(job: dict, measure_performance: bool) -> dict:
     # already doing 100 timed samples, so the marginal cost is close to nothing, and it is the
     # only place the number is needed: the analyst compares a candidate against the baseline,
     # both of which come from these paths.
-    if job.get("measure_launch_overhead"):
-        try:
-            result["launch_overhead"] = _measure_launch_overhead(kernel_src, ref_src, 0)
-        except Exception as exc:  # noqa: BLE001 — a diagnostic must never fail the eval
-            result["launch_overhead"] = None
-            result["launch_overhead_error"] = str(exc)[-1000:]
+    _attach_launch_overhead(job, result, kernel_src, ref_src)
 
     if _wants_kernel_metadata(job):
         if job["backend"] == "triton":
@@ -1992,6 +2145,11 @@ def run_relaxed_correctness(job: dict) -> dict:
                     )
             else:
                 result["excessive_speedup"] = False
+    # P2 cause (b): this handler used to mention neither `measure_launch_overhead` nor
+    # `launch_overhead`, while BOTH L3 configs route here (correctness_mode
+    # dual_witness_relaxed). So the flag was honoured on a path the experiments never take.
+    if correct:
+        _attach_launch_overhead(job, result, kernel_src, ref_src)
     if correct and _wants_kernel_metadata(job):
         if backend == "triton":
             try:
@@ -2023,6 +2181,7 @@ HANDLERS = {
     "eval_correctness_relaxed": run_relaxed_correctness,
     "calibrate": run_calibrate,
     "task_cost": run_task_cost,
+    "compile_probe": run_compile_probe,
 }
 
 

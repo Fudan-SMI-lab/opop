@@ -133,6 +133,11 @@ class Calibration(BaseModel):
     dram_tbs: float
     fp32_tflops: float
     tf32_tflops: float = 0.0
+    # P3: the low-precision ceilings. Absent from every calibration written before 2026-09-08,
+    # hence the fallback chain in DevicePeaks.compute_ceiling_for -- an old cached calibration
+    # must still classify, just without the fp16/bf16 denominators.
+    fp16_tflops: float = 0.0
+    bf16_tflops: float = 0.0
     empty_launch_floor_ms: float = 0.0
 
     spec_dram_tbs: float = 0.0

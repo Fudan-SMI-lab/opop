@@ -3633,11 +3633,74 @@ def test_fp64_gate_is_wired_from_config_to_job():
     assert job["fp64_rel_multiplier"] == 2.0
     assert job["fp64_rel_multiplier_lowp"] == 3.0
 
-    # Both call sites in correctness.py must forward it, not just one: `screen` gates the
-    # witness (space publication) and `_run` gates every tuning trial and the final
-    # re-eval. Forwarding only one would apply the gate inconsistently.
-    src = Path("src/kernel_optimizer/evaluation/correctness.py").read_text(encoding="utf-8")
-    assert src.count("fp64_relative_gate=self.cfg.fp64_relative_gate") == 2
+    # EVERY relaxed-correctness job the evaluator builds must forward the gate, not just one:
+    # `screen` gates the witness (space publication), `_run` gates every tuning trial and the
+    # final re-eval, and `measure_overhead` gates the per-candidate launch probe. Forwarding
+    # only some would apply the gate inconsistently.
+    #
+    # Driven by capturing the jobs the evaluator actually builds, rather than by counting
+    # occurrences of a source string: the count broke the moment a fourth caller was added,
+    # which is the failure mode of pinning behaviour to source text.
+    from kernel_optimizer.evaluation.correctness import CorrectnessEvaluator
+
+    built: list[dict] = []
+
+    class CaptureWorker:
+        def run_job(self, job, timeout, tag, lock_mode=None):
+            built.append(job)
+            return {"ok": True, "correct": True, "latency_ms": {
+                "mean": 1.0, "std": 0.0, "min": 1.0, "max": 1.0, "n": 1, "median": 1.0}}
+
+    class Cfg:
+        precision = "fp32"
+        timing_method = "cuda_event"
+        correctness_mode = "dual_witness_relaxed"
+        build_timeout_s = eval_timeout_s = 60.0
+        correctness_trials = 5
+        perf_trials = 100
+        quick_correctness_trials = 3
+        quick_perf_trials = 20
+        relaxed_elem_tol = 0.01
+        relaxed_pass_frac = 0.99
+        cosine_min = 0.99985
+        fp64_relative_gate = True
+        fp64_rel_multiplier = 2.0
+        fp64_rel_multiplier_lowp = 3.0
+        excessive_speedup = 10.0
+        compile_screen_enabled = False
+
+    class Task:
+        ref_path = Path("ref.py")
+
+    import tempfile
+
+    ev = CorrectnessEvaluator.__new__(CorrectnessEvaluator)
+    ev.worker, ev.cfg, ev.seed = CaptureWorker(), Cfg(), 0
+    ev._static_cache, ev._screen_cache = {}, {}
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as f:
+        f.write("PARAMS = {}\n")
+        kp = Path(f.name)
+    # Pre-seed the static check so these calls do not need a real worker for it.
+    ev._static_cache = {}
+
+    class OkStatic(CaptureWorker):
+        def run_job(self, job, timeout, tag, lock_mode=None):
+            built.append(job)
+            return {"ok": True, "correct": True, "warnings": [], "latency_ms": {
+                "mean": 1.0, "std": 0.0, "min": 1.0, "max": 1.0, "n": 1, "median": 1.0}}
+
+    ev.worker = OkStatic()
+    for entry in ("screen", "quick_test", "full_eval", "measure_overhead"):
+        built.clear()
+        getattr(ev, entry)(Task(), kp, tag="t", backend="triton")
+        relaxed = [j for j in built if j.get("job_type") == "eval_correctness_relaxed"]
+        assert relaxed, f"{entry} built no relaxed-correctness job: {[j.get('job_type') for j in built]}"
+        for j in relaxed:
+            assert j["fp64_relative_gate"] is True, (
+                f"{entry} does not forward fp64_relative_gate, so the gate is applied "
+                f"inconsistently across the paths that decide correctness")
+            assert j["fp64_rel_multiplier"] == 2.0
+            assert j["fp64_rel_multiplier_lowp"] == 3.0
 
 
 def test_low_precision_detection_reads_the_materialized_params():
@@ -8370,3 +8433,425 @@ def test_the_launched_kernel_filter_matches_mangled_against_demangled_names():
     assert not (_kernel_identifiers("_Z2mmPf")            # kernel `mm`
                 & _kernel_identifiers("_Z6mmadd2Pf")), (  # unrelated kernel `mmadd2`
         "a short identifier matched a longer unrelated one; substring semantics have crept back")
+
+
+def test_a_hard_config_failure_is_pruned_so_tpe_learns_the_region():
+    """P1: FAIL is excluded from the TPE model; PRUNED is kept.
+
+    Measured against Optuna directly: 12 trials reported FAIL leave 1 trial visible to the
+    sampler; the same 12 reported PRUNED leave 13. So reporting a config-determined refusal as
+    FAIL discards it, which is why L3:43's per-candidate shared-memory failure rate (21-33%,
+    180 of 1004 trials) never decayed -- TPE kept proposing a region it was never told about.
+
+    Only HARD, config-determined reasons may be pruned. A runtime_error or
+    correctness_mismatch must stay FAIL: those can be non-deterministic or a defect in the
+    candidate rather than in the point, and pruning them would teach the sampler noise.
+    """
+    from optuna.trial import TrialState
+
+    from kernel_optimizer.models.core import (
+        LatencyStats,
+        ParamDomain,
+        ParameterSpace,
+        TrialRecord,
+    )
+    from kernel_optimizer.tuning.tpe import OptunaTPETuner
+
+    space = ParameterSpace(
+        space_id="sp-x", candidate_id="c1", version=1, source_sha="deadbeef",
+        domains=[ParamDomain(name="BLOCK", kind="int", choices=[16, 32, 64, 128])],
+    )
+
+    def run_with(failure_kind, status="fail", latency=None):
+        tuner = OptunaTPETuner(space, guard_ok=lambda p: True, budget=3, seed=0)
+        asked = tuner.ask()
+        assert asked is not None
+        trial_id, params = asked
+        tuner.tell(trial_id, TrialRecord(
+            trial_id=trial_id, candidate_id="c1", space_id="sp-x", params=params,
+            status=status, failure_kind=failure_kind, latency_ms=latency))
+        return tuner.study.trials[0].state
+
+    for kind in ("infeasible_shared_memory", "guard_rejected", "materialize_error"):
+        assert run_with(kind) is TrialState.PRUNED, (
+            f"{kind} is reported FAIL, so Optuna drops it from the TPE model and the sampler "
+            f"keeps proposing the same unusable region")
+
+    for kind in ("runtime_error", "correctness_mismatch", "oom", "timeout", None):
+        assert run_with(kind) is TrialState.FAIL, (
+            f"{kind} is being PRUNED; only config-determined refusals may be, or the sampler "
+            f"is taught to avoid regions on the strength of noise or a candidate-level defect")
+
+    # A successful trial must still be told as a value, not a state.
+    st = run_with(None, status="complete",
+                  latency=LatencyStats(mean=5.0, std=0.1, min=4.9, max=5.1, n_samples=20,
+                                       median=5.0))
+    assert st is TrialState.COMPLETE
+
+
+def test_the_compile_screen_only_refuses_on_the_compilers_own_number():
+    """P1: the screen must act ONLY when the compiler's figure exceeds the device limit.
+
+    Every other outcome has to return None so the real trial decides -- a screen that guesses
+    would silently delete feasible configurations from the search, which is worse than the
+    18% waste it exists to remove.
+    """
+    from pathlib import Path
+
+    from kernel_optimizer.evaluation.correctness import CorrectnessEvaluator
+
+    class FakeWorker:
+        def __init__(self, reply):
+            self.reply = reply
+            self.calls = 0
+
+        def run_job(self, job, timeout, tag, lock_mode=None):
+            self.calls += 1
+            assert job["job_type"] == "compile_probe", job["job_type"]
+            assert lock_mode == "shared", "the screen must not take the exclusive timing lock"
+            return self.reply
+
+    class Cfg:
+        precision = "fp32"
+        build_timeout_s = 60.0
+        eval_timeout_s = 60.0
+        correctness_mode = "dual_witness_relaxed"
+
+    class Task:
+        ref_path = Path("ref.py")
+
+    def screen(reply, limit=101376, src="x = 1"):
+        import tempfile
+
+        w = FakeWorker(reply)
+        ev = CorrectnessEvaluator.__new__(CorrectnessEvaluator)
+        ev.worker, ev.cfg, ev.seed = w, Cfg(), 0
+        ev._screen_cache = {}
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False,
+                                         encoding="utf-8") as f:
+            f.write(src)
+            p = Path(f.name)
+        return ev.compile_screen(Task(), p, "t", "triton", limit), w
+
+    # Over the limit: refuse, and say the real numbers.
+    out, _ = screen({"ok": True, "max_shared": 393216,
+                     "kernels": [{"name": "_linear_fwd", "shared": 393216}]})
+    assert out is not None, "an over-limit config was not refused"
+    assert out["max_shared"] == 393216 and out["limit"] == 101376
+    assert "393216" in out["detail"] and "101376" in out["detail"], (
+        "the refusal must carry both numbers, or a reader cannot check the verdict")
+
+    # Everything else: no opinion.
+    for reply, why in [
+        ({"ok": True, "max_shared": 101376, "kernels": []}, "exactly AT the limit is legal"),
+        ({"ok": True, "max_shared": 65536, "kernels": []}, "within the limit"),
+        ({"ok": False, "reason": "triton unavailable"}, "probe could not answer"),
+        ({"ok": True, "max_shared": None, "kernels": []}, "no shared figure read"),
+    ]:
+        out, _ = screen(reply)
+        assert out is None, f"the screen returned a verdict when {why}"
+
+    # No device limit configured -> the screen must not even call the worker.
+    out, w = screen({"ok": True, "max_shared": 393216, "kernels": []}, limit=None)
+    assert out is None and w.calls == 0, (
+        "with no device limit the screen still probed; it has nothing to compare against")
+
+    # Cached: the same source must not be probed twice.
+    import tempfile
+
+    w = FakeWorker({"ok": True, "max_shared": 65536, "kernels": []})
+    ev = CorrectnessEvaluator.__new__(CorrectnessEvaluator)
+    ev.worker, ev.cfg, ev.seed = w, Cfg(), 0
+    ev._screen_cache = {}
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as f:
+        f.write("y = 2")
+        p = Path(f.name)
+    ev.compile_screen(Task(), p, "t", "triton", 101376)
+    ev.compile_screen(Task(), p, "t", "triton", 101376)
+    assert w.calls == 1, f"the screen probed {w.calls} times for one source; cache is not working"
+
+
+def test_the_launch_bound_ratio_uses_the_probes_own_denominator():
+    """P2 cause (c): cpu_issue_ms must be divided by the overhead probe's OWN gpu_ms.
+
+    The probe measures both numbers in one pass with NO L2 flush, and its docstring says its
+    gpu_ms is warm-cache and valid only as this ratio's denominator. The harness's latency is a
+    different measurement, and mixing them yields a wrong ratio whose SIGN is not predictable:
+    measured on box 2, L3:43's theta_best has harness 3.0126 vs probe 3.0050 ms (0.25% apart),
+    while a 40-op elementwise chain has harness 0.3497 vs probe 0.5849 -- harness 40% SMALLER.
+    So this pins the denominator actually used, not a claimed direction of error.
+    """
+    from kernel_optimizer.evaluation.bottleneck import DevicePeaks, Thresholds, classify
+
+    peaks = DevicePeaks(dram_tbs=0.91, fp32_tflops=54.9, tf32_tflops=88.9)
+    th = Thresholds(dram_saturated_frac=0.84, compute_saturated_frac=0.81, idle_frac=0.17,
+                    launch_bound_cpu_ratio=0.87)
+    # A launch-bound kernel: the CPU needs 0.09 ms to issue work the GPU does in 0.10 ms
+    # warm-cache. The harness reports 0.20 ms for its own (flushed) measurement.
+    common = dict(flop_count=10**6, byte_count=10**6, peaks=peaks, thresholds=th,
+                  cpu_issue_ms=0.09)
+
+    with_probe = classify(gpu_ms=0.20, overhead_gpu_ms=0.10, **common)
+    assert with_probe.kind == "launch_bound", (
+        f"a kernel whose CPU issue cost is 90% of its warm-cache GPU time was classified "
+        f"{with_probe.kind}; the ratio must use the probe's own denominator")
+    assert with_probe.evidence["cpu_over_gpu"] == 0.9
+    assert with_probe.evidence["cpu_over_gpu_denominator"] == "overhead_probe_gpu_ms"
+    assert with_probe.evidence["overhead_gpu_ms"] == 0.10
+
+    # Same kernel with the probe's figure absent: the ratio is computed against a DIFFERENT
+    # measurement (0.09/0.20 = 0.45), misses the 0.87 line, and must say so in the label.
+    without = classify(gpu_ms=0.20, overhead_gpu_ms=None, **common)
+    assert without.evidence["cpu_over_gpu"] == 0.45
+    assert without.evidence["cpu_over_gpu_denominator"] == "harness_gpu_ms_FALLBACK", (
+        "the fallback must be labelled, or a reader cannot tell a sound ratio from a mixed one")
+    assert without.kind != "launch_bound"
+    assert "overhead_gpu_ms" not in without.evidence, (
+        "the fallback path must not report an overhead_gpu_ms it does not have")
+
+    # The mixed ratio can also err the OTHER way, which is why the label matters more than any
+    # assumed direction: here the harness figure is smaller, so the mixed ratio overshoots.
+    high = classify(gpu_ms=0.05, overhead_gpu_ms=0.10, cpu_issue_ms=0.09,
+                    flop_count=10**6, byte_count=10**6, peaks=peaks, thresholds=th)
+    assert high.evidence["cpu_over_gpu"] == 0.9, (
+        "with the probe's denominator the ratio must be 0.09/0.10 regardless of what the "
+        "harness measured")
+
+
+def test_launch_overhead_is_attached_on_the_relaxed_path_too():
+    """P2 cause (b): the probe lived only in run_eval, while both L3 configs route to the
+    relaxed handler.
+
+    Measured on the L3:43 final re-eval: `measure_launch_overhead: True` returned
+    `launch_overhead: None`, because `run_relaxed_correctness` mentioned neither name. Fixing
+    causes (a) and (c) without this one would reproduce exactly that on every config the
+    experiments actually use.
+
+    Walks the AST for calls to the shared helper, so it tracks the wiring rather than a string.
+    """
+    import ast
+    import inspect
+
+    from kernel_optimizer.gpu import worker_main
+
+    tree = ast.parse(inspect.getsource(worker_main))
+    calls_helper = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        for inner in ast.walk(node):
+            if (isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name)
+                    and inner.func.id == "_attach_launch_overhead"):
+                calls_helper.add(node.name)
+
+    for handler in ("run_eval", "run_relaxed_correctness"):
+        assert handler in calls_helper, (
+            f"{handler} never attaches the launch-overhead probe, so a job asking for it gets "
+            f"silence -- and both L3 configs route to run_relaxed_correctness")
+
+    # And the handler must be registered, or the job type is unreachable.
+    assert "compile_probe" in worker_main.HANDLERS
+
+
+def test_a_low_precision_kernel_is_scored_against_its_own_ceiling():
+    """P3: an fp16 kernel must be measured against the fp16 ceiling, not tf32.
+
+    On L3:43, 13 of 25 verdicts carried `impossible_fraction` because the only tensor-core
+    ceiling measured was tf32 and every leading candidate was fp16 or bf16. theta_best read
+    140.7% of "peak", which reads as "saturated, stop optimizing" for a kernel with headroom
+    left -- and the defect got WORSE as candidates improved.
+    """
+    from kernel_optimizer.evaluation.bottleneck import DevicePeaks, Thresholds, classify
+
+    # Measured shape of a 4090: fp16 about 2x tf32, tf32 about 1.6x fp32.
+    peaks = DevicePeaks(dram_tbs=0.9102, fp32_tflops=54.95, tf32_tflops=88.88,
+                        fp16_tflops=165.0, bf16_tflops=163.0)
+    th = Thresholds(dram_saturated_frac=0.8449, compute_saturated_frac=0.8101, idle_frac=0.1675,
+                    launch_bound_cpu_ratio=0.8737)
+    sass = {"instructions": 3960, "tensor_core": 128}
+    # A kernel doing 95.9 TFLOP/s: over the tf32 ceiling, comfortably under the fp16 one.
+    common = dict(flop_count=412_316_860_416, byte_count=416_296_960, peaks=peaks,
+                  thresholds=th, sass=sass, cpu_issue_ms=None,
+                  occupancy={"occupancy": 0.1667, "limiter": "registers"})
+    gpu_ms = 412_316_860_416 / 95.9e12 * 1e3
+
+    fp16 = classify(gpu_ms=gpu_ms, precision="fp16", **common)
+    assert fp16.evidence["compute_ceiling_used"] == "tensor-core (fp16)"
+    assert fp16.evidence["candidate_precision"] == "fp16"
+    assert fp16.evidence["pct_of_compute_peak"] < 100, (
+        f"an fp16 kernel at 95.9 TFLOP/s reads "
+        f"{fp16.evidence['pct_of_compute_peak']}% of peak; it is being scored against the "
+        f"wrong ceiling")
+    assert "impossible_fraction" not in fp16.evidence
+
+    bf16 = classify(gpu_ms=gpu_ms, precision="bf16", **common)
+    assert bf16.evidence["compute_ceiling_used"] == "tensor-core (bf16)"
+
+    # tf32 and unknown precision keep the tf32 ceiling -- and there the same kernel IS over it,
+    # which is the pre-fix reading, so this pins that the change is precision-driven and not a
+    # blanket ceiling raise.
+    for prec in ("tf32", None):
+        v = classify(gpu_ms=gpu_ms, precision=prec, **common)
+        assert v.evidence["compute_ceiling_used"] == "tensor-core (tf32)", prec
+        assert v.evidence["impossible_fraction"] > 1.0, prec
+
+    # An OLD calibration with no fp16 figure must still classify, falling back to tf32 and
+    # saying in the disagreement that the substitution is the likely explanation.
+    old_peaks = DevicePeaks(dram_tbs=0.9102, fp32_tflops=54.95, tf32_tflops=88.88)
+    stale = classify(gpu_ms=gpu_ms, precision="fp16",
+                     **{**common, "peaks": old_peaks})
+    assert stale.evidence["compute_ceiling_used"] == "tensor-core (tf32)"
+    assert stale.evidence["impossible_fraction"] > 1.0
+    assert "no measured fp16 ceiling" in stale.disagreement, (
+        "a substituted ceiling must be named as the likely cause, or the agent is told the "
+        "candidate does less arithmetic than the reference when the truth is a missing number")
+
+
+def test_the_calibration_carries_the_low_precision_ceilings():
+    """P3 plumbing: worker result -> Calibration -> DevicePeaks -> the agent's brief.
+
+    Each hop has silently dropped a field before (aux_output_ops at the task-cost boundary,
+    the median on the strict path), so this walks the whole chain rather than one end of it.
+    """
+    import inspect
+
+    from kernel_optimizer.evaluation.calibration import Calibration
+    from kernel_optimizer.gpu import calibrate as calibrate_mod
+    from kernel_optimizer.gpu import worker_main
+
+    # 1. The worker measures them. Asserted on the DTYPES it probes rather than on the result
+    #    keys, because those are built as f"{name}_tflops" inside a loop -- a first version of
+    #    this test looked for the literal string and failed on correct code.
+    src = inspect.getsource(worker_main.run_calibrate)
+    assert "torch.float16" in src and "torch.bfloat16" in src, (
+        "run_calibrate does not measure the fp16/bf16 matmul ceilings, so a low-precision "
+        "candidate is scored against tf32 -- roughly half its real ceiling")
+    assert '(("fp16", torch.float16), ("bf16", torch.bfloat16))' in src, (
+        "the low-precision ceiling loop is not the shape this test can verify; check that both "
+        "dtypes are still measured and update the assertion deliberately")
+
+    # 2. The model can hold them, defaulting to 0 so an old cached calibration still loads.
+    cal = Calibration(device_name="x", capability=[8, 9], sm_count=128, dram_tbs=0.9,
+                      fp32_tflops=55.0, tf32_tflops=89.0)
+    assert cal.fp16_tflops == 0.0 and cal.bf16_tflops == 0.0
+    cal2 = cal.model_copy(update={"fp16_tflops": 165.0, "bf16_tflops": 163.0})
+    assert cal2.fp16_tflops == 165.0
+
+    # 3. calibrate.py carries them from the worker result, and into the event payload -- a
+    #    reader of events.jsonl must be able to see which ceilings a run had.
+    csrc = inspect.getsource(calibrate_mod)
+    assert 'fp16_tflops=float(result.get("fp16_tflops"' in csrc, (
+        "calibrate.py does not read fp16_tflops out of the worker result")
+    assert csrc.count('"fp16_tflops"') >= 2, (
+        "the fp16 ceiling does not reach the CALIBRATION_MEASURED/LOADED payload, so a run's "
+        "own log cannot say which ceiling its percentages were against")
+
+    # 4. The agent's brief shows them. Needs a verdict: with none, `_bottleneck_doc` returns its
+    #    "could not measure this box" early exit and would never reach the ceiling table.
+    from kernel_optimizer.agents.modules import _bottleneck_doc
+    from kernel_optimizer.evaluation.bottleneck import BottleneckVerdict
+
+    verdict = BottleneckVerdict(kind="compute_bound", evidence={"gpu_ms": 3.0},
+                                suggests="x")
+    doc = _bottleneck_doc(verdict, None, cal2)
+    assert "fp16" in doc and "165" in doc, (
+        "the agent is not told this box's fp16 ceiling, so it cannot judge a precision change")
+    assert "bf16" in doc and "163" in doc
+
+
+def test_a_terminating_signal_unwinds_instead_of_orphaning_the_server():
+    """P4: SIGTERM must raise, so `with Runtime(...)` shuts the opencode server down.
+
+    Observed while stopping run-l3-43-20260908-053708 by hand: killing the orchestrator left
+    its `opencode serve` reparented to init and still holding port 4096, which the next run's
+    server would have collided with. `Runtime.__exit__` already stops it; a default SIGTERM
+    just never lets it run.
+    """
+    import signal
+
+    from kernel_optimizer import cli
+
+    saved = {}
+    try:
+        for name in ("SIGTERM", "SIGHUP"):
+            sig = getattr(signal, name, None)
+            if sig is not None:
+                saved[sig] = signal.getsignal(sig)
+        cli._install_termination_handler()
+        for sig in saved:
+            handler = signal.getsignal(sig)
+            assert callable(handler), (
+                f"{sig!r} still has the default disposition, so the interpreter dies without "
+                f"unwinding and the opencode server is orphaned")
+            try:
+                handler(int(sig), None)
+            except KeyboardInterrupt:
+                pass  # what we want: the `with` blocks get to unwind
+            else:
+                raise AssertionError(f"the {sig!r} handler did not raise, so nothing unwinds")
+    finally:
+        for sig, prev in saved.items():
+            signal.signal(sig, prev)
+
+
+def test_an_interrupted_run_still_writes_its_report():
+    """P4: stopping a run must leave the same artifacts as finishing one.
+
+    Terminating L3:43 to land these fixes meant re-deriving theta_best, re-materializing it and
+    re-running the final evaluation by hand. The report is regenerated from events.jsonl, so
+    there is no reason a deliberate stop cannot produce it.
+    """
+    from kernel_optimizer import cli
+
+    calls = {"report": 0, "appended": []}
+
+    class FakeRuntime:
+        def __init__(self, cfg, log_dir=None):
+            self.exited = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.exited = True
+            calls["server_stopped"] = True
+            return False   # must NOT swallow -- the interrupt is handled inside
+
+    class FakeStore:
+        run_dir = "/tmp/x"
+
+        def append(self, event_type, payload):
+            calls["appended"].append(event_type)
+
+    class FakeReport:
+        def generate(self, store):
+            calls["report"] += 1
+            return "/tmp/x/report.md"
+
+    class Orch:
+        def run(self):
+            raise KeyboardInterrupt("terminated by signal 15")
+
+    rc = cli._run_orchestrated(object(), FakeStore(), object(), FakeRuntime,
+                               lambda cfg, store, task, runtime: Orch(),
+                               lambda: FakeReport())
+    assert calls.get("server_stopped"), "the runtime was not exited, so the server is orphaned"
+    assert calls["report"] == 1, "an interrupted run wrote no report"
+    assert "RUN_INTERRUPTED" in calls["appended"], (
+        "the log does not record that the run was interrupted, so a reader cannot tell a "
+        "deliberate stop from a converged run")
+    assert rc == 130, f"expected the conventional interrupt exit code, got {rc}"
+
+    # A normal run must be unaffected: no interrupt event, exit 0.
+    calls["appended"].clear()
+    calls["report"] = 0
+
+    class OkOrch:
+        def run(self):
+            return {"best": {"tuned_ms": 1.0}}
+
+    rc = cli._run_orchestrated(object(), FakeStore(), object(), FakeRuntime,
+                               lambda cfg, store, task, runtime: OkOrch(),
+                               lambda: FakeReport())
+    assert rc == 0 and calls["report"] == 1
+    assert "RUN_INTERRUPTED" not in calls["appended"]

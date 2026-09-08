@@ -119,6 +119,18 @@ def _bottleneck_doc(verdict, task_cost, calibration) -> str:
                 f"- tensor cores (tf32): **{calibration.tf32_tflops:.1f} TFLOP/s** "
                 f"= {calibration.tf32_tflops / max(calibration.fp32_tflops, 1e-9):.2f}x the fp32 "
                 f"figure. A kernel not using them is limited by the lower number.\n")
+        # P3: show the low-precision ceilings too. While these were unmeasured, an fp16 kernel
+        # was scored against tf32 and read as >100% of "peak", so the agent was told a candidate
+        # with real headroom was saturated. Naming the ratio makes the lever explicit: on this
+        # class of card fp16 is roughly 2x tf32, so precision is a throughput decision.
+        for label, value in (("fp16", calibration.fp16_tflops),
+                             ("bf16", calibration.bf16_tflops)):
+            if value > 0:
+                out.append(
+                    f"- tensor cores ({label}): **{value:.1f} TFLOP/s** "
+                    f"= {value / max(calibration.tf32_tflops, 1e-9):.2f}x the tf32 figure. "
+                    f"Your candidate is measured against the ceiling for the precision it "
+                    f"actually computes in.\n")
         if calibration.empty_launch_floor_ms > 0:
             out.append(
                 f"- smallest possible launch: **{calibration.empty_launch_floor_ms*1e3:.1f} us**. "

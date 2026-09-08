@@ -150,7 +150,17 @@ def cmd_doctor(args) -> int:
         print(f"[info] cached calibration for {cal.device_name} (measured {cal.measured_at}):")
         print(f"       DRAM {cal.dram_tbs:.3f} TB/s, fp32 {cal.fp32_tflops:.1f} TFLOP/s"
               + (f", tf32 {cal.tf32_tflops:.1f} TFLOP/s" if cal.tf32_tflops else "")
+              + (f", fp16 {cal.fp16_tflops:.1f}" if cal.fp16_tflops else "")
+              + (f", bf16 {cal.bf16_tflops:.1f}" if cal.bf16_tflops else "")
               + f", launch floor {cal.empty_launch_floor_ms*1e3:.1f} us")
+        # A calibration predating P3 has no low-precision ceilings, and a low-precision
+        # candidate would then be scored against tf32 -- roughly half its real ceiling, which
+        # reads as "saturated" for a kernel with headroom. Say so rather than let a run inherit
+        # it silently: 13 of 25 verdicts on L3:43 were wrong this way.
+        if not (cal.fp16_tflops or cal.bf16_tflops):
+            print("       [warn] no fp16/bf16 ceiling in this calibration: an fp16 or bf16 "
+                  "candidate will be scored against tf32 and may read >100% of peak. "
+                  "Re-measure with `calibrate --recalibrate` before trusting compute headroom.")
         if cal.thresholds:
             t = cal.thresholds
             print(f"       thresholds: dram>={t.dram_saturated_frac} "
@@ -342,6 +352,38 @@ def cmd_agent_smoke(args) -> int:
 # ------------------------------------------------------------------ run / resume / report
 
 
+def _run_orchestrated(cfg, store, task, Runtime, build_orchestrator, ReportGenerator) -> int:
+    """Drive one orchestrated run, and produce the report even when it is cut short.
+
+    P4. Shared by `run` and `resume` because a deliberate stop has to behave the same in both.
+    Two things have to happen on the way out, and neither did before:
+
+      * The opencode server must be shut down. `Runtime.__exit__` does that, but a default
+        SIGTERM kills the interpreter without unwinding, so it never ran -- stopping
+        run-l3-43-20260908-053708 by hand left its server reparented to init, still holding
+        port 4096, to be found and killed separately. `_install_termination_handler` turns the
+        signal into KeyboardInterrupt so this `with` block closes properly.
+      * The report must still be written. It is regenerated from events.jsonl, so a run
+        terminated mid-flight yields the same artifacts as one that finished, minus whatever it
+        had not measured -- which is exactly what "stop it and keep the best candidate" needs,
+        and which previously had to be reconstructed by hand.
+    """
+    interrupted = False
+    summary: dict = {}
+    with Runtime(cfg, log_dir=store.run_dir) as runtime:
+        orch = build_orchestrator(cfg, store, task, runtime)
+        try:
+            summary = orch.run()
+        except KeyboardInterrupt:
+            interrupted = True
+            store.append("RUN_INTERRUPTED", {"reason": "terminated by signal or Ctrl-C"})
+            print("\ninterrupted: shutting down, then writing the report for what was measured")
+    report = ReportGenerator().generate(store)
+    print(json.dumps(summary.get("best"), indent=2, ensure_ascii=False))
+    print(f"report: {report}")
+    return 130 if interrupted else 0
+
+
 def cmd_run(args) -> int:
     cfg = _cfg(args)
     from kernel_optimizer.reporting.report import ReportGenerator
@@ -353,13 +395,7 @@ def cmd_run(args) -> int:
     store = _new_store(cfg, f"run-l{level}-{pid}", task.name)
     print(f"run dir: {store.run_dir}")
 
-    with Runtime(cfg, log_dir=store.run_dir) as runtime:
-        orch = build_orchestrator(cfg, store, task, runtime)
-        summary = orch.run()
-    report = ReportGenerator().generate(store)
-    print(json.dumps(summary.get("best"), indent=2, ensure_ascii=False))
-    print(f"report: {report}")
-    return 0
+    return _run_orchestrated(cfg, store, task, Runtime, build_orchestrator, ReportGenerator)
 
 
 def cmd_resume(args) -> int:
@@ -383,13 +419,7 @@ def cmd_resume(args) -> int:
         return 2
     task = TaskSpec.model_validate(task_payload)
 
-    with Runtime(cfg, log_dir=store.run_dir) as runtime:
-        orch = build_orchestrator(cfg, store, task, runtime)
-        summary = orch.run()
-    report = ReportGenerator().generate(store)
-    print(json.dumps(summary.get("best"), indent=2, ensure_ascii=False))
-    print(f"report: {report}")
-    return 0
+    return _run_orchestrated(cfg, store, task, Runtime, build_orchestrator, ReportGenerator)
 
 
 def cmd_report(args) -> int:
@@ -467,6 +497,46 @@ def cmd_calibrate(args) -> int:
 # ------------------------------------------------------------------ entry
 
 
+def _install_termination_handler() -> None:
+    """Turn SIGTERM into a normal Python exception so `with` blocks unwind.
+
+    P4. `Runtime.__exit__` already stops the opencode server and closes the client, but a
+    default SIGTERM kills the interpreter outright without unwinding, so nothing runs. Observed
+    while stopping run-l3-43-20260908-053708 by hand: killing the orchestrator left its
+    `opencode serve` reparented to init and still holding port 4096, which the next run's server
+    would have collided with. The orphan had to be killed separately, by pid.
+
+    Raising KeyboardInterrupt rather than SystemExit deliberately: the run already treats an
+    interrupt as a clean stop (the event log is append-only and replayable, so a resume picks up
+    from the last completed step), and it reuses a path that is exercised every time someone
+    presses Ctrl-C rather than adding a second, rarer one.
+
+    SIGINT already behaves this way, so it is left alone. Registered only when this process is
+    the main thread of the main interpreter -- `signal.signal` raises otherwise, and a worker or
+    embedded caller must not have its handlers rewritten.
+    """
+    import signal
+    import threading
+
+    if threading.current_thread() is not threading.main_thread():
+        return
+
+    def _terminate(signum, _frame):
+        raise KeyboardInterrupt(f"terminated by signal {signum}")
+
+    for name in ("SIGTERM", "SIGHUP"):
+        sig = getattr(signal, name, None)   # SIGHUP does not exist on Windows
+        if sig is None:
+            continue
+        try:
+            signal.signal(sig, _terminate)
+        except (OSError, ValueError):
+            # Some environments disallow it (a non-main interpreter, a restricted sandbox).
+            # Losing the handler costs an orphaned server, which is recoverable; refusing to
+            # start the run over it would not be.
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="kernel-opt")
     parser.add_argument("--config", help="YAML config path")
@@ -511,6 +581,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--run", required=True)
 
     args = parser.parse_args(argv)
+    _install_termination_handler()
     commands = {
         "doctor": cmd_doctor,
         "baseline": cmd_baseline,

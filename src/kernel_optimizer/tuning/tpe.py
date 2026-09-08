@@ -104,7 +104,21 @@ class OptunaTPETuner:
             ):
                 self._best_record = record
         else:
-            self.study.tell(trial, state=TrialState.FAIL)
+            # P1: a config refused for a HARD, config-determined reason is reported PRUNED, not
+            # FAIL. Optuna excludes FAIL from the TPE model but keeps PRUNED in it -- measured:
+            # 12 trials reported FAIL leave 1 trial visible to the sampler, the same 12 reported
+            # PRUNED leave 13. So reporting these as FAIL threw the information away, which is
+            # why L3:43's per-candidate shared-memory failure rate (21-33%, 180 of 1004 trials)
+            # never decayed over a run: TPE kept proposing a region it was never told about.
+            #
+            # Only for reasons that are a property of the CONFIGURATION and would recur
+            # identically -- an over-limit shared-memory requirement, a guard rejection, a
+            # materialize error. A `runtime_error` or `correctness_mismatch` stays FAIL: those
+            # can be non-deterministic or a defect in the candidate rather than in the point,
+            # and teaching the sampler to avoid that region would be teaching it noise.
+            hard = record.failure_kind in ("infeasible_shared_memory", "guard_rejected",
+                                           "materialize_error")
+            self.study.tell(trial, state=TrialState.PRUNED if hard else TrialState.FAIL)
 
     def best(self) -> TrialRecord | None:
         return self._best_record

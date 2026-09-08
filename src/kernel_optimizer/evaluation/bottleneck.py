@@ -98,6 +98,29 @@ class DevicePeaks(BaseModel):
     # "done") and a scalar kernel measured against tf32 reads as hopeless. `classify` picks the
     # denominator from the kernel's OWN instruction mix when it can.
     tf32_tflops: float = 0.0
+    # The low-precision tensor-core ceilings (P3). Without them, an fp16 or bf16 candidate was
+    # scored against tf32 -- roughly half its real ceiling on a 4090 -- so L3:43's best candidate
+    # read 140.7% of "peak", which reads as "saturated, stop optimizing" for a kernel with
+    # perhaps 30% of its headroom unused. 13 of 25 verdicts in that run were affected, and it got
+    # worse as candidates improved, because every candidate good enough to lead was low-precision.
+    fp16_tflops: float = 0.0
+    bf16_tflops: float = 0.0
+
+    def compute_ceiling_for(self, precision: str | None) -> tuple[float, str]:
+        """The arithmetic ceiling that applies to a kernel computing in `precision`.
+
+        Falls back along a chain rather than to zero: an unmeasured fp16 ceiling should give the
+        tf32 figure (wrong but flagged by `impossible_fraction`) rather than silently disabling
+        the compute test. The returned name says which ceiling was used, so the evidence records
+        what the percentage is a percentage OF.
+        """
+        if precision == "fp16" and self.fp16_tflops > 0:
+            return self.fp16_tflops, "tensor-core (fp16)"
+        if precision == "bf16" and self.bf16_tflops > 0:
+            return self.bf16_tflops, "tensor-core (bf16)"
+        if self.tf32_tflops > 0:
+            return self.tf32_tflops, "tensor-core (tf32)"
+        return self.fp32_tflops, "fp32 (no tensor cores)"
 
     @property
     def ridge_flop_per_byte(self) -> float:
@@ -142,6 +165,8 @@ def classify(
     thresholds: Thresholds | None = None,
     sass: dict | None = None,
     occupancy: dict | None = None,
+    overhead_gpu_ms: float | None = None,
+    precision: str | None = None,
 ) -> BottleneckVerdict:
     """Classify what limits this kernel. Returns kind="unknown" when evidence is missing.
 
@@ -212,8 +237,29 @@ def classify(
                      "change that removes the launch entirely is the only lever.")
 
     if cpu_issue_ms is not None and cpu_issue_ms > 0:
-        ratio = cpu_issue_ms / gpu_ms
-        ev.update({"cpu_issue_ms": cpu_issue_ms, "cpu_over_gpu": round(ratio, 3)})
+        # P2 cause (c): the ratio's denominator must be the overhead probe's OWN gpu_ms, not
+        # the harness's headline latency. The probe measures both numbers in one pass with no
+        # L2 flush between calls, and its docstring says plainly that its gpu_ms is warm-cache
+        # and usable ONLY as this ratio's denominator. `ProfileRecord.cpu_over_gpu` honours
+        # that; this function used to divide by the harness's `gpu_ms` instead.
+        #
+        # The bias is NOT in a fixed direction -- an earlier note here claimed it always
+        # under-detected, and measurement disproved that. The two figures differ because the
+        # harness flushes L2 between calls (adding cost) while the probe lets many small
+        # launches queue (hiding cost), and which effect dominates depends on the kernel:
+        #   L3:43 theta_best   harness 3.0126 ms vs probe 3.0050 ms  -- 0.25% apart
+        #   40 tiny elementwise harness 0.3497 ms vs probe 0.5849 ms -- harness 40% SMALLER
+        # So the mismatch is a wrong number of unpredictable sign, not a known-direction skew.
+        # Falls back to gpu_ms only when the probe's figure is absent, and labels which
+        # denominator produced the ratio so a reader can tell a sound one from a fallback.
+        use_probe = bool(overhead_gpu_ms and overhead_gpu_ms > 0)
+        denom = overhead_gpu_ms if use_probe else gpu_ms
+        ratio = cpu_issue_ms / denom
+        ev.update({"cpu_issue_ms": cpu_issue_ms, "cpu_over_gpu": round(ratio, 3),
+                   "cpu_over_gpu_denominator": ("overhead_probe_gpu_ms" if use_probe
+                                                else "harness_gpu_ms_FALLBACK")})
+        if use_probe:
+            ev["overhead_gpu_ms"] = overhead_gpu_ms
         if ratio >= th.launch_bound_cpu_ratio:
             return BottleneckVerdict(
                 kind="launch_bound", evidence=ev, unmeasured=unmeasured,
@@ -231,14 +277,17 @@ def classify(
         ev["uses_tensor_cores"] = uses_tc
     compute_ceiling = peaks.fp32_tflops if peaks else 0.0
     ceiling_name = "fp32"
-    if peaks and uses_tc and peaks.tf32_tflops > 0:
-        # The kernel's own instruction mix says which ceiling is the right denominator. Without
-        # this a tf32 kernel is scored against fp32 and reports >100% of peak, which reads as
-        # "saturated, stop optimizing" for a kernel that may have most of its headroom left.
-        compute_ceiling = peaks.tf32_tflops
-        ceiling_name = "tensor-core (tf32)"
+    if peaks and uses_tc:
+        # The kernel's own instruction mix says it uses tensor cores; `precision` says WHICH
+        # tensor-core ceiling applies. Without the precision this always used tf32, and an fp16
+        # kernel -- roughly 2x tf32 on a 4090 -- read as >100% of peak, i.e. "saturated, stop
+        # optimizing" for a kernel with headroom left. Falls back through tf32 to fp32 when the
+        # matching ceiling was not measured, so an older calibration still classifies.
+        compute_ceiling, ceiling_name = peaks.compute_ceiling_for(precision)
     if peaks:
         ev["compute_ceiling_used"] = ceiling_name
+        if precision:
+            ev["candidate_precision"] = precision
 
     ai = None
     if flop_count and byte_count:
@@ -298,6 +347,14 @@ def classify(
         # Either way the verdict is low-confidence, and "you are at the ceiling" is false.
         impossible = ""
         if frac_fl > 1.0:
+            # P3 note: the leading cause of this used to be a MISSING ceiling -- an fp16 kernel
+            # scored against tf32 -- which produced 13 of 25 impossible fractions on L3:43. The
+            # fp16/bf16 ceilings are measured now, so a fraction above 1.0 with a matching
+            # ceiling name is much more likely to be the second cause. Say which ceiling was
+            # used, so the reader can tell a wrong denominator from a wrong numerator.
+            unmatched = ceiling_name != {"fp16": "tensor-core (fp16)",
+                                         "bf16": "tensor-core (bf16)"}.get(precision or "",
+                                                                           ceiling_name)
             impossible = (
                 f"the kernel appears to reach {frac_fl*100:.0f}% of the {ceiling_name} ceiling, "
                 f"which is impossible. Either it uses a faster arithmetic path than the ceiling "
@@ -305,6 +362,9 @@ def classify(
                 + ("" if uses_tc is None else
                    (" (the instruction mix says it does NOT use tensor cores, so this is unlikely)"
                     if uses_tc is False else " (it does use tensor cores)"))
+                + (f" -- and note this box has no measured {precision} ceiling, so the "
+                   f"{ceiling_name} figure was substituted, which is very likely the whole "
+                   f"explanation" if unmatched and precision in ("fp16", "bf16") else "")
                 + ", or it performs LESS arithmetic than the reference the FLOP count was measured "
                   "from -- an algebraic simplification, a skipped branch, or a shape the "
                   "candidate handles differently. Do NOT read this as 'at the ceiling': check "

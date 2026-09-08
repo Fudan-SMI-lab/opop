@@ -266,6 +266,12 @@ class WslConfig(BaseModel):
 
 class GpuConfig(BaseModel):
     concurrency: GpuConcurrencyConfig = GpuConcurrencyConfig()
+    # P1: refuse configurations whose compiled shared-memory requirement exceeds the device's
+    # per-block opt-in limit, before paying for a launch. On L3:43 this class was 180 of 1004
+    # trials -- 18% of the budget, 0.93 h. On by default because the screen only ever acts on
+    # the compiler's own figure against the device's own limit, and returns "no opinion" for
+    # every other outcome. Set false to restore the pre-screen behaviour for a comparison.
+    compile_screen_enabled: bool = True
 
 
 class AppConfig(BaseModel):

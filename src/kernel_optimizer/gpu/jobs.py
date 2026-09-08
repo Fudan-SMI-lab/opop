@@ -59,6 +59,17 @@ def make_static_check_job(kernel_src_path: str, backend: str, precision: str) ->
     }
 
 
+def make_compile_probe_job(ref_src_path: str, kernel_src_path: str, *,
+                           backend: str) -> dict[str, Any]:
+    """Compile-only feasibility probe: shared bytes without a launch. See run_compile_probe."""
+    return {
+        "job_type": "compile_probe",
+        "ref_src_path": ref_src_path,
+        "kernel_src_path": kernel_src_path,
+        "backend": backend,
+    }
+
+
 def make_baseline_job(
     ref_src_path: str,
     *,

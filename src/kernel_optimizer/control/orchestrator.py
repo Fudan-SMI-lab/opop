@@ -449,6 +449,10 @@ class CandidateRun:
     stats: TuningStats | None = None
     report: BottleneckReport | None = None
     best_ms: float | None = None
+    # Launch-overhead probe on theta_best: {cpu_issue_ms, gpu_ms, wall_ms, iters}. Measured
+    # once per candidate (P2), since the number describes the candidate as it would be shipped
+    # and costs ~150 model calls.
+    overhead: dict | None = None
 
 
 class Orchestrator:
@@ -1071,6 +1075,21 @@ class Orchestrator:
             )
         path = trials_dir / f"{trial_id}.py"
         path.write_text(mat_src, encoding="utf-8")
+
+        # P1: refuse configs the compiler already knows cannot launch, before paying for a
+        # launch + correctness pass. On L3:43 this class was 180 of 1004 trials -- 18% of the
+        # budget, 0.93 h -- and every one carried its own proof in the error text
+        # (`Required: N > limit`). Returns None when the screen has no opinion, in which case
+        # the real trial runs and reports whatever happens: the screen must never be the thing
+        # that rejects a candidate.
+        infeasible = self._screen_config(crun, path, params)
+        if infeasible is not None:
+            return TrialRecord(
+                trial_id=trial_id, candidate_id=cand.candidate_id,
+                space_id=space.space_id, params=params, status="fail",
+                failure_kind="infeasible_shared_memory", failure_detail=infeasible,
+            )
+
         result = self.deps.evaluator.quick_test(
             self.task, path, tag=f"{cand.candidate_id}-{trial_id}",
             backend=cand.backend,
@@ -1090,6 +1109,31 @@ class Orchestrator:
             profile=self.deps.profiler.extract(result),
             fp64_rescued_trials=result.get("fp64_rescued_trials"),
         )
+
+    def _screen_config(self, crun: CandidateRun, kernel_path: Path,
+                       params: ParamSet) -> str | None:
+        """Compile-only feasibility screen. Returns a reason string, or None to proceed.
+
+        Delegates to the evaluator, which owns the worker and the cache; this side only
+        decides whether to consult it and journals a refusal so the waste it prevents is
+        countable in the log rather than invisible.
+        """
+        if not self.cfg.gpu.compile_screen_enabled:
+            return None
+        refusal = self.deps.evaluator.compile_screen(
+            self.task, kernel_path, tag=crun.candidate.candidate_id,
+            backend=crun.candidate.backend,
+            max_shared_bytes=self.cfg.device.max_shared_bytes_optin)
+        if refusal is None:
+            return None
+        self.store.append("CONFIG_SCREENED_INFEASIBLE", {
+            "candidate_id": crun.candidate.candidate_id,
+            "params": params.values,
+            "max_shared": refusal.get("max_shared"),
+            "limit": refusal.get("limit"),
+            "kernel": refusal.get("kernel"),
+        })
+        return refusal["detail"]
 
     def _stats_and_analysis(self, crun: CandidateRun) -> None:
         if crun.space is None or not crun.trials:
@@ -1112,6 +1156,14 @@ class Orchestrator:
             })
         if crun.best_ms is None:
             return  # nothing correct; analysis would have no signal
+        # P2 cause (a): measure launch overhead ONCE per candidate, on the configuration that
+        # won, immediately before classifying it. It was previously requested only by
+        # `full_eval`, whose sole caller is the final re-eval -- while every verdict comes from
+        # a tuning trial, so `cpu_issue_ms` was None in 848 of 848 trial profiles and the
+        # `launch_bound` branch could not be entered at all. Not per trial: that is ~150 extra
+        # model calls, negligible against a 100-sample eval but a real tax on hundreds of
+        # 20-sample trials, and the number describes the candidate as it would be shipped.
+        self._measure_best_overhead(crun)
         # Steps 6+7: classify what limits this candidate, from measurements, BEFORE the analyst
         # sees it. Journalled whether or not the analyst call then succeeds, so the harness's own
         # analysis survives an agent failure -- it is the deterministic half of the loop.
@@ -1171,6 +1223,51 @@ class Orchestrator:
                 best = (t.latency_ms.robust_ms, t.profile)
         return best[1] if best else None
 
+    def _measure_best_overhead(self, crun: CandidateRun) -> None:
+        """Measure launch overhead on the candidate's winning configuration, once.
+
+        Stores the three numbers on `crun.overhead` for `_classify_bottleneck`. Silent on any
+        failure: this is a diagnostic, and a box that cannot run it must still finish a run.
+
+        The measurement needs a materialized source at theta_best, which is exactly what the
+        winning trial's file already is -- so it re-runs that file rather than rebuilding it,
+        and takes the exclusive lane because the probe times things.
+        """
+        best = None
+        for t in crun.trials:
+            if t.status != "complete" or t.latency_ms is None:
+                continue
+            if best is None or t.latency_ms.robust_ms < best.latency_ms.robust_ms:
+                best = t
+        if best is None:
+            return
+        path = (self.store.candidate_dir(crun.candidate.candidate_id)
+                / "trials" / f"{best.trial_id}.py")
+        if not path.exists():
+            return
+        try:
+            result = self.deps.evaluator.measure_overhead(
+                self.task, path, tag=f"{crun.candidate.candidate_id}-overhead",
+                backend=crun.candidate.backend)
+        except Exception as exc:  # noqa: BLE001 — never break a run over a diagnostic
+            self.store.append("LAUNCH_OVERHEAD_FAILED", {
+                "candidate_id": crun.candidate.candidate_id,
+                "error": f"{type(exc).__name__}: {exc}"[:300]})
+            return
+        over = (result or {}).get("launch_overhead")
+        if not over:
+            self.store.append("LAUNCH_OVERHEAD_FAILED", {
+                "candidate_id": crun.candidate.candidate_id,
+                "error": (result or {}).get("launch_overhead_error")
+                or "the worker returned no launch_overhead"})
+            return
+        crun.overhead = over
+        self.store.append("LAUNCH_OVERHEAD_MEASURED", {
+            "candidate_id": crun.candidate.candidate_id,
+            "trial_id": best.trial_id,
+            "launch_overhead": over,
+        })
+
     def _classify_bottleneck(self, crun: CandidateRun):
         """Run the measured bottleneck classifier for this candidate's best trial.
 
@@ -1188,10 +1285,33 @@ class Orchestrator:
             cost = self.task_cost
             peaks = DevicePeaks(dram_tbs=self.calibration.dram_tbs,
                                 fp32_tflops=self.calibration.fp32_tflops,
-                                tf32_tflops=self.calibration.tf32_tflops)
+                                tf32_tflops=self.calibration.tf32_tflops,
+                                fp16_tflops=self.calibration.fp16_tflops,
+                                bf16_tflops=self.calibration.bf16_tflops)
+            # P3: which tensor-core ceiling applies depends on what the WINNING configuration
+            # computes in, so the precision is detected from the materialized best params --
+            # not from the candidate's default PARAMS, which the tuner may have moved away from.
+            precision = None
+            best_params = next(
+                (t.params for t in sorted(
+                    (x for x in crun.trials
+                     if x.status == "complete" and x.latency_ms is not None),
+                    key=lambda x: x.latency_ms.robust_ms)), None)
+            if best_params is not None:
+                try:
+                    precision = _detect_candidate_precision(crun.source, best_params)
+                except Exception:  # noqa: BLE001 — descriptive only; never break a verdict
+                    precision = None
             return classify(
                 gpu_ms=crun.best_ms,
-                cpu_issue_ms=(profile.cpu_issue_ms if profile else None),
+                # Prefer the overhead probe's own pair of numbers, measured together on the
+                # winning configuration; fall back to whatever a trial profile happened to
+                # carry. See classify()'s `overhead_gpu_ms` note on why the denominator must
+                # come from the same measurement as the numerator.
+                cpu_issue_ms=((crun.overhead or {}).get("cpu_issue_ms")
+                              or (profile.cpu_issue_ms if profile else None)),
+                overhead_gpu_ms=((crun.overhead or {}).get("gpu_ms")
+                                 or (profile.overhead_gpu_ms if profile else None)),
                 flop_count=(cost.flop_count if cost else None),
                 # The task's COMPULSORY traffic, not the reference's materialized traffic: the
                 # denominator has to be what this candidate must move, and a candidate that fuses
@@ -1202,6 +1322,7 @@ class Orchestrator:
                 n_regs=(profile.n_regs if profile else None),
                 n_spills=(profile.n_spills if profile else None),
                 shared_bytes=(profile.shared_bytes if profile else None),
+                precision=precision,
                 max_regs_per_thread=self.cfg.device.max_regs_per_thread,
                 max_shared_bytes=self.cfg.device.max_shared_bytes_optin,
                 empty_launch_floor_ms=self.calibration.empty_launch_floor_ms,
