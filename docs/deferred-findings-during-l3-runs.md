@@ -135,3 +135,63 @@ comparing L3:21 (no ceilings) against L3:43 (ceilings) because the task differs.
 
 **What a clean answer needs.** The same task run both ways. That is a next-round experiment with
 its own budget, not a fix.
+
+---
+
+## D5. F5's compile prescreen is net NEGATIVE on L3:21
+
+**Found because it tripped a stall alarm.** A prescreen worker ran 15 minutes on a 40-variant
+batch, long enough for `run_progress.py` to report SUSPICIOUS. It was not wedged — `ptxas` was
+actively compiling and the worker's CPU time advanced 56 s → 69 s across a 45 s sample — but the
+duration itself was the finding.
+
+**Measured** (`scripts/audit_prescreen_cost.py`, on run-l3-21-20260908-232211 at 6.3 h):
+
+| | |
+|---|---|
+| prescreens | 12 (two per candidate: one per published space, and each space expansion publishes a new one) |
+| wall clock in prescreen | **27.0 min** |
+| per prescreen | 76–260 s (median ~123 s) |
+| configs the sampler avoided | 56 |
+| trial time avoided (56 × 18.6 s) | 17.4 min |
+| **net** | **−9.6 min** |
+
+Against the design measurement — 16.7 s process start plus ~7 ms marginal per config, 11.02 s for
+48 configs — the real cost is **7 to 24× higher**. The design figure was taken on ONE simple
+pipelined matmul; an L3:21 candidate carries several kernels per variant (a projection GEMM, an
+expand GEMM, a depthwise kernel), and every kernel of every variant compiles separately. The
+marginal cost is per *kernel*, not per variant, and the design measurement missed that.
+
+**An arithmetic correction I made in the process.** My first version of the audit reported
+**+0.6 min** (break-even) by adding the 56 guard-level avoidances to the 33
+`CONFIG_SCREENED_INFEASIBLE` refusals. That double-counts: all 33 of this run's
+`infeasible_shared_memory` trials carry `"compile-only screen"` in their detail, so the
+post-materialize refusals ARE those trials. And a post-materialize refusal is not a saved trial
+at all — it still consumed a trial slot and a worker round-trip, and only avoided a launch that
+would have raised. Only the guard-level count removes a point from the sampler entirely.
+
+**The screen's correctness half is working.** All 33 shared-memory trials were refused by the
+compiler's own figure rather than reaching a launch, so nothing raised `out of resource`. On
+`run-l3-43-20260908-053708` the same class of failure cost 180 of 1004 trials. The screen is not
+broken; it is priced wrong on multi-kernel candidates.
+
+**Why not now.** 9.6 min lost against 6.3 h is 2.5% — an efficiency loss, not a wrong result, and
+the best trial is 3.6050 ms against a 6.92 ms incumbent. Changing the screen mid-run would also
+change which points the sampler visits.
+
+**What a fix should consider**, in rough order of expected value:
+
+1. **Scale the sample to the candidate's kernel count.** `n_want = min(64, max(16, trials_per_space))`
+   is 40 here regardless of whether a variant compiles one kernel or four. Sampling fewer
+   variants when each is expensive keeps the screen affordable.
+2. **Screen only the shared-affecting subgrid.** Two variants differing only in `NUM_WARPS` or a
+   cache hint produce the same `metadata.shared`; compiling both is waste. The sampler could
+   project each candidate config onto its shared-affecting knobs and skip duplicates.
+3. **Reuse across a space expansion.** An expansion re-publishes a space whose configurations
+   largely overlap the previous one, and `_screen_cache` is keyed on the materialized source, so
+   the overlap should already hit — 12 prescreens costing full price suggests it does not. Worth
+   checking whether the expansion changes the source text (it re-declares the whole PARAMS block)
+   and thus misses every cache entry.
+
+Item 3 is the one to verify first: if an expansion invalidates the cache wholesale, half of the
+27 minutes is recoverable without changing what gets screened.
