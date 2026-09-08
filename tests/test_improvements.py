@@ -131,17 +131,45 @@ def _load_worker_relaxed_close():
 
 
 def test_relaxed_close_semantics():
+    """The gate is `frac > pass_frac AND cosine >= cosine_min`. Both clauses are
+    exercised here, including the region where they DISAGREE.
+
+    This test asserted the wrong thing from the commit that introduced it, and never
+    said so, because it only runs where torch is importable -- on the Windows
+    orchestrator host it skips, so it first executed on a Linux box much later. Its
+    middle case set 5 of 1000 elements to 5.0 (a 400% error) and asserted a pass
+    "because >99% of elements are within tolerance", reasoning about the frac clause
+    alone. Measured: frac = 0.995 (passes) but cosine = 0.96380941 against a 0.99985
+    bar (rejects), so the AND rejects -- correctly. A single grossly-wrong element is
+    exactly what cosine is in the gate to catch, and what the frac clause cannot see.
+
+    So the sparse-error case is now asserted at both magnitudes, which is what pins
+    the two clauses as complementary rather than redundant.
+    """
     torch = pytest.importorskip("torch")
     _relaxed_close = _load_worker_relaxed_close()
     ref = torch.ones(1000)
     # exact match passes
     assert _relaxed_close(ref, ref.clone(), 0.01, 0.99, 0.99985)
-    # 0.5% of elements badly wrong -> still >99% within tol -> passes
-    got = ref.clone(); got[:5] = 5.0
+
+    # 0.5% of elements slightly wrong (+10%) -> frac 0.995 passes, cosine 0.99997515
+    # clears 0.99985 -> accepted. This is the case the middle assertion meant to make.
+    got = ref.clone(); got[:5] = 1.1
     assert _relaxed_close(ref, got, 0.01, 0.99, 0.99985)
-    # 5% of elements wrong -> below 99% frac -> fails
+
+    # Same 0.5% of elements, but badly wrong (+400%) -> frac still 0.995, yet cosine
+    # falls to 0.96380941 -> REJECTED by the cosine clause alone. Without this the
+    # suite would pass with cosine_min deleted.
+    got_bad = ref.clone(); got_bad[:5] = 5.0
+    assert not _relaxed_close(ref, got_bad, 0.01, 0.99, 0.99985)
+    # ... and it is specifically the cosine clause: a permissive cosine_min accepts it.
+    assert _relaxed_close(ref, got_bad, 0.01, 0.99, 0.9)
+
+    # 5% of elements wrong -> below the 99% frac bar -> fails on the frac clause, which
+    # a permissive cosine_min must NOT rescue.
     got2 = ref.clone(); got2[:50] = 5.0
     assert not _relaxed_close(ref, got2, 0.01, 0.99, 0.99985)
+    assert not _relaxed_close(ref, got2, 0.01, 0.99, 0.0)
     # shape mismatch never passes
     assert not _relaxed_close(ref, torch.ones(999), 0.01, 0.99, 0.99985)
 
