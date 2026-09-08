@@ -9471,3 +9471,72 @@ def test_the_prompt_no_longer_asks_the_agent_to_compute_shared_memory():
     # The tile-domain requirement that no constraint can express.
     assert "at least one launchable configuration" in src, (
         "without this, a precision whose every tile is infeasible is never measured")
+
+
+def test_only_the_two_supported_backends_reach_the_loader():
+    """F9: the tilelang/cute branch was unreachable through the type system, and read as support.
+
+    Backend is Literal["triton", "cuda"], so a candidate declaring "cute" fails pydantic
+    validation long before the worker. The loader branch listing tilelang and cute was
+    therefore dead code -- and worse than dead: CUTLASS/CuTe are not installed in the worker
+    venv, so had a value ever reached it, the result would have been a compile error that
+    looked like a candidate defect rather than a missing dependency.
+    """
+    import inspect
+
+    from kernel_optimizer.gpu import worker_main
+    from kernel_optimizer.models.core import Candidate
+
+    # Assert on CODE, not on prose: the comment explaining why the branch was removed
+    # legitimately names tilelang and cute, and an assertion over the whole file text would
+    # fail on the explanation of its own fix. So parse and inspect the string constants that
+    # a backend comparison actually tests against.
+    import ast
+
+    tree = ast.parse(inspect.getsource(worker_main))
+    compared = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Compare):
+            for comparator in node.comparators:
+                if isinstance(comparator, ast.Constant) and isinstance(comparator.value, str):
+                    compared.add(comparator.value)
+                elif isinstance(comparator, (ast.Tuple, ast.List, ast.Set)):
+                    for elt in comparator.elts:
+                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                            compared.add(elt.value)
+    assert "tilelang" not in compared, (
+        f"a backend comparison still tests for tilelang: {sorted(compared)}")
+    assert "cute" not in compared, (
+        f"a backend comparison still tests for cute: {sorted(compared)}")
+    assert "triton" in compared, "the triton branch went missing with the dead ones"
+
+    # And the type system must still be the thing that stops it.
+    import pydantic
+    import pytest as _pytest
+
+    with _pytest.raises(pydantic.ValidationError):
+        Candidate(candidate_id="c", family_id="f", origin="seed", backend="cutlass",
+                  source_sha="x", structural_signature="y", approach_summary="z")
+
+
+def test_the_accumulator_rule_reads_as_the_default_it_actually_is():
+    """F11: the contract claimed REQUIRED/MUST for a rule nothing checks.
+
+    triton_lint only warns about a hardcoded low-precision cast without a dtype knob, and its
+    own docstring says "WARNING only (never blocks)". No code inspects the accumulator dtype
+    at all. Keeping fp32 is very nearly always right for a long reduction, so it stays the
+    strong default -- but stating it as an enforced rule misdescribes the system, and an agent
+    that believes a violation is rejected reasons differently from one told the diff-test is
+    the only check.
+    """
+    from kernel_optimizer.agents.modules import _contract_doc
+
+    doc = _contract_doc()
+    # The default must still be stated plainly.
+    assert "keep the accumulator in fp32" in doc.lower()
+    # But not as a checked requirement.
+    assert "strong default rather than a checked rule" in doc, (
+        "the contract still presents the accumulator dtype as enforced when nothing checks it")
+    assert "diff-test is then" in doc, (
+        "if the rule is not enforced, the contract must name what actually catches a bad "
+        "accumulator")

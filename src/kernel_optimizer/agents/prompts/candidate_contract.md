@@ -166,11 +166,15 @@ choice, not an afterthought:
   dtype knob (the tuner then cannot compare precisions and the fp16 path is never
   measured against the alternatives).
 - Precision applies to the *dot/accumulate* step. Even on the tf32/fp16 input path,
-  keep the **accumulator** in fp32 (`tl.zeros(..., dtype=tl.float32)`); low precision
-  only reduces the mantissa of the multiply inputs, not the accumulation, and an fp32
-  accumulator over a long reduction is what keeps you inside tolerance. A sloppy
-  low-precision *accumulator* is the thing that fails the diff-test, not a tf32/fp16
-  *input*.
+  **keep the accumulator in fp32** (`tl.zeros(..., dtype=tl.float32)`) unless you have a
+  specific reason not to: low precision only reduces the mantissa of the multiply inputs,
+  not the accumulation, and an fp32 accumulator over a long reduction is what keeps you
+  inside tolerance. A sloppy low-precision *accumulator* is the thing that fails the
+  diff-test, not a tf32/fp16 *input*. This is a strong default rather than a checked rule
+  — nothing rejects a candidate for its accumulator dtype — so if you believe a shorter
+  reduction tolerates a narrower accumulator, you may try it, but the diff-test is then
+  the only thing standing between that choice and a wrong answer: verify it on the task's
+  real shape, and say so in `approach_summary`.
 
 ## Backend
 

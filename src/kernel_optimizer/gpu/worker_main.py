@@ -1946,7 +1946,15 @@ def run_relaxed_correctness(job: dict) -> dict:
 
     tempfile = None
     try:
-        if backend.lower() in ("triton", "tilelang", "cute"):
+        # `Backend` is Literal["triton", "cuda"] (models/core.py), so those are the only two
+        # values that can reach here. This branch previously also listed "tilelang" and
+        # "cute": unreachable through the type system, and dead in a way that read as
+        # support -- CUTLASS/CuTe are not installed in the worker venv either, so a candidate
+        # declaring one would have failed to compile and looked like a candidate defect
+        # rather than a missing dependency. The contract now states the two supported
+        # backends explicitly. Adding a third means extending the Literal AND provisioning
+        # the venv, in that order.
+        if backend.lower() == "triton":
             ModelNew, tempfile = load_custom_model_with_tempfile(kernel_src, "ModelNew")
         else:
             ModelNew = load_custom_model(kernel_src, context, job.get("build_dir"))
