@@ -34,6 +34,12 @@
 
 ## P5(最高优先):用编译期真值取代手写 shared-memory 约束
 
+> **本节的"怎么修"已被 `p5-detail-and-hard-constraint-audit.md` 取代 —— 先读那一份。**
+> 实测否决了下面"直接前移进 `guard_ok`"的做法:一次 compile probe 要 **16.7s**(按 harness 真实
+> 的一 job 一进程方式),而它要替代的浪费 trial 是 18.6s —— 几乎不省时间,还会让一次 `ask()` 最坏
+> 卡 **17.8 分钟**(64 次拒绝上限)。正确做法是**批量化**:48 个配置一个进程共 11.02s,
+> **边际 7 ms,便宜 73 倍**。诊断(手写约束不可用)不变,手段变了。
+
 **现状**:`guard` 在 `ask()` 内部拒绝(`tpe.py:69-71`),不产生 TrialRecord;而 P1 的 compile screen
 在 materialize 之后、quick_test 之前(`orchestrator.py:1085`),拒绝时产生一个
 `infeasible_shared_memory` 的 record 并被 tell 成 PRUNED。所以今天的实际行为是:约束形同虚设 →
