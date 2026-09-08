@@ -9635,3 +9635,138 @@ def test_the_accumulator_rule_reads_as_the_default_it_actually_is():
     assert "diff-test is then" in doc, (
         "if the rule is not enforced, the contract must name what actually catches a bad "
         "accumulator")
+
+
+# --- a rewrite may change backend, and the harness must believe the file, not the label ---
+
+def test_a_rewrite_can_declare_a_backend_and_the_source_decides():
+    """`RewriteCandidate` carries `backend`, and the harness overrides it from the source.
+
+    Two separate defects, one fix each.
+
+    The schema gap: the generator and novelty results both carried `backend`; the rewriter's
+    did not. So the one module whose job is "restructure to unlock a blocked direction" had no
+    field in which to express the most structural change available, and nothing in its prompt
+    suggested the move existed. 35 of 35 candidates across every run so far were Triton -- a
+    consequence of what the prompts asked for, not a finding about backends.
+
+    The trust gap: a declaration is not evidence. The field exists to make the option visible
+    in the prompt; `_detect_backend` reads the compile mechanism actually present, which is what
+    the loader has to agree with.
+    """
+    from kernel_optimizer.agents.modules import _detect_backend
+    from kernel_optimizer.models.reports import RewriteCandidate
+
+    # The field exists, and defaults to the backend the prompt tells them to start from.
+    rc = RewriteCandidate(file="rewrites/rw_1.py", change_summary="x")
+    assert rc.backend == "triton"
+    assert RewriteCandidate(file="f.py", change_summary="x", backend="cuda").backend == "cuda"
+
+    # And the source is what actually decides, in both directions.
+    triton_src = "import triton\nimport triton.language as tl\n@triton.jit\ndef k(): pass\n"
+    cuda_src = ("from torch.utils.cpp_extension import load_inline\n"
+                "mod = load_inline(name='m', cpp_sources=[''], cuda_sources=['...'])\n")
+    assert _detect_backend(triton_src) == "triton"
+    assert _detect_backend(cuda_src) == "cuda"
+    # A file that DECLARES triton but compiles CUDA is CUDA. This is the case that would
+    # otherwise reach `load_custom_model_with_tempfile` and fail as a candidate defect.
+    assert _detect_backend(cuda_src) != RewriteCandidate(
+        file="f.py", change_summary="x", backend="triton").backend
+
+
+def test_a_rewrite_does_not_inherit_its_parents_backend():
+    """The registered backend comes from the rewrite's own source, never from the parent.
+
+    Inheriting `parent.backend` was wrong in exactly the case the new prompt now invites: a
+    rewrite that switches to CUDA would have been registered as Triton, so (a) the worker would
+    load it with `load_custom_model_with_tempfile`, which needs a jit kernel, and (b)
+    `structural_signature` -- which hashes the backend -- would collide it with its Triton
+    parent, so a genuinely new structure would be discarded as a duplicate.
+
+    Asserted on the orchestrator's AST rather than its text: the call must pass a value derived
+    from the source at that site, and `parent.backend` must not appear in the rewrite
+    registration's arguments.
+    """
+    import ast
+    import inspect
+
+    from kernel_optimizer.control import orchestrator as orch
+
+    tree = ast.parse(inspect.getsource(orch))
+    # Find the _register call whose origin argument is the literal "rewrite".
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not (isinstance(node.func, ast.Attribute) and node.func.attr == "_register"):
+            continue
+        args = node.args
+        if len(args) >= 2 and isinstance(args[1], ast.Constant) and args[1].value == "rewrite":
+            found.append(node)
+    assert found, "no _register(..., 'rewrite', ...) call found in the orchestrator"
+
+    for call in found:
+        rendered = [ast.unparse(a) for a in call.args]
+        assert not any("parent.backend" in r for r in rendered), (
+            "a rewrite still inherits parent.backend; a CUDA rewrite would be loaded as "
+            f"Triton and would collide with its parent's signature. args={rendered}")
+        assert any("_detect_backend" in r or "detected" in r for r in rendered), (
+            f"the rewrite's backend is not derived from its own source. args={rendered}")
+
+
+def test_the_rewriter_is_told_when_a_backend_switch_is_the_answer():
+    """The prompt must name the measured case, not merely permit switching.
+
+    A schema field nobody is told about changes nothing. The bottleneck report deliberately
+    does NOT recommend a backend -- its job is to say what limits the kernel -- so the
+    inference has to be made here, which means this prompt has to carry the evidence needed to
+    make it: strict IEEE fp32 is where Triton has no fast path (18% of roof against 55-74% for
+    hand-written CUDA on the same task), and no tile closed that gap.
+
+    It must also state the cost, so the switch is a trade rather than a coin flip.
+    """
+    import inspect
+
+    from kernel_optimizer.agents.modules import StructureRewriterAgent
+
+    src = inspect.getsource(StructureRewriterAgent.render_prompt)
+    assert "may also change BACKEND" in src, (
+        "the rewriter is never told that switching backend is an available rewrite")
+    assert "cuda" in src and "load_inline" in src, (
+        "the prompt names no mechanism for writing the other backend")
+    assert "IEEE fp32" in src or "strict IEEE" in src, (
+        "the prompt does not name the one regime where the switch is measured to win")
+    assert "18%" in src and ("55" in src or "74%" in src), (
+        "the prompt asserts a backend choice without the measurement behind it")
+    # And the cost, so this is a trade and not an invitation.
+    assert "minute rather than seconds" in src or "compiles in about a minute" in src, (
+        "the prompt does not state the compile-time cost of a CUDA candidate")
+    assert "not installed" in src or "NOT installed" in src, (
+        "the prompt must say CUTLASS/CuTe/TileLang are unavailable, or a rewrite will try them")
+    # It must NOT read as a general encouragement to vary the backend.
+    assert "for style" in src or "on a hunch" in src, (
+        "the prompt does not warn against switching backend without a named reason")
+
+
+def test_a_rescued_rewrite_keeps_the_backend_it_was_written_in():
+    """A rescued CUDA rewrite must not default to Triton.
+
+    `rescue_from_sandbox` rebuilds the result from files on disk when a transport failure kills
+    the call, so the agent's JSON -- and its `backend` field -- never arrives. Defaulting to
+    "triton" there would hand a CUDA file to the Triton loader: the same mis-load as the
+    inheritance bug, reached by a different path, and only on the timeout path where it is
+    hardest to notice.
+    """
+    import inspect
+
+    from kernel_optimizer.agents.modules import StructureRewriterAgent
+
+    src = inspect.getsource(StructureRewriterAgent.rescue_from_sandbox)
+    assert "_detect_backend" in src, (
+        "the rewriter's rescue does not read the backend from the source, so a rescued CUDA "
+        "rewrite is loaded as Triton")
+    # The advisory Triton lint must not fire on a CUDA rewrite either.
+    soft = inspect.getsource(StructureRewriterAgent.soft_check)
+    assert "_detect_backend" in soft, (
+        "soft_check lints every rewrite as Triton; a CUDA rewrite would be warned about "
+        "missing `tl.` idioms")

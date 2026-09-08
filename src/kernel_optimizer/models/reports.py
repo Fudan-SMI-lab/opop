@@ -128,6 +128,15 @@ class ParameterizationResult(BaseModel):
 
 class RewriteCandidate(BaseModel):
     file: str
+    # A rewrite may change backend, and until this field existed it could not SAY so: the
+    # generator and novelty schemas both carried `backend`, the rewriter did not, so the one
+    # module whose whole job is "restructure to unlock a blocked direction" had no way to
+    # express the most structural change available. The field is a declaration only -- the
+    # harness overrides it from the source via `_detect_backend`, because a label is not
+    # evidence and `structural_signature` hashes the backend. Its real purpose is in the
+    # PROMPT: a schema field is what makes switching backend a visible option rather than an
+    # unmentioned one.
+    backend: Literal["triton", "cuda"] = "triton"
     hypothesis_id: str = ""
     change_summary: str
 

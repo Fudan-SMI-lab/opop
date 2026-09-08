@@ -994,6 +994,28 @@ result, so this is a legal rewrite and is usually the only thing that moves an
 arithmetic-throughput floor. Do NOT keep spending rewrites on register/shared-memory
 relief when the report says the limiter is arithmetic throughput.
 
+**A rewrite may also change BACKEND, and that is sometimes the only rewrite that can
+work.** Declare it in the `backend` field. The bottleneck report tells you what limits
+the kernel; it does not tell you which backend to use, because that inference is yours
+to make. The one case measured on this hardware: when the task genuinely requires
+**strict IEEE fp32** arithmetic, `tl.dot(..., input_precision="ieee")` has no fast path
+here — a hand-written CUDA attention kernel reached 55–74% of this card's fp32 CUDA-core
+roof where the best of 36 Triton tile configurations reached 18%, and no tile closed the
+gap. So if the report says `arithmetic_throughput` AND the correctness gate has been
+rejecting your tf32/fp16 attempts (i.e. the task really does need full fp32), a
+`cuda` rewrite via `torch.utils.cpp_extension.load_inline` is the move — retrying tiles
+inside Triton is not. The same applies if you need a warp primitive or a memory
+instruction Triton does not expose (`__shfl_*`, a specific `cp.async` shape,
+`__launch_bounds__`).
+
+Be aware of the trade you are making, and say it in `change_summary`: a CUDA candidate
+compiles in about a minute rather than seconds, and the harness reads less of a resource
+profile from it (register/shared/spill figures come from the cubin, but `num_warps` and
+pipelining depth are Triton launch properties that do not exist there). Do not switch
+backend for style, for variety, or on a hunch — switch when you can name the thing
+Triton cannot reach. CUTLASS/CuTe and TileLang are NOT installed; a candidate using them
+fails to compile.
+
 Write each rewrite to `rewrites/rw_1.py`, `rewrites/rw_2.py`, ... following the
 contract (ModelNew + PARAMS dict). The rewrite does NOT need to be faster at the
 old default parameters — it needs to unlock the blocked region (e.g. allow a
@@ -1011,7 +1033,7 @@ preceding weights — reduce the batch statistics first (a two-pass or
 partial-reduction kernel) and fuse around that, or fuse something else.
 
 Answer with JSON:
-{{"candidates": [{{"file": "rewrites/rw_1.py", "hypothesis_id": "H1",
+{{"candidates": [{{"file": "rewrites/rw_1.py", "backend": "triton", "hypothesis_id": "H1",
   "change_summary": "..."}}, ...]}}
 """
 
@@ -1036,19 +1058,31 @@ Answer with JSON:
         narration the pipeline does not gate on -- so the artifact is self-describing enough to
         recover. The empty `change_summary` is deliberate and marked: a reader of the lineage
         must be able to tell a rescued candidate from one the agent described.
+
+        `backend` is NOT narration and so is read from the source, the same way the generator
+        and novelty rescues do it: a rescued CUDA rewrite defaulted to "triton" would be handed
+        to the Triton loader and would fail as if the candidate were broken.
         """
         files = sb.list_outputs("rewrites")
         if not files:
             return None
         return RewriteResult(candidates=[
             RewriteCandidate(file=f, hypothesis_id="",
+                             backend=_detect_backend(sb.read_output(f)),
                              change_summary="[recovered from sandbox after a transport "
                                             "failure; the agent's own summary never arrived]")
             for f in files
         ])
 
     def soft_check(self, output: RewriteResult, sb: Sandbox) -> list[str]:
-        return _triton_lint_warnings([c.file for c in output.candidates], sb)
+        # Triton-specific WARNINGS only for files that are actually Triton. `check_output` still
+        # lints every file for "has a kernel at all" (a hard contract violation either way);
+        # this is the advisory pass, and running it over a CUDA rewrite would report absent
+        # `tl.` idioms as defects. Read from the source rather than the declaration, since the
+        # declaration is not what the loader will act on.
+        triton_files = [c.file for c in output.candidates
+                        if _detect_backend(sb.read_output(c.file)) == "triton"]
+        return _triton_lint_warnings(triton_files, sb)
 
 
 # --- 5. novelty generator -----------------------------------------------------------

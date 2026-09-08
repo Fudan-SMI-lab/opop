@@ -32,6 +32,7 @@ from kernel_optimizer.agents.modules import (
     RepairInputs,
     RewriterInputs,
     StructureRewriterAgent,
+    _detect_backend,
 )
 from kernel_optimizer.agents.runtime import AgentCallError
 from kernel_optimizer.config import AppConfig
@@ -1980,8 +1981,26 @@ class Orchestrator:
         registered: list[str] = []
         for rw in outcome.output.candidates:
             source = outcome.sandbox.read_output(rw.file)
+            # The backend comes from the SOURCE, not from the parent and not from the
+            # declaration. Inheriting `parent.backend` was wrong in the one case that matters:
+            # a rewrite that switched to CUDA -- now an explicitly offered move -- would be
+            # registered and then EVALUATED as Triton, so `load_custom_model_with_tempfile`
+            # would be used on a file with no jit kernel, and `structural_signature` (which
+            # hashes the backend) would collide it with its Triton parent, hiding a genuinely
+            # new structure as a duplicate. `rw.backend` is not trusted either: a label is not
+            # evidence. `_detect_backend` reads the compile mechanism actually present, which is
+            # the thing the loader has to agree with.
+            detected = _detect_backend(source)
+            if detected != rw.backend:
+                # Not an error -- the file is authoritative and proceeds. Journalled because a
+                # persistent mismatch means the prompt and the schema are teaching different
+                # things, which is only visible in aggregate.
+                self.store.append("BACKEND_DECLARATION_MISMATCH", {
+                    "family_id": family_id, "origin": "rewrite", "file": rw.file,
+                    "declared": rw.backend, "detected": detected,
+                })
             cand = self._register(source, "rewrite", [parent.candidate_id],
-                                  parent.backend, rw.change_summary)
+                                  detected, rw.change_summary)
             if cand is None:
                 # REWRITE_REJECTED, not NOVELTY_REJECTED. This site used to borrow the novelty
                 # event type, distinguished only by an `origin: "rewrite"` field -- so any count
