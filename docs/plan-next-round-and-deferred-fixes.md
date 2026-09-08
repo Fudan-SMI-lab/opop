@@ -376,3 +376,39 @@ tuning or rewriting closes.
 
 Still open at this point: whether Loop D ever fires (novelty count is a verified 0, using
 REWRITE_REJECTED to separate it from Loop C), and `final_reeval_ms` versus the 3.440 ms tuned figure.
+
+## ESCALATED: the missing fp16 ceiling affects HALF of L3:43's verdicts, not one
+
+I first reported this as a single verdict (cand-ec42408b at 107.8%). Auditing the whole run shows
+**12 of 24 BOTTLENECK_CLASSIFIED verdicts exceed 100% of the compute ceiling**, and it gets worse as
+candidates get faster -- because faster candidates are exactly the ones that went low-precision:
+
+    candidate         ms   dtype  TFLOP/s  vs tf32   vs fp16@1.8x  @2.0x
+    cand-80fea541  3.290   fp16     125.3   141.0%       78.3%     70.5%   <- the run's best
+    cand-f49f5b32  3.319   fp16     124.2   139.8%       77.7%     69.9%
+    cand-490a9d76  3.440   fp16     119.9   134.9%       74.9%     67.4%
+    cand-f997f04c  3.567   bf16     115.6   130.1%       72.3%     65.0%
+    cand-ab21b44c  3.752   bf16     109.9   123.6%       68.7%     61.8%
+    cand-ec42408b  4.297   fp16      96.0   108.0%       60.0%     54.0%
+
+All 12 are fp16 (8) or bf16 (4); all 12 report uses_tensor_cores=true. The fp16 ceiling above is
+ESTIMATED from published 4090 dense figures (~2x tf32) rather than measured, because measuring it
+needs an exclusive-lock matmul on a GPU currently running the experiment -- doing that would
+contaminate the very timings the run is producing. Measure it properly before quoting a number.
+
+**Why this is worse than the original write-up.** The defect does not degrade gracefully with
+candidate quality -- it degrades WITH IT. Every candidate good enough to reach the top of the
+leaderboard is a candidate whose compute-headroom reading is meaningless. The run's best kernel is
+being told it is at 141% of the ceiling when it is plausibly at ~70-78%, i.e. roughly a quarter of
+its ceiling still unused. That is the most expensive possible wrong answer, delivered to the
+candidate that matters most.
+
+**What keeps it from being a silent disaster:** impossible_fraction fires on every one of the 12,
+and the disagreement text tells the agent not to read it as "at the ceiling", naming both causes. So
+the agent is warned; it just is not given the right number. And the classification KIND is still
+usable -- these came out compute_bound, which the analytic arithmetic-intensity check independently
+agrees with (990 FLOP/byte against a ridge of 60), so "this kernel is compute-side" is sound even
+though "% of peak" is not.
+
+Priority is unchanged (next round, not mid-chain, because calibration changes shift every derived
+threshold) but the scope claim in the earlier note was too small by 12x.
