@@ -46,14 +46,34 @@ Rules:
 - No caching of outputs across calls, no reading the reference implementation's
   result, no CUDA stream tricks, no patching of timing functions. Static checkers
   and runtime diff-tests will catch these; they fail the candidate immediately.
+- **Four Python constructs are rejected outright by a static check, before your file
+  reaches the GPU.** They are banned because each was used to fake a passing kernel,
+  and the check is a plain regex that cannot tell your intent from that one:
+  - **`try:` / `except`** — used to fall back to PyTorch whenever the custom kernel
+    raised, so an unfinished kernel still passed. Write no exception handling; if an
+    input case needs different handling, branch on it explicitly.
+  - **`pass`** — used to inherit the reference class and do nothing, so the parent
+    implementation did the work. Use an explicit no-op you actually need instead (e.g.
+    `return x` , or restructure the branch away).
+    **The check matches the WORD `pass` anywhere outside a comment, including inside a
+    string literal.** Comments are stripped before matching, strings are not — so
+    `_NOTE = "we pass tiles through shared memory"` fails the candidate while the same
+    text after a `#` is fine. Prefer "hand off"/"single-stage" in strings. (`passed`
+    and `bypass` are safe: the match is on word boundaries.)
+  - **`threading` / `multiprocessing` / `concurrent.futures`** — used to manipulate
+    timing. Even an unused `import threading` fails.
+  These are hard rejections, not warnings: the file is refused with a message about
+  the cheat the pattern is associated with, which will NOT describe what you were
+  doing. Avoiding the four constructs is much cheaper than arguing with the message.
 - Correctness is checked by a diff-test against the reference on its own input
   shapes. The tolerance is tight: under the strict fp32 mode the harness uses
   `torch.allclose(atol=1e-4, rtol=1e-4)` over the WHOLE output tensor (any single
   element out of tolerance fails the candidate). Under the dual-precision mode the
   harness compares against the reference computed at BOTH tf32 and ieee fp32
   precision and accepts if your output matches EITHER (relative error < 1% on
-  >99% of elements). Either way, do not assume loose slack — a numerically sloppy
-  reduction (e.g. tf32 accumulation over a long dimension) will be rejected.
+  >99% of elements, AND cosine similarity >= 0.99985 — both must hold). Either way,
+  do not assume loose slack — a numerically sloppy reduction (e.g. tf32 accumulation
+  over a long dimension) will be rejected.
 
 ## Your own testing: keep it small, and never sweep
 

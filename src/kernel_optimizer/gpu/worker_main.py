@@ -1463,12 +1463,44 @@ def run_probe_semantics(job: dict) -> dict:
     }
 
 
+# The anti-cheat checks we require, stated explicitly rather than inherited from
+# KernelBench's STRICT_CHECKS default. Passing this list pins our acceptance criteria: an
+# upstream edit to STRICT_CHECKS would otherwise change what we accept with no signal here,
+# and the four below are choices we have actually examined:
+#
+#   code_bypass        bans any `try:` / `except` / bare `pass`. Blocks two real cheats -- a
+#                      kernel that falls back to PyTorch inside an exception handler, and a
+#                      ModelNew that inherits the reference and `pass`es. Kept STRICT despite
+#                      being a blunt regex (it also matches a `try` used for a legitimate
+#                      host-side fallback, and the word "pass" inside a string literal, since
+#                      KernelBench strips comments but not strings). The contract now warns
+#                      about both, which is the cheaper half of the fix.
+#   timing_event_patch monkey-patching the timing functions. No legitimate use.
+#   thread_injection   threading/multiprocessing. Blocks timing manipulation; also catches an
+#                      unused `import threading`, which the contract now mentions.
+#   lazy_eval          returning work not yet done, so the timer stops before the compute.
+#
+# The complement is as deliberate: `torch_computation_ops` and `pytorch_wrap` stay WARNINGS
+# (KernelBench's own default), which is what makes calling cuBLAS for a sub-op legal. Those
+# warnings are surfaced in the report rather than enforced -- a large regular GEMM is often
+# already at the hardware roof, and forbidding the vendor library would cost real time on
+# fp32-class tasks (measured on L3:43: cuBLAS beats our hand-written Triton GEMM by 1.33x at
+# strict ieee). `stream_injection` and `precision_downgrade` likewise stay warnings: the first
+# has legitimate async uses, and the second flags exactly the tensor-core path the contract
+# recommends.
+REQUIRED_STATIC_CHECKS = ("code_bypass", "timing_event_patch", "thread_injection", "lazy_eval")
+
+
 def run_static_check(job: dict) -> dict:
     from kernelbench.kernel_static_checker import validate_kernel_static
 
     code = open(job["kernel_src_path"], encoding="utf-8").read()
+    # `forbidden` does NOT need the per-backend implementation check appended --
+    # validate_kernel_static adds BACKEND_IMPL_CHECK[backend] itself, so listing it here
+    # would only duplicate it.
     valid, errors, warnings = validate_kernel_static(
-        code, backend=job["backend"], precision=job["precision"]
+        code, backend=job["backend"], precision=job["precision"],
+        forbidden=list(REQUIRED_STATIC_CHECKS),
     )
     return {
         "ok": valid,

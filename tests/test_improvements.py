@@ -8944,3 +8944,95 @@ def test_sass_is_read_from_a_built_object_not_only_a_triton_cubin():
     assert "num_warps is a launch parameter" in helper_src, (
         "an unmeasurable signal must be reported as unmeasurable, or a reader takes its "
         "absence for a clean bill of health")
+
+
+def test_the_contract_names_the_four_constructs_the_static_check_refuses():
+    """F1: `try`/`except`/`pass`/threading are hard rejections; the contract must say so.
+
+    Measured with the harness's own arguments (backend="triton", precision="fp32"), all four
+    are refused before the file reaches the GPU: a host-side try/except fallback, an
+    `if ...: pass` branch, an UNUSED `import threading`, and -- the trap -- the word "pass"
+    inside a STRING LITERAL, because KernelBench's checker strips comments but not strings.
+
+    The gate has never fired on us, and only by luck: of 20 real candidate sources on box 1,
+    `try:` 0, `except` 0, and both "pass" hits were a comment ("single-pass") and a function
+    name (`_twopass_attn_kernel`), neither matching `\bpass\b`. One stray bare `pass` changes
+    that, and the message the candidate receives talks about an "inheritance bypass" -- an
+    accusation unrelated to what it did, costing a whole repair round to decode.
+
+    So this test pins the CONTRACT text, which is the cheap half of the fix: an agent told in
+    advance does not write them.
+    """
+    from kernel_optimizer.agents.modules import _contract_doc
+
+    doc = _contract_doc()
+    for construct in ("try:", "except", "pass", "threading"):
+        assert construct in doc, f"the contract never mentions {construct!r}"
+    # The string-literal trap is the non-obvious half: a candidate can be refused for a word
+    # in a comment-like note. Naming the constructs without this would still cost a round.
+    low = doc.lower()
+    assert "string literal" in low, (
+        "the contract must warn that `pass` inside a string literal also fails -- comments "
+        "are stripped before the regex runs, strings are not")
+    # And it must say the message will not describe what the candidate was doing, or an agent
+    # reads "inheritance bypass" as a real diagnosis of its own code.
+    assert "multiprocessing" in doc or "concurrent.futures" in doc, (
+        "threading's siblings are caught by the same check and must be named")
+
+
+def test_our_static_check_pins_its_own_forbidden_list():
+    """F10: pass `forbidden` explicitly, so an upstream edit cannot move our acceptance bar.
+
+    Two properties, both load-bearing:
+      1. the four anti-cheat checks we require are passed explicitly (not inherited from
+         KernelBench's STRICT_CHECKS default);
+      2. `torch_computation_ops` and `pytorch_wrap` are NOT in that list -- they stay
+         warnings, which is exactly what makes calling cuBLAS for a sub-op legal. Promoting
+         either to strict would re-forbid the vendor-library route F2 opens (measured worth
+         1.33x on L3:43's projections at strict ieee).
+    """
+    import ast
+    import inspect
+
+    from kernel_optimizer.gpu import worker_main
+
+    required = set(worker_main.REQUIRED_STATIC_CHECKS)
+    assert required == {"code_bypass", "timing_event_patch", "thread_injection", "lazy_eval"}, (
+        f"the pinned anti-cheat set changed unexpectedly: {sorted(required)}")
+    for permitted in ("torch_computation_ops", "pytorch_wrap", "stream_injection",
+                      "precision_downgrade"):
+        assert permitted not in required, (
+            f"{permitted} must stay a WARNING: enforcing it would forbid the vendor-library "
+            f"route (cuBLAS for a large regular GEMM) that the contract now permits")
+
+    # It must actually be forwarded -- a constant nobody passes protects nothing.
+    src = inspect.getsource(worker_main.run_static_check)
+    tree = ast.parse(src.lstrip())
+    forwarded = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not (isinstance(node.func, ast.Name)
+                and node.func.id == "validate_kernel_static"):
+            continue
+        assert any(kw.arg == "forbidden" for kw in node.keywords), (
+            "validate_kernel_static is called without `forbidden`, so it silently falls back "
+            "to KernelBench's STRICT_CHECKS and our acceptance bar can drift upstream")
+        forwarded = True
+    assert forwarded, "no validate_kernel_static call found in run_static_check"
+
+
+def test_the_contract_states_both_halves_of_the_relaxed_gate():
+    """The dual-precision criterion is a conjunction; the contract used to state only one half.
+
+    `_relaxed_close` requires frac > relaxed_pass_frac AND cosine >= cosine_min. A candidate
+    told only about the 1%/99% element test can land a result that clears it and fails on
+    cosine, with no way to have anticipated that from the contract.
+    """
+    from kernel_optimizer.agents.modules import _contract_doc
+
+    doc = _contract_doc().lower()
+    assert "99%" in doc, "the element-fraction half of the gate is missing"
+    assert "cosine" in doc, (
+        "the contract omits the cosine criterion, so a candidate cannot know both halves "
+        "must hold")
