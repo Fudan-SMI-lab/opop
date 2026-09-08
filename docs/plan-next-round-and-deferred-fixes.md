@@ -317,3 +317,35 @@ available; only the ceiling to compare against is missing.
 
 Watch for: whether the same >100% appears on L3:21 and L3:48. Memory records fp16 being the fastest
 path on these tasks, so it should recur wherever a winner picks fp16.
+
+## Evidence: a rewrite that worked, but NOT for the reason it stated (L3:43 H2)
+
+`cand-ab21b44c` is the run's best at **3.752 ms** (2.93x torch_compile_tf32's 10.986 ms median). Its
+stated hypothesis was "GEMM shared-memory restructure **to unblock BLOCK_N=512**": pre-cast the
+c_attn/c_proj weights to the compute dtype on the host so the pipeliner stages the dominant B-tile
+at 2B/element instead of 4B, dropping staged smem at BLOCK_N=512/stages=2 from 73,728B to 40,960B.
+
+The hypothesis was implemented correctly and the blocked value did become reachable -- three trials
+ran at BLOCK_N=512. **They came in at 4.826 and 4.833 ms, materially worse than the 3.752 ms winner,
+which uses BLOCK_N=128.** So the stated mechanism is not why the rewrite won.
+
+What actually paid, isolated by comparing against its parent at matched dtype:
+
+    dtype   parent cand-6cf42e7d   H2 cand-ab21b44c   gain
+    fp16    5.142 ms               3.873 ms           24.7%
+    bf16    6.438 ms               3.752 ms           41.7%
+    tf32    7.967 ms               5.683 ms           28.7%
+
+It improves at EVERY precision, so this is not "bf16 happened to win" either. The weight pre-cast
+halves staged-tile bytes at every block size, and that general effect is the gain; unlocking 512 was
+a red herring the agent itself proposed.
+
+Two things worth keeping from this:
+
+1. **A rewrite's stated hypothesis is not evidence for why it worked.** Checking cost one query
+   (does the winning trial use the value the hypothesis was about?) and reversed the explanation. Any
+   claim of the form "feedback X drove structural change Y which produced gain Z" needs the winning
+   configuration checked against X, not just Y's summary read.
+2. **The loop still works when the hypothesis is wrong.** The agent proposed a specific mechanism,
+   the harness measured it honestly, the wrong direction lost on latency, and the search kept the
+   improvement anyway. That is the design working -- the harness never had to trust the narration.
