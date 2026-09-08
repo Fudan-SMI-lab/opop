@@ -1,9 +1,10 @@
 # Updating a Linux experiment box to the current framework
 
 You are running an older checkout. This tells you what to pull, what changed that affects your
-results, and the four places where getting it wrong is silent rather than loud.
+results, and the places where getting it wrong is silent rather than loud.
 
-Written 2026-09-08 against branch `v2` @ `de892b8`. Everything here was verified on a live box
+Written 2026-09-08 against branch `v2` @ `1f18cd1` (updated as fixes land; the commit is what the
+text was verified against). Everything here was verified on a live box
 (RTX 4090, sm_89) — where a number must be measured on *your* hardware instead of copied from
 here, it says so.
 
@@ -25,10 +26,19 @@ hoping.
 
 ```bash
 git pull --ff-only origin v2
-python -m pytest tests/ -q                    # expect 338 passed, 9 skipped
+python -m pytest tests/ -q                    # expect 376 passed, 2 skipped
 ```
 
-If the test count is lower than 338, your pull did not complete — do not start an experiment.
+If the test count is materially lower than 376, your pull did not complete — do not start an
+experiment. Note the skip count differs by platform and that is expected: on a Linux GPU box 2 skip
+(the two WSL/9p regression guards, retired by the port), on the Windows orchestrator host 9 skip
+(everything gated on `importorskip("torch")`). If you see 9 skips on a Linux box, you are running
+without torch and the GPU tests are not being exercised.
+
+That platform gap is not cosmetic. `test_relaxed_close_semantics` asserted the wrong verdict from
+the commit that introduced it and stayed green for weeks, because it skips on Windows and had never
+run anywhere else. **A suite that skips a third of its GPU assertions is not the suite you think you
+are running** — run it on the box that has the GPU.
 
 **You no longer need to port anything.** The native-Linux port is in the repo now
 (`linux-server/*.linux.py`, `linux-server/configs/*.yaml`). If you previously hand-ported
@@ -120,7 +130,7 @@ any verdict can return.
 
 ---
 
-## 3. Four things that fail SILENTLY
+## 3. Things that fail SILENTLY
 
 These are ordered by how much of a run they waste.
 
@@ -186,7 +196,7 @@ The verified values are `"allow"` and `{"*": "allow"}` (10.5 s and 10.1 s agains
 32000 tokens on its **first** L3 call and produced zero files. An L1 smoke will not reveal this — its
 peak output was 5589 tokens.
 
-### 3.4 Calibration is cached per box, and it is not portable
+### 3.4 Calibration is cached per box, and a cache can predate a measurement
 
 The cache lives beside the runs (`<runs_dir>/calibration.json`) and is keyed on device identity, so
 it will not silently cross a hardware change. But **do not copy one between boxes**: every threshold
@@ -200,6 +210,40 @@ Expect a `CALIBRATION_MEASURED` or `CALIBRATION_LOADED` event carrying `tiers`, 
 `tf32_tflops`, `empty_launch_floor_ms`. If `thresholds` is absent the classifier falls back to
 documented defaults and says so — usable, but your verdicts are then not calibrated to your box.
 
+**The second staleness axis, which the identity key does not cover.** Every field on `Calibration`
+has a permissive default so that an old cache still loads — necessary, since a box that cannot
+measure bf16 must still classify — and the price is that a **newly added** measurement is served as
+`0.0` forever on a box whose identity never changed, silently. This happened: the fp16/bf16 ceilings
+landed 2026-09-08 and this box's `runs-l3/calibration.json` was written 09-07, so a fresh run
+journalled `fp16_tflops: 0.0`. A low-precision candidate is then scored against the **tf32**
+denominator — about half its real ceiling on a 4090 — and reads as saturated with headroom left.
+That is the `impossible_fraction` defect that carried 13 of 25 verdicts on L3:43.
+
+`load_cached` now refuses any cache below `CALIBRATION_SCHEMA_VERSION`, so this repairs itself on the
+next run. Two obligations remain:
+
+- **When you add a measurement to `run_calibrate`, bump `CALIBRATION_SCHEMA_VERSION`**
+  (`evaluation/calibration.py`). Forgetting it puts the new field back to a permanent `0.0`.
+- **Read the numbers, don't trust the word "cached".** On the first run after an update:
+
+```bash
+python - <<'EOF'
+import json, pathlib, sys
+run = sys.argv[1] if len(sys.argv) > 1 else "<run dir>"
+for ln in pathlib.Path(run, "events.jsonl").read_text(encoding="utf-8").splitlines():
+    e = json.loads(ln)
+    if e["type"] in ("CALIBRATION_LOADED", "CALIBRATION_MEASURED"):
+        p = e["payload"]
+        print(e["type"], "source=", p.get("source"))
+        for k in ("dram_tbs", "fp32_tflops", "tf32_tflops", "fp16_tflops", "bf16_tflops"):
+            print(f"   {k:<14} {p.get(k)}")
+EOF
+```
+
+`fp16_tflops` and `bf16_tflops` must be non-zero on any card that has tensor cores. A zero there is
+not a harmless gap — it inverts the advice the agent receives on precisely the candidates fast
+enough to lead.
+
 ---
 
 ## 4. Running an experiment
@@ -207,7 +251,7 @@ documented defaults and says so — usable, but your verdicts are then not calib
 ### 4.1 Preflight, every time
 
 ```bash
-python -m pytest tests/ -q                                   # 338 passed
+python -m pytest tests/ -q                # expect 376 passed, 2 skipped on Linux
 python -m kernel_optimizer.cli --config <cfg> doctor          # includes the tier block
 grep -n 'external_directory' src/kernel_optimizer/agents/sandbox.py
 grep -n 'OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX' <cfg>
