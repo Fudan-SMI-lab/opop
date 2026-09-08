@@ -349,3 +349,30 @@ Two things worth keeping from this:
 2. **The loop still works when the hypothesis is wrong.** The agent proposed a specific mechanism,
    the harness measured it honestly, the wrong direction lost on latency, and the search kept the
    improvement anyway. That is the design working -- the harness never had to trust the narration.
+
+## Answered: the rewrite rounds do run, and every one of them improved (L3:43)
+
+One of the four questions this round was watching. At 6.3 h of 12 h, run-l3-43-20260908-053708 has
+**4 FAMILY_ROUND_RECORDED events -- one per family, all evaluated, all improving**:
+
+| family | seed best | after its round | gain |
+|---|---|---|---|
+| fam-6a8f0088 | 8.369 ms | **3.440 ms** | **58.9%** |
+| fam-8c734843 | 14.876 ms | 7.849 ms | 47.2% |
+| fam-f94ad85e | 8.108 ms | 4.620 ms | 43.0% |
+| fam-e4df6e17 | 5.142 ms | 3.752 ms | 27.0% |
+
+The 58.9% is the largest single-round improvement in the project (previous maximum 47.7%). Compare
+the prior record: 4 of 19 runs "converged" having used 0-2 rounds, and only 1 of 19 was ever ended
+by wall clock. Raising `rewrite_rounds_per_family` from 3 to 5 is directly responsible -- under the
+old cap, combined with the active-slot behaviour that ended run-l3-21-20260905-071312 at 2.05 h, at
+least two of these rounds would not have happened.
+
+A second thing worth keeping: `fam-8c734843` is the deliberately UNFUSED family (it materializes the
+(B*nh,T,T) score matrix). It improved 47.2% when rewritten -- so a structurally disadvantaged
+approach still responds to the loop -- but it remains 2.3x slower than the fused leader (7.849 vs
+3.440). The fusion advantage the 68.12x task-cost figure measured is structural, not something
+tuning or rewriting closes.
+
+Still open at this point: whether Loop D ever fires (novelty count is a verified 0, using
+REWRITE_REJECTED to separate it from Loop C), and `final_reeval_ms` versus the 3.440 ms tuned figure.
