@@ -730,6 +730,7 @@ class Orchestrator:
                 n_candidates=min(self.cfg.agents.generator.n_candidates,
                                  self.cfg.budgets.max_seed_candidates),
                 eval_semantics=self.eval_semantics,
+                calibration=self.calibration,
             )
         )
         for gen_cand in outcome.output.candidates[: self.cfg.budgets.max_seed_candidates]:
@@ -850,6 +851,7 @@ class Orchestrator:
                 task=self.task, candidate_source=source,
                 device=self.cfg.device, prior_feedback=feedback,
                 candidate_id=cand_id,
+                calibration=self.calibration,
             )
         )
 
@@ -1472,6 +1474,7 @@ class Orchestrator:
                             prior_feedback=feedback,
                             candidate_id=cand.candidate_id,
                             prior_constraints=prior_constraints,
+                            calibration=self.calibration,
                         )
                     )
                 except AgentCallError as exc:
@@ -1971,6 +1974,7 @@ class Orchestrator:
                     device=self.cfg.device,
                     n_candidates=self.cfg.agents.rewriter.n_candidates,
                     eval_semantics=self.eval_semantics,
+                    calibration=self.calibration,
                 )
             )
         except AgentCallError as exc:
@@ -2129,6 +2133,7 @@ class Orchestrator:
                     family_summaries=summaries, device=self.cfg.device,
                     n_candidates=self.cfg.agents.novelty.n_candidates,
                     eval_semantics=self.eval_semantics,
+                    calibration=self.calibration,
                 )
             )
         except AgentCallError as exc:

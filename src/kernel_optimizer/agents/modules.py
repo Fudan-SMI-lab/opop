@@ -46,6 +46,60 @@ def _triton_pitfalls_doc() -> str:
     )
 
 
+def _measured_ceilings_doc(calibration) -> str:
+    """This box's measured ceilings, as a block for any agent's prompt. Never a datasheet.
+
+    Factored out of `_bottleneck_doc` because it was reachable ONLY from there, and
+    `AnalystInputs` is the only Inputs dataclass carrying a calibration -- so the four agents
+    that actually WRITE kernels (generator, parameterizer, rewriter, novelty) were told the
+    card's name, VRAM, register and shared-memory limits, and nothing about what it can do.
+    Verified on run-l3-21-20260908-232211: the generator's `docs/device.md` was 8 lines with no
+    DRAM figure and no TFLOP figure, in a run whose own calibration had just measured
+    fp16 at 158.6 and bf16 at 164.2 TFLOP/s.
+
+    That gap defeats the guidance those agents are given. The contract tells them to treat
+    dot-product precision as a first-class choice and says fp16 is "roughly 2x" tf32 on this
+    class of card; the rewriter is now told a CUDA rewrite wins under strict IEEE fp32. Both
+    are arguments about ratios between ceilings, and neither agent could see a single one of
+    those ceilings for the box it was writing for.
+
+    Empty string when there is no calibration, so a box that could not measure still runs -- the
+    prompt then simply omits the section rather than asserting a default.
+    """
+    if calibration is None:
+        return ""
+    out: list[str] = [
+        "## What this GPU can actually do (measured on THIS box, not a datasheet)\n",
+        f"- DRAM: **{calibration.dram_tbs:.3f} TB/s**\n",
+        f"- fp32 (no tensor cores): **{calibration.fp32_tflops:.1f} TFLOP/s**\n",
+    ]
+    if calibration.tf32_tflops > 0:
+        out.append(
+            f"- tensor cores (tf32): **{calibration.tf32_tflops:.1f} TFLOP/s** "
+            f"= {calibration.tf32_tflops / max(calibration.fp32_tflops, 1e-9):.2f}x the fp32 "
+            f"figure. A kernel not using them is limited by the lower number.\n")
+    # P3: show the low-precision ceilings too. While these were unmeasured, an fp16 kernel
+    # was scored against tf32 and read as >100% of "peak", so the agent was told a candidate
+    # with real headroom was saturated. Naming the ratio makes the lever explicit: on this
+    # class of card fp16 is roughly 2x tf32, so precision is a throughput decision.
+    for label, value in (("fp16", calibration.fp16_tflops),
+                         ("bf16", calibration.bf16_tflops)):
+        if value > 0:
+            out.append(
+                f"- tensor cores ({label}): **{value:.1f} TFLOP/s** "
+                f"= {value / max(calibration.tf32_tflops, 1e-9):.2f}x the tf32 figure. "
+                f"Your candidate is measured against the ceiling for the precision it "
+                f"actually computes in.\n")
+    if calibration.empty_launch_floor_ms > 0:
+        out.append(
+            f"- smallest possible launch: **{calibration.empty_launch_floor_ms*1e3:.1f} us**. "
+            f"Nothing on this box can be faster than this per launch.\n")
+    for s in calibration.suspect:
+        out.append(f"- ⚠ {s}\n")
+    out.append("")
+    return "".join(out)
+
+
 def _bottleneck_doc(verdict, task_cost, calibration) -> str:
     """Render the harness's MEASURED bottleneck analysis for the agent (steps 6+7).
 
@@ -111,33 +165,7 @@ def _bottleneck_doc(verdict, task_cost, calibration) -> str:
         out.append("")
 
     if calibration is not None:
-        out.append("## What this GPU can actually do (measured on THIS box, not a datasheet)\n")
-        out.append(f"- DRAM: **{calibration.dram_tbs:.3f} TB/s**\n")
-        out.append(f"- fp32 (no tensor cores): **{calibration.fp32_tflops:.1f} TFLOP/s**\n")
-        if calibration.tf32_tflops > 0:
-            out.append(
-                f"- tensor cores (tf32): **{calibration.tf32_tflops:.1f} TFLOP/s** "
-                f"= {calibration.tf32_tflops / max(calibration.fp32_tflops, 1e-9):.2f}x the fp32 "
-                f"figure. A kernel not using them is limited by the lower number.\n")
-        # P3: show the low-precision ceilings too. While these were unmeasured, an fp16 kernel
-        # was scored against tf32 and read as >100% of "peak", so the agent was told a candidate
-        # with real headroom was saturated. Naming the ratio makes the lever explicit: on this
-        # class of card fp16 is roughly 2x tf32, so precision is a throughput decision.
-        for label, value in (("fp16", calibration.fp16_tflops),
-                             ("bf16", calibration.bf16_tflops)):
-            if value > 0:
-                out.append(
-                    f"- tensor cores ({label}): **{value:.1f} TFLOP/s** "
-                    f"= {value / max(calibration.tf32_tflops, 1e-9):.2f}x the tf32 figure. "
-                    f"Your candidate is measured against the ceiling for the precision it "
-                    f"actually computes in.\n")
-        if calibration.empty_launch_floor_ms > 0:
-            out.append(
-                f"- smallest possible launch: **{calibration.empty_launch_floor_ms*1e3:.1f} us**. "
-                f"Nothing on this box can be faster than this per launch.\n")
-        for s in calibration.suspect:
-            out.append(f"- ⚠ {s}\n")
-        out.append("")
+        out.append(_measured_ceilings_doc(calibration))
 
     if verdict is not None:
         out.append(f"## Verdict: **{verdict.kind}**\n")
@@ -237,7 +265,14 @@ def _tier1_doc(profile) -> str:
             "facts about the binary rather than inferences:\n\n" + "".join(lines))
 
 
-def _device_doc(device: DeviceLimits) -> str:
+def _device_doc(device: DeviceLimits, calibration=None) -> str:
+    """The target device: hard per-block limits, then what the box measurably achieves.
+
+    `calibration` is optional so a box without one still renders a valid doc, and so this stays
+    callable from tests that have only a DeviceLimits. But pass it wherever it exists: the limits
+    alone are what a candidate must not EXCEED, while the ceilings are what it is measured
+    AGAINST, and only the second kind makes "is this kernel fast" answerable.
+    """
     return (
         f"# Target device\n\n"
         f"- {device.name}\n"
@@ -246,6 +281,7 @@ def _device_doc(device: DeviceLimits) -> str:
         f"- Max static shared memory/block: {device.max_shared_bytes_static} B\n"
         f"- Max opt-in shared memory/block: {device.max_shared_bytes_optin} B\n"
         f"- Max threads/block: {device.max_threads_per_block}\n"
+        + ("\n" + _measured_ceilings_doc(calibration) if calibration is not None else "")
     )
 
 
@@ -460,6 +496,10 @@ class GeneratorInputs:
     device: DeviceLimits
     n_candidates: int
     eval_semantics: dict | None = None
+    # This box's measured ceilings, so the prompt can state what the card ACHIEVES and
+    # not merely what it forbids. Optional: a box without a calibration still runs.
+    calibration: object | None = None
+
 
 
 class CandidateGeneratorAgent(AgentModule[GeneratorInputs, GenerationResult]):
@@ -470,7 +510,7 @@ class CandidateGeneratorAgent(AgentModule[GeneratorInputs, GenerationResult]):
         sb.write_input("task/ref.py", inputs.ref_source)
         sb.write_input("docs/candidate_contract.md", _contract_doc())
         sb.write_input("docs/triton_pitfalls.md", _triton_pitfalls_doc())
-        sb.write_input("docs/device.md", _device_doc(inputs.device))
+        sb.write_input("docs/device.md", _device_doc(inputs.device, inputs.calibration))
         sb.write_input("task/eval_semantics.md", _eval_semantics_doc(inputs.eval_semantics))
 
     def render_prompt(self, inputs: GeneratorInputs, sb: Sandbox) -> str:
@@ -588,6 +628,12 @@ class ParameterizerInputs:
     # nothing on any candidate (0 of 21) while failing at 48.3% against 26.0% for
     # the doubly-legal region.
     prior_constraints: tuple[tuple[str, str], ...] = ()
+    # This box's measured ceilings, so the prompt can state what the card ACHIEVES and
+    # not merely what it forbids. Optional: a box without a calibration still runs.
+    # The parameterizer needs these as much as the writers do -- it chooses the tile and
+    # precision DOMAINS, and "is fp16 worth a choice here" is a question about the ratio
+    # between two ceilings it otherwise cannot see.
+    calibration: object | None = None
 
 
 class ParameterizerAgent(AgentModule[ParameterizerInputs, ParameterizationResult]):
@@ -602,7 +648,7 @@ class ParameterizerAgent(AgentModule[ParameterizerInputs, ParameterizationResult
         # binds it exactly as it binds the generator/rewriter. It was the only
         # Triton-writing agent that never received this doc.
         sb.write_input("docs/triton_pitfalls.md", _triton_pitfalls_doc())
-        sb.write_input("docs/device.md", _device_doc(inputs.device))
+        sb.write_input("docs/device.md", _device_doc(inputs.device, inputs.calibration))
 
     def render_prompt(self, inputs: ParameterizerInputs, sb: Sandbox) -> str:
         if inputs.expand_directive:
@@ -952,6 +998,10 @@ class RewriterInputs:
     device: DeviceLimits
     n_candidates: int
     eval_semantics: dict | None = None
+    # This box's measured ceilings, so the prompt can state what the card ACHIEVES and
+    # not merely what it forbids. Optional: a box without a calibration still runs.
+    calibration: object | None = None
+
 
 
 class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
@@ -966,7 +1016,7 @@ class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
         )
         sb.write_input("docs/candidate_contract.md", _contract_doc())
         sb.write_input("docs/triton_pitfalls.md", _triton_pitfalls_doc())
-        sb.write_input("docs/device.md", _device_doc(inputs.device))
+        sb.write_input("docs/device.md", _device_doc(inputs.device, inputs.calibration))
         sb.write_input("task/eval_semantics.md", _eval_semantics_doc(inputs.eval_semantics))
 
     def render_prompt(self, inputs: RewriterInputs, sb: Sandbox) -> str:
@@ -1096,6 +1146,10 @@ class NoveltyInputs:
     device: DeviceLimits
     n_candidates: int
     eval_semantics: dict | None = None
+    # This box's measured ceilings, so the prompt can state what the card ACHIEVES and
+    # not merely what it forbids. Optional: a box without a calibration still runs.
+    calibration: object | None = None
+
 
 
 class NoveltyGeneratorAgent(AgentModule[NoveltyInputs, NoveltyResult]):
@@ -1106,7 +1160,7 @@ class NoveltyGeneratorAgent(AgentModule[NoveltyInputs, NoveltyResult]):
         sb.write_input("task/ref.py", inputs.ref_source)
         sb.write_input("docs/candidate_contract.md", _contract_doc())
         sb.write_input("docs/triton_pitfalls.md", _triton_pitfalls_doc())
-        sb.write_input("docs/device.md", _device_doc(inputs.device))
+        sb.write_input("docs/device.md", _device_doc(inputs.device, inputs.calibration))
         sb.write_input("task/eval_semantics.md", _eval_semantics_doc(inputs.eval_semantics))
         for i, fam in enumerate(inputs.family_summaries, 1):
             sb.write_input(f"families/family_{i}/anchor.py", fam.get("anchor_source", ""))

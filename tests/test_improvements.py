@@ -6007,6 +6007,12 @@ MEASURED_4090 = {
     "l2_bytes": 75497472, "spec_dram_tbs": 1.008096,
     "dram_tbs": 0.9102221900268849, "fp32_tflops": 54.93976179332003,
     "tf32_tflops": 88.8785549203062, "empty_launch_floor_ms": 0.01740800030529499,
+    # The low-precision ceilings (P3). Real figures, from box 1's own CALIBRATION_MEASURED
+    # event on run-l3-21-20260908-232211. This fixture previously omitted them -- it was a
+    # pre-P3 worker result -- which meant every test rendering a doc from it saw no fp16 or
+    # bf16 line and could not have noticed their absence downstream. A fixture that is missing
+    # the field under test cannot fail for the right reason.
+    "fp16_tflops": 158.61464333737848, "bf16_tflops": 164.169719846138,
     "yardsticks": [
         {"name": "COMPUTE 4096^3 fp32 matmul", "truth": "compute",
          "gpu_ms": 2.6357760429382324, "cpu_issue_ms": 0.012677162885665894,
@@ -9770,3 +9776,98 @@ def test_a_rescued_rewrite_keeps_the_backend_it_was_written_in():
     assert "_detect_backend" in soft, (
         "soft_check lints every rewrite as Triton; a CUDA rewrite would be warned about "
         "missing `tl.` idioms")
+
+
+# --- the box's measured ceilings must reach the agents that WRITE kernels ---
+
+def test_the_measured_ceilings_reach_every_kernel_writing_agent():
+    """`device.md` must state what the card ACHIEVES, not only what it forbids.
+
+    Found on a live run. `run-l3-21-20260908-232211` measured fp16 at 158.6 and bf16 at
+    164.2 TFLOP/s, and its generator's `docs/device.md` was eight lines: name, VRAM, registers,
+    shared memory, threads. No DRAM figure, no TFLOP figure. The ceilings block existed but was
+    reachable only from `_bottleneck_doc`, and `AnalystInputs` was the only Inputs dataclass
+    carrying a calibration -- so the analyst saw them and the four agents that actually write
+    kernels did not.
+
+    This is not a cosmetic omission: the guidance those agents are given is stated as ratios
+    between ceilings. The contract says fp16 is "roughly 2x" tf32 on this class of card and asks
+    them to treat precision as a first-class design choice; the rewriter is told a CUDA rewrite
+    wins under strict IEEE fp32. Neither could see a single ceiling for the box in front of it.
+    """
+    from kernel_optimizer.agents.modules import _device_doc, _measured_ceilings_doc
+    from kernel_optimizer.gpu.calibrate import calibration_from_worker
+    from kernel_optimizer.models.core import DeviceLimits
+
+    cal = calibration_from_worker(MEASURED_4090)
+    dev = DeviceLimits(name="NVIDIA GeForce RTX 4090 (sm_89)", vram_gb=23.0,
+                       max_regs_per_thread=255, max_shared_bytes_static=49152,
+                       max_shared_bytes_optin=101376, max_threads_per_block=1024)
+
+    # Without a calibration the doc still renders (a box that could not measure must still run),
+    # and it must not invent numbers.
+    bare = _device_doc(dev)
+    assert "Max opt-in shared memory" in bare
+    assert "TFLOP" not in bare, "a doc with no calibration must not state a throughput ceiling"
+
+    # With one, every ceiling the calibration holds is stated.
+    full = _device_doc(dev, cal)
+    assert "Max opt-in shared memory" in bare and "Max opt-in shared memory" in full
+    assert "TB/s" in full, "no DRAM ceiling in device.md"
+    assert "fp32" in full and "TFLOP" in full, "no fp32 ceiling in device.md"
+    for label in ("tf32", "fp16", "bf16"):
+        assert label in full, f"no {label} ceiling in device.md, so its ratio cannot be reasoned about"
+    # The ratio is what makes it actionable, not the raw figure.
+    assert "the tf32 figure" in full, (
+        "the low-precision ceilings are stated without their ratio to tf32, which is the form "
+        "the contract's own guidance is written in")
+
+    # And the block is the same one the analyst gets, not a divergent copy.
+    assert _measured_ceilings_doc(cal) in full
+    assert _measured_ceilings_doc(None) == ""
+
+
+def test_every_kernel_writing_module_accepts_and_forwards_a_calibration():
+    """The four writers plus the parameterizer take `calibration` and pass it to `_device_doc`.
+
+    A field nobody forwards changes nothing, and a forwarded field nobody supplies changes
+    nothing either -- so this checks the dataclass, the seeding call, and the orchestrator's
+    construction site, for each module.
+
+    The parameterizer is included deliberately: it chooses the tile and precision DOMAINS, and
+    "is fp16 worth a choice on this card" is a question about a ratio between two ceilings.
+    """
+    import ast
+    import inspect
+
+    from kernel_optimizer.agents import modules as mod
+    from kernel_optimizer.control import orchestrator as orch
+
+    for name in ("GeneratorInputs", "ParameterizerInputs", "RewriterInputs", "NoveltyInputs"):
+        cls = getattr(mod, name)
+        assert "calibration" in cls.__dataclass_fields__, (
+            f"{name} has no calibration field, so that agent cannot be told what the box does")
+
+    # Each of those modules' seed_sandbox must pass it into _device_doc.
+    for agent, label in ((mod.CandidateGeneratorAgent, "generator"),
+                         (mod.ParameterizerAgent, "parameterizer"),
+                         (mod.StructureRewriterAgent, "rewriter"),
+                         (mod.NoveltyGeneratorAgent, "novelty")):
+        src = inspect.getsource(agent.seed_sandbox)
+        assert "_device_doc(inputs.device, inputs.calibration)" in src, (
+            f"{label} writes a device.md with no ceilings in it")
+
+    # And the orchestrator must actually supply it at every construction site of those inputs.
+    tree = ast.parse(inspect.getsource(orch))
+    wanted = {"GeneratorInputs", "ParameterizerInputs", "RewriterInputs", "NoveltyInputs"}
+    seen = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
+                and node.func.id in wanted:
+            kws = {k.arg for k in node.keywords}
+            seen.setdefault(node.func.id, []).append("calibration" in kws)
+    for name in wanted:
+        assert name in seen, f"the orchestrator never constructs {name}"
+        assert all(seen[name]), (
+            f"{seen[name].count(False)} of {len(seen[name])} {name} construction sites omit "
+            f"calibration, so those calls silently fall back to None")
