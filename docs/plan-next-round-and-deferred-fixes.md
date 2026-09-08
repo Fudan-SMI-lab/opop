@@ -412,3 +412,98 @@ though "% of peak" is not.
 
 Priority is unchanged (next round, not mid-chain, because calibration changes shift every derived
 threshold) but the scope claim in the earlier note was too small by 12x.
+
+---
+
+## `launch_bound` and `overhead_floor` are unreachable on the path that classifies candidates
+
+Found 2026-09-08 by asking a question I had not asked before: of the eight verdict classes, which
+ones have ever actually fired? Answer, across both completed runs (33 verdicts): `memory_bound` 7,
+`resource_limited` 10, `compute_bound` 16, and **zero** of `launch_bound`, `overhead_floor`,
+`latency_bound`, `mixed`, `unknown`.
+
+Four of those five absences are honest. `latency_bound` and `mixed` are residual classes and a
+kernel that reaches a real limit should not land there; `unknown` firing would mean missing
+evidence. But `launch_bound` is absent for a mechanical reason, not because these tasks are not
+launch-bound.
+
+**The measurement never reaches the classifier.** `_measure_launch_overhead` runs only when a job
+carries `measure_launch_overhead: true`, which only `full_eval` sets (`correctness.py:171`), and
+`full_eval` has exactly one caller: `benchmark.py:109`, the final re-eval. Every classified verdict
+comes from a TUNING trial, whose profile is built by `quick_test`. Measured on disk: **848 of 848**
+trial profiles carry `cpu_issue_ms: None`, and `launch_overhead` appears in **zero** events of
+either run. So the `ratio >= th.launch_bound_cpu_ratio` branch cannot be entered on the path that
+produces verdicts — the calibrated `launch_bound_cpu_ratio` of 0.8737 was derived, recorded in every
+`bottleneck.md`, and never once compared against anything.
+
+This makes the earlier framing of `LAUNCH_BOUND_CPU_RATIO = 1.0` incomplete. That constant did
+judge backwards (the launch-bound yardstick measures 0.971, below the line). Fixing the threshold
+was necessary but not sufficient: the test it gates still never runs.
+
+`overhead_floor` is a different case and is probably fine — it needs only `gpu_ms` and
+`empty_launch_floor_ms`, both always present. Its 17.4 us floor against a 3.29 ms kernel is simply
+far away. It should be expected to fire on a small L1 task, and that is worth confirming rather
+than assuming.
+
+### A denominator bug sitting behind it
+
+If the measurement is plumbed through as-is, the ratio will be computed wrongly.
+`_measure_launch_overhead` returns its own `gpu_ms` and states in its docstring that it is
+warm-cache, not comparable to the harness's headline figure, and to be used **only** as the
+denominator of `cpu_issue_ms / gpu_ms`. `ProfileRecord.cpu_over_gpu` respects this — it divides by
+`overhead_gpu_ms` (`models/core.py:209`). But `classify()` divides by its `gpu_ms` argument, and
+`orchestrator.py:1194` passes `crun.best_ms` — the L2-flushed harness latency. Two different
+conventions for the same quantity: the flushed figure is the larger, so the ratio is biased LOW and
+a genuinely launch-bound kernel would be under-detected exactly as before.
+
+Note the calibration path does not have this bug by luck — `run_calibrate`'s local `timed()`
+(`worker_main.py:747`) does no L2 flush, so its yardstick ratios are self-consistent. The bug is
+only at the candidate call site, which is why the derived threshold is trustworthy and its
+application would not have been.
+
+### The fix (next round, with the fp16 ceiling)
+
+1. Plumb the measurement to where verdicts are made. It costs ~150 extra model calls, which is
+   marginal against `full_eval`'s 100 timed samples but not against several hundred tuning trials —
+   so measure it **once per candidate**, on the candidate's best configuration after tuning
+   finishes, not per trial. That is also the only place it is meaningful, since the number describes
+   the candidate as it would be shipped.
+2. Have `classify()` take the overhead probe's own `gpu_ms` as the ratio denominator, separate from
+   the `gpu_ms` used for throughput fractions. Passing `profile.cpu_issue_ms` while dividing by a
+   differently-measured latency is the kind of mismatch that produces a plausible wrong number
+   rather than an error.
+3. Then verify on a task where the answer is known — an L1 elementwise op should come out
+   `launch_bound` or `overhead_floor`. Until one of those two classes fires on a task chosen because
+   it must, "the taxonomy has eight classes" is a claim about the code, not about the harness.
+
+## Spills correlate the WRONG WAY with speed, and the harness advises on them
+
+Also 2026-09-08, from the same audit. Ranking L3:43's 13 classified candidates by latency and by
+spill count gives Spearman rho = **-0.516**: the faster a candidate, the MORE registers it spills.
+The fastest (3.290 ms) spills 52; a 13.199 ms candidate spills 2.
+
+| ms | spills | occupancy | regs |
+|---|---|---|---|
+| 3.290 | 52 | 17% | 255 |
+| 3.319 | 34 | 8% | 255 |
+| 3.440 | 16 | 8% | 255 |
+| 3.577 | 2 | 17% | 255 |
+| 13.199 | 2 | 17% | 255 |
+| 14.876 | 8 | 17% | 255 |
+
+`compiled_kernel.md` tells the agent a spill "can cost more than the arithmetic it was making room
+for". On this task, on this evidence, the opposite holds: the candidates that spill hardest are the
+ones that hold a big enough tile in registers to feed the tensor cores, and paying for a few spilled
+values buys that. n=13 on one task is not enough to invert the guidance, and the current wording is
+hedged ("can"), so this is not yet a defect to fix — it is a hypothesis to test on L3:21 and L3:48
+before the write-up claims spills are a defect signal.
+
+It also corrects the earlier note "Triton caps registers instead of spilling". Every one of the 13
+sits at 255/255 registers, and spill counts range 2–52, so Triton does both: it saturates the
+register budget AND spills. The earlier observation (218 regs / 0 spills) was one kernel, not a
+property of the compiler.
+
+**What to do with it:** collect the same rho on the two remaining L3 tasks. If it stays negative,
+`_bottleneck_doc`'s spill paragraph should say what the data says — that spills at high tile sizes
+are often the price of tensor-core occupancy and should be judged by measured latency, not removed
+on principle. That is a generalizable wording change driven by measurement, not a per-task tweak.
