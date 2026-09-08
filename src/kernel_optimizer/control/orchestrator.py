@@ -1016,17 +1016,19 @@ class Orchestrator:
         cand = crun.candidate
         space = crun.space
         conc = self.cfg.gpu.concurrency
+        cand_dir = self.store.candidate_dir(cand.candidate_id)
+        trials_dir = cand_dir / "trials"
+        trials_dir.mkdir(exist_ok=True)
+        self._prescreen_space(crun, trials_dir)
         tuner = OptunaTPETuner(
             space,
-            guard_ok=lambda p: check_config(space, p, self.cfg.device) is None,
+            guard_ok=lambda p: (check_config(space, p, self.cfg.device) is None
+                                and self._shared_memory_ok(crun, p)),
             budget=self.cfg.budgets.trials_per_space,
             seed=self.cfg.run.seed,
             anchors=anchors,
             constant_liar=conc.enabled,
         )
-        cand_dir = self.store.candidate_dir(cand.candidate_id)
-        trials_dir = cand_dir / "trials"
-        trials_dir.mkdir(exist_ok=True)
 
         while True:
             asked = tuner.ask()
@@ -1120,6 +1122,91 @@ class Orchestrator:
             profile=self.deps.profiler.extract(result),
             fp64_rescued_trials=result.get("fp64_rescued_trials"),
         )
+
+    def _prescreen_space(self, crun: CandidateRun, trials_dir: Path) -> None:
+        """F5: ask the compiler which configurations can launch, BEFORE spending trials.
+
+        Samples a bounded set of legal configurations from the space, materializes each, and
+        probes them all in ONE worker process. The point is the batching: a probe in its own
+        process costs a median 16.7 s -- against the 18.6 s that the wasted trial it replaces
+        already cost -- while 48 configurations in one process cost 11.02 s, a marginal 7 ms
+        each. Without batching this screen cannot be consulted during sampling at all; with
+        it, the sampler can avoid a region the compiler already knows is unreachable.
+
+        Why sample rather than enumerate: the shared-affecting subgrid of a real space
+        reaches 600,000 points (70 minutes at 7 ms). `trials_per_space` is 40, so the screen
+        only ever needs the corner the sampler visits, and a sample of a few times the trial
+        budget covers it while staying inside one probe job.
+
+        Silent on failure, by construction. Every path out of here leaves the cache no worse
+        than empty, and an unscreened configuration is simply evaluated for real -- this
+        must never become the thing that rejects a candidate.
+        """
+        if not self.cfg.gpu.compile_screen_enabled:
+            return
+        space = crun.space
+        n_want = min(64, max(16, self.cfg.budgets.trials_per_space))
+        rng = random.Random(self.cfg.run.seed)
+        paths: list[Path] = []
+        screen_dir = trials_dir / "_screen"
+        screen_dir.mkdir(exist_ok=True)
+        seen_keys: set[str] = set()
+        # Bounded attempts, not "until we have n_want": a heavily constrained space may have
+        # far fewer than n_want legal points, and an unbounded loop would hang on it.
+        for _ in range(n_want * 8):
+            if len(paths) >= n_want:
+                break
+            values = {d.name: rng.choice(list(d.choices)) for d in space.domains}
+            params = ParamSet(values=values)
+            key = params.key()
+            if key in seen_keys or check_config(space, params, self.cfg.device) is not None:
+                continue
+            seen_keys.add(key)
+            try:
+                src = materializer.materialize(crun.source, params)
+            except materializer.MaterializeError:
+                continue  # a config the materializer rejects needs no compile opinion
+            path = screen_dir / f"s{len(paths):03d}.py"
+            path.write_text(src, encoding="utf-8")
+            paths.append(path)
+        if not paths:
+            return
+        try:
+            self.deps.evaluator.prescreen_batch(
+                self.task, paths, tag=crun.candidate.candidate_id,
+                backend=crun.candidate.backend)
+        except Exception as exc:  # noqa: BLE001 — a screen must never fail an evaluation
+            self.store.append("PRESCREEN_FAILED", {
+                "candidate_id": crun.candidate.candidate_id,
+                "space_id": space.space_id, "detail": f"{type(exc).__name__}: {exc}"[:300],
+            })
+            return
+        infeasible = sum(1 for p in paths
+                         if self.deps.evaluator.cached_shared_verdict(
+                             p.read_text(encoding="utf-8"), crun.candidate.backend,
+                             self.cfg.device.max_shared_bytes_optin) is False)
+        self.store.append("SPACE_PRESCREENED", {
+            "candidate_id": crun.candidate.candidate_id, "space_id": space.space_id,
+            "configs_probed": len(paths), "infeasible": infeasible,
+        })
+
+    def _shared_memory_ok(self, crun: CandidateRun, params: ParamSet) -> bool:
+        """Guard predicate: reject a configuration the compiler has ALREADY said cannot launch.
+
+        Cache-only, so it costs microseconds and is safe inside `ask()`'s reject loop -- a
+        worker round-trip there would let one `ask()` stall for 64 x 16.7 s. An unscreened or
+        unanswerable configuration returns True: unknown must not shrink the search space,
+        and the existing post-materialize screen still catches it before a launch.
+        """
+        if not self.cfg.gpu.compile_screen_enabled:
+            return True
+        try:
+            src = materializer.materialize(crun.source, params)
+        except materializer.MaterializeError:
+            return True  # let the real trial report the materialize error, as it does today
+        verdict = self.deps.evaluator.cached_shared_verdict(
+            src, crun.candidate.backend, self.cfg.device.max_shared_bytes_optin)
+        return verdict is not False
 
     def _screen_config(self, crun: CandidateRun, kernel_path: Path,
                        params: ParamSet) -> str | None:

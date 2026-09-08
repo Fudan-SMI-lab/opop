@@ -644,27 +644,29 @@ Your job: parameterize every tunable feature of this kernel.
    expressions over the PARAMS names (operators: + - * / // % ** comparisons
    and/or). You may reference device constants: MAX_REGS_PER_THREAD,
    MAX_SHARED_BYTES, MAX_SHARED_BYTES_OPTIN, MAX_THREADS_PER_BLOCK.
-   Example: "BLOCK_M * BLOCK_K * 4 + BLOCK_K * BLOCK_N * 4 <= MAX_SHARED_BYTES".
-   That example is a single-kernel fp32 matmul. Do NOT copy its shape — three rules
-   decide whether a shared-memory constraint actually prevents anything:
-   (a) ONE CONSTRAINT PER LAUNCHED KERNEL. If the file launches several kernels, each
-       has its own tile knobs and its own `num_stages`, and each needs its own
-       shared-memory and thread bounds over ITS OWN knobs. A kernel with no bound is a
-       kernel whose configurations will be sampled and will die at launch with
-       `OutOfResources: shared memory`. An unbounded kernel is the single most common
-       cause of wasted trials — do not leave one out.
-   (b) THE BYTE WIDTH FOLLOWS THE PRECISION KNOB. If you expose COMPUTE_DTYPE (step 1),
-       then fp16/bf16 stage 2 bytes per element and tf32/ieee stage 4. A hard-coded `* 4`
-       is wrong twice over: it lets 4-byte configs through on the kernels it does cover,
-       and it forbids 2-byte configs that would have fit. Write the bound as a
-       disjunction over the precision knob, using the grammar below. The fp32 accumulator
-       is always 4 bytes regardless — only the staged operands change width.
-   (c) DERIVE THE ARITHMETIC FROM THIS KERNEL'S BODY. Count what is actually resident
-       per stage: a matmul stages two operand tiles; a flash-attention kernel stages K
-       and V tiles and holds an accumulator across the loop; a reduction may stage one
-       tile and a running statistic. Read the `tl.load`/`tl.dot` shapes in the source and
-       add up the bytes those imply. A plausible-looking formula copied from elsewhere is
-       worse than none, because it reads as protection while admitting the same failures.
+   **DO NOT write a shared-memory constraint.** Shared usage is decided by the Triton
+   compiler, not by your arithmetic: `metadata.shared` includes multi-buffering,
+   alignment padding and intermediates the compiler allocates, and it is not even
+   monotonic in the tile dimensions (measured: BLOCK_M=128/BLOCK_N=32/stages=1 and
+   BLOCK_M=128/BLOCK_N=64/stages=1 both compile to exactly 65536 bytes). Hand-written
+   bounds of the form `stages * elements * bytes <= MAX_SHARED_BYTES_OPTIN` were
+   audited on real candidates and came out at a MEDIAN 32% of the compiler's own
+   figure -- one such constraint admitted all 36 configurations of its candidate,
+   including the 17 that cannot launch, and rejected none. It was indistinguishable
+   from having no constraint at all, while making it look as though the dimension were
+   protected. **The harness screens this for you** by compiling the configuration
+   before it spends a trial on it, using the compiler's number. Leave it to that, and
+   spend your constraint budget on things arithmetic can actually decide:
+   (a) ONE CONSTRAINT PER LAUNCHED KERNEL, for the limits you CAN compute: thread count
+       (`NUM_WARPS * 32 <= MAX_THREADS_PER_BLOCK`) and any relation the kernel body
+       requires between knobs (a tile that must divide another, a `tl.dot` contraction
+       dimension that must be at least 16, a split factor that must not exceed a
+       dimension). These are exact, and a violation is a compile error rather than a
+       measurement.
+   (b) DERIVE THEM FROM THIS KERNEL'S BODY, not from a template. Read the
+       `tl.load`/`tl.dot` shapes and the launch grid and write down what they require.
+       A plausible-looking formula copied from elsewhere is worse than none, because it
+       reads as protection while admitting the same failures.
    GRAMMAR LIMIT: a constraint is evaluated by a restricted parser that allows ONLY
    names, numeric/string literals, `+ - * / // % **`, the comparisons
    `< <= > >= == !=`, and `and`/`or`/`not`.
@@ -676,15 +678,12 @@ Your job: parameterize every tunable feature of this kernel.
    `(DTYPE != "fp16" and 2 * BLOCK_M <= X) or (DTYPE == "fp16" and 4 * BLOCK_M <= X)`.
    Express a membership test as a disjunction of `==` too — instead of
    `DTYPE in ("fp16", "bf16")`, write `DTYPE == "fp16" or DTYPE == "bf16"`.
-   Putting (b) and the grammar together, a per-kernel dtype-aware shared-memory bound
-   has this SHAPE (replace <K> with the kernel's own knob prefix, and
-   <elements staged per stage> with the count you derived from the kernel body per (c)):
-     (COMPUTE_DTYPE == "fp16" or COMPUTE_DTYPE == "bf16") and
-       <K>_NUM_STAGES * <elements staged per stage> * 2 <= MAX_SHARED_BYTES_OPTIN
-      or (COMPUTE_DTYPE == "tf32" or COMPUTE_DTYPE == "ieee") and
-       <K>_NUM_STAGES * <elements staged per stage> * 4 <= MAX_SHARED_BYTES_OPTIN
-   Emit one such constraint per launched kernel. Use MAX_SHARED_BYTES_OPTIN (not
-   MAX_SHARED_BYTES_STATIC) — Triton opts into the larger limit automatically.
+   ONE THING THE TILE DOMAIN MUST DO, since no constraint will do it for you: if you
+   expose a precision knob, keep the tile choices small enough that EVERY precision you
+   offer has at least one launchable configuration. A tile sized for 2 bytes/element
+   often needs twice the shared memory at 4, and a precision whose every configuration
+   is infeasible is a precision the tuner silently never measures -- on one real
+   candidate that cost two of the four precisions it declared.
 
 The rewritten kernel must be functionally identical to the original at the
 default PARAMS values.

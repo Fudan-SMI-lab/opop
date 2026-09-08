@@ -532,6 +532,23 @@ def run_compile_probe(job: dict) -> dict:
 
     kernel_src = open(job["kernel_src_path"], encoding="utf-8").read()
     ref_src = open(job["ref_src_path"], encoding="utf-8").read()
+    # A batch job carries several materialized variants of ONE candidate; the single-path
+    # job is the batch of one. Batching is what makes this screen affordable at sampling
+    # time: measured on box 2, a probe in its own worker process costs a median 16.7 s
+    # (11.9-25.6), essentially all of it process start + torch/CUDA/KernelBench import,
+    # against the 18.6 s the wasted trial it replaces already cost -- so probing one config
+    # per process saves nothing. Forty-eight configs in ONE process took 11.02 s total, a
+    # marginal 7 ms each: 73x cheaper, and cheap enough to consult before spending a trial.
+    extra = job.get("extra_kernel_src_paths") or []
+    variants: list[tuple[str, str]] = [(job["kernel_src_path"], kernel_src)]
+    for path in extra:
+        try:
+            variants.append((path, open(path, encoding="utf-8").read()))
+        except OSError as exc:
+            # One unreadable variant must not cost the whole batch: the caller falls through
+            # to a real trial for this one config, exactly as it would for a probe failure.
+            variants.append((path, ""))
+            del exc
 
     try:
         from triton.runtime.jit import JITFunction
@@ -557,55 +574,78 @@ def run_compile_probe(job: dict) -> dict:
             seen.append({"name": getattr(self, "__name__", "?"), "shared": None})
         return kernel
 
-    mod_path = None
+    ref_ctx: dict = {}
     try:
-        JITFunction.run = run_compile_only
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False,
-                                         encoding="utf-8") as f:
-            f.write(kernel_src)
-            mod_path = f.name
-        spec = importlib.util.spec_from_file_location("kopt_compile_probe", mod_path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-
-        ref_ctx: dict = {}
         exec(compile(ref_src, "<ref>", "exec"), ref_ctx)  # noqa: S102 — same trust as eval
         get_inputs = ref_ctx["get_inputs"]
         get_init_inputs = ref_ctx.get("get_init_inputs", lambda: [])
-
         device = torch.device(f"cuda:{job.get('device_index', 0)}")
         torch.cuda.set_device(device)
-        with torch.no_grad():
-            init_inputs = [x.to(device) if isinstance(x, torch.Tensor) else x
-                           for x in get_init_inputs()]
-            model = module.ModelNew(*init_inputs).to(device)
-            inputs = [x.to(device) if isinstance(x, torch.Tensor) else x
-                      for x in get_inputs()]
-            try:
-                model(*inputs)
-            except Exception:  # noqa: BLE001, S110
-                # EXPECTED and deliberately ignored. Nothing launched, so downstream torch ops
-                # see uninitialized buffers and may raise anything. A raise here says nothing
-                # about whether the config is feasible -- only `seen` does.
-                pass
-    except Exception as exc:  # noqa: BLE001 — probe failure is "cannot answer", never a verdict
-        return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"[:300],
-                "kernels": seen}
-    finally:
-        JITFunction.run = original_run
-        if mod_path:
-            try:
-                os.unlink(mod_path)
-            except OSError:
-                pass
+    except Exception as exc:  # noqa: BLE001 — cannot set up: no opinion on any variant
+        return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"[:300]}
 
-    if not seen:
-        # No Triton kernel was reached: a CUDA/CUTLASS candidate, or a forward that failed
-        # before its first kernel. Either way the screen has no opinion.
-        return {"ok": False, "reason": "no triton kernel compiled during the forward pass"}
-    shared_vals = [k["shared"] for k in seen if k.get("shared") is not None]
-    return {"ok": True, "kernels": seen,
-            "max_shared": max(shared_vals) if shared_vals else None}
+    def probe_one(src: str, index: int) -> dict:
+        """Compile every Triton kernel one variant's forward reaches. Never raises."""
+        seen.clear()
+        mod_path = None
+        try:
+            JITFunction.run = run_compile_only
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False,
+                                             encoding="utf-8") as f:
+                f.write(src)
+                mod_path = f.name
+            # A UNIQUE module name per variant. Reusing one name across a batch would let
+            # Python's import machinery hand back the first variant's module object, and
+            # every later config would silently report the first one's shared bytes -- a
+            # screen that looks like it is working while answering the wrong question.
+            spec = importlib.util.spec_from_file_location(
+                f"kopt_compile_probe_{index}", mod_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+
+            with torch.no_grad():
+                init_inputs = [x.to(device) if isinstance(x, torch.Tensor) else x
+                               for x in get_init_inputs()]
+                model = module.ModelNew(*init_inputs).to(device)
+                inputs = [x.to(device) if isinstance(x, torch.Tensor) else x
+                          for x in get_inputs()]
+                try:
+                    model(*inputs)
+                except Exception:  # noqa: BLE001, S110
+                    # EXPECTED and deliberately ignored. Nothing launched, so downstream
+                    # torch ops see uninitialized buffers and may raise anything. A raise
+                    # here says nothing about whether the config is feasible -- only `seen`
+                    # does.
+                    pass
+        except Exception as exc:  # noqa: BLE001 — probe failure is "cannot answer"
+            return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"[:300],
+                    "kernels": list(seen)}
+        finally:
+            JITFunction.run = original_run
+            if mod_path:
+                try:
+                    os.unlink(mod_path)
+                except OSError:
+                    pass
+        kernels = list(seen)
+        if not kernels:
+            # No Triton kernel was reached: a CUDA/CUTLASS candidate, or a forward that
+            # failed before its first kernel. Either way the screen has no opinion.
+            return {"ok": False,
+                    "reason": "no triton kernel compiled during the forward pass"}
+        shared_vals = [k["shared"] for k in kernels if k.get("shared") is not None]
+        return {"ok": True, "kernels": kernels,
+                "max_shared": max(shared_vals) if shared_vals else None}
+
+    results = {path: probe_one(src, i) for i, (path, src) in enumerate(variants)}
+    primary = results[job["kernel_src_path"]]
+    if not extra:
+        return primary
+    # Batch shape: the primary variant's own verdict is returned at the top level so a
+    # single-path caller is unaffected, with every variant's verdict under `results`. Each
+    # carries its own ok/reason, so one unprobeable config falls through to a real trial
+    # without suppressing the others.
+    return {**primary, "results": results}
 
 
 def _measure_launch_overhead(kernel_src: str, ref_src: str, device_index: int,

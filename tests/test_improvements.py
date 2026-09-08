@@ -9335,3 +9335,139 @@ def test_the_report_reads_the_evaluation_config_it_needs():
              if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
              and n.func.id == "_fp64_rescue_line"]
     assert calls, "the rescue line is computed but never rendered"
+
+
+def test_the_compile_probe_answers_a_batch_in_one_process():
+    """F5a: batching is the whole reason this screen can be consulted before a trial.
+
+    Measured on box 2 with the harness own job path: one probe per worker process costs a
+    median 16.7 s (11.9-25.6), almost entirely process start plus torch/CUDA/KernelBench
+    import, against the 18.6 s the wasted trial it replaces already cost -- so one-per-process
+    saves nothing, and putting it in the ask() reject loop (ceiling 64) would stall one ask
+    for 17.8 minutes. Forty-eight configurations in ONE process took 11.02 s: 7 ms marginal.
+
+    Two properties the batch shape must keep:
+      - a single-path job result is unchanged, so existing callers are unaffected;
+      - each variant carries its OWN ok/reason, so one unprobeable configuration falls
+        through to a real trial instead of suppressing its siblings.
+    """
+    import ast
+    import inspect
+
+    from kernel_optimizer.gpu import worker_main
+    from kernel_optimizer.gpu.jobs import make_compile_probe_job
+
+    single = make_compile_probe_job("/ref.py", "/k0.py", backend="triton")
+    assert "extra_kernel_src_paths" not in single, (
+        "a single-path job must not grow a batch field, or older workers break on it")
+    batch = make_compile_probe_job("/ref.py", "/k0.py", backend="triton",
+                                   extra_kernel_src_paths=["/k1.py", "/k2.py"])
+    assert batch["extra_kernel_src_paths"] == ["/k1.py", "/k2.py"]
+    assert batch["kernel_src_path"] == "/k0.py", "the primary variant must stay the primary"
+
+    src = inspect.getsource(worker_main.run_compile_probe)
+    # The per-variant module name must be unique. Reusing one name lets Python import
+    # machinery return the FIRST variant module, so every later configuration reports the
+    # first one shared bytes -- a screen that looks like it works and answers the wrong
+    # question.
+    assert "kopt_compile_probe_" in src, (
+        "variants must get unique module names, or the batch silently re-reports the first")
+    tree = ast.parse(src.lstrip())
+    names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    assert "probe_one" in names, "the per-variant probe was not factored out"
+
+
+def test_the_shared_memory_guard_is_three_valued_and_cache_only():
+    """F5b: unknown must not shrink the search space, and the guard must not touch the GPU.
+
+    cached_shared_verdict returns True (fits) / False (cannot launch) / None (not screened).
+    Collapsing None into either verdict is a defect: as infeasible it silently removes
+    configurations nobody measured; as feasible it is merely today behaviour. And it must
+    read the cache only -- a worker round-trip inside the ask() reject loop would cost
+    64 x 16.7 s in the worst case.
+    """
+    import ast
+    import inspect
+
+    from kernel_optimizer.evaluation.correctness import CorrectnessEvaluator
+
+    ev = CorrectnessEvaluator.__new__(CorrectnessEvaluator)
+    ev._screen_cache = {}
+    src_fits, src_dies, src_unknown = "SRC-FITS", "SRC-DIES", "SRC-UNSEEN"
+    ev._screen_cache[f"triton:{hash(src_fits)}"] = {"ok": True, "max_shared": 65536}
+    ev._screen_cache[f"triton:{hash(src_dies)}"] = {"ok": True, "max_shared": 164352}
+    # A probe that could not answer must read as unknown, NOT as feasible-or-infeasible.
+    ev._screen_cache["triton:xxx"] = {"ok": False, "reason": "no triton kernel"}
+
+    assert ev.cached_shared_verdict(src_fits, "triton", 101376) is True
+    assert ev.cached_shared_verdict(src_dies, "triton", 101376) is False
+    assert ev.cached_shared_verdict(src_unknown, "triton", 101376) is None
+    # No device limit -> no opinion, rather than a comparison against an absent number.
+    assert ev.cached_shared_verdict(src_dies, "triton", None) is None
+
+    # Cache-only: no worker call anywhere in the body.
+    body = inspect.getsource(CorrectnessEvaluator.cached_shared_verdict)
+    tree = ast.parse(body.lstrip())
+    attrs = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+    assert "run_job" not in attrs, (
+        "the guard predicate must not talk to the worker; it runs inside the ask reject loop")
+
+
+def test_an_unscreened_config_is_still_evaluated_for_real():
+    """The screen must never be the thing that rejects a candidate -- including via the guard.
+
+    Three ways a configuration can be unscreened: the batch never covered it, the probe could
+    not answer, or the worker reported no figure. All three must let the trial run, because
+    the alternative is a search space quietly smaller than the one the report describes.
+    """
+    from kernel_optimizer.evaluation.correctness import CorrectnessEvaluator
+
+    ev = CorrectnessEvaluator.__new__(CorrectnessEvaluator)
+    ev._screen_cache = {}
+    # Never probed.
+    assert ev.cached_shared_verdict("anything", "triton", 101376) is None
+    # Probed but unanswerable (a CUDA candidate has no Triton kernel to compile).
+    ev._screen_cache[f"cuda:{hash('cuda-src')}"] = {
+        "ok": False, "reason": "no triton kernel compiled during the forward pass"}
+    assert ev.cached_shared_verdict("cuda-src", "cuda", 101376) is None
+    # Probed, ok, but the worker reported no figure.
+    ev._screen_cache[f"triton:{hash('nofig')}"] = {"ok": True, "max_shared": None}
+    assert ev.cached_shared_verdict("nofig", "triton", 101376) is None
+
+
+def test_the_prompt_no_longer_asks_the_agent_to_compute_shared_memory():
+    """F5d: retire the teaching, because following it produced a constraint rejecting nothing.
+
+    Audited on the real declared constraint of L3:43 cand-969997e3, evaluated with the guard
+    own evaluator over 36 tile x precision configurations: it admitted all 36, including the
+    17 that cannot launch, and rejected none -- 53% agreement with the compiler, exactly the
+    all-admit baseline. Hand-counted figures ran at a median 32% of the truth (worst 12%), and
+    an independent agent constraint on another task under-estimated in 10 of 16 points.
+    The cause is structural: metadata.shared includes multi-buffering, alignment and
+    intermediates, and is not monotonic in the tile dims.
+
+    So the prompt must stop asking for it, and must say who does it instead -- otherwise an
+    agent reads the silence as an omission and writes one anyway. What stays is the part
+    arithmetic CAN decide, plus the one thing no constraint will do: keep the tile domain
+    launchable at every precision offered.
+    """
+    import inspect
+
+    from kernel_optimizer.agents import modules
+
+    src = inspect.getsource(modules)
+    # The template that produced the vacuous constraints must be gone.
+    assert "<elements staged per stage>" not in src, (
+        "the shared-memory constraint template is still being handed to the agent")
+    assert "DO NOT write a shared-memory constraint" in src, (
+        "the prompt must say explicitly not to write one, not merely omit the template")
+    # And it must say the harness does it, with the reason, or the instruction reads arbitrary.
+    assert "The harness screens this for you" in src
+    assert "monotonic" in src, (
+        "the non-monotonicity is why hand computation cannot work; state it")
+    # The replacement work must be named, so the constraint budget is not simply lost.
+    assert "MAX_THREADS_PER_BLOCK" in src, (
+        "thread-count bounds ARE computable and should still be requested")
+    # The tile-domain requirement that no constraint can express.
+    assert "at least one launchable configuration" in src, (
+        "without this, a precision whose every tile is infeasible is never measured")

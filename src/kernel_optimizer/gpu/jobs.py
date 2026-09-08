@@ -60,14 +60,29 @@ def make_static_check_job(kernel_src_path: str, backend: str, precision: str) ->
 
 
 def make_compile_probe_job(ref_src_path: str, kernel_src_path: str, *,
-                           backend: str) -> dict[str, Any]:
-    """Compile-only feasibility probe: shared bytes without a launch. See run_compile_probe."""
-    return {
+                           backend: str,
+                           extra_kernel_src_paths: list[str] | None = None) -> dict[str, Any]:
+    """Compile-only feasibility probe: shared bytes without a launch. See run_compile_probe.
+
+    `extra_kernel_src_paths` probes further materialized variants of the same candidate in the
+    SAME worker process, which is the only way this screen is affordable during sampling:
+    measured on box 2, one probe in its own process costs a median 16.7 s -- almost entirely
+    process start plus torch/CUDA/KernelBench import -- against the 18.6 s the wasted trial it
+    replaces already cost, so one-per-process saves nothing. Forty-eight variants in one
+    process took 11.02 s, a marginal 7 ms each.
+
+    The result then carries a per-path `results` map alongside the primary variant's own
+    verdict, so a single-path caller sees an unchanged shape.
+    """
+    job = {
         "job_type": "compile_probe",
         "ref_src_path": ref_src_path,
         "kernel_src_path": kernel_src_path,
         "backend": backend,
     }
+    if extra_kernel_src_paths:
+        job["extra_kernel_src_paths"] = list(extra_kernel_src_paths)
+    return job
 
 
 def make_baseline_job(

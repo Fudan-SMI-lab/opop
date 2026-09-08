@@ -67,6 +67,83 @@ class CorrectnessEvaluator:
         self._static_cache[key] = result
         return result
 
+    def prescreen_batch(self, task: TaskSpec, kernel_src_paths: list[Path], tag: str,
+                        backend: str) -> None:
+        """Probe several materialized configurations in ONE worker process, into the cache.
+
+        This is what makes the shared-memory screen affordable at SAMPLING time rather than
+        after materializing a trial. Measured on box 2: a probe in its own worker process
+        costs a median 16.7 s (11.9-25.6), essentially all of it process start plus
+        torch/CUDA/KernelBench import, against the 18.6 s that the wasted trial it replaces
+        already cost -- so probing one configuration per process saves nothing at all, and
+        putting it in the `ask()` reject loop would let one `ask()` stall for
+        64 x 16.7 s = 17.8 minutes. Forty-eight configurations in one process took 11.02 s
+        total, a marginal 7 ms each: 73x cheaper.
+
+        Exhaustive pre-screening is still out of reach -- the shared-affecting subgrid of a
+        real space reaches 600,000 points, which is 70 minutes at 7 ms -- but
+        `trials_per_space` is 40, so the screen only ever needs the corner the sampler
+        actually visits. Hence: on demand, in batches, cached.
+
+        Populates `_screen_cache` and returns nothing; `compile_screen` reads it. Silent on
+        every failure by design -- a screen that cannot answer must leave the decision to a
+        real trial.
+        """
+        if not kernel_src_paths:
+            return
+        pending: list[tuple[str, Path]] = []
+        for path in kernel_src_paths:
+            try:
+                src = Path(path).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            key = f"{backend}:{hash(src)}"
+            if key not in self._screen_cache:
+                pending.append((key, Path(path)))
+        if not pending:
+            return
+        first = pending[0][1]
+        job = make_compile_probe_job(str(task.ref_path), str(first), backend=backend,
+                                     extra_kernel_src_paths=[str(p) for _, p in pending[1:]])
+        try:
+            probe = self.worker.run_job(job, self.cfg.build_timeout_s,
+                                        f"{tag}-prescreen", lock_mode="shared")
+        except Exception as exc:  # noqa: BLE001 — a screen failure is never a verdict
+            probe = {"ok": False, "reason": f"{type(exc).__name__}: {exc}"[:200]}
+        per_path = probe.get("results") or {}
+        for key, path in pending:
+            # Fall back to the top-level verdict for the primary path, which is what a
+            # single-variant job returns. A variant the worker could not answer for keeps
+            # its own `ok: False`, so it falls through to a real trial on its own rather
+            # than being suppressed by a sibling's failure.
+            entry = per_path.get(str(path))
+            if entry is None:
+                entry = probe if path == first else {
+                    "ok": False, "reason": "not answered by the batch probe"}
+            self._screen_cache[key] = entry
+
+    def cached_shared_verdict(self, kernel_src: str, backend: str,
+                             max_shared_bytes: int | None) -> bool | None:
+        """Is this materialized source known-infeasible? True = fits, False = cannot launch,
+        None = not screened, so the caller must NOT draw a conclusion.
+
+        Reads the cache only; never talks to the worker. That is what lets it be called from
+        the sampler's guard, where a GPU round-trip is unaffordable (see `prescreen_batch`
+        for the measured costs). Three-valued on purpose: a boolean would force "unknown" to
+        collapse into one of the verdicts, and either collapse is a defect -- treating
+        unknown as infeasible silently shrinks the search space, treating it as feasible is
+        merely the status quo.
+        """
+        if not max_shared_bytes:
+            return None
+        probe = self._screen_cache.get(f"{backend}:{hash(kernel_src)}")
+        if probe is None or not probe.get("ok"):
+            return None
+        max_shared = probe.get("max_shared")
+        if max_shared is None:
+            return None
+        return max_shared <= max_shared_bytes
+
     def compile_screen(self, task: TaskSpec, kernel_src_path: Path, tag: str,
                        backend: str, max_shared_bytes: int | None) -> dict[str, Any] | None:
         """Compile-only feasibility screen. Returns a refusal dict, or None to proceed.
