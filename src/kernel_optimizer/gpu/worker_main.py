@@ -336,6 +336,26 @@ def _opt_int(value) -> int | None:
     return value if value >= 0 else None
 
 
+def _wants_kernel_metadata(job: dict) -> bool:
+    """Whether this job should collect per-kernel resource metadata, for ANY backend.
+
+    Reads a backend-neutral key and falls back to the historical Triton-specific one. The old
+    name is the defect: callers set `collect_triton_metadata=(backend == "triton")`, so for a
+    cuda/cutlass/cute candidate the flag was False and the outer `if` never opened -- which
+    made the cubin branch below it, written specifically to serve those backends,
+    unreachable. Measured on box 2: a CORRECT `load_inline` candidate returned
+    `cubin: None, cubin_error: None`; flipping this one flag by hand on the same job produced
+    a full record. So a non-Triton candidate reached the bottleneck classifier with no
+    registers, spills, shared bytes or occupancy, and was judged worse than a Triton
+    candidate for reasons unrelated to its kernel.
+
+    The old key is still honoured so a replayed or in-flight job keeps working.
+    """
+    if "collect_kernel_metadata" in job:
+        return bool(job["collect_kernel_metadata"])
+    return bool(job.get("collect_triton_metadata"))
+
+
 # --- cubin metadata: CUDA C++, and CUTLASS / CuTe for free ---------------------
 #
 # WHY THIS IS NOT A CUDA-SPECIFIC PATH. CUDA C++, CUTLASS and CuTe all compile through nvcc
@@ -562,6 +582,56 @@ def _measure_launch_overhead(kernel_src: str, ref_src: str, device_index: int,
                 pass
 
 
+def _kernel_identifiers(name: str) -> set[str]:
+    """The bare function identifiers in a kernel name, whether mangled or demangled.
+
+    Exists because the two sides of the launched-kernel filter speak different dialects and
+    could therefore never match. `torch.profiler` reports DEMANGLED signatures --
+    `addk(float const*, float const*, float*, int)` -- while `cuobjdump -res-usage` reports
+    MANGLED symbols -- `_Z4addkPKfS0_Pfi`. A substring test between those always fails, so
+    `launched_filter` came back `no_name_match` and the resource record covered every kernel
+    in the cubin including 17 that never ran (measured on box 2).
+
+    Both dialects are reduced to identifiers here, and callers compare identifier SETS rather
+    than substrings -- a substring test would let a short name like `mm` match an unrelated
+    mangled symbol that merely contains those letters.
+
+    Demangled: drop the argument list, drop template arguments, keep the last `::` segment.
+    Mangled: Itanium mangling writes each component as <length><chars>, so every
+    length-prefixed run is a component; collecting them all covers both plain and nested
+    (`N...E`) names without implementing the full grammar.
+    """
+    out: set[str] = set()
+    base = name.split("(", 1)[0].strip()
+    if base.startswith("_Z"):
+        i, n = 2, len(base)
+        if base[i:i + 1] == "N":       # nested name: N <components> E
+            i += 1
+        while i < n and base[i].isdigit():
+            j = i
+            while j < n and base[j].isdigit():
+                j += 1
+            length = int(base[i:j])
+            if length <= 0 or j + length > n:
+                break
+            out.add(base[j:j + length])
+            i = j + length
+        return out
+    # Demangled: strip template arguments, then take the trailing identifier.
+    depth, cleaned = 0, []
+    for ch in base:
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            cleaned.append(ch)
+    ident = "".join(cleaned).strip().split("::")[-1].strip()
+    if ident:
+        out.add(ident)
+    return out
+
+
 def _extract_cubin_metadata(launched_names: list[str] | None = None,
                             build_dir: str | None = None) -> dict | None:
     """Resources for the kernels a load_inline / nvcc build produced.
@@ -569,8 +639,9 @@ def _extract_cubin_metadata(launched_names: list[str] | None = None,
     `launched_names` MUST be passed when known: CUTLASS instantiates many template variants
     and a cubin can hold dozens of kernels of which one actually runs. Aggregating over the
     whole cubin would report a variant that never executed -- the same class of error as
-    timing a fallback path and calling it the kernel. When it is given, kernels whose name
-    does not contain any launched name are dropped.
+    timing a fallback path and calling it the kernel. When it is given, kernels are kept when
+    they share a function identifier with a launched name (see `_kernel_identifiers`: the two
+    sides are mangled and demangled respectively, so they are compared as identifier sets).
 
     Returns None (not an empty dict) when there is nothing to read, so the caller can tell
     "no CUDA backend here" from "a CUDA backend with no resources", which would be a bug.
@@ -626,11 +697,16 @@ def _extract_cubin_metadata(launched_names: list[str] | None = None,
         return None
 
     if launched_names:
-        keep = [k for k in kernels
-                if any(ln and ln in k["name"] for ln in launched_names)]
-        # Only narrow when the intersection is non-empty: a mangled C++ name may not contain
-        # the profiler's demangled name, and reporting nothing would be worse than reporting
-        # the union. Say which happened so the report cannot present a guess as a measurement.
+        # Compare identifier sets, not substrings: the profiler's names are demangled and the
+        # cubin's are mangled, so a substring test never matched (see _kernel_identifiers).
+        want: set[str] = set()
+        for ln in launched_names:
+            want |= _kernel_identifiers(ln)
+        keep = [k for k in kernels if _kernel_identifiers(k["name"]) & want] if want else []
+        # Only narrow when the intersection is non-empty. Reporting nothing would be worse
+        # than reporting the union, and a genuine mismatch is still possible (a kernel
+        # launched from a library, a name the profiler renders unexpectedly). Say which
+        # happened so the report cannot present a guess as a measurement.
         if keep:
             return {"kernels": keep, "launched_filter": "applied"}
         return {"kernels": kernels, "launched_filter": "no_name_match"}
@@ -1298,7 +1374,7 @@ def run_eval(job: dict, measure_performance: bool) -> dict:
             result["launch_overhead"] = None
             result["launch_overhead_error"] = str(exc)[-1000:]
 
-    if job.get("collect_triton_metadata"):
+    if _wants_kernel_metadata(job):
         if job["backend"] == "triton":
             try:
                 result["triton"] = _extract_triton_metadata(kernel_src, ref_src, 0)
@@ -1916,7 +1992,7 @@ def run_relaxed_correctness(job: dict) -> dict:
                     )
             else:
                 result["excessive_speedup"] = False
-    if correct and job.get("collect_triton_metadata"):
+    if correct and _wants_kernel_metadata(job):
         if backend == "triton":
             try:
                 result["triton"] = _extract_triton_metadata(kernel_src, ref_src, 0)

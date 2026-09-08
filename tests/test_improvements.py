@@ -3625,7 +3625,7 @@ def test_fp64_gate_is_wired_from_config_to_job():
 
     job = make_relaxed_correctness_job(
         "ref.py", "k.py", num_correct_trials=3, backend="triton", precision="fp32",
-        seed=0, collect_triton_metadata=True, relaxed_elem_tol=0.01,
+        seed=0, collect_kernel_metadata=True, relaxed_elem_tol=0.01,
         relaxed_pass_frac=0.99, cosine_min=0.99985,
         fp64_relative_gate=True, fp64_rel_multiplier=2.0,
         fp64_rel_multiplier_lowp=3.0)
@@ -5684,13 +5684,13 @@ def test_full_eval_measures_launch_overhead_but_tuning_trials_do_not():
     job_off = make_eval_job("ref.py", "k.py", measure_performance=True, num_correct_trials=5,
                             num_perf_trials=100, timing_method="cuda_event", backend="triton",
                             precision="fp32", seed=0, build_dir=None,
-                            collect_triton_metadata=True)
+                            collect_kernel_metadata=True)
     assert job_off["measure_launch_overhead"] is False, "must default OFF"
 
     job_on = make_eval_job("ref.py", "k.py", measure_performance=True, num_correct_trials=5,
                            num_perf_trials=100, timing_method="cuda_event", backend="triton",
                            precision="fp32", seed=0, build_dir=None,
-                           collect_triton_metadata=True, measure_launch_overhead=True)
+                           collect_kernel_metadata=True, measure_launch_overhead=True)
     assert job_on["measure_launch_overhead"] is True
 
     full_src = inspect.getsource(cmod.CorrectnessEvaluator.full_eval)
@@ -8277,3 +8277,96 @@ def test_a_rewrite_rejection_is_not_recorded_as_a_novelty_rejection():
     reads_both = ('"REWRITE_REJECTED"' in rep_src and '"NOVELTY_REJECTED"' in rep_src)
     assert reads_both, ("report.py must read both names: the new one for current runs, the old one "
                         "so a replay of an existing log still shows its rejections")
+
+
+def test_every_backend_gets_its_resource_metadata_collected():
+    """The gate must not be Triton-specific.
+
+    Measured defect: callers passed `collect_triton_metadata=(backend == "triton")`, and the
+    worker's outer `if` read that same flag before choosing between the Triton reader and the
+    cubin reader. So for a cuda/cutlass/cute candidate the flag was False, the outer test
+    failed, and the cubin branch -- written specifically for those backends -- was unreachable.
+    A correct load_inline candidate came back with `cubin: None` and no error.
+
+    Drives the real predicate rather than asserting on source text, and checks the real job
+    builders, so it fails on the old code and passes on the fix.
+    """
+    from kernel_optimizer.gpu.jobs import make_eval_job, make_relaxed_correctness_job
+    from kernel_optimizer.gpu.worker_main import _wants_kernel_metadata
+
+    for backend in ("triton", "cuda", "cutlass", "cute"):
+        job = make_eval_job(
+            "ref.py", "k.py", measure_performance=False, num_correct_trials=3,
+            num_perf_trials=20, timing_method="cuda_event", backend=backend,
+            precision="fp32", seed=1, build_dir=None, collect_kernel_metadata=True,
+        )
+        assert _wants_kernel_metadata(job), (
+            f"a {backend} eval job does not request kernel metadata, so its candidate reaches "
+            f"the bottleneck classifier with no registers/spills/shared/occupancy and is judged "
+            f"worse than a Triton candidate for reasons unrelated to its kernel")
+        relaxed = make_relaxed_correctness_job(
+            "ref.py", "k.py", num_correct_trials=3, backend=backend, precision="fp32",
+            seed=1, collect_kernel_metadata=True, relaxed_elem_tol=1e-3,
+            relaxed_pass_frac=0.99, cosine_min=0.9998,
+        )
+        assert _wants_kernel_metadata(relaxed), (
+            f"a {backend} relaxed-correctness job does not request kernel metadata")
+
+    # The historical key must still be honoured, or replaying an existing job file breaks.
+    assert _wants_kernel_metadata({"collect_triton_metadata": True})
+    assert not _wants_kernel_metadata({"collect_triton_metadata": False})
+    assert not _wants_kernel_metadata({})
+    # The new key wins when both are present.
+    assert _wants_kernel_metadata({"collect_kernel_metadata": True,
+                                   "collect_triton_metadata": False})
+
+    # And the callers must actually ask for it on every backend: a call site that still
+    # conditions on the backend would reintroduce the defect while this test's own job
+    # builders stay green.
+    import inspect
+
+    from kernel_optimizer.evaluation import correctness as corr_mod
+
+    src = inspect.getsource(corr_mod)
+    assert '(backend == "triton")' not in src, (
+        "a call site still gates metadata collection on the backend being Triton")
+
+
+def test_the_launched_kernel_filter_matches_mangled_against_demangled_names():
+    """The filter compared demangled profiler names with mangled cubin symbols.
+
+    `torch.profiler` reports `addk(float const*, float const*, float*, int)`; `cuobjdump`
+    reports `_Z4addkPKfS0_Pfi`. A substring test between those can never succeed, so
+    `launched_filter` came back `no_name_match` and the resources were the union over the
+    whole cubin -- measured on box 2 as 18 kernels of which 17 never ran. For CUTLASS, whose
+    template variants are exactly this hazard, the guard was inert.
+    """
+    from kernel_optimizer.gpu.worker_main import _kernel_identifiers
+
+    # The measured real pair.
+    assert "addk" in _kernel_identifiers("_Z4addkPKfS0_Pfi")
+    assert "addk" in _kernel_identifiers("addk(float const*, float const*, float*, int)")
+    assert _kernel_identifiers("_Z4addkPKfS0_Pfi") & _kernel_identifiers(
+        "addk(float const*, float const*, float*, int)"), (
+        "the mangled and demangled forms of the SAME kernel do not intersect, so the filter "
+        "cannot ever apply")
+
+    # A templated kernel, which is the CUTLASS shape: identifier survives, template args go.
+    mangled = "_Z7mm_tf32ILi64ELi64ELi32ELi2ELi2ELb1EEvPKfS1_Pfiii"
+    assert "mm_tf32" in _kernel_identifiers(mangled)
+    assert "mm_tf32" in _kernel_identifiers("mm_tf32<64, 64, 32, 2, 2, true>(float const*)")
+
+    # A nested (namespaced) name, as CUTLASS emits.
+    nested = _kernel_identifiers("_ZN7cutlass6kernel4gemmEv")
+    assert "gemm" in nested and "cutlass" in nested
+
+    # Distinct kernels must NOT intersect, or the filter would keep everything.
+    assert not (_kernel_identifiers("_Z4addkPKfS0_Pfi")
+                & _kernel_identifiers("_Z7mm_tf32ILi64EEvPKf")), (
+        "two different kernels share an identifier, so the filter cannot discriminate")
+
+    # And a short name must not match an unrelated symbol that merely contains its letters --
+    # the reason this compares identifier sets instead of substrings.
+    assert not (_kernel_identifiers("_Z2mmPf")            # kernel `mm`
+                & _kernel_identifiers("_Z6mmadd2Pf")), (  # unrelated kernel `mmadd2`
+        "a short identifier matched a longer unrelated one; substring semantics have crept back")

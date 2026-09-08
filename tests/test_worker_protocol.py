@@ -29,7 +29,7 @@ def test_job_shapes_are_json_plain():
         make_eval_job("/tmp/ref.py", "/tmp/k.py", measure_performance=True,
                       num_correct_trials=5, num_perf_trials=100,
                       timing_method="cuda_event", backend="triton", precision="fp32",
-                      seed=42, build_dir=None, collect_triton_metadata=True),
+                      seed=42, build_dir=None, collect_kernel_metadata=True),
     ]
     for job in jobs:
         json.dumps(job)  # must be plain JSON
@@ -39,7 +39,7 @@ def test_job_shapes_are_json_plain():
                            num_correct_trials=3, num_perf_trials=0,
                            timing_method="cuda_event", backend="triton",
                            precision="fp32", seed=42, build_dir=None,
-                           collect_triton_metadata=False)
+                           collect_kernel_metadata=False)
     assert eval_c["job_type"] == "eval_correctness"
 
 
