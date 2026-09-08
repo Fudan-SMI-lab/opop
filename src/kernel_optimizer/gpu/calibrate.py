@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from kernel_optimizer.evaluation.calibration import (
+    CALIBRATION_SCHEMA_VERSION,
     Calibration,
     Yardstick,
     cache_path,
@@ -41,6 +42,11 @@ def calibration_from_worker(result: dict) -> Calibration:
     spec_dram = float(result.get("spec_dram_tbs", 0.0) or 0.0)
 
     return Calibration(
+        # Stamp the measurement set that produced this file. `load_cached` refuses anything
+        # below the current constant, so forgetting this here would make every run
+        # re-measure forever -- and hard-coding the integer instead of importing it would
+        # let the two drift apart, which is the same silent-staleness bug one level up.
+        schema_version=CALIBRATION_SCHEMA_VERSION,
         device_name=result.get("device_name", "unknown"),
         capability=list(result.get("capability", []) or []),
         sm_count=int(result.get("sm_count", 0) or 0),

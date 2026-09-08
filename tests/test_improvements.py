@@ -6130,6 +6130,73 @@ def test_both_compute_ceilings_are_measured_so_tensor_core_kernels_are_judged_fa
     assert 80.0 / cal.tf32_tflops < 1.0
 
 
+def test_a_cached_calibration_is_refused_when_it_predates_a_measurement():
+    """A cache written before a ceiling was added must be re-measured, not served as 0.0.
+
+    The identity check above covers a hardware change. This covers the other axis, which is
+    the one that actually bit: every `Calibration` field has a permissive default so an old
+    cache still loads (needed -- a box that cannot measure bf16 must still classify), and the
+    price is that a newly ADDED measurement reads as 0.0 forever on a box whose identity
+    never changed, with nothing raised.
+
+    Observed on disk: the fp16/bf16 ceilings landed 2026-09-08 and
+    `opop-glm/runs-l3/calibration.json` was written 09-07, so `fp16_tflops` was None/0.0 in
+    the file and `CALIBRATION_LOADED` journalled `fp16_tflops: 0.0` on a fresh run. A
+    low-precision candidate is then scored against the tf32 denominator -- roughly half its
+    real ceiling on this card -- which reads as "saturated" for a kernel with headroom, the
+    defect that put `impossible_fraction` in 13 of 25 L3:43 verdicts. It was about to be
+    inherited by a 36-hour chain because the cache looked valid.
+    """
+    import json as _json
+    import tempfile
+    from pathlib import Path as _P
+
+    from kernel_optimizer.evaluation.calibration import (
+        CALIBRATION_SCHEMA_VERSION,
+        cache_path,
+        load_cached,
+        save,
+    )
+    from kernel_optimizer.gpu.calibrate import calibration_from_worker
+
+    cal = calibration_from_worker(MEASURED_4090)
+    # The writer must stamp the current set, or every run re-measures forever.
+    assert cal.schema_version == CALIBRATION_SCHEMA_VERSION, (
+        "calibration_from_worker does not stamp the schema version, so a freshly measured "
+        "cache would be refused by its own loader on the next run")
+
+    with tempfile.TemporaryDirectory() as td:
+        path = cache_path(_P(td))
+        save(path, cal)
+        assert load_cached(path, cal.identity()) is not None, (
+            "a cache written by the current code must be reusable")
+
+        # Exactly the shape found on disk: a valid calibration for THIS box, from before the
+        # low-precision ceilings existed. Same identity, so the hardware check cannot catch it.
+        old = _json.loads(path.read_text(encoding="utf-8"))
+        old.pop("schema_version", None)
+        old.pop("fp16_tflops", None)
+        old.pop("bf16_tflops", None)
+        path.write_text(_json.dumps(old), encoding="utf-8")
+
+        stale = load_cached(path, cal.identity())
+        assert stale is None, (
+            "a calibration predating the fp16/bf16 ceilings was served for a box whose "
+            "identity is unchanged; every low-precision candidate would be scored against "
+            "the tf32 ceiling and read as saturated")
+
+        # And the refusal is specifically about the version, not about the missing fields:
+        # a box that measured 0.0 for bf16 (old hardware) must NOT re-measure every run.
+        legitimately_zero = _json.loads(path.read_text(encoding="utf-8"))
+        legitimately_zero["schema_version"] = CALIBRATION_SCHEMA_VERSION
+        legitimately_zero["fp16_tflops"] = 0.0
+        legitimately_zero["bf16_tflops"] = 0.0
+        path.write_text(_json.dumps(legitimately_zero), encoding="utf-8")
+        assert load_cached(path, cal.identity()) is not None, (
+            "a current-version calibration reporting 0.0 for a ceiling this box cannot "
+            "measure must be reused, not re-measured on every run")
+
+
 def test_a_cached_calibration_is_refused_on_different_hardware():
     """Every classification is a fraction of these ceilings, so a calibration reused across a
     card or driver change produces confident verdicts computed against another GPU's limits.

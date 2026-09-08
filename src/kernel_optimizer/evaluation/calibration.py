@@ -67,6 +67,19 @@ IDLE_HEADROOM = 2.0
 # so a verdict resting on it can be discounted.
 SUSPECT_BELOW_SPEC_FRAC = 0.60
 
+# The current measurement set. A cached calibration whose `schema_version` is BELOW this is
+# refused by `load_cached` and re-measured, even on a box whose hardware identity is unchanged.
+#
+# Bump this whenever `run_calibrate` (gpu/worker_main.py) begins measuring a new quantity.
+# Every field on `Calibration` has a permissive default so that an old cache still LOADS --
+# necessary, because a box that genuinely cannot measure bf16 must still classify -- and the
+# cost of that permissiveness is that a newly added measurement is otherwise served as 0.0
+# indefinitely, silently, with the operator's only clue a warning they have to read.
+#
+#   1  dram/fp32/tf32/launch-floor/yardsticks/thresholds/tiers  (the original set)
+#   2  + fp16_tflops, bf16_tflops                               (P3, 2026-09-08)
+CALIBRATION_SCHEMA_VERSION = 2
+
 
 class Yardstick(BaseModel):
     """One workload whose bottleneck is known analytically, as measured on this box."""
@@ -122,6 +135,13 @@ class Calibration(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    # Which measurement SET produced this cache. Bumped whenever `run_calibrate` starts
+    # measuring something new, so a cache written before that field existed is refused
+    # rather than served as its permissive default. See `load_cached` for the incident
+    # that motivated it. Defaults to 0 so every pre-existing cache file on disk reads as
+    # older than the current set, which is exactly what it is.
+    schema_version: int = 0
+
     device_name: str
     capability: list[int]
     sm_count: int
@@ -139,7 +159,6 @@ class Calibration(BaseModel):
     fp16_tflops: float = 0.0
     bf16_tflops: float = 0.0
     empty_launch_floor_ms: float = 0.0
-
     spec_dram_tbs: float = 0.0
     l2_bytes: int = 0
     yardsticks: list[Yardstick] = Field(default_factory=list)
@@ -294,11 +313,29 @@ def cache_path(run_root: Path) -> Path:
 
 
 def load_cached(path: Path, identity: str | None = None) -> Calibration | None:
-    """Load a cached calibration, refusing one measured on different hardware.
+    """Load a cached calibration, refusing one measured on different hardware OR by an
+    older measurement set.
 
     The identity check is the point. A cache keyed only on the file path would be silently
     reused after a box change -- and since every classification is a fraction of these
     ceilings, that produces confident verdicts computed against another card's limits.
+
+    The SCHEMA check is the same argument applied along the other axis. Every field here
+    has a permissive default so that an old cache still loads, which is right for
+    classifying -- but it means a newly ADDED measurement is served as its default
+    forever, on a box whose identity never changed, with nothing raised. Measured: the
+    fp16/bf16 ceilings landed on 2026-09-08 and the L3 runs directory held a cache from
+    09-07, so `fp16_tflops` read 0.0 and every low-precision candidate would have been
+    scored against the tf32 denominator -- roughly half its real ceiling, which reads as
+    "saturated" for a kernel with headroom. That is the defect that carried
+    `impossible_fraction` into 13 of 25 verdicts on L3:43, about to be inherited by a
+    36-hour chain because the cache looked valid.
+
+    So the cache is refused when it predates the current measurement set. This is
+    deliberately a version integer and not a per-field scan: a field can legitimately be
+    0.0 on a box that cannot measure it (bf16 on old hardware), and treating that as
+    stale would re-measure on every run forever. Bumping the constant is the one manual
+    step required when a new ceiling is added to `run_calibrate`.
     """
     if not path.exists():
         return None
@@ -309,6 +346,8 @@ def load_cached(path: Path, identity: str | None = None) -> Calibration | None:
     except Exception:  # noqa: BLE001 — a corrupt cache must re-measure, not crash a run
         return None
     if identity is not None and cal.identity() != identity:
+        return None
+    if cal.schema_version < CALIBRATION_SCHEMA_VERSION:
         return None
     return cal
 
