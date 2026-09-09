@@ -198,11 +198,18 @@ change which points the sampler visits.
 2. **Screen only the shared-affecting subgrid.** Two variants differing only in `NUM_WARPS` or a
    cache hint produce the same `metadata.shared`; compiling both is waste. The sampler could
    project each candidate config onto its shared-affecting knobs and skip duplicates.
-3. **Reuse across a space expansion.** An expansion re-publishes a space whose configurations
-   largely overlap the previous one, and `_screen_cache` is keyed on the materialized source, so
-   the overlap should already hit — 12 prescreens costing full price suggests it does not. Worth
-   checking whether the expansion changes the source text (it re-declares the whole PARAMS block)
-   and thus misses every cache entry.
+3. **Reuse across a space expansion.** ~~Worth checking whether the expansion changes the source
+   text and thus misses every cache entry.~~ **Checked (2026-09-09), and the hypothesis is
+   wrong**: the cache DOES hit across expansions. Ground truth from the worker job payloads on
+   L3:21 (`jobs/*-prescreen-*.json`, counting `extra_kernel_src_paths`): every candidate's
+   second prescreen sent 30–40 kernels instead of a fresh 40 — i.e. 0–10 cache hits, mean ~10%.
+   The overlap is small not because the cache misses but because the expansion widens some
+   domains' choices, and the same-seeded `rng.choice` sequence diverges from the first expanded
+   knob onward, so the 40 sampled configurations are almost all new. Materialization only
+   rewrites the PARAMS span, so identical values still produce identical source and hit. There
+   is no recoverable half here; items 1 and 2 are the whole fix surface. (A cheap variant of 2
+   that would raise the overlap: sample the second prescreen from the OLD configurations first
+   and only top up with new ones — but that biases the screen away from exactly the region the
+   expansion added, so it needs thought, not a quick patch.)
 
-Item 3 is the one to verify first: if an expansion invalidates the cache wholesale, half of the
-27 minutes is recoverable without changing what gets screened.
+Item 3 is verified above: nothing to recover there, so a D5 fix is items 1 and 2 only.
