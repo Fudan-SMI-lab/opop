@@ -59,7 +59,15 @@ S_i = ( Q(T) − Q(T′_i) ) / ( F(T′_i) − F(T) )
 - 给 K-expansion 提供的扩展方向**排序**;
 - TPE 的 **warm-start / trial 排序先验**,在花 18.6 s 之前先排好。
 
-**不借什么,以及为什么**:不借"构造取代搜索"。Roller 自己的数字 [已复验]:小算子上**比 Ansor 慢 50%**,tensor core 只到 cuBLAS 的 **43%**,作者自述盲点 "cannot detect implicit register allocation beforehand" —— **正是我们 Triton 候选所在**(218 regs / 0 spills / 16.7% occupancy)。
+**不借什么,以及为什么**:不借"构造取代搜索"。Roller 自己的数字 [已复验,2026-09-10 拉取全文重核]:小算子上 "ROLLER is still slower than Ansor, e.g., **by 50% on average, on small operators**";tensor core 上 "within a **43% performance gap** to cuBLAS"。
+
+**⚠ 一处更正(2026-09-10)**:本文档原写"tensor core 只到 cuBLAS 的 43%"——**这是误读**。原文是"43% 的性能**差距**",即约为 cuBLAS 的 **57%**,不是 43%。方向仍然支持"不用它取代搜索",但数字要写对。
+
+**而 Roller 对寄存器的处理,是我们"不预测、改编译"这个决定最有力的外部依据** [已复验全文]:
+- §4 原文:"We notice that the nvcc compiler will implicitly declare more registers (for loop variables or other purposes). Given that this behaviour is hard to predict, **we reduce the register limit empirically to only 96 registers** for both V100 and K80 GPUs per thread to avoid unexpected performance impacts."
+- §6 原文:"ROLLER **cannot detect implicit register allocation beforehand**, hence it is difficult to estimate and decide the precise register usage."
+
+**96/255 = 37.6%,即一个 2.66 倍的安全系数,而且是硬编码常数、不是模型、不随 kernel 变。** 一篇核心论点就是"解析构造优于搜索"的论文,在拿到完整张量表达式与硬件规格的条件下,**结论是寄存器用量无法从源码预测,于是丢掉 62% 的寄存器文件**。我们的 agent 被要求做 Roller 明确放弃的事 —— 这解释了为什么 agent 手写约束中位只有真值的 32%。
 
 **更强的反证** [子代理]:**tritonBLAS**(arXiv:2512.04226,AMD 团队,我们同一个 Triton 3.4.0,只做最被研究透的 GEMM):解析选参达 **94.7% 选择效率**、选择耗时 50–80 µs vs autotune 的 11.9 s–1383.6 s,**但在真实 Llama3 形状上平均比 PyTorch 慢 13.9%**,且作者声明"not intended for other GEMM-like algorithms such as various attention mechanisms"。他们还自述目标只是"capture latency *trends*" —— **趋势精度对我们 9% 的近平局跨度毫无用处。**
 
@@ -413,7 +421,7 @@ Snapdragon 835 实测里有一条校准教训:DRAM **15.1 GB/s = 30 GB/s 理论�
 | 不借 | 理由(带数字) |
 |---|---|
 | 学习型代价模型(Halide/Ansor/TVM/Mind Mappings) | 需 1.6M / 25k / 10M 次实测;按 18.6 s/trial 分别是 827 年 / 5.2 天 / ~6 年。**结构性不可用** |
-| 构造取代搜索(Roller 全套) | Roller 小算子慢 50%、TC 只到 cuBLAS 43%、自述盲点是寄存器分配;tritonBLAS 在真实形状慢 13.9% |
+| 构造取代搜索(Roller 全套) | Roller 小算子慢 50%、TC 与 cuBLAS 差 43%(约 57%)、寄存器上限硬 derate 到 96/255;tritonBLAS 在真实形状慢 13.9% |
 | 多目标 TPE / qEHVI | n=40 时 MOTPE 只有 4 个好点、静默关掉 multivariate;qEHVI 在 M=4 时 acquisition 459 s = 25 个 trial |
 | 任何依赖 ncu counter 的方法 | `ERR_NVGPUCTRPERM` 在租用容器**永久不可用**(root 也不行:`lsmod` 零 nvidia 模块、`/etc/modprobe.d` 不存在)。**被挡的具体清单**:Nsight SOL、hierarchical roofline 的*测量*、Instruction Roofline 的*测量*、DrGPU 的实现、warp-vs-thread 谓词化计数 |
 | 原始计数器/规格数值直接进 prompt | p=0.0007 比什么都不给更糟;KernelBench 自测硬件规格无显著影响 |

@@ -309,7 +309,7 @@ Score      = Achieved / Attainable
 
 - **用途**:K-expansion 的扩展方向排序;TPE 的 warm-start / trial 排序先验 —— 在花 18.6 s/trial 之前先排好。
 - **硬边界**:它是**估计**器 → 按 D-2 **不得进入接受判定**。
-- **不借的部分**:不用它取代搜索。Roller 自己小算子比 Ansor 慢 50%、tensor core 只到 cuBLAS 43%、自述盲点"cannot detect implicit register allocation beforehand" —— **正是我们 Triton 候选所在**(218 regs / 0 spills / 16.7% occupancy)。更强的反证是 tritonBLAS:我们同一个 Triton 栈、只做 GEMM、94.7% 选择效率,**但真实 Llama3 形状上比 PyTorch 慢 13.9%**,且作者只声称"capture latency *trends*" —— **趋势精度对我们 9% 的近平局跨度毫无用处。**
+- **不借的部分**:不用它取代搜索。Roller 自己小算子比 Ansor 慢 50%、tensor core 与 cuBLAS 差 43%(约 57% of cuBLAS)、**把寄存器上限硬编码derate 到 96/255=37.6%** 因为"cannot detect implicit register allocation beforehand"、自述盲点"cannot detect implicit register allocation beforehand" —— **正是我们 Triton 候选所在**(218 regs / 0 spills / 16.7% occupancy)。更强的反证是 tritonBLAS:我们同一个 Triton 栈、只做 GEMM、94.7% 选择效率,**但真实 Llama3 形状上比 PyTorch 慢 13.9%**,且作者只声称"capture latency *trends*" —— **趋势精度对我们 9% 的近平局跨度毫无用处。**
 
 **(b) 已实现的 `Δlatency / Δresource`**
 

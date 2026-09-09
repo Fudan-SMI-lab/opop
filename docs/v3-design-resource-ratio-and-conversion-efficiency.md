@@ -50,7 +50,13 @@ S_i = ( Q(T) − Q(T′_i) ) / ( F(T′_i) − F(T) )
 
 **tritonBLAS**(arXiv:2512.04226,AMD 团队,Triton 3.4.0,纯 GEMM):解析模型选参,**94.7% 选择效率** vs 穷举,选择耗时 50–80 µs vs Triton autotune 的 11.9 s–1383.6 s。但**在真实 Llama3 形状上平均比 PyTorch 慢 13.9%**,且作者明确声明不适用于 attention 等非 GEMM。
 
-Roller 自己的限制也在同一方向:小算子上**比 Ansor 慢 50%**,tensor core 只到 cuBLAS 的 **43%**,且作者自述盲点是"cannot detect implicit register allocation beforehand"——**正是我们 Triton 候选所在之处**(218 regs / 0 spills / 16.7% occupancy)。
+Roller 自己的限制也在同一方向 [2026-09-10 拉取全文重核]:小算子上 "slower than Ansor, e.g., **by 50% on average, on small operators**";tensor core "within a **43% performance gap** to cuBLAS"(即约 57% of cuBLAS —— **本文原写"只到 43%"是误读,已更正**)。
+
+**而 Roller 对寄存器的处理,是"不预测、改编译"这条设计决定最有力的外部依据**(原文两句):
+- "We notice that the nvcc compiler will implicitly declare more registers (for loop variables or other purposes). Given that this behaviour is hard to predict, **we reduce the register limit empirically to only 96 registers** for both V100 and K80 GPUs per thread"
+- "ROLLER **cannot detect implicit register allocation beforehand**, hence it is difficult to estimate and decide the precise register usage."
+
+**96/255 = 37.6%,一个 2.66 倍的硬编码安全系数,不是模型、不随 kernel 变。** 一篇主张"解析构造优于搜索"的论文,在拿到完整张量表达式与硬件规格后,结论是**寄存器用量无法从源码预测,于是丢掉 62% 的寄存器文件**。而我们的 agent 一直被要求做 Roller 明确放弃的事 —— 这正是"手写约束中位只有真值 32%"的成因。**我们自己的实测独立证实了同一条缝**:全新进程里 `warmup()` 对每个 tile 都给出 shared memory,而 `n_regs` 每一行都是 `None`,只有真正启动后才出现。
 
 **结论**:解析模型作 **warm-start 与 trial 排序先验**,绝不取代 TPE。
 

@@ -204,7 +204,7 @@ _finalize
 
 - 多目标 TPE / qEHVI(MOTPE 在 n=40 时只有 4 个点喂 `l(x)`,且 `multivariate` 静默变 False;qEHVI 在 M=4 时 acquisition 459 s = 25 个整 trial)
 - 学习型代价模型(需 1.6M / 25k / 10M 次实测 = 827 年 / 5.2 天 / ~6 年)
-- 构造取代搜索(Roller 小算子慢 50%、TC 只到 cuBLAS 43%;tritonBLAS 在真实形状慢 13.9%)
+- 构造取代搜索(Roller 小算子慢 50%、TC 与 cuBLAS 差 43%(即约 57% of cuBLAS);tritonBLAS 在真实形状慢 13.9%)
 - 任何依赖 ncu counter 的方法(容器内永久不可用)
 - 原始计数器进 prompt(p=0.0007 比不给更糟)
 - 计数式取值黑名单(实测误杀 38.5%)
