@@ -26,7 +26,8 @@
 
 | 文档 | 结论 |
 |---|---|
-| **`result-a1-is-framed-backwards-fill-the-gap-not-push-the-wall.md`** | **缺口 A-1 问反了**:没有排序规则打得过对照(最好规则 7.1% vs 最好对照 21.4%),而 14 次超噪声底成功改写里 8 次没缓解任何绑定维度、6 次反把某维朝墙推(+70.61 TFLOP/s)。**赢的动作是"填空隙"不是"推开墙"** |
+| **`result-a1-no-ranking-rule-survives-its-controls.md`** | **缺口 A-1 没有排序规则可用**:最好规则 7.1% vs 最好对照 21.4%,两个规则都输给"永远挑同一维"。**注意:文档里"赢的动作是填空隙"这个机制解释已被同日的正对照推翻** |
+| **`result-binding-criterion-mislabels-l2-resident-kernels.md`** | **利用率判据在 5 个已知答案的 kernel 上误判 2 个**:`pct_of_dram_peak` 分不清 L2 命中与真实 DRAM 流量,纯 L2 流式 kernel 读出屋顶 **287%**。一个可修的度量缺陷,已排进 S2 |
 
 **探针脚本**(`v3/scripts/`,全部零 GPU 或空窗期运行):
 
@@ -34,7 +35,8 @@
 |---|---|---|
 | `probe_resource_read_cost.py` | 一个资源点多贵、字段什么时候可读 | **614.6 ms 中位 / 899 ms 均值 = 1/21~1/30 个计时 trial**;`n_regs` 编译后 0/108、一次 0.4 ms launch 后 96/96 |
 | `probe_resource_map.py` | 能不能用公式或"测一次到处用"省掉地图 | **都不能**:shared 线性拟合 0/96 精确命中(残差最大 121.4%);地图**不可分离**(1/8 一步移动增量一致,shared 跨度 24576 B、寄存器跨度 127) |
-| `multibind_rule_check.py` | 多维绑定时该动哪一维 | 见上面的 A-1 结果 |
+| `multibind_rule_check.py` | 多维绑定时该动哪一维 | 没有规则打得过对照(7.1% vs 21.4%) |
+| `probe_binding_criterion_control.py` | **利用率判据本身可信吗**(5 个已知答案的 kernel) | **误判 2/5**;L2 内流式 kernel 读出 DRAM 屋顶 287% ⇒ 判据必须先修 |
 | `spill_filter_check.py` | 该不该按寄存器溢出过滤配置 | **不该**:0/5 获胜配置溢出,但 11/175 近平局溢出最多 52 个、只差 +0.6%~+2.1% |
 | `blind_spots.py` | 用户点的三个缺口有多严重 | 17 份报告 1 个标签;76% 报告有 ≥2 维同时接近上限;改写后资源漂移最多 79.9 KB / 137 regs |
 | `knob_resource_map.py` | 旋钮→资源的映射在磁盘上有没有 | 有,且从未被用;shared 效应跨候选一致,寄存器效应**混杂** |
