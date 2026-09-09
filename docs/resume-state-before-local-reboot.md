@@ -58,6 +58,25 @@ simply carry on, and their events.jsonl is the record. Re-arm monitors on resume
   (verified live: its generator's `device.md` carries `DRAM 0.911 TB/s` and
   `fp16 164.4 TFLOP/s = 1.85x tf32`) and the first where a rewrite can switch backend.
 
+## Server-side completion capture (armed, survives the reboot)
+
+Every Monitor task dies with the local session, so a run that finishes during the downtime would
+have no notification at all. Armed a detached watcher on each box instead — `setsid nohup`, so
+each has PPID 1 and no controlling terminal, verified:
+
+| box | watcher pid | writes on completion |
+|---|---|---|
+| box 1 | 911473 | `/root/autodl-tmp/opop-workspace/opop-glm/completion-l3-21.txt` |
+| box 2 | 426995 | `/root/autodl-tmp/opop-workspace/opop-glm/completion-l3-43.txt` |
+
+Each waits on `orchestrator_running.sh`, then records: whether `RUN_FINISHED` is present (i.e.
+whether the orchestrator finalized rather than dying), the full `run_summary.py` output, the
+near-tie check from `audit_ties.py`, and the report path. **Read these first on resume** — they
+capture the state at the moment of completion, which is otherwise only reconstructable.
+
+A missing `RUN_FINISHED` in that file is the signal that the run died before its re-eval, in
+which case the report is PROVISIONAL and `final_reeval_ms` has to be produced by hand.
+
 ## On resume, in this order
 
 1. **Check both boxes are still alive and what changed:**
