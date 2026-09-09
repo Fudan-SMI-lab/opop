@@ -75,8 +75,12 @@ def gemm(A, B, C, M, N, K,
 
 
 M = N = K = 1024
-AXES = {"BM": (32, 64, 128), "BN": (32, 64, 128), "BK": (32, 64),
-        "num_stages": (2, 3, 4), "num_warps": (4, 8)}
+# Every axis needs >= 3 values or the monotonicity question is vacuous on it: any two points
+# are trivially ordered. The first version gave BK and num_warps two values each, reported
+# "monotone everywhere", and quietly excluded the axis with the LARGEST register spread
+# (num_warps, 127 registers). Both are widened here so Q2 covers all five.
+AXES = {"BM": (32, 64, 128), "BN": (32, 64, 128), "BK": (16, 32, 64),
+        "num_stages": (2, 3, 4), "num_warps": (2, 4, 8)}
 ORDER = ["BM", "BN", "BK", "num_stages", "num_warps"]
 CONFIGS = [dict(zip(ORDER, v)) for v in itertools.product(*(AXES[k] for k in ORDER))]
 
