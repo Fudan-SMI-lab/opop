@@ -106,18 +106,29 @@ it waits regardless.
 
 ## D3. The rewriter's backend switch is unverified in production
 
-**Evidence.** `RewriteCandidate.backend`, the `_detect_backend` override, and
-`BACKEND_DECLARATION_MISMATCH` landed in `1ef142d`, after `run-l3-21-20260908-232211` started.
-Driver-side code cannot reach a running orchestrator, so that run's rewrites still inherit the
-parent backend.
+**Corrected 2026-09-09.** This entry originally claimed `1ef142d` landed "after
+`run-l3-21-20260908-232211` started", making L3:21 a backend-switch control. **That was wrong.**
+Box 1's reflog shows the checkout fast-forwarded to `e2d3d32` at 23:19:34 and the orchestrator
+started 23:22:10; `1ef142d` (committed 23:03:08) is an ancestor of `e2d3d32` (23:08:05).
+Verified in the loaded source on the box: the running `orchestrator.py` registers rewrites via
+`_detect_backend`, and the running `modules.py` carries the backend-switch prompt section.
+**L3:21 had the backend switch for its entire duration.** Only the ceilings fix (`9e8066d`,
+23:59:24) postdates it. The lesson is the usual one: a run's capabilities are decided by the
+box's reflog and the loaded source, not by commit-message chronology recalled from memory.
 
-**Why not now.** Nothing is broken; the feature simply has no evidence yet. Restarting a healthy
-run to gather it would cost more than waiting for the next one.
+**Evidence so far (both runs combined).** L3:21: 6 rewrites; L3:43 (in flight, at 6 rewrites):
+6 rewrites. **12 of 12 declared and detected Triton, 0 `BACKEND_DECLARATION_MISMATCH`, 0
+CUDA-declared candidates.** The declaration/detection machinery agrees with itself; no rewrite
+has yet taken the CUDA option.
 
-**What to do.** Count `BACKEND_DECLARATION_MISMATCH` and CUDA-declared candidates on box 2's
-L3:43 run and any later run. **Zero CUDA candidates is a legitimate result to report**, not a
-failure — 35 of 35 Triton candidates in earlier runs was a consequence of what the prompts
-asked for, and this is the first run in which the alternative is expressible at all.
+**Why not now.** Nothing is broken; the option is expressible, the prompt names when a switch is
+warranted, and the agents have not chosen it. **Zero CUDA candidates is a legitimate result to
+report**, not a failure — 35 of 35 Triton candidates in earlier runs was a consequence of what
+the prompts asked for; in these two runs the alternative was available and declined. One caveat
+for the writeup: both tasks so far (MBConv, causal attention) are ones where the prompt's own
+stated trigger — strict IEEE fp32 dot-bound work — does not dominate, so "declined" is weak
+evidence about the trigger case itself. L3:48 runs strict-precision GEMM-heavy work and is the
+first real test of the trigger.
 
 ---
 
