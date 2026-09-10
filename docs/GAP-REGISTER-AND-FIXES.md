@@ -55,7 +55,8 @@
 | **G29** | **一台机可以通过全部就绪检查却评测不了任何 kernel**:`kernelbench` 包 `__init__` 的导入链缺包 ⇒ **12/12 候选全报 `runtime_error`**,读起来和「模型写坏了」一模一样 | 缺失 | **高** | **✅ 已修**(补齐 25 个包 + 新增 `scripts/verify_box_can_evaluate.py` 作为真实评测门) | §G29 |
 | **G30** | **prompt 向 agent 谎报环境**：`modules.py:584` 写「you cannot run GPU code here」，在 Windows/WSL 拓扑下为真，在原生 Linux 单机（A800）为假 —— agent 与 GPU 同机，`python3` 上有 torch 2.8.0 + triton 3.4.0，它已跑过 `nvidia-smi` | 高风险（改了影响所有 agent 行为） | 中 | ⏸ **仅记录**，待全部实验完成后统一处理 | — |
 | **G31** | **agent 的 `python3` 与评测解释器不同，但 site-packages 相通**：A800 实测 agent 的 `/root/miniconda3/bin/python3` 无法 `import kernelbench`/`dotenv`，而评测用 `orch-venv` 建时带 `--system-site-packages`，其 `sys.path` **包含** miniconda base —— agent 一旦 `pip install` 就会改掉后续每个候选的测量环境 | 高风险 | 中 | ⏸ **仅记录** | — |
-| **G32** | **`Calibration.identity()` 缺 `triton_version`**（`calibration.py:214` 只有 device+capability+sm_count+torch+driver）。而四档 `*_triton_tflops` 天花板是**用 Triton 测出来的**（G10），Triton 就是代码生成器 ⇒ 同一台机单独 `pip install -U triton` 会**静默复用旧天花板** | 确定，低风险 | 小 | ⏳ **待修**：`identity()` 加 `triton_version` + bump schema 4→5 | — |
+| **G32** | **`Calibration.identity()` 缺 `triton_version`**（`calibration.py:214` 只有 device+capability+sm_count+torch+driver）。而四档 `*_triton_tflops` 天花板是**用 Triton 测出来的**（G10），Triton 就是代码生成器 ⇒ 同一台机单独 `pip install -U triton` 会**静默复用旧天花板** | 确定，低风险 | 小 | ✅ **已修**（`8c521a4`）：`identity()` 加 `triton_version`，schema 4→5，worker 实测该值；7 个测试，两个方向的反向对照均已验证 | §G32 |
+| **G33** | **worker 无法 `import kernel_optimizer`,于是 G10 的四个 Triton 天花板恒为 0.0,且原因被丢弃**。A800 重标定实测:`triton_ceiling_error: ModuleNotFoundError: No module named 'kernel_optimizer'` 只存在于 raw worker output,`Calibration` 无该字段 ⇒ pydantic 丢弃,缓存里只剩四个干净的 0.0。**box 1 缓存同样四个 0.0** ⇒ **G10 在两台机的任何一次真实 run 里都从未生效** | 确定,低风险 | 小 | ✅ **已修**（`8eb8d16`）:(a) worker PYTHONPATH 追加 harness `src`(从文件自身位置推导、追加在末尾);(b) `flag_suspect` 把「未测到」变成 suspect 并点名缺哪个精度。8 个测试,回退任一半失败 4 个 | §G33 |
 
 
 
@@ -668,6 +669,57 @@ conversion_verdict(3.0, 2.00, None, None, 2.0)
 S2 的 J2-3 明写「**原始向量不得进 prompt**,构造 prompt 的函数只能访问消化后的四元组」。当前 `agents/modules.py:201-233` 把判决的 `evidence` 字典**原样渲染**进 agent 读的文档,并写出 `## Verdict: **{verdict.kind}**`。
 
 这不是新缺陷(v2 一直如此),但**它是 S2 消化层要解决的那件事本身**,所以登记在册,以免 S2 编码时把「已经有 evidence 进 prompt 了」误当成消化层已存在。**J2-3 的验收要求测试驱动真实的 prompt 构造路径**,不许在测试体内复刻。
+
+---
+
+### G32 标定缓存的身份缺 `triton_version`(✅ 已修,`8c521a4`)
+
+**为什么它承重**:四个 `*_triton_tflops` 天花板(G10)**是用 Triton 测出来的**,而 Triton 就是每个候选的代码生成器。两台机跑 3.5.1 与 3.4.0,`box-a800-setup.md §7.2` 已记载两者生成的代码不同(寄存器数、shared 用量、乃至一个 tile 能不能编译)。所以在一个 Triton 下测到的天花板不描述另一个 Triton。
+
+**缺陷**:`Calibration.identity()`(`calibration.py:214`)只有 `device_name + capability + sm_count + torch + driver`。**同一台机单独 `pip install -U triton` 会静默复用旧天花板**。当前两台机 torch 与 triton 恰好共变,所以缓存事实上没串 —— 这是巧合,不是保护。
+
+**这条是用户「工具版本是环境的一环,结论不能照搬」这个判定的代码形态** —— 不建模成维度,而是让缓存拒绝跨版本复用。
+
+**两半都必须做,覆盖的是不同情形**:
+
+| 半 | 覆盖 |
+|---|---|
+| `identity()` 加字段 | 只差 Triton 版本的两份标定不再可互换 |
+| schema 4 → 5 | **每份 G32 之前的缓存 `triton_version=""`,而这与「这台机没装 Triton」不可区分**;且常见调用路径 `identity_hint` 为 None,`load_cached` 根本不比身份 ⇒ **只有版本号能拒绝它们** |
+
+**反向对照两个方向都验过**:去掉 `identity()` 的字段 → 2 个测试失败;回退 schema → 第 3 个失败。**并且刻意包含负对照** —— 身份在什么都没变时**不得**改变,否则「让身份更敏感」可以用一个时间戳满足,那会通过正向测试并让每次 run 都重标定。
+
+---
+
+### G33 worker 无法 import harness,G10 从未在真实 run 里生效(✅ 已修,`8eb8d16`)
+
+**发现方式**:为 G32 重标定 A800 时,**新测的**标定四个 `*_triton_tflops` 全是 **0.0**。原因只在 raw worker output 里:
+
+```
+triton_ceiling_error = ModuleNotFoundError: No module named 'kernel_optimizer'
+```
+
+`Calibration` 没有这个字段 ⇒ pydantic 丢弃 ⇒ 缓存文件里只剩四个干净的 0.0。**box 1 的缓存同样是四个 0.0。**
+
+**所以 G10 在两台机的任何一次真实 run 里都从未生效。** 它的全部结论是「cuBLAS 是错的屋顶」:box 1 上 Triton 在 fp32 只到 cuBLAS 的 **84.1%**(一个已在自身结构极限的 kernel 被报成还有 16% 余量)、在 fp16/bf16 **反超到 109.6%/107.9%**(比值超 100%,下游读成「已饱和,停止优化」)。**它只在独立探针里生效过** —— 那个探针跑在 harness 自己的解释器里,所以 import 得到。
+
+**A800 上直接调 `reachable_tflops` 一切正常**(全部 fp64 校正):
+
+| 精度 | Triton | cuBLAS | Triton 达到 |
+|---|---|---|---|
+| fp32 | 18.08 | 19.01 | **95.1%** |
+| tf32 | 100.99 | 111.46 | **90.6%** |
+| fp16 | 193.35 | 226.17 | **85.5%** |
+| bf16 | 199.78 | 233.96 | **85.4%** |
+
+**这张卡上比值从不超过 1.0**,fp16/bf16 有约 15% 的屋顶 Triton 到不了 —— **与 box 1 相反**,正是 G10 关于「比值是 (卡, 精度) 对的属性」那条结论。
+
+**两个独立缺陷,都修,因为修任一半都留着洞**:
+
+1. **worker 的 PYTHONPATH 从未包含 harness 自己的 `src`**。worker 仍然是 stdlib+torch+triton —— 那是它可以**依赖**什么的规则 —— 但它有两处测量要 import harness 模块:`gpu.tritonmm`(这四个天花板)与 `evaluation.statics`(SASS 计数器)。修法从**文件自身位置**推导(不可能与被运行的代码脱节、无需逐机配置),并**追加在末尾**(不遮蔽 kernelbench)。
+2. **那个 0.0 是不可见的**。0.0 是合法值(没装 Triton 的机器),所以不能抛错 —— 但标定必须能说「我们没测」而不是让读者读成「这张卡上 Triton 到不了屋顶」。**同样的数字,相反的结论。** `flag_suspect` 现在报出来并点名缺哪个精度、带上记录到的原因。
+
+**我自己有两个测试第一版是空的,而且是靠回退检查抓到的,不是靠读它**:`endswith("src")` 匹配到了 `kernelbench_src` —— 它本身就是 `.../KernelBench/src` —— 于是主断言**在未修复的代码上通过**。改成断言「某个条目真的含有 `kernel_optimizer` 包」。另外补了一个接线测试,因为 `flag_suspect` 的新参数是可选的:两参数调用仍然类型正确、仍然返回干净列表,**把缺口留得和之前一样不可见**。回退任一半现在失败 8 个中的 4 个。
 
 ---
 
