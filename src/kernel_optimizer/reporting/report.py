@@ -6,6 +6,7 @@ import csv
 import json
 from pathlib import Path
 
+from kernel_optimizer.evaluation.conversion_report import conversion_lines
 from kernel_optimizer.models.core import latency_cell
 from kernel_optimizer.store.run_store import RunStore
 
@@ -922,6 +923,13 @@ class ReportGenerator:
         lines.append("")
         lines.extend(_trials_by_precision(trials))
         lines.extend(_vendor_library_usage(events))
+        # S4': the conversion verdicts, and the complementary-slackness check on our OWN verdicts.
+        # `conversion_verdict` was computed and journalled and read zero times here -- a verdict with
+        # no consumer is not implemented, because nothing acts on it and nothing can notice it being
+        # wrong. Reads only the event log, so `report` still regenerates purely from events.jsonl.
+        lines.extend(conversion_lines(
+            events,
+            min_improvement_pct=float((budgets or {}).get("min_improvement_pct", 2.0))))
 
         if bottlenecks:
             lines.append("## Bottleneck reports\n")

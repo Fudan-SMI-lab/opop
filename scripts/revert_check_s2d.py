@@ -129,11 +129,12 @@ VARIANTS: list[tuple[str, Path, str, str, list[str], str]] = [
     (
         "the prompt hard-codes the old history filename",
         MOD,
-        '        history = ("`history/prediction_ledger.md` shows what you PREDICTED in earlier '
-        'rounds and "',
-        '        history = ("`history/failed_hypotheses.json` lists what did not help" if False '
-        'else "`history/failed_hypotheses.json` lists what did not help" '
-        '# noqa\n                   if inputs.ledger_entries else "',
+        '        history = ("`history/prediction_ledger.md` shows what you PREDICTED in earlier rounds and "\n'
+        '                   "what was measured" if inputs.ledger_entries\n'
+        '                   else "`history/failed_hypotheses.json` lists changes already tried that did NOT "\n'
+        '                        "help")',
+        '        history = ("`history/failed_hypotheses.json` lists changes already tried that did NOT "\n'
+        '                   "help")',
         ["test_the_prompt_points_at_whichever_history_file_exists"],
         "the ledger is written and never read: the prompt names a file that is not there, which "
         "teaches the agent to stop opening files",
@@ -208,6 +209,19 @@ def main() -> int:
             if text.count(old) != 1:
                 print("**SKIPPED** %s: anchor occurs %d times, not once -- the variant would not be "
                       "the change it claims to be" % (label, text.count(old)))
+                ok = False
+                continue
+
+            # A variant that does not parse fails every test for the WRONG reason, which would read as
+            # discrimination. Caught before the run rather than trusted: a syntax error in a patch is
+            # the easiest way for this harness to produce a false `ok`. Added after `revert_check_s4`
+            # caught exactly that in one of its own variants.
+            patched = text.replace(old, new)
+            try:
+                compile(patched, str(path), "exec")
+            except SyntaxError as exc:
+                print("**SKIPPED** %s: the patched file does not parse (%s), so any failure it "
+                      "produced would be for the wrong reason" % (label, exc))
                 ok = False
                 continue
 

@@ -225,6 +225,19 @@ def main() -> int:
                 ok = False
                 continue
 
+            # A variant that does not parse fails every test for the WRONG reason, which would read as
+            # discrimination. Caught before the run rather than trusted: a syntax error in a patch is
+            # the easiest way for this harness to produce a false `ok`. Added after `revert_check_s4`
+            # caught exactly that in one of its own variants.
+            patched = text.replace(old, new)
+            try:
+                compile(patched, str(path), "exec")
+            except SyntaxError as exc:
+                print("**SKIPPED** %s: the patched file does not parse (%s), so any failure it "
+                      "produced would be for the wrong reason" % (label, exc))
+                ok = False
+                continue
+
             failed, was_skipped, out = apply_variant(path, text, old, new, must_fail)
             missing = [n for n in must_fail if n not in failed]
             unrun = [n for n in missing if n in was_skipped]
