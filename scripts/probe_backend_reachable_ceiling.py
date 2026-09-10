@@ -23,6 +23,13 @@ Deliberately uses a straightforward tiled Triton matmul, not a tuned one: the qu
 candidate of the kind our agents actually write can reach. A hand-optimised kernel would answer a
 different question. To keep that honest the probe sweeps a few configurations and reports the BEST
 of them, so the answer is not an artefact of one unlucky tile choice.
+
+EVERY REPORTED NUMBER IS GATED ON CORRECTNESS. The first version of this probe had no correctness
+check at all, and reported Triton ABOVE cuBLAS on three of four precisions -- fp16 at 174.98
+TFLOP/s, which is above this card's dense tensor-core peak. Throughput from a kernel that computes
+the wrong thing measures skipped work and always looks like good news, so a config whose output
+misses a fp64 reference is discarded however fast it was, and a precision whose cuBLAS side misses
+its own tolerance has its denominator rejected rather than its ratio reported.
 """
 from __future__ import annotations
 
@@ -47,7 +54,10 @@ def _mm_kernel(A, B, C, M, N, K,
     per_group = GROUP * n_n
     gid = pid // per_group
     first_m = gid * GROUP
-    gsize = min(n_m - first_m, GROUP)
+    # tl.minimum, not the Python builtin: `min(tensor, constexpr)` evaluates a comparison and then
+    # calls bool() on the result, which does not mean elementwise minimum inside a kernel. It is the
+    # kind of mistake that still compiles and still produces a plausible throughput number.
+    gsize = tl.minimum(n_m - first_m, GROUP)
     pid_m = first_m + ((pid % per_group) % gsize)
     pid_n = (pid % per_group) // gsize
 
@@ -84,6 +94,19 @@ def timed(fn, n: int = 20, warmup: int = 8) -> float:
     return statistics.median(samples)
 
 
+# Correctness tolerance per precision, as a RELATIVE Frobenius error against a fp64 reference.
+# A throughput number from a kernel that computes the wrong thing is not a ceiling -- it is the
+# speed of doing less work, and it always looks like good news. The first run of this probe reported
+# Triton above cuBLAS on three of four precisions with no correctness check anywhere in it.
+_TOL = {"fp32": 2e-6, "tf32": 5e-3, "fp16": 5e-2, "bf16": 8e-2}
+
+
+def rel_err(got: torch.Tensor, want64: torch.Tensor) -> float:
+    """Relative Frobenius error against a fp64 reference, computed in fp64."""
+    g = got.to(torch.float64)
+    return float(torch.linalg.norm(g - want64) / torch.linalg.norm(want64))
+
+
 def main() -> int:
     if not torch.cuda.is_available():
         print("no CUDA device")
@@ -115,15 +138,21 @@ def main() -> int:
     ]
     CONFIGS = list(itertools.product((64, 128), (64, 128, 256), (32, 64), (4, 8), (2, 3, 4)))
 
-    print("%-6s %14s %16s %8s   %s"
-          % ("prec", "cuBLAS TFLOP/s", "Triton TFLOP/s", "ratio", "best triton config"))
+    print("%-6s %14s %16s %8s  %9s  %s"
+          % ("prec", "cuBLAS TFLOP/s", "Triton TFLOP/s", "ratio", "rel err", "best triton config"))
     rows = []
+    notes: list[str] = []
     for prec, dtype, tf32, acc, iprec in cases:
         prev = torch.backends.cuda.matmul.allow_tf32
         try:
             torch.backends.cuda.matmul.allow_tf32 = tf32
             a = torch.randn(n, n, device=dev, dtype=dtype)
             b = torch.randn(n, n, device=dev, dtype=dtype)
+            # fp64 reference for the correctness gate. Computed once per precision from the same
+            # a/b the timed calls use, so a wrong-answer kernel cannot hide behind different data.
+            ref64 = a.to(torch.float64) @ b.to(torch.float64)
+            cublas_out = a @ b
+            cublas_err = rel_err(cublas_out, ref64)
             cublas = flops / (timed(lambda: a @ b) * 1e-3) / 1e12
         except Exception as exc:  # noqa: BLE001 -- an unsupported dtype must not lose the rest
             print("%-6s cuBLAS FAILED %s: %s" % (prec, type(exc).__name__, str(exc)[:60]))
@@ -132,7 +161,19 @@ def main() -> int:
         finally:
             torch.backends.cuda.matmul.allow_tf32 = prev
 
-        best_tf, best_cfg = 0.0, None
+        tol = _TOL[prec]
+        if cublas_err > tol:
+            # The denominator itself is suspect, so the ratio means nothing. Most likely the
+            # allow_tf32 flag did not take effect and this row is not the precision it claims.
+            notes.append("%s: cuBLAS rel err %.2e exceeds the %.0e tolerance for this precision, so "
+                         "the DENOMINATOR is not %s and the ratio is void" % (prec, cublas_err, tol, prec))
+            print("%-6s %14.2f %16s  %9.2e  denominator rejected" % (prec, cublas, "--", cublas_err))
+            del a, b, ref64, cublas_out
+            torch.cuda.empty_cache()
+            continue
+
+        best_tf, best_cfg, best_err = 0.0, None, None
+        n_wrong = 0
         c = torch.empty((n, n), device=dev, dtype=dtype)
         for BM, BN, BK, warps, stages in CONFIGS:
             try:
@@ -144,23 +185,41 @@ def main() -> int:
                     BM=BM, BN=BN, BK=BK, GROUP=8, ACC_DTYPE=acc,
                     IPREC=(iprec or "tf32"),
                     num_warps=warps, num_stages=stages)
+                c.zero_()
                 fn()
                 torch.cuda.synchronize()
+                # THE POSITIVE CONTROL. A config whose output is wrong is discarded, however fast
+                # it was: its throughput measures skipped work, not a reachable ceiling.
+                err = rel_err(c, ref64)
+                if not (err == err) or err > tol:  # NaN-safe
+                    n_wrong += 1
+                    continue
                 tfl = flops / (timed(fn, n=10, warmup=4) * 1e-3) / 1e12
                 if tfl > best_tf:
-                    best_tf, best_cfg = tfl, (BM, BN, BK, warps, stages)
+                    best_tf, best_cfg, best_err = tfl, (BM, BN, BK, warps, stages), err
             except Exception:  # noqa: BLE001 -- infeasible configs are expected, skip them
                 continue
-        del a, b, c
+        del a, b, c, ref64, cublas_out
         torch.cuda.empty_cache()
         if best_cfg is None:
-            print("%-6s %14.2f %16s" % (prec, cublas, "ALL CONFIGS FAILED"))
+            print("%-6s %14.2f %16s" % (prec, cublas, "NO CORRECT CONFIG"))
+            notes.append("%s: every one of the %d configs either failed to compile or produced a "
+                         "wrong result, so this precision contributes no measurement"
+                         % (prec, len(CONFIGS)))
             continue
+        if n_wrong:
+            notes.append("%s: %d of %d configs were DISCARDED for a wrong result (tolerance %.0e); "
+                         "without this gate the fastest of them would have set the ceiling"
+                         % (prec, n_wrong, len(CONFIGS), tol))
         rows.append((prec, cublas, best_tf, best_tf / cublas))
-        print("%-6s %14.2f %16.2f %8.3f   BM=%d BN=%d BK=%d warps=%d stages=%d"
-              % (prec, cublas, best_tf, best_tf / cublas, *best_cfg))
+        print("%-6s %14.2f %16.2f %8.3f  %9.2e  BM=%d BN=%d BK=%d warps=%d stages=%d"
+              % (prec, cublas, best_tf, best_tf / cublas, best_err, *best_cfg))
 
     print()
+    for note in notes:
+        print("  note: %s" % note)
+    if notes:
+        print()
     if not rows:
         print("VERDICT: INCONCLUSIVE -- no precision produced both numbers, so nothing was")
         print("  compared. A probe that ran no positive case has not answered the question.")
