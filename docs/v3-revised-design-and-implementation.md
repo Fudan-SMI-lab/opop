@@ -922,9 +922,9 @@ S1b 编码 + 全语料前瞻重放 ─┐        S2 编码(含 G28 + N1/N2/N9)�
 | B′ | **S1b** 重做后的判据(per-candidate + 撤回 + N=7 + k=4) | ✅ **完成**,36 个测试 + 四条判据在真实语料上通过 | `2ba665b` / `35f5928` |
 | C | S2 编码(含 G28 + N1/N2/J2-9) | ✅ **已完成**(`867c228` / `9eb3bc5`)· A800 547 passed · 反向验证 14/14 判别 · 见 `docs/result-s2-implemented.md` | G39 / G40 |
 | D | S2d 编码(账本) | ✅ **已完成**(`35fb1a9` / `14492fb`)· A800 592 passed · 反向验证 13/13 判别 · 见 `docs/result-s2d-implemented.md` | G41 / G42 |
-| E | S3 每维下界 + `ceiling_provenance` | ⏳ **下一步(第 3 步)** | — |
-| F | S4′ 补消费者 | ⏳ 第 4 步 | — |
-| G | **对照 run**(box 3,2×12h) | ⏳ **第 5 步(最后)**,J2-1..9 + J2d-1..9 + S3 + S4′ + **首次验证 G27** | — |
+| E | S3 每维下界 + `ceiling_provenance` | ✅ **已完成**(`dca3e02` / `66d2d7a`)· A800 623 passed · 反向验证 13/13 · 见 `docs/result-s3-implemented.md` | — |
+| F | S4′ 补消费者 + 互补松弛 + Gables 对照 | ✅ **已完成**(`e3d704f`)· A800 647 passed · 反向验证 12/12 · 见 `docs/result-s4-implemented.md` | G43 / G44 |
+| G | **对照 run**(box 3,2×12h) | ⏳ **唯一剩余项**,J2-1..9 + J2d-1..9 + S3 + S4′ + **首次验证 G27**;编码阶段已全部完成 | — |
 | — | S2b 访存墙 | ⏸ **挂起**:正对照未过(`statics.py` 无墙的实现) | — |
 | — | S6 通信维度 | ❌ **关闭**:两台机各 1 张卡 | — |
 
