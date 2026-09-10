@@ -28,6 +28,7 @@
 |---|---|
 | **`result-a1-no-ranking-rule-survives-its-controls.md`** | **缺口 A-1 没有排序规则可用**:最好规则 7.1% vs 最好对照 21.4%,两个规则都输给"永远挑同一维"。**注意:文档里"赢的动作是填空隙"这个机制解释已被同日的正对照推翻** |
 | **`result-dram-and-compute-pressure-are-latency-restated.md`** | **两个发现,第二个更严重**:(1) 利用率判据在 5 个已知答案的 kernel 上误判 2 个(纯 L2 流式 kernel 读出 DRAM 屋顶 **287%**);(2) **`dram` 与 `compute` 两"维度"就是 1/延迟** —— byte_count/flop_count 是任务级常数,实测 66 份判决 `gpu_ms × achieved_tbs` 恒定到 0.07–0.36%。**真正独立于延迟的只有编译期维度** |
+| **`result-wall-clock-is-always-the-binding-budget.md`** | **5/5 跑完的 L3 run 都是墙钟结束**,改写预算(上限 5 轮)只用掉 1–2 轮、族数(上限 6)只用掉 3–4 个;**loop C 只拿到墙钟的 7–8%**,62% 的 agent 时间花在逐候选的参数化+分析上(按候选收费 vs 按轮收费);Loop D 零执行的原因与先前记录的不同 |
 
 **探针脚本**(`v3/scripts/`,全部零 GPU 或空窗期运行):
 
@@ -37,6 +38,7 @@
 | `probe_resource_map.py` | 能不能用公式或"测一次到处用"省掉地图 | **都不能**:shared 线性拟合 0/96 精确命中(残差最大 121.4%);地图**不可分离**(1/8 一步移动增量一致,shared 跨度 24576 B、寄存器跨度 127) |
 | `multibind_rule_check.py` | 多维绑定时该动哪一维 | 没有规则打得过对照(7.1% vs 21.4%) |
 | **`multibind_latency_independent.py`** | **剔除 `dram`/`compute` 两个 1/延迟的列后,多维绑定还剩多少** | **还剩很多**:n=51,0.70 下 **72.5%**(旧计法 90%)、0.85 下 **25.5%**(旧 45%);最常见组合 **occupancy+registers** 本来就与延迟无关 ⇒ **A-1 的动机站得住,且与 S2c 所测维度重合** |
+| `budget_allocation.py` | 预算实际花在哪个循环上 | **墙钟 5/5 绑定**;loop C 占墙钟 7–8%,parameterizer+analyst 占 agent 时间 62% |
 | `probe_binding_criterion_control.py` | **利用率判据本身可信吗**(5 个已知答案的 kernel) | **误判 2/5**;L2 内流式 kernel 读出 DRAM 屋顶 287%;**并顺带查出 dram/compute 就是 1/延迟** |
 | `spill_filter_check.py` | 该不该按寄存器溢出过滤配置 | **不该**:0/5 获胜配置溢出,但 11/175 近平局溢出最多 52 个、只差 +0.6%~+2.1% |
 | `blind_spots.py` | 用户点的三个缺口有多严重 | 17 份报告 1 个标签;76% 报告有 ≥2 维同时接近上限;改写后资源漂移最多 79.9 KB / 137 regs |
