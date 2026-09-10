@@ -50,6 +50,8 @@
 | **G24** | **G20 的产出信号误杀合法调用**:实测 **5/6** 次调用在 12.7 min 被中止,而那 25 个「文件」全是种子输入 | 方向错了 | **高** | **✅ 已修 `待提交`**(判据补上**服务端仍在工作**这一半;7 个防回归测试) | §G24 |
 | **G25** | **被上一次 abort 关掉的传输会沉掉下一个调用**:httpx 抛裸 `RuntimeError`,**不是** `AgentCallError` ⇒ 逃出重试循环 | 缺失 | 中 | **✅ 已修 `待提交`**(发请求前自愈重开) | §G25 |
 | **G26** | **J2-8 仍未过,且 A800 上更糟**:判据把 L2 内流量读成 DRAM 绑定 | 算错了 | **高(S2 硬门)** | ⏳ **S2 的前置**:修法 (a) 已落地(`_IMPOSSIBLE_FRAC=1.05`),**修法 (b)「工作集 vs L2 容量」未做** | §G26 |
+| **G27** | **G3 的转化效率在生产里恒为空转**:两个 profile 参数**永远是 `None`**(`BestRecord` 没有 `profile` 字段)⇒ `resource_deltas` 从未产生、`no_conversion` **不可达** | 算错了 | **高(S4 的地基)** | ⏳ **S4 的前置**(已实测确认,修法明确:`update_best` 需带上 profile) | §G27 |
+| **G28** | **判决的原始 evidence 字典被直接渲染进 agent 文档**,与 S2 的 J2-3(原始向量不得进 prompt)相反 | 方向错了 | 中(S2 前置) | ⏳ **S2 编码时一并处理**(消化层是 S2 本体) | §G28 |
 
 
 
@@ -600,6 +602,44 @@ RuntimeError: Cannot send a request, as the client has been closed.
 **这证明修法 (a) 单靠阈值不够。** 修法 (b)(工作集 vs L2 容量作 `applicable` 前置)**没有落地**:`calibration.py:174` 已经有 `l2_bytes` 字段,但 `bottleneck.py` **从不读它** —— 代码注释甚至写着「72 MiB L2」(4090 的数)并叫读者「自己去比工作集和 L2」,而它自己不比。
 
 **这条是 S2 的硬门,不是 S2 之后的优化**:S2 的产物是**按维度并列的多份判决**,而**判据误判维度时,并列输出只是把同一个错误分成两栏**。所以它必须在 S2 编码前修掉。
+
+---
+
+### G27 G3 的转化效率在生产里恒为空转 —— 算错了(⏳ S4 的地基,必须先修)
+
+**这是「资源→性能转化效率」这条线的地基,而它现在是空的。** G3 当时被记为已修(新增 `evaluation/conversion.py`,双向反验证),模块本身写得对;**但它在生产路径上永远收不到数据。**
+
+**实测确认(不是读代码推断)**:
+
+```
+getattr(family.best, "profile", None)  ->  None
+conversion_verdict(3.0, 2.99, None, None, 2.0)
+  keys: [conversion, conversion_note, latency_gain_pct, latency_ms_after,
+         latency_ms_before, resources_improved]
+  conversion: flat        has resource_deltas? False
+conversion_verdict(3.0, 2.00, None, None, 2.0)
+  conversion: improved    has resource_deltas? False
+```
+
+**链条**:`orchestrator.py:1928` 与 `1948` 都用 `getattr(family.best, "profile", None)` 取 profile,而 `family.best` 是 `BestRecord`(`models/core.py:334-337`),**只有 `candidate_id / params / latency_ms` 三个字段**,唯一构造点 `families.py:299-300` 也只传这三个。所以两个 profile 参数**恒为 `None`**。
+
+**后果**:
+- **`resource_deltas` 从未被产生过** —— 每一轮记录的都只是延迟的 improved/regressed/flat;
+- **`no_conversion`(资源变好而延迟没动)—— 这个模块存在的全部理由 —— 在生产中不可达**;
+- 于是 v3 的「资源→性能转化效率」目前**没有任何真实数据**,S4 的 (b) 半部分没有地基。
+
+**守卫测试为什么没抓住**:`tests/test_improvements.py:10229` 断言的是**源码里出现字符串 `"profile_before"`**、且赋值语句在 `_do_rewrite` 之前 —— 两条都成立,而它取到的值恒为 `None`。**这条测试的失败信息恰好描述了正在发生的事**(「no resource delta is possible and every round would report 'flat'」),却因为断言的是文本而通过。**又一次「源码断言把 bug 编码进去」。**
+
+**修法(明确、低风险、泛化)**:`update_best` 增加一个 profile 参数并存进 `BestRecord`。它是纯粹的数据补齐,不改任何判决逻辑;验收判据是**必败测试**:构造父子两个 profile 不同的候选,断言 `resource_deltas` 非空且 `no_conversion` 可达。
+
+---
+
+### G28 判决的原始 evidence 直接进了 agent 文档 —— 方向错了(⏳ S2 编码时一并处理)
+
+S2 的 J2-3 明写「**原始向量不得进 prompt**,构造 prompt 的函数只能访问消化后的四元组」。当前 `agents/modules.py:201-233` 把判决的 `evidence` 字典**原样渲染**进 agent 读的文档,并写出 `## Verdict: **{verdict.kind}**`。
+
+这不是新缺陷(v2 一直如此),但**它是 S2 消化层要解决的那件事本身**,所以登记在册,以免 S2 编码时把「已经有 evidence 进 prompt 了」误当成消化层已存在。**J2-3 的验收要求测试驱动真实的 prompt 构造路径**,不许在测试体内复刻。
+
 
 
 
