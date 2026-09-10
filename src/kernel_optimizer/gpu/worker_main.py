@@ -2506,9 +2506,99 @@ def run_relaxed_correctness(job: dict) -> dict:
     return result
 
 
+def run_probe_noise_floor(job: dict) -> dict:
+    """This task's ieee-vs-tf32 noise floor ON THIS BOX, measured reference-against-reference.
+
+    The relaxed gate demands `frac_within_tol >= relaxed_pass_frac`, but the reference itself does
+    not meet that against itself at the two fp32 matmul precisions the harness compares against: on
+    box 1 the three L3 tasks measure 0.9554 / 0.9767 / 0.9778, all below the 0.99 line. That is a
+    (CARD, TASK) property -- the tensor-core path, the caches and the compiler all differ per box --
+    so it has to be re-measured, exactly like every ceiling in `calibration.py`.
+
+    NO CANDIDATE IS INVOLVED, which is the point: a low floor here cannot be blamed on a kernel.
+
+    Two failure modes are checked rather than assumed, because both produce a credible number:
+
+      RNG INSIDE forward(). Then the two calls see different draws and the "precision floor" is
+      really RNG noise. Handled twice over: the seed is re-set immediately before EACH call, so even
+      an RNG-using reference gets identical draws; and the control below runs the reference twice at
+      the SAME precision, which must come back ~1.0. The harness's own witness loop seeds once and
+      then calls the reference twice, so this is a real hazard in the shipped code path, not a
+      hypothetical -- it just happens not to fire on L3:43, whose dropout probabilities are 0.0.
+
+      THE PRECISION SWITCH NOT TAKING EFFECT. An old torch where the API moved, or a task with no
+      matmul/conv at all, gives floor == 1.0 -- which reads as "this task is precision-insensitive"
+      when it may mean "nothing was measured". The control separates them: control ~1.0 AND floor
+      ~1.0 is inconclusive, not clean.
+
+    The floor is the MINIMUM over trials, not the mean: the gate is applied per trial, so a floor
+    that holds on average still rejects on its worst draw.
+    """
+    import torch
+    from kernelbench.eval import load_original_model_and_inputs, set_seed
+
+    ref_src = open(job["ref_src_path"], encoding="utf-8").read()
+    context: dict = {}
+    Model, get_init_inputs, get_inputs = load_original_model_and_inputs(ref_src, context)
+    device = torch.device("cuda:0")
+    num_trials = int(job.get("num_trials", 5))
+    elem_tol = float(job.get("elem_tol", 0.01))
+
+    set_seed(0)
+    init_inputs = [x.to(device) if isinstance(x, torch.Tensor) else x for x in get_init_inputs()]
+    ref_model = Model(*init_inputs).to(device)
+
+    floors: list[dict] = []
+    controls: list[float] = []
+    with torch.no_grad():
+        for trial in range(num_trials):
+            ts = 1000 + trial
+            # Re-seeded before EVERY forward, so a reference that draws inside forward() still sees
+            # identical numbers across the comparison. This is the guard the harness's own witness
+            # loop does not have.
+            set_seed(ts); inputs = [x.to(device) if isinstance(x, torch.Tensor) else x
+                                    for x in get_inputs()]
+
+            _set_matmul_precision("tf32")
+            set_seed(ts); out_tf32 = ref_model(*inputs); torch.cuda.synchronize(device=device)
+            _set_matmul_precision("ieee")
+            set_seed(ts); out_ieee = ref_model(*inputs); torch.cuda.synchronize(device=device)
+            # The control: same precision twice. Anything below 1.0 here is nondeterminism, and it
+            # invalidates the floor rather than adding to it.
+            set_seed(ts); out_ieee2 = ref_model(*inputs); torch.cuda.synchronize(device=device)
+
+            # tf32 is the reference the harness actually compares candidates against and is the
+            # noisier of the two, so it is the one whose agreement sets the floor.
+            m = _relaxed_metrics(out_tf32, out_ieee)
+            c = _relaxed_metrics(out_ieee, out_ieee2)
+            floors.append(m)
+            cf = c.get("frac_within_tol")
+            if isinstance(cf, (int, float)):
+                controls.append(float(cf))
+
+    def _num(seq):
+        return [float(v) for v in seq if isinstance(v, (int, float))]
+
+    fracs = _num([f.get("frac_within_tol") for f in floors])
+    cosines = _num([f.get("cosine") for f in floors])
+    return {
+        "ok": True,
+        "num_trials": num_trials,
+        "elem_tol": elem_tol,
+        # MINIMUM, deliberately: the gate is per trial.
+        "floor_frac_within_tol": min(fracs) if fracs else None,
+        "floor_frac_max": max(fracs) if fracs else None,
+        "floor_cosine": min(cosines) if cosines else None,
+        "control_frac_within_tol": min(controls) if controls else None,
+        "ref_absmax": floors[0].get("ref_absmax") if floors else None,
+        "per_trial": floors,
+    }
+
+
 HANDLERS = {
     "env_probe": run_env_probe,
     "probe_semantics": run_probe_semantics,
+    "probe_noise_floor": run_probe_noise_floor,
     "static_check": run_static_check,
     "baseline": run_baseline,
     "eval_correctness": lambda job: run_eval(job, measure_performance=False),

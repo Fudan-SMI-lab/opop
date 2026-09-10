@@ -333,13 +333,26 @@ def derive_thresholds(
     )
 
 
-def flag_suspect(dram_tbs: float, spec_dram_tbs: float) -> list[str]:
-    """Report ceilings that fall far short of spec: the box was busy or throttled.
+def flag_suspect(dram_tbs: float, spec_dram_tbs: float,
+                 worker_result: dict | None = None) -> list[str]:
+    """Report ceilings that fall far short of spec, or that were not measured at all.
 
     Deliberately does NOT reject the calibration. A throttled box is still the box the run
     happens on, and its achievable bandwidth is the honest denominator. What must not happen is
     a verdict resting on a bad ceiling being reported with the same confidence as one resting on
     a good one.
+
+    G33 added the second half. The four Triton-reachable ceilings (G10) are computed inside a broad
+    `except` in the worker, so any failure leaves them at 0.0 -- and `Calibration` has no field for
+    the error, so pydantic drops it and the only trace is the raw worker output file. Measured: on
+    box 3 all four read 0.0 with `triton_ceiling_error: ModuleNotFoundError: No module named
+    'kernel_optimizer'`, and box 1's cache holds the same four zeros. G10's finding -- that cuBLAS
+    is the wrong roof, over-reporting fp32 headroom by 19% and exceeding 100% at fp16 -- had
+    therefore never been in effect in any real run, and nothing said so.
+
+    Zero is a legitimate value here (a box without Triton), which is why this reports rather than
+    raises. But the calibration must SAY it is missing a ceiling it was supposed to measure, so a
+    reader can tell "Triton cannot reach the roof on this card" from "we never asked".
     """
     out: list[str] = []
     if spec_dram_tbs > 0 and dram_tbs > 0:
@@ -350,6 +363,18 @@ def flag_suspect(dram_tbs: float, spec_dram_tbs: float) -> list[str]:
                 f"derived spec {spec_dram_tbs:.3f} TB/s: the GPU was likely throttled or shared "
                 f"during calibration. Verdicts using % of DRAM peak are inflated. Recalibrate "
                 f"on an idle box with --recalibrate.")
+    if worker_result is not None:
+        err = str(worker_result.get("triton_ceiling_error") or "").strip()
+        missing = [p for p in ("fp32", "tf32", "fp16", "bf16")
+                   if not float(worker_result.get(f"{p}_triton_tflops", 0.0) or 0.0) > 0.0]
+        if err or missing:
+            out.append(
+                "the Triton-reachable compute ceilings were NOT measured (%s)%s. Every candidate "
+                "this harness writes is Triton, so without them each ceiling falls back to the "
+                "cuBLAS figure alone -- which G10 measured to over-report fp32 headroom by 19%% "
+                "and to be EXCEEDED at fp16/bf16, reading downstream as 'saturated, stop "
+                "optimizing'. This is a measurement gap, not a property of the card."
+                % (", ".join(missing) or "all", (": " + err[:160]) if err else ""))
     return out
 
 

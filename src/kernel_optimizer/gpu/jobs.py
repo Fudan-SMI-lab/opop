@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 JOB_TYPES = ("baseline", "eval_correctness", "eval_perf", "static_check", "env_probe",
-             "eval_correctness_relaxed", "probe_semantics", "calibrate", "task_cost")
+             "eval_correctness_relaxed", "probe_semantics", "probe_noise_floor", "calibrate",
+             "task_cost")
 
 FAILURE_KINDS = (
     "compile_error",

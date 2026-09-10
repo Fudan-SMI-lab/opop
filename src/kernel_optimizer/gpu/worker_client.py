@@ -184,6 +184,25 @@ class WslGpuWorker:
         extra = getattr(self.cfg, "extra_pythonpath", "")
         if extra:
             pythonpath = f"{pythonpath}:{os.path.expanduser(extra)}"
+        # G33: the harness's own `src` as well. The worker is documented as stdlib+torch+triton, and
+        # that is still the rule for what it may DEPEND on -- but two of its measurements import a
+        # harness module: `gpu.tritonmm` (the four Triton-reachable ceilings, G10) and
+        # `evaluation.statics` (the SASS counters). When `kernel_optimizer` is not importable those
+        # imports raise inside a broad `except`, and the measurement degrades to 0.0.
+        #
+        # Which is exactly what happened, undetected, on BOTH boxes: box 3's freshly measured
+        # calibration had all four *_triton_tflops = 0.0 with `triton_ceiling_error:
+        # ModuleNotFoundError: No module named 'kernel_optimizer'` in the raw worker output, and box
+        # 1's cached calibration has the same four zeros. So G10 -- whose whole finding is that
+        # cuBLAS is the wrong roof, over-reporting headroom by 19% at fp32 and exceeding 100% at
+        # fp16 -- has never once been in effect in a real run. It only ever worked in the standalone
+        # probe, which runs in the harness's own interpreter.
+        #
+        # Derived from THIS file's location rather than configured, so it cannot drift from the code
+        # being run and needs no per-box setting. Appended last: kernelbench and any pip --target dir
+        # keep precedence, so this cannot shadow them.
+        harness_src = Path(__file__).resolve().parents[2]
+        pythonpath = f"{pythonpath}:{to_wsl_path(harness_src)}"
         worker_argv = [
             py,
             to_wsl_path(self.worker_main_path),

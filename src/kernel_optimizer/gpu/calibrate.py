@@ -73,7 +73,7 @@ def calibration_from_worker(result: dict) -> Calibration:
         yardsticks=yardsticks,
         thresholds=derive_thresholds(yardsticks, dram_tbs, fp32_tflops),
         tiers=dict(result.get("tiers") or {}),
-        suspect=flag_suspect(dram_tbs, spec_dram),
+        suspect=flag_suspect(dram_tbs, spec_dram, result),
         measured_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )
 
