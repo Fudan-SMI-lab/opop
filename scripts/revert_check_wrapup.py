@@ -150,6 +150,52 @@ VARIANTS: list[tuple[str, Path, str, str, list[str], str]] = [
         "asks to verify. The flag cannot prove a clamp, which is why it says 'inspect' rather than "
         "concluding -- but silence here is indistinguishable from a clean result",
     ),
+    (
+        "ledger entries counted without checking n_declared",
+        CHK,
+        "            n = p.get(\"n_declared\")\n"
+        "            if not n:\n"
+        "                empty += 1\n"
+        "            else:\n"
+        "                declared_total += int(n)",
+        "            declared_total += int(p.get(\"n_declared\") or 0)",
+        ["test_an_all_empty_ledger_is_not_reported_as_working",
+         "test_a_partly_empty_ledger_is_not_rounded_up"],
+        "the S2d trap. `_record_reconciliation` appends an entry even when the rewriter declared "
+        "nothing (`n_declared: 0`), so a ledger built entirely of empty entries produces a "
+        "perfectly healthy-looking event stream. Counting events reports PASS on a ledger that "
+        "reconciles nothing -- the G44 shape (computed, journalled, read zero times) wearing the "
+        "clothes of a working feature",
+    ),
+    (
+        "a missing ledger read as 'the switch is off' rather than a defect",
+        CHK,
+        "    elif entries == 0:\n"
+        "        verdict = (\"**DEFECT** -- %d rounds and 0 ledger entries. It is journalled \"",
+        "    elif entries == 0 and False:\n"
+        "        verdict = (\"**DEFECT** -- %d rounds and 0 ledger entries. It is journalled \"",
+        ["test_zero_ledger_entries_with_rounds_is_a_defect_in_either_arm"],
+        "the asymmetry that is easy to rationalise away: 'the control arm has the ledger off, so of "
+        "course it has no entries'. Wrong -- `_record_reconciliation` journals UNCONDITIONALLY and "
+        "the switch gates only whether the rendered form reaches the rewriter's PROMPT. That "
+        "asymmetry is deliberate: recording is what makes the control arm analysable from its own "
+        "log, so a control arm with rounds and no entries is a defect in both arms' shared path",
+    ),
+    (
+        "a reconcile failure swallowed (it is silent everywhere else)",
+        CHK,
+        "    if failed:\n"
+        "        verdict += \"  || %d RECONCILE_FAILED (silent by design -- a diagnostic must not end a \" \\\n"
+        "                   \"round): %s\" % (len(failed), failed[0])",
+        "    if False:\n"
+        "        verdict += \"  || %d RECONCILE_FAILED (silent by design -- a diagnostic must not end a \" \\\n"
+        "                   \"round): %s\" % (len(failed), failed[0])",
+        ["test_a_reconcile_failure_is_surfaced_because_it_is_otherwise_silent"],
+        "`_record_reconciliation` catches every exception so a diagnostic cannot end a rewrite "
+        "round -- correct design, and it means a totally broken reconciler is invisible apart from "
+        "this event. Dropping it from the verdict makes the ledger's failure mode unobservable at "
+        "exactly the moment someone is deciding whether S2d worked",
+    ),
 ]
 
 

@@ -195,6 +195,71 @@ def check_s3_s4(run_dir: Path) -> dict:
             "dimensions_seen": dict(dims)}
 
 
+def check_reconciliation(run_dir: Path) -> dict:
+    """S2d's expectation ledger: did it reconcile anything, or only produce empty entries?
+
+    Two traps here, both of which look like success from a count alone.
+
+    An `EXPECTATIONS_RECONCILED` event can carry `n_declared: 0` -- the rewriter declared no
+    expectations that round, so the entry reconciles nothing. Counting events would report a
+    working ledger built entirely of empty entries: the G44 shape (computed, journalled, read zero
+    times) with an event stream that looks healthy.
+
+    And it fires in the same `if evaluated:` branch as `conversion`, so 0 with 0 rounds is
+    expected and says nothing -- the same distinction check 1 makes.
+
+    `EXPECTATIONS_RECONCILE_FAILED` matters more than its count suggests: the reconciler is
+    deliberately wrapped so a diagnostic cannot end a rewrite round, which means a total failure is
+    SILENT apart from this event.
+    """
+    rounds = 0
+    entries = 0
+    empty = 0
+    failed = []
+    declared_total = 0
+    verdict_kinds = collections.Counter()
+    for e in _events(run_dir):
+        t = e.get("type")
+        p = e.get("payload") or {}
+        if t == "FAMILY_ROUND_RECORDED":
+            rounds += 1
+        elif t == "EXPECTATIONS_RECONCILED":
+            entries += 1
+            n = p.get("n_declared")
+            if not n:
+                empty += 1
+            else:
+                declared_total += int(n)
+            rec = p.get("reconciliation") or {}
+            for key in ("verdict", "outcome", "status"):
+                if key in rec:
+                    verdict_kinds[str(rec[key])] += 1
+                    break
+        elif t == "EXPECTATIONS_RECONCILE_FAILED":
+            failed.append(p.get("error", "")[:120])
+    if rounds == 0:
+        verdict = "NOT YET DECIDABLE -- 0 rewrite rounds, so 0 ledger entries says nothing"
+    elif entries == 0:
+        verdict = ("**DEFECT** -- %d rounds and 0 ledger entries. It is journalled "
+                   "UNCONDITIONALLY (the switch only gates the PROMPT), so the control arm should "
+                   "have them too" % rounds)
+    elif empty == entries:
+        verdict = ("**EMPTY LEDGER** -- all %d entries carry n_declared=0: the events exist and "
+                   "reconcile nothing, which is the G44 shape with a healthy-looking stream"
+                   % entries)
+    elif empty:
+        verdict = "PARTIAL -- %d of %d entries are empty (n_declared=0)" % (empty, entries)
+    else:
+        verdict = "PASS -- %d entries over %d rounds, %d declarations reconciled" % (
+            entries, rounds, declared_total)
+    if failed:
+        verdict += "  || %d RECONCILE_FAILED (silent by design -- a diagnostic must not end a " \
+                   "round): %s" % (len(failed), failed[0])
+    return {"rounds": rounds, "entries": entries, "empty_entries": empty,
+            "declarations_reconciled": declared_total, "reconcile_failed": len(failed),
+            "verdict_kinds": dict(verdict_kinds), "verdict": verdict}
+
+
 def report(run_dir: Path, label: str) -> dict:
     print("=" * 78)
     print("%s   %s" % (label, run_dir))
@@ -240,8 +305,18 @@ def report(run_dir: Path, label: str) -> dict:
         "   <- inspect: this is what a clamp looks like"
         if s3["readings_sitting_exactly_on_the_floor"] else ""))
     print("    dimensions seen ............... %s" % (s3["dimensions_seen"] or "-"))
+
+    rec = check_reconciliation(run_dir)
+    print("\n[3b] S2d -- the expectation ledger (journalled in BOTH arms; the switch gates only")
+    print("     whether the rendered form reaches the rewriter's prompt)")
+    print("    ledger entries ................ %d" % rec["entries"])
+    print("    of which EMPTY (n_declared=0) .. %d" % rec["empty_entries"])
+    print("    declarations reconciled ....... %d" % rec["declarations_reconciled"])
+    print("    RECONCILE_FAILED .............. %d" % rec["reconcile_failed"])
+    print("    verdict kinds ................. %s" % (rec["verdict_kinds"] or "-"))
+    print("    => %s" % rec["verdict"])
     print()
-    return {"conversion": conv, "final": fin, "s3": s3}
+    return {"conversion": conv, "final": fin, "s3": s3, "reconciliation": rec}
 
 
 def main(argv: list[str]) -> int:
@@ -263,6 +338,16 @@ def main(argv: list[str]) -> int:
         print("    (the treatment arm is the one that must ALSO produce dimension records: "
               "control %d, treatment %d)" % (
                   control["s3"]["dimension_records"], treatment["s3"]["dimension_records"]))
+        # The ledger is journalled in BOTH arms by design, so an asymmetry here is a defect rather
+        # than the treatment working -- the opposite reading from the dimension records above.
+        cl, tl = control["reconciliation"], treatment["reconciliation"]
+        if cl["rounds"] and tl["rounds"] and bool(cl["entries"]) != bool(tl["entries"]):
+            print("    !! LEDGER ASYMMETRY: control %d entries, treatment %d. It is journalled "
+                  "unconditionally, so one arm having none is a defect, NOT the switch working"
+                  % (cl["entries"], tl["entries"]))
+        else:
+            print("    ledger entries: control %d, treatment %d (expected in BOTH arms)"
+                  % (cl["entries"], tl["entries"]))
     return 0
 
 

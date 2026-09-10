@@ -220,3 +220,70 @@ def test_the_checker_runs_against_a_real_corpus_run_if_present():
     # This corpus PREDATES the conversion fix, so zero-with-rounds is the correct reading here and
     # is what makes it a usable control for the wrap-up check.
     assert conv["with_conversion"] == 0 and "NEW DEFECT" in conv["verdict"]
+
+
+# --- reader 3b: S2d's ledger, where an event stream can look healthy and say nothing -----------
+
+_RECON_REAL = {"type": "EXPECTATIONS_RECONCILED", "payload": {
+    "family_id": "f1", "round": 1, "id": "h1", "change": "fuse the projections",
+    "reconciliation": {"verdict": "confirmed", "checked": 2},
+    "conversion": "improved", "latency_gain_pct": 3.4, "n_declared": 2}}
+_RECON_EMPTY = {"type": "EXPECTATIONS_RECONCILED", "payload": {
+    "family_id": "f1", "round": 1, "id": "(no hypothesis id)", "change": "",
+    "reconciliation": {}, "conversion": "improved", "n_declared": 0}}
+_RECON_FAILED = {"type": "EXPECTATIONS_RECONCILE_FAILED", "payload": {
+    "family_id": "f1", "round": 1, "error": "KeyError: 'direction'"}}
+
+
+def test_an_all_empty_ledger_is_not_reported_as_working(tmp_path):
+    """THE trap. `n_declared: 0` means the entry reconciled nothing, and a count of events would
+    report a healthy ledger built entirely of empty entries -- computed, journalled, saying
+    nothing."""
+    d = _write_run(tmp_path, [_ROUND_WITH_CONV, _RECON_EMPTY, _RECON_EMPTY])
+    out = check_wrapup.check_reconciliation(d)
+    assert out["entries"] == 2 and out["empty_entries"] == 2
+    assert "EMPTY LEDGER" in out["verdict"]
+    assert not out["verdict"].startswith("PASS")
+
+
+def test_a_real_ledger_entry_is_reported_as_pass(tmp_path):
+    d = _write_run(tmp_path, [_ROUND_WITH_CONV, _RECON_REAL])
+    out = check_wrapup.check_reconciliation(d)
+    assert out["verdict"].startswith("PASS")
+    assert out["declarations_reconciled"] == 2
+    assert out["verdict_kinds"] == {"confirmed": 1}
+
+
+def test_zero_ledger_entries_with_zero_rounds_is_not_a_defect(tmp_path):
+    """Reconciliation fires in the same `if evaluated:` branch as `conversion`, so before any
+    rewrite round a zero says nothing -- the same distinction check 1 makes."""
+    d = _write_run(tmp_path, [_BASELINE, _TRIAL_OK])
+    out = check_wrapup.check_reconciliation(d)
+    assert "NOT YET DECIDABLE" in out["verdict"]
+    assert "DEFECT" not in out["verdict"]
+
+
+def test_zero_ledger_entries_with_rounds_is_a_defect_in_either_arm(tmp_path):
+    """The ledger is journalled UNCONDITIONALLY -- the switch gates only whether the rendered form
+    reaches the rewriter's prompt. So a control-arm run with rounds and no entries is a defect,
+    not the switch being off."""
+    d = _write_run(tmp_path, [_ROUND_WITH_CONV, _ROUND_WITH_CONV])
+    out = check_wrapup.check_reconciliation(d)
+    assert "DEFECT" in out["verdict"]
+    assert "journalled" in out["verdict"].lower() or "UNCONDITIONALLY" in out["verdict"]
+
+
+def test_a_reconcile_failure_is_surfaced_because_it_is_otherwise_silent(tmp_path):
+    """`_record_reconciliation` catches everything so a diagnostic cannot end a rewrite round.
+    That is the right design and it makes total failure invisible apart from this event."""
+    d = _write_run(tmp_path, [_ROUND_WITH_CONV, _RECON_FAILED])
+    out = check_wrapup.check_reconciliation(d)
+    assert out["reconcile_failed"] == 1
+    assert "RECONCILE_FAILED" in out["verdict"]
+    assert "KeyError" in out["verdict"], "the error text is dropped, so it is not actionable"
+
+
+def test_a_partly_empty_ledger_is_not_rounded_up(tmp_path):
+    d = _write_run(tmp_path, [_ROUND_WITH_CONV, _RECON_REAL, _RECON_EMPTY])
+    out = check_wrapup.check_reconciliation(d)
+    assert out["verdict"].startswith("PARTIAL")
