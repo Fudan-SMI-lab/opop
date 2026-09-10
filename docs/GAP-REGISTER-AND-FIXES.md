@@ -53,6 +53,9 @@
 | **G27** | **G3 的转化效率在生产里恒为空转**:两个 profile 参数**永远是 `None`** ⇒ `resource_deltas` 从未产生、`no_conversion` **不可达** | 算错了 | **高(S4 的地基)** | **✅ 已修 `677d956`**(`BestRecord` 带上 profile;实测 `no_conversion` 已可达、产生 3 个维度差) | §G27 |
 | **G28** | **判决的原始 evidence 字典被直接渲染进 agent 文档**,与 S2 的 J2-3(原始向量不得进 prompt)相反 | 方向错了 | 中(S2 前置) | ⏳ **S2 编码时一并处理**(消化层是 S2 本体) | §G28 |
 | **G29** | **一台机可以通过全部就绪检查却评测不了任何 kernel**:`kernelbench` 包 `__init__` 的导入链缺包 ⇒ **12/12 候选全报 `runtime_error`**,读起来和「模型写坏了」一模一样 | 缺失 | **高** | **✅ 已修**(补齐 25 个包 + 新增 `scripts/verify_box_can_evaluate.py` 作为真实评测门) | §G29 |
+| **G30** | **prompt 向 agent 谎报环境**：`modules.py:584` 写「you cannot run GPU code here」，在 Windows/WSL 拓扑下为真，在原生 Linux 单机（A800）为假 —— agent 与 GPU 同机，`python3` 上有 torch 2.8.0 + triton 3.4.0，它已跑过 `nvidia-smi` | 高风险（改了影响所有 agent 行为） | 中 | ⏸ **仅记录**，待全部实验完成后统一处理 | — |
+| **G31** | **agent 的 `python3` 与评测解释器不同，但 site-packages 相通**：A800 实测 agent 的 `/root/miniconda3/bin/python3` 无法 `import kernelbench`/`dotenv`，而评测用 `orch-venv` 建时带 `--system-site-packages`，其 `sys.path` **包含** miniconda base —— agent 一旦 `pip install` 就会改掉后续每个候选的测量环境 | 高风险 | 中 | ⏸ **仅记录** | — |
+| **G32** | **`Calibration.identity()` 缺 `triton_version`**（`calibration.py:214` 只有 device+capability+sm_count+torch+driver）。而四档 `*_triton_tflops` 天花板是**用 Triton 测出来的**（G10），Triton 就是代码生成器 ⇒ 同一台机单独 `pip install -U triton` 会**静默复用旧天花板** | 确定，低风险 | 小 | ⏳ **待修**：`identity()` 加 `triton_version` + bump schema 4→5 | — |
 
 
 
