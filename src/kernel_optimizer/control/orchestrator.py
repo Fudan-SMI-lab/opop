@@ -811,6 +811,10 @@ class Orchestrator:
             self.deps.families.update_best(
                 crun.candidate.family_id, crun.candidate.candidate_id,
                 best.params, best.latency_ms.robust_ms,
+                # G27: the winning trial's profile, so the round-level conversion verdict has a
+                # resource state on this side of the comparison. Omitting it is what made the
+                # conversion module inert.
+                profile=best.profile,
             )
         if crun.space is not None and crun.trials:
             crun.stats = self.deps.stats_analyzer.analyze(crun.space, crun.trials)
@@ -1066,7 +1070,9 @@ class Orchestrator:
             if crun.best_ms is None or best.latency_ms.robust_ms < crun.best_ms:
                 crun.best_ms = best.latency_ms.robust_ms
             improved = self.deps.families.update_best(
-                cand.family_id, cand.candidate_id, best.params, best.latency_ms.robust_ms
+                cand.family_id, cand.candidate_id, best.params, best.latency_ms.robust_ms,
+                # G27: see the note at the other update_best call site.
+                profile=best.profile,
             )
             self.store.append("TUNING_DONE", {
                 "candidate_id": cand.candidate_id, "space_id": space.space_id,
@@ -1398,7 +1404,12 @@ class Orchestrator:
                                 fp32_triton_tflops=self.calibration.fp32_triton_tflops,
                                 tf32_triton_tflops=self.calibration.tf32_triton_tflops,
                                 fp16_triton_tflops=self.calibration.fp16_triton_tflops,
-                                bf16_triton_tflops=self.calibration.bf16_triton_tflops)
+                                bf16_triton_tflops=self.calibration.bf16_triton_tflops,
+                                # G26: the DRAM dimension's applicability precondition. Same
+                                # silent-default hazard as the four above -- omit it and the
+                                # working-set-in-L2 check reads 0, never fires, and every verdict
+                                # still looks like a verdict.
+                                l2_bytes=self.calibration.l2_bytes)
             # P3: which tensor-core ceiling applies depends on what the WINNING configuration
             # computes in, so the precision is detected from the materialized best params --
             # not from the candidate's default PARAMS, which the tuner may have moved away from.

@@ -335,6 +335,18 @@ class BestRecord(BaseModel):
     candidate_id: str
     params: ParamSet
     latency_ms: float
+    # G27: the winning trial's resource profile, so a round can be judged on whether a resource
+    # change CONVERTED INTO SPEED (the S4 question) rather than only on whether latency moved.
+    #
+    # This field's absence made `evaluation/conversion.py` inert in production: the orchestrator
+    # read `getattr(family.best, "profile", None)` on both sides of a rewrite round, and with no
+    # such field both reads were always None -- so `resource_deltas` was NEVER produced and
+    # `no_conversion` (resources improved, latency did not) was unreachable. Verified by execution,
+    # not inferred. The module was correct; it simply never received data.
+    #
+    # Optional because a family's best can predate profiling or come from a backend with no
+    # metadata; a missing profile must read as "unknown", never as "no change".
+    profile: ProfileRecord | None = None
 
 
 class Family(BaseModel):

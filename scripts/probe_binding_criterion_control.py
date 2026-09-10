@@ -311,6 +311,62 @@ def main():
                        else "MISLABEL top=%s want=%s" % (top, r["expect"]))))
 
     print()
+    print("=" * 108)
+    print("SECOND ARM: the SAME five kernels through the HARNESS'S OWN classify() (G26 / J2-8)")
+    print("=" * 108)
+    print("The pressures above are computed by this probe. That tests the criterion's CONCEPT, not")
+    print("the code every verdict actually goes through -- so a fix in bottleneck.py would not show")
+    print("up here at all. This arm feeds the same measurements to the real classifier.")
+    print()
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "src"))
+        from kernel_optimizer.evaluation.bottleneck import DevicePeaks, classify
+
+        l2_bytes = int(getattr(torch.cuda.get_device_properties(dev), "L2_cache_size", 0) or 0)
+        print("this card's measured L2: %.1f MiB%s"
+              % (l2_bytes / 2**20,
+                 "" if l2_bytes else "   <-- UNMEASURED, so the working-set gate cannot fire"))
+        peaks = DevicePeaks(dram_tbs=C["dram_gbs"] / 1000.0,
+                            fp32_tflops=C["fp32_tflops"], l2_bytes=l2_bytes)
+        print()
+        print("%-40s %10s %9s %-16s %s"
+              % ("kernel", "bytes MiB", "frac_bw", "classify() kind", "dram applicable?"))
+        arm2_ok = True
+        for r, (name, expect, _fn, _g, _a, _c, byts, flops) in zip(rows, cases):
+            if "err" in r:
+                continue
+            v = classify(gpu_ms=r["ms"], cpu_issue_ms=None, flop_count=int(flops),
+                         byte_count=int(byts), peaks=peaks,
+                         n_regs=r["n_regs"], n_spills=r["n_spills"],
+                         shared_bytes=r["shared"], precision="fp32")
+            applicable = v.evidence.get("dram_applicable")
+            print("%-40s %10.1f %9.2f %-16s %s"
+                  % (name[:40], byts / 2**20, r["pressures"]["dram"], v.kind,
+                     "NO (L2-resident)" if applicable is False else "yes"))
+            # The gate that matters: E must NOT come out memory_bound.
+            if expect == "none" and v.kind == "memory_bound":
+                arm2_ok = False
+                print("      ^^ FAIL: an L2-resident kernel was classified memory_bound. This is "
+                      "J2-8, and S2 cannot")
+                print("         start while it holds: per-dimension output would just split this "
+                      "mislabelling into two columns.")
+        print()
+        if arm2_ok:
+            print("ARM 2 VERDICT: PASS -- classify() does not report the L2-resident kernel as "
+                  "memory_bound.")
+            print("  Note this is the arm that tracks the production path; arm 1 above reflects "
+                  "this probe's own")
+            print("  pressure arithmetic, which is deliberately left unfixed so the two can be "
+                  "compared.")
+        else:
+            print("ARM 2 VERDICT: FAIL -- J2-8 is not satisfied.")
+    except Exception as exc:  # noqa: BLE001 -- arm 2 must not break arm 1's result
+        print("ARM 2 could not run: %s: %s" % (type(exc).__name__, str(exc)[:200]))
+        print("  (that is a probe failure, not a pass -- do not read the absence of a FAIL as one)")
+
+    print()
     print("SANITY (a control that exceeds a measured ceiling is broken, not fast)")
     for r in rows:
         if "err" in r:

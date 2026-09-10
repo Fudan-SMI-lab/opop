@@ -134,6 +134,16 @@ class DevicePeaks(BaseModel):
     tf32_triton_tflops: float = 0.0
     fp16_triton_tflops: float = 0.0
     bf16_triton_tflops: float = 0.0
+    # G26: this card's MEASURED L2 size, used as the precondition on whether the DRAM dimension
+    # applies at all. Load-bearing, and the threshold it backs up cannot replace it: the same
+    # L2-resident control kernel reads 287% of the roof on a 4090 (caught by _IMPOSSIBLE_FRAC) but
+    # only 1.04 on an A800, whose L2 is 40 MiB against the 4090's 72 -- slipping under any fixed
+    # threshold. Measured per box (worker_main.py reads `L2_cache_size`) rather than assumed,
+    # because the two cards differ by 1.8x and the wrong constant silently disables the check.
+    #
+    # 0 means UNMEASURED, and the check then does not fire. That direction is deliberate: an
+    # unmeasured L2 must not be able to declare a real bandwidth verdict inapplicable.
+    l2_bytes: int = 0
 
     def _pair(self, precision: str | None) -> tuple[float, float, str]:
         """(cuBLAS figure, Triton figure, precision label) for the precision that applies.
@@ -500,34 +510,66 @@ def classify(
                 f"verdict as low-confidence and read the evidence.")
 
     if frac_bw >= th.dram_saturated_frac:
-        # G7: a DRAM fraction above 1.0 is PHYSICALLY IMPOSSIBLE and means the denominator does
-        # not apply to this kernel, so it must not be reported as "saturated, stop optimizing".
-        # The compute branch below has always handled its own impossible case; this one did not,
-        # and a positive control caught it: five kernels whose bottleneck is known by construction
-        # were classified, and the two whose working set FITS IN L2 were mislabelled -- one
-        # purely L2-resident streaming kernel read 287% of the DRAM roof.
+        # G7 / G26: a DRAM fraction above 1.0 is PHYSICALLY IMPOSSIBLE and means the denominator
+        # does not apply to this kernel, so it must not be reported as "saturated, stop
+        # optimizing". The compute branch below has always handled its own impossible case; this
+        # one did not, and a positive control caught it: five kernels whose bottleneck is known by
+        # construction were classified, and the two whose working set FITS IN L2 were mislabelled
+        # -- one purely L2-resident streaming kernel read 287% of the DRAM roof.
         #
         # The cause is that `byte_count` counts LOGICAL bytes. An L2 hit is counted as traffic and
         # never crosses the memory bus, so the fraction inflates without bound as the working set
-        # shrinks below the 72 MiB L2. Reporting `unknown` is strictly stronger than clamping to
-        # 1.0: clamping would still say "at the roof", which is the wrong action, while the true
+        # shrinks below L2. Reporting `unknown` is strictly stronger than clamping to 1.0:
+        # clamping would still say "at the roof", which is the wrong action, while the true
         # statement is that this quantity cannot be evaluated for this kernel.
         #
-        # DORMANT ON TODAY'S TASKS, and that is why this is a fix and not an emergency: all three
-        # real tasks are far above L2 (L3:21 307 MiB, L3:43 397 MiB, L3:48 1.351 GB), so no
-        # current classification is affected. It wakes as soon as the task range widens to the
-        # smaller level1/level2 problems.
-        if frac_bw > _IMPOSSIBLE_FRAC:
+        # TWO GATES, AND THE THRESHOLD ALONE IS NOT ENOUGH. Measured on the A800, 2026-09-10: the
+        # same L2-resident control that read 287% on the 4090 reads 1.04 here and slips UNDER
+        # `_IMPOSSIBLE_FRAC`, because this card's L2 is 40 MiB against the 4090's 72 MiB. So a
+        # kernel can be entirely L2-resident and still produce an arithmetically possible-looking
+        # fraction. The working-set test below is therefore not a refinement of the threshold --
+        # it catches a case the threshold provably cannot, and it is the gate that scales to
+        # whatever L2 the box has, since `l2_bytes` is measured per box rather than assumed.
+        #
+        # NOT DORMANT ANY MORE: it was dormant while the task set was the three large L3 problems
+        # (L3:21 307 MiB, L3:43 397 MiB, L3:48 1.351 GB, all far above any L2 here), which is why
+        # no past classification is affected. It wakes as soon as the task range widens.
+        l2_bytes = getattr(peaks, "l2_bytes", 0) if peaks else 0
+        working_set_in_l2 = (
+            byte_count is not None and byte_count > 0
+            and isinstance(l2_bytes, int) and l2_bytes > 0
+            and byte_count <= l2_bytes
+        )
+        if frac_bw > _IMPOSSIBLE_FRAC or working_set_in_l2:
             ev["impossible_dram_fraction"] = round(frac_bw * 100, 1)
+            if working_set_in_l2:
+                # State the comparison that decided it, with both numbers, so the reader can check
+                # the call rather than take it.
+                ev["working_set_mib"] = round(byte_count / 2**20, 1)
+                ev["l2_mib"] = round(l2_bytes / 2**20, 1)
+                ev["dram_applicable"] = False
+                ev["dram_inapplicable_reason"] = (
+                    "working set %.1f MiB fits in this card's measured %.1f MiB L2, so the logical "
+                    "byte count does not describe traffic that crossed the memory bus"
+                    % (byte_count / 2**20, l2_bytes / 2**20))
             return BottleneckVerdict(
                 kind="unknown", evidence=ev, disagreement=disagreement, unmeasured=unmeasured,
                 suggests=(
-                    f"the measured DRAM fraction is {frac_bw * 100:.0f}% of this card's roof, "
-                    f"which is physically impossible, so the traffic figure does not describe "
+                    (f"the task's whole working set ({byte_count / 2**20:.1f} MiB) fits inside "
+                     f"this card's measured L2 ({l2_bytes / 2**20:.1f} MiB), so the byte count is "
+                     f"logical traffic that need never cross the memory bus and NO bandwidth "
+                     f"verdict can be given -- the DRAM dimension does not apply to this kernel. "
+                     f"Read the other dimensions (occupancy, registers, shared memory) instead; "
+                     f"on the control kernel that motivated this, the real limit was occupancy "
+                     f"while the bandwidth reading was 100%%-plus.")
+                    if working_set_in_l2 else
+                    (f"the measured DRAM fraction is {frac_bw * 100:.0f}% of this card's roof, "
+                     f"which is physically impossible, so the traffic figure does not describe "
                     f"this kernel and no bandwidth verdict can be given. The usual cause is a "
-                    f"working set that fits in L2: the byte count is logical, and an L2 hit is "
-                    f"counted as traffic without crossing the memory bus. Compare the task's "
-                    f"working set against this card's L2 before treating bandwidth as the limit."))
+                    f"working set that fits in L2 -- the byte count is logical, and an L2 hit is "
+                    f"counted as traffic without crossing the memory bus. That test ran here and "
+                    f"did NOT fire, so either this card's L2 size was unmeasured or the cause is "
+                    f"elsewhere: check whether the candidate moves less than the reference.")))
         return BottleneckVerdict(
             kind="memory_bound", evidence=ev, disagreement=disagreement, unmeasured=unmeasured,
             suggests="the kernel is moving bytes at most of this GPU's measured DRAM ceiling, "

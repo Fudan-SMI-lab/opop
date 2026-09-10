@@ -11,7 +11,14 @@ import uuid
 
 from pydantic import BaseModel
 
-from kernel_optimizer.models.core import BestRecord, Candidate, Family, ParamSet, sha256_text
+from kernel_optimizer.models.core import (
+    BestRecord,
+    Candidate,
+    Family,
+    ParamSet,
+    ProfileRecord,
+    sha256_text,
+)
 
 
 class NoveltyRejection(BaseModel):
@@ -293,11 +300,21 @@ class FamilyManager:
         return max(0.0, (prev - cur) / prev * 100.0)
 
     def update_best(self, family_id: str, candidate_id: str, params: ParamSet,
-                    latency_ms: float) -> bool:
+                    latency_ms: float, profile: ProfileRecord | None = None) -> bool:
+        """Record a new family best if it beats the incumbent. Monotonic.
+
+        `profile` is the winning trial's resource profile (G27). It is stored rather than dropped
+        because the round-level conversion verdict needs the resource state on BOTH sides of a
+        rewrite; without it, `conversion_verdict` received None twice and could only ever report
+        latency movement, making `no_conversion` unreachable in production.
+
+        Defaulted so existing callers keep working, but every in-tree caller passes it: a silent
+        None here reproduces exactly the defect this parameter exists to fix.
+        """
         family = self.families[family_id]
         if family.best is None or latency_ms < family.best.latency_ms:
             family.best = BestRecord(candidate_id=candidate_id, params=params,
-                                     latency_ms=latency_ms)
+                                     latency_ms=latency_ms, profile=profile)
             return True
         return False
 
