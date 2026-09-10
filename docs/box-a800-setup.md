@@ -101,18 +101,85 @@ not be copied over.
 
 ## 6. Test suite
 
-**398 passed, 1 failed.** The single failure is `test_worker_protocol.py::test_to_wsl_path`, which
-asserts `D:\x\y` → `/mnt/d/x/y`. There is no WSL layer on a native-Linux box, so this test is
-inapplicable by construction and fails identically on box 1. Not a defect of this box.
+**422 passed, 0 failed** (re-run after the G18 merge made `test_to_wsl_path` platform-aware; it
+previously failed here by construction, since there is no WSL layer on a native-Linux box).
 
-## 7. What is NOT configured yet
+## 7. Configured and VERIFIED (2026-09-10)
 
-- **No opencode provider config / API key.** `~/.config/opencode/opencode.jsonc` does not exist here,
-  so no agent call can run yet. This is deliberate: the key should be the **rotated** one, not the
-  currently-shared plaintext key that has already been on two machines.
-- **No calibration cached** through the harness's own `kernel-opt calibrate`; the ceilings above come
+### 7.1 API / provider — done, and proven by a real call
+
+The provider config was transferred **box-to-box over a base64 pipe**, so the key never passed through
+a terminal or a model context, and written `0600`. Integrity checked by hash, not by eye:
+box 1 sha256 prefix `23907e0378463363` == A800 `23907e0378463363` → **identical**.
+`npm install` in `/root/autodl-tmp/work/opop-glm` installed `@opencode-ai/plugin` 1.18.29.
+
+Then the thing that actually matters — `scripts/verify_agent_env.py`, which drives the harness's own
+runtime rather than checking that files exist:
+
+```
+sandbox providers: ['zhipuai']   ok: resolves from inside a sandbox
+permission keys  : [bash, edit, external_directory, webfetch]
+server up        : 1.3s        opencode 1.18.30
+returned         : 9.8s  finish=tool-calls  cost=0.0023
+structured       : {'answer': 4, 'gpu_name': 'NVIDIA A800 80GB PCIe'}
+```
+
+**The agent ran `nvidia-smi` itself and read this card back.** That exercises the two failure modes a
+file-existence check cannot see:
+
+- a sandbox's own `opencode.json` makes it a project root and **stops** opencode's upward config
+  search, so a repo-local provider is invisible from inside a sandbox — the historical
+  `ProviderModelNotFoundError: zhipuai/glm-5.3`;
+- any permission key missing from `PERMISSION_CONFIG` falls back to `ask`, which is fatal headless
+  (the turn idles until the ceiling aborts it).
+
+### 7.2 L3 config — done, and cross-checked against the card
+
+`configs/experiments_l3_glm_a800.yaml`. Every budget and evaluation knob is **copied verbatim** from
+box 1's config, so a run here differs as a *machine swap* and nothing else — that is what makes the
+two boxes usable for G12. What changed: paths, and the `device:` block.
+
+Two box-specific facts are recorded in the file rather than left to be rediscovered:
+
+| | box 1 (4090) | **box 3 (A800)** |
+|---|---|---|
+| venvs | two (`orch-venv` + `kernel-opt-venv`; the 30 G system disk cannot hold torch twice) | **one** `orch-venv` serves both roles |
+| torch / triton | 2.9.1+cu129 / 3.5.1 | **2.8.0+cu128 / 3.4.0** |
+| data disk | 250 G | **50 G** |
+
+The toolchain skew is **not** cosmetic: Triton 3.4 and 3.5 generate different code, so register
+counts, shared usage, and even whether a tile compiles can differ between the boxes for reasons that
+are *not* the hardware. Any box-1-vs-box-3 comparison must treat the toolchain as a co-varying factor.
+
+`scripts/validate_box_config.py` checks what a YAML parse cannot — every path exists, the venv really
+imports torch+triton with working CUDA, and the device block matches what the card reports *now*:
+
+```
+name NVIDIA A800 80GB PCIe (sm_80) ~ NVIDIA A800 80GB PCIe   capability sm_80
+vram_gb 79 ~ 79.3    shared_optin 166912    sms 108
+READY
+```
+
+Both boxes pass it and it reads two different cards, so it discriminates rather than always passing.
+**Negative control:** box 1's device block validated against the A800 is rejected with all four
+mismatches named and exit 1. The first version caught only three — comparing `real_name.split()[0]` is
+vacuous, since "NVIDIA" appears in every card name — so the name check now compares the distinctive
+model tokens.
+
+## 8. What is still NOT done on this box
+
+- **No calibration cached** through the harness's own `kernel-opt calibrate`; the ceilings in §1 come
   from probes. The first orchestrated run will measure and cache it (schema 3, so it will include the
   Triton-reachable ceilings).
-- **No L3 config for this box.** `configs/experiments_l3_glm_linux.yaml` on box 1 hardcodes box-1
-  paths and a 4090 `device:` block; an A800 config needs its own paths and the measured limits above
-  (`max_shared_bytes_optin: 166912`, 108 SMs, 40 MiB L2).
+- **No L3-scale agent call.** The verification call in §7.1 was trivial (91 input tokens). glm-5.3 at
+  L3 prompt scale is where the 32000-token truncation appeared on box 1; neither the raised ceiling
+  nor the truncation-specific feedback has been exercised here.
+- **No GPU worker job has run through `wsl.venv`.** The one-venv claim above is verified by *import*,
+  not by a completed eval job.
+- **The relaxed + fp64 witness path has never executed here.** Memory is not the constraint on an
+  80 GB card, but the code path is unrun.
+- **Per-task noise floors are box-1 numbers.** The three ieee-vs-tf32 floors (0.9554 / 0.9767 /
+  0.9778) are a *(card, task)* property and must be re-measured here before use.
+- **API key rotation is still pending** (user-side). This box now holds the same plaintext key as
+  box 1, which raises the count of machines it has been on.
+
