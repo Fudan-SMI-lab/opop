@@ -224,12 +224,21 @@ def run(names: list[str]) -> tuple[set[str], set[str], bool, str]:
     ids -- so a skipped test looked like one that passed on the broken code. Reporting a skip as
     "passed on the wrong implementation" is a false accusation about a test; reporting it as ok is a
     false clean bill. The outcome has to come from a line that names the test.
+
+    `PYTHONDONTWRITEBYTECODE` is REQUIRED, not hygiene. Python validates a `.pyc` against the source's
+    (mtime, size), and this script rewrites one file per variant in quick succession. Several variants
+    insert exactly `"False and "` -- the same 10 characters -- so their patched files have IDENTICAL
+    SIZE, and when two writes land in the same mtime tick the interpreter reuses the FIRST variant's
+    bytecode for the SECOND variant's source. Observed live on the A800: the same variant reported
+    `ok` on one invocation and `**FAIL**` on the next, i.e. the harness gave a confident wrong verdict
+    about whether a test is evidence. Same family as a broken probe returning a credible constant --
+    nothing errors, the number is just wrong.
     """
     proc = subprocess.run(
-        [sys.executable, "-m", "pytest", *[str(t) for t in TESTS], "-v", "--no-header",
+        [sys.executable, "-B", "-m", "pytest", *[str(t) for t in TESTS], "-v", "--no-header",
          "--tb=no", "-p", "no:cacheprovider"],
         cwd=ROOT, capture_output=True, text=True,
-        env={**os.environ, "PYTHONPATH": "src"})
+        env={**os.environ, "PYTHONPATH": "src", "PYTHONDONTWRITEBYTECODE": "1"})
     out = proc.stdout + proc.stderr
     failed: set[str] = set()
     skipped: set[str] = set()
@@ -244,10 +253,25 @@ def run(names: list[str]) -> tuple[set[str], set[str], bool, str]:
     return failed, skipped, proc.returncode == 0, out
 
 
+def apply_variant(path: Path, text: str, old: str, new: str, names: list[str]):
+    """Patch, run, restore. Returns (failed, skipped, output).
+
+    Also stales the `.pyc` deliberately by bumping mtime, belt-and-braces alongside `-B`: the failure
+    this guards against is bytecode reuse across two same-sized sources written in one mtime tick.
+    """
+    path.write_text(text.replace(old, new), encoding="utf-8")
+    try:
+        failed, skipped, _, out = run(names)
+    finally:
+        path.write_text(text, encoding="utf-8")
+    return failed, skipped, out
+
+
 def main() -> int:
     originals = {p: p.read_text(encoding="utf-8") for p in (DIM, DIG, CHK, MOD, ORC)}
     ok = True
     unverified = 0
+    unstable: list[str] = []
     try:
         _, _, green, out = run([])
         if not green:
@@ -267,17 +291,32 @@ def main() -> int:
                       "the change it claims to be" % (label, text.count(old)))
                 ok = False
                 continue
-            path.write_text(text.replace(old, new), encoding="utf-8")
-            try:
-                failed, was_skipped, _, out = run(must_fail)
-            finally:
-                path.write_text(text, encoding="utf-8")
+
+            failed, was_skipped, out = apply_variant(path, text, old, new, must_fail)
 
             missing = [n for n in must_fail if n not in failed]
             unrun = [n for n in missing if n in was_skipped]
             wrongly_passed = [n for n in missing if n not in was_skipped]
 
             if wrongly_passed:
+                # Repeat before accusing. A verdict that flips between invocations is a harness
+                # defect, not a defective test, and the two need opposite responses -- this script
+                # HAS produced a confident wrong verdict that way (stale .pyc, see `run`), so a
+                # disagreement between two identical runs must be reported as instability rather
+                # than as either answer.
+                failed2, _, _ = apply_variant(path, text, old, new, must_fail)
+                still = [n for n in wrongly_passed if n not in failed2]
+                if len(still) != len(wrongly_passed):
+                    unstable.append(label)
+                    ok = False
+                    print("**UNSTABLE** %s" % label)
+                    print("        two identical runs of this variant DISAGREED, so neither answer")
+                    print("        can be reported: %s" % ", ".join(
+                        n for n in wrongly_passed if n not in still))
+                    print("        Fix the harness before reading any verdict here.")
+                    print("        wrong version: %s" % why)
+                    print()
+                    continue
                 ok = False
                 print("**FAIL** %s" % label)
                 print("        these tests PASSED on the wrong implementation, so they are not")
@@ -304,6 +343,10 @@ def main() -> int:
         print("!! RESTORE DID NOT COME BACK GREEN -- check git status\n" + out[-2000:])
         return 2
     print("restored, suite green again")
+    if unstable:
+        print("\nVERDICT: the harness is UNSTABLE on %d variant(s) -- no verdict is trustworthy "
+              "until that is fixed: %s" % (len(unstable), ", ".join(unstable)))
+        return 1
     if not ok:
         print("\nVERDICT: at least one test is not evidence -- see **FAIL** above")
         return 1

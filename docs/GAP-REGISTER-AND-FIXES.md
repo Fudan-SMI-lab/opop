@@ -62,6 +62,8 @@
 | **G36** | **S1b 首次修订的「跨空间汇总」在这份语料里等于「跨候选」**:N=8 的 4 条规则里 **3 条**混了多个候选的证据,`DOT_PRECISION=tf32` 那条混了 **10 个候选**。而根因是「**候选自己**把低精度放在未补偿的 `dot` / `PREC` 门控整个算法」—— 那是**该候选源码的性质** ⇒ 跨候选汇总在原理上不成立,它「看起来对」只因多数候选恰好犯同一个错。**同时**:0/4 的 95% Clopper-Pearson 上界是 **52.7%**,即「误杀 0」在 n=4 时无法排除真实误杀率高达一半 | 确定 | **高**(原理错误 + 证据强度被高估) | ✅ **已处置**:汇总键改 `(candidate_id, knob, value)`(仍跨该候选的多空间,不跨候选/不跨 run);阈值改 **7**(留一选出,五次一致);降权 **1/4**(k=8 时期望被采 0.8 次 < 1,退化为摘除)。三条独立判据(原理/证据强度/阈值留一稳定性)一致指向 per-candidate:省 **206**、误杀 0、上界 **≤8.7%**(n=33)。**最优点命中 0/64** | §G36 |
 | **G37** | **「真候选被门挡住」是我的一个错误猜想,不是缺口 —— 已实测否证**。我依据「三任务噪声底(0.9554/0.9767/0.9778)全部低于 `relaxed_pass_frac=0.99`」推断 537 个 `correctness_mismatch` 里必有被冤判的正确候选,并把它列为比 S3/S4′ 更大的杠杆。逐条分类全部 537 个:**门归因 0 例,537/537 是候选自己的问题**。错因:噪声底低于绝对门是真的,但绝对门**不是唯一判据** —— `fp64_relative_gate: true` 在三个 L3 配置里都开着,按候选距 **fp64 真值**的 RMSE 独立判决(已实测救回 **2790** 次正确性检验)。**我把一个已被修好的缺陷当成了还在的缺陷**,与我在 S1 上引用修法上线前的 18% 同形 | 我的推理错误(非代码缺陷) | 中(**误导了下一阶段的优先级**) | ✅ **已否证并更正**。537 个全部是 fp64 相对臂**放过之后仍然**被拒:RMSE 比最小 **3.04**、中位 **6.48**、p90 **1190**、最大 **3766**,近 15% 超 1000 倍 ⇒ 不是「差一点」。乘数选择亦无缺陷:537/537 与参数精度一致,且**两个乘数之间的带子为空**(换乘数会被接受的 0 个)。**门侧不做任何改动**;真杠杆在候选生成侧(未补偿 `dot` / `PREC` 门控整个算法) | §G37 |
 | **G38** | **J1b-2 被写成绝对数字(≥200),把「语料小」误报成「机制失效」**。box 2 开机后用出厂代码跑其 4 个 L3 run:省下 **37** ⇒ 对「≥200」报 FAIL。但 box 2 的 `correctness_mismatch` 池子只有 **123**(box 1 是 537,差 4.4 倍),归一化后 **30.1% vs 42.5%**,两台机同量级。**与我引用 S1 绝对数字 18% 的错误同形** | 我的判据写法错误 | 中(**会把正确的机制判成失效**) | ✅ **已修**:J1b-2 改为「≥ 该语料该类失败总数的 25%」,`score()` 返回整个池子作分母;修后**两台机四条判据全过**。box 2 同时独立复核:S1 撤下判据 `infeasible`==`screened` **4/4**、S1b 原判据误杀 **68.8%**(box 1 67.5%)、门归因 **123/123 候选侧**(RMSE 比最小 4.88)。**且跨候选那档在 box 2 真的误杀 1 个(3.85%)** —— J1b-7 的正对照首次自己触发 | §G38 |
+| **G39** | **S2 的两条记录被 S2 自己新写的 P4 检查判为不一致 —— 而且它们同时让 prompt 说了假话**。(a) `candidate_aten_bytes`/`candidate_aten_ops` 有实测值但 verdict `unknown`(它们是**下界,无天花板可作分母**),被规则 3 无条件报成「悄悄拒判」;(b) `threads_launched` 被我标了 `applicable=False` —— 但**读数存在且被测到**,不适用的是**分档**(该维 `lower_is_better: None`,无好坏方向)。两者叠加使 `for_prompt` 把**有实测值的维度渲染成「NOT MEASURED on this candidate」** | 确定,低风险 | 小 | ✅ **已修**(`867c228`):规则 3 加「存在天花板」前提**并加反向测试**(有天花板却 `unknown` 仍必被抓,两方向覆盖);`threads_launched` 改 `applicable=True` + verdict `not-applicable` + 必带理由;**新增规则 5**(`not-applicable` 无理由必报,因它现在有两个成因);渲染分出「measured, but NOT RANKED」一支。**纪律:两处都是加前提 + 加反向测试,不是放宽** —— 检查存在的全部目的是「`applicable=false` 与 `measured=0` 永远可区分」 | §G39 |
+| **G40** | **`_dimension_digest` 的守卫写在 `try` 之外,于是绕开了那个 except 存在的唯一理由**。`if verdict is None or not verdict.evidence: return None` 是对**别处构造的对象**取属性,它自己就可能抛异常;守卫在 try 外时该异常**逃出下面的 handler**,杀掉候选的分析步骤 —— 而那个 handler 的全部目的就是「**诊断层的缺陷不得表现成候选的缺陷**」。happy path 永远测不出来,由反向验证的一个变体抓到 | 确定,低风险 | 小 | ✅ **已修**(`867c228`):守卫移入 `try`;`test_a_broken_evidence_dict_journals_a_failure_and_does_not_raise` 用一个 `evidence` 访问器会抛的对象驱动真实方法。**同形先例**:run-l1-42 就是在第一个 analyst 步死于另一个字段的同类问题 | §G40 |
 
 图例:✅ 已完成 · 🔧 修复中 · 🟡 部分解决 · ⏳ 待处理 · ❌ 不可行
 
@@ -1033,3 +1035,58 @@ triton/backends/nvidia/bin/ptxas
 **一个反向对照第一次自己触发**:跨候选那一档在 box 2 上**真的误杀了 1 个(3.85%)**,而 box 1 是 0。此前 J1b-7 只有「证据强度不足」与「阈值不稳定」两条间接理由,现在有了直接的实测。
 
 **同时必须更正一条既有记录**:register 与 memory 里的「计数式黑名单 N=6 在 box 2 误杀 **38.5%**」—— 那个 run **已不在现在的 box 2 上**(机器重装或目录被清)。现存 4 个 run 上 N=6 读出 **0.0%**。**该证据永久丢失,不得再当作可复现的正对照引用**;否决黑名单仍有两条:box 1 的 2.3%@N=6 与 box 2 的 16.0%@N=3。
+
+---
+
+### G39 S2 自己新写的 P4 检查,第一次实战抓的是 S2 自己(✅ 已修)
+
+`check_applicability()` 是 S2 补上的 P4 缺口(方案原文:「`reading_checks.py` **无 `applicable` 一致性检查**,grep 确认 0 处」)。它写完后第一次跑在真实 evidence 形状上,报了**两条我自己的记录**:
+
+```
+candidate_aten_bytes has a measured value (1416626176.0) but verdict='unknown': ...
+candidate_aten_ops has a measured value (12.0) but verdict='unknown': ...
+```
+
+**两个成因是不同的错误,不是同一个:**
+
+| | 我原来的写法 | 为什么是错的 | 修法 |
+|---|---|---|---|
+| **(a) aten 两维** | 规则 3 无条件报「有实测值 + `unknown` = 悄悄拒判」 | 它们**没有天花板**(aten 流量是**下界**,融合越好读数越低,没有分母)⇒ 无法分档,`unknown` 在那里是**诚实的**判决,不是拒判 | 规则 3 加「**存在天花板**」前提 |
+| **(b) `threads_launched`** | `applicable=False` | 把两个问题混成一个。**读数存在且被测到**(1048576),不适用的是**分档** —— `_DIMENSIONS` 给它 `lower_is_better: None`,无好坏方向 ⇒ 无墙可撞。说「机器没有这一维」是**假话**,而且把一个真实测量藏在一个意为「不存在」的标志位后面 | `applicable=True` + verdict `not-applicable` + **必带理由** |
+
+**两者叠加还产生了第三个后果**:`for_prompt()` 把 `severity == "unknown"` 一律渲染成「**NOT MEASURED on this candidate**」⇒ **对机器说了假话**。这不是措辞问题:「去把它测出来」和「没有东西可比」是**不同的动作**。已分出「measured, but NOT RANKED: 这一维在本机没有天花板可比」一支。
+
+**修法必须不弱化检查 —— 两处都是「加前提 + 加反向测试」,不是放宽:**
+
+- 规则 3 加前提的同时,加了 `test_applicable_true_with_a_ceiling_and_no_band_is_still_reported`:**有天花板却停在 `unknown` 仍必须被抓**。反向验证同时覆盖两个方向 —— 去掉前提,前一个测试失败;去掉整段分支,这一个失败。
+- (b) 引入了**新的规则 5**:`not-applicable` 判决**无理由**必须被报,**不论 `applicable` 是什么**。因为这个判决现在有**两个成因**(该维在本机不存在 / 存在但无极性),理由字段是唯一能说明是哪一个的东西。
+
+**检查存在的全部目的是「`applicable=false` 与 `measured=0` 永远可区分」**(沿用 `task_cost.py` 对 `flop_count=0` 的做法:对 maxpool 合法、对 matmul 是失败)。放宽规则会毁掉这个目的,所以每次收窄都配一条反向测试。
+
+**顺带一条纪律证据**:一个在每个候选上都开火的检查会教会读者忽略它。这两条注记在**第一次**冒烟测试就出现了 —— 如果不修而是接受它,P4 检查从上线第一天起就是噪声。
+
+---
+
+### G40 守卫写在 `try` 之外,绕开了那个 `except` 存在的唯一理由(✅ 已修)
+
+`_dimension_digest` 的第一版:
+
+```python
+if verdict is None or not verdict.evidence:   # <-- 在 try 之外
+    return None
+try:
+    ...
+except Exception as exc:   # noqa: BLE001 -- a diagnostic must never fail a run
+    self.store.append("DIMENSION_STATE_FAILED", ...)
+    return None
+```
+
+`verdict.evidence` 是对**别处构造的对象**取属性 —— 它自己就可能抛。守卫在 `try` 外时,那个异常**逃出下面的 handler**,把候选的整个分析步骤打死。
+
+**而那个 handler 的全部目的,就是「诊断层的缺陷不得表现成候选的缺陷」** —— 守卫的位置恰好绕开了它要防的那件事。
+
+**同形先例**:`run-l1-42-20260908-015408` 在第一个 analyst 步死于 `TypeError: '<' not supported between instances of 'NoneType' and 'NoneType'`,同样是一个诊断路径上的字段访问。
+
+**这条 happy path 永远测不出来** —— 正常的 `verdict` 取属性不会抛。它是**反向验证的一个变体**抓到的:把 `except Exception` 收窄成 `except ValueError`,`test_a_broken_evidence_dict_journals_a_failure_and_does_not_raise` 立刻失败。那个测试用一个 `evidence` 属性会抛 `RuntimeError` 的对象驱动**真实方法**,不是模拟。
+
+**修法**:守卫移入 `try`,并把理由写在代码里 —— 否则下一个人会「整理」它回到外面。
