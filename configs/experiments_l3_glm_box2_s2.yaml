@@ -1,0 +1,121 @@
+# TREATMENT arm (S2 + S2d) on BOX 2 (RTX 4090) -- pairs with experiments_l3_glm_box1.yaml.
+#
+# READ THE HEADER OF experiments_l3_glm_box1.yaml FIRST. It carries the evidence that these two
+# boxes may host one control pair (identical resource-map digest over 162 configurations, with
+# box 3 differing as the negative control), the reason the earlier same-box rule no longer applies,
+# and the calibration comparison that must pass BEFORE either arm is launched. None of it is
+# repeated here, so that `diff` of the two files shows only what actually differs between the arms.
+#
+# WHAT DIFFERS FROM THE BOX 1 FILE, AND WHY EACH ONE IS NOT ARM DRIFT:
+#
+#   v3.diagnosis.mode / expectation_ledger  -- THE SWITCHES. The only intended difference.
+#   run.runs_dir, opencode.launch_cwd, sandbox_config_path, kernelbench_root, wsl.*
+#                                           -- machine paths. They MUST differ; they are where
+#                                              this box keeps the same things.
+#
+# Everything else -- every budget, every evaluation knob, the whole device block -- is byte-identical
+# to the box 1 file. `tests/test_config_strictness.py` asserts that the resolved configs differ in
+# exactly the two switches PLUS the path keys, so a budget or tolerance that drifted while someone
+# hand-edited one of these 130-line files is caught rather than discovered afterwards as an
+# unattributable difference in the final number.
+#
+# THE VENV IS THE TRAP ON THIS BOX TOO, AND IT POINTS THE OPPOSITE WAY FROM BOX 1:
+#   /root/autodl-tmp/orch-venv        torch 2.14.0+cu130 / triton 3.8.0   <-- NOT this one
+#   /root/autodl-tmp/kernel-opt-venv  torch 2.13.0+cu129 / triton 3.7.1   <-- the matched one
+# On box 1 the matched venv is `orch-venv`; here it is `kernel-opt-venv`. The names are swapped
+# between the boxes, so copying the venv path from the box 1 file would break the pairing while
+# every other check still passed -- the exact silent failure this pair is most exposed to.
+# Verified by a real compile + launch + tf32 dot on this box, not by version string.
+#
+# THIS BOX RUNS FROM A SEPARATE v3 CHECKOUT: /root/autodl-tmp/work/opop @ v3. Its pre-existing
+# /root/autodl-tmp/opop-workspace/opop is branch v2 with 11 local modifications, three of them the
+# Linux variants (cli.py, runtime.py, worker_client.py). That tree must NOT be overwritten, which
+# is why the v3 work has its own directory. The v3 suite passes there: 681 passed / 0 failed.
+
+v3:
+  diagnosis:
+    # S2: one independent record per resource DIMENSION reaches the prompt, instead of the single
+    # `kind` label -- which measured 19 of 20 reports on L3:21 carrying the same value. The vector
+    # is journalled to events.jsonl in BOTH arms regardless of this switch, so J2-1 (does
+    # discrimination rise) is answerable from either log. This switch decides only what reaches the
+    # PROMPT, which is the part with an external counter-example: few-shot optimisation exemplars
+    # measurably LOWERED fast_1 on KernelBench L1 (10% -> 6%), so more information reaching an
+    # agent is not assumed to be an improvement. That is what J2-5 exists to check.
+    mode: vector
+
+    # S2d: the rewriter states, per dimension, which way it expects a resource to move, and the
+    # harness reconciles that against measurement afterwards. Direction only, never a magnitude --
+    # change rates are not derivable in advance (no closed form for shared memory, 0 of 96 exact;
+    # the map is not separable, 0 of 10 one-step deltas agreed; even the SIGN is unreliable, 13
+    # non-monotone slices).
+    #
+    # EXPECT LITTLE FROM THIS ARM ON ONE RUN, and that is the budget, not the mechanism: the ledger
+    # is empty until round 2, and 5 completed L3 runs used 9 rewrite rounds IN TOTAL. Its
+    # first-run job is to show the mechanism runs end to end and does not make the result worse.
+    expectation_ledger: true
+
+run:
+  # A v3 runs directory under the v2 tree's opop-glm (which is where .opencode/ lives, and
+  # launch_cwd must sit under that tree), deliberately separate from box 2's v2 `runs-l3` so the
+  # four completed v2 runs there are not contaminated.
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v3
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench
+
+opencode:
+  server_url: null
+  launch_cwd: /root/autodl-tmp/opop-workspace/opop-glm
+  sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+
+wsl:
+  # THE MATCHED VENV on THIS box -- see the header. NOT orch-venv, which is torch 2.14 / triton 3.8.
+  venv: /root/autodl-tmp/kernel-opt-venv
+  kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-v3
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+# Byte-identical to the box 1 file: both boxes are the same card, verified (24564 MiB, 450 W,
+# 3105 MHz, cc 8.9). If these two blocks ever differ, the pair is invalid.
+device:
+  name: NVIDIA GeForce RTX 4090 (sm_89)
+  vram_gb: 23
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024

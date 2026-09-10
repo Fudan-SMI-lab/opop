@@ -1,0 +1,124 @@
+# CONTROL arm on BOX 1 (RTX 4090) -- pairs with experiments_l3_glm_box2_s2.yaml on BOX 2.
+#
+# THIS PAIR SPANS TWO MACHINES, WHICH THE EARLIER PLAN FORBADE. The prohibition was correct at the
+# time and its reason has now been removed by measurement, so the reason is recorded here rather
+# than left as a rule someone has to trust:
+#
+#   The rule said a control pair must sit on ONE box because box 1 and box 3 had different Triton
+#   versions, making the toolchain a co-varying factor (G23). What actually matters is not the
+#   version string but whether the two compilers make the SAME allocation decisions, because that
+#   is what S2/S2d compare. Measured with scripts/sweep_resource_map.py over 162 configurations
+#   (BM x BN x BK x warps x precision):
+#
+#       box 1, torch 2.13.0+cu129 / triton 3.7.1 -> DIGEST dd3eca5acd8ce656aa98160eb3d1b16c, 6 fails
+#       box 2, torch 2.13.0+cu129 / triton 3.7.1 -> DIGEST dd3eca5acd8ce656aa98160eb3d1b16c, 6 fails
+#       box 3, torch 2.8.0+cu128  / triton 3.4.0 -> DIGEST d565c810253c8f1fbd5b4f978c638ea4, 0 fails
+#
+#   Byte-identical on the two 4090s, including the same 6 tiles that cannot launch. The sweep is
+#   not flat (122 distinct (regs, shared, spills) triples, registers 38..255, 19 rows with spills),
+#   so the match is a claim rather than an artefact, and box 3 differing is the negative control
+#   that makes the whole comparison trustworthy -- its 0 failures against the 4090s' 6 is the
+#   166912 B vs 101376 B shared-memory limit showing up in the data.
+#
+#   BOX 3 CANNOT JOIN THIS PAIR EVEN IF ITS TOOLCHAIN IS UPGRADED: sm_80 vs sm_89 and the 1.65x
+#   shared-memory limit are hardware, and 6 tiles that are infeasible here are feasible there.
+#
+# THE VENV BELOW IS THE POINT OF THIS FILE. Box 1 has TWO venvs and they differ:
+#   /root/autodl-tmp/kernel-opt-venv   torch 2.9.1+cu129  / triton 3.5.1   <-- NOT this one
+#   /root/autodl-tmp/orch-venv         torch 2.13.0+cu129 / triton 3.7.1   <-- the matched one
+# The older venv is what box 1's v2 config uses. Pointing `wsl.venv` at it would silently break
+# the pairing while every other check still passed, so this file exists mainly to pin the venv.
+# Verified by import AND by a real compile+launch+tf32-dot on this box, not by version string.
+#
+# CALIBRATION MUST BE COMPARED BEFORE THE PAIR IS TRUSTED. Each box measures its own ceilings, and
+# S2/S3 divide by them. Two boxes cannot produce identical measurements, so run
+# `kernel-opt --config <this file> calibrate` on both and compare; if any ceiling differs by more
+# than the task's noise floor, this pair is NOT usable and the run falls back to box 3 alone,
+# 24 h serial. Do this BEFORE launching: afterwards, "the final result got worse" would have two
+# candidate explanations and no way to separate them.
+#
+# Box 1 also carries a schema-3 calibration.json from its v2 work with all four Triton-reachable
+# fractions reading 0.0. That is handled by design -- `load()` returns None below
+# CALIBRATION_SCHEMA_VERSION (5) and re-measures -- but it means box 1 pays a ~2 min calibration on
+# first use, and that the OLD file must not be copied here.
+#
+# Launch (after the calibration comparison passes):
+#   box 1:  kernel-opt --config configs/experiments_l3_glm_box1.yaml    run --task level3:43
+#   box 2:  kernel-opt --config configs/experiments_l3_glm_box2_s2.yaml run --task level3:43
+# These two may run CONCURRENTLY -- they are different machines, so neither times the other's
+# kernels. Two runs on ONE box may never overlap.
+
+run:
+  # A v3 runs directory, deliberately NOT box 1's v2 `runs-l3`: mixing v3 events into that corpus
+  # would contaminate the five completed v2 runs that several conclusions rest on.
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v3
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench
+
+opencode:
+  server_url: null
+  # launch_cwd and runs_dir must both sit under the tree containing .opencode/, because opencode
+  # resolves providers by walking UP from the session's working directory, and each agent sandbox
+  # gets its own opencode.json which makes it a project root and STOPS that search.
+  launch_cwd: /root/autodl-tmp/opop-workspace/opop-glm
+  sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
+  # NOTE the provider block copied by sandbox_config_path carries a plaintext API key into every
+  # agent sandbox under runs_dir. A tar/scp of runs_dir carries the key off the box.
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+
+wsl:
+  # THE MATCHED VENV -- see the header. NOT kernel-opt-venv, which is torch 2.9.1 / triton 3.5.1.
+  venv: /root/autodl-tmp/orch-venv
+  kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-v3
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  # The fp64 relative arm is LOAD-BEARING, not a fallback: all three L3 tasks have ieee-vs-tf32
+  # noise floors BELOW relaxed_pass_frac (0.9554 / 0.9767 / 0.9778 on this card), so the absolute
+  # gate is unreachable for a low-precision candidate however correct it is. This arm has rescued
+  # 2790 correctness checks. It is also why the 537 rejections audited under G37 are the
+  # candidates' own fault: they missed the fp64 reference by 3.04x at minimum.
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+# MEASURED on the 4090. Identical in the box 2 file -- both boxes are the same card, verified
+# (24564 MiB, 450 W, 3105 MHz, cc 8.9), which is a precondition for pairing them at all.
+device:
+  name: NVIDIA GeForce RTX 4090 (sm_89)
+  vram_gb: 23
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024

@@ -23,6 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CFG = ROOT / "src" / "kernel_optimizer" / "config.py"
 CORE = ROOT / "src" / "kernel_optimizer" / "models" / "core.py"
 ARM = ROOT / "configs" / "experiments_l3_glm_a800_s2.yaml"
+B1 = ROOT / "configs" / "experiments_l3_glm_box1.yaml"
+B2 = ROOT / "configs" / "experiments_l3_glm_box2_s2.yaml"
 TESTS = [ROOT / "tests" / "test_config_strictness.py"]
 
 VARIANTS: list[tuple[str, Path, str, str, list[str], str]] = [
@@ -133,6 +135,52 @@ VARIANTS: list[tuple[str, Path, str, str, list[str], str]] = [
         "check here passes. The run would be labelled treatment and be a control, which is worse "
         "than not running it: the result would be recorded with the sign of the effect flipped",
     ),
+    # --- the CROSS-BOX 4090 pair, where paths differ legitimately and nothing else may ---------
+    (
+        "the cross-box treatment arm drifts in a budget",
+        B2,
+        "  wall_clock_hours: 12",
+        "  wall_clock_hours: 11",
+        ["test_the_cross_box_4090_pair_differs_only_in_switches_and_machine_paths",
+         "test_the_cross_box_pair_agrees_on_the_device_block_and_every_budget"],
+        "the failure mode of two hand-copied 130-line configs. BOTH load, BOTH runs complete, and "
+        "the treatment arm silently had an hour less wall clock -- on a task where 5 of 5 completed "
+        "runs were ended by the wall clock. J2-5 would then be measuring the budget, not the switch",
+    ),
+    (
+        "the cross-box arms describe different hardware to their agents",
+        B2,
+        "  max_shared_bytes_optin: 101376",
+        "  max_shared_bytes_optin: 166912",
+        ["test_the_cross_box_pair_agrees_on_the_device_block_and_every_budget",
+         "test_the_cross_box_4090_pair_differs_only_in_switches_and_machine_paths"],
+        "the A800's figure pasted into a 4090 config -- the plausible copy error, since the A800 "
+        "file is the one this pair was derived from. `device:` is written verbatim into every agent "
+        "sandbox's docs/device.md and exposed to agent-authored constraint expressions, so one arm "
+        "would be inventing tiles that cannot launch on the card it is actually running",
+    ),
+    (
+        "the venv paths 'corrected' to match each other",
+        B2,
+        "  venv: /root/autodl-tmp/kernel-opt-venv",
+        "  venv: /root/autodl-tmp/orch-venv",
+        ["test_the_two_4090_arms_point_at_different_venvs_on_purpose"],
+        "the trap a version-number check cannot see and the one somebody will 'tidy up': the "
+        "matched torch 2.13.0+cu129 / triton 3.7.1 environment is `orch-venv` on box 1 but "
+        "`kernel-opt-venv` on box 2 -- the names are SWAPPED between the machines. Making the two "
+        "files agree gives box 2 torch 2.14.0 / triton 3.8.0, the resource-map digests stop "
+        "matching, and the pairing is void while every other check still passes",
+    ),
+    (
+        "a v3 arm writing into the v2 corpus directory",
+        B1,
+        "  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v3",
+        "  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-l3",
+        ["test_neither_4090_arm_writes_into_a_v2_runs_directory"],
+        "events.jsonl is APPEND-ONLY, so there is no undo: a v3 run pointed at `runs-l3` mixes v3 "
+        "events into the five completed v2 runs on box 1 (and four on box 2, which hold the only "
+        "copy of the S1b hard-gate counter-evidence). Several recorded conclusions read that corpus",
+    ),
 ]
 
 
@@ -166,7 +214,7 @@ def apply_variant(path: Path, text: str, old: str, new: str, names: list[str]):
 
 
 def main() -> int:
-    originals = {p: p.read_text(encoding="utf-8") for p in (CFG, CORE, ARM)}
+    originals = {p: p.read_text(encoding="utf-8") for p in (CFG, CORE, ARM, B1, B2)}
     ok = True
     unverified = 0
     unstable: list[str] = []

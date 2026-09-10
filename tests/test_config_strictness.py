@@ -315,3 +315,133 @@ def test_the_treatment_arm_actually_turns_both_switches_on():
     t = load_config(treat).v3.diagnosis
     assert (c.mode, c.expectation_ledger) == ("label", False), "the CONTROL arm is not v2 behaviour"
     assert (t.mode, t.expectation_ledger) == ("vector", True), "the TREATMENT arm is not S2+S2d"
+
+
+# --- the cross-box pair, where paths legitimately differ and nothing else may -----------------
+
+# Keys that MUST differ between two boxes: they are where each machine keeps the same things.
+# Everything not listed here is arm drift. Listed explicitly rather than pattern-matched on the
+# word "path" so that adding a machine-specific key is a deliberate edit to this list.
+_MACHINE_KEYS = frozenset({
+    "run.runs_dir",
+    "opencode.launch_cwd",
+    "opencode.sandbox_config_path",
+    "kernelbench_root",
+    "wsl.venv",
+    "wsl.kernelbench_src",
+    "wsl.triton_cache_dir",
+})
+
+_SWITCH_KEYS = frozenset({"v3.diagnosis.mode", "v3.diagnosis.expectation_ledger"})
+
+
+def test_the_cross_box_4090_pair_differs_only_in_switches_and_machine_paths():
+    """The box1/box2 pair spans TWO machines, so the same-box guarantee is gone and every part of
+    it has to be checked explicitly.
+
+    That pairing rests on a measurement: scripts/sweep_resource_map.py returned a byte-identical
+    digest (dd3eca5a..., 6 launch failures) on both 4090s over 162 configurations, with box 3
+    differing (d565c810..., 0 failures) as the negative control. What that measurement does NOT
+    cover is the config files: they are hand-copied 130-line documents, and a budget or tolerance
+    that drifted between them would make J2-5's "did the final result get worse" unattributable,
+    with nothing to notice -- both files load, both runs complete.
+
+    So: the resolved diff must be exactly the two switches plus the machine paths. Anything else
+    fails, and the assertion names it.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "configs"
+    box1 = root / "experiments_l3_glm_box1.yaml"
+    box2 = root / "experiments_l3_glm_box2_s2.yaml"
+    if not (box1.exists() and box2.exists()):
+        pytest.skip("the cross-box 4090 pair is not present in this checkout")
+
+    diffs = set(_resolved_diff(load_config(box1).model_dump(), load_config(box2).model_dump()))
+    unexpected = diffs - _SWITCH_KEYS - _MACHINE_KEYS
+    assert not unexpected, (
+        "the two arms differ in something that is neither a switch nor a machine path, so a "
+        "difference in the final result could not be attributed to the switch: %s"
+        % sorted(unexpected))
+    missing = _SWITCH_KEYS - diffs
+    assert not missing, (
+        "the arms do NOT differ in %s -- the treatment arm is not actually treating"
+        % sorted(missing))
+
+
+def test_the_cross_box_pair_agrees_on_the_device_block_and_every_budget():
+    """The two checks a cross-box pair needs that a same-box pair got for free.
+
+    `device:` is written verbatim into every agent sandbox's docs/device.md and exposed to
+    agent-authored constraint expressions, so two arms disagreeing there are being told they are on
+    different hardware -- and these two boxes are the same card (24564 MiB, 450 W, 3105 MHz,
+    cc 8.9), verified before pairing them. Budgets decide when a run stops, and 5 of 5 completed L3
+    runs were ended by the wall clock, so an hour of difference is not a rounding error.
+
+    Asserted as whole blocks rather than key by key: a key added to either block later is then
+    covered without editing this test.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "configs"
+    box1 = root / "experiments_l3_glm_box1.yaml"
+    box2 = root / "experiments_l3_glm_box2_s2.yaml"
+    if not (box1.exists() and box2.exists()):
+        pytest.skip("the cross-box 4090 pair is not present in this checkout")
+
+    a, b = load_config(box1), load_config(box2)
+    assert a.device.model_dump() == b.device.model_dump(), (
+        "the two arms describe DIFFERENT hardware to their agents; these boxes are the same card")
+    assert a.budgets.model_dump() == b.budgets.model_dump(), "the arms have different budgets"
+    assert a.evaluation.model_dump() == b.evaluation.model_dump(), (
+        "the arms have different correctness/timing settings, so their results are not comparable")
+    assert a.agents.model_dump() == b.agents.model_dump(), (
+        "the arms use different agent models or candidate counts")
+
+
+def test_the_two_4090_arms_point_at_different_venvs_on_purpose():
+    """The trap this pair is most exposed to, and the one a version-number check would miss.
+
+    The matched torch 2.13.0+cu129 / triton 3.7.1 environment is `orch-venv` on box 1 but
+    `kernel-opt-venv` on box 2 -- the names are SWAPPED between the machines. Copying the venv path
+    from one file to the other yields a valid-looking config that silently breaks the pairing: box 1
+    would run torch 2.9.1/triton 3.5.1, or box 2 torch 2.14.0/triton 3.8.0, and the resource-map
+    digests would no longer match while every other check here still passed.
+
+    This asserts the two paths are DIFFERENT, which is the counter-intuitive direction and
+    therefore the one somebody will 'fix'.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "configs"
+    box1 = root / "experiments_l3_glm_box1.yaml"
+    box2 = root / "experiments_l3_glm_box2_s2.yaml"
+    if not (box1.exists() and box2.exists()):
+        pytest.skip("the cross-box 4090 pair is not present in this checkout")
+
+    v1 = str(load_config(box1).wsl.venv)
+    v2 = str(load_config(box2).wsl.venv)
+    assert v1.endswith("orch-venv"), (
+        "box 1's matched venv is orch-venv (torch 2.13.0/triton 3.7.1); kernel-opt-venv there is "
+        "torch 2.9.1/triton 3.5.1 and would break the pairing. Got %s" % v1)
+    assert v2.endswith("kernel-opt-venv"), (
+        "box 2's matched venv is kernel-opt-venv (torch 2.13.0/triton 3.7.1); orch-venv there is "
+        "torch 2.14.0/triton 3.8.0 and would break the pairing. Got %s" % v2)
+
+
+def test_neither_4090_arm_writes_into_a_v2_runs_directory():
+    """Five completed v2 runs on box 1 and four on box 2 are the corpus several conclusions rest on
+    (including the only copy of the S1b hard-gate counter-evidence). A v3 run writing into
+    `runs-l3` would mix v3 events into it, and events.jsonl is append-only -- there is no undo.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "configs"
+    for name in ("experiments_l3_glm_box1.yaml", "experiments_l3_glm_box2_s2.yaml"):
+        p = root / name
+        if not p.exists():
+            continue
+        runs = str(load_config(p).run.runs_dir)
+        assert not runs.rstrip("/").endswith("runs-l3"), (
+            "%s writes into the v2 corpus directory %s" % (name, runs))
+
