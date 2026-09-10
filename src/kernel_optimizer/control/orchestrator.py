@@ -442,6 +442,20 @@ class Wiring:
 
 
 @dataclass
+class _DeclaredExpectations:
+    """One rewrite candidate's declared resource directions, held until the round is reconciled.
+
+    Carries `hypothesis_id` and `change_summary` alongside the expectations so the ledger entry can
+    say WHICH idea was being checked. Without them a `miss` would be attached to a family and a round
+    number and nothing else, which is not enough for the next round's prompt to be about anything.
+    """
+
+    hypothesis_id: str
+    change_summary: str
+    expectation: Any  # a ResourceExpectation; typed loosely to keep this module import-light
+
+
+@dataclass
 class CandidateRun:
     """Per-candidate pipeline products kept in memory for the current run."""
 
@@ -489,6 +503,16 @@ class Orchestrator:
         self.task_cost = None
         self.runs: dict[str, CandidateRun] = {}
         self.failed_hypotheses: dict[str, list[dict]] = {}  # family_id -> tried-and-failed
+        # S2d. `round_expectations` holds the CURRENT round's declarations, popped when the round is
+        # reconciled so round N+1 can never be scored against round N's predictions. `ledger` holds
+        # the reconciled entries per family, which is what the next round's prompt renders.
+        #
+        # Both are memory-only by the same argument as `failed_hypotheses`, and restored from
+        # `EXPECTATIONS_RECONCILED` on resume for the same reason -- a rewriter that loses the ledger
+        # re-proposes an idea the run already checked, and rewrite rounds are the scarcest budget
+        # (measured: 5 completed L3 runs used 9 rounds in total, so losing one is expensive).
+        self.round_expectations: dict[str, list[_DeclaredExpectations]] = {}
+        self.ledger: dict[str, list[dict]] = {}
         # S1b. One ledger per RUN, holding per-(candidate, knob, value) pass/fail evidence, so a
         # value's unconditional failure learned in one of a candidate's spaces acts from the first
         # trial of its next space. `None` when the switch is off, which is the pre-v3 behaviour.
@@ -1951,6 +1975,11 @@ class Orchestrator:
         # (a failed round still cost one). Conflating them either fabricates convergence or
         # lets a resumed run re-run rounds forever.
         not_evaluated: dict[str, int] = {}
+        # S2d: the reconciled ledger, restored on the same pass and for the same reason as
+        # `failed_hypotheses`. A rewriter that loses it re-proposes an idea the run already checked,
+        # and rewrite rounds are the scarcest budget in the loop -- 5 completed L3 runs used 9 in
+        # total. Rebuilt rather than extended, same argument as `restored` above.
+        ledger: dict[str, list[dict]] = {}
         for ev in state.events:
             if ev.type == "FAMILY_ROUND_RECORDED":
                 rounds.setdefault(ev.payload["family_id"], []).append(ev.payload)
@@ -1960,10 +1989,14 @@ class Orchestrator:
             elif ev.type == "HYPOTHESES_FAILED":
                 restored.setdefault(
                     ev.payload["family_id"], []).extend(ev.payload["hypotheses"])
+            elif ev.type == "EXPECTATIONS_RECONCILED":
+                ledger.setdefault(ev.payload["family_id"], []).append(ev.payload)
             elif ev.type == "FAMILY_SEEDED":
                 seeded[ev.payload["family_id"]] = ev.payload["best_ms"]
         for family_id, hyps in restored.items():
             self.failed_hypotheses[family_id] = hyps
+        for family_id, entries in ledger.items():
+            self.ledger[family_id] = entries
         # Seed round 0 for every family that has a correct candidate. A family with no
         # best has nothing to seed and cannot be rewritten anyway.
         for family_id, family in self.deps.families.families.items():
@@ -2082,21 +2115,27 @@ class Orchestrator:
                           best_before)
             if evaluated:
                 self.deps.families.record_round(family.family_id, best_after)
+                # G3: the round's resource-to-performance conversion. Latency is the ONLY
+                # final criterion; resource change is a means, so a round that moved
+                # resources without moving latency has to be recorded as such rather than
+                # counted as a success.
+                conversion = conversion_verdict(
+                    best_before, best_after, profile_before,
+                    getattr(self.deps.families.families[family.family_id].best, "profile",
+                            None),
+                    self.cfg.budgets.min_improvement_pct)
                 # Persist the round's incumbent so best_history survives resume — it is
                 # otherwise memory-only, leaving `best history: []` after a restart and
                 # making the `converged` stop_kind unreachable on resumed runs.
                 self.store.append("FAMILY_ROUND_RECORDED", {
                     "family_id": family.family_id, "best_ms": best_after,
                     "round": round_no,
-                    # G3: the round's resource-to-performance conversion. Latency is the ONLY
-                    # final criterion; resource change is a means, so a round that moved
-                    # resources without moving latency has to be recorded as such rather than
-                    # counted as a success.
-                    **conversion_verdict(
-                        best_before, best_after, profile_before,
-                        getattr(self.deps.families.families[family.family_id].best, "profile",
-                                None),
-                        self.cfg.budgets.min_improvement_pct)})
+                    **conversion})
+                # S2d(b/c): reconcile what the rewriter SAID against what was measured, and put the
+                # result where the next round will read it. Reuses `conversion`'s own
+                # `resource_deltas` rather than recomputing, so the two halves of the ledger cannot
+                # disagree about what moved.
+                self._record_reconciliation(family.family_id, round_no, conversion)
             else:
                 # NOTHING was evaluated this round: the rewriter never answered, or every
                 # candidate it produced was a structural duplicate. Recording the unchanged
@@ -2132,6 +2171,50 @@ class Orchestrator:
             self._step_done(key)
         return progressed
 
+    def _record_reconciliation(self, family_id: str, round_no: int, conversion: dict) -> None:
+        """S2d(b/c): check the round's declared directions against what was measured.
+
+        Ledger entries live alongside `failed_hypotheses` on the SAME channel rather than in a new
+        one: that list is already journalled (`HYPOTHESES_FAILED`) and already replayed on resume, so
+        reusing it means the ledger survives a restart for free instead of needing a second
+        persistence mechanism to be right.
+
+        Journalled UNCONDITIONALLY; `v3.diagnosis.expectation_ledger` decides only whether the
+        rendered form reaches the rewriter's prompt. Same asymmetry as S2's vector, and for the same
+        reason -- recording is what makes the control arm analysable from its own log.
+
+        Never raises: this is a diagnostic, and a diagnostic that ends a rewrite round would present
+        a bookkeeping defect as a candidate defect.
+        """
+        try:
+            from kernel_optimizer.evaluation.reconcile import reconcile
+
+            # Pop, so a round can never be reconciled against the PREVIOUS round's declarations.
+            # Keyed on family alone because rounds are sequential per family; leaving the list in
+            # place would silently score round N+1 against round N's predictions, which reads as a
+            # plausible ledger and is entirely wrong.
+            declared = self.round_expectations.pop(family_id, [])
+            hyp_ids = sorted({e.hypothesis_id for e in declared if e.hypothesis_id})
+            rec = reconcile([e.expectation for e in declared],
+                            conversion.get("resource_deltas"),
+                            hypothesis_id=",".join(hyp_ids))
+            entry = {
+                "family_id": family_id, "round": round_no,
+                # `id` and `change` keep the ledger renderable by the same function that renders a
+                # pre-S2d `failed_hypotheses` entry, so a resumed run mixing both shapes works.
+                "id": ",".join(hyp_ids) or "(no hypothesis id)",
+                "change": "; ".join(e.change_summary for e in declared)[:300],
+                "reconciliation": rec.model_dump(),
+                "conversion": conversion.get("conversion"),
+                "latency_gain_pct": conversion.get("latency_gain_pct"),
+                "n_declared": len(declared),
+            }
+            self.store.append("EXPECTATIONS_RECONCILED", entry)
+            self.ledger.setdefault(family_id, []).append(entry)
+        except Exception as exc:  # noqa: BLE001 -- a diagnostic must never end a round
+            self.store.append("EXPECTATIONS_RECONCILE_FAILED", {
+                "family_id": family_id, "round": round_no, "error": str(exc)[:500]})
+
     def _do_rewrite(self, family_id: str, parent_crun: CandidateRun) -> bool:
         """Run one rewrite round. Returns whether a rewrite was actually EVALUATED.
 
@@ -2158,6 +2241,11 @@ class Orchestrator:
                     n_candidates=self.cfg.agents.rewriter.n_candidates,
                     eval_semantics=self.eval_semantics,
                     calibration=self.calibration,
+                    # S2d(c). The switch gates only the PROMPT: the ledger is journalled either way
+                    # (see `_record_reconciliation`), so the control arm stays analysable from its own
+                    # log and J2d-9 needs one switch rather than a second run.
+                    ledger_entries=(self.ledger.get(family_id, [])
+                                    if self.cfg.v3.diagnosis.expectation_ledger else []),
                 )
             )
         except AgentCallError as exc:
@@ -2208,7 +2296,17 @@ class Orchestrator:
             self.store.append("REWRITE_PRODUCED", {
                 "candidate_id": cand.candidate_id, "family_id": family_id,
                 "hypothesis_id": rw.hypothesis_id,
-                "change_summary": rw.change_summary[:500]})
+                "change_summary": rw.change_summary[:500],
+                # S2d(a): journalled at DECLARATION time, before any measurement exists. That
+                # ordering is what makes the later reconciliation a prediction check rather than a
+                # description -- a declaration recorded after the fact could have been shaped by the
+                # outcome, and nothing in the log would show it.
+                "expectations": [e.model_dump() for e in rw.expectations]})
+            for e in rw.expectations:
+                self.round_expectations.setdefault(family_id, []).append(
+                    _DeclaredExpectations(hypothesis_id=rw.hypothesis_id,
+                                          change_summary=rw.change_summary[:300],
+                                          expectation=e))
             registered.append(cand.candidate_id)
         # B1 also applies here: rewrite/novelty candidates are 10 of the 14 candidates
         # in a typical L3 run, so prefetching only in the seed loop covered under a

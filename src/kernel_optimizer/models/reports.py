@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from kernel_optimizer.models.core import (
     FailureKind,
@@ -126,6 +126,42 @@ class ParameterizationResult(BaseModel):
     space: ProposedSpace
 
 
+class ResourceExpectation(BaseModel):
+    """S2d(a): which way the agent expects one resource dimension to move, and why.
+
+    A DIRECTION, never a rate. Measured three ways that the rate is not derivable in advance: no
+    closed form for shared memory (0 of 96 configurations matched exactly), the cost map is not
+    separable (0 of 10 one-step deltas agreed), and even the SIGN is unreliable across a wide sweep
+    (13 non-monotone slices, BK 16->32 dropping 58 registers while 32->64 added 87 and hit the 255
+    cap). So asking for a number would be asking to be lied to.
+
+    Why ask at all, given that an earlier prediction requirement was withdrawn (D-2)? Two differences.
+    That one asked for the MAGNITUDE OF A LATENCY GAIN and used it to allocate budget. This asks for
+    the SIGN OF A RESOURCE CHANGE -- a far more structural inference ("a bigger tile needs more
+    shared memory" does not require knowing how many bytes) which is verifiable AT COMPILE TIME -- and
+    it allocates nothing. It is the thing being CHECKED, not the basis of a decision.
+
+    HARD BOUNDARY, enforced in code and asserted by J2d-8: an expectation may never enter candidate
+    ranking, family allocation, trial budget, or acceptance. It has exactly two outlets, the ledger
+    and the next round's prompt.
+
+    `extra="forbid"` is load-bearing, not tidiness. Pydantic's default silently DROPS an unknown
+    field, so an agent that answered `{"dimension": "n_regs", "expect": "down", "expected_pct": 40}`
+    would be accepted while the 40 vanished -- and the agent would have reasoned from a magnitude
+    nobody ever checked, which is the precise thing this schema exists to prevent. Forbidding makes it
+    a validation error, which the retry path returns to the agent with the reason.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Must name a dimension in the shared vocabulary. Validated in the agent module's `check_output`
+    # rather than here, so a wrong name is returned to the agent WITH the vocabulary listed instead
+    # of raising a pydantic error whose text does not say what the legal values are.
+    dimension: str
+    expect: Literal["up", "down", "unchanged", "unknown"]
+    why: str = ""
+
+
 class RewriteCandidate(BaseModel):
     file: str
     # A rewrite may change backend, and until this field existed it could not SAY so: the
@@ -139,6 +175,10 @@ class RewriteCandidate(BaseModel):
     backend: Literal["triton", "cuda"] = "triton"
     hypothesis_id: str = ""
     change_summary: str
+    # S2d(a). Defaults to empty so an agent that declares nothing is not blocked -- but an empty
+    # list is itself recorded and counted, because "declared nothing" and "declared and was wrong"
+    # are different states and only one of them can be learned from.
+    expectations: list[ResourceExpectation] = Field(default_factory=list)
 
 
 class RewriteResult(BaseModel):

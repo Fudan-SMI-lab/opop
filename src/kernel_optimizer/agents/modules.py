@@ -23,6 +23,11 @@ from kernel_optimizer.models.reports import (
     RewriteResult,
     TuningStats,
 )
+from kernel_optimizer.evaluation.reconcile import (
+    DIMENSION_VOCABULARY,
+    render_ledger,
+    unknown_dimensions,
+)
 from kernel_optimizer.paramspace.triton_lint import (
     declares_no_custom_kernel,
     delegates_to_baseline_compiler,
@@ -1072,7 +1077,10 @@ class RewriterInputs:
     # This box's measured ceilings, so the prompt can state what the card ACHIEVES and
     # not merely what it forbids. Optional: a box without a calibration still runs.
     calibration: object | None = None
-
+    # S2d(c): the ledger entries for this family, newest last. Empty in round 1 by construction --
+    # there is nothing to reconcile before a rewrite has happened -- and empty in every run with
+    # `v3.diagnosis.expectation_ledger: false`, which is what makes the control arm one switch.
+    ledger_entries: list[dict] = field(default_factory=list)
 
 
 class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
@@ -1082,20 +1090,33 @@ class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
     def seed_sandbox(self, inputs: RewriterInputs, sb: Sandbox) -> None:
         sb.write_input("candidate/best.py", inputs.best_source)
         sb.write_input("analysis/bottleneck.json", inputs.report.model_dump_json(indent=2))
-        sb.write_input(
-            "history/failed_hypotheses.json", json.dumps(inputs.failed_hypotheses, indent=2)
-        )
+        if inputs.ledger_entries:
+            # S2d(c) / J2d-5. PROSE, one paragraph per round and one line per dimension -- NOT a
+            # JSON dump. The JSON form is what `failed_hypotheses.json` already was, and it is why
+            # the rewriter could see "H1 was tried and did not help" but not "H1 said shared memory
+            # would fall and it rose". G9 measured that volume buys nothing (4.19% apart against a
+            # 4.72% within-arm spread at 2.1x the cost), so the ledger is rendered small on purpose.
+            sb.write_input("history/prediction_ledger.md",
+                           render_ledger(inputs.ledger_entries))
+        else:
+            sb.write_input(
+                "history/failed_hypotheses.json", json.dumps(inputs.failed_hypotheses, indent=2)
+            )
         sb.write_input("docs/candidate_contract.md", _contract_doc())
         sb.write_input("docs/triton_pitfalls.md", _triton_pitfalls_doc())
         sb.write_input("docs/device.md", _device_doc(inputs.device, inputs.calibration))
         sb.write_input("task/eval_semantics.md", _eval_semantics_doc(inputs.eval_semantics))
 
     def render_prompt(self, inputs: RewriterInputs, sb: Sandbox) -> str:
+        vocabulary = ", ".join("`%s`" % d for d in DIMENSION_VOCABULARY)
+        history = ("`history/prediction_ledger.md` shows what you PREDICTED in earlier rounds and "
+                   "what was measured" if inputs.ledger_entries
+                   else "`history/failed_hypotheses.json` lists changes already tried that did NOT "
+                        "help")
         return f"""`candidate/best.py` is the current best version of a kernel (already at
 its best-known PARAMS). `analysis/bottleneck.json` explains what limits it —
 which parameters wanted to go further and what resource blocked them.
-`history/failed_hypotheses.json` lists changes already tried that did NOT help;
-do not repeat them. Read `docs/candidate_contract.md`, `docs/device.md`, and
+{history}; do not repeat them. Read `docs/candidate_contract.md`, `docs/device.md`, and
 `task/eval_semantics.md` (the run mode the harness evaluates in). If
 your rewrite uses Triton, also read `docs/triton_pitfalls.md` and obey it.
 
@@ -1155,7 +1176,30 @@ partial-reduction kernel) and fuse around that, or fuse something else.
 
 Answer with JSON:
 {{"candidates": [{{"file": "rewrites/rw_1.py", "backend": "triton", "hypothesis_id": "H1",
-  "change_summary": "..."}}, ...]}}
+  "change_summary": "...",
+  "expectations": [{{"dimension": "shared_bytes", "expect": "up",
+                    "why": "the tile grows from 64x64 to 128x64"}}]}}, ...]}}
+
+`expectations` states, PER RESOURCE DIMENSION, which way you expect the number to move —
+`up`, `down`, `unchanged`, or `unknown`. It is checked against the measurement afterwards
+and the result is shown to you next round, so it is how a structural claim becomes
+falsifiable rather than plausible.
+
+Four rules:
+
+* **A direction, never a magnitude.** There is no field for a percentage and one will be
+  rejected. The rate is not derivable in advance — measured three ways on this hardware:
+  shared memory has no closed form (0 of 96 configurations matched), the cost map is not
+  separable (0 of 10 one-step deltas agreed), and even the SIGN reverses across a wide
+  sweep. A number here would be invented.
+* **`up`/`down` mean the NUMBER, not "better".** Occupancy rising is `up` even though
+  higher occupancy is better; registers falling is `down` even though lower is better.
+* **`unknown` is legal and is recorded as such.** Say it when you do not know. It is
+  counted, so answering `unknown` to everything is visible.
+* **Legal dimension names, and no others:** {vocabulary}.
+
+This never affects whether your rewrite is accepted, how much tuning budget it gets, or
+how it ranks. Its only uses are the ledger and next round's prompt.
 """
 
     def check_output(self, output: RewriteResult, sb: Sandbox) -> str | None:
@@ -1165,6 +1209,18 @@ Answer with JSON:
         missing = _files_exist_check(files, sb)
         if missing:
             return missing
+        # S2d(a) / J2d-1: the expectation vocabulary is closed. Checked here, at the same layer as
+        # the file-exists and lint checks, and the message LISTS the legal names -- a rejection that
+        # does not say what the legal values are turns a schema check into a guessing game, and this
+        # project has burned three repair calls on a message that described an encoding problem as a
+        # content problem. Generic schema validation, not a per-task special case.
+        named = [e.dimension for c in output.candidates for e in c.expectations]
+        bad = unknown_dimensions(named)
+        if bad:
+            return ("these `expectations` name dimensions that do not exist, so nothing would ever "
+                    "measure them: %s. Use exactly one of: %s. An expectation is a DIRECTION for one "
+                    "of these dimensions -- never a percentage, and never free text."
+                    % (", ".join(sorted(set(bad))), ", ".join(DIMENSION_VOCABULARY)))
         return _triton_lint_check(files, sb)
 
     def rescue_from_sandbox(self, sb: Sandbox) -> RewriteResult | None:
