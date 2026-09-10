@@ -63,6 +63,7 @@ from kernel_optimizer.paramspace.validation import (
     error_excerpt,
 )
 from kernel_optimizer.store.run_store import RunStore
+from kernel_optimizer.tuning.deweight import DeweightLedger
 from kernel_optimizer.tuning.stats import TuningStatsAnalyzer
 from kernel_optimizer.tuning.tpe import OptunaTPETuner
 
@@ -488,6 +489,19 @@ class Orchestrator:
         self.task_cost = None
         self.runs: dict[str, CandidateRun] = {}
         self.failed_hypotheses: dict[str, list[dict]] = {}  # family_id -> tried-and-failed
+        # S1b. One ledger per RUN, holding per-(candidate, knob, value) pass/fail evidence, so a
+        # value's unconditional failure learned in one of a candidate's spaces acts from the first
+        # trial of its next space. `None` when the switch is off, which is the pre-v3 behaviour.
+        #
+        # Not per-space: a value appears about 10 times in a 40-trial space (domains hold a median
+        # of 4 choices), so a floor high enough to be safe cannot fire until the value's trials are
+        # nearly spent -- measured, per-space saves 63 failing trials against per-candidate's 206.
+        # Not per-run either: pooling across CANDIDATES mixes evidence about different source code
+        # (see tuning/deweight.py).
+        self.deweight_ledger = (
+            DeweightLedger(seed=cfg.run.seed)
+            if cfg.v3.search.deweight_unconditional_failures else None
+        )
         # Improvement B1: one worker thread that runs the NEXT candidate's
         # parameterization (an LLM call) while the CURRENT one occupies the GPU.
         # Measured on L3:43: agent 2.88h and GPU 7.34h with 0.00h of overlap, purely
@@ -549,6 +563,10 @@ class Orchestrator:
         self._calibrate()
         self._baseline()
         self._generate_seeds()
+
+        # S1b. Before any tuning, so a resumed run reaches its next ask holding the same evidence
+        # an uninterrupted one would. No-op when the switch is off or the log has no trials yet.
+        self._restore_deweight_ledger()
 
         self._pipeline_batch(list(self.runs))
 
@@ -1036,6 +1054,11 @@ class Orchestrator:
             seed=self.cfg.run.seed,
             anchors=anchors,
             constant_liar=conc.enabled,
+            # S1b. The candidate is bound here because the ledger's scope is per-candidate.
+            deweight_reject=(
+                (lambda p: self.deweight_ledger.should_reject(cand.candidate_id, p.values))
+                if self.deweight_ledger is not None else None
+            ),
         )
 
         while True:
@@ -1060,9 +1083,20 @@ class Orchestrator:
                 record = self._run_trial(crun, space, trial_id, params, trials_dir)
                 self.store.append("TRIAL_DONE", {"trial": record.model_dump()})
             tuner.tell(trial_id, record)
+            if self.deweight_ledger is not None:
+                # Folded in for EVERY trial, reused measurements included: `replay` rebuilds the
+                # ledger from the same TRIAL_DONE stream (`_restore_deweight_ledger`), so skipping
+                # reused records here would make a resumed run hold different evidence from an
+                # uninterrupted one -- the class of divergence that made a resume re-run work the
+                # log already contained.
+                self.deweight_ledger.observe(record)
             crun.trials.append(record)
 
         best = tuner.best()
+        # S1b: journalled per space so the mechanism's effect is measurable from the log without
+        # re-deriving it. Emitted whether or not anything fired -- "nothing fired" is a result too,
+        # and its absence would be indistinguishable from the switch being off.
+        deweight = self.deweight_ledger.snapshot() if self.deweight_ledger is not None else None
         if best is not None:
             # crun.best_ms tracks the candidate's best over ALL its spaces, so a
             # re-tune (improvement K's expansion) that lands worse must not erase a
@@ -1077,12 +1111,12 @@ class Orchestrator:
             self.store.append("TUNING_DONE", {
                 "candidate_id": cand.candidate_id, "space_id": space.space_id,
                 "best_ms": best.latency_ms.robust_ms, "improved_family": improved,
-                "snapshot": tuner.snapshot(),
+                "snapshot": tuner.snapshot(), "deweight": deweight,
             })
         else:
             self.store.append("TUNING_DONE", {
                 "candidate_id": cand.candidate_id, "space_id": space.space_id,
-                "best_ms": None, "snapshot": tuner.snapshot(),
+                "best_ms": None, "snapshot": tuner.snapshot(), "deweight": deweight,
             })
 
     def _run_trial(self, crun: CandidateRun, space: ParameterSpace, trial_id: str,
@@ -1763,6 +1797,31 @@ class Orchestrator:
         return defined - launched - device_helper_names(tree, defined)
 
     # ------------------------------------------------------------- loop C: rewrite
+
+    def _restore_deweight_ledger(self) -> None:
+        """S1b: rebuild the per-run deweight evidence from the TRIAL_DONE stream.
+
+        The ledger holds only counters, so it is cheaper to re-derive than to snapshot -- and
+        re-deriving is also what keeps a resumed run honest: `observe` is order-independent
+        (a fire needs zero passes and pass counts never decrease), so replaying the log in order
+        reaches exactly the state the uninterrupted run held.
+
+        Journalled after restoring, because "which values fired" is the only way to read this
+        mechanism's effect out of a finished run. The rule COUNT is part of that record: a zero
+        mis-kill rate over 4 rules and over 33 rules differ by an order of magnitude in evidence,
+        and any later claim about this mechanism has to be divided by that denominator.
+        """
+        if self.deweight_ledger is None:
+            return
+        state = self.store.replay()
+        n = 0
+        for trials in state.trials.values():
+            for raw in trials:
+                self.deweight_ledger.observe(TrialRecord.model_validate(raw))
+                n += 1
+        if n:
+            self.store.append("DEWEIGHT_LEDGER_RESTORED",
+                              {"trials_folded": n, **self.deweight_ledger.snapshot()})
 
     def _restore_family_control_state(self) -> None:
         """Rebuild memory-only Family control fields from the event log before Loop C.

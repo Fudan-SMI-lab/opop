@@ -308,17 +308,30 @@ class V3SearchConfig(BaseModel):
     # rejected anything. Truth comes from the compiler, not from an expression.
     declare_infeasible_out_of_space: bool = False
 
-    # S1b: down-weight a categorical VALUE whose failures cannot be explained by any partner.
-    # Deliberately down-weighting and not removal, and deliberately not a count.
+    # S1b: down-weight a categorical VALUE whose failures no partner can explain. The criterion
+    # and every constant in it are measured; `tuning/deweight.py` carries the full derivation.
+    # In short: evidence pooled on (candidate_id, knob, value) across that candidate's spaces --
+    # never across candidates, never across runs -- fires at 7 failures with zero passes, retracts
+    # permanently on the first pass, and down-weights to 1/4 rather than removing.
     #
-    # The count-based version ("retire a value after N total failures") was tested against history
-    # before being written and is REFUSED: at N=6 it retired 13 values on one box of which 5 later
-    # succeeded (38.5%), and PJ_BC=64 -- which really passed 102 of 176 times -- was among the
-    # casualties. Failure is almost always CONDITIONAL (ATTN_BLOCK_N=128 passed 0/3 beside
-    # GEMM_BLOCK_K=128 and 7/11 beside 64) while retirement is unconditional. tf32 is the
-    # measurably different case: 0 passes under every value of every other knob. So the criterion
-    # is unconditionality plus a live control, and the action keeps a non-zero probability so a
-    # wrong call can still be corrected by later trials.
+    # Two earlier versions of this criterion were refused by measurement, and both are worth
+    # keeping in view because they were each argued to be the safe one:
+    #
+    #   "retire a value after N total failures" -- at N=6 it retired 13 values on one box of which
+    #   5 later succeeded (38.5%), PJ_BC=64 among them, which really passed 102 of 176 times.
+    #   Failure is almost always CONDITIONAL while retirement is unconditional.
+    #
+    #   "unconditional + median-M sample sufficiency + a live control" -- my own replacement, and
+    #   prospective replay measured it at 67.5% value-level mis-kill against the blacklist's 2.3%.
+    #   median-M is adaptive, so early in a space it is tiny and fires before the evidence exists.
+    #
+    # What survived: the count floor was doing the work all along, and the pooling SCOPE decides
+    # whether the evidence means anything. Pooling across a whole run pools across CANDIDATES,
+    # which mixes evidence about different source code -- the root cause is the candidate's own
+    # uncompensated `dot` -- and its apparent 249-trial saving rests on 4 rules, whose 0 mis-kills
+    # carry a 95% upper bound of 52.7%. Per-candidate saves 206 from 33 rules, bound 8.7%, and is
+    # the only scope whose floor is stable under leave-one-out ([7,7,7,7,7] against [7,7,7,6,7] and
+    # [5,7,7,7,7]).
     deweight_unconditional_failures: bool = False
 
 

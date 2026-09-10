@@ -28,11 +28,16 @@ class OptunaTPETuner:
         anchors: tuple[ParamSet, ...] = (),
         constant_liar: bool = False,
         max_guard_rejects_per_ask: int = 64,
+        deweight_reject: Callable[[ParamSet], bool] | None = None,
     ):
         self.space = space
         self.guard_ok = guard_ok
         self.budget = budget
         self.max_guard_rejects = max_guard_rejects_per_ask
+        # S1b. None = off, which is the pre-v3 behaviour. A callable returns True to refuse a
+        # drawn configuration probabilistically because it holds a value whose failures no
+        # partner explains; see tuning/deweight.py for the criterion and its measurements.
+        self.deweight_reject = deweight_reject
         sampler = TPESampler(
             seed=seed,
             multivariate=True,
@@ -67,6 +72,20 @@ class OptunaTPETuner:
                 rejects += 1
                 continue
             if not self.guard_ok(params):
+                self.study.tell(trial, state=TrialState.PRUNED)
+                rejects += 1
+                continue
+            if self.deweight_reject is not None and self.deweight_reject(params):
+                # S1b. Told PRUNED and re-asked, exactly like a guard rejection, and counted
+                # against the SAME bounded reject budget -- so a space where many values have
+                # fired degrades into "ask fewer times", never into a spin. Crucially this costs
+                # no GPU: the refusal happens before the trial is run.
+                #
+                # PRUNED rather than FAIL for the same reason the guard path uses it: Optuna keeps
+                # pruned trials in the TPE model and drops failed ones, so pruning lets the
+                # sampler see that this region was visited and passed over. It is not a claim that
+                # the point is infeasible -- the point may well be drawn and measured on a later
+                # ask, which is the whole difference between down-weighting and removal.
                 self.study.tell(trial, state=TrialState.PRUNED)
                 rejects += 1
                 continue
