@@ -346,6 +346,54 @@ class OpencodeClient:
         """Seconds of zero output after which a call counts as hung. Derived, never hardcoded."""
         return max(60.0, self.timeout_s * self.idle_abort_frac)
 
+    def _session_is_working(self, session_id: str) -> bool | None:
+        """Is the server still working on this session's turn? True / False / None = cannot tell.
+
+        The second half of G20's productivity signal, added after the sandbox-only version killed
+        5 of 6 legitimate calls (G24). A reasoning model can think for many minutes without
+        touching its sandbox, so "no local files changed" is not evidence of a hang. The server,
+        however, knows whether the turn is still running.
+
+        Three properties matter:
+
+        1. It uses its OWN short-lived transport, NOT `self._http`. The watchdog runs while the
+           main transport is blocked on the streaming POST, and issuing a request on it from
+           another thread would either block behind that read or disturb it.
+        2. Anything unexpected returns None, never False. None means "cannot tell" and the caller
+           treats it exactly like an unreadable sandbox -- never grounds to abort. A probe failure
+           must not be able to kill a working call; that inversion (reporting a diagnostic failure
+           as an agent failure) is a shape this project has hit repeatedly.
+        3. It is only consulted AFTER the sandbox has been silent for the whole window, so it costs
+           one cheap request per abort decision, not one per poll.
+        """
+        try:
+            with httpx.Client(base_url=self.base_url, timeout=httpx.Timeout(15.0)) as probe:
+                resp = probe.get(f"/session/{session_id}")
+                if resp.status_code != 200:
+                    return None
+                info = resp.json()
+        except Exception:  # noqa: BLE001 -- a probe must never be the thing that fails a call
+            return None
+        if not isinstance(info, dict):
+            return None
+        # opencode has expressed "this turn is running" differently across versions, so accept any
+        # of the known spellings and fall back to None (cannot tell) rather than guessing False.
+        for key in ("working", "busy", "running", "isWorking", "isBusy"):
+            v = info.get(key)
+            if isinstance(v, bool):
+                return v
+        # A `revert`/`time.completed` style marker: a completed timestamp means not working.
+        t = info.get("time")
+        if isinstance(t, dict):
+            if t.get("completed") is not None:
+                return False
+            if t.get("created") is not None:
+                # Present but not completed -- the turn exists and has not finished. Report None
+                # rather than True: absence of a completion marker is weaker evidence than an
+                # explicit flag, and None is the safe direction (never aborts).
+                return None
+        return None
+
     def _abort_and_close(self, session_id: str) -> None:
         """End the turn and unblock the streaming POST.
 
@@ -398,6 +446,24 @@ class OpencodeClient:
             body["format"] = {"type": "json_schema", "schema": schema, "retryCount": 2}
         params = {"directory": str(directory)} if directory else None
 
+        # A transport closed by a PREVIOUS abort must not sink this call. `_abort_and_close` closes
+        # `self._http` to unblock a stuck streaming POST, and while the abort path rebuilds it, an
+        # abort raised on the watchdog thread can land between a caller's retries -- and httpx then
+        # raises a bare `RuntimeError("Cannot send a request, as the client has been closed.")`,
+        # which is NOT an AgentCallError and so escapes AgentModule's retry loop entirely.
+        #
+        # Measured, 2026-09-10 (G24): three G9 arms died exactly this way, losing calls that had
+        # nothing wrong with them. Reopening here rather than at each abort site is deliberate --
+        # it covers every path that can close the transport, including future ones, instead of
+        # relying on each of them to remember.
+        # `getattr` because `_http` is substituted by a fake in tests and by any future transport
+        # wrapper; a missing attribute means "not a closed httpx client", so carry on rather than
+        # crash. A guard that breaks callers who inject a transport is worse than the bug it fixes.
+        if getattr(self._http, "is_closed", False):
+            self._http = httpx.Client(
+                base_url=self.base_url, timeout=httpx.Timeout(self.timeout_s)
+            )
+
         # A watchdog, but NOT a time budget on the agent's thinking. An agent legitimately runs
         # long: it compiles kernels, launches them, reads results. Cutting a call at a wall-clock
         # deadline destroys exactly the work it was doing -- measured on the 4057s call whose
@@ -449,21 +515,55 @@ class OpencodeClient:
                 # None means the sandbox could not be read, which is "cannot tell" and must never
                 # be grounds to abort: an unreadable directory would otherwise look exactly like a
                 # hung agent and cut every call.
+                #
+                # MEASURED FALSE POSITIVE, 2026-09-10 (G24). The sandbox fingerprint ALONE killed
+                # 5 of 6 legitimate calls on L3:21 at 12.7 min, each reporting "25 files,
+                # unchanged". Those 25 files were the SEEDED INPUTS (18 .git hook samples,
+                # opencode.json, 6 input docs) -- the agent had written nothing yet, and no
+                # `rewrites/` directory existed in any of them. The sixth call, identical in every
+                # way, wrote its first kernel at 11.5 min and finished at 15.2 min with two valid
+                # candidates. So the five aborts landed roughly a minute before their output
+                # would have appeared.
+                #
+                # The premise "an agent that is working changes its sandbox" is FALSE for a
+                # reasoning model: glm-5.3 does its thinking server-side and writes nothing local
+                # until it emits the answer. A long silent think is indistinguishable from a hang
+                # by files alone -- so files alone must not decide.
+                #
+                # The fix keeps the principle (a call that has genuinely stopped should end) and
+                # replaces the evidence: a call counts as productive if EITHER its sandbox changed
+                # OR the server still reports its session as working. The server-side check is the
+                # authority on "is this turn still alive", which is precisely what the file tree
+                # cannot see. Only when BOTH say nothing is happening does the call get cut.
                 if self.idle_abort_frac > 0 and last_print is not None:
                     now_print = _output_fingerprint(directory)
                     if now_print is not None:
                         if now_print != last_print:
                             last_print, last_change = now_print, time.time()
                         elif time.time() - last_change >= self.idle_abort_s:
+                            # Silent on disk for the whole window. Before cutting, ask the server
+                            # whether the turn is still running. `None` = cannot tell, which is
+                            # treated exactly like the unreadable-sandbox case: never grounds to
+                            # abort.
+                            still_working = self._session_is_working(session_id)
+                            if still_working is not False:
+                                # Productive (or unknown) -- restart the window rather than cut.
+                                # Restarting is deliberate: it means a call that keeps reporting
+                                # itself alive is never cut by this rule, and the transport
+                                # ceiling remains the only hard stop for it. That is the correct
+                                # trade: the ceiling costs one sample, a false abort costs the
+                                # sample AND corrupts the experiment it was part of.
+                                last_change = time.time()
+                                continue
                             idle_min = (time.time() - last_change) / 60.0
                             fired.set()
                             fired_reason.append(
                                 f"no new output for {idle_min:.1f} min "
                                 f"({self.idle_abort_frac:.0%} of the {self.timeout_s:.0f}s "
                                 f"transport ceiling): {now_print[0]} files, "
-                                f"{now_print[1]} bytes, unchanged. A call that has stopped "
-                                f"producing is not thinking, and waiting out the full ceiling "
-                                f"costs a sample."
+                                f"{now_print[1]} bytes, unchanged, AND the server reports the "
+                                f"session is not working. A call that has stopped producing is "
+                                f"not thinking, and waiting out the full ceiling costs a sample."
                             )
                             self._abort_and_close(session_id)
                             return
