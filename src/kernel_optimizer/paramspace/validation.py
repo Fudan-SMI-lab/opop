@@ -278,6 +278,10 @@ class SpaceValidator:
         `COMPUTE_DTYPE=fp16`, differing from the dead minimal witness only in `NUM_STAGES`
         1->2 and 1->3, so the budget was spent re-confirming the overflow and the candidate was
         rejected with `witness_minimal_failed` after its algorithm had already been repaired.
+        That is not a simulation: the run left `witness_minimal.py`, `witness_alt1.py` and
+        `witness_alt2.py` on disk, all three `fp16`/`plain` at BL=64/BN=128/BP=64/NUM_WARPS=2,
+        differing only in `NUM_STAGES` 1, 2, 3. Two real GPU quick tests spent on the dtype that
+        had just produced 16.07M NaN and 3.33M Inf.
 
         So sort by how many knobs a config changes relative to the failed ones, descending. That
         needs no knowledge of which knob is the precision and no dtype list: whatever the failing
