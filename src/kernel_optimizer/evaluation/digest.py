@@ -39,6 +39,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from kernel_optimizer.evaluation.bounds import describe
 from kernel_optimizer.evaluation.dimensions import DimensionRecord, DimensionState
 
 # Severity ordering for the recommendation list. Binding first, then near-binding; slack and
@@ -94,6 +95,10 @@ class DimensionFinding(BaseModel):
     measured_present: bool = False
     confidence: float = 1.0
     note: str = ""
+    # S3: "how much room is left", or an explicit statement that it is not derivable. Rendered as
+    # TEXT, not as the bound object -- the prompt boundary takes strings (see `for_prompt`), and an
+    # invented floor is worse than no floor, so `unknown` has to survive into the sentence.
+    room_left: str = ""
 
 
 class Digest(BaseModel):
@@ -112,6 +117,11 @@ class Digest(BaseModel):
     # dimension's state -- and because J2-4's failing condition is "it still appears in the
     # recommendation", which only means something if they are structurally outside the ranked list.
     unreachable_ceilings: tuple[str, ...] = ()
+    # S3: where the compute denominator came from, and a WARNING when it was measured at a different
+    # precision than the kernel computes in. Its own field for the same reason as above: it is about
+    # the denominator, and the 107.8% incident was a wrong denominator that made a kernel with 40-46%
+    # headroom read as saturated.
+    ceiling_notes: tuple[str, ...] = ()
 
     def binding(self) -> tuple[DimensionFinding, ...]:
         return tuple(f for f in self.findings if f.severity == "binding")
@@ -150,7 +160,8 @@ def assert_no_raw_vector(value: Any) -> None:
 
 
 def digest(state: DimensionState, *, ceiling_notes: dict[str, str] | None = None,
-           unreachable: tuple[str, ...] = ()) -> Digest:
+           unreachable: tuple[str, ...] = (),
+           denominator_notes: tuple[str, ...] = ()) -> Digest:
     """Turn the per-dimension state into findings. One finding per record, no merging, no dropping.
 
     D-9 is enforced structurally rather than by intent: the loop is over `state.records`, so the
@@ -158,6 +169,7 @@ def digest(state: DimensionState, *, ceiling_notes: dict[str, str] | None = None
     function's shape. J2-9 asserts that equality from the outside as well.
 
     `unreachable` comes from `dimensions.unreachable_ceilings()` and is carried through untouched.
+    `denominator_notes` (S3) carries the compute ceiling's provenance and any precision mismatch.
     """
     notes = ceiling_notes or {}
     findings: list[DimensionFinding] = []
@@ -192,6 +204,10 @@ def digest(state: DimensionState, *, ceiling_notes: dict[str, str] | None = None
             measured_present=rec.measured is not None,
             confidence=rec.confidence,
             note=note.strip(),
+            # S3. Only for a dimension with a measurement -- "room left" on an unmeasured dimension
+            # would be a statement about a number nobody has.
+            room_left=(describe(rec.dimension_id, rec.bound)
+                       if rec.bound is not None and rec.measured is not None else ""),
         ))
 
     # Order by severity then by confidence. STATED, because there is no measured rule for which
@@ -221,7 +237,8 @@ def digest(state: DimensionState, *, ceiling_notes: dict[str, str] | None = None
 
     return Digest(candidate_id=state.candidate_id, findings=tuple(ranked),
                   ordering_basis=basis, unmeasured=tuple(unmeasured),
-                  unreachable_ceilings=tuple(unreachable))
+                  unreachable_ceilings=tuple(unreachable),
+                  ceiling_notes=tuple(denominator_notes))
 
 
 def for_prompt(d: Digest) -> str:
@@ -257,6 +274,15 @@ def for_prompt(d: Digest) -> str:
         if f.severity in ("binding", "near-binding"):
             head += f": {f.root_cause}"
         lines.append(head + (f" ({f.note})" if f.note else ""))
+    if any(f.room_left for f in d.findings):
+        # S3, its own section rather than appended to each severity line: "how far from the roof" and
+        # "how much room is left" are different questions, and for most dimensions the second answer
+        # is UNKNOWN. Mixing an unknown into a line that also states a band invites reading the band
+        # as the room figure.
+        lines += ["", "**How much room is left** (distance to a FLOOR, not to the roof above). "
+                      "Most dimensions have no derivable floor and say so — an invented floor would "
+                      "be worse than none, because it would make a dimension look exhausted:"]
+        lines += [f"- {f.room_left}" for f in d.findings if f.room_left]
     lines += ["", f"**Reading order.** {d.ordering_basis}"]
     if d.unmeasured:
         lines += ["", "**Unmeasured dimensions** (absence is not a clean bill of health): "
@@ -268,4 +294,9 @@ def for_prompt(d: Digest) -> str:
         lines += ["", "**Roofs that are NOT what you are measured against.** Aiming at one of these "
                       "is aiming at a number nothing here was compared to:"]
         lines += [f"- {c}" for c in d.unreachable_ceilings]
+    if d.ceiling_notes:
+        # S3. A wrong denominator is the one defect that makes a kernel with headroom read as
+        # saturated, so where the denominator came from belongs beside the percentages it qualifies.
+        lines += ["", "**Where the compute denominator came from.**"]
+        lines += [f"- {c}" for c in d.ceiling_notes]
     return "\n".join(lines)

@@ -1406,6 +1406,7 @@ class Orchestrator:
             from kernel_optimizer.evaluation.digest import digest as make_digest
             from kernel_optimizer.evaluation.digest import for_prompt
             from kernel_optimizer.evaluation.dimensions import (
+                compute_ceiling_provenance,
                 state_from_evidence,
                 unreachable_ceilings,
             )
@@ -1416,11 +1417,29 @@ class Orchestrator:
                 candidate_id=crun.candidate.candidate_id,
                 structural_signature=crun.candidate.structural_signature,
                 device_limits=self.cfg.device.model_dump(),
+                # S3: the only source of a task-specific FLOOR, and the source of a ceiling's identity
+                # and date. `task_cost.py` is read, never modified -- its "measured on the reference,
+                # task-level" design is deliberate, and replacing it would destroy the L3:48 "only
+                # ~10% left" conclusion.
+                task_cost=self.task_cost,
+                calibration=self.calibration,
             )
             unreachable = unreachable_ceilings(verdict.evidence)
-            d = make_digest(state, unreachable=unreachable)
+            # S3: where the compute denominator came from, plus a mismatch warning when it was
+            # measured at a different precision than the kernel computes in. That inversion is not
+            # hypothetical -- an fp16 kernel against a tf32 ceiling read 107.8% of peak.
+            prov = compute_ceiling_provenance(verdict.evidence, self.calibration)
+            notes = [prov.note] if prov.note else []
+            mismatch = prov.precision_mismatch(verdict.evidence.get("candidate_precision"))
+            if mismatch:
+                notes.append(mismatch)
+            if prov.calibration_identity:
+                notes.append("measured on %s at %s" % (prov.calibration_identity,
+                                                       prov.measured_at or "an unrecorded time"))
+            d = make_digest(state, unreachable=unreachable,
+                            denominator_notes=tuple(notes))
             # P4/D-7: the collection's own self-check. Annotates, never rejects.
-            notes = check_applicability(list(state.records))
+            applicability_notes = check_applicability(list(state.records))
             self.store.append("DIMENSION_STATE", {
                 "candidate_id": crun.candidate.candidate_id,
                 "structural_signature": crun.candidate.structural_signature,
@@ -1428,7 +1447,12 @@ class Orchestrator:
                 "n_binding": len(state.binding()),
                 "binding": [r.dimension_id for r in state.binding()],
                 "unreachable_ceilings": list(unreachable),
-                "applicability_notes": notes,
+                # S3: journalled so a later reader can tell a measured denominator from a substituted
+                # one WITHOUT re-deriving it, and so a precision mismatch is visible in the log even
+                # if nothing acted on it.
+                "compute_ceiling_provenance": prov.model_dump(),
+                "precision_mismatch": mismatch or "",
+                "applicability_notes": applicability_notes,
                 "digest": d.model_dump(),
                 # Which arm this run is on, in the event itself: a later reader must not have to
                 # infer it from the config file, which may have moved on.

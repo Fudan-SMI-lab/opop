@@ -401,11 +401,17 @@ def test_a_measured_dimension_with_no_ceiling_is_not_rendered_as_not_measured():
     Asserts the line is PRESENT before asserting what it says. Without that, a digest that dropped
     the dimension entirely would satisfy the loop vacuously -- which is what happened under the
     "compressor" variant, where this test passed for the wrong reason.
+
+    Scoped to the per-dimension SEVERITY section. S3 added a second section ("how much room is left")
+    which names every measured dimension again, so an unscoped per-line scan sees two lines per
+    dimension and fails on the second -- a test that reads the whole document cannot say WHICH
+    statement it is checking.
     """
     st = state_from_evidence(l3_48_evidence(), device_limits=A800)
     text = for_prompt(digest(st))
+    section = text.split("**How much room is left**")[0]
     seen = 0
-    for line in text.splitlines():
+    for line in section.splitlines():
         if "candidate_aten_bytes" in line or "candidate_aten_ops" in line:
             seen += 1
             assert "NOT MEASURED" not in line
