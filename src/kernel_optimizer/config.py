@@ -6,17 +6,47 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from kernel_optimizer.models.core import DeviceLimits
 
 
-class RunConfig(BaseModel):
+class StrictConfig(BaseModel):
+    """Base for every config block: an unknown key is an ERROR, not a silent drop.
+
+    Pydantic's DEFAULT is to ignore unknown keys, and for a config loaded by `load_config` --
+    which reads ONE file with no base layer, so an omitted key falls back to a field default --
+    that default turns every typo into a silent revert to the default behaviour. The failure is
+    not hypothetical and not cosmetic:
+
+      * A `v3:` block is the FIRST thing any experiment sets and no config had ever carried one,
+        so the YAML->pydantic path for those switches was entirely unexercised. Measured before
+        this change: `v3.diagnosis.modes: vector` (plural) and `expectation_ledgers: true`
+        validated cleanly and left `mode="label"` / `expectation_ledger=False`. A treatment arm
+        written with either typo would have been a SECOND CONTROL ARM, the two runs would have
+        agreed, and the conclusion drawn from 24 h of GPU time would have been "the vector shape
+        changes nothing" -- the diagnosis inverted, the same shape as scoring an fp16 kernel
+        against a tf32 ceiling and reading 107.8% of peak as "saturated, stop optimising".
+      * The same family already cost this project a schema: `ResourceExpectation.expected_pct`
+        validated and vanished, so an agent reasoned from a magnitude nothing ever checked. That
+        one was closed with `extra="forbid"`; this is the same fix at the config layer.
+      * `_apply_override` builds its path with `setdefault`, so `--set v3.diagnosis.modes=vector`
+        creates the key rather than failing. Forbidding at the MODEL layer closes the YAML path
+        and the CLI path together, instead of validating a key list in two places.
+
+    Verified at the time of the change: all 10 files in `configs/` validate with no dropped key,
+    so this rejects only what was already being ignored.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class RunConfig(StrictConfig):
     runs_dir: Path = Path("runs")
     seed: int = 0
 
 
-class OpencodeConfig(BaseModel):
+class OpencodeConfig(StrictConfig):
     server_url: str | None = None  # null => harness launches `opencode serve`
     launch_cwd: Path = Path("D:/Pyhon_projects/opop")
     host: str = "127.0.0.1"
@@ -101,7 +131,7 @@ class OpencodeConfig(BaseModel):
     server_env: dict[str, str] = Field(default_factory=dict)
 
 
-class AgentModuleConfig(BaseModel):
+class AgentModuleConfig(StrictConfig):
     model: str | None = None  # None => agents.default_model
     max_retries: int = 2
     # NOT CONSUMED ANYWHERE (verified: nothing reads `AgentModuleConfig.timeout_s`). The single
@@ -120,7 +150,7 @@ class AgentModuleConfig(BaseModel):
     max_transport_retries: int = 2
 
 
-class AgentsConfig(BaseModel):
+class AgentsConfig(StrictConfig):
     default_model: str = "openai/gpt-5.6-sol"
     generator: AgentModuleConfig = AgentModuleConfig()
     parameterizer: AgentModuleConfig = AgentModuleConfig()
@@ -136,7 +166,7 @@ class AgentsConfig(BaseModel):
         return cfg
 
 
-class BudgetConfig(BaseModel):
+class BudgetConfig(StrictConfig):
     trials_per_space: int = 40
     # 5, was 3. At 3 the round cap fired BEFORE the convergence test it exists to defer to:
     # across 18 L3 runs, 16 families froze on `budget_exhausted` and 3 of them were still
@@ -217,7 +247,7 @@ class BudgetConfig(BaseModel):
     prefetch_parameterization: int = 1
 
 
-class EvalConfig(BaseModel):
+class EvalConfig(StrictConfig):
     correctness_trials: int = 5
     perf_trials: int = 100
     quick_correctness_trials: int = 3
@@ -254,14 +284,14 @@ class EvalConfig(BaseModel):
     fp64_rel_multiplier_lowp: float = 3.0  # ... and 3.0 for fp16/bf16 (avoids false alarms)
 
 
-class GpuConcurrencyConfig(BaseModel):
+class GpuConcurrencyConfig(StrictConfig):
     enabled: bool = True
     max_shared_jobs: int = 2  # correctness/compile/static-check only; timing is exclusive
     vram_budget_frac: float = 0.45
     timing_cooldown_s: float = 2.0
 
 
-class WslConfig(BaseModel):
+class WslConfig(StrictConfig):
     distro: str = "Ubuntu"
     # MUST be on ext4, never under /mnt/* (a 9p mount of a Windows drive). Small-file
     # reads on 9p cost ~100x more than on ext4, and `import torch` reads thousands of
@@ -278,7 +308,7 @@ class WslConfig(BaseModel):
     triton_cache_dir: str = "~/.triton-cache-kopt"
 
 
-class GpuConfig(BaseModel):
+class GpuConfig(StrictConfig):
     concurrency: GpuConcurrencyConfig = GpuConcurrencyConfig()
     # P1: refuse configurations whose compiled shared-memory requirement exceeds the device's
     # per-block opt-in limit, before paying for a launch. On L3:43 this class was 180 of 1004
@@ -288,7 +318,7 @@ class GpuConfig(BaseModel):
     compile_screen_enabled: bool = True
 
 
-class V3SearchConfig(BaseModel):
+class V3SearchConfig(StrictConfig):
     """S1 / S1b: what the tuner is allowed to change about the SPACE it samples from.
 
     Both default OFF. Every stage of v3 needs its own control run -- the same task, the same
@@ -335,7 +365,7 @@ class V3SearchConfig(BaseModel):
     deweight_unconditional_failures: bool = False
 
 
-class V3DiagnosisConfig(BaseModel):
+class V3DiagnosisConfig(StrictConfig):
     """S2 / S2b / S2d: what the agent is told about resources, and in what shape."""
 
     # S2: `label` is v2's behaviour -- one `kind` string per candidate, which measured 19 of 20
@@ -370,7 +400,7 @@ class V3DiagnosisConfig(BaseModel):
     access_pattern_walls: bool = False
 
 
-class V3Config(BaseModel):
+class V3Config(StrictConfig):
     """The v3 stages, each behind its own switch, all off by default.
 
     Grouped rather than flat so that a stage's switches sit together and a YAML that sets one does
@@ -384,7 +414,7 @@ class V3Config(BaseModel):
     diagnosis: V3DiagnosisConfig = V3DiagnosisConfig()
 
 
-class AppConfig(BaseModel):
+class AppConfig(StrictConfig):
     run: RunConfig = RunConfig()
     opencode: OpencodeConfig = OpencodeConfig()
     agents: AgentsConfig = AgentsConfig()

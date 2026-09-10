@@ -1,0 +1,124 @@
+# S2 + S2d TREATMENT ARM -- box 3 (A800 80GB PCIe). Pairs with experiments_l3_glm_a800.yaml.
+#
+# This file exists to be DIFFED against its control, not read on its own. It is the control file
+# verbatim plus one `v3:` block, and `tests/test_config_strictness.py`'s
+# `test_the_two_arms_of_the_control_run_differ_in_exactly_two_keys` asserts that the two RESOLVED
+# configs differ in exactly `v3.diagnosis.mode` and `v3.diagnosis.expectation_ledger` -- computed
+# over the whole model, so drift anywhere in either file is caught. That assertion is the reason
+# this is a separate file rather than edits to the control: J2-5 asks whether the final result got
+# WORSE, and a difference cannot be attributed if a budget or a tolerance moved too.
+#
+# WHY THE CONTROL ARM IS THE FILE WITH NO `v3:` BLOCK, NOT A FILE THAT SPELLS OUT THE DEFAULTS:
+# `load_config` reads exactly ONE file with no base layer, so an omitted key falls back to the
+# pydantic field default -- and those defaults ARE v2's behaviour (`mode: label`,
+# `expectation_ledger: false`). Stating them explicitly in a control file would add a second place
+# for them to drift out of step with the code.
+#
+# HAZARD THIS FILE IS THE FIRST TO TOUCH -- READ BEFORE COPYING IT:
+# No config in this project had ever carried a `v3:` block, so the YAML->pydantic path for these
+# switches was completely unexercised until this file. Measured on 2026-09-11, BEFORE the fix in
+# the same commit: `modes: vector` (plural) and `expectation_ledgers: true` both validated cleanly
+# and left the switches OFF. This file would have been a SECOND CONTROL ARM, the two 12 h runs
+# would have agreed, and the conclusion drawn from 24 h of GPU time would have been "the vector
+# shape changes nothing" -- with no error anywhere to notice. Every config block now inherits
+# `StrictConfig` (`extra="forbid"`), so a typo here is a loud ValidationError at load time. Do not
+# remove that and do not add a key to a config model without it.
+#
+# Launch -- ONE task at a time, and the two arms SEQUENTIALLY, never concurrently (two runs on one
+# GPU time kernels simultaneously and silently corrupt each other's measurements):
+#   kernel-opt --config configs/experiments_l3_glm_a800.yaml     run --task level3:43   # control
+#   kernel-opt --config configs/experiments_l3_glm_a800_s2.yaml  run --task level3:43   # treatment
+#
+# EVERYTHING BELOW THE `v3:` BLOCK IS COPIED VERBATIM FROM experiments_l3_glm_a800.yaml. That
+# file's comments explain each value -- in particular NOTE A (one venv serves both roles here) and
+# NOTE B (why the `device:` block is the one that fails silently). They are not repeated here so
+# that a `diff` of the two files shows only the switch.
+
+v3:
+  diagnosis:
+    # S2: one independent record per resource DIMENSION reaches the prompt, instead of the single
+    # `kind` label -- which measured 19 of 20 reports on L3:21 carrying the same value. The vector
+    # is journalled to events.jsonl in BOTH arms regardless of this switch, so the control run is
+    # analysable from its own log and J2-1 (does discrimination rise) does not need this file at
+    # all. This switch decides only what reaches the PROMPT, which is the part with an external
+    # counter-example: few-shot optimisation exemplars measurably LOWERED fast_1 on KernelBench L1
+    # (10% -> 6%), so more information reaching an agent is not assumed to be an improvement.
+    mode: vector
+
+    # S2d: the rewriter states, per dimension, which way it expects the resource to move; the
+    # harness reconciles that against measurement afterwards. Direction only, never a magnitude --
+    # change rates are not derivable in advance (no closed form for shared memory: 0 of 96 exact;
+    # the cost map is not separable: 0 of 10 one-step deltas agreed; even the SIGN is unreliable:
+    # 13 non-monotone slices, BK 16->32 dropping 58 registers while 32->64 added 87).
+    #
+    # EXPECT LITTLE FROM THIS ARM ON ONE RUN, and that is a property of the budget, not of S2d: the
+    # ledger is empty until round 2, and 5 completed L3 runs used 9 rewrite rounds IN TOTAL (1-2
+    # each). So the per-round sample here is single-digit. Its first-run job is to show the
+    # mechanism runs end to end and does not make the result worse -- not to show a gain.
+    expectation_ledger: true
+
+# ---------------------------------------------------------------------------------------------
+# VERBATIM FROM THE CONTROL FILE BELOW THIS LINE.
+# ---------------------------------------------------------------------------------------------
+
+run:
+  runs_dir: /root/autodl-tmp/work/opop-glm/runs-l3
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/work/KernelBench   # which reference PROBLEM FILE is loaded
+
+opencode:
+  server_url: null
+  launch_cwd: /root/autodl-tmp/work/opop-glm
+  sandbox_config_path: /root/autodl-tmp/work/opop-glm/.opencode/opencode.jsonc
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+
+wsl:
+  venv: /root/autodl-tmp/orch-venv              # see NOTE A in the control file
+  kernelbench_src: /root/autodl-tmp/work/KernelBench/src
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-kopt
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed   # tf32|ieee dual-witness relaxed gate
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+# MEASURED on THIS card -- see NOTE B in the control file for why reusing box 1's block is the
+# silent failure that made a per-box config necessary.
+device:
+  name: NVIDIA A800 80GB PCIe (sm_80)
+  vram_gb: 79
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 166912     # 1.65x the 4090's 101376 -- admits tiles infeasible there
+  max_threads_per_block: 1024

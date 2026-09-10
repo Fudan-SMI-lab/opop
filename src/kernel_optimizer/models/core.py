@@ -375,7 +375,15 @@ class Baseline(BaseModel):
 
 
 class DeviceLimits(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    # `extra="forbid"` alongside frozen: this block is loaded from the experiment YAML, where a
+    # mistyped key would silently fall back to the defaults below -- and those defaults describe a
+    # 16 GB consumer card. `_device_doc()` writes these six values verbatim into every agent
+    # sandbox's docs/device.md and `as_env()` exposes them to agent-authored constraint
+    # expressions, so a dropped `max_shared_bytes_optin` tells every agent on the A800 that it has
+    # 101376 B instead of 166912 B and silently forbids the tile sizes that box exists to explore.
+    # No error, no warning, just wrong kernels. An omitted `device:` block has already told every
+    # L3 agent its GPU was "unknown".
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str = "unknown"
     vram_gb: float = 16.0
