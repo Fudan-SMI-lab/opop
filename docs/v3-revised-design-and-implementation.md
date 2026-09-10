@@ -913,10 +913,12 @@ S1b 编码 + 全语料前瞻重放 ─┐        S2 编码(含 G28 + N1/N2/N9)�
 | 3 | A800 三个任务噪声底 | ✅ **完成**,**跨卡未变**(负面结果) | `6a309a7` |
 | A | **S0** 四个 v3 开关 | ✅ **完成**,6 个测试 | `6a309a7` |
 | B | ~~S1 编码 + `replay_sampler.py`~~ | ❌ **撤下**(实测不值得做) | `fc7ab41` + 本次 |
-| B′ | **S1b** 重做后的判据(per-candidate 汇总 + 撤回 + N=7 + k=4) | ⏳ 下一步,1 天,**零 GPU 验收** | 风险分析 `result-s1b-risk-analysis.md` |
-| C | S2 编码(含 G28 + N1/N2/J2-9) | ⏳ 可与 B′ 并行 | — |
+| B′ | **S1b** 重做后的判据(per-candidate + 撤回 + N=7 + k=4) | ✅ **完成**,36 个测试 + 四条判据在真实语料上通过 | `2ba665b` / `35f5928` |
+| C | S2 编码(含 G28 + N1/N2/J2-9) | ⏳ **下一步** | — |
 
-**A800 suite:467 passed / 0 failed**(`8eb8d16`)。
+**A800 suite:508 passed / 0 failed**(`35f5928`)。
+
+**S1b 实测结果**(出厂代码跑 2559 个真实 trial,`scripts/verify_s1b_acceptance.py`):per-candidate **33 条规则、省 228 个失败 trial(≈1.7 h)、误杀 0、95% 上界 ≤8.7%**。harness 自身的正对照成立:阈值 1 读出 **21.75%** 误杀,阈值 7 读出 0 —— 所以这个 0 是机制的性质而非 harness 失效。详见 `docs/result-s1b-implemented.md`。
 
 **步 B 的结论是撤下,并且它同时否证了我自己的两处设计**(见 `docs/decision-s1-not-worth-building.md`):
 
