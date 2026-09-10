@@ -10122,3 +10122,117 @@ def test_orchestrator_passes_per_candidate_cost_to_the_classifier():
         "the task-level counts were removed in favour of per-candidate ones; they answer a "
         "different question (the task's own floor) and both are needed"
     )
+
+
+def test_a_resource_improvement_without_a_speedup_is_not_scored_as_success():
+    """G3: latency is the ONLY final criterion; a resource change is a means, never an end.
+
+    The defect this closes: the harness measured resources and measured latency and never tied
+    them together, so a rewrite that improved every resource figure while latency stayed put was
+    recorded exactly like one that improved both. Across 23 measured rewrites above the noise
+    floor, 11 relieved no binding resource dimension and still got faster -- so the mirror case
+    (resources better, latency flat) is certain to occur, and had no way to be reported.
+
+    The `no_conversion` verdict is the informative one: a resource that improved substantially
+    while latency did not move is direct evidence that THAT RESOURCE WAS NOT THE LIMIT, which is
+    sturdier than any utilisation label because it compares two real measurements of the same
+    family rather than a ratio against an assumed ceiling.
+    """
+    from kernel_optimizer.evaluation.conversion import conversion_verdict
+    from kernel_optimizer.models.core import ProfileRecord
+
+    # Every resource better, latency unmoved. Must NOT read as a success.
+    before = ProfileRecord(n_regs=255, shared_bytes=101376, n_spills=52,
+                           peak_alloc_bytes=2 * 2**30, occupancy={"occupancy": 0.17})
+    after = ProfileRecord(n_regs=128, shared_bytes=40960, n_spills=0,
+                          peak_alloc_bytes=1264582656, occupancy={"occupancy": 0.50})
+    v = conversion_verdict(3.00, 2.99, before, after, min_improvement_pct=2.0)
+    assert v["conversion"] == "no_conversion", (
+        f"a rewrite that halved registers, cut shared memory 60%, removed all 52 spills and "
+        f"tripled occupancy -- with latency unchanged -- was recorded as {v['conversion']!r}; "
+        f"resource improvement must never count as success on its own"
+    )
+    assert set(v["resources_improved"]) >= {"n_regs", "shared_bytes", "occupancy"}
+    assert "NOT the limit" in v["conversion_note"], (
+        "the note does not say what the result MEANS (those resources were not the limit), which "
+        "is the only actionable content of this verdict"
+    )
+
+    # Same resource changes, but latency actually fell: that is the success case.
+    v2 = conversion_verdict(3.00, 2.40, before, after, min_improvement_pct=2.0)
+    assert v2["conversion"] == "improved"
+    assert v2["latency_gain_pct"] == 20.0, v2["latency_gain_pct"]
+
+    # Latency rose: not rescued by any resource improvement.
+    v3 = conversion_verdict(3.00, 3.30, before, after, min_improvement_pct=2.0)
+    assert v3["conversion"] == "regressed", (
+        f"latency rose 10% and the verdict was {v3['conversion']!r}; resource improvements must "
+        f"not offset a regression"
+    )
+
+    # Nothing moved anywhere.
+    v4 = conversion_verdict(3.00, 3.00, before, before, min_improvement_pct=2.0)
+    assert v4["conversion"] == "flat"
+    assert not v4["resources_improved"]
+
+    # occupancy's polarity is INVERTED relative to every other dimension: higher is better. Getting
+    # this wrong does not fail loudly, it produces a clean wrong table -- the exact error that once
+    # reported 0 multi-binding candidates with the motivating case sitting in the input.
+    occ_worse = conversion_verdict(
+        3.00, 3.00,
+        ProfileRecord(occupancy={"occupancy": 0.80}),
+        ProfileRecord(occupancy={"occupancy": 0.20}),
+        min_improvement_pct=2.0)
+    assert "occupancy" not in occ_worse["resources_improved"], (
+        "occupancy falling 0.80 -> 0.20 was recorded as an improvement, so its polarity is "
+        "reversed and every occupancy verdict is inverted"
+    )
+    assert occ_worse["resource_deltas"]["occupancy"]["direction"] == "worsened"
+
+    # An unmeasured dimension must be absent, never treated as 0: a shared_bytes of None read as 0
+    # would make every rewrite look like it eliminated all shared memory.
+    v5 = conversion_verdict(3.00, 2.00, ProfileRecord(n_regs=200), ProfileRecord(n_regs=100),
+                            min_improvement_pct=2.0)
+    assert "shared_bytes" not in v5.get("resource_deltas", {}), (
+        "an unmeasured dimension appeared in the deltas, so absent was coerced to zero"
+    )
+    assert v5["resource_deltas"]["n_regs"]["direction"] == "improved"
+
+    # No cross-dimension ranking: pressure deltas have no common unit (shared's median swing is
+    # 13.5x registers' purely because of the normalising denominator), so any argmax across
+    # dimensions tracks normalisation scale rather than relevance.
+    assert not any(k in v for k in ("dominant_dimension", "biggest_change", "primary_resource")), (
+        "the verdict names a single dominant dimension, which requires comparing deltas across "
+        "dimensions that share no unit"
+    )
+
+
+def test_rewrite_rounds_record_their_conversion_verdict():
+    """The verdict must reach the event log, or it only exists in a unit test.
+
+    Same failure shape as `launch_bound`: a field existed in a signature, nothing populated it,
+    and a whole branch was dead for 848 trials while every test passed. Asserted on the
+    orchestrator's source, since reaching this line needs a GPU, an agent and a tuned family.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    src = (root / "src" / "kernel_optimizer" / "control" / "orchestrator.py").read_text(
+        encoding="utf-8")
+    assert "from kernel_optimizer.evaluation.conversion import conversion_verdict" in src
+    block = src[src.index('self.store.append("FAMILY_ROUND_RECORDED"'):]
+    block = block[:block.index("else:")]
+    assert "conversion_verdict(" in block, (
+        "FAMILY_ROUND_RECORDED is written without a conversion verdict, so nothing in the event "
+        "log says whether a resource change bought any speed"
+    )
+    assert "profile_before" in block, (
+        "the verdict is computed without the parent's profile, so no resource delta is possible "
+        "and every round would report 'flat'"
+    )
+    # The parent profile has to be captured BEFORE the rewrite runs, or it is the child's.
+    pre = src[:src.index('self.store.append("FAMILY_ROUND_RECORDED"')]
+    assert pre.index("profile_before = ") < pre.rindex("self._do_rewrite("), (
+        "profile_before is assigned after _do_rewrite, so it captures the post-rewrite state and "
+        "every resource delta is zero"
+    )

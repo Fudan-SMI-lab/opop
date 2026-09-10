@@ -39,6 +39,7 @@ from kernel_optimizer.config import AppConfig
 from kernel_optimizer.control.convergence import ConvergencePolicy
 from kernel_optimizer.control.families import FamilyManager, NoveltyRejection
 from kernel_optimizer.evaluation.benchmark import Benchmarker
+from kernel_optimizer.evaluation.conversion import conversion_verdict
 from kernel_optimizer.evaluation.correctness import CorrectnessEvaluator, latency_from_result
 from kernel_optimizer.evaluation.profilerx import LightProfiler
 from kernel_optimizer.models.core import (
@@ -1913,6 +1914,9 @@ class Orchestrator:
                 continue
 
             best_before = family.best.latency_ms
+            # G3: capture the parent's resource profile so the round can be judged on whether a
+            # resource change CONVERTED INTO SPEED, not merely on whether resources moved.
+            profile_before = getattr(family.best, "profile", None)
             evaluated = self._do_rewrite(family.family_id, source_crun)
             family.rewrite_rounds_used += 1
             best_after = (self.deps.families.families[family.family_id].best.latency_ms
@@ -1925,7 +1929,16 @@ class Orchestrator:
                 # making the `converged` stop_kind unreachable on resumed runs.
                 self.store.append("FAMILY_ROUND_RECORDED", {
                     "family_id": family.family_id, "best_ms": best_after,
-                    "round": round_no})
+                    "round": round_no,
+                    # G3: the round's resource-to-performance conversion. Latency is the ONLY
+                    # final criterion; resource change is a means, so a round that moved
+                    # resources without moving latency has to be recorded as such rather than
+                    # counted as a success.
+                    **conversion_verdict(
+                        best_before, best_after, profile_before,
+                        getattr(self.deps.families.families[family.family_id].best, "profile",
+                                None),
+                        self.cfg.budgets.min_improvement_pct)})
             else:
                 # NOTHING was evaluated this round: the rewriter never answered, or every
                 # candidate it produced was a structural duplicate. Recording the unchanged
