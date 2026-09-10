@@ -10299,3 +10299,57 @@ def test_a_credible_constant_and_an_impossible_value_are_both_flagged():
     assert any("identical value" in n for n in rec.statics_notes), (
         "LightProfiler does not run the across-set check, so a constant accessor is invisible"
     )
+
+
+def test_capacity_headroom_is_reported_as_a_quantity_not_only_a_boolean():
+    """G5: shared memory and registers must report remaining capacity, not just "near the limit".
+
+    Before this, capacity reached the agent only through the `at_limit` strings, which say
+    "shared=49664/101376" when a kernel is NEAR the limit and say nothing at all when it is not.
+    So the most basic trading question -- "how much shared memory can I still spend on a bigger
+    tile?" -- had no answer anywhere in the evidence, while "spend capacity to buy reuse" is one
+    of the most common structural moves there is: L3:43's second-round rewrite hand-computed
+    73728 -> 40960 bytes precisely to unlock a larger tile.
+
+    Reported on every verdict, not only `resource_limited`, because the headroom matters MOST when
+    the kernel is memory_bound -- that is exactly when spending capacity to buy reuse is the move.
+    """
+    from kernel_optimizer.evaluation.bottleneck import DevicePeaks, classify
+
+    peaks = DevicePeaks(dram_tbs=0.911, fp32_tflops=54.8, tf32_tflops=88.1)
+
+    # A memory-bound kernel with plenty of capacity left: the case where the number is actionable
+    # and where the old at_limit strings said nothing.
+    v = classify(gpu_ms=1.554, cpu_issue_ms=None, flop_count=None, byte_count=int(1.351 * 10**9),
+                 peaks=peaks, n_regs=96, shared_bytes=33280,
+                 max_regs_per_thread=255, max_shared_bytes=101376)
+    assert v.kind == "memory_bound"
+    assert v.evidence["shared_headroom_bytes"] == 101376 - 33280, (
+        "no shared-memory headroom reported on a memory_bound kernel, which is exactly the case "
+        "where spending capacity to buy reuse is the available move"
+    )
+    assert v.evidence["reg_headroom_per_thread"] == 255 - 96
+    assert v.evidence["shared_used_frac"] == 0.328, v.evidence["shared_used_frac"]
+
+    # At the limit: headroom is 0, never negative, and the boolean at_limit signal still fires.
+    v2 = classify(gpu_ms=3.0, cpu_issue_ms=None, flop_count=None, byte_count=None, peaks=peaks,
+                  n_regs=255, shared_bytes=101376,
+                  max_regs_per_thread=255, max_shared_bytes=101376)
+    assert v2.evidence["shared_headroom_bytes"] == 0
+    assert v2.evidence["reg_headroom_per_thread"] == 0
+    assert v2.evidence["shared_used_frac"] == 1.0
+
+    # An over-limit reading (only reachable from a bad measurement) must clamp to 0 rather than
+    # report negative capacity, which would read as "you may spend -2048 bytes".
+    v3 = classify(gpu_ms=3.0, cpu_issue_ms=None, flop_count=None, byte_count=None, peaks=peaks,
+                  shared_bytes=103424, max_shared_bytes=101376)
+    assert v3.evidence["shared_headroom_bytes"] == 0, "negative headroom was reported"
+
+    # Unmeasured stays absent: a headroom of "all of it" derived from a missing reading would
+    # invite the agent to spend capacity it has no evidence about.
+    v4 = classify(gpu_ms=3.0, cpu_issue_ms=None, flop_count=None, byte_count=None, peaks=peaks,
+                  max_shared_bytes=101376)
+    assert "shared_headroom_bytes" not in v4.evidence, (
+        "headroom was reported for an unmeasured shared_bytes, so a missing reading became a "
+        "capacity claim"
+    )

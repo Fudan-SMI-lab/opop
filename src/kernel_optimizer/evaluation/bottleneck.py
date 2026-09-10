@@ -230,6 +230,25 @@ def classify(
     }}
     unmeasured = _unmeasured_signals()
 
+    # G5: capacity as a QUANTITY, not only as a boolean. Registers and shared memory were
+    # reported solely through the `at_limit` strings below, which say "shared=49664/101376" when a
+    # kernel is near the limit and say NOTHING when it is not. So an agent asking the most basic
+    # trading question -- "how much shared memory do I have left to spend on a bigger tile?" --
+    # had no answer, and "spend capacity to cut traffic" is among the most common structural moves
+    # available (L3:43's second-round rewrite computed 73728 -> 40960 bytes by hand precisely to
+    # unlock a larger tile).
+    #
+    # Reported for every verdict, not just resource_limited: the headroom matters most when the
+    # kernel is memory_bound, since that is when spending capacity to buy reuse is the move.
+    # Absolute bytes AND the remaining fraction, because the agent needs both -- a fraction alone
+    # cannot be turned into a tile size.
+    if shared_bytes is not None and max_shared_bytes:
+        ev["shared_headroom_bytes"] = max(0, max_shared_bytes - shared_bytes)
+        ev["shared_used_frac"] = round(shared_bytes / max_shared_bytes, 3)
+    if n_regs is not None and max_regs_per_thread:
+        ev["reg_headroom_per_thread"] = max(0, max_regs_per_thread - n_regs)
+        ev["reg_used_frac"] = round(n_regs / max_regs_per_thread, 3)
+
     # Tier 1 facts about the COMPILED KERNEL, recorded before any verdict can return.
     #
     # These describe the binary, not the bottleneck, so they are true regardless of which branch
