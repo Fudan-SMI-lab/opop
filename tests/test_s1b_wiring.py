@@ -23,7 +23,7 @@ from kernel_optimizer.tuning.tpe import OptunaTPETuner
 
 def _space() -> ParameterSpace:
     return ParameterSpace(
-        space_id="sp-1", candidate_id="c1", version=1,
+        space_id="sp-1", candidate_id="c1", version=1, source_sha="0" * 64,
         domains=[
             ParamDomain(name="DOT_PRECISION", kind="str", choices=["fp16", "tf32", "bf16"]),
             ParamDomain(name="BLOCK_M", kind="int", choices=[32, 64, 128]),
@@ -188,9 +188,12 @@ def test_a_resume_that_skipped_reused_trials_would_diverge():
     If the live path skipped reused records while the restore path folded them, an interrupted run
     would reach its next ask with different evidence -- so this asserts the two disagree when one
     of them drops records, which is what makes the "every trial" rule load-bearing.
+
+    BLOCK_M is varied so only DOT_PRECISION=tf32 accumulates an unbroken failure record; see
+    `test_a_value_merely_correlated_with_the_culprit_also_fires` for why that matters.
     """
-    stream = [_trial("c1", {"DOT_PRECISION": "tf32", "BLOCK_M": 64}, ok=False)
-              for _ in range(DEFAULT_FLOOR)]
+    stream = [_trial("c1", {"DOT_PRECISION": "tf32", "BLOCK_M": 32 * (1 + i % 3)}, ok=False)
+              for i in range(DEFAULT_FLOOR)]
     complete = DeweightLedger()
     for record in stream:
         complete.observe(record)
@@ -200,6 +203,36 @@ def test_a_resume_that_skipped_reused_trials_would_diverge():
     assert complete.snapshot()["n_fired"] == 1
     assert partial.snapshot()["n_fired"] == 0
     assert complete.snapshot() != partial.snapshot()
+
+
+def test_a_value_merely_correlated_with_the_culprit_also_fires():
+    """A real property of the rule, asserted rather than discovered later.
+
+    The criterion is unconditionality with respect to OBSERVED evidence, so a value that happens to
+    co-occur only with the real culprit inside the floor's worth of draws fires alongside it. Here
+    BLOCK_M=64 is innocent -- the candidate's broken path is tf32 -- but it was never drawn beside a
+    working precision, so it fires too.
+
+    This is collateral firing, and it is bounded by the same two things that bound the rest: the
+    first pass retracts it permanently, and the action is 1/4 rather than removal. It is also why
+    the mis-kill rate had to be measured on real runs (0 of 33 rules, 95% bound 8.7%) instead of
+    argued from the rule's shape -- in a real space a tile value co-occurs with several precisions
+    within a few draws and picks up its pass.
+    """
+    ledger = DeweightLedger()
+    for _ in range(DEFAULT_FLOOR):
+        ledger.observe(_trial("c1", {"DOT_PRECISION": "tf32", "BLOCK_M": 64}, ok=False))
+    assert ledger.is_deweighted("c1", "DOT_PRECISION", "tf32")
+    assert ledger.is_deweighted("c1", "BLOCK_M", "64"), (
+        "the innocent-but-correlated value did not fire; that would mean the rule is conditioning "
+        "on something other than its own observed pass/fail record"
+    )
+    # and one pass beside a working precision retracts the innocent one, permanently
+    ledger.observe(_trial("c1", {"DOT_PRECISION": "fp16", "BLOCK_M": 64}, ok=True))
+    assert not ledger.is_deweighted("c1", "BLOCK_M", "64")
+    assert ledger.is_deweighted("c1", "DOT_PRECISION", "tf32"), (
+        "retracting the collateral rule must not retract the real one"
+    )
 
 
 def test_evidence_pools_across_a_candidates_spaces_in_the_restored_stream():
@@ -221,8 +254,9 @@ def test_snapshot_is_json_serialisable_for_the_event_log():
     import json
 
     ledger = DeweightLedger()
-    for _ in range(DEFAULT_FLOOR):
-        ledger.observe(_trial("c1", {"DOT_PRECISION": "tf32", "BLOCK_M": 64}, ok=False))
+    for i in range(DEFAULT_FLOOR):
+        ledger.observe(_trial("c1", {"DOT_PRECISION": "tf32", "BLOCK_M": 32 * (1 + i % 3)},
+                              ok=False))
     payload = {"deweight": ledger.snapshot()}
     text = json.dumps(payload, ensure_ascii=False)
     assert "tf32" in text
