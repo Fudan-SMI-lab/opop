@@ -68,7 +68,8 @@
 | **G41** | **两个测试在坏实现上照样通过,根因同一个:fixture 与断言不是生产形状的**。(a) S2d 测试里我的 `deltas()` 辅助**硬编码 `direction: "changed"`** —— 而「极性感知」那个错误实现读的正是 `direction`,有常数在那里它**永远不走自己那条分支**,于是 occupancy 极性测试在一个坏 reconciler 上通过;(b) caveat 测试只断言字样**出现在文本某处**,而 `render_ledger` 把模块级 `CAVEAT` 作收尾段追加 ⇒ 「清空 caveat 字段」与「整体 dump 成 JSON」**两个变体都通过**;(c) 词表测试被一个三元素硬编码子集满足 | 确定,低风险 | 小 | ✅ **已修**(`35fb1a9`):(a) `direction` 改按 `_DIMENSIONS[name]["lower_is_better"]` 推导,与 `conversion.py` 一致;(b) 改断言**条目自己的字段** + 渲染是散文;(c) 改断言集合相等 + 计数相等。**纪律:一个不是生产形状的 fixture 什么都无法证伪** —— 反向验证的价值全部取决于 fixture 走到那条被改坏的分支 | §G41 |
 | **G42** | **一个源码文本断言在行为未变时失败**。`test_rewrite_rounds_record_their_conversion_verdict` 从 `store.append("FAMILY_ROUND_RECORDED"` 切到下一个 `else:`,**假定判决在 append 调用内部算**。S2d 把 `conversion_verdict(...)` 提成局部变量(为让账本复用同一份 `resource_deltas` —— 账本两段不许在「什么动了」上分歧),调用就移出了切片 | 确定,低风险(取景错误,非行为缺陷) | 小 | ✅ **已修**(`14492fb`):两条断言改从 `if evaluated:` 起切,**并单独断言判决进了 payload**(算了却丢掉正是它要防的 `launch_bound` 形状);**并补了行为侧的一半** —— 源码断言看不出判决是否还到得了 payload,而本仓库有实测记录:一个源码文本断言**在坏代码上通过、修好后失败** | §G42 |
 | **G43** | **反向验证脚本会把「变体语法不合法」读成「判别成功」**。一个不能解析的补丁让**每个**测试都失败,而脚本的判据是「点名的测试是否失败」⇒ 报 `ok`。这是这类脚本产生**假 ok** 最容易的途径,而假 ok 比没有反向验证更危险(会被当证据引用) | 确定,低风险 | 小 | ✅ **已修**(`e3d704f`):四个脚本在信任结果前先 `compile()` 打过补丁的文件,不能解析则报 `**SKIPPED**` 并让整轮判负。**它立刻抓到我自己**:S4′ 脚本首次运行就报了自己一个变体语法不合法;修好后**回溯抓到 `revert_check_s2d.py` 里第二个畸形变体 —— 那个此前一直在报 `ok`** | §G43 |
-| **G44** | **`conversion_verdict` 被计算、被落盘、被 `report.py` 读 0 次,且在任何真实 run 里从未产出过一条判决**。前者是「没有消费者的判决等于没实现」;后者是语料事实:9 个 `FAMILY_ROUND_RECORDED` **0 个**带 `conversion`、**0 个**带 `resource_deltas`,因为五个 run 都早于 G27 的修复(run 09-07~09-10,修复 09-10) | 确定,低风险 | 中 | ✅ **消费者已补**(`e3d704f`):`conversion_report.py` + `report.py` 一节。**关键是它区分三种在「都没有」的日志里长得一样的状态**:没有改写轮 / 有轮但字段缺失(点名 G27)/ 有判决。**承重测试是 end-to-end 那个** —— 其余 23 个直接驱动 helper,而「渲染完美但从未被调用」正是这个缺口本身的形态;手工验证:去掉 `report.py` 里那次调用,其余 23 个照旧通过、只有它失败。**判决本身的生产验证仍待对照 run** | §G44 |
+| **G44** | **`conversion_verdict` 被计算、被落盘、被 `report.py` 读 0 次,且在任何真实 run 里从未产出过一条判决**。前者是「没有消费者的判决等于没实现」;后者是语料事实:9 个 `FAMILY_ROUND_RECORDED` **0 个**带 `conversion`、**0 个**带 `resource_deltas`,因为五个 run 都早于 G27 的修复(run 09-07~09-10,修复 09-10) | 确定,低风险 | 中 | ✅ **消费者已补**(`e3d704f`):`conversion_report.py` + `report.py` 一节。**关键是它区分三种在「都没有」的日志里长得一样的状态**:没有改写轮 / 有轮但字段缺失(点名 G27)/ 有判决。**承重测试是 end-to-end 那个** —— 其余 23 个直接驱动 helper,而「渲染完美但从未被调用」正是这个缺口本身的形态;手工验证:去掉 `report.py` 里那次调用,其余 23 个照旧通过、只有它失败。**判决本身的生产验证仍待对照 run** | §G44 || **G45** | **配置里拼错一个键会被静默丢弃,开关停在默认值 —— 而 v3 的默认值就是 v2 行为**。`load_config` 只读一个文件、无底层,所以省略的键回落到 pydantic 字段默认;而 pydantic 的**默认行为是忽略未知键**。**实测(修复前,走真实 `load_config`)**:`v3.diagnosis.modes: vector`(复数)、`diagnosic:`(拼错块名)、`expectation_ledgers: true` **三者全部校验通过**,开关全部停在 `label` / `False`。**后果**:本项目从未有任何 config 带过 `v3:` 块 ⇒ 这条 YAML→pydantic 通路**零验证**,而对照 run 的处理臂正要用第一个这样的块启动 —— 拼错一个字母,处理臂就是**第二个对照臂**,两个 12h run 结果一致,记录下来的结论是「向量形态没有影响」,**全程零报错**。与「fp16 kernel 拿 tf32 天花板读出 107.8% 判成已到顶」同形:指令被反转,没有任何东西报警 | 确定,低风险 | **高**(会静默毁掉 24h GPU 的结论) | ✅ **已修**(`51b2d21`):新增 `StrictConfig`(`extra="forbid"`),全部 config 块继承。**修在模型层而不是键名清单**:`_apply_override` 用 `setdefault` 建路径,自己无法拒绝拼错 ⇒ 一处修改同时封住 YAML 与 `-o/--override` 两条路。**与 S2d 的 `ResourceExpectation.expected_pct` 同一缺陷族、同一修法**。**泛化测试抓到我第一版修得太窄**:`DeviceLimits` 在 `models/core.py`,只改 `config.py` 会漏掉**记录在案后果最严重的那个块**(丢掉 `max_shared_bytes_optin` ⇒ 每个 agent 被告知 A800 只有 101376B 而非 166912B,静默禁掉这台机器存在的意义)。反向验证 8 个错误实现全部判别 | §G45 |
+
 图例:✅ 已完成 · 🔧 修复中 · 🟡 部分解决 · ⏳ 待处理 · ❌ 不可行
 
 
@@ -1212,3 +1213,36 @@ self._record_reconciliation(family.family_id, round_no, conversion)
 **手工验证过它真的判别**:把 `report.py` 里 `lines.extend(conversion_lines(...))` 改成 `_unused_s4 = conversion_lines(...)`(语法合法、函数照旧被调用、只是结果被丢弃),**其余 23 个测试全部照旧通过,只有 end-to-end 那一个失败。**
 
 **仍未验证的部分**:判决本身的**生产**证据。下一次对照 run 是它第一次有机会产出,必须在那次 run 的收尾里显式检查 —— 否则又是一个「以为修好了」。
+
+---
+
+### G45 配置拼错一个键 = 静默回落到默认值,而 v3 的默认值就是对照臂
+
+**发现时机是这条的一半重量**:S2/S2d 的对照 run 启动前的 pre-flight,在一条**从未被执行过的代码路径**上。本项目此前**没有任何 config 文件带过 `v3:` 块** —— 而那正是任何 v3 实验要设的第一件东西。
+
+**实测(修复前,走真实 `load_config`,不是手搭模型)**:
+
+| YAML | 结果 |
+|---|---|
+| `v3: {diagnosis: {modes: vector}}` | **校验通过**,`mode='label'` |
+| `v3: {diagnosic: {mode: vector}}` | **校验通过**,`mode='label'` |
+| `v3: {diagnosis: {mode: vector, expectation_ledgers: true}}` | **校验通过**,`ledger=False` |
+
+**为什么这是「高」严重度而不是一个卫生问题**:`load_config` 只读一个文件、**没有底层**,所以省略的键回落到 pydantic 字段默认 —— 而 v3 三个开关的默认值**就是 v2 的行为**。于是处理臂 YAML 里拼错一个字母,那个 run **就是第二个对照臂**:两个 12h run 会一致,而记录下来的结论是「**向量形态没有影响**」。
+
+**与 107.8% 那次同形**:不是崩溃,不是空值,而是一个**可信的错误结论**,且没有任何东西报警。第三种同形:`ResourceExpectation.expected_pct` 曾经校验通过然后消失,于是 agent 依据一个没人检查过的量做推理 —— **同一个 pydantic 默认行为,同一个修法**。
+
+**修法为什么在模型层**:`_apply_override` 用 `setdefault` 逐段建路径,`--set v3.diagnosis.modes=vector` 会**创建**那个键而不是报错。在模型上 `extra="forbid"` 一次同时封住 YAML 与 CLI 两条路;而写一份合法键名清单要在两处各维护一遍,并且会随字段改动而漂移。
+
+**泛化测试抓到我第一版修得太窄。** 第一版只改了 `config.py`,而 `DeviceLimits` 在 `models/core.py` —— 那是**记录在案后果最严重的一个块**:`_device_doc()` 把这六个值逐字写进每个 agent 沙箱的 `docs/device.md`,`as_env()` 还把它们暴露给 agent 手写的约束表达式。丢掉 `max_shared_bytes_optin` ⇒ 每个 agent 被告知 A800 有 101376B(4090 的数字)而不是 166912B,于是**静默禁掉了这台机器存在的全部意义**,且无错误无警告。走模型图的那个测试(而不是列类名)把它抓了出来。
+
+**只拒绝原本已被忽略的东西**:落地前先量过 `configs/` 全部 10 个文件**零丢弃键**,并把这条写成测试(`test_the_shipped_configs_all_still_load`)。反方向也写了测试:`server_env`(opencode 有些设置只认环境变量)与 `sandbox_extra_config`(逐字合并进沙箱的 opencode.json,含 provider 块)**必须保持开放** —— 在那里禁未知键会让每次 agent 调用死在 `ProviderModelNotFoundError`。
+
+**两个我自己写错的变体,由脚本报 FAIL 抓出**(记录下来是因为两者都曾看起来合理):
+
+1. **改一个默认值**不能当「两臂漂移」的变体 —— 它对两臂等量移动,**差异集合不变**。已换成「模型里改名而 YAML 保持旧名」。
+2. `test_the_shipped_configs_all_still_load` **不是**「过度收紧」变体的证据:没有任何现存 config 设 `sandbox_extra_config`(A800 那份用 `sandbox_config_path` + `server_env`),所以它**正确地**在该变体下存活。已移出点名清单并写明理由。
+
+**顺带**:`compile()` 守卫(G43)对 YAML 变体会把合法 YAML 判成畸形,已按后缀分派到 `yaml.safe_load`。
+
+**处理臂 config 单独成文件而不是改对照文件**,于是两者可以 diff:两个测试断言**解析后**的两份配置**恰好**只差 `v3.diagnosis.mode` 与 `v3.diagnosis.expectation_ledger`,且处理臂两个开关都是**开**(只断言「差两个键」会被「两臂互换」满足)。差异在整棵模型上算 ⇒ 手抄 205 行时在任何一行带进的改动都会被抓到。
