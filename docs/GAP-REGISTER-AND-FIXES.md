@@ -69,6 +69,7 @@
 | **G42** | **一个源码文本断言在行为未变时失败**。`test_rewrite_rounds_record_their_conversion_verdict` 从 `store.append("FAMILY_ROUND_RECORDED"` 切到下一个 `else:`,**假定判决在 append 调用内部算**。S2d 把 `conversion_verdict(...)` 提成局部变量(为让账本复用同一份 `resource_deltas` —— 账本两段不许在「什么动了」上分歧),调用就移出了切片 | 确定,低风险(取景错误,非行为缺陷) | 小 | ✅ **已修**(`14492fb`):两条断言改从 `if evaluated:` 起切,**并单独断言判决进了 payload**(算了却丢掉正是它要防的 `launch_bound` 形状);**并补了行为侧的一半** —— 源码断言看不出判决是否还到得了 payload,而本仓库有实测记录:一个源码文本断言**在坏代码上通过、修好后失败** | §G42 |
 | **G43** | **反向验证脚本会把「变体语法不合法」读成「判别成功」**。一个不能解析的补丁让**每个**测试都失败,而脚本的判据是「点名的测试是否失败」⇒ 报 `ok`。这是这类脚本产生**假 ok** 最容易的途径,而假 ok 比没有反向验证更危险(会被当证据引用) | 确定,低风险 | 小 | ✅ **已修**(`e3d704f`):四个脚本在信任结果前先 `compile()` 打过补丁的文件,不能解析则报 `**SKIPPED**` 并让整轮判负。**它立刻抓到我自己**:S4′ 脚本首次运行就报了自己一个变体语法不合法;修好后**回溯抓到 `revert_check_s2d.py` 里第二个畸形变体 —— 那个此前一直在报 `ok`** | §G43 |
 | **G44** | **`conversion_verdict` 被计算、被落盘、被 `report.py` 读 0 次,且在任何真实 run 里从未产出过一条判决**。前者是「没有消费者的判决等于没实现」;后者是语料事实:9 个 `FAMILY_ROUND_RECORDED` **0 个**带 `conversion`、**0 个**带 `resource_deltas`,因为五个 run 都早于 G27 的修复(run 09-07~09-10,修复 09-10) | 确定,低风险 | 中 | ✅ **消费者已补**(`e3d704f`):`conversion_report.py` + `report.py` 一节。**关键是它区分三种在「都没有」的日志里长得一样的状态**:没有改写轮 / 有轮但字段缺失(点名 G27)/ 有判决。**承重测试是 end-to-end 那个** —— 其余 23 个直接驱动 helper,而「渲染完美但从未被调用」正是这个缺口本身的形态;手工验证:去掉 `report.py` 里那次调用,其余 23 个照旧通过、只有它失败。**判决本身的生产验证仍待对照 run** | §G44 || **G45** | **配置里拼错一个键会被静默丢弃,开关停在默认值 —— 而 v3 的默认值就是 v2 行为**。`load_config` 只读一个文件、无底层,所以省略的键回落到 pydantic 字段默认;而 pydantic 的**默认行为是忽略未知键**。**实测(修复前,走真实 `load_config`)**:`v3.diagnosis.modes: vector`(复数)、`diagnosic:`(拼错块名)、`expectation_ledgers: true` **三者全部校验通过**,开关全部停在 `label` / `False`。**后果**:本项目从未有任何 config 带过 `v3:` 块 ⇒ 这条 YAML→pydantic 通路**零验证**,而对照 run 的处理臂正要用第一个这样的块启动 —— 拼错一个字母,处理臂就是**第二个对照臂**,两个 12h run 结果一致,记录下来的结论是「向量形态没有影响」,**全程零报错**。与「fp16 kernel 拿 tf32 天花板读出 107.8% 判成已到顶」同形:指令被反转,没有任何东西报警 | 确定,低风险 | **高**(会静默毁掉 24h GPU 的结论) | ✅ **已修**(`51b2d21`):新增 `StrictConfig`(`extra="forbid"`),全部 config 块继承。**修在模型层而不是键名清单**:`_apply_override` 用 `setdefault` 建路径,自己无法拒绝拼错 ⇒ 一处修改同时封住 YAML 与 `-o/--override` 两条路。**与 S2d 的 `ResourceExpectation.expected_pct` 同一缺陷族、同一修法**。**泛化测试抓到我第一版修得太窄**:`DeviceLimits` 在 `models/core.py`,只改 `config.py` 会漏掉**记录在案后果最严重的那个块**(丢掉 `max_shared_bytes_optin` ⇒ 每个 agent 被告知 A800 只有 101376B 而非 166912B,静默禁掉这台机器存在的意义)。反向验证 8 个错误实现全部判别 | §G45 |
+| **G46** | **G29 复发,并杀死了 box 1 的对照臂**。`kernelbench` 包 `__init__` 的导入链(dotenv → openai → litellm)在一个**从未评测过任何东西的 venv** 上缺包 ⇒ eager baseline 直接失败、run 在 4 分钟内死亡。**更普遍的问题不是缺包,而是「环境缺陷」与「候选写错了」走同一条通道**(`runtime_error` + traceback),对操作者和对 repair agent **读起来完全一样** —— G29 的实测代价就是 12/12 候选报 `runtime_error` 被读成「模型写坏了」。**G29 的修法是「在那台机上装 25 个包」,而那不泛化到下一个 venv** | 确定,低风险 | **高**(杀死 run / 冤枉 repair agent) | ✅ **已修**(`97b8d11`):(a) box 1 补齐 5 个包,`doctor` 转全绿(**它本来就有 `kernelbench importable in WSL` 这项检查 —— 是我没对新 config 跑过 doctor,属流程疏漏而非代码缺陷**);(b) 泛化修法 `environment_defect(log_tail)` **识别签名并说明该修什么**,接到**致命 baseline** 与**逐候选 trial** 两处(后者更重要:baseline 死得很响,而逐 trial 失败是静默的、会被归因给模型)。**刻意做窄**:只匹配 kernelbench 自身导入链内的失败 ⇒ 候选自己 import 缺失模块(CUTLASS/TileLang,实测真实案例)**仍归候选**、仍进 repair —— 放宽会把诊断问题换成丢样本问题,那是更坏的交易。8 个错误实现全部判别,**覆盖过宽与过窄两个方向** | §G46 |
 
 图例:✅ 已完成 · 🔧 修复中 · 🟡 部分解决 · ⏳ 待处理 · ❌ 不可行
 
@@ -1246,3 +1247,52 @@ self._record_reconciliation(family.family_id, round_no, conversion)
 **顺带**:`compile()` 守卫(G43)对 YAML 变体会把合法 YAML 判成畸形,已按后缀分派到 `yaml.safe_load`。
 
 **处理臂 config 单独成文件而不是改对照文件**,于是两者可以 diff:两个测试断言**解析后**的两份配置**恰好**只差 `v3.diagnosis.mode` 与 `v3.diagnosis.expectation_ledger`,且处理臂两个开关都是**开**(只断言「差两个键」会被「两臂互换」满足)。差异在整棵模型上算 ⇒ 手抄 205 行时在任何一行带进的改动都会被抓到。
+
+---
+
+### G46 G29 复发:环境缺陷与「候选写错了」走同一条通道
+
+**发现方式**:三个 run 启动后 4 分钟,box 1 的对照臂死亡。
+
+```
+File ".../gpu/worker_main.py", line 1771, in run_baseline
+  from kernelbench.timing import measure_ref_program_time
+File ".../KernelBench/src/kernelbench/__init__.py", line 1, in <module>
+  from . import utils   # triggers monkey-patch on torch.randn
+File ".../kernelbench/utils.py", line 6, in <module>
+  from dotenv import load_dotenv
+ModuleNotFoundError: No module named 'dotenv'
+```
+
+**与 G29 逐字同形**(同一条链、同一行、同一个模块),只是发生在**一个从未评测过任何东西的 venv** 上:box 1 的 config 把 `wsl.venv` 指向 `orch-venv`,那里有 torch / triton / optuna,**但没有 kernelbench 的导入链**。
+
+### 为什么 G29 的修法没能防住
+
+**G29 的处置是「补齐 25 个包 + 新增 `verify_box_can_evaluate.py`」。** 前者是**那台机的**事实,不泛化;后者存在但**只是建议性的**,没有任何东西强制它在 run 之前跑。
+
+**而 `doctor` 本来就能抓到这个** —— 它有 `kernelbench importable in WSL` 一项,导入的正是失败的那条链。**我没有对新的 v3 config 跑过 doctor,这是我的流程疏漏,不是代码缺陷。** 补跑之后 box 1 全绿,重启后 baseline 通过。
+
+### 真正的缺口:两类失败无法区分
+
+**环境缺陷与候选缺陷走同一条通道** —— `failure_kind: runtime_error` + 一段 traceback。对操作者一样,**对 repair agent 也一样**。G29 的实测代价正是这个:12/12 候选 `runtime_error`,而「0 个正确」读起来和「模型写坏了」**完全一致**。
+
+**所以泛化修法是识别签名而不是补包**:`environment_defect(log_tail)` 返回该修什么,接到两处 ——
+
+| 位置 | 为什么 |
+|---|---|
+| 致命 baseline raise | 那是操作者能拿到的**全部**信息(没有 baseline 就没有比较基准,失败必须致命) |
+| **逐候选 trial record** | **更重要**:baseline 死得很响,而逐 trial 失败是**静默的**,并且会作为「你的 kernel 崩了」到达 repair agent —— G29 的 12 个候选就是这样丢的 |
+
+### 刻意做窄,而这是能造成伤害的那一半
+
+只在**失败的 import 发生在 kernelbench 自己的 `__init__`/`utils` 链内**时触发。
+
+**候选自己 import 一个缺失模块必须仍然归候选** —— agent 伸手去拿 CUTLASS 或 TileLang(两者都没装)是**实测真实案例**,那些失败必须继续到达 repair 循环。**放宽到「任何 ModuleNotFoundError」会把诊断问题换成丢样本问题,那是更坏的交易。** G33 的 harness-import 降级同样被排除(它的修法是另一个旋钮 `extra_pythonpath`,指错方向的提示比没有提示更糟)。
+
+**消息必须指向 `wsl.venv` 而不是启动 CLI 的解释器** —— box 2 刻意用两个不同的解释器(驱动 `orch-venv`,worker `kernel-opt-venv`),说「装到你启动的那个 venv」会把人送到**不起作用的**那一个。
+
+### 反向验证抓到我自己测试的一个真实缺口
+
+「任何 kernelbench 帧都算」这个过宽变体**本应**被 `ordinary_failures` 抓到,但它报了不判别 —— 因为我原来那六个「普通失败」全是**不含 kernelbench 帧的裸字符串**,在只看帧的匹配器下**全部正确存活**。
+
+**而 kernelbench 就是评测器 ⇒ 每一个正确性失败、每一次 OOM 都真的经过它的帧。** 于是补了两个带真实帧的用例。**并且只有 `utils.py` 那个可以点名**:`eval.py` 那个两条被监视的帧都不含,它正确地在该变体下存活 —— 它是「匹配器锚在导入链而不是锚在 kernelbench 泛泛」的证据,不是这个变体的证据。
