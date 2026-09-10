@@ -1,0 +1,199 @@
+# GLM-5.3 on the L3 tasks (21 / 43 / 48) -- BOX 3, the A800 80GB PCIe.
+#
+# Derived from configs/experiments_l3_glm_linux.yaml (box 1, RTX 4090). Every budget and
+# evaluation knob is copied verbatim from that file so a run here differs from box 1's as a
+# MACHINE SWAP and nothing else -- that comparability is the point, and is also why G12
+# (heterogeneous comparison) can use these two boxes at all.
+#
+# `load_config` reads exactly ONE file (config.py) -- `configs/default.yaml` is NOT a base
+# layer -- so every path below is stated explicitly. An omitted key falls back to a pydantic
+# field default, and on this box those defaults are Windows paths (D:/...) that do not exist.
+#
+# ---------------------------------------------------------------------------------------
+# WHAT DIFFERS FROM BOX 1, AND WHY EACH ONE MATTERS
+#
+#   run.runs_dir          -> /root/autodl-tmp/work/opop-glm/runs-l3
+#   opencode.launch_cwd   -> /root/autodl-tmp/work/opop-glm
+#   sandbox_config_path   -> ditto/.opencode/opencode.jsonc  (provider config, sha256-verified
+#                            identical to box 1's, mode 0600)
+#   kernelbench_root      -> /root/autodl-tmp/work/KernelBench
+#   wsl.venv              -> /root/autodl-tmp/orch-venv     ** SEE NOTE A -- one venv here,
+#                            not two. Box 1 has a separate kernel-opt-venv for the worker.
+#   wsl.kernelbench_src   -> /root/autodl-tmp/work/KernelBench/src
+#   device:               -> REPLACED with values MEASURED on this card. See NOTE B: this is
+#                            the block that fails SILENTLY and is the entire reason a
+#                            per-box config file has to exist.
+#
+# NOTE A -- ONE VENV SERVES BOTH ROLES ON THIS BOX.
+#   Box 1 keeps two venvs (orch-venv for the orchestrator, kernel-opt-venv for the GPU
+#   worker) because its 30 G system disk cannot hold torch twice. This box has a single
+#   /root/autodl-tmp/orch-venv holding torch 2.8.0+cu128, triton 3.4.0, optuna 5.0.0 and
+#   pydantic, so it satisfies both roles and `wsl.venv` points at it. This is not a
+#   simplification to tidy up later: pointing `wsl.venv` at a path with no torch makes every
+#   GPU job fail as worker_crash, and there is no second venv here to point it at.
+#
+#   Version skew from box 1 is REAL and must be stated rather than assumed harmless:
+#   box 1 runs torch 2.9+cu129 / triton 3.5, this box torch 2.8.0+cu128 / triton 3.4.0.
+#   Triton's compiler differs between 3.4 and 3.5, so a candidate's register count, shared
+#   usage and even whether a tile compiles can differ between the boxes for reasons that are
+#   NOT the hardware. Any box-1-vs-box-3 comparison must treat the toolchain as a
+#   co-varying factor; it cannot be attributed to the A800 alone.
+#
+# NOTE B -- WHY THE device: BLOCK IS THE DANGEROUS ONE.
+#   `_device_doc()` (agents/modules.py) writes these six values VERBATIM into every agent
+#   sandbox's docs/device.md, and `DeviceLimits.as_env()` exposes them as names usable inside
+#   agent-authored constraint expressions. Reuse box 1's block here and every agent is told
+#   it is on an Ada sm_89 card with 23 GB and 101376 B of shared memory, while actually
+#   running on Ampere sm_80 with 79.3 GB and 166912 B. No error and no warning -- just
+#   wrong kernels and mis-calibrated feasibility screens. Values below are measured
+#   (docs/box-a800-setup.md §1).
+#
+#   The shared-memory figure is the one with teeth: at 166912 B this card admits tiles that
+#   are genuinely infeasible on the 4090 (1.65x more), so a config that understates it
+#   silently forbids the tile sizes this box exists to explore.
+#
+#   max_regs_per_thread and max_threads_per_block are NOT readable device properties
+#   (regs_per_multiprocessor is per-SM: 65536); 255 and 1024 are correct on sm_80 and are
+#   kept as constants, same as on box 1.
+#
+# ---------------------------------------------------------------------------------------
+# WHAT IS MEASURED ON THIS BOX AND WHAT IS NOT
+#
+# MEASURED (docs/box-a800-setup.md): the device block below; the compute/DRAM ceilings and
+# all four Triton-reachable fractions (correctness-gated against fp64); a full 422-test
+# pytest pass; and one live agent call through this harness's own sandbox + permission +
+# provider path -- the agent ran nvidia-smi and read back "NVIDIA A800 80GB PCIe", so the
+# provider, credentials, permission block and structured output all work here.
+#
+# NOT MEASURED HERE -- do not read the above as clearance for these:
+#   1. No L3-scale agent call has run on this box. The verification call was trivial
+#      (91 input tokens). glm-5.3 at L3 prompt scale is where the 32000-token truncation
+#      appeared on box 1, and neither that ceiling nor the truncation-specific feedback has
+#      been exercised here.
+#   2. The relaxed + fp64 witness path has never executed on this box. It is the
+#      higher-memory (10.02x input bytes vs 7.00x strict) and known-hazardous path. Memory
+#      is not the constraint on an 80 GB card, but the CODE PATH is still unrun.
+#   3. No GPU worker job has run through `wsl.venv` on this box. NOTE A's claim that one
+#      venv serves both roles is verified by import, not by a completed eval job.
+#
+# PER-TASK CORRECTNESS HAZARDS -- properties of the TASKS, not of this config or this card,
+# so they carry over from box 1 unchanged and no knob here fixes them:
+#
+#   level3:21 EfficientNetMBConv -- the reference runs in TRAIN mode, so nn.BatchNorm2d uses
+#     BATCH statistics (not running stats) and mutates running_mean/var each forward. A
+#     candidate reading running stats is wrong while looking arithmetically reasonable. This
+#     is the recorded root cause of repeated L3:21 correctness failures: an information gap
+#     in what the agent is told, not a harness bug.
+#
+#   level3:43 MinGPTCausalAttention -- has nn.Dropout in forward and runs in train mode, so
+#     it LOOKS nondeterministic. It is not: the task's own attn_pdrop and resid_pdrop are
+#     both 0.0, and dropout at p=0 draws no RNG. Written down anyway because the witness loop
+#     seeds once and then calls the reference TWICE (tf32 then ieee) with no re-seed, so any
+#     ACTIVE RNG in forward would be compared against a moving target and the measured
+#     "precision noise floor" would really be RNG noise. A structural weakness this task
+#     happens not to trigger -- so "43 was fine" is not evidence for a task with p > 0.
+#     This must be re-measured on THIS box before use (box 1's determinism probe result is a
+#     box-1 fact); the probe runs the reference twice at ONE precision so a difference cannot
+#     be blamed on precision.
+#
+# Launch -- ONE task at a time. Two concurrent runs on one GPU time kernels simultaneously
+# and silently corrupt each other's measurements:
+#   kernel-opt --config configs/experiments_l3_glm_a800.yaml run --task level3:21
+#   kernel-opt --config configs/experiments_l3_glm_a800.yaml run --task level3:43
+#   kernel-opt --config configs/experiments_l3_glm_a800.yaml run --task level3:48
+
+run:
+  runs_dir: /root/autodl-tmp/work/opop-glm/runs-l3
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/work/KernelBench   # which reference PROBLEM FILE is loaded
+
+opencode:
+  server_url: null
+  # launch_cwd and runs_dir must both sit under the tree containing .opencode/, because
+  # opencode resolves providers by walking UP from the session's working directory, and each
+  # agent sandbox gets its own opencode.json which makes it a project root and STOPS that
+  # search. Get this wrong and every call fails with
+  # ProviderModelNotFoundError: Model not found: zhipuai/glm-5.3.
+  launch_cwd: /root/autodl-tmp/work/opop-glm
+  sandbox_config_path: /root/autodl-tmp/work/opop-glm/.opencode/opencode.jsonc
+  # NOTE: sandbox_config_path copies the WHOLE provider block -- including the plaintext API
+  # key -- into every agent sandbox under runs_dir as a 0644 .json, once per agent call. A
+  # tar/scp of runs_dir would carry the key off the box. Rotate the key rather than assuming
+  # the runs directory is private.
+  server_env:
+    # A hard CEILING, computed as min(model.limit.output, ENV) with a 32000 default. Without
+    # it a reasoning-heavy model is truncated mid-thought; 131072 is zhipuai's own limit, so
+    # this states the resolved value.
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+  # PERMISSION ASKS: sandbox.py's PERMISSION_CONFIG is an ALLOW-LIST, and any tool key it
+  # omits falls back to opencode's default -- for external_directory that default is
+  # {"*": "ask"}. Headless `opencode serve` has nobody to answer an ask, so the turn idles
+  # until the ceiling aborts it. Verified present on this box: the live agent call above
+  # wrote permission keys [bash, edit, external_directory, webfetch] into its sandbox.
+
+# The section name `wsl:` is a misnomer here -- there is no WSL on this box -- but these are
+# the keys the worker reads, so they still apply.
+wsl:
+  venv: /root/autodl-tmp/orch-venv              # see NOTE A: one venv serves both roles here
+  kernelbench_src: /root/autodl-tmp/work/KernelBench/src   # the evaluation LIBRARY on
+                                                # PYTHONPATH; independent of kernelbench_root
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-kopt
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  # 5, was 3: at 3 the per-family round cap fired before the convergence test it defers to.
+  # 3 of 16 budget-frozen families were still gaining >=2% on their final allowed round.
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  # 6, was 3: at 3 Loop D was unreachable (4 seeds -> 4 families, so the novelty gate
+  # `>= max_families_total` was already true). All 19 prior L3 runs have origin:novelty = 0.
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed   # tf32|ieee dual-witness relaxed gate
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  # Second acceptance path, following torch._dynamo.utils.same(): build an fp64 golden
+  # reference and accept when the candidate's RMSE against it is within multiplier x the
+  # REFERENCE's own RMSE. Consulted only AFTER the absolute gate has failed, so it can add
+  # acceptances but never remove one. On box 1 all three L3 tasks have ieee-vs-tf32 floors
+  # BELOW the 0.99 that relaxed_pass_frac demands (0.9554 / 0.9767 / 0.9778), making the
+  # absolute gate unreachable for a low-precision candidate however correct it is.
+  # THOSE THREE FLOORS ARE BOX-1 MEASUREMENTS and have not been re-measured here; the floor
+  # is a (card, task) property, so expect different numbers on this card.
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  # These four equal the field defaults the 19 prior L3 runs used -- written down so the file
+  # states what it runs rather than relying on a default a reader must go and look up.
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+# MEASURED on THIS card (docs/box-a800-setup.md §1) -- see NOTE B for why reusing box 1's
+# block is the silent failure this file exists to avoid.
+device:
+  name: NVIDIA A800 80GB PCIe (sm_80)
+  vram_gb: 79
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 166912     # 1.65x the 4090's 101376 -- admits tiles infeasible there
+  max_threads_per_block: 1024

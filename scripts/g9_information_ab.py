@@ -41,6 +41,10 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from kernel_optimizer.store.read import latency_ms_of  # noqa: E402
+
 # --- the three evidence arms -----------------------------------------------------------------
 # WHAT THE REWRITER ACTUALLY READS, verified against a real run's events rather than assumed:
 # `analysis/bottleneck.json` is a BottleneckReport = {summary: str, parameter_limits, hypotheses,
@@ -148,8 +152,19 @@ def _evaluate(evaluator, task, source: str, workdir: Path, tag: str) -> dict:
         out["failure"] = str(res.get("failure_kind") or "unknown")
         out["log_tail"] = str(res.get("log_tail", ""))[:300]
         return out
-    lat = res.get("latency_ms") or {}
-    out["ms"] = lat.get("robust_ms") or lat.get("median_ms") or lat.get("mean_ms")
+    # G21, and this script was itself a fresh instance of it: `robust_ms`/`median_ms`/`mean_ms` are
+    # names from the in-memory model, NOT the stored keys. The worker writes
+    # {max, mean, median, min, n, samples, std} -- unsuffixed -- so all three guesses read None and
+    # every candidate reported `ms: null` while the measurement sat correctly on disk. An A/B whose
+    # arms all have a null objective cannot be ranked at all.
+    #
+    # `latency_ms_of` is the one accessor that knows the real keys, and it prefers median over mean
+    # by measurement (rank-correctness 93.2% vs 64.8% at n=20). Its argument is anything carrying a
+    # `latency_ms` dict, which the evaluator result is.
+    out["ms"] = latency_ms_of(res)
+    if out["ms"] is None:
+        # Correct but untimed is a distinct outcome and must not be silently averaged away.
+        out["failure"] = "no_latency_in_result:keys=%s" % sorted((res.get("latency_ms") or {}).keys())
     return out
 
 
@@ -171,6 +186,7 @@ def main() -> int:
     args = ap.parse_args()
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
     from kernel_optimizer.agents.modules import RewriterInputs
     from kernel_optimizer.config import load_config
     from kernel_optimizer.models.core import ProfileRecord
