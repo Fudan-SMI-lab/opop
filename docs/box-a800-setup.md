@@ -191,9 +191,13 @@ VERDICT: READY
 
 ## 8. What is still NOT done on this box
 
-- **No calibration cached** through the harness's own `kernel-opt calibrate`; the ceilings in §1 come
-  from probes. The first orchestrated run will measure and cache it (schema 3, so it will include the
-  Triton-reachable ceilings).
+- ~~**No calibration cached**~~ **CACHED 2026-09-10 at schema 5** (`runs-l3/calibration.json`).
+  Doing it exposed **G33**: the worker could not `import kernel_optimizer`, so all four
+  `*_triton_tflops` came back **0.0** with the cause recorded only in the raw worker output --
+  meaning **G10 had never been in effect in any real run, on either box**. Fixed; the cache now holds
+  Triton fp32 **18.08** / tf32 **100.99** / fp16 **193.35** / bf16 **199.78** TFLOP/s, i.e. Triton
+  reaches **95.1% / 90.6% / 85.5% / 85.4%** of the cuBLAS figure. **On this card the ratio never
+  exceeds 1.0** -- the inverse of box 1, where Triton beats cuBLAS at fp16/bf16. `suspect` is empty.
 - **No L3-scale agent call.** The verification call in §7.1 was trivial (91 input tokens). glm-5.3 at
   L3 prompt scale is where the 32000-token truncation appeared on box 1; neither the raised ceiling
   nor the truncation-specific feedback has been exercised here.
@@ -201,8 +205,15 @@ VERDICT: READY
   compiled, passed correctness and was timed at 5.4472 ms through the harness's own evaluator.
 - **The relaxed + fp64 witness path has never executed here.** Memory is not the constraint on an
   80 GB card, but the code path is unrun.
-- **Per-task noise floors are box-1 numbers.** The three ieee-vs-tf32 floors (0.9554 / 0.9767 /
-  0.9778) are a *(card, task)* property and must be re-measured here before use.
+- ~~**Per-task noise floors are box-1 numbers.**~~ **MEASURED 2026-09-10** with
+  `scripts/probe_noise_floor.py`: **0.9553 / 0.9765 / 0.9798** for L3:21 / 43 / 48, which match box 1
+  to within 0.02% on two tasks and 0.2% on the third. **So the floor did NOT move between cards** --
+  a negative result against the reason for re-measuring, written up in
+  `docs/result-a800-noise-floors.md`. All three same-precision controls read exactly 1.000000, so the
+  readings are not RNG noise and the precision switch demonstrably acts. All three still sit BELOW
+  `relaxed_pass_frac = 0.99`, so the absolute gate is unreachable for a low-precision candidate here
+  too and the fp64 relative arm is load-bearing. **Keep measuring it on a new box** -- the mechanism
+  (tf32 mantissa truncation) predicts its own exceptions, and the probe costs a minute per task.
 - **API key rotation is still pending** (user-side). This box now holds the same plaintext key as
   box 1, which raises the count of machines it has been on.
 

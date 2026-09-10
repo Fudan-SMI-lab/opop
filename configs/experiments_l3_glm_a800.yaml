@@ -176,8 +176,13 @@ evaluation:
   # acceptances but never remove one. On box 1 all three L3 tasks have ieee-vs-tf32 floors
   # BELOW the 0.99 that relaxed_pass_frac demands (0.9554 / 0.9767 / 0.9778), making the
   # absolute gate unreachable for a low-precision candidate however correct it is.
-  # THOSE THREE FLOORS ARE BOX-1 MEASUREMENTS and have not been re-measured here; the floor
-  # is a (card, task) property, so expect different numbers on this card.
+  # MEASURED HERE 2026-09-10 (scripts/probe_noise_floor.py, 5 trials/task): 0.9553 / 0.9765 /
+  # 0.9798 -- within 0.02% of box 1 on two tasks and 0.2% on the third, so the floor did NOT move
+  # between cards. That is a negative result against the reason for re-measuring; see
+  # docs/result-a800-noise-floors.md for the mechanism (tf32 mantissa truncation is a format
+  # property, not a card property) and for why a new box should still be measured rather than
+  # assumed. All three remain BELOW the relaxed_pass_frac above, so the absolute gate is
+  # unreachable for a low-precision candidate here too and the fp64 arm below is load-bearing.
   fp64_relative_gate: true
   fp64_rel_multiplier: 2.0
   fp64_rel_multiplier_lowp: 3.0

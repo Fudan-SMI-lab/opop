@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -288,6 +288,89 @@ class GpuConfig(BaseModel):
     compile_screen_enabled: bool = True
 
 
+class V3SearchConfig(BaseModel):
+    """S1 / S1b: what the tuner is allowed to change about the SPACE it samples from.
+
+    Both default OFF. Every stage of v3 needs its own control run -- the same task, the same
+    budget, the switch flipped -- and a stage that cannot be turned off cannot be measured. That
+    is not a style preference: S1 and S2 both change what the tuner and the agent see, so a run
+    from before a stage landed is not comparable to one from after it, and the only honest
+    comparison is two runs that differ in one switch.
+    """
+
+    # S1: express a compile-time-known infeasibility as a SHRUNKEN DOMAIN rather than sampling a
+    # dead point and rejecting it. Measured waste it targets: 180 of 1004 trials (18%) on L3:43
+    # were configurations that could not run and were knowable as such before any launch.
+    #
+    # The shrink must be driven by the existing compile-time truth (`_shared_memory_ok`), never by
+    # a new hand-written formula. Agent-written shared-memory constraints were measured at a median
+    # of 32% of the true limit, and L3:43's was true for all 36 configurations it saw -- it never
+    # rejected anything. Truth comes from the compiler, not from an expression.
+    declare_infeasible_out_of_space: bool = False
+
+    # S1b: down-weight a categorical VALUE whose failures cannot be explained by any partner.
+    # Deliberately down-weighting and not removal, and deliberately not a count.
+    #
+    # The count-based version ("retire a value after N total failures") was tested against history
+    # before being written and is REFUSED: at N=6 it retired 13 values on one box of which 5 later
+    # succeeded (38.5%), and PJ_BC=64 -- which really passed 102 of 176 times -- was among the
+    # casualties. Failure is almost always CONDITIONAL (ATTN_BLOCK_N=128 passed 0/3 beside
+    # GEMM_BLOCK_K=128 and 7/11 beside 64) while retirement is unconditional. tf32 is the
+    # measurably different case: 0 passes under every value of every other knob. So the criterion
+    # is unconditionality plus a live control, and the action keeps a non-zero probability so a
+    # wrong call can still be corrected by later trials.
+    deweight_unconditional_failures: bool = False
+
+
+class V3DiagnosisConfig(BaseModel):
+    """S2 / S2b / S2d: what the agent is told about resources, and in what shape."""
+
+    # S2: `label` is v2's behaviour -- one `kind` string per candidate, which measured 19 of 20
+    # reports on L3:21 carrying the same label. `vector` emits one independent record per
+    # dimension, and when several are binding it says so instead of choosing between them.
+    #
+    # The vector is written to events.jsonl either way, because recording costs nothing and is not
+    # what carries risk. This switch decides only what reaches the PROMPT -- which is the thing
+    # with an external counter-example (few-shot optimisation exemplars measurably LOWERED fast_1,
+    # 10% to 6% on KernelBench L1), so it is the thing that needs a control run.
+    mode: Literal["label", "vector"] = "label"
+
+    # S2d: the agent states, per dimension, which way it expects a rewrite to move the resource
+    # ("up"/"down"/"unchanged"/"unknown"), and afterwards the harness reconciles that against what
+    # was measured AND against whether the movement bought any latency.
+    #
+    # The direction is never a number: change rates are task-specific and, measured three ways, not
+    # derivable in advance -- no closed form for shared memory (0 of 96 exact), the map is not
+    # separable (0 of 10 one-step deltas agreed), and even the SIGN is unreliable (13 non-monotone
+    # slices, BK 16->32 dropping 58 registers and 32->64 adding 87). So the agent is asked only for
+    # a direction, and accuracy comes from being held to account afterwards rather than from us
+    # computing the rate for it.
+    #
+    # An expectation may never enter ranking, allocation, or acceptance. It has exactly two
+    # outlets: the ledger, and the next round's prompt.
+    expectation_ledger: bool = False
+
+    # S2b: the access-pattern coordinate (instruction-roofline "walls"), derived statically from
+    # tile/stride configuration -- no counters, no run. Off until its positive control passes: at
+    # least one hand-built kernel must land ON the 1/32 wall, or the derivation is just returning
+    # good news. A probe with no failing control has already cost us five negative "results".
+    access_pattern_walls: bool = False
+
+
+class V3Config(BaseModel):
+    """The v3 stages, each behind its own switch, all off by default.
+
+    Grouped rather than flat so that a stage's switches sit together and a YAML that sets one does
+    not have to know the others exist. NOTE that `load_config` reads a single file with no base
+    layer: an omitted key silently falls back to the default here, so THESE defaults are the
+    production behaviour, not `configs/default.yaml`. That has bitten this project before -- an
+    omitted `device:` block left every L3 agent being told its GPU was "unknown".
+    """
+
+    search: V3SearchConfig = V3SearchConfig()
+    diagnosis: V3DiagnosisConfig = V3DiagnosisConfig()
+
+
 class AppConfig(BaseModel):
     run: RunConfig = RunConfig()
     opencode: OpencodeConfig = OpencodeConfig()
@@ -296,6 +379,7 @@ class AppConfig(BaseModel):
     evaluation: EvalConfig = EvalConfig()
     wsl: WslConfig = WslConfig()
     gpu: GpuConfig = GpuConfig()
+    v3: V3Config = V3Config()
     device: DeviceLimits = DeviceLimits()
     kernelbench_root: Path = Path("D:/Pyhon_projects/opop/KernelBench")
 
