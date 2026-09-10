@@ -38,7 +38,7 @@ from kernel_optimizer.agents.runtime import AgentCallError
 from kernel_optimizer.config import AppConfig
 from kernel_optimizer.control.convergence import ConvergencePolicy
 from kernel_optimizer.control.families import FamilyManager, NoveltyRejection
-from kernel_optimizer.evaluation.benchmark import Benchmarker
+from kernel_optimizer.evaluation.benchmark import Benchmarker, environment_defect
 from kernel_optimizer.evaluation.conversion import conversion_verdict
 from kernel_optimizer.evaluation.correctness import CorrectnessEvaluator, latency_from_result
 from kernel_optimizer.evaluation.profilerx import LightProfiler
@@ -1178,11 +1178,24 @@ class Orchestrator:
 
         lat = latency_from_result(result)
         if not result.get("ok") or lat is None:
+            # An environment defect on this box arrives through the SAME channel as a bad kernel
+            # (`runtime_error` plus a traceback), and it reaches the repair agent as "your kernel
+            # crashed". Measured cost of that confusion: 12 of 12 candidates `runtime_error` from a
+            # missing dependency, read as "the model wrote bad kernels" (G29). Naming it in the
+            # detail costs nothing when it does not apply -- `environment_defect` returns None for
+            # every failure that is not an import inside the evaluation library's own chain, so a
+            # candidate importing something absent is still the candidate's problem and still gets
+            # its repair attempt.
+            tail = str(result.get("log_tail", ""))
+            detail = error_excerpt(tail, 800)
+            env = environment_defect(tail)
+            if env:
+                detail = f"{detail}\n\n{env}"
             return TrialRecord(
                 trial_id=trial_id, candidate_id=cand.candidate_id,
                 space_id=space.space_id, params=params, status="fail",
                 failure_kind=result.get("failure_kind") or "runtime_error",
-                failure_detail=error_excerpt(str(result.get("log_tail", "")), 800),
+                failure_detail=detail,
             )
         return TrialRecord(
             trial_id=trial_id, candidate_id=cand.candidate_id, space_id=space.space_id,
