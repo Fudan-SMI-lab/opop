@@ -9,8 +9,11 @@ need no privileges at all:
     tensor cores  HMMA/IMMA/BMMA/OMMA/QMMA -- is the kernel using them at all? Measured
                   separation on box 2: an fp16 tl.dot kernel shows 16, a scalar elementwise
                   kernel shows 0.
-    spills        STL/LDL, i.e. local-memory traffic. Cross-validated against Triton's own
-                  n_spills on box 2: STL=2/LDL=1 against n_spills=2, agreeing exactly.
+    spills        STL/LDL, i.e. local-memory ACCESS COUNT. NOT comparable to Triton's n_spills,
+                  which is a local-memory FOOTPRINT (bytes/4). Measured on box 1 over 5 kernels:
+                  they disagree 5/5, by 4x-33x, with a non-constant ratio -- accesses scale with
+                  loop trip count, the footprint does not. The earlier "cross-validated, agreeing
+                  exactly" note rested on one kernel at STL=2/LDL=1 vs n_spills=2, a coincidence.
     shared        LDS/STS and BAR.SYNC -- how much staging and synchronizing the kernel does.
     vectorization LDG/STG width (.128/.64/.32).
 
@@ -116,6 +119,32 @@ class SassCounts:
 
     @property
     def spill_instructions(self) -> int:
+        """COUNT of local-memory instructions, which is not the same unit as Triton's n_spills.
+
+        `n_spills` is a local-memory FOOTPRINT (CU_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES / 4, i.e.
+        32-bit slots, and all local memory rather than only spills). This is an ACCESS COUNT.
+        Measured on box 1 over five kernels of rising register pressure, all with .32-wide
+        accesses only:
+
+            n_regs=30  n_spills=8     STL+LDL=80
+            n_regs=128 n_spills=20    STL+LDL=651
+            n_regs=168 n_spills=560   STL+LDL=4025
+            n_regs=168 n_spills=1336  STL+LDL=8531
+            n_regs=168 n_spills=2432  STL+LDL=15250
+
+        5 of 5 disagree, by 4x to 33x, and the ratio is not constant -- so one cannot be derived
+        from the other. The reason is visible in the numbers: the footprint is a size, and each
+        slot is written and re-read many times inside loops, so accesses scale with trip count
+        while the footprint does not.
+
+        The docstrings here and in bottleneck.py previously called these "cross-validated,
+        agreeing exactly" on the strength of one kernel (STL=2/LDL=1 vs n_spills=2). That was a
+        coincidence at the smallest possible magnitude, and the paper must not cite it as
+        dual-source corroboration of the counter-free spill signal.
+
+        Both remain worth collecting, as genuinely different views: this says how much local-memory
+        TRAFFIC the kernel performs, n_spills says how much local memory it NEEDS.
+        """
         return self.spill_store + self.spill_load
 
     @property
@@ -167,16 +196,38 @@ class KernelStatics:
 
 
 def find_cuda_tool(name: str) -> str | None:
-    """Locate a CUDA binary: PATH first, then the toolkit directories.
+    """Locate a CUDA binary: PATH, then Triton's own vendored copy, then the toolkit directories.
 
     NOT `shutil.which` alone. Measured on box 2: nvdisasm and cuobjdump are installed under
     /usr/local/cuda/bin/ and absent from the login shell's PATH, so a PATH-only lookup reports a
     working tool as unavailable -- the same class of bug as the opencode PATH failure, where an
     available capability was read as a missing one and a whole signal silently vanished.
+
+    TRITON VENDORS THESE, which removes the toolkit as a dependency entirely. Verified on box 1
+    (triton 3.5.0):
+
+        triton/backends/nvidia/bin/cuobjdump
+        triton/backends/nvidia/bin/nvdisasm
+        triton/backends/nvidia/bin/ptxas
+
+    Triton itself shells out to these when producing SASS, so they are guaranteed present wherever
+    a Triton candidate can compile at all -- a stronger guarantee than the CUDA toolkit, which is
+    absent from plenty of container images. Searched BEFORE the toolkit roots but AFTER PATH, so an
+    operator who deliberately puts a specific version on PATH still wins.
     """
     found = shutil.which(name)
     if found:
         return found
+    # Triton's vendored bin/ -- located from the installed package rather than a guessed path, so
+    # it follows the venv wherever it lives.
+    try:
+        import triton  # noqa: PLC0415 -- optional here; this module is also merely parsed
+
+        cand = Path(triton.__file__).parent / "backends" / "nvidia" / "bin" / name
+        if cand.exists():
+            return str(cand)
+    except Exception:  # noqa: BLE001 — no triton (a cuda-only candidate, or import-time parse)
+        pass
     roots: list[str | None] = [os.environ.get("CUDA_HOME"), os.environ.get("CUDA_PATH"),
                                "/usr/local/cuda"]
     try:

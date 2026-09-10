@@ -17,8 +17,14 @@ step 5 disproved it by measurement on box 2:
   tensor cores    VISIBLE. Disassembling the cubin (nvdisasm/cuobjdump, no privileges needed)
                   recovers HMMA/IMMA/BMMA/OMMA. An fp16 tl.dot kernel shows 16; a scalar
                   elementwise kernel shows 0.
-  spills          VISIBLE as STL/LDL, cross-validated against Triton's own n_spills (STL=2/LDL=1
-                  against n_spills=2, agreeing exactly).
+  spills          VISIBLE as STL/LDL, but as an ACCESS COUNT, which is a different quantity from
+                  Triton's `n_spills` (a local-memory FOOTPRINT: bytes/4). Measured on box 1 over
+                  5 kernels of rising pressure, all .32-wide: they disagree 5/5 by 4x-33x with a
+                  non-constant ratio, because accesses scale with loop trip count while the
+                  footprint does not. An earlier version of this note called them
+                  "cross-validated, agreeing exactly" on the strength of a single kernel at
+                  STL=2/LDL=1 vs n_spills=2 -- a coincidence at the smallest possible magnitude,
+                  not corroboration. Both are collected; neither validates the other.
   shared traffic  VISIBLE as LDS/STS, and barriers as BAR.SYNC.
   occupancy       COMPUTABLE analytically from n_regs/shared/num_warps plus device properties,
                   including WHICH resource binds it.
