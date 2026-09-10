@@ -36,6 +36,7 @@
 | `probe_resource_read_cost.py` | 一个资源点多贵、字段什么时候可读 | **614.6 ms 中位 / 899 ms 均值 = 1/21~1/30 个计时 trial**;`n_regs` 编译后 0/108、一次 0.4 ms launch 后 96/96 |
 | `probe_resource_map.py` | 能不能用公式或"测一次到处用"省掉地图 | **都不能**:shared 线性拟合 0/96 精确命中(残差最大 121.4%);地图**不可分离**(1/8 一步移动增量一致,shared 跨度 24576 B、寄存器跨度 127) |
 | `multibind_rule_check.py` | 多维绑定时该动哪一维 | 没有规则打得过对照(7.1% vs 21.4%) |
+| **`multibind_latency_independent.py`** | **剔除 `dram`/`compute` 两个 1/延迟的列后,多维绑定还剩多少** | **还剩很多**:n=51,0.70 下 **72.5%**(旧计法 90%)、0.85 下 **25.5%**(旧 45%);最常见组合 **occupancy+registers** 本来就与延迟无关 ⇒ **A-1 的动机站得住,且与 S2c 所测维度重合** |
 | `probe_binding_criterion_control.py` | **利用率判据本身可信吗**(5 个已知答案的 kernel) | **误判 2/5**;L2 内流式 kernel 读出 DRAM 屋顶 287%;**并顺带查出 dram/compute 就是 1/延迟** |
 | `spill_filter_check.py` | 该不该按寄存器溢出过滤配置 | **不该**:0/5 获胜配置溢出,但 11/175 近平局溢出最多 52 个、只差 +0.6%~+2.1% |
 | `blind_spots.py` | 用户点的三个缺口有多严重 | 17 份报告 1 个标签;76% 报告有 ≥2 维同时接近上限;改写后资源漂移最多 79.9 KB / 137 regs |
