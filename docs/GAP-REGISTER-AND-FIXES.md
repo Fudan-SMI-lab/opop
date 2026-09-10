@@ -52,6 +52,7 @@
 | **G26** | **J2-8 判据把 L2 内流量读成 DRAM 绑定**(A800 实测阈值拦不住) | 算错了 | **高(S2 硬门)** | **✅ 已修 `677d956`**(修法 (b) 已落地:工作集 vs **本机实测** L2;A800 上真实控制组 **5/5 全对**) | §G26 |
 | **G27** | **G3 的转化效率在生产里恒为空转**:两个 profile 参数**永远是 `None`** ⇒ `resource_deltas` 从未产生、`no_conversion` **不可达** | 算错了 | **高(S4 的地基)** | **✅ 已修 `677d956`**(`BestRecord` 带上 profile;实测 `no_conversion` 已可达、产生 3 个维度差) | §G27 |
 | **G28** | **判决的原始 evidence 字典被直接渲染进 agent 文档**,与 S2 的 J2-3(原始向量不得进 prompt)相反 | 方向错了 | 中(S2 前置) | ⏳ **S2 编码时一并处理**(消化层是 S2 本体) | §G28 |
+| **G29** | **一台机可以通过全部就绪检查却评测不了任何 kernel**:`kernelbench` 包 `__init__` 的导入链缺包 ⇒ **12/12 候选全报 `runtime_error`**,读起来和「模型写坏了」一模一样 | 缺失 | **高** | **✅ 已修**(补齐 25 个包 + 新增 `scripts/verify_box_can_evaluate.py` 作为真实评测门) | §G29 |
 
 
 
@@ -639,6 +640,60 @@ conversion_verdict(3.0, 2.00, None, None, 2.0)
 S2 的 J2-3 明写「**原始向量不得进 prompt**,构造 prompt 的函数只能访问消化后的四元组」。当前 `agents/modules.py:201-233` 把判决的 `evidence` 字典**原样渲染**进 agent 读的文档,并写出 `## Verdict: **{verdict.kind}**`。
 
 这不是新缺陷(v2 一直如此),但**它是 S2 消化层要解决的那件事本身**,所以登记在册,以免 S2 编码时把「已经有 evidence 进 prompt 了」误当成消化层已存在。**J2-3 的验收要求测试驱动真实的 prompt 构造路径**,不许在测试体内复刻。
+
+---
+
+### G29 一台机能通过全部就绪检查,却评测不了任何 kernel —— 缺失(✅ 已修)
+
+**实测代价:一次 6 次真实 agent 调用的 G9 重跑全废。**
+
+A800 通过了:**422 个单元测试**、一次**真实 agent 调用**(agent 自己跑了 `nvidia-smi`)、`validate_box_config.py` **全绿**(每条路径存在、venv 能 import torch/triton、device 块与卡实测一致)。然后 G9 跑完:
+
+```
+arm       produced  usable  correct   best ms
+none             4       4        0        -
+verdict          4       4        0        -
+rich             4       4        0        -
+```
+
+**12/12 候选 `runtime_error`**,全部死在同一行:
+
+```
+File ".../gpu/worker_main.py", line 1722, in run_static_check
+  from kernelbench.kernel_static_checker import validate_kernel_static
+File ".../KernelBench/src/kernelbench/__init__.py", line 1
+  from . import utils   # triggers monkey-patch on torch.randn
+File ".../kernelbench/utils.py", line 6
+  from dotenv import load_dotenv
+ModuleNotFoundError: No module named 'dotenv'
+```
+
+**根因**:`kernelbench` 的包级 `__init__` 会拉起一条导入链 —— `dotenv` → `openai` → `litellm` → …,而这些是**它的 LLM 工具链依赖,与评测无关**,却因为写在 `__init__` 里而成为**导入 evaluator 的必要条件**。A800 的 venv 缺 **25 个包**(与 box 1 的工作 venv 逐包对比得出),所以**评测路径整条不通**。
+
+**为什么三道检查全都没抓到**:
+
+| 检查 | 为什么漏 |
+|---|---|
+| 422 个单元测试 | **从不 import `kernelbench`** —— 测的是 harness 自己的逻辑 |
+| `validate_box_config.py` | 检查**路径存在**与 `torch/triton` 可 import;`kernelbench` **在盘上、只在 import 时才炸** |
+| `verify_agent_env.py` | 测的是 agent 调用路径,与评测路径**无交集** |
+
+**最危险的地方不是失败,是失败的样子**:`n_correct: 0` 与「模型写出来的 kernel 全错」**读起来完全一样**。如果我没去看 `failure` 字段,这份数据会被当成「L3:21 上三臂都没能产出正确候选」的结论记下来。
+
+**修法(两条,后者才是泛化的那条)**:
+1. 按 box 1 的工作 venv 补齐 25 个包(`litellm`/`einops`/`ninja`/`tiktoken`/`huggingface_hub`/… 及其依赖);
+2. **新增 `scripts/verify_box_can_evaluate.py`** —— 唯一能抓住这类问题的门:**拿一个已知正确的 kernel,走 harness 自己的 `quick_test` 真评一次**。A800 实测:
+
+```
+candidate : /root/g9-start-l3-21/best.py   (4090 上实测 3.6050 ms 的冠军)
+ok        : True     latency : 5.4472 ms
+VERDICT: READY -- 这台机端到端编译、验正确性、计了时
+```
+
+**顺带一个跨卡数据点**:同一个 kernel 4090 上 3.6050 ms、A800 上 **5.4472 ms**(慢 1.51×),与 A800 fp32 慢 2.9× 的实测一致 —— 这个任务不是纯 fp32 算力受限。
+
+**纪律**:**任何新机器在花 agent 调用之前必须先过这道门。** 「单元测试全绿 + agent 能调用 + config 校验通过」**不等于**能评测,这次的代价是 6 次真实调用与 25 分钟墙钟。
+
 
 
 

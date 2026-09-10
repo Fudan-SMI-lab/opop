@@ -166,6 +166,29 @@ mismatches named and exit 1. The first version caught only three — comparing `
 vacuous, since "NVIDIA" appears in every card name — so the name check now compares the distinctive
 model tokens.
 
+## 7.3 The gap every other check missed: the box could not evaluate a kernel
+
+Verified working now, but recorded because it cost a full 6-call G9 re-run. This box passed **422
+unit tests**, a **real agent call**, and `validate_box_config.py` **all green** — and still could not
+evaluate a single kernel. `kernelbench`'s package `__init__` pulls a chain of its LLM-tooling
+dependencies (`dotenv` → `openai` → `litellm` → …), unrelated to evaluation but required to import
+the evaluator, and **25 packages were missing** against box 1's working venv. Every candidate came
+back `runtime_error`, which reads identically to "the model wrote bad kernels".
+
+Fixed by installing box 1's set, and guarded generally by `scripts/verify_box_can_evaluate.py`,
+which evaluates a **known-correct** kernel through the harness's own `quick_test`:
+
+```
+candidate : /root/g9-start-l3-21/best.py    (the 3.6050 ms champion measured on the 4090)
+ok        : True     latency : 5.4472 ms
+VERDICT: READY
+```
+
+**Run that before spending agent calls on any new box.** See G29 in the gap register.
+
+**A cross-card datapoint from it**: the same kernel is 3.6050 ms on the 4090 and **5.4472 ms** here
+(1.51× slower), against the A800's 2.9× lower fp32 — so this task is not purely fp32-compute-bound.
+
 ## 8. What is still NOT done on this box
 
 - **No calibration cached** through the harness's own `kernel-opt calibrate`; the ceilings in §1 come
@@ -174,8 +197,8 @@ model tokens.
 - **No L3-scale agent call.** The verification call in §7.1 was trivial (91 input tokens). glm-5.3 at
   L3 prompt scale is where the 32000-token truncation appeared on box 1; neither the raised ceiling
   nor the truncation-specific feedback has been exercised here.
-- **No GPU worker job has run through `wsl.venv`.** The one-venv claim above is verified by *import*,
-  not by a completed eval job.
+- ~~No GPU worker job has run through `wsl.venv`.~~ **DONE** — see §7.3: a known-correct kernel
+  compiled, passed correctness and was timed at 5.4472 ms through the harness's own evaluator.
 - **The relaxed + fp64 witness path has never executed here.** Memory is not the constraint on an
   80 GB card, but the code path is unrun.
 - **Per-task noise floors are box-1 numbers.** The three ieee-vs-tf32 floors (0.9554 / 0.9767 /
