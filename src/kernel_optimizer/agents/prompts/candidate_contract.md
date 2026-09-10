@@ -179,6 +179,77 @@ choice, not an afterthought:
   the only thing standing between that choice and a wrong answer: verify it on the task's
   real shape, and say so in `approach_summary`.
 
+### The precision knob must vary the ARITHMETIC only, never the algorithm
+
+This is the single most expensive mistake measured in this harness, and it is worth stating
+separately because it does not look like a mistake in the source. **Two distinct failures,
+both reported identically as `correctness_mismatch`, and both are the candidate's own
+doing** — the acceptance gate was audited over 537 rejections and attributed 0 of them to
+itself (rejected candidates missed the fp64 reference by 3.04x at best, 6.48x median, up to
+3766x, so they were not near-misses).
+
+**(1) `PREC` gating the algorithm rather than the dot.** Where the precision variable is
+confined to a small dot helper, it really is a precision knob. Where it also selects a
+*code path*, the non-default branches are running code that was never stabilized, and the
+knob is no longer measuring precision — it is measuring which branch you debugged.
+Measured over four candidates on one task, by counting `if PREC ==` sites per candidate:
+
+```
+PREC only inside the dot helper      fp16 32/32, bf16 17/17, tf32 12/12  PASS
+PREC only inside the dot helper      fp16 15/15, bf16 41/41 pass; tf32   0/11 FAIL
+PREC in the dot helper AND the ALGORITHM   fp16 43/43 pass; bf16 0/13, tf32 0/9  FAIL
+PREC in the dot helper AND the ALGORITHM   fp16 pass;       bf16 0/12, tf32 0/4  FAIL
+```
+
+**So: write the algorithm once. `COMPUTE_DTYPE` may change casts and
+`input_precision`, and nothing else.** If a precision genuinely needs a different
+numerical treatment (a log-space stabilization, a rescaling), apply that treatment
+**unconditionally at every precision** — a stabilization that is correct at bf16 is not
+wrong at fp16, it merely costs a little. A branch that only one precision enters is a
+branch the tuner cannot compare, and the winning configuration was never measured against
+the alternatives.
+
+**(2) An uncompensated `dot` where the mantissa is genuinely too short.** A single
+low-precision MMA truncates the multiply inputs' mantissa. Where that is what fails, the
+fix is arithmetic, not a branch — split each operand into a high and a low part and
+accumulate the cross terms, which roughly doubles the effective mantissa for about 3x the
+MMAs (still far cheaper than the scalar path):
+
+```python
+ah = a.to(tl.float16); al = (a - ah.to(tl.float32)).to(tl.float16)
+bh = b.to(tl.float16); bl = (b - bh.to(tl.float32)).to(tl.float16)
+acc += tl.dot(ah, bh) + tl.dot(ah, bl) + tl.dot(al, bh)   # 3 MMAs, ~2x mantissa bits
+```
+
+Measured on the task that motivated this: the split form passed **12/12** correctness
+checks where the single-MMA form failed **11/11**.
+
+**Offer the compensation as its own knob, so the tuner decides whether the task needs
+it** — do not hard-wire either form:
+
+```python
+PARAMS = {
+    "COMPUTE_DTYPE": "tf32",     # ["fp16", "bf16", "tf32", "ieee"]
+    "DOT_MODE": "plain",         # ["plain", "split3"]  -- arithmetic only, NOT a code path
+}
+```
+
+`"plain"` is one MMA; `"split3"` is the three-MMA form above. Both must produce the same
+algorithm with the same shapes — the only difference is how the product is computed. On a
+task whose reduction is short or whose values are small, `"plain"` wins on speed and
+`"split3"` costs 3x the MMAs for nothing; on a long or wide-dynamic-range reduction the
+reverse. **That is exactly the kind of question the tuner exists to answer on
+measurements, and it cannot answer it if only one form is expressible.**
+
+**A third failure mode is fp16-specific and is about RANGE, not mantissa**, so neither
+knob above addresses it: fp16 overflows to Inf/NaN above 65504. If the task's intermediate
+values can exceed that (check the reference's magnitude), fp16 needs rescaling or must be
+left out of the knob's choices — while bf16 keeps fp32's exponent range and does not have
+this problem. Diagnose which of the three you are facing before treating a low-precision
+failure as a reason to abandon low precision: on one task 8 of 8 tensor-core candidates
+were rejected and 7 of 7 scalar candidates accepted, and the resulting best kernel used no
+tensor cores at all.
+
 ## Backend
 
 - **Two backends are supported: `triton` (`@triton.jit` kernels) and `cuda` (via

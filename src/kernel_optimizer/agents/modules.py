@@ -431,10 +431,35 @@ def _repair_guidance(failure_kind: str) -> str:
         "if the reference is in TRAIN mode, BatchNorm must use the CURRENT BATCH "
         "mean/var, NOT running_mean/running_var (which are 0/1 on an untrained model "
         "and cause exactly this kind of large offset). A SMALL error just over tolerance "
-        "is a precision issue: accumulate dot products/reductions in fp32 (use "
-        'input_precision="ieee" for tl.dot on fp32 refs), check reduction order and '
-        "masking of padded lanes, and keep softmax/normalization numerically stable "
-        "(subtract the row max before exp)."
+        "is a precision issue. Diagnose WHICH of three causes it is before changing "
+        "anything, because they have different fixes and one of them is not about "
+        "precision at all:\n"
+        "  (a) MANTISSA -- a single low-precision MMA does not carry enough mantissa "
+        "for this reduction. Fix the ARITHMETIC, not the precision: split each dot "
+        "operand into high and low parts and accumulate the cross terms "
+        "(ah=a.to(tl.float16); al=(a-ah.to(tl.float32)).to(tl.float16); likewise b; "
+        "then tl.dot(ah,bh)+tl.dot(ah,bl)+tl.dot(al,bh)) -- 3 MMAs for roughly double "
+        "the mantissa bits. Measured: this form passed 12/12 where the single MMA "
+        "failed 11/11.\n"
+        "  (b) AN ALGORITHM BRANCH THAT ONLY ONE PRECISION ENTERS -- if the source has "
+        "`if PREC == ...` around anything other than casts and input_precision, the "
+        "failing precision is running code that was never stabilized, and the fix is to "
+        "apply that numerical treatment at EVERY precision (it is not wrong at the "
+        "others, only slightly more expensive). Measured: candidates whose PREC gated "
+        "the algorithm failed bf16 0/13 and tf32 0/9 while passing fp16 43/43; "
+        "candidates whose PREC stayed inside the dot helper passed at every precision.\n"
+        "  (c) fp16 RANGE OVERFLOW -- fp16 saturates to Inf/NaN above 65504, which is "
+        "not a mantissa problem and none of the above fixes it. Check the reference's "
+        "magnitude; rescale, or use bf16, which keeps fp32's exponent range.\n"
+        "Also check the ordinary suspects: keep the ACCUMULATOR in fp32 "
+        "(tl.zeros(..., dtype=tl.float32)) even on a low-precision input path, check "
+        "reduction order and masking of padded lanes, and keep softmax/normalization "
+        "numerically stable (subtract the row max before exp). "
+        "Do NOT reach for input_precision=\"ieee\" as the fix unless the task genuinely "
+        "needs full fp32: that abandons the tensor cores altogether and is measurably "
+        "the wrong trade -- on one task 8 of 8 tensor-core candidates were rejected, "
+        "7 of 7 scalar candidates accepted, and the resulting best kernel used no "
+        "tensor cores at all."
     )
     compile_ = (
         "This is a COMPILE/RUNTIME error: the kernel failed to build or crashed. Focus "
@@ -615,9 +640,24 @@ materially faster on this class of card and is what torch.compile uses -- the ME
 ratio for this box is in the ceilings block above, so use that number rather than
 assuming one. The dual-precision correctness gate
 accepts a tf32-matching result, so at least one of your candidates SHOULD take the
-tf32 tensor-core path (with an fp32 accumulator), and you should expose the dot
-precision as a PARAMS knob (e.g. "DOT_PRECISION": "tf32") so the tuner can compare
-it against "ieee" on real measurements.
+tf32 tensor-core path (with an fp32 accumulator), and you should expose the compute
+precision as a PARAMS knob (e.g. "COMPUTE_DTYPE" with choices
+["fp16", "bf16", "tf32", "ieee"]) so the tuner can compare them on real measurements.
+
+That knob must change the ARITHMETIC ONLY -- casts and `input_precision` -- and never
+which code path runs. Measured over four candidates on one task: where the precision
+variable stayed inside the dot helper every precision passed correctness (32/32,
+17/17, 12/12); where it also gated the ALGORITHM, the precisions other than the one
+that had been debugged failed outright (bf16 0/13, tf32 0/9 against fp16's 43/43).
+Any numerical treatment a precision needs (log-space stabilization, rescaling) must be
+applied at EVERY precision instead -- it is not wrong at the others, only slightly more
+expensive, whereas a branch one precision alone enters is a branch the tuner cannot
+compare. If the dot needs more mantissa than one low-precision MMA gives, expose that
+as its own knob ("DOT_MODE": ["plain", "split3"], where split3 splits each operand into
+high/low parts and sums the cross terms -- 3 MMAs for ~2x the mantissa bits; measured
+12/12 passing where the single MMA failed 11/11), NOT as a branch. Note separately that
+fp16 overflows above 65504 -- a RANGE limit, which neither knob fixes -- while bf16
+keeps fp32's exponent range.
 
 You may run quick syntax checks (e.g. `python -c "import ast; ast.parse(open('candidates/cand_1.py').read())"`),
 but you cannot run GPU code here — the harness evaluates on the GPU afterwards.
@@ -755,6 +795,32 @@ Your job: parameterize every tunable feature of this kernel.
    must control the actual precision the kernel computes in, so the tuner can
    compare precisions on real measurements. On matmul/conv-bound work this is
    usually the highest-impact tunable.
+
+   **The precision knob must vary the ARITHMETIC ONLY, never which code path runs.**
+   Measured over four candidates on one task: where the precision variable stayed
+   inside the dot helper, every precision passed correctness (32/32, 17/17, 12/12);
+   where it ALSO selected an algorithm branch, the non-default precisions failed
+   outright (bf16 0/13, tf32 0/9 — while fp16, the branch that had been debugged,
+   passed 43/43). If the kernel you are given contains `if PREC == ...` around
+   anything other than casts and `input_precision`, that is a defect to FIX while
+   parameterizing, not a structure to preserve: hoist the numerical treatment so it
+   applies at EVERY precision. A stabilization that is correct at bf16 is not wrong
+   at fp16 — it merely costs a little — whereas a branch only one precision enters
+   is a branch the tuner cannot compare.
+
+   If the dot genuinely needs more mantissa than one low-precision MMA provides,
+   expose that as its OWN knob rather than a branch — `"DOT_MODE"` with choices
+   `["plain", "split3"]`, where `"split3"` splits each operand into high and low
+   parts and accumulates the cross terms (3 MMAs, ~2x the mantissa bits):
+
+       ah = a.to(tl.float16); al = (a - ah.to(tl.float32)).to(tl.float16)
+       bh = b.to(tl.float16); bl = (b - bh.to(tl.float32)).to(tl.float16)
+       acc += tl.dot(ah, bh) + tl.dot(ah, bl) + tl.dot(al, bh)
+
+   Measured: the split form passed 12/12 where the single-MMA form failed 11/11 on
+   the task that motivated it. Both forms must compute the SAME algorithm with the
+   same shapes — only the product differs — so the tuner can decide whether this
+   task needs the extra mantissa or is paying 3x the MMAs for nothing.
 2. For each PARAMS key, propose the list of values worth trying, ordered from
    cheapest (least resources) to most expensive. Keep each list to 2-8 values.
    The current PARAMS default must be included in its list.
