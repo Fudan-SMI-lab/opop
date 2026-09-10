@@ -79,7 +79,15 @@ SUSPECT_BELOW_SPEC_FRAC = 0.60
 #   1  dram/fp32/tf32/launch-floor/yardsticks/thresholds/tiers  (the original set)
 #   2  + fp16_tflops, bf16_tflops                               (P3, 2026-09-08)
 #   3  + {fp32,tf32,fp16,bf16}_triton_tflops                    (G10, 2026-09-10)
-CALIBRATION_SCHEMA_VERSION = 3
+#   4  + l2_bytes reaching the classifier                       (G26, 2026-09-10)
+#
+# Version 4 is the case the paragraph above warns about, caught live. `l2_bytes` had been measured
+# and cached for some time, but nothing READ it; G26 made it load-bearing as the precondition on
+# whether the DRAM dimension applies at all. Every cache written before then either lacks the field
+# or was never checked for it -- verified on the A800, whose cached calibration has no l2-related key
+# at all -- so the new gate would read 0, never fire, and every verdict would still look like a
+# verdict. That is the same silent-zero failure as G10's, one schema version later.
+CALIBRATION_SCHEMA_VERSION = 4
 
 
 class Yardstick(BaseModel):
