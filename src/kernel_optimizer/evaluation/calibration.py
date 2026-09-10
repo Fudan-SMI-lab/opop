@@ -78,7 +78,8 @@ SUSPECT_BELOW_SPEC_FRAC = 0.60
 #
 #   1  dram/fp32/tf32/launch-floor/yardsticks/thresholds/tiers  (the original set)
 #   2  + fp16_tflops, bf16_tflops                               (P3, 2026-09-08)
-CALIBRATION_SCHEMA_VERSION = 2
+#   3  + {fp32,tf32,fp16,bf16}_triton_tflops                    (G10, 2026-09-10)
+CALIBRATION_SCHEMA_VERSION = 3
 
 
 class Yardstick(BaseModel):
@@ -158,6 +159,16 @@ class Calibration(BaseModel):
     # must still classify, just without the fp16/bf16 denominators.
     fp16_tflops: float = 0.0
     bf16_tflops: float = 0.0
+    # G10: the same four ceilings as reached FROM TRITON, which is what every candidate is written
+    # in. The figures above are cuBLAS, and on box 1 the two disagree in both directions (Triton at
+    # 84.1% of cuBLAS at fp32, 109.6% at fp16), so neither alone is the roof. `DevicePeaks` takes
+    # the max of the pair as the ceiling and uses the Triton figure to say when a candidate's own
+    # backend cannot reach it -- a different statement from "there is headroom", calling for a
+    # different action. Zero means not measured, and then the cuBLAS figure stands alone.
+    fp32_triton_tflops: float = 0.0
+    tf32_triton_tflops: float = 0.0
+    fp16_triton_tflops: float = 0.0
+    bf16_triton_tflops: float = 0.0
     empty_launch_floor_ms: float = 0.0
     spec_dram_tbs: float = 0.0
     l2_bytes: int = 0

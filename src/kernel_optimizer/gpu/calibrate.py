@@ -57,6 +57,12 @@ def calibration_from_worker(result: dict) -> Calibration:
         tf32_tflops=float(result.get("tf32_tflops", 0.0) or 0.0),
         fp16_tflops=float(result.get("fp16_tflops", 0.0) or 0.0),
         bf16_tflops=float(result.get("bf16_tflops", 0.0) or 0.0),
+        # G10: the Triton-reachable counterparts. Absent on an old worker, and then each is 0.0 and
+        # the cuBLAS figure stands alone -- the behaviour before these were measured.
+        fp32_triton_tflops=float(result.get("fp32_triton_tflops", 0.0) or 0.0),
+        tf32_triton_tflops=float(result.get("tf32_triton_tflops", 0.0) or 0.0),
+        fp16_triton_tflops=float(result.get("fp16_triton_tflops", 0.0) or 0.0),
+        bf16_triton_tflops=float(result.get("bf16_triton_tflops", 0.0) or 0.0),
         empty_launch_floor_ms=float(result.get("empty_launch_floor_ms", 0.0) or 0.0),
         spec_dram_tbs=spec_dram,
         l2_bytes=int(result.get("l2_bytes", 0) or 0),

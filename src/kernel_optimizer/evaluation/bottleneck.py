@@ -125,22 +125,72 @@ class DevicePeaks(BaseModel):
     # worse as candidates improved, because every candidate good enough to lead was low-precision.
     fp16_tflops: float = 0.0
     bf16_tflops: float = 0.0
+    # G10: the same ceilings as reached FROM TRITON, the backend every candidate is written in.
+    # Measured on box 1 with every figure gated on correctness, cuBLAS and Triton disagree in BOTH
+    # directions -- Triton at 84.1% of cuBLAS at fp32, and at 109.6%/107.9% at fp16/bf16. So
+    # neither library alone is the roof: the ceiling is the max over measured paths, and the Triton
+    # figure additionally says whether the candidate's OWN backend can reach it.
+    fp32_triton_tflops: float = 0.0
+    tf32_triton_tflops: float = 0.0
+    fp16_triton_tflops: float = 0.0
+    bf16_triton_tflops: float = 0.0
+
+    def _pair(self, precision: str | None) -> tuple[float, float, str]:
+        """(cuBLAS figure, Triton figure, precision label) for the precision that applies.
+
+        `"fp32"` is answered literally rather than falling through to the tf32 branch: a scalar
+        kernel's ceiling IS the fp32 one, and that pair has the widest measured backend gap of the
+        four (45.61 vs 54.20 on box 1). The fall-through to tf32 remains for `None` and for any
+        precision without a measured ceiling, which is the pre-existing behaviour.
+        """
+        if precision == "fp32":
+            return self.fp32_tflops, self.fp32_triton_tflops, "fp32"
+        if precision == "fp16" and self.fp16_tflops > 0:
+            return self.fp16_tflops, self.fp16_triton_tflops, "fp16"
+        if precision == "bf16" and self.bf16_tflops > 0:
+            return self.bf16_tflops, self.bf16_triton_tflops, "bf16"
+        if self.tf32_tflops > 0:
+            return self.tf32_tflops, self.tf32_triton_tflops, "tf32"
+        return self.fp32_tflops, self.fp32_triton_tflops, "fp32"
+
+    def backend_reachable_frac(self, precision: str | None) -> float | None:
+        """Triton's achievement as a fraction of the ceiling, or None when not measured.
+
+        Below 1.0 means a Triton candidate CANNOT reach the roof it is being scored against, which
+        is a different finding from "it has headroom" and implies a different action: the limit is
+        the code generator, not the tiling. Above 1.0 cannot happen, because the ceiling is the max
+        of the pair.
+        """
+        cublas, triton_tf, _ = self._pair(precision)
+        ceiling = max(cublas, triton_tf)
+        if ceiling <= 0 or triton_tf <= 0:
+            return None
+        return triton_tf / ceiling
 
     def compute_ceiling_for(self, precision: str | None) -> tuple[float, str]:
         """The arithmetic ceiling that applies to a kernel computing in `precision`.
 
-        Falls back along a chain rather than to zero: an unmeasured fp16 ceiling should give the
-        tf32 figure (wrong but flagged by `impossible_fraction`) rather than silently disabling
-        the compute test. The returned name says which ceiling was used, so the evidence records
-        what the percentage is a percentage OF.
+        THE CEILING IS THE MAX OVER EVERY PATH MEASURED ON THIS BOX. Taking cuBLAS alone produced
+        two opposite errors on real measurements: at fp32 it set a roof 19% above what Triton can
+        reach, so a candidate at its structural limit was told it had headroom; at fp16/bf16 it set
+        a roof BELOW what Triton achieves, so the fraction exceeded 100% and read as "saturated,
+        stop optimizing". A library's achievement is not physics.
+
+        Falls back along a chain rather than to zero: an unmeasured fp16 ceiling gives the tf32
+        figure (wrong, but flagged by `impossible_fraction`) rather than silently disabling the
+        compute test. The returned name says which ceiling was used AND which path set it, so the
+        evidence records what the percentage is a percentage of.
         """
-        if precision == "fp16" and self.fp16_tflops > 0:
-            return self.fp16_tflops, "tensor-core (fp16)"
-        if precision == "bf16" and self.bf16_tflops > 0:
-            return self.bf16_tflops, "tensor-core (bf16)"
-        if self.tf32_tflops > 0:
-            return self.tf32_tflops, "tensor-core (tf32)"
-        return self.fp32_tflops, "fp32 (no tensor cores)"
+        cublas, triton_tf, label = self._pair(precision)
+        base = {"fp16": "tensor-core (fp16)", "bf16": "tensor-core (bf16)",
+                "tf32": "tensor-core (tf32)", "fp32": "fp32 (no tensor cores)"}[label]
+        if triton_tf > cublas > 0:
+            # Triton is the higher of the two, so cuBLAS would have been an ANTI-ceiling. Naming
+            # the winning path matters: this is the case that used to produce fractions above 100%.
+            return triton_tf, f"{base}, Triton-measured (above cuBLAS)"
+        if triton_tf > 0 and cublas > 0:
+            return cublas, f"{base}, cuBLAS-measured"
+        return (cublas if cublas > 0 else triton_tf), base
 
     @property
     def ridge_flop_per_byte(self) -> float:
@@ -332,6 +382,11 @@ def classify(
         ev["uses_tensor_cores"] = uses_tc
     compute_ceiling = peaks.fp32_tflops if peaks else 0.0
     ceiling_name = "fp32"
+    # Which precision's ceiling is actually in force. Kept explicit because the reachable-fraction
+    # figure below MUST describe the same ceiling the percentage is against: keying it off
+    # `precision` instead produced a tf32 reachable fraction printed beside an fp32 percentage,
+    # which is two different roofs in one verdict.
+    ceiling_precision: str | None = None
     if peaks and uses_tc:
         # The kernel's own instruction mix says it uses tensor cores; `precision` says WHICH
         # tensor-core ceiling applies. Without the precision this always used tf32, and an fp16
@@ -339,6 +394,13 @@ def classify(
         # optimizing" for a kernel with headroom left. Falls back through tf32 to fp32 when the
         # matching ceiling was not measured, so an older calibration still classifies.
         compute_ceiling, ceiling_name = peaks.compute_ceiling_for(precision)
+        ceiling_precision = precision
+    elif peaks and peaks.fp32_triton_tflops > 0:
+        # No tensor-core evidence, so the fp32 ceiling is in force -- and it has its own
+        # Triton-reachable counterpart (45.61 vs 54.20 on box 1, the WIDEST of the four gaps). This
+        # is the common case for a scalar kernel, so omitting it here would leave the largest gap
+        # unreported.
+        ceiling_precision = "fp32"
     if peaks:
         ev["compute_ceiling_used"] = ceiling_name
         if precision:
@@ -372,6 +434,25 @@ def classify(
                    "pct_of_compute_peak": round(frac_fl * 100, 1),
                    "compute_pressure_basis": "task-level FLOP count / gpu_ms; same caveat as "
                                              "dram_pressure_basis"})
+        # G10: how much of that ceiling this candidate's own BACKEND can reach. Reported whenever
+        # measured, not only when it bites, because "you are at 84% of the roof" and "84% of the
+        # roof is all your backend can reach" call for opposite actions -- keep optimizing versus
+        # change code generator -- and they are indistinguishable without this number.
+        #
+        # NO THRESHOLD on how large the gap must be. A first attempt suppressed anything above 98%
+        # reachable, and the measured tf32 pair is 0.982 -- so the number was hidden for exactly the
+        # precision most candidates compute in. Any cut-off here is a guess about which gaps matter;
+        # reporting the measured fraction beside the percentage it qualifies lets the reader judge.
+        # Absent only when unmeasured, which is a real distinction rather than a judgement.
+        reach = peaks.backend_reachable_frac(ceiling_precision)
+        if reach is not None and reach < 1.0:
+            ev["backend_reachable_frac"] = round(reach, 3)
+            ev["backend_reachable_basis"] = (
+                "a plain Triton matmul, correctness-gated against a fp64 reference, reaches "
+                "%.1f%% of this ceiling on this box. Triton is the backend every candidate here is "
+                "written in, so roughly the top %.1f%% of the roof is NOT addressable by tiling or "
+                "parameter changes -- treat %.1f%% of peak as the practical target."
+                % (reach * 100, (1 - reach) * 100, reach * 100))
 
     # --- per-candidate cost: measured, never divided by latency (G1/G2/G4/G6) ----------------
     # Reported as absolute quantities. Comparing them across candidates is the point; dividing
@@ -494,13 +575,25 @@ def classify(
                      f"the ceiling it is against is not the machine's ceiling. Moving the inner "
                      f"product onto tensor cores (tl.dot with a permitted precision) raises the "
                      f"limit rather than approaching it.")
+        # G10: when the backend cannot reach the roof, "keep optimizing" is the wrong advice for
+        # the remaining gap, and saying so is the difference between a real target and an
+        # unreachable one.
+        reach_note = ""
+        _reach = ev.get("backend_reachable_frac")
+        if isinstance(_reach, (int, float)) and frac_fl >= _reach * 0.97:
+            reach_note = (
+                f" NOTE: a plain correctness-gated Triton matmul reaches only {_reach * 100:.1f}% "
+                f"of this ceiling on this box, and this kernel is already at "
+                f"{frac_fl * 100:.0f}% -- i.e. AT the limit of what this backend achieves, not "
+                f"merely near the card's. The remaining gap is the code generator, so tiling and "
+                f"parameter changes cannot close it; only a different backend could.")
         return BottleneckVerdict(
             kind="compute_bound", evidence=ev,
             disagreement=(f"{disagreement} {impossible}".strip() if impossible else disagreement),
             unmeasured=unmeasured,
             suggests=f"the kernel is near this GPU's measured {ceiling_name} ceiling. The levers "
                      f"are arithmetic: tensor cores / lower precision if the accuracy gate "
-                     f"allows, and more independent accumulators for ILP." + extra)
+                     f"allows, and more independent accumulators for ILP." + extra + reach_note)
 
     near_limit = []
     if n_spills:

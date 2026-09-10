@@ -94,6 +94,35 @@ def _measured_ceilings_doc(calibration) -> str:
         out.append(
             f"- smallest possible launch: **{calibration.empty_launch_floor_ms*1e3:.1f} us**. "
             f"Nothing on this box can be faster than this per launch.\n")
+    # G10: the figures above are what cuBLAS achieves. Every candidate here is Triton, and on this
+    # box a plain correctness-gated Triton matmul reaches only 84% of the cuBLAS fp32 figure while
+    # EXCEEDING it at fp16/bf16. Handing an agent the cuBLAS number alone sets a target its own
+    # backend cannot hit at fp32, and understates what it can hit at fp16 -- so state the reachable
+    # figure wherever the two differ, with its provenance.
+    for label, cublas, tri in (("fp32", calibration.fp32_tflops, calibration.fp32_triton_tflops),
+                               ("tf32", calibration.tf32_tflops, calibration.tf32_triton_tflops),
+                               ("fp16", calibration.fp16_tflops, calibration.fp16_triton_tflops),
+                               ("bf16", calibration.bf16_tflops, calibration.bf16_triton_tflops)):
+        if tri <= 0 or cublas <= 0:
+            continue
+        ratio = tri / cublas
+        # A 5% band, and unlike the classifier's evidence this one IS a judgement call: the prompt
+        # is prose an agent reads, and four near-identical lines bury the two that matter (the
+        # failure mode KernelPro measured, where a wall of numbers made the model do worse than no
+        # numbers at all). The classifier's evidence has no such cut-off, so nothing is lost -- a
+        # 2% gap is still recorded where a decision is audited, just not restated here.
+        if ratio < 0.95:
+            out.append(
+                f"- **{label} from Triton: {tri:.1f} TFLOP/s** ({ratio:.2f}x the "
+                f"{cublas:.1f} cuBLAS figure above). Measured with a plain tiled Triton matmul, "
+                f"checked against a fp64 reference. Triton is what you are writing in, so treat "
+                f"**{tri:.1f}** as the target at {label} -- the remaining "
+                f"{(1 - ratio) * 100:.0f}% is the code generator and tiling cannot reach it.\n")
+        elif ratio > 1.05:
+            out.append(
+                f"- **{label} from Triton: {tri:.1f} TFLOP/s**, i.e. {ratio:.2f}x the "
+                f"{cublas:.1f} cuBLAS figure -- Triton BEATS the library at this precision on this "
+                f"box, so the ceiling for {label} is {tri:.1f}, not {cublas:.1f}.\n")
     for s in calibration.suspect:
         out.append(f"- ⚠ {s}\n")
     out.append("")

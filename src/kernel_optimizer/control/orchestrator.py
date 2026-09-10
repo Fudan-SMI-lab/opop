@@ -1389,7 +1389,16 @@ class Orchestrator:
                                 fp32_tflops=self.calibration.fp32_tflops,
                                 tf32_tflops=self.calibration.tf32_tflops,
                                 fp16_tflops=self.calibration.fp16_tflops,
-                                bf16_tflops=self.calibration.bf16_tflops)
+                                bf16_tflops=self.calibration.bf16_tflops,
+                                # G10: without these the ceiling is cuBLAS-only, which is 19%
+                                # above what Triton reaches at fp32 and BELOW what it reaches at
+                                # fp16/bf16. Forgetting to forward them here is the whole defect,
+                                # silently: the model default is 0.0 and every verdict still reads
+                                # like a verdict.
+                                fp32_triton_tflops=self.calibration.fp32_triton_tflops,
+                                tf32_triton_tflops=self.calibration.tf32_triton_tflops,
+                                fp16_triton_tflops=self.calibration.fp16_triton_tflops,
+                                bf16_triton_tflops=self.calibration.bf16_triton_tflops)
             # P3: which tensor-core ceiling applies depends on what the WINNING configuration
             # computes in, so the precision is detected from the materialized best params --
             # not from the candidate's default PARAMS, which the tuner may have moved away from.

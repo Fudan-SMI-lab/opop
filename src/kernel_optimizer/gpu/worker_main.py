@@ -1300,6 +1300,37 @@ def run_calibrate(job: dict) -> dict:
                 result[f"{name}_tflops"] = 0.0
                 result[f"{name}_error"] = f"{type(exc).__name__}: {exc}"[:200]
 
+        # --- the same four ceilings AS REACHED FROM TRITON (G10). Every candidate this harness
+        # generates is Triton; the four figures above are cuBLAS. Measured on this box, with every
+        # number gated on correctness against a fp64 reference, they disagree in BOTH directions:
+        # Triton reached 84.1% of cuBLAS at fp32 (so a Triton kernel at its own structural limit
+        # was reported as having 16% of its headroom unused) and 109.6%/107.9% at fp16/bf16 (so the
+        # fraction exceeded 100% and read downstream as "saturated, stop optimizing").
+        #
+        # Both are the same mistake: treating ONE LIBRARY'S ACHIEVEMENT as the physical roof. So
+        # each ceiling becomes the MAX over the paths measured here, and the per-backend figure is
+        # kept beside it -- `compute_ceiling_for` needs the Triton number to tell a candidate that
+        # its own backend cannot reach the roof, which is a different statement from "you have
+        # headroom" and calls for a different action (change backend, not change tiling).
+        #
+        # No ratio is hardcoded: an unmeasurable precision degrades to 0.0 and the cuBLAS figure
+        # stands alone, which is the behaviour before this block existed.
+        try:
+            from kernel_optimizer.gpu.tritonmm import reachable_tflops
+            for name in ("fp32", "tf32", "fp16", "bf16"):
+                r = reachable_tflops(name, mm_n, device)
+                result[f"{name}_triton_tflops"] = float(r.get("tflops", 0.0) or 0.0)
+                if r.get("rel_err") is not None:
+                    result[f"{name}_triton_rel_err"] = float(r["rel_err"])
+                if r.get("n_wrong"):
+                    # Loud on purpose: the fastest of the discarded kernels is exactly what a probe
+                    # without a correctness gate would have called this precision's ceiling.
+                    result[f"{name}_triton_discarded_wrong"] = int(r["n_wrong"])
+                if r.get("note"):
+                    result[f"{name}_triton_note"] = str(r["note"])[:200]
+        except Exception as exc:  # noqa: BLE001 — no Triton must not lose the calibration
+            result["triton_ceiling_error"] = f"{type(exc).__name__}: {exc}"[:200]
+
         # --- Empty-launch floor: what a launch costs when the body does nothing. This is the
         # input `overhead_floor` has been missing. Without it, a kernel already at the floor
         # shows near-zero throughput fractions and lands in `latency_bound`, so the agent is
