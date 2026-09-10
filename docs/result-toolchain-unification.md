@@ -188,3 +188,24 @@ a800  NVIDIA A800 80GB PCIe|8.0|108|2.8.0+cu128|12.8|3.4.0
 - **绝对性能仍由 `final_reeval_ms` 判定,那是墙钟实测,与标定无关。**
 
 **不适用的场合**:任何要报告「box 2 达到其屋顶百分之几」的绝对结论 —— 那必须用 `calibration.box2-own.json.bak`。
+
+---
+
+## 七、启动前最后一个被抓到的问题:**驱动解释器与 worker 解释器不是同一个**
+
+**这个问题只在启动命令这一层显形,而它会让整对 run 在第一秒就死。**
+
+`wsl.venv` 只跑 **GPU worker**(每次评测、每次计时、每次标定测量);**orchestrator 跑在启动 CLI 的那个解释器里**。两者在 box 2 上**必须不同**:
+
+| | 驱动(orchestrator) | worker(`wsl.venv`) |
+|---|---|---|
+| **box 1** | `orch-venv` | `orch-venv` —— **同一个** |
+| **box 2** | `orch-venv`(有 optuna) | **`kernel-opt-venv`** —— 匹配的工具链 |
+
+**box 2 的匹配 venv 没有 optuna**,`from kernel_optimizer.control.orchestrator import Orchestrator` 在那里直接 `ModuleNotFoundError`。所以 box 2 的启动命令必须用 `orch-venv` 当驱动。
+
+**这也纠正了我先前一处不严谨的报告**:我说过 box 2「681 passed」—— 那是 `orch-venv`(torch 2.14 / triton 3.8)跑的,**不是**这一对要用的那个 venv。`kernel-opt-venv` 里没有 pytest,所以那个数字并不能说明匹配 venv 可用。
+
+**为什么这不影响配对的有效性**:驱动的 torch/triton **不参与任何测量** —— 它既不编译也不计时候选。真正决定测量的是 `wsl.venv`,而 box 2 已经产出的那份标定**正是经 `kernel-opt-venv` 测的**,这也是它的屋顶与 box 1 相差 ≤1.87% 的原因。已实测:两台机各自的「驱动 + worker」组合都能导入 orchestrator 并加载正确的开关。
+
+**两份配置里都写明了各自的启动命令,并互相点名对方是反的** —— 因为两台机 venv 名字相反,复制启动命令是这一对最容易犯的错。

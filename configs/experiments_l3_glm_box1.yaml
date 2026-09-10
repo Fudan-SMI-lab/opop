@@ -42,6 +42,12 @@
 # CALIBRATION_SCHEMA_VERSION (5) and re-measures -- but it means box 1 pays a ~2 min calibration on
 # first use, and that the OLD file must not be copied here.
 #
+# ONE INTERPRETER SERVES BOTH ROLES ON THIS BOX, unlike box 2. `wsl.venv` runs the GPU worker and
+# the orchestrator runs from whichever interpreter launches the CLI; here orch-venv is both the
+# matched toolchain AND the one holding optuna, so the same path does both. On box 2 the matched
+# venv (kernel-opt-venv) has NO optuna and the driver must be its orch-venv instead -- so a launch
+# command must not be copied between the two boxes.
+#
 # Launch (after the calibration comparison passes):
 #   box 1:  kernel-opt --config configs/experiments_l3_glm_box1.yaml    run --task level3:43
 #   box 2:  kernel-opt --config configs/experiments_l3_glm_box2_s2.yaml run --task level3:43

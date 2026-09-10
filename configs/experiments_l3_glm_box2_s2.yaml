@@ -27,6 +27,26 @@
 # every other check still passed -- the exact silent failure this pair is most exposed to.
 # Verified by a real compile + launch + tf32 dot on this box, not by version string.
 #
+# TWO INTERPRETERS ON THIS BOX, AND THEY ARE NOT THE SAME ONE. `wsl.venv` below runs only the GPU
+# WORKER (every eval, every timing, every calibration measurement); the ORCHESTRATOR runs from
+# whichever interpreter launches the CLI. On this box those must DIFFER, because the matched
+# kernel-opt-venv has no optuna -- importing the orchestrator there fails outright:
+#
+#   DRIVER  /root/autodl-tmp/orch-venv/bin/python        (has optuna 4.9.0)
+#   WORKER  /root/autodl-tmp/kernel-opt-venv             (wsl.venv below -- the MATCHED toolchain)
+#
+# The driver's own torch/triton (2.14.0/3.8.0 here) does NOT enter any measurement: it never
+# compiles or times a candidate. What matters is that `wsl.venv` is the matched pair, and the
+# calibration this box already produced went through it -- which is why its ceilings landed within
+# 1.87% of box 1's.
+#
+# Box 1 is the opposite: there the matched venv is orch-venv and it holds optuna too, so ONE
+# interpreter serves both roles. Do not copy a launch command between the boxes.
+#
+# Launch on THIS box:
+#   cd /root/autodl-tmp/work/opop
+#   PYTHONPATH=src /root/autodl-tmp/orch-venv/bin/python -m kernel_optimizer.cli #       --config configs/experiments_l3_glm_box2_s2.yaml run --task level3:43
+#
 # THIS BOX RUNS FROM A SEPARATE v3 CHECKOUT: /root/autodl-tmp/work/opop @ v3. Its pre-existing
 # /root/autodl-tmp/opop-workspace/opop is branch v2 with 11 local modifications, three of them the
 # Linux variants (cli.py, runtime.py, worker_client.py). That tree must NOT be overwritten, which
