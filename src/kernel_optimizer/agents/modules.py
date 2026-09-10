@@ -131,7 +131,7 @@ def _measured_ceilings_doc(calibration) -> str:
     return "".join(out)
 
 
-def _bottleneck_doc(verdict, task_cost, calibration) -> str:
+def _bottleneck_doc(verdict, task_cost, calibration, digest_text: str | None = None) -> str:
     """Render the harness's MEASURED bottleneck analysis for the agent (steps 6+7).
 
     DETECT -> ANALYZE -> RECOMMEND, deliberately not a metric dump. KernelPro measured that
@@ -148,14 +148,25 @@ def _bottleneck_doc(verdict, task_cost, calibration) -> str:
         differently from one told "bank conflicts and stalls are unknown on this box".
       * WHETHER the two classification methods agreed. A verdict presented without its
         uncertainty gets trusted exactly where it is least reliable.
+
+    G28 / S2. `digest_text` is `digest.for_prompt()`'s output, present only under
+    `v3.diagnosis.mode: vector`. When it is present it REPLACES the label section below -- the whole
+    `## Verdict` block and the key-by-key `evidence` render, which is the thing J2-3 forbids. The
+    task-cost and ceiling sections stay in both modes: they describe the TASK and the BOX, not the
+    candidate's resource vector, and dropping them would make the control run compare two things that
+    differ in more than one way.
+
+    Takes the digest as TEXT rather than as a Digest object on purpose. This function is the prompt
+    boundary; if it accepted the object it would be able to reach into `.findings[i].confidence` and
+    render numbers, and the gate would then depend on this function's discipline instead of on its
+    signature.
     """
-    if verdict is None and task_cost is None:
+    if verdict is None and task_cost is None and not digest_text:
         return ("# Measured bottleneck analysis\n\n"
                 "Not available for this run: the harness could not measure this box's ceilings, "
                 "so no throughput fraction can be computed. Reason from `tuning/stats.json` and "
                 "`tuning/trials.csv` alone, and do NOT assume the absence of a verdict means the "
                 "kernel is fine.\n")
-
     out = ["# Measured bottleneck analysis\n",
            "Produced by the harness from measurements, not by a model. Every number here is "
            "either a direct measurement or a ratio of two measurements; nothing is estimated. "
@@ -197,6 +208,29 @@ def _bottleneck_doc(verdict, task_cost, calibration) -> str:
 
     if calibration is not None:
         out.append(_measured_ceilings_doc(calibration))
+
+    if digest_text:
+        # S2 vector mode. The digest REPLACES the label section: one judgement per dimension, and
+        # when several dimensions are binding it says so instead of choosing between them (the
+        # measured defect being 19 of 20 reports on L3:21 carrying the same `kind`). The raw vector
+        # does not appear here at all -- it goes to events.jsonl and report.md.
+        out.append(digest_text)
+        out.append("\n")
+        if verdict is not None and verdict.unmeasured:
+            # Kept in BOTH modes: "unknown on this box" and "measured and fine" are different states,
+            # and an agent told the first reasons differently from one told the second. Dropping it in
+            # vector mode would remove a caveat rather than change a form.
+            out.append(
+                "\n### What this analysis CANNOT see\n"
+                "Hardware counters need a host-side permission that cannot be set from inside a "
+                "container, so the following are **unknown** on this box -- not measured and "
+                "found to be fine:\n")
+            for item in verdict.unmeasured:
+                out.append(f"- {item}\n")
+            out.append(
+                "\nDo not propose a change whose entire justification is one of these, and do "
+                "not treat their absence as evidence that the kernel is clean.\n")
+        return "".join(out)
 
     if verdict is not None:
         out.append(f"## Verdict: **{verdict.kind}**\n")
@@ -889,6 +923,9 @@ class AnalystInputs:
     task_cost: object | None = None
     calibration: object | None = None
     profile: object | None = None
+    # S2, `v3.diagnosis.mode: vector`. Already-digested TEXT, never a Digest and never a record --
+    # see `_bottleneck_doc`'s note on why the boundary is typed as a string. None means label mode.
+    digest_text: str | None = None
 
 
 class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
@@ -906,7 +943,7 @@ class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
         # sometimes does not exist is a file the agent learns to stop opening.
         sb.write_input("analysis/bottleneck.md",
                        _bottleneck_doc(inputs.bottleneck_verdict, inputs.task_cost,
-                                       inputs.calibration))
+                                       inputs.calibration, inputs.digest_text))
         tier1 = _tier1_doc(inputs.profile)
         if tier1:
             sb.write_input("analysis/compiled_kernel.md", tier1)

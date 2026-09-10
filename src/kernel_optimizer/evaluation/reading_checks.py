@@ -92,3 +92,80 @@ def check_collection(readings: list[dict[str, Any]]) -> list[str]:
                 "UNMEASURED until the accessor is re-checked."
                 % (name, present[0], len(present)))
     return notes
+
+
+def check_applicability(records: list[Any]) -> list[str]:
+    """P4's missing half: is each record's `applicable` flag consistent with its own contents?
+
+    The plan carried this as an open pre-condition ("`reading_checks.py` has no `applicable`
+    consistency check, grep confirms 0 occurrences") and noted it structurally had to wait until S2
+    defined the record shape. S2 defines it, so this is that check.
+
+    `applicable` and `measured` answer different questions, and the whole reason for having both is
+    that they stay distinguishable: a card without bf16 does not have that dimension, it does not
+    have it "at zero". Same discipline `task_cost.py` already applies to `flop_count=0` -- legal for
+    maxpool, a failure for matmul. Four inconsistencies are detectable from a record alone:
+
+      1. applicable=False with a verdict other than not-applicable -- a judgement about a dimension
+         that does not exist here.
+      2. applicable=False with no reason -- indistinguishable from a collection failure, which is
+         the exact confusion this field exists to prevent.
+      3. applicable=True, measured present, a CEILING present, verdict `unknown` -- a band could
+         have been assigned and was not, so something declined to judge without saying so. The
+         ceiling clause matters: a measurement with no roof (aten traffic is a lower bound with
+         nothing to divide by) genuinely cannot be banded, and `unknown` is honest there.
+      4. applicable=True, measured absent, verdict anything but `unknown` -- a verdict with nothing
+         behind it. `slack` is the dangerous one: it reads as headroom.
+      5. verdict `not-applicable` with no reason, whatever `applicable` says. The two fields answer
+         DIFFERENT questions and come apart on a real dimension: `threads_launched` exists and is
+         measured (so it IS applicable) while no BAND applies to it, because it has no better/worse
+         direction. Whichever of the two produced the verdict, the reason is the only thing that
+         tells a reader which one it was.
+
+    Reads attributes rather than importing the model, so this cannot create an import cycle and
+    works on a replayed record shim as well as on the real class.
+    """
+    notes: list[str] = []
+    for rec in records:
+        dim = getattr(rec, "dimension_id", None) or "<unnamed>"
+        applicable = getattr(rec, "applicable", None)
+        measured = getattr(rec, "measured", None)
+        verdict = getattr(rec, "verdict", None)
+        reason = (getattr(rec, "not_applicable_reason", "") or "").strip()
+
+        if verdict == "not-applicable" and not reason:
+            notes.append(
+                "%s reads verdict='not-applicable' with no reason. That verdict has two distinct "
+                "causes -- the dimension does not exist on this box, or it exists and has no band "
+                "(no better/worse direction) -- and without the reason a reader cannot tell which, "
+                "so cannot tell whether the absent number is a gap or a property." % dim)
+
+        if applicable is False:
+            if verdict != "not-applicable":
+                notes.append(
+                    "%s is marked applicable=False but carries verdict=%r. A dimension that does "
+                    "not exist on this box/candidate cannot also be judged; `slack` in particular "
+                    "would read as headroom in a dimension that has none." % (dim, verdict))
+            if not reason:
+                notes.append(
+                    "%s is marked applicable=False with no reason, which is indistinguishable from "
+                    "a collection failure -- and telling those apart is the entire purpose of "
+                    "having `applicable` as a field instead of using measured=0." % dim)
+            continue
+
+        if applicable is True:
+            if measured is not None and verdict == "unknown":
+                # A measurement with NO ceiling genuinely cannot be banded -- aten traffic is a
+                # lower bound with no roof to divide by -- so `unknown` is the honest verdict there
+                # and not a silent declination. Only flag the case where a ceiling exists.
+                if getattr(rec, "ceiling", None) is not None:
+                    notes.append(
+                        "%s has a measured value (%s) and a ceiling but verdict='unknown': a band "
+                        "could have been assigned and was not, so something declined to judge "
+                        "without saying so." % (dim, measured))
+            if measured is None and verdict not in ("unknown", None):
+                notes.append(
+                    "%s has verdict=%r with no measured value behind it. An unmeasured dimension "
+                    "must read `unknown`; reporting a band states a conclusion the box never "
+                    "supplied." % (dim, verdict))
+    return notes

@@ -1317,6 +1317,11 @@ class Orchestrator:
                 "evidence": verdict.evidence,
                 "disagreement": verdict.disagreement,
             })
+        # S2: the per-dimension vector. Journalled UNCONDITIONALLY, in both modes -- recording costs
+        # nothing and is not what carries risk; what carries risk is what reaches the prompt, and
+        # that is the one thing `v3.diagnosis.mode` switches. Writing it in label mode is also what
+        # makes J2-1 offline-replayable on a control run's own event log.
+        digest_text = self._dimension_digest(crun, verdict)
         try:
             outcome = self.deps.analyst.invoke(
                 AnalystInputs(
@@ -1329,6 +1334,7 @@ class Orchestrator:
                     task_cost=self.task_cost,
                     calibration=self.calibration,
                     profile=self._best_profile(crun),
+                    digest_text=digest_text,
                 )
             )
             crun.report = outcome.output
@@ -1340,6 +1346,79 @@ class Orchestrator:
                               {"module": "analyst", "final": True,
                                "candidate_id": crun.candidate.candidate_id,
                                "error": str(exc)[:500]})
+
+    def _dimension_digest(self, crun: CandidateRun, verdict) -> str | None:
+        """S2: journal the per-dimension vector, and return prompt text only in `vector` mode.
+
+        Two separate decisions, deliberately not one:
+
+          RECORDING is unconditional. The vector goes to events.jsonl whichever mode is set, because
+          writing it changes no agent's behaviour and it is what makes J2-1 replayable offline from a
+          control run's own log. If it were written only in vector mode, the control arm would have no
+          vector to compare against and the comparison would need a second run.
+
+          PROMPTING is switched. `v3.diagnosis.mode` decides whether the digest replaces the label in
+          `analysis/bottleneck.md`. That is the arm with an external counter-example -- few-shot
+          exemplars measurably LOWERED KernelBench L1 fast_1 from 10% to 6% -- so it is the thing that
+          needs a control run rather than an argument.
+
+        Keyed on `(candidate_id, structural_signature)`, never on family: a rewrite has different
+        resource use than its parent by construction, and keying on family is exactly how it would
+        silently inherit the parent's vector (J2-7).
+
+        Never raises. A diagnostic defect must not look like a candidate defect -- that inversion is
+        what several of these fixes exist to prevent -- so a failure here is journalled and the run
+        continues on the label path.
+        """
+        try:
+            # The guard is INSIDE the try. `verdict.evidence` is an attribute read on an object built
+            # elsewhere, so it can itself fail -- and with the guard outside, that failure escaped the
+            # handler below and killed the candidate's analysis step, which is the exact inversion
+            # this method's except clause exists to prevent. Found by a revert-check variant, not by
+            # the happy path.
+            if verdict is None or not verdict.evidence:
+                return None
+
+            from kernel_optimizer.evaluation.digest import digest as make_digest
+            from kernel_optimizer.evaluation.digest import for_prompt
+            from kernel_optimizer.evaluation.dimensions import (
+                state_from_evidence,
+                unreachable_ceilings,
+            )
+            from kernel_optimizer.evaluation.reading_checks import check_applicability
+
+            state = state_from_evidence(
+                verdict.evidence,
+                candidate_id=crun.candidate.candidate_id,
+                structural_signature=crun.candidate.structural_signature,
+                device_limits=self.cfg.device.model_dump(),
+            )
+            unreachable = unreachable_ceilings(verdict.evidence)
+            d = make_digest(state, unreachable=unreachable)
+            # P4/D-7: the collection's own self-check. Annotates, never rejects.
+            notes = check_applicability(list(state.records))
+            self.store.append("DIMENSION_STATE", {
+                "candidate_id": crun.candidate.candidate_id,
+                "structural_signature": crun.candidate.structural_signature,
+                "records": [r.model_dump() for r in state.records],
+                "n_binding": len(state.binding()),
+                "binding": [r.dimension_id for r in state.binding()],
+                "unreachable_ceilings": list(unreachable),
+                "applicability_notes": notes,
+                "digest": d.model_dump(),
+                # Which arm this run is on, in the event itself: a later reader must not have to
+                # infer it from the config file, which may have moved on.
+                "prompt_mode": self.cfg.v3.diagnosis.mode,
+            })
+            if self.cfg.v3.diagnosis.mode != "vector":
+                return None
+            return for_prompt(d)
+        except Exception as exc:  # noqa: BLE001 -- a diagnostic must never fail a run
+            self.store.append("DIMENSION_STATE_FAILED", {
+                "candidate_id": crun.candidate.candidate_id,
+                "error": str(exc)[:500],
+            })
+            return None
 
     def _best_profile(self, crun: CandidateRun):
         """The ProfileRecord of the fastest correct trial, or None.
