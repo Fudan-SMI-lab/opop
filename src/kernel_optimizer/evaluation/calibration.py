@@ -80,6 +80,7 @@ SUSPECT_BELOW_SPEC_FRAC = 0.60
 #   2  + fp16_tflops, bf16_tflops                               (P3, 2026-09-08)
 #   3  + {fp32,tf32,fp16,bf16}_triton_tflops                    (G10, 2026-09-10)
 #   4  + l2_bytes reaching the classifier                       (G26, 2026-09-10)
+#   5  + triton_version in identity()                           (G32, 2026-09-10)
 #
 # Version 4 is the case the paragraph above warns about, caught live. `l2_bytes` had been measured
 # and cached for some time, but nothing READ it; G26 made it load-bearing as the precondition on
@@ -87,7 +88,13 @@ SUSPECT_BELOW_SPEC_FRAC = 0.60
 # or was never checked for it -- verified on the A800, whose cached calibration has no l2-related key
 # at all -- so the new gate would read 0, never fire, and every verdict would still look like a
 # verdict. That is the same silent-zero failure as G10's, one schema version later.
-CALIBRATION_SCHEMA_VERSION = 4
+#
+# Version 5 is the same shape along the OTHER axis: not a new measurement, a new part of the cache
+# KEY. Every pre-G32 cache has `triton_version=""`, which is indistinguishable from "measured on a
+# box without Triton" -- so identity alone cannot refuse it, and on the common path (`identity_hint`
+# is None) identity is not even compared. Only the version bump forces those caches to be
+# re-measured under a known Triton.
+CALIBRATION_SCHEMA_VERSION = 5
 
 
 class Yardstick(BaseModel):
@@ -158,6 +165,11 @@ class Calibration(BaseModel):
     # same driver and torch: a driver upgrade can move achievable bandwidth.
     torch_version: str = ""
     driver_version: str = ""
+    # G32: Triton is the code generator for every candidate and for four of the ceilings below, so a
+    # Triton upgrade can move what a kernel can reach without touching the card, the driver or
+    # torch. Part of `identity()`. Empty means Triton was absent when this box was calibrated --
+    # a real state on a CUDA-only box, and stable, so it does not thrash the cache.
+    triton_version: str = ""
 
     dram_tbs: float
     fp32_tflops: float
@@ -210,8 +222,24 @@ class Calibration(BaseModel):
         return self.tf32_tflops / self.dram_tbs
 
     def identity(self) -> str:
+        """What a cached calibration is allowed to be reused on.
+
+        Every field here is something that can move a MEASURED ceiling without any code change:
+        the card, its driver, torch, and (G32) Triton -- which is the code generator for every
+        candidate and for the four `*_triton_tflops` figures. Box 1 runs Triton 3.5.1 and box 3
+        runs 3.4.0, and those generate different code (register counts, shared usage, even whether
+        a given tile compiles), so a ceiling measured under one does not describe the other.
+
+        Kept as a joined string rather than a tuple because it is compared against a hint that
+        callers may build by hand. Appending a field therefore CHANGES every existing identity,
+        which is why `CALIBRATION_SCHEMA_VERSION` is bumped alongside: without the bump an old
+        cache would be refused for the right reason but with a misleading one (identity mismatch
+        rather than "this predates the field"), and with a hint of None it would not be refused at
+        all -- `load_cached` only compares identity when a hint is supplied.
+        """
         return "|".join([self.device_name, ".".join(str(c) for c in self.capability),
-                         str(self.sm_count), self.torch_version, self.driver_version])
+                         str(self.sm_count), self.torch_version, self.driver_version,
+                         self.triton_version])
 
 
 def derive_thresholds(

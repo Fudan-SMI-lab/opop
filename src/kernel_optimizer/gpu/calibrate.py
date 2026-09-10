@@ -52,6 +52,10 @@ def calibration_from_worker(result: dict) -> Calibration:
         sm_count=int(result.get("sm_count", 0) or 0),
         torch_version=str(result.get("torch_version", "") or ""),
         driver_version=str(result.get("driver_version", "") or ""),
+        # G32: part of the cache identity. An older worker does not report it, and then this is ""
+        # -- but such a cache is refused anyway on schema_version, which is the point of bumping it
+        # alongside: "" here would otherwise be indistinguishable from a genuinely Triton-less box.
+        triton_version=str(result.get("triton_version", "") or ""),
         dram_tbs=dram_tbs,
         fp32_tflops=fp32_tflops,
         tf32_tflops=float(result.get("tf32_tflops", 0.0) or 0.0),

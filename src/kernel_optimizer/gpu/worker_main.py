@@ -1163,6 +1163,21 @@ def run_env_probe(job: dict) -> dict:
     return result
 
 
+def _triton_version_or_empty() -> str:
+    """Triton's version, or "" when Triton is not installed on this box (G32).
+
+    Empty rather than None or "unknown": it goes into the calibration's cache identity, which is a
+    joined string, so the value has to be stable and stringlike. "" reads as "no Triton here", which
+    is a real state -- a CUDA-only box can calibrate every ceiling except the four Triton ones.
+    """
+    try:
+        import triton
+
+        return str(getattr(triton, "__version__", "") or "")
+    except Exception:  # noqa: BLE001 — absence is a legitimate state, not an error
+        return ""
+
+
 def run_calibrate(job: dict) -> dict:
     """Measure this box's ceilings and the four yardstick workloads.
 
@@ -1227,6 +1242,18 @@ def run_calibrate(job: dict) -> dict:
         "torch_version": torch.__version__,
         "driver_version": getattr(torch, "version", None)
         and getattr(torch.version, "cuda", "") or "",
+        # G32: Triton's own version, because Triton IS the code generator for every candidate and
+        # for four of the measured ceilings (`*_triton_tflops`, G10). Two boxes here run 3.5.1 and
+        # 3.4.0, and the setup record states those generate different code -- register counts,
+        # shared usage, even whether a tile compiles. So a calibration measured under one Triton
+        # does not describe what a kernel can reach under another, and `identity()` must include it
+        # or `pip install -U triton` on one box silently reuses the old ceilings.
+        #
+        # Read defensively rather than at module scope: this worker is documented as
+        # stdlib+torch+triton, but a CUDA-only box can calibrate without Triton at all, and then
+        # the four Triton ceilings are simply absent. An empty string is the honest value for
+        # "no Triton here", and it is stable, so it does not thrash the cache.
+        "triton_version": _triton_version_or_empty(),
         # `L2_cache_size` -- capital L. The lowercase spelling silently returns the default and
         # a calibration would then report an L2 of zero without erroring.
         "l2_bytes": int(getattr(props, "L2_cache_size", 0) or 0),
