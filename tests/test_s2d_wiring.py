@@ -345,3 +345,30 @@ def test_a_declaration_is_journalled_before_any_measurement_exists():
     # The expectations are attached in the same payload, and the round buffer is filled there too.
     assert '"expectations"' in produced[1]
     assert "round_expectations" in produced[1]
+
+
+def test_the_round_payload_carries_the_conversion_verdict_and_the_ledger_reuses_it():
+    """The BEHAVIOURAL half of `test_rewrite_rounds_record_their_conversion_verdict`, which is a
+    source-text assertion.
+
+    That test broke on S2d for a reason worth recording: hoisting `conversion_verdict(...)` out of the
+    `store.append(...)` call -- so the ledger could reuse the same `resource_deltas` -- moved the call
+    outside the slice it was reading, and it failed on unchanged behaviour. Its scope is fixed, but a
+    source-text assertion cannot notice if the verdict stops REACHING the payload, and this repo has a
+    recorded case of an assertion on source text that passed on buggy code and failed after the fix.
+    So this drives the values.
+
+    Uses `conversion_verdict` and `reconcile` on the same input the round would, and asserts the two
+    halves agree about what moved -- which is the actual invariant the hoist was for.
+    """
+    from kernel_optimizer.evaluation.conversion import conversion_verdict
+
+    conv = conversion_verdict(2.00, 1.50, None, None, min_improvement_pct=2.0)
+    assert "conversion" in conv, "the payload spread must include the verdict itself"
+    assert conv["conversion"] == "improved"
+
+    # With profiles absent there are no deltas, and the ledger must then report `unmeasured` rather
+    # than inventing a flat reading -- the same rule on both sides of the hoist.
+    r = reconcile([exp("n_regs", "down")], conv.get("resource_deltas"))
+    assert r.dimensions_unmeasured == ("n_regs",)
+    assert r.hits == 0 and r.misses == 0

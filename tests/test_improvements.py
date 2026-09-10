@@ -10213,6 +10213,14 @@ def test_rewrite_rounds_record_their_conversion_verdict():
     Same failure shape as `launch_bound`: a field existed in a signature, nothing populated it,
     and a whole branch was dead for 848 trials while every test passed. Asserted on the
     orchestrator's source, since reaching this line needs a GPU, an agent and a tuned family.
+
+    SCOPE NOTE. This slice used to start at the `store.append` and stop at the next `else:`, which
+    assumed the verdict was computed INSIDE the append call. S2d hoisted it to a local so the ledger
+    could reuse the same `resource_deltas` (the two halves of the ledger must not be able to disagree
+    about what moved), and the test then failed on unchanged behaviour. Both assertions now scope from
+    `if evaluated:` -- the block that actually decides what the round records -- and the spread into
+    the payload is asserted separately, which is the part that was really at risk. A source-text
+    assertion that is wrong about WHERE to look is the same hazard as one that encodes the bug.
     """
     from pathlib import Path
 
@@ -10220,18 +10228,27 @@ def test_rewrite_rounds_record_their_conversion_verdict():
     src = (root / "src" / "kernel_optimizer" / "control" / "orchestrator.py").read_text(
         encoding="utf-8")
     assert "from kernel_optimizer.evaluation.conversion import conversion_verdict" in src
-    block = src[src.index('self.store.append("FAMILY_ROUND_RECORDED"'):]
-    block = block[:block.index("else:")]
+    start = src.index("            if evaluated:\n"
+                      "                self.deps.families.record_round(")
+    block = src[start:]
+    block = block[:block.index("            else:")]
     assert "conversion_verdict(" in block, (
-        "FAMILY_ROUND_RECORDED is written without a conversion verdict, so nothing in the event "
+        "the round is recorded without a conversion verdict, so nothing in the event "
         "log says whether a resource change bought any speed"
     )
     assert "profile_before" in block, (
         "the verdict is computed without the parent's profile, so no resource delta is possible "
         "and every round would report 'flat'"
     )
+    # However it is computed, it has to end up IN the payload -- a verdict computed and dropped is
+    # the exact `launch_bound` shape this test exists to catch.
+    append = block[block.index('self.store.append("FAMILY_ROUND_RECORDED"'):]
+    assert "conversion" in append, (
+        "FAMILY_ROUND_RECORDED does not carry the conversion verdict; computing it and not "
+        "journalling it leaves the event log unable to say whether resources bought speed"
+    )
     # The parent profile has to be captured BEFORE the rewrite runs, or it is the child's.
-    pre = src[:src.index('self.store.append("FAMILY_ROUND_RECORDED"')]
+    pre = src[:start]
     assert pre.index("profile_before = ") < pre.rindex("self._do_rewrite("), (
         "profile_before is assigned after _do_rewrite, so it captures the post-rewrite state and "
         "every resource delta is zero"
