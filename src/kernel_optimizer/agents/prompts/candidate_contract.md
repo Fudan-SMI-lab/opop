@@ -241,6 +241,18 @@ task whose reduction is short or whose values are small, `"plain"` wins on speed
 reverse. **That is exactly the kind of question the tuner exists to answer on
 measurements, and it cannot answer it if only one form is expressible.**
 
+**`DOT_MODE` must be meaningful for every `COMPUTE_DTYPE` that reaches the tensor cores**
+— that is, for `fp16`, `bf16` AND `tf32`. Splitting is a property of the *cast*, not of one
+particular dtype: tf32 carries the same 10 mantissa bits as fp16, so a tf32 `split3` is
+just as expressible and roughly doubles those bits the same way. Do **not** let
+`("split3", "tf32")` fall through to `ieee`: that silently deletes a combination from the
+search space, and the tuner then reports on a pair it never measured. If you believe
+splitting tf32 cannot pay off (its ~21 effective bits land near `ieee`'s 23, at 3x the
+MMAs against `ieee`'s 1x on the scalar path), that is a **measurement** the tuner should
+make — say so in `approach_summary` rather than removing the option. `ieee` is the one
+precision where `split3` is legitimately a no-op, since it is already full fp32: return
+the single `tl.dot` there.
+
 **A third failure mode is fp16-specific and is about RANGE, not mantissa**, so neither
 knob above addresses it: fp16 overflows to Inf/NaN above 65504. If the task's intermediate
 values can exceed that (check the reference's magnitude), fp16 needs rescaling or must be

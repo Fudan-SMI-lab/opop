@@ -227,3 +227,31 @@ def test_no_task_specific_special_casing_entered_the_prompts():
         assert banned not in section, (
             "the precision section names %r, which makes it guidance about one task rather than a "
             "general rule" % banned)
+
+def test_the_contract_forbids_split3_falling_through_to_ieee_for_tf32():
+    """FIRST PRODUCTION EVIDENCE drove this: 4 of 4 candidates on the first real run after the
+    contract change implemented DOT_MODE correctly -- three-MMA split with the right cross terms,
+    PREC confined to the dot helper, zero algorithm branching -- and ALL FOUR let
+    ("split3", "tf32") fall through to `ieee`.
+
+    Four out of four is not chance; it is the prompt being silent, so each agent filled the gap the
+    same defensible way. The choice is arguable (split3 on tf32 gives ~21 effective mantissa bits
+    against ieee's 23, at 3 MMAs against 1) but it silently DELETES a combination from the search
+    space, and the tuner then reports on a pair it never measured. Whether splitting tf32 pays is a
+    MEASUREMENT, not something to settle in the source -- the same argument that made DOT_MODE a
+    knob rather than a recommendation.
+    """
+    text = _contract()
+    assert "must be meaningful for every `COMPUTE_DTYPE` that reaches the tensor cores" in text, (
+        "the contract does not require DOT_MODE to be expressible at tf32, so a candidate may "
+        "silently drop the (split3, tf32) pair")
+    assert '"tf32")` fall through to `ieee`' in text, (
+        "the specific fall-through seen in 4/4 candidates is not named, so the guidance is not "
+        "actionable against the thing that actually happened")
+    assert "legitimately a no-op" in text, (
+        "the contract now demands split3 everywhere, including ieee, where the inputs are already "
+        "full fp32 -- that would be three MMAs for no mantissa gain")
+    assert "say so in `approach_summary` rather than removing the option" in text, (
+        "an agent that believes splitting tf32 cannot pay is given no way to record that belief "
+        "except by deleting the option, which is what happened")
+

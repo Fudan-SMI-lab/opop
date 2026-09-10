@@ -170,6 +170,18 @@ VARIANTS: list[tuple[str, Path, str, str, list[str], str]] = [
         "unmentioned, and bf16 passed on a task where fp16 overflowed",
     ),
     (
+        "split3 allowed to fall through to ieee at tf32 (the observed gap)",
+        CON,
+        "**`DOT_MODE` must be meaningful for every `COMPUTE_DTYPE` that reaches the tensor cores**",
+        "**`DOT_MODE` applies where you judge it useful**",
+        ["test_the_contract_forbids_split3_falling_through_to_ieee_for_tf32"],
+        "the state the prompt was in on the first real run after the contract change: 4 of 4 "
+        "candidates implemented DOT_MODE correctly in every other respect and ALL FOUR dropped the "
+        "(split3, tf32) pair. 4/4 is the prompt being silent, not chance -- and the tuner then "
+        "reports on a combination it never measured. 'Where you judge it useful' is exactly the "
+        "licence each agent took",
+    ),
+    (
         "a task named in the rule (case-specific special-casing)",
         CON,
         "Measured over four candidates on one task, by counting `if PREC ==` sites per candidate:",
