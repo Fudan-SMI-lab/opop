@@ -260,6 +260,35 @@ def check_reconciliation(run_dir: Path) -> dict:
             "verdict_kinds": dict(verdict_kinds), "verdict": verdict}
 
 
+def latency_floor_from_runs(*run_dirs: Path) -> tuple[float | None, str]:
+    """Measure the LATENCY reproducibility floor from the runs themselves.
+
+    The 2.35% this project has been using as a latency tolerance is `1 - 0.9765`, where 0.9765 is
+    the reference's own `frac_within_tol` at two precisions -- a CORRECTNESS quantity, a fraction of
+    elements agreeing. J2-5 compares LATENCIES, and there is no reason a numerics figure should
+    equal a timing-jitter figure: one is about mantissa bits, the other about clocks, warmup and the
+    20-sample median.
+
+    `final_reeval` re-runs theta_best in a FRESH PROCESS, so `|tuned_ms - final_reeval_ms|` is a
+    same-kernel, same-config, same-box re-measurement -- the right units. Measured on the corpus:
+    0.27% and 2.99% (n=2), which straddles the borrowed 2.35%.
+
+    Returns the widest observed delta and a provenance string. n=2 is too thin to REPLACE the
+    working number with, so the caller is told both and the comparison is run against the wider of
+    the two rather than silently picking one.
+    """
+    deltas = []
+    for d in run_dirs:
+        fin = final_result(d)
+        t, r = fin.get("tuned_ms"), fin.get("final_reeval_ms")
+        if isinstance(t, (int, float)) and isinstance(r, (int, float)) and t > 0:
+            deltas.append(abs(100.0 * (r - t) / t))
+    if not deltas:
+        return None, "no arm has re-evaluated its best kernel yet"
+    return max(deltas), "measured same-kernel re-eval delta, n=%d, widest %.2f%%" % (
+        len(deltas), max(deltas))
+
+
 def report(run_dir: Path, label: str) -> dict:
     print("=" * 78)
     print("%s   %s" % (label, run_dir))
@@ -331,7 +360,20 @@ def main(argv: list[str]) -> int:
         print("=" * 78)
         print("J2-5 / J2d-9 comparison")
         print("=" * 78)
-        print("    %s" % compare_arms(control["final"], treatment["final"], 2.35))
+        # The tolerance: 2.35% is `1 - 0.9765`, a frac_within_tol (CORRECTNESS) figure reused as a
+        # latency tolerance. Measure the latency floor from these runs too and use the WIDER of the
+        # two, so the comparison is never stricter than the measurement supports -- and say which
+        # one bound it, because "inside the noise floor" means nothing without naming the floor.
+        BORROWED = 2.35
+        measured, prov = latency_floor_from_runs(Path(argv[0]), Path(argv[1]))
+        tol = max(BORROWED, measured) if measured is not None else BORROWED
+        print("    tolerance used: %.2f%%" % tol)
+        print("      borrowed 2.35% = 1 - 0.9765, a frac_within_tol (CORRECTNESS) figure")
+        print("      measured latency floor: %s" % (
+            "%.2f%% (%s)" % (measured, prov) if measured is not None else prov))
+        print("      => using the wider; a latency verdict must not be stricter than the "
+              "latency measurement")
+        print("    %s" % compare_arms(control["final"], treatment["final"], tol))
         print("\n    G27 in both arms: control %d/%d, treatment %d/%d rounds carry `conversion`" % (
             control["conversion"]["with_conversion"], control["conversion"]["rounds"],
             treatment["conversion"]["with_conversion"], treatment["conversion"]["rounds"]))

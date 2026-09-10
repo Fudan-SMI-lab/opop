@@ -27,7 +27,7 @@ import check_wrapup  # noqa: E402
 
 def _write_run(tmp_path: Path, events: list[dict]) -> Path:
     d = tmp_path / "run-test"
-    d.mkdir()
+    d.mkdir(parents=True)
     with (d / "events.jsonl").open("w", encoding="utf-8") as fh:
         for i, e in enumerate(events):
             fh.write(json.dumps({"seq": i, "ts": 1789000000.0 + i, **e}) + "\n")
@@ -287,3 +287,42 @@ def test_a_partly_empty_ledger_is_not_rounded_up(tmp_path):
     d = _write_run(tmp_path, [_ROUND_WITH_CONV, _RECON_REAL, _RECON_EMPTY])
     out = check_wrapup.check_reconciliation(d)
     assert out["verdict"].startswith("PARTIAL")
+
+
+# --- the tolerance itself, which was borrowed from a correctness measurement -------------------
+
+
+def test_the_latency_floor_is_measured_from_the_reeval_not_borrowed(tmp_path):
+    """The 2.35% tolerance is `1 - 0.9765`, where 0.9765 is the reference's own frac_within_tol at
+    two precisions -- a fraction of ELEMENTS agreeing. J2-5 compares LATENCIES, and there is no
+    reason a numerics figure should equal a timing-jitter figure.
+
+    `final_reeval` re-runs theta_best in a fresh process, so |tuned_ms - final_reeval_ms| is a
+    same-kernel, same-box latency re-measurement -- the right units.
+    """
+    d = _write_run(tmp_path, [_BASELINE, _RUN_FINISHED])
+    floor, prov = check_wrapup.latency_floor_from_runs(d)
+    # _RUN_FINISHED: tuned 2.7674 -> reeval 2.76, i.e. 0.267%
+    assert floor == pytest.approx(0.267, abs=0.01), (
+        "the latency floor was not computed from the same-kernel re-eval delta")
+    assert "n=1" in prov and "measured" in prov
+
+
+def test_the_latency_floor_takes_the_WIDEST_delta_across_arms(tmp_path):
+    """With two arms there are two same-kernel deltas, and a verdict must not be stricter than the
+    wider one -- otherwise a difference smaller than the measurement gets called a regression."""
+    a = _write_run(tmp_path / "a", [_RUN_FINISHED])
+    wide = {"type": "RUN_FINISHED", "payload": {"summary": {"best": {
+        "tuned_ms": 4.0, "final_reeval_ms": 4.2, "final_reeval_ok": True}}}}
+    b = _write_run(tmp_path / "b", [wide])
+    floor, prov = check_wrapup.latency_floor_from_runs(a, b)
+    assert floor == pytest.approx(5.0, abs=0.01), "expected the 5%% delta, not the 0.27%% one"
+    assert "n=2" in prov
+
+
+def test_no_reeval_yet_reports_the_absence_rather_than_zero(tmp_path):
+    """A floor of 0.0 would make every difference a regression. The absence has to be reported."""
+    d = _write_run(tmp_path, [_BASELINE, _TRIAL_OK])
+    floor, prov = check_wrapup.latency_floor_from_runs(d)
+    assert floor is None
+    assert "no arm has re-evaluated" in prov
