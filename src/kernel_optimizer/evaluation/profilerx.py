@@ -33,12 +33,30 @@ class LightProfiler:
             "overhead_gpu_ms": over.get("gpu_ms"),
             "wall_ms": over.get("wall_ms"),
         }
+        # Per-candidate cost (G4/G6). Like launch overhead this is a property of RUNNING the
+        # candidate rather than of how it compiled, so it is read outside the triton/cubin branch
+        # and survives a candidate whose resource metadata could not be collected at all. The
+        # worker only produces it on the Triton path today (it needs the module object), so a
+        # cubin-only candidate carries the note rather than silent None -- absent and zero are
+        # different answers, and only the note distinguishes them.
+        cost = (triton or {}).get("candidate_cost") or {}
+        cost_fields = {
+            "peak_alloc_bytes": cost.get("peak_alloc_bytes"),
+            "peak_reserved_bytes": cost.get("peak_reserved_bytes"),
+            "peak_above_resident_bytes": cost.get("peak_above_resident_bytes"),
+            "candidate_aten_bytes": cost.get("candidate_aten_bytes"),
+            "candidate_aten_ops": cost.get("candidate_aten_ops"),
+            "threads_launched": cost.get("threads_launched"),
+            "launches": cost.get("launches") or [],
+            "cost_notes": cost.get("cost_notes") or [],
+        }
         # Triton first: when both are present (a candidate mixing a jit kernel with an inline
         # CUDA helper) the Triton record carries num_warps/num_stages, which a cubin cannot --
         # those are properties of the LAUNCH, not of the compiled code.
         source = triton if (triton and triton.get("kernels")) else cubin
         if not source or not source.get("kernels"):
-            return ProfileRecord(compile_s=(triton or {}).get("compile_s"), **overhead_fields)
+            return ProfileRecord(compile_s=(triton or {}).get("compile_s"),
+                                 **overhead_fields, **cost_fields)
         kernels = source["kernels"]
 
         # Aggregate across kernels in the launch: max regs/shared is the binding value.
@@ -83,4 +101,5 @@ class LightProfiler:
             occupancy=worst_occ,
             statics_notes=sorted(set(notes)),
             **overhead_fields,
+            **cost_fields,
         )

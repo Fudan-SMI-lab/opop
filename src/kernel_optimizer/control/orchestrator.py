@@ -1419,6 +1419,18 @@ class Orchestrator:
                 # well moves close to the compulsory figure. Using the reference's number would
                 # credit every candidate with traffic a good one avoids.
                 byte_count=(cost.compulsory_bytes if cost else None),
+                # PER-CANDIDATE cost (G1/G2/G4/G6), alongside the task-level counts above rather
+                # than replacing them. The task-level pair answers "can this task ever be
+                # compute-bound on this card", which no single-candidate measurement can; these
+                # answer "what did THIS candidate actually cost", which the task-level pair
+                # cannot -- it is one constant per task, so dividing it by gpu_ms yields
+                # 1/latency. Measured to vary across candidates before being wired in: peak
+                # memory 9.6-41.3%, aten traffic 15-82%.
+                peak_alloc_bytes=(profile.peak_alloc_bytes if profile else None),
+                peak_reserved_bytes=(profile.peak_reserved_bytes if profile else None),
+                candidate_aten_bytes=(profile.candidate_aten_bytes if profile else None),
+                candidate_aten_ops=(profile.candidate_aten_ops if profile else None),
+                threads_launched=(profile.threads_launched if profile else None),
                 peaks=peaks,
                 n_regs=(profile.n_regs if profile else None),
                 n_spills=(profile.n_spills if profile else None),

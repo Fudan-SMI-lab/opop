@@ -253,6 +253,159 @@ def _tier1_statics(compiled, row: dict, props) -> dict:
     return out
 
 
+def _measure_candidate_cost(module, get_inputs, get_init_inputs, device) -> dict:
+    """Per-candidate peak memory, aten-level traffic and launch geometry (G4/G6).
+
+    Called from the same place the metadata probe already runs the candidate's forward, so it
+    adds one or two extra forwards (measured 2.2-4.3 s per candidate on a 4090, roughly 1/7 of
+    a timed trial) rather than a whole new job.
+
+    WHY THESE AND NOT THE OBVIOUS ONES. The classifier's `byte_count` and `flop_count` come from
+    TaskCost, which is measured on the REFERENCE and is therefore one constant per task -- so
+    `pct_of_dram_peak` is 1/latency rescaled. The natural fix, counting FLOPs on the candidate
+    with FlopCounterMode, does not work: a fully fused Triton candidate reports 0 FLOPs because
+    the arithmetic never reaches the dispatcher (measured: two fused L3:21 candidates read 0
+    while a hybrid one that handed its 1x1 convolutions back to cuDNN read 1.07x the reference).
+    Reading 0 is the correct answer to what the dispatcher can see, and a useless answer to "how
+    much arithmetic did this candidate do", so no candidate-level FLOP count is attempted here.
+
+    What IS measurable per candidate, all without hardware counters (ncu is permanently blocked
+    by ERR_NVGPUCTRPERM in these containers):
+
+      peak memory      allocator peak around the forward; varies 9.6% (L3:48) to 41.3% (L3:21)
+      aten traffic     a LOWER bound on real traffic -- blind inside a fused kernel, which is
+                       where a good candidate works. Varies 81.9% across L3:21 candidates.
+      launch geometry  blocks x warps x 32 per kernel, from wrapping JITFunction.run.
+
+    Never raises: a cost measurement failing must not cost the caller its resource metadata.
+    """
+    import torch
+    from torch.utils._python_dispatch import TorchDispatchMode
+
+    out: dict = {}
+    notes: list[str] = []
+
+    launches: list[dict] = []
+    try:
+        from triton.runtime.jit import JITFunction
+    except Exception as exc:  # noqa: BLE001 — a non-Triton candidate has no launches to record
+        JITFunction = None
+        notes.append(f"triton unavailable, launch geometry not collected: {type(exc).__name__}")
+
+    original_run = getattr(JITFunction, "run", None) if JITFunction else None
+
+    def run_recording(self, *args, grid=None, warmup=False, **kwargs):
+        kernel = original_run(self, *args, grid=grid, warmup=warmup, **kwargs)
+        try:
+            n_blocks = None
+            if isinstance(grid, tuple):
+                n_blocks = 1
+                for d in grid:
+                    n_blocks *= int(d)
+            elif isinstance(grid, int):
+                n_blocks = int(grid)
+            meta = getattr(kernel, "metadata", None)
+            nw = int(getattr(meta, "num_warps", 0) or 0)
+            launches.append({
+                "kernel": getattr(self, "__name__", None),
+                "n_blocks": n_blocks,
+                "num_warps": nw or None,
+                "threads": (n_blocks * nw * 32) if (n_blocks and nw) else None,
+            })
+        except Exception:  # noqa: BLE001 — one unreadable launch must not lose the others
+            launches.append({"kernel": getattr(self, "__name__", None), "n_blocks": None})
+        return kernel
+
+    class _ByteCounter(TorchDispatchMode):
+        """Sum every dispatched op's tensor traffic for this candidate.
+
+        Deduplicated per op by tensor identity, so an op reading the same tensor twice is one
+        read of it, matching how task_cost.py accounts the reference's per-op traffic.
+        """
+
+        def __init__(self):
+            super().__init__()
+            self.bytes = 0
+            self.ops = 0
+
+        def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+            kwargs = kwargs or {}
+            res = func(*args, **kwargs)
+            self.ops += 1
+            seen: set[int] = set()
+
+            def walk(x):
+                if isinstance(x, torch.Tensor):
+                    if x.numel() and id(x) not in seen:
+                        seen.add(id(x))
+                        self.bytes += x.numel() * x.element_size()
+                elif isinstance(x, (list, tuple)):
+                    for y in x:
+                        walk(y)
+
+            walk(args)
+            if kwargs:
+                walk(list(kwargs.values()))
+            walk(res)
+            return res
+
+    try:
+        with torch.no_grad():
+            init_inputs = [x.to(device) if isinstance(x, torch.Tensor) else x
+                           for x in get_init_inputs()]
+            model = module.ModelNew(*init_inputs).to(device)
+            inputs = [x.to(device) if isinstance(x, torch.Tensor) else x for x in get_inputs()]
+
+            # Warm up FIRST. Compilation allocates, and a compile-time allocation counted into
+            # the peak would make the number depend on whether this candidate happened to be
+            # compiled in this process -- i.e. not a property of the candidate at all.
+            if original_run:
+                JITFunction.run = run_recording
+            try:
+                model(*inputs)
+                torch.cuda.synchronize(device)
+            finally:
+                if original_run:
+                    JITFunction.run = original_run
+            if launches:
+                out["launches"] = list(launches)
+                thr = [l.get("threads") for l in launches if l.get("threads")]
+                if thr:
+                    out["threads_launched"] = sum(thr)
+                else:
+                    notes.append("launches seen but no concrete grid; threads not derivable")
+
+            # Peak memory, on its own pass with nothing else instrumented: the dispatch mode
+            # below perturbs timing and allocation order, so the two must not share a pass.
+            torch.cuda.synchronize(device)
+            torch.cuda.reset_peak_memory_stats(device)
+            resident = int(torch.cuda.memory_allocated(device))
+            model(*inputs)
+            torch.cuda.synchronize(device)
+            peak = int(torch.cuda.max_memory_allocated(device))
+            out.update({
+                "peak_alloc_bytes": peak,
+                "peak_reserved_bytes": int(torch.cuda.max_memory_reserved(device)),
+                "peak_above_resident_bytes": peak - resident,
+            })
+
+            counter = _ByteCounter()
+            with counter:
+                model(*inputs)
+                torch.cuda.synchronize(device)
+            out["candidate_aten_bytes"] = int(counter.bytes)
+            out["candidate_aten_ops"] = int(counter.ops)
+    except Exception as exc:  # noqa: BLE001 — cost is advisory; metadata must still return
+        notes.append(f"cost measurement failed: {type(exc).__name__}: {exc}"[:200])
+    finally:
+        if original_run:
+            JITFunction.run = original_run
+
+    if notes:
+        out["cost_notes"] = notes
+    return out
+
+
 def _extract_triton_metadata(kernel_src: str, ref_src: str, device_index: int) -> dict | None:
     """Load the kernel module fresh, launch forward once, then walk JIT caches."""
     import importlib.util
@@ -322,7 +475,10 @@ def _extract_triton_metadata(kernel_src: str, ref_src: str, device_index: int) -
                 # Both need no privileges, unlike ncu -- see evaluation/statics.py.
                 row.update(_tier1_statics(compiled, row, props=props))
                 kernels.append(row)
-        return {"kernels": kernels, "compile_s": compile_s}
+        # Per-candidate cost (G4/G6): the counterpart to TaskCost's task-level constants. Taken
+        # after the resource walk so that a failure here cannot cost the caller its metadata.
+        cost = _measure_candidate_cost(module, get_inputs, get_init_inputs, device)
+        return {"kernels": kernels, "compile_s": compile_s, "candidate_cost": cost}
     finally:
         try:
             os.unlink(mod_path)

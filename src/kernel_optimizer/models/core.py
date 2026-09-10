@@ -230,6 +230,70 @@ class ProfileRecord(BaseModel):
     # "no disassembler on this box" are opposite conclusions that would otherwise look identical.
     statics_notes: list[str] = Field(default_factory=list)
 
+    # --- PER-CANDIDATE cost (G1/G2/G4/G6) -------------------------------------------------
+    # These exist because the numbers the classifier divides by -- `TaskCost.compulsory_bytes`
+    # and `TaskCost.flop_count` -- are TASK-level constants, identical for every candidate of a
+    # task. That is deliberate and correct for the question they answer ("can this task ever be
+    # compute-bound on this card"), but it means `pct_of_dram_peak` and `pct_of_compute_peak`
+    # are byte_count/gpu_ms with a constant numerator, i.e. 1/latency rescaled. Verified across
+    # 5 runs: gpu_ms varies up to 4.6x between candidates while the derived numerator varies
+    # <=0.36%, which is the rounding in the stored fields.
+    #
+    # The fields below are the per-candidate counterpart, and every one of them was checked to
+    # VARY across candidates before being added -- a resource reading that is constant across
+    # structurally different candidates is either a broken accessor or another task-level
+    # constant in disguise, and a plausible constant is the failure mode that looks like a
+    # result (n_regs once read as a constant 56 for 108 different configs).
+
+    # Caching-allocator peak during one forward, from reset_peak_memory_stats() +
+    # max_memory_allocated(). NOT device memory: the allocator's cached free blocks are not
+    # counted. It is nonetheless the right number for "which candidate is thriftier" -- measured
+    # spread 9.6% on L3:48 and 41.3% on L3:21, and on both tasks the fastest candidate had the
+    # lowest value (Kendall tau vs latency +0.64, 9 concordant / 2 discordant).
+    peak_alloc_bytes: int | None = None
+    # max_memory_reserved(): what the allocator asked the driver for. This is the one that
+    # decides whether a candidate OOMs, which is why both are kept rather than one.
+    peak_reserved_bytes: int | None = None
+    # peak_alloc_bytes minus what was already resident before the forward, so a candidate is not
+    # charged for the inputs and parameters every candidate must hold.
+    peak_above_resident_bytes: int | None = None
+
+    # Materialized traffic at the aten level for THIS candidate, via __torch_dispatch__ -- the
+    # same mechanism task_cost.py uses on the reference. It is a LOWER BOUND and must never be
+    # read as the candidate's DRAM traffic: everything a candidate fuses inside a Triton kernel
+    # is invisible here, which is precisely where a good candidate does its work. The direction
+    # of the error is opposite to `TaskCost.reference_bytes` (an UPPER bound, since it counts
+    # intermediates that never leave L2), so the honest statement is
+    #     candidate_aten_bytes <= true traffic <= reference_bytes
+    # Measured spread 81.9% across L3:21 candidates (990 - 5465 MiB), tau vs latency +0.82.
+    candidate_aten_bytes: int | None = None
+    # How many aten ops the candidate dispatched. A fully fused Triton candidate dispatches 1;
+    # the L3:21 candidate that handed its two 1x1 convolutions back to cuDNN dispatched 33. So
+    # this is a direct read on how much work was left unfused.
+    candidate_aten_ops: int | None = None
+    # Total threads launched, summed over every Triton kernel the forward launched
+    # (blocks x num_warps x 32). Measured, not derived: JITFunction.run is wrapped, and all 27
+    # observed launches carried a concrete grid tuple rather than a lambda.
+    threads_launched: int | None = None
+    # Per-launch geometry, one entry per Triton launch: {kernel, n_blocks, num_warps, threads}.
+    # Kept because "3 kernels of 2M threads" and "1 kernel of 6M threads" are different
+    # structures with the same total, and the difference is what a rewrite changes.
+    launches: list[dict] = Field(default_factory=list)
+    # Why a per-candidate cost field is missing, when it is. Same convention as statics_notes:
+    # None means "not collected on this path", never "the candidate has none of this".
+    cost_notes: list[str] = Field(default_factory=list)
+
+    @property
+    def unfused_fraction_hint(self) -> int | None:
+        """Aten ops dispatched: a low number means the candidate fused nearly everything.
+
+        Deliberately not a ratio. There is no denominator that would make it one: the reference's
+        op count is a property of how the reference was written, not a target, and a candidate
+        legitimately restructures the computation into a different number of ops. Reported as the
+        raw count so nobody reads a fabricated percentage into it.
+        """
+        return self.candidate_aten_ops
+
     @property
     def uses_tensor_cores(self) -> bool | None:
         """True/False when the instruction mix was read, None when it could not be."""

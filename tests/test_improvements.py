@@ -9871,3 +9871,254 @@ def test_every_kernel_writing_module_accepts_and_forwards_a_calibration():
         assert all(seen[name]), (
             f"{seen[name].count(False)} of {len(seen[name])} {name} construction sites omit "
             f"calibration, so those calls silently fall back to None")
+
+
+def test_per_candidate_cost_survives_both_profiler_paths():
+    """G4/G6: per-candidate peak memory, aten traffic and launch geometry reach ProfileRecord.
+
+    These fields exist because the numbers the classifier divides by come from TaskCost, which is
+    measured on the REFERENCE and is one constant per task. Verified on 5 runs: gpu_ms varies up
+    to 4.6x between candidates while the derived numerator varies <=0.36%, so `pct_of_dram_peak`
+    is 1/latency rescaled and carries no per-candidate information at all.
+
+    Drives the real LightProfiler on all three of its paths, because the field set is passed
+    separately on each and an omission on one path is exactly how `aux_output_ops` was silently
+    dropped before (the job output held 1, the event log read None).
+    """
+    from kernel_optimizer.evaluation.profilerx import LightProfiler
+
+    lp = LightProfiler()
+    # numbers from the real probe on box 1, cand-9fa6786e of run-l3-48-20260909-115701
+    cost = {
+        "peak_alloc_bytes": 1493172224,
+        "peak_reserved_bytes": 1543503872,
+        "peak_above_resident_bytes": 679477248,
+        "candidate_aten_bytes": 1267107840,
+        "candidate_aten_ops": 7,
+        "threads_launched": 8388608,
+        "launches": [{"kernel": "_ssd_chunk_kernel", "n_blocks": 16384, "num_warps": 8,
+                      "threads": 4194304},
+                     {"kernel": "_ssd_scan_kernel", "n_blocks": 16384, "num_warps": 4,
+                      "threads": 2097152}],
+    }
+
+    rec = lp.extract({
+        "triton": {"kernels": [{"name": "k", "n_regs": 168, "n_spills": 0, "shared": 40960}],
+                   "compile_s": 1.0, "candidate_cost": cost},
+    })
+    assert rec.peak_alloc_bytes == 1493172224, "peak memory lost on the triton path"
+    assert rec.peak_reserved_bytes == 1543503872
+    assert rec.peak_above_resident_bytes == 679477248
+    assert rec.candidate_aten_bytes == 1267107840, "candidate traffic lost on the triton path"
+    assert rec.candidate_aten_ops == 7
+    assert rec.threads_launched == 8388608
+    assert len(rec.launches) == 2, "per-launch geometry lost"
+    assert rec.launches[0]["kernel"] == "_ssd_chunk_kernel"
+
+    # No kernel metadata at all: cost is a property of RUNNING the candidate, so like launch
+    # overhead it must survive a candidate whose resources could not be read.
+    rec_bare = lp.extract({"triton": {"candidate_cost": cost}})
+    assert rec_bare.peak_alloc_bytes == 1493172224, (
+        "per-candidate cost was dropped when no kernel metadata was collected, so a candidate "
+        "whose resources could not be read reports no cost either"
+    )
+    assert rec_bare.candidate_aten_bytes == 1267107840
+
+    # Not measured must be None, never 0. A 0 here would read as "this candidate moves no bytes
+    # and allocates nothing", which for a memory-bound kernel inverts the diagnosis.
+    rec_none = lp.extract({"triton": {"kernels": [{"name": "k", "n_regs": 8}]}})
+    assert rec_none.peak_alloc_bytes is None, "unmeasured peak memory must be None, not 0"
+    assert rec_none.candidate_aten_bytes is None, "unmeasured traffic must be None, not 0"
+    assert rec_none.candidate_aten_ops is None
+    assert rec_none.threads_launched is None
+    assert rec_none.launches == []
+
+    # A failure must arrive as a note, not as silence: absent and zero are different answers.
+    rec_failed = lp.extract({"triton": {
+        "kernels": [{"name": "k", "n_regs": 8}],
+        "candidate_cost": {"cost_notes": ["cost measurement failed: RuntimeError: OOM"]},
+    }})
+    assert rec_failed.peak_alloc_bytes is None
+    assert rec_failed.cost_notes and "OOM" in rec_failed.cost_notes[0], (
+        "a cost-measurement failure left no note, so it is indistinguishable from a path that "
+        "never collects cost"
+    )
+
+
+def test_candidate_cost_measurement_is_wired_into_the_worker():
+    """The worker must actually CALL the cost measurement, not merely define it.
+
+    This is the failure this test exists to catch: a probe verified standalone, a model field
+    added, a profiler mapping written -- and nothing calling the measurement, so every field
+    reads None in production while all the unit tests pass. Asserted on the worker's own source
+    because the call site is inside a GPU-only function that cannot run here.
+    """
+    import inspect
+
+    from kernel_optimizer.gpu import worker_main
+
+    src = inspect.getsource(worker_main._extract_triton_metadata)
+    assert "_measure_candidate_cost(" in src, (
+        "_extract_triton_metadata never calls _measure_candidate_cost, so no per-candidate cost "
+        "is ever collected in a real run"
+    )
+    assert '"candidate_cost"' in src, (
+        "the cost result is computed but not placed in the worker's return dict under "
+        "'candidate_cost', which is the key LightProfiler reads"
+    )
+
+    # The measurement must warm up before measuring the peak: compilation allocates, and a
+    # compile-time allocation folded into the peak makes the number depend on whether this
+    # candidate happened to be compiled in this process, i.e. not a property of the candidate.
+    cost_src = inspect.getsource(worker_main._measure_candidate_cost)
+    warm = cost_src.index("reset_peak_memory_stats")
+    first_fwd = cost_src.index("model(*inputs)")
+    assert first_fwd < warm, (
+        "reset_peak_memory_stats runs before the first forward, so the peak includes "
+        "compilation allocations and is not comparable between candidates"
+    )
+    # And it must restore JITFunction.run even when the forward raises: leaving the wrapper
+    # installed would make every later candidate in this process record into a stale list.
+    assert "finally:" in cost_src and "JITFunction.run = original_run" in cost_src, (
+        "JITFunction.run is not restored in a finally block, so a failing candidate leaves the "
+        "launch-recording wrapper installed for every candidate after it"
+    )
+
+
+def test_impossible_dram_fraction_is_not_reported_as_saturated():
+    """G7: a DRAM fraction above the roof means the DENOMINATOR does not apply, not 'saturated'.
+
+    This is a MUST-FAIL test for a defect a positive control found: five kernels whose bottleneck
+    is known by construction were classified, and the two whose working set fits in L2 were
+    mislabelled. One purely L2-resident streaming kernel read 287% of the measured DRAM roof --
+    physically impossible -- and was reported `memory_bound`, i.e. "you are at the ceiling, stop
+    optimizing", about a kernel that never touched the memory bus.
+
+    The cause is that `byte_count` counts LOGICAL bytes, so an L2 hit is counted as traffic. The
+    compute branch has always guarded its own impossible case; the DRAM branch did not.
+
+    Reporting `unknown` is deliberately stronger than clamping to 1.0: a clamp still says "at the
+    roof", which is the wrong action, whereas the true statement is that the quantity cannot be
+    evaluated for this kernel.
+    """
+    from kernel_optimizer.evaluation.bottleneck import DevicePeaks, classify
+
+    peaks = DevicePeaks(dram_tbs=0.911, fp32_tflops=54.8, tf32_tflops=88.1)
+
+    # The real control case: kernel E of probe_binding_criterion_control.py, a streaming kernel
+    # shrunk to fit inside the 72 MiB L2. 256 MiB of logical traffic in 0.098 ms is 2.61 TB/s,
+    # 287% of a 0.911 TB/s roof.
+    v = classify(gpu_ms=0.098, cpu_issue_ms=None, flop_count=None,
+                 byte_count=256 * 2**20, peaks=peaks)
+    assert v.kind == "unknown", (
+        f"a kernel reading 287% of the DRAM roof was classified {v.kind!r}; an impossible "
+        f"fraction means the byte count does not describe this kernel, and calling it "
+        f"memory_bound tells the agent to stop optimizing a kernel that never hit DRAM"
+    )
+    assert v.evidence.get("impossible_dram_fraction"), (
+        "the impossible fraction is not recorded in the evidence, so a reader cannot tell this "
+        "`unknown` apart from one caused by missing measurements"
+    )
+    assert "L2" in (v.suggests or ""), (
+        "the suggestion does not name the L2 cause, leaving the agent no way to act on it"
+    )
+
+    # A GENUINELY saturated kernel must still be memory_bound. Without this the fix could be
+    # 'return unknown whenever the fraction is high', which would destroy the one verdict that
+    # has been carrying real weight -- L3:48 at 94.6% of the roof is a true and useful finding.
+    v_real = classify(gpu_ms=1.554, cpu_issue_ms=None, flop_count=None,
+                      byte_count=int(1.351 * 10**9), peaks=peaks)
+    assert v_real.kind == "memory_bound", (
+        f"L3:48's real winner (1.351 GB in 1.554 ms = 94.6% of the roof) came out {v_real.kind!r}; "
+        f"the L2 guard must not swallow genuinely bandwidth-bound kernels"
+    )
+    assert not v_real.evidence.get("impossible_dram_fraction")
+
+    # And the boundary: a few percent over 100% is legitimate, because the roof is itself a
+    # measurement that the calibration workload does not fully reach.
+    v_edge = classify(gpu_ms=1.0, cpu_issue_ms=None, flop_count=None,
+                      byte_count=int(0.93 * 10**9), peaks=peaks)   # 102% of roof
+    assert v_edge.kind == "memory_bound", (
+        "a kernel at 102% of a MEASURED roof was rejected; the roof is a measurement, not a "
+        "hardware maximum, so a small overshoot is expected rather than impossible"
+    )
+
+
+def test_pressure_fields_declare_that_they_track_latency():
+    """G1/G2: the two throughput fractions must say, in the evidence, what they are.
+
+    They are computed from TASK-level counts (TaskCost is measured on the reference, one constant
+    per task), so within a task they are 1/gpu_ms rescaled and order candidates exactly as latency
+    does. Verified on 5 runs: gpu_ms varies up to 4.6x between candidates while the derived
+    numerator varies <=0.36%.
+
+    They are kept, because "how far from the card's physical roof" is a real question and L3:48 at
+    94.6% is a real answer. What must not happen is a reader -- human or agent -- taking them for
+    per-candidate traffic measurements, or counting them as two dimensions independent of latency.
+    The basis string is in the evidence dict so it travels with the numbers into the agent prompt.
+    """
+    from kernel_optimizer.evaluation.bottleneck import DevicePeaks, classify
+
+    peaks = DevicePeaks(dram_tbs=0.911, fp32_tflops=54.8, tf32_tflops=88.1)
+    v = classify(gpu_ms=3.0, cpu_issue_ms=None, flop_count=112_113_254_400,
+                 byte_count=321_769_472, peaks=peaks)
+    assert "dram_pressure_basis" in v.evidence, (
+        "pct_of_dram_peak travels with no statement of what it is, so a reader has no way to "
+        "know it is 1/latency rescaled rather than this candidate's traffic"
+    )
+    assert "1/latency" in v.evidence["dram_pressure_basis"]
+    assert "compute_pressure_basis" in v.evidence
+
+    # The per-candidate quantities must be reported as absolute measurements, never divided by
+    # gpu_ms -- dividing by latency is exactly the mistake the two fractions embody.
+    v2 = classify(gpu_ms=3.0, cpu_issue_ms=None, flop_count=None, byte_count=None, peaks=peaks,
+                  peak_alloc_bytes=1264582656, candidate_aten_bytes=1037959168,
+                  candidate_aten_ops=13, threads_launched=14805120)
+    assert v2.evidence["peak_alloc_mib"] == 1206.0, v2.evidence.get("peak_alloc_mib")
+    assert v2.evidence["candidate_aten_mib"] == 989.9, v2.evidence.get("candidate_aten_mib")
+    assert v2.evidence["candidate_aten_ops"] == 13
+    assert v2.evidence["threads_launched"] == 14805120
+    assert "LOWER bound" in v2.evidence["candidate_aten_basis"], (
+        "the aten byte count travels without its bound, so a reader will take a well-fused "
+        "candidate's small number for low real traffic when it means the opposite"
+    )
+
+
+def test_orchestrator_passes_per_candidate_cost_to_the_classifier():
+    """The classifier accepting the fields is worthless if the caller never passes them.
+
+    This is the gap that made `launch_bound` dead code for 848 trials: the field existed in
+    classify()'s signature and nothing ever populated it, so a whole verdict branch could never
+    fire and no test noticed, because every test called classify() directly.
+
+    Asserted on the orchestrator's source at the classify() call site, since reaching it for real
+    needs a GPU, a tuned candidate and an agent call.
+    """
+    import re
+    from pathlib import Path
+
+    # Read the file rather than importing it: the orchestrator pulls in optuna, which is a GPU-box
+    # dependency, and this assertion is about the call site's shape, not its runtime behaviour.
+    root = Path(__file__).resolve().parents[1]
+    src = (root / "src" / "kernel_optimizer" / "control" / "orchestrator.py").read_text(
+        encoding="utf-8")
+    call = src[src.index("return classify("):]
+    call = call[:call.index("\n            )") + 14]
+    for field in ("peak_alloc_bytes", "peak_reserved_bytes", "candidate_aten_bytes",
+                  "candidate_aten_ops", "threads_launched"):
+        assert re.search(rf"\b{field}=", call), (
+            f"the classify() call never passes {field}, so it is always None in production and "
+            f"the evidence the agent reads carries no per-candidate cost at all"
+        )
+        assert f"profile.{field}" in call, (
+            f"{field} is passed but not read from the profile record, so it cannot be the "
+            f"measured value"
+        )
+
+    # And the task-level pair must SURVIVE. Replacing them with per-candidate numbers would
+    # destroy the only quantity that answers "how much headroom does this task itself have" --
+    # the source of L3:48's "1.351 GB compulsory, only ~10% left" conclusion.
+    assert "cost.compulsory_bytes" in call and "cost.flop_count" in call, (
+        "the task-level counts were removed in favour of per-candidate ones; they answer a "
+        "different question (the task's own floor) and both are needed"
+    )

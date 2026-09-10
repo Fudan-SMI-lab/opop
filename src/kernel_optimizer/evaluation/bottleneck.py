@@ -65,6 +65,20 @@ RESOURCE_NEAR_LIMIT_FRAC = 0.80
 # "residency is fine", and is expressed as occupancy (already dimensionless) so it travels.
 LOW_OCCUPANCY_FRAC = 0.50
 
+# Above this fraction of a measured roof, the reading is physically impossible and the honest
+# conclusion is that the DENOMINATOR does not apply to this kernel -- not that the kernel is
+# saturated. 1.05 rather than 1.00 because the roof is itself a measurement: the calibration
+# workload does not reach the hardware's absolute maximum, so a genuinely saturated kernel can
+# legitimately read a few percent above the number we measured. Nsight's own documentation notes
+# that percent-of-peak metrics can exceed 100% for this reason.
+#
+# Applied to BOTH throughput fractions. The compute side needed it because an fp16 kernel scored
+# against a tf32 ceiling read 107.8% (a missing denominator, since fixed by measuring the fp16
+# ceiling). The DRAM side needs it because the byte count is LOGICAL: a kernel whose working set
+# fits in L2 gets its hits counted as DRAM traffic, and a purely L2-resident streaming kernel
+# measured 287% of the roof.
+_IMPOSSIBLE_FRAC = 1.05
+
 # Fallback thresholds when no calibration is available. These are the documented defaults from
 # calibration.py's `derive_thresholds`, restated here so a classifier call with `thresholds=None`
 # behaves identically to one with an uncalibrated box -- and so the disproved constants cannot
@@ -167,6 +181,22 @@ def classify(
     occupancy: dict | None = None,
     overhead_gpu_ms: float | None = None,
     precision: str | None = None,
+    # --- per-candidate cost (G1/G2/G4/G6) -------------------------------------------------
+    # `flop_count` and `byte_count` above are TASK-level: they come from TaskCost, measured once
+    # on the reference, identical for every candidate. That is right for the question they answer
+    # -- "can this task ever be compute-bound on this card", which no single-candidate
+    # measurement can answer -- but it makes `pct_of_dram_peak` equal to
+    # task_constant / gpu_ms, i.e. 1/latency on a different scale. Verified across 5 runs:
+    # gpu_ms varies up to 4.6x between candidates while the derived numerator varies <=0.36%.
+    #
+    # The parameters below are the per-candidate counterpart. They are reported as MEASUREMENTS
+    # in their own right and are never divided by gpu_ms, precisely so they cannot degenerate the
+    # same way. Every one was checked to vary across candidates before being plumbed here.
+    peak_alloc_bytes: int | None = None,
+    peak_reserved_bytes: int | None = None,
+    candidate_aten_bytes: int | None = None,
+    candidate_aten_ops: int | None = None,
+    threads_launched: int | None = None,
 ) -> BottleneckVerdict:
     """Classify what limits this kernel. Returns kind="unknown" when evidence is missing.
 
@@ -298,13 +328,45 @@ def classify(
         achieved_tbs = byte_count / (gpu_ms * 1e-3) / 1e12
         frac_bw = achieved_tbs / peaks.dram_tbs if peaks.dram_tbs > 0 else 0.0
         ev.update({"achieved_tbs": round(achieved_tbs, 4),
-                   "pct_of_dram_peak": round(frac_bw * 100, 1)})
+                   "pct_of_dram_peak": round(frac_bw * 100, 1),
+                   # Say out loud what this number is, in the evidence the agent reads. It is
+                   # computed from a TASK-level byte count, so within one task it is a rescaling
+                   # of 1/gpu_ms and orders candidates exactly as latency does. It answers "how
+                   # far is this kernel from the card's physical roof" -- a real and useful
+                   # question, which is why it stays -- and it does NOT answer "how much traffic
+                   # did this candidate do", nor may it count as a dimension independent of
+                   # latency in any multi-binding tally.
+                   "dram_pressure_basis": "task-level compulsory bytes / gpu_ms; within a task "
+                                          "this is 1/latency rescaled, not a per-candidate "
+                                          "traffic measurement"})
     frac_fl = 0.0
     if peaks and flop_count:
         achieved_fl = flop_count / (gpu_ms * 1e-3) / 1e12
         frac_fl = achieved_fl / compute_ceiling if compute_ceiling > 0 else 0.0
         ev.update({"achieved_tflops": round(achieved_fl, 3),
-                   "pct_of_compute_peak": round(frac_fl * 100, 1)})
+                   "pct_of_compute_peak": round(frac_fl * 100, 1),
+                   "compute_pressure_basis": "task-level FLOP count / gpu_ms; same caveat as "
+                                             "dram_pressure_basis"})
+
+    # --- per-candidate cost: measured, never divided by latency (G1/G2/G4/G6) ----------------
+    # Reported as absolute quantities. Comparing them across candidates is the point; dividing
+    # them by gpu_ms is exactly the mistake the two fractions above embody.
+    if peak_alloc_bytes is not None:
+        ev["peak_alloc_mib"] = round(peak_alloc_bytes / 2**20, 1)
+    if peak_reserved_bytes is not None:
+        ev["peak_reserved_mib"] = round(peak_reserved_bytes / 2**20, 1)
+    if candidate_aten_bytes is not None:
+        ev["candidate_aten_mib"] = round(candidate_aten_bytes / 2**20, 1)
+        # The bound is stated with the number, not in a doc somewhere else. A reader who takes
+        # this for the candidate's DRAM traffic will conclude a well-fused kernel moves almost
+        # nothing, which is the opposite of true.
+        ev["candidate_aten_basis"] = ("LOWER bound on this candidate's traffic: aten-level "
+                                      "materialization only, blind to anything fused inside a "
+                                      "kernel. Upper bound is the task's reference_bytes.")
+    if candidate_aten_ops is not None:
+        ev["candidate_aten_ops"] = candidate_aten_ops
+    if threads_launched is not None:
+        ev["threads_launched"] = threads_launched
     if peaks:
         ev["ridge_flop_per_byte"] = round(peaks.ridge_flop_per_byte, 2)
 
@@ -332,6 +394,34 @@ def classify(
                 f"verdict as low-confidence and read the evidence.")
 
     if frac_bw >= th.dram_saturated_frac:
+        # G7: a DRAM fraction above 1.0 is PHYSICALLY IMPOSSIBLE and means the denominator does
+        # not apply to this kernel, so it must not be reported as "saturated, stop optimizing".
+        # The compute branch below has always handled its own impossible case; this one did not,
+        # and a positive control caught it: five kernels whose bottleneck is known by construction
+        # were classified, and the two whose working set FITS IN L2 were mislabelled -- one
+        # purely L2-resident streaming kernel read 287% of the DRAM roof.
+        #
+        # The cause is that `byte_count` counts LOGICAL bytes. An L2 hit is counted as traffic and
+        # never crosses the memory bus, so the fraction inflates without bound as the working set
+        # shrinks below the 72 MiB L2. Reporting `unknown` is strictly stronger than clamping to
+        # 1.0: clamping would still say "at the roof", which is the wrong action, while the true
+        # statement is that this quantity cannot be evaluated for this kernel.
+        #
+        # DORMANT ON TODAY'S TASKS, and that is why this is a fix and not an emergency: all three
+        # real tasks are far above L2 (L3:21 307 MiB, L3:43 397 MiB, L3:48 1.351 GB), so no
+        # current classification is affected. It wakes as soon as the task range widens to the
+        # smaller level1/level2 problems.
+        if frac_bw > _IMPOSSIBLE_FRAC:
+            ev["impossible_dram_fraction"] = round(frac_bw * 100, 1)
+            return BottleneckVerdict(
+                kind="unknown", evidence=ev, disagreement=disagreement, unmeasured=unmeasured,
+                suggests=(
+                    f"the measured DRAM fraction is {frac_bw * 100:.0f}% of this card's roof, "
+                    f"which is physically impossible, so the traffic figure does not describe "
+                    f"this kernel and no bandwidth verdict can be given. The usual cause is a "
+                    f"working set that fits in L2: the byte count is logical, and an L2 hit is "
+                    f"counted as traffic without crossing the memory bus. Compare the task's "
+                    f"working set against this card's L2 before treating bandwidth as the limit."))
         return BottleneckVerdict(
             kind="memory_bound", evidence=ev, disagreement=disagreement, unmeasured=unmeasured,
             suggests="the kernel is moving bytes at most of this GPU's measured DRAM ceiling, "
