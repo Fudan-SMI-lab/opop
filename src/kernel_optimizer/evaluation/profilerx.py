@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from kernel_optimizer.evaluation.reading_checks import check_collection, check_reading
 from kernel_optimizer.models.core import ProfileRecord
 
 
@@ -82,6 +83,18 @@ class LightProfiler:
             notes.extend(k.get("statics_notes") or [])
             if k.get("statics_note"):
                 notes.append(k["statics_note"])
+
+        # G13: the substitute for the consistency check lost when TMA closure was withdrawn.
+        # Range violations are per-kernel; a credible constant is only visible across the set, so
+        # both are applied here where the whole launch's kernels are in hand. Annotates -- never
+        # rejects: a broken collector must not be reported as a broken candidate.
+        for k in kernels:
+            flat = dict(k)
+            if isinstance(k.get("occupancy"), dict):
+                flat["occupancy"] = k["occupancy"].get("occupancy")
+            notes.extend(check_reading(flat))
+        notes.extend(check_collection([
+            {"n_regs": k.get("n_regs"), "shared_bytes": k.get("shared")} for k in kernels]))
 
         return ProfileRecord(
             n_regs=_agg("n_regs"),

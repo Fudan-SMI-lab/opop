@@ -10236,3 +10236,66 @@ def test_rewrite_rounds_record_their_conversion_verdict():
         "profile_before is assigned after _do_rewrite, so it captures the post-rewrite state and "
         "every resource delta is zero"
     )
+
+
+def test_a_credible_constant_and_an_impossible_value_are_both_flagged():
+    """G13: the substitute for the consistency check lost when TMA closure was withdrawn.
+
+    Both checks generalise a real failure that produced a plausible WRONG TABLE rather than an
+    error, which is why "not None" is not sufficient:
+
+      constant   a probe read n_regs=56 for all 108 configurations of a sweep, because the accessor
+                 re-read one cached kernel. 56 is an ordinary register count, no field was None,
+                 nothing raised, and the number was used.
+      range      an fp16 kernel scored against a tf32 ceiling read 107.8% of peak, which downstream
+                 reads as "saturated, stop optimizing" for a kernel with headroom left.
+
+    Annotates only. A check that could fail a run would report a broken collector as a broken
+    candidate, which is the inversion these fixes exist to prevent.
+    """
+    from kernel_optimizer.evaluation.profilerx import LightProfiler
+    from kernel_optimizer.evaluation.reading_checks import check_collection, check_reading
+
+    # impossible values
+    assert any("outside the possible range" in n
+               for n in check_reading({"n_regs": 300})), "300 registers/thread was accepted"
+    assert any("occupancy" in n for n in check_reading({"occupancy": 1.4})), (
+        "an occupancy of 140% was accepted; occupancy is a fraction by definition"
+    )
+    assert check_reading({"n_regs": 255, "occupancy": 1.0, "shared_bytes": 101376}) == [], (
+        "legitimate values at the exact hardware limits were flagged, which would bury real "
+        "problems under noise from every maximally-tuned kernel"
+    )
+    # A missing value is a legitimate state ("not collected on this path"), not a defect.
+    assert check_reading({"n_regs": None, "shared_bytes": None}) == []
+
+    # the constant-reading case, which needs a SET
+    flat = [{"n_regs": 56, "shared_bytes": 8192} for _ in range(108)]
+    notes = check_collection(flat)
+    assert any("identical value 56" in n for n in notes), (
+        "108 configurations all reading n_regs=56 were not flagged; a credible constant is the "
+        "characteristic signature of a broken accessor"
+    )
+    assert any("UNMEASURED" in n for n in notes), (
+        "the note does not say what to do with the readings (treat as unmeasured)"
+    )
+    varied = [{"n_regs": 56, "shared_bytes": 8192}, {"n_regs": 96, "shared_bytes": 16384},
+              {"n_regs": 128, "shared_bytes": 32768}]
+    assert check_collection(varied) == [], "varying readings were flagged as constant"
+    # Two equal readings are unremarkable; declining to judge is correct, since a small flat region
+    # is common and crying wolf on it would make the check ignorable.
+    assert check_collection([{"n_regs": 56}, {"n_regs": 56}]) == []
+
+    # And the checks must actually run inside the real profiler, not only as free functions.
+    rec = LightProfiler().extract({"triton": {"kernels": [
+        {"name": "a", "n_regs": 56, "shared": 8192},
+        {"name": "b", "n_regs": 56, "shared": 8192},
+        {"name": "c", "n_regs": 300, "shared": 8192},
+    ]}})
+    assert any("outside the possible range" in n for n in rec.statics_notes), (
+        "LightProfiler does not run the range check, so an impossible reading reaches the analyst "
+        "unannotated"
+    )
+    assert any("identical value" in n for n in rec.statics_notes), (
+        "LightProfiler does not run the across-set check, so a constant accessor is invisible"
+    )
