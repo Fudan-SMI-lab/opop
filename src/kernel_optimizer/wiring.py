@@ -47,6 +47,7 @@ class Runtime:
             timeout_s=self.cfg.opencode.request_timeout_s,
             memory_abort_frac=self.cfg.opencode.memory_abort_frac,
             resource_poll_s=self.cfg.opencode.resource_poll_s,
+            idle_abort_frac=self.cfg.opencode.idle_abort_frac,
         )
         if self.cfg.opencode.permission_mode == "sse_auto_approve":
             self.responder = PermissionAutoResponder(base_url)

@@ -130,7 +130,8 @@ product is often the single largest lever on latency — larger than block sizes
 warps, or stages. On this GPU, `tl.dot(..., input_precision="ieee")` runs on the
 scalar FMA path and leaves the tensor cores idle; `input_precision="tf32"` (or
 casting inputs to fp16/bf16 with an fp32 accumulator) dispatches to the tensor
-cores and can be roughly 2x faster for the same shapes. `torch.compile` gets its
+cores. **How much faster that is on THIS box is measured, not assumed — read the
+ratio off `docs/device.md`, which carries this machine's own ceilings.** `torch.compile` gets its
 speed from exactly this — it uses the tf32 tensor-core path by default.
 
 Because of that, you should treat dot-product precision as a first-class design
@@ -143,7 +144,9 @@ choice, not an afterthought:
   precision in the source**: which precision actually wins is decided by the tuner on
   real measurements, and it varies by task. Measured here: fp16 and bf16 tied on one
   attention task (3.03 vs 3.01 ms), bf16 failed correctness outright on a state-space
-  task where fp16 passed, and on a third task tf32 and fp32 differ by 1.6x in throughput.
+  task where fp16 passed, and on a third task tf32 and fp32 differ substantially in
+  throughput (the measured factor for THIS box is in `docs/device.md` — it ranges from
+  under 2x to nearly 6x depending on the card, so do not assume a value).
   None of that is predictable from the source, which is why the next bullet matters more
   than any default you might pick.
 - **A tile chosen for one precision often cannot launch at another, and that has cost us

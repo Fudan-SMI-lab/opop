@@ -70,7 +70,8 @@ Separate two things that are easy to confuse:
   and fails correctness.
 - The **input precision** of the multiply (`input_precision=` on `tl.dot`) — this
   is a legitimate *performance* knob, not a correctness bug. `"tf32"` runs on the
-  tensor cores (~2x faster on matmul/conv), `"ieee"` runs the exact fp32 path. The
+  tensor cores, `"ieee"` runs the exact fp32 path. **The speed ratio between them is
+  card-specific and measured — see `docs/device.md`; it is NOT a fixed 2x.** The
   harness's dual-precision gate accepts a tf32-matching result, so tf32 inputs are
   allowed and usually preferred for matmul/conv-bound kernels.
 

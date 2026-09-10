@@ -44,22 +44,43 @@ def cmd_doctor(args) -> int:
         print(f"[{mark}] {label}" + (f" — {detail}" if detail else ""))
         ok = ok and passed
 
-    # WSL
+    # GPU driver -- the real precondition on BOTH topologies, and the one the old code never
+    # checked. torch/triton/CUDA are covered below by the env-probe job, which launches a kernel.
     try:
-        out = subprocess.run(["wsl.exe", "-l", "-q"], capture_output=True, timeout=30)
-        distros = out.stdout.decode("utf-16-le", errors="replace").split()
-        check("WSL distro", cfg.wsl.distro in distros, f"found: {distros}")
+        out = subprocess.run(["nvidia-smi", "--query-gpu=name,driver_version",
+                              "--format=csv,noheader"], capture_output=True, timeout=30)
+        gpus = out.stdout.decode("utf-8", errors="replace").strip()
+        check("nvidia-smi", out.returncode == 0 and bool(gpus), gpus.replace("\n", "; "))
     except (OSError, subprocess.TimeoutExpired) as exc:
-        check("WSL distro", False, str(exc))
+        check("nvidia-smi", False, str(exc))
+
+    # WSL distro -- only meaningful when the worker is reached through WSL. On a native-Linux box
+    # the orchestrator and the worker are the same OS, so there is no distro to look for and this
+    # check would fail for a box that is perfectly healthy.
+    from kernel_optimizer.gpu.worker_client import _wsl_hop_needed
+
+    if _wsl_hop_needed():
+        try:
+            out = subprocess.run(["wsl.exe", "-l", "-q"], capture_output=True, timeout=30)
+            distros = out.stdout.decode("utf-16-le", errors="replace").split()
+            check("WSL distro", cfg.wsl.distro in distros, f"found: {distros}")
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            check("WSL distro", False, str(exc))
+    else:
+        check("worker topology", True, "native (orchestrator and GPU worker share this OS)")
 
     # opencode CLI
     try:
-        out = subprocess.run(["opencode", "--version"], capture_output=True,
-                             timeout=30, shell=True)
+        from kernel_optimizer.agents.runtime import _shell_for_opencode, resolve_opencode
+
+        out = subprocess.run([resolve_opencode(), "--version"], capture_output=True,
+                             timeout=30, shell=_shell_for_opencode())
         version = out.stdout.decode().strip()
         check("opencode CLI", bool(version), version)
     except (OSError, subprocess.TimeoutExpired) as exc:
         check("opencode CLI", False, str(exc))
+    except Exception as exc:  # noqa: BLE001 -- resolve_opencode raises AgentCallError
+        check("opencode CLI", False, str(exc)[:200])
 
     # KernelBench
     kb = Path(cfg.kernelbench_root)

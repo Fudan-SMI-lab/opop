@@ -58,8 +58,8 @@ def _measured_ceilings_doc(calibration) -> str:
     fp16 at 158.6 and bf16 at 164.2 TFLOP/s.
 
     That gap defeats the guidance those agents are given. The contract tells them to treat
-    dot-product precision as a first-class choice and says fp16 is "roughly 2x" tf32 on this
-    class of card; the rewriter is now told a CUDA rewrite wins under strict IEEE fp32. Both
+    dot-product precision as a first-class choice; the rewriter is now told a CUDA rewrite wins
+    under strict IEEE fp32. Both
     are arguments about ratios between ceilings, and neither agent could see a single one of
     those ceilings for the box it was writing for.
 
@@ -80,8 +80,10 @@ def _measured_ceilings_doc(calibration) -> str:
             f"figure. A kernel not using them is limited by the lower number.\n")
     # P3: show the low-precision ceilings too. While these were unmeasured, an fp16 kernel
     # was scored against tf32 and read as >100% of "peak", so the agent was told a candidate
-    # with real headroom was saturated. Naming the ratio makes the lever explicit: on this
-    # class of card fp16 is roughly 2x tf32, so precision is a throughput decision.
+    # with real headroom was saturated. The ratio is COMPUTED from the two measured figures rather
+    # than written in as a constant: fp16/tf32 is 1.80 on a 4090 and 2.05 on an A800, and tf32/fp32
+    # moves far more (1.61 vs 5.88), so any hardcoded factor is badly wrong on some card. Naming the
+    # computed ratio still makes the lever explicit.
     for label, value in (("fp16", calibration.fp16_tflops),
                          ("bf16", calibration.bf16_tflops)):
         if value > 0:
@@ -570,7 +572,9 @@ precision is a first-class approach axis — read the "Precision and the tensor-
 path" section of the contract. A kernel that runs `tl.dot(..., input_precision="ieee")`
 (or scalar FMA loops) leaves the tensor cores idle; a tf32 tensor-core path
 (`input_precision="tf32"`, or fp16/bf16 inputs with an fp32 accumulator) is often
-~2x faster and is what torch.compile uses. The dual-precision correctness gate
+materially faster on this class of card and is what torch.compile uses -- the MEASURED
+ratio for this box is in the ceilings block above, so use that number rather than
+assuming one. The dual-precision correctness gate
 accepts a tf32-matching result, so at least one of your candidates SHOULD take the
 tf32 tensor-core path (with an fp32 accumulator), and you should expose the dot
 precision as a PARAMS knob (e.g. "DOT_PRECISION": "tf32") so the tuner can compare
@@ -981,7 +985,8 @@ change:
 3. Precision / tensor-core path: check how the kernel does its core math. If it
    uses full-IEEE fp32 matmul (e.g. tl.dot(..., input_precision="ieee")) or scalar
    FMA loops, it is NOT using the tensor cores, and a tf32/fp16-accumulate tensor-
-   core path can be ~2x faster on matmul/conv-bound ops (this is how torch.compile
+   core path can be materially faster on matmul/conv-bound ops -- by the ratio between
+   this box's MEASURED ceilings, not a fixed factor (this is how torch.compile
    wins). If the flat latency floor across many configs looks like an arithmetic-
    throughput wall rather than a memory/occupancy wall, say so and propose switching
    the dot path to tf32 (input_precision="tf32") or fp16 inputs with fp32

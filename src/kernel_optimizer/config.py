@@ -66,6 +66,20 @@ class OpencodeConfig(BaseModel):
     # since a bound that cannot be measured must not be approximated.
     memory_abort_frac: float = 0.92
     resource_poll_s: float = 20.0
+    # G20. How long a call may produce NOTHING before it counts as hung, as a FRACTION of
+    # `request_timeout_s` above -- never an absolute interval. Deriving it keeps the two from
+    # drifting: raising the transport ceiling automatically raises how long silence is tolerated,
+    # and shortening it shortens this too. A hardcoded '20 minutes' would turn vacuous or
+    # trigger-happy the moment the ceiling changed.
+    #
+    # Why it exists: measured across 9 rewriter calls, the median is 18.9 min and 33% ran into
+    # the ceiling. Duration alone must never end a call (an agent compiling and benchmarking is
+    # working), but SILENCE should -- waiting out the full ceiling on a call that has stopped
+    # producing costs a sample that could have been another measurement.
+    #
+    # 0.0 disables the check. The productivity signal is the agent sandbox's file tree, so this
+    # is inert for a call given no directory.
+    idle_abort_frac: float = 0.5
     permission_mode: str = "sandbox_config"  # or "sse_auto_approve"
     startup_timeout_s: float = 60.0
     # Merged into every agent sandbox's opencode.json. That file makes the sandbox a

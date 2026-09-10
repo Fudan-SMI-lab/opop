@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import signal
 import socket
 import subprocess
 import threading
@@ -46,6 +48,51 @@ def _free_port(preferred: int) -> int:
             return s.getsockname()[1]
 
 
+def resolve_opencode() -> str:
+    """Absolute path to the opencode binary, on either platform.
+
+    Not platform-specific, and not merely a convenience. Dropping `shell=True` on POSIX (needed, see
+    `_shell_for_opencode`) also drops the shell's PATH lookup, and on a rented Linux box opencode
+    typically lives somewhere only a LOGIN shell puts on PATH (e.g. /root/miniconda3/bin). A run
+    started from tmux, cron or systemd then died with a bare `FileNotFoundError: 'opencode'` raised
+    from inside Popen, naming no candidate path and reading like a missing install.
+
+    So resolve explicitly and, on failure, report the search list AND the PATH -- the two facts
+    needed to tell "not installed" from "installed where this shell cannot see it". Windows benefits
+    from the same diagnostic, which is why this is unconditional.
+    """
+    found = shutil.which("opencode")
+    if found:
+        return found
+    fallbacks = [
+        Path.home() / "miniconda3" / "bin" / "opencode",
+        Path.home() / ".opencode" / "bin" / "opencode",
+        Path("/usr/local/bin/opencode"),
+    ]
+    for cand in fallbacks:
+        if cand.is_file() and os.access(cand, os.X_OK):
+            return str(cand)
+    raise AgentCallError(
+        "opencode binary not found. PATH lookup failed and none of these exist: "
+        + ", ".join(str(f) for f in fallbacks)
+        + f". PATH={os.environ.get('PATH', '')!r}"
+    )
+
+
+def _shell_for_opencode() -> bool:
+    """Whether launching opencode needs a shell.
+
+    Windows: YES -- opencode is installed as a `.cmd` shim there, which CreateProcess cannot exec
+    directly.
+
+    POSIX: NO, and passing it would be a bug. `shell=True` with a LIST argv runs `/bin/sh -c
+    "opencode"` and hands the remaining elements to the shell as $0, $1, ... -- so `--hostname` and
+    `--port` are silently DISCARDED. The server then binds its default port, `_wait_healthy()`
+    polls the port we intended, and the timeout that follows reads exactly like a network problem.
+    """
+    return os.name == "nt"
+
+
 class OpencodeServer:
     def __init__(self, cfg: OpencodeConfig, log_path: Path | None = None):
         self.cfg = cfg
@@ -66,13 +113,19 @@ class OpencodeServer:
         # (notably the per-turn output-token ceiling) exist only as env vars, with no
         # config-file route -- see OpencodeConfig.server_env.
         env = {**os.environ, **{k: str(v) for k, v in self.cfg.server_env.items()}}
+        # start_new_session (POSIX) puts the server in its own process group so `stop()` can
+        # signal the whole tree instead of leaking an orphaned server per run.
+        popen_kw: dict = {}
+        if os.name != "nt":
+            popen_kw["start_new_session"] = True
         self.proc = subprocess.Popen(
-            ["opencode", "serve", "--hostname", self.cfg.host, "--port", str(port)],
+            [resolve_opencode(), "serve", "--hostname", self.cfg.host, "--port", str(port)],
             cwd=str(self.cfg.launch_cwd),
             stdout=self._log_handle,
             stderr=subprocess.STDOUT,
-            shell=True,  # opencode is a .cmd shim on Windows
+            shell=_shell_for_opencode(),
             env=env,
+            **popen_kw,
         )
         self._wait_healthy()
         return self.base_url
@@ -102,22 +155,57 @@ class OpencodeServer:
 
     def version(self) -> str | None:
         try:
-            out = subprocess.run(["opencode", "--version"], capture_output=True,
-                                 timeout=30, shell=True)
+            out = subprocess.run([resolve_opencode(), "--version"], capture_output=True,
+                                 timeout=30, shell=_shell_for_opencode())
             return out.stdout.decode().strip() or None
-        except (subprocess.TimeoutExpired, OSError):
+        except (subprocess.TimeoutExpired, OSError, AgentCallError):
             return None
 
     def stop(self) -> None:
         if self.proc is None:
             return
-        try:
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(self.proc.pid)],
-                capture_output=True, timeout=30,
-            )
-        except (subprocess.TimeoutExpired, OSError):
-            self.proc.kill()
+        # Stop the whole tree, not just the direct child. Under the old code `taskkill` raised
+        # OSError on POSIX and the fallback `proc.kill()` killed only that child -- which with
+        # shell=True was /bin/sh, leaving the real server orphaned: one leaked process and one held
+        # port per run. SIGTERM first on POSIX, because opencode holds a sqlite session store that
+        # SIGKILL can leave mid-write; escalate only if it does not exit.
+        if os.name == "nt":
+            try:
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(self.proc.pid)],
+                    capture_output=True, timeout=30,
+                )
+            except (subprocess.TimeoutExpired, OSError):
+                try:
+                    self.proc.kill()
+                except OSError:
+                    pass
+        else:
+            try:
+                pgid = os.getpgid(self.proc.pid)
+            except OSError:
+                pgid = None
+            try:
+                if pgid is not None:
+                    os.killpg(pgid, signal.SIGTERM)
+                else:
+                    self.proc.terminate()
+            except OSError:
+                pass
+            try:
+                self.proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                try:
+                    if pgid is not None:
+                        os.killpg(pgid, signal.SIGKILL)
+                    else:
+                        self.proc.kill()
+                except OSError:
+                    pass
+                try:
+                    self.proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    pass
         self.proc = None
         if self._log_handle is not None:
             self._log_handle.close()
@@ -189,9 +277,46 @@ def _memory_pressure() -> tuple[float, float] | None:
     return None
 
 
+def _output_fingerprint(directory: Path | None) -> tuple[int, int, float] | None:
+    """(file count, total bytes, newest mtime) under the agent's sandbox, or None if unreadable.
+
+    G20's productivity signal. An agent that is compiling, benchmarking and writing kernels changes
+    this; an agent that has hung does not. Cheap enough to poll: a sandbox holds tens of files, and
+    this walks metadata only -- no file is opened.
+
+    Deliberately a fingerprint of the whole tree rather than a watch on the expected output file:
+    the agent writes scratch kernels, logs and compile artifacts long before it writes its answer,
+    and those are exactly the evidence that it is working. Waiting only for the final artifact would
+    call a productive agent hung for most of its run.
+
+    Returns None on any error, which the caller treats as "cannot tell" and therefore never as
+    grounds to abort -- an unreadable sandbox must not look like a hung agent.
+    """
+    if directory is None:
+        return None
+    try:
+        count = 0
+        total = 0
+        newest = 0.0
+        for p in Path(directory).rglob("*"):
+            try:
+                st = p.stat()
+            except OSError:
+                continue
+            if not p.is_file():
+                continue
+            count += 1
+            total += st.st_size
+            newest = max(newest, st.st_mtime)
+        return count, total, newest
+    except Exception:  # noqa: BLE001 -- a probe must never be the thing that fails a call
+        return None
+
+
 class OpencodeClient:
     def __init__(self, base_url: str, timeout_s: float = 1200.0,
-                 memory_abort_frac: float = 0.92, resource_poll_s: float = 20.0):
+                 memory_abort_frac: float = 0.92, resource_poll_s: float = 20.0,
+                 idle_abort_frac: float = 0.5):
         self.base_url = base_url.rstrip("/")
         self.timeout_s = timeout_s
         # Fraction of the container's memory limit at which an in-flight agent call is aborted.
@@ -202,7 +327,38 @@ class OpencodeClient:
         # sat at 0.975 of the limit while ptxas kept growing).
         self.memory_abort_frac = memory_abort_frac
         self.resource_poll_s = resource_poll_s
+        # G20. How long a call may go WITHOUT PRODUCING ANYTHING before it is treated as hung,
+        # expressed as a FRACTION OF `timeout_s` rather than as minutes. Deriving it means the two
+        # cannot drift apart: raising the transport ceiling automatically raises how long a silent
+        # agent is tolerated, and a config that shortens the ceiling shortens this too. A hardcoded
+        # "20 minutes" would become either vacuous or trigger-happy the moment `request_timeout_s`
+        # changed, which is precisely the kind of coupling this project keeps getting wrong.
+        #
+        # 0.5 means: half the transport ceiling with no new output at all. That is deliberately
+        # generous -- the point is to catch a call that has stopped producing, not to race a slow
+        # one -- and it still cuts a hung call in half the time the ceiling would, freeing the
+        # budget for another sample instead of burning it on silence.
+        self.idle_abort_frac = idle_abort_frac
         self._http = httpx.Client(base_url=self.base_url, timeout=httpx.Timeout(timeout_s))
+
+    @property
+    def idle_abort_s(self) -> float:
+        """Seconds of zero output after which a call counts as hung. Derived, never hardcoded."""
+        return max(60.0, self.timeout_s * self.idle_abort_frac)
+
+    def _abort_and_close(self, session_id: str) -> None:
+        """End the turn and unblock the streaming POST.
+
+        Abort ends the turn AND its subprocesses (verified: afterwards opencode has zero children
+        and the GPU returns to 0 MiB). Closing the transport is also required -- abort alone
+        returns 200 while the already-streaming POST never returns, leaving the watchdog thread
+        blocked forever. Shared by both abort reasons so they cannot diverge.
+        """
+        self.abort(session_id)
+        try:
+            self._http.close()
+        except Exception:  # noqa: BLE001
+            pass
 
     def close(self) -> None:
         self._http.close()
@@ -257,35 +413,60 @@ class OpencodeClient:
         # the victim. That is a resource condition, is directly observable, and is what this
         # watchdog checks. A long call using nothing is left alone; a call about to take the
         # machine down is stopped however briefly it has run.
+        #
+        # G20 adds the second half of that same principle. The rule was already "duration alone must
+        # never end a call"; what was missing is the converse -- SILENCE should. Measured across 9
+        # rewriter calls: median 18.9 min, and 33% ran into the transport ceiling. A call that has
+        # stopped producing anything is not thinking, and waiting out the full ceiling on it costs a
+        # sample that could have been another measurement. So the watchdog also aborts a call that
+        # has produced NO new output for `idle_abort_s` -- a fraction of the transport ceiling, so
+        # the two move together and neither is a hardcoded interval.
         done = threading.Event()
         fired = threading.Event()
         fired_reason: list[str] = []
 
         def _watch() -> None:
-            if self.memory_abort_frac <= 0:
-                return  # explicitly disabled
+            if self.memory_abort_frac <= 0 and self.idle_abort_frac <= 0:
+                return  # both checks explicitly disabled
+            last_print = _output_fingerprint(directory)
+            last_change = time.time()
             while not done.wait(self.resource_poll_s):
-                pressure = _memory_pressure()
-                if pressure is None:
-                    return  # no cgroup to read (not Linux, or v1): nothing to enforce
-                used, limit = pressure
-                if used / limit < self.memory_abort_frac:
-                    continue
-                fired.set()
-                fired_reason.append(
-                    f"container memory at {used / 1e9:.1f} GB of {limit / 1e9:.1f} GB "
-                    f"({used / limit * 100:.0f}% >= {self.memory_abort_frac * 100:.0f}%)"
-                )
-                # Abort ends the turn AND its subprocesses (verified: afterwards opencode has
-                # zero children and the GPU returns to 0 MiB). Closing the transport is also
-                # required -- abort alone returns 200 while the already-streaming POST never
-                # returns, leaving this thread blocked forever.
-                self.abort(session_id)
-                try:
-                    self._http.close()
-                except Exception:
-                    pass
-                return
+                # --- memory: stop a call that is about to take the box down -------------------
+                if self.memory_abort_frac > 0:
+                    pressure = _memory_pressure()
+                    if pressure is not None:
+                        used, limit = pressure
+                        if used / limit >= self.memory_abort_frac:
+                            fired.set()
+                            fired_reason.append(
+                                f"container memory at {used / 1e9:.1f} GB of {limit / 1e9:.1f} GB "
+                                f"({used / limit * 100:.0f}% >= "
+                                f"{self.memory_abort_frac * 100:.0f}%)"
+                            )
+                            self._abort_and_close(session_id)
+                            return
+                # --- productivity: stop a call that has stopped producing ---------------------
+                # None means the sandbox could not be read, which is "cannot tell" and must never
+                # be grounds to abort: an unreadable directory would otherwise look exactly like a
+                # hung agent and cut every call.
+                if self.idle_abort_frac > 0 and last_print is not None:
+                    now_print = _output_fingerprint(directory)
+                    if now_print is not None:
+                        if now_print != last_print:
+                            last_print, last_change = now_print, time.time()
+                        elif time.time() - last_change >= self.idle_abort_s:
+                            idle_min = (time.time() - last_change) / 60.0
+                            fired.set()
+                            fired_reason.append(
+                                f"no new output for {idle_min:.1f} min "
+                                f"({self.idle_abort_frac:.0%} of the {self.timeout_s:.0f}s "
+                                f"transport ceiling): {now_print[0]} files, "
+                                f"{now_print[1]} bytes, unchanged. A call that has stopped "
+                                f"producing is not thinking, and waiting out the full ceiling "
+                                f"costs a sample."
+                            )
+                            self._abort_and_close(session_id)
+                            return
 
         watchdog = threading.Thread(target=_watch, daemon=True,
                                     name=f"agent-resource-watch-{session_id[:12]}")

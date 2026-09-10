@@ -14,8 +14,28 @@ from kernel_optimizer.gpu.worker_client import GpuRwLock, to_wsl_path
 
 
 def test_to_wsl_path():
-    assert to_wsl_path(r"D:\Pyhon_projects\opop\v2\x.py") == "/mnt/d/Pyhon_projects/opop/v2/x.py"
-    assert to_wsl_path("C:/Users/me/f.json") == "/mnt/c/Users/me/f.json"
+    """Path translation happens iff the worker is reached through WSL.
+
+    Asserted per platform rather than unconditionally. The old form asserted the Windows mapping
+    everywhere and so FAILED on every native-Linux box -- where the correct answer is that no
+    translation happens at all, because the orchestrator and the worker share one filesystem.
+    A test that cannot pass on a supported platform reports a healthy box as broken.
+    """
+    import os
+
+    from kernel_optimizer.gpu.worker_client import _wsl_hop_needed
+
+    if os.name == "nt":
+        assert _wsl_hop_needed()
+        assert to_wsl_path(r"D:\Pyhon_projects\opop\v2\x.py") == "/mnt/d/Pyhon_projects/opop/v2/x.py"
+        assert to_wsl_path("C:/Users/me/f.json") == "/mnt/c/Users/me/f.json"
+    else:
+        assert not _wsl_hop_needed()
+        # Identity up to resolution: absolute, unchanged, and above all NOT rewritten to /mnt/...,
+        # which is the failure that would silently point every job at a nonexistent path.
+        got = to_wsl_path("/tmp/opop/x.py")
+        assert got == "/tmp/opop/x.py", got
+        assert not got.startswith("/mnt/"), got
 
 
 def test_job_shapes_are_json_plain():
