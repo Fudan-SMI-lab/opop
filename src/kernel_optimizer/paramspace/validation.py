@@ -269,13 +269,42 @@ class SpaceValidator:
         Bounded: tries at most `max_witness_retries` alternatives, because each one is a
         real GPU quick test and an exhaustive walk of the grid would cost more than the
         tuning it is gating.
+
+        The candidates are ordered so the retries DIFFER FROM THE FAILURE, not merely from the
+        exact config. `itertools.product` varies its LAST factor fastest, so a plain walk holds
+        every early knob at `choices[0]` -- and on the failure this fallback exists for, the
+        first knob is the precision and its `choices[0]` is the dtype that just overflowed.
+        Measured on level3/48's real space (7 knobs, 4 precisions): both retries came back
+        `COMPUTE_DTYPE=fp16`, differing from the dead minimal witness only in `NUM_STAGES`
+        1->2 and 1->3, so the budget was spent re-confirming the overflow and the candidate was
+        rejected with `witness_minimal_failed` after its algorithm had already been repaired.
+
+        So sort by how many knobs a config changes relative to the failed ones, descending. That
+        needs no knowledge of which knob is the precision and no dtype list: whatever the failing
+        corner was, a config differing in more places is more likely to escape it. On a space
+        whose knobs are all continuation of the same axis it degrades to the old behaviour rather
+        than misbehaving.
         """
         tried = [p.values for p in exclude]
+        names = space.param_names()
+
+        def distance_from_failures(combo: tuple) -> tuple[int, int]:
+            """How many knobs does this config change vs the nearest already-failed config?
+
+            Negated for ascending sort. The tie-break keeps the walk deterministic, which
+            matters because a run has to be replayable from events.jsonl.
+            """
+            vals = dict(zip(names, combo))
+            nearest = min(sum(1 for k in names if vals.get(k) != t.get(k)) for t in tried)
+            return (-nearest, 0)
+
+        ordered = sorted(itertools.product(*[d.choices for d in space.domains]),
+                         key=distance_from_failures)
         attempted = 0
-        for combo in itertools.product(*[d.choices for d in space.domains]):
+        for combo in ordered:
             if attempted >= self.max_witness_retries:
                 return None
-            params = ParamSet(values=dict(zip(space.param_names(), combo)))
+            params = ParamSet(values=dict(zip(names, combo)))
             if params.values in tried:
                 continue
             if check_config(space, params, self.device) is not None:
