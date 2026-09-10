@@ -152,6 +152,14 @@ def _orch(mode: str):
     host has no optuna or torch by design, so these six tests SKIP there and run on the A800, which
     is the authoritative suite. Skipping is right and asserting-around is not: a hand-built stand-in
     for the orchestrator would test the stand-in.
+
+    `task_cost` and `calibration` are set because a real Orchestrator always has them (assigned in
+    `__init__`) -- S3 made `_dimension_digest` read both, and a fixture missing them produced
+    `DIMENSION_STATE_FAILED` on the A800 while the local run skipped. That is the G41 shape again: a
+    fixture that is not production-shaped. They are set to None rather than to objects, because None
+    is a REAL state (an uncalibrated box, a run whose task cost failed) and the bounds must then read
+    `source="none"` rather than raising -- so this fixture exercises the degraded path, and
+    `test_the_s3_bound_reaches_the_journalled_record` covers the populated one.
     """
     import pytest
 
@@ -164,6 +172,8 @@ def _orch(mode: str):
 
     o = Orchestrator.__new__(Orchestrator)
     o.store = _Store()
+    o.task_cost = None
+    o.calibration = None
     o.cfg = SimpleNamespace(
         device=DeviceLimits(**A800),
         v3=SimpleNamespace(diagnosis=SimpleNamespace(mode=mode)))
@@ -259,3 +269,61 @@ def test_applicability_notes_are_journalled_and_empty_on_a_healthy_vector():
     o = _orch("vector")
     o._dimension_digest(_crun(), _Verdict(l3_48_evidence()))
     assert o.store.payload("DIMENSION_STATE")["applicability_notes"] == []
+
+
+def test_the_s3_bound_and_provenance_reach_the_journalled_record():
+    """S3 through the REAL orchestrator method, with a real task cost and calibration.
+
+    This is the test that was missing when S3 landed. The wiring tests all built an Orchestrator
+    without `task_cost`/`calibration`, so on the A800 `_dimension_digest` raised
+    `AttributeError: 'Orchestrator' object has no attribute 'task_cost'` and four tests failed on a
+    FIXTURE defect -- the G41 shape a third time. Two things follow, and both are asserted here:
+
+      * the populated path is exercised, so a floor and a provenance actually reach the event log;
+      * `DIMENSION_STATE_FAILED` must NOT be journalled, because the previous version's failure was
+        invisible to every assertion the file had.
+
+    Note what made this diagnosable at all: G40's handler turned the AttributeError into a journalled
+    error string instead of a dead analysis step, so the cause was two commands away.
+    """
+    from kernel_optimizer.evaluation.task_cost import TaskCost
+
+    class Cal:
+        measured_at = "2026-09-11T00:00:00Z"
+
+        def identity(self):
+            return "NVIDIA A800 80GB PCIe|8.0|108|2.8.0|550.54|3.4.0"
+
+    o = _orch("vector")
+    o.task_cost = TaskCost(flop_count=0, compulsory_bytes=1_351_000_000,
+                           reference_bytes=1_351_000_000, op_count=12)
+    o.calibration = Cal()
+    text = o._dimension_digest(_crun(), _Verdict(l3_48_evidence()))
+
+    assert "DIMENSION_STATE_FAILED" not in o.store.kinds(), o.store.events
+    p = o.store.payload("DIMENSION_STATE")
+    aten = next(r for r in p["records"] if r["dimension_id"] == "candidate_aten_bytes")
+    assert aten["bound"]["floor"] == 1_351_000_000.0
+    assert aten["bound"]["source"] == "task_lower_bound"
+    regs = next(r for r in p["records"] if r["dimension_id"] == "n_regs")
+    assert regs["bound"]["floor"] is None, "an invented floor is worse than none"
+    assert p["compute_ceiling_provenance"]["source"] in ("measured", "none")
+    # And the room-left figures must be in the prompt text, not only in the log.
+    assert text and "How much room is left" in text
+
+
+def test_a_run_without_a_calibration_or_task_cost_still_produces_a_vector():
+    """Both are legitimately None -- an uncalibrated box, or a run whose task cost measurement failed
+    -- and the vector must degrade to `source="none"` bounds rather than failing.
+
+    Revert-check: making `lower_bound` require a task cost turns this into `DIMENSION_STATE_FAILED`,
+    i.e. a box that cannot be calibrated would lose its whole resource vector.
+    """
+    o = _orch("vector")
+    text = o._dimension_digest(_crun(), _Verdict(l3_48_evidence()))
+    assert "DIMENSION_STATE_FAILED" not in o.store.kinds()
+    p = o.store.payload("DIMENSION_STATE")
+    aten = next(r for r in p["records"] if r["dimension_id"] == "candidate_aten_bytes")
+    assert aten["bound"]["floor"] is None
+    assert "not that the floor is zero" in aten["bound"]["reason"]
+    assert text

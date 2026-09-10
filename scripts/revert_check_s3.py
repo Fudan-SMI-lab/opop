@@ -19,7 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 BND = ROOT / "src" / "kernel_optimizer" / "evaluation" / "bounds.py"
 DIM = ROOT / "src" / "kernel_optimizer" / "evaluation" / "dimensions.py"
 DIG = ROOT / "src" / "kernel_optimizer" / "evaluation" / "digest.py"
-TESTS = [ROOT / "tests" / "test_s3_bounds.py", ROOT / "tests" / "test_s2_dimensions.py"]
+TESTS = [ROOT / "tests" / "test_s3_bounds.py", ROOT / "tests" / "test_s2_dimensions.py",
+         ROOT / "tests" / "test_s2_wiring.py"]
 
 VARIANTS: list[tuple[str, Path, str, str, list[str], str]] = [
     (
@@ -155,9 +156,22 @@ VARIANTS: list[tuple[str, Path, str, str, list[str], str]] = [
         "    bound = None",
         ["test_every_record_carries_a_provenance_and_a_bound",
          "test_the_bound_is_journalled_inside_the_record",
-         "test_the_room_left_figures_reach_the_prompt_with_their_unknowns_intact"],
+         "test_the_room_left_figures_reach_the_prompt_with_their_unknowns_intact",
+         "test_the_s3_bound_and_provenance_reach_the_journalled_record"],
         "the floor exists only in a prompt and cannot be re-checked offline -- and every J2/J3 "
         "criterion is verified by replay",
+    ),
+    (
+        "a task cost required rather than optional",
+        BND,
+        "    compulsory = getattr(task_cost, \"compulsory_bytes\", None) if task_cost is not None else None",
+        "    compulsory = task_cost.compulsory_bytes",
+        ["test_a_floor_is_absent_rather_than_zero_when_the_task_cost_was_not_measured",
+         "test_a_run_without_a_calibration_or_task_cost_still_produces_a_vector"],
+        "a box that cannot be calibrated, or a run whose task-cost measurement failed, loses its "
+        "whole resource vector -- and both are legitimate states, not errors. NOTE the definitional "
+        "floors (spills, aten ops) correctly SURVIVE this variant: they return before `task_cost` is "
+        "read, so naming their test here would have been naming a test that should not fail",
     ),
 ]
 
