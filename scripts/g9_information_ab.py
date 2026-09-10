@@ -35,14 +35,17 @@ number is never quoted as if it were a rate.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import statistics
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from kernel_optimizer.agents.runtime import OpencodeClient  # noqa: E402
 from kernel_optimizer.store.read import latency_ms_of  # noqa: E402
 
 # --- the three evidence arms -----------------------------------------------------------------
@@ -183,6 +186,12 @@ def main() -> int:
                     help="calls per arm. 1 is an ANECDOTE and is labelled as such in the output.")
     ap.add_argument("--n-candidates", type=int, default=2)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--concurrency", type=int, default=1,
+                    help="agent calls to run AT ONCE. The GPU is idle during an agent call (median "
+                         "18.9 min of pure network wait), so this is the only lever that shortens "
+                         "wall clock without weakening the experiment. Each worker gets its OWN "
+                         "OpencodeClient -- see the note in _run_calls. GPU evaluation stays "
+                         "serialized by the harness's own exclusive lock, so timings are unaffected.")
     args = ap.parse_args()
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -258,49 +267,122 @@ def main() -> int:
             except Exception as exc:  # noqa: BLE001 -- a box without calibration must still run
                 print("note: no calibration (%s); the ceilings block will be omitted from every "
                       "arm, which keeps the arms comparable" % type(exc).__name__)
-        for rep in range(args.replicates):
-            for arm in arms:
-                t0 = time.time()
-                rec: dict = {"arm": arm, "replicate": rep}
+        # ---- PHASE 1: the agent calls, optionally in parallel -------------------------------
+        #
+        # WHY THIS IS SAFE, AND WHY IT IS THE ONLY BIG LEVER.
+        #
+        # An agent call is pure network wait: median 18.9 min during which the GPU is IDLE (G20).
+        # Six sequential calls therefore cost ~2 h of wall clock in which almost nothing computes.
+        # Running them concurrently does not change what any single call receives -- each already
+        # gets its own opencode session and its own sandbox directory -- so the experiment is
+        # identical, only the waiting overlaps.
+        #
+        # ONE REAL HAZARD, handled: `OpencodeClient` holds a single httpx transport and
+        # `_abort_and_close` CLOSES it (it must -- an abort alone leaves the streaming POST hung).
+        # With a shared client, one call hitting its idle-abort would tear the transport out from
+        # under every other in-flight call, and those would fail for a reason that has nothing to do
+        # with them. So each worker gets its OWN client. That is why this is not just
+        # `ThreadPoolExecutor` over the existing rewriter.
+        #
+        # What is NOT parallelized: GPU evaluation. It stays in phase 2, serialized, because timing
+        # two kernels at once corrupts both measurements. The lock would enforce that anyway
+        # (`lock_mode="exclusive"`), but doing it explicitly keeps the ordering readable.
+        calls = [(rep, arm) for rep in range(args.replicates) for arm in arms]
+        n_workers = max(1, min(args.concurrency, len(calls)))
+        print("%d agent call(s), %d at a time" % (len(calls), n_workers))
+
+        def _one_call(rep: int, arm: str, client) -> dict:
+            rec: dict = {"arm": arm, "replicate": rep}
+            t0 = time.time()
+            rewriter = orch.deps.rewriter
+            if client is not None:
+                # A shallow copy sharing everything but the transport: same prompts, same sandbox
+                # factory, same store, same model.
+                rewriter = copy.copy(rewriter)
+                rewriter.client = client
+            try:
+                outcome = rewriter.invoke(RewriterInputs(
+                    task=task, best_source=best_source,
+                    report=_apply_arm(report, profile, arm),
+                    failed_hypotheses=[], device=cfg.device,
+                    n_candidates=args.n_candidates,
+                    eval_semantics=semantics,
+                    calibration=None if arm == "none" else calibration,
+                ))
+            except Exception as exc:  # noqa: BLE001 -- one arm failing must not lose the rest
+                rec.update({"agent_error": "%s: %s" % (type(exc).__name__, str(exc)[:200]),
+                            "agent_s": round(time.time() - t0, 1)})
+                return rec
+            rec["agent_s"] = round(time.time() - t0, 1)
+            rec["cost"] = round(getattr(outcome, "cost", 0.0) or 0.0, 4)
+            rec["n_produced"] = len(outcome.output.candidates)
+            # Read the sources HERE (still inside the call's own sandbox lifetime) but do not
+            # evaluate yet -- evaluation is serialized in phase 2.
+            srcs = []
+            for i, c in enumerate(outcome.output.candidates):
                 try:
-                    outcome = orch.deps.rewriter.invoke(RewriterInputs(
-                        task=task, best_source=best_source,
-                        report=_apply_arm(report, profile, arm),
-                        failed_hypotheses=[], device=cfg.device,
-                        n_candidates=args.n_candidates,
-                        eval_semantics=semantics,
-                        calibration=None if arm == "none" else calibration,
-                    ))
-                except Exception as exc:  # noqa: BLE001 -- one arm failing must not lose the rest
-                    rec.update({"agent_error": "%s: %s" % (type(exc).__name__, str(exc)[:200])})
-                    rows.append(rec)
-                    print(json.dumps(rec))
-                    continue
-                rec["agent_s"] = round(time.time() - t0, 1)
-                rec["cost"] = round(getattr(outcome, "cost", 0.0) or 0.0, 4)
-                rec["n_produced"] = len(outcome.output.candidates)
-                cands = []
-                for i, c in enumerate(outcome.output.candidates):
+                    srcs.append({"file": c.file, "src": outcome.sandbox.read_output(c.file),
+                                 "hypothesis": (getattr(c, "hypothesis_id", "") or "")[:60],
+                                 "change": (getattr(c, "change_summary", "") or "")[:160]})
+                except Exception as exc:  # noqa: BLE001
+                    srcs.append({"file": c.file, "src": None,
+                                 "failure": "unreadable:%s" % type(exc).__name__})
+            rec["_sources"] = srcs
+            print("  agent done: arm=%s rep=%d %.0fs produced=%d"
+                  % (arm, rep, rec["agent_s"], rec["n_produced"]))
+            return rec
+
+        if n_workers == 1:
+            results = [_one_call(rep, arm, None) for rep, arm in calls]
+        else:
+            clients = [OpencodeClient(
+                runtime.client.base_url,
+                timeout_s=cfg.opencode.request_timeout_s,
+                memory_abort_frac=cfg.opencode.memory_abort_frac,
+                resource_poll_s=cfg.opencode.resource_poll_s,
+                idle_abort_frac=cfg.opencode.idle_abort_frac,
+            ) for _ in range(n_workers)]
+            try:
+                with ThreadPoolExecutor(max_workers=n_workers) as pool:
+                    futs = {pool.submit(_one_call, rep, arm, clients[i % n_workers]): (rep, arm)
+                            for i, (rep, arm) in enumerate(calls)}
+                    results = []
+                    for fut in as_completed(futs):
+                        results.append(fut.result())
+            finally:
+                for c in clients:
                     try:
-                        src = outcome.sandbox.read_output(c.file)
-                    except Exception as exc:  # noqa: BLE001
-                        cands.append({"file": c.file, "usable": False,
-                                      "failure": "unreadable:%s" % type(exc).__name__})
-                        continue
-                    r = _evaluate(orch.deps.evaluator, task, src, workdir,
-                                  "g9-%s-r%d-c%d" % (arm, rep, i))
-                    r["file"] = c.file
-                    r["hypothesis"] = (getattr(c, "hypothesis_id", "") or "")[:60]
-                    r["change"] = (getattr(c, "change_summary", "") or "")[:160]
-                    cands.append(r)
-                rec["candidates"] = cands
-                ok = [c["ms"] for c in cands if c.get("ms")]
-                rec["n_usable"] = sum(1 for c in cands if c.get("usable"))
-                rec["n_correct"] = sum(1 for c in cands if c.get("correct"))
-                rec["best_ms"] = min(ok) if ok else None
-                rows.append(rec)
-                print(json.dumps({k: v for k, v in rec.items() if k != "candidates"}))
-                out_path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+                        c.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+            # Deterministic order for the report, independent of completion order.
+            order = {(rep, arm): i for i, (rep, arm) in enumerate(calls)}
+            results.sort(key=lambda r: order.get((r["replicate"], r["arm"]), 0))
+
+        # ---- PHASE 2: evaluation, SERIALIZED (timing two kernels at once corrupts both) -----
+        for rec in results:
+            srcs = rec.pop("_sources", [])
+            cands = []
+            for i, s in enumerate(srcs):
+                if s.get("src") is None:
+                    cands.append({"file": s["file"], "usable": False,
+                                  "failure": s.get("failure", "unreadable")})
+                    continue
+                r = _evaluate(orch.deps.evaluator, task, s["src"], workdir,
+                              "g9-%s-r%d-c%d" % (rec["arm"], rec["replicate"], i))
+                r["file"] = s["file"]
+                r["hypothesis"] = s.get("hypothesis", "")
+                r["change"] = s.get("change", "")
+                cands.append(r)
+            rec["candidates"] = cands
+            ok = [c["ms"] for c in cands if c.get("ms")]
+            rec["n_usable"] = sum(1 for c in cands if c.get("usable"))
+            rec["n_correct"] = sum(1 for c in cands if c.get("correct"))
+            rec["best_ms"] = min(ok) if ok else None
+            rows.append(rec)
+            print(json.dumps({k: v for k, v in rec.items() if k != "candidates"}))
+            out_path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+
 
     out_path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
     print()
