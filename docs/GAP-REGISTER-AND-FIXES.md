@@ -65,6 +65,8 @@
 | **G39** | **S2 的两条记录被 S2 自己新写的 P4 检查判为不一致 —— 而且它们同时让 prompt 说了假话**。(a) `candidate_aten_bytes`/`candidate_aten_ops` 有实测值但 verdict `unknown`(它们是**下界,无天花板可作分母**),被规则 3 无条件报成「悄悄拒判」;(b) `threads_launched` 被我标了 `applicable=False` —— 但**读数存在且被测到**,不适用的是**分档**(该维 `lower_is_better: None`,无好坏方向)。两者叠加使 `for_prompt` 把**有实测值的维度渲染成「NOT MEASURED on this candidate」** | 确定,低风险 | 小 | ✅ **已修**(`867c228`):规则 3 加「存在天花板」前提**并加反向测试**(有天花板却 `unknown` 仍必被抓,两方向覆盖);`threads_launched` 改 `applicable=True` + verdict `not-applicable` + 必带理由;**新增规则 5**(`not-applicable` 无理由必报,因它现在有两个成因);渲染分出「measured, but NOT RANKED」一支。**纪律:两处都是加前提 + 加反向测试,不是放宽** —— 检查存在的全部目的是「`applicable=false` 与 `measured=0` 永远可区分」 | §G39 |
 | **G40** | **`_dimension_digest` 的守卫写在 `try` 之外,于是绕开了那个 except 存在的唯一理由**。`if verdict is None or not verdict.evidence: return None` 是对**别处构造的对象**取属性,它自己就可能抛异常;守卫在 try 外时该异常**逃出下面的 handler**,杀掉候选的分析步骤 —— 而那个 handler 的全部目的就是「**诊断层的缺陷不得表现成候选的缺陷**」。happy path 永远测不出来,由反向验证的一个变体抓到 | 确定,低风险 | 小 | ✅ **已修**(`867c228`):守卫移入 `try`;`test_a_broken_evidence_dict_journals_a_failure_and_does_not_raise` 用一个 `evidence` 访问器会抛的对象驱动真实方法。**同形先例**:run-l1-42 就是在第一个 analyst 步死于另一个字段的同类问题 | §G40 |
 
+| **G41** | **两个测试在坏实现上照样通过,根因同一个:fixture 与断言不是生产形状的**。(a) S2d 测试里我的 `deltas()` 辅助**硬编码 `direction: "changed"`** —— 而「极性感知」那个错误实现读的正是 `direction`,有常数在那里它**永远不走自己那条分支**,于是 occupancy 极性测试在一个坏 reconciler 上通过;(b) caveat 测试只断言字样**出现在文本某处**,而 `render_ledger` 把模块级 `CAVEAT` 作收尾段追加 ⇒ 「清空 caveat 字段」与「整体 dump 成 JSON」**两个变体都通过**;(c) 词表测试被一个三元素硬编码子集满足 | 确定,低风险 | 小 | ✅ **已修**(`35fb1a9`):(a) `direction` 改按 `_DIMENSIONS[name]["lower_is_better"]` 推导,与 `conversion.py` 一致;(b) 改断言**条目自己的字段** + 渲染是散文;(c) 改断言集合相等 + 计数相等。**纪律:一个不是生产形状的 fixture 什么都无法证伪** —— 反向验证的价值全部取决于 fixture 走到那条被改坏的分支 | §G41 |
+| **G42** | **一个源码文本断言在行为未变时失败**。`test_rewrite_rounds_record_their_conversion_verdict` 从 `store.append("FAMILY_ROUND_RECORDED"` 切到下一个 `else:`,**假定判决在 append 调用内部算**。S2d 把 `conversion_verdict(...)` 提成局部变量(为让账本复用同一份 `resource_deltas` —— 账本两段不许在「什么动了」上分歧),调用就移出了切片 | 确定,低风险(取景错误,非行为缺陷) | 小 | ✅ **已修**(`14492fb`):两条断言改从 `if evaluated:` 起切,**并单独断言判决进了 payload**(算了却丢掉正是它要防的 `launch_bound` 形状);**并补了行为侧的一半** —— 源码断言看不出判决是否还到得了 payload,而本仓库有实测记录:一个源码文本断言**在坏代码上通过、修好后失败** | §G42 |
 图例:✅ 已完成 · 🔧 修复中 · 🟡 部分解决 · ⏳ 待处理 · ❌ 不可行
 
 
@@ -1090,3 +1092,76 @@ except Exception as exc:   # noqa: BLE001 -- a diagnostic must never fail a run
 **这条 happy path 永远测不出来** —— 正常的 `verdict` 取属性不会抛。它是**反向验证的一个变体**抓到的:把 `except Exception` 收窄成 `except ValueError`,`test_a_broken_evidence_dict_journals_a_failure_and_does_not_raise` 立刻失败。那个测试用一个 `evidence` 属性会抛 `RuntimeError` 的对象驱动**真实方法**,不是模拟。
 
 **修法**:守卫移入 `try`,并把理由写在代码里 —— 否则下一个人会「整理」它回到外面。
+
+---
+
+### G41 反向验证的价值,全部取决于 fixture 是否走到那条被改坏的分支(✅ 已修)
+
+S2d 的 13 个错误实现里,**有两个变体被测试「通过」了** —— 而两次的根因是同一件事:**fixture / 断言不是生产形状的**。
+
+**(a) 极性变体:fixture 里的一个常数让整条分支不可达**
+
+错误实现是这样的(把「数字往哪动」换成极性感知的 `direction`):
+
+```python
+_d = delta_info.get("direction")
+if _d in ("improved", "worsened"):
+    return "down" if _d == "improved" else "up"
+```
+
+而我的测试辅助:
+
+```python
+out[name] = {..., "direction": "changed"}     # ← 硬编码
+```
+
+`"changed"` 既不是 `improved` 也不是 `worsened` ⇒ **那个 `if` 永远不成立,错误实现落回正确路径,测试通过。** 它当时看起来在验证 occupancy 极性,实际上**在验证一个不可达的分支**。
+
+**修法**:`direction` 按 `_DIMENSIONS[name]["lower_is_better"]` 推导,与 `conversion.py` 逐行一致。
+
+**(b) caveat 变体:断言的位置比断言的内容更重要**
+
+`render_ledger` 把模块级 `CAVEAT` 作为**收尾段落**追加。于是原来这条断言:
+
+```python
+assert "ATTRIBUTION CAVEAT" in text
+```
+
+在**两个**错误实现下都成立:把 `Reconciliation.caveat` 清空(收尾段仍在),以及把整个 entry `json.dumps`(caveat 字符串仍在 JSON 里)。**修法**:断言**条目自己的字段**带 `RE-TUNED`,加上 `'"caveat"' not in text`(渲染必须是散文)。
+
+**(c) 词表变体:子集满足了两条断言**
+
+`"occupancy" in DIMENSION_VOCABULARY` 与 `r.hits == len(DIMENSION_VOCABULARY)` **都被一个三元素硬编码 tuple 满足** —— 后者尤其隐蔽,因为分子分母同时缩小。**修法**:集合相等 + `len(...) == len(_DIMENSIONS)`。
+
+**这条纪律比这三个 bug 重要**:反向验证之所以有意义,是因为「错误实现会让某个测试失败」;若 fixture 让被改坏的那条分支**不可达**,或断言落在**错误实现也满足**的位置上,那么反向验证给出的 `ok` 是假的 —— 而假的 `ok` 比没有反向验证更危险,因为它会被当成证据引用。
+
+---
+
+### G42 一个源码文本断言在行为未变时失败(✅ 已修)
+
+A800 全套(权威)在 S2d 之后报了一个既有测试失败:`test_rewrite_rounds_record_their_conversion_verdict`。
+
+它这样取景:
+
+```python
+block = src[src.index('self.store.append("FAMILY_ROUND_RECORDED"'):]
+block = block[:block.index("else:")]
+assert "conversion_verdict(" in block
+```
+
+**它假定判决是在 `append` 调用内部算的。** S2d 把它提成了局部变量:
+
+```python
+conversion = conversion_verdict(...)          # ← 提前,为了让账本复用同一份 resource_deltas
+self.store.append("FAMILY_ROUND_RECORDED", {..., **conversion})
+self._record_reconciliation(family.family_id, round_no, conversion)
+```
+
+提前的理由是硬的:**账本两段不许在「什么动了」上产生分歧**,所以 `reconcile` 必须吃 `conversion` 自己算出的 `resource_deltas`,而不是重算一遍。
+
+**行为一字未变,是测试的取景错了。**
+
+**修法两部分:**
+
+1. 两条断言改为从 `if evaluated:` 起切 —— 那才是真正决定「一轮记录什么」的块;**并单独断言判决进了 payload**(`"conversion" in append`),因为「算了却丢掉」正是这个测试要防的 `launch_bound` 形状,而放宽取景本身并不覆盖它。
+2. **补了行为侧的一半**(`test_s2d_wiring.py`)。源码文本断言**看不出判决是否还到得了 payload**,而本仓库有一条实测记录:一个源码文本断言**在坏代码上通过、在修好之后失败**。新测试驱动 `conversion_verdict` + `reconcile` 走同一份输入,断言两段对「什么动了」一致 —— 包括 profile 缺失时账本侧必须给 `unmeasured` 而不是编一个 flat 读数。
