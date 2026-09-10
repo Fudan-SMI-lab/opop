@@ -135,8 +135,29 @@ VARIANTS: list[tuple[str, Path, str, str, list[str], str]] = [
         ["test_the_candidate_trial_path_carries_the_diagnosis"],
         "the path that matters MORE than the baseline: the baseline kills the run loudly, while a "
         "per-trial failure is silent and gets attributed to the model. This is exactly where G29's "
-        "12 candidates were lost. NOTE this variant is UNVERIFIED on a box without optuna, since "
-        "importing the orchestrator needs it -- check on the A800",
+        "12 candidates were lost. THIS VARIANT CAUGHT A DEFECT IN MY OWN TEST: the test used to "
+        "assert on `inspect.getsource(_run_trial)` and PASSED with the whole block replaced by "
+        "`pass`, because `failure_detail=detail` remained on the TrialRecord below the deleted "
+        "lines. A source-text assertion passing on broken code, which this project has a recorded "
+        "failure mode for. It is now behavioural -- it drives the real `_run_trial` with a faked "
+        "evaluator and reads the TrialRecord. Note it only surfaced on the A800: on Windows the "
+        "test SKIPS for lack of optuna, so the harness reported UNVERIFIED, not FAIL. A skip is "
+        "not a pass, and it is not a verdict either",
+    ),
+    (
+        "TOO BROAD on the trial path: the diagnosis appended to every failure",
+        ORC,
+        "            env = environment_defect(tail)\n"
+        "            if env:\n"
+        "                detail = f\"{detail}\\n\\n{env}\"",
+        "            env = environment_defect(tail) or \"ENVIRONMENT DEFECT: check the box\"\n"
+        "            detail = f\"{detail}\\n\\n{env}\"",
+        ["test_the_candidate_trial_path_stays_bare_for_an_ordinary_failure"],
+        "the counter-direction on the trial path, which the baseline path already had but this one "
+        "did not. Without it the positive test above is satisfied by appending the text "
+        "unconditionally -- and then every correctness miss and every OOM tells the operator to fix "
+        "their box. A warning that fires on everything is not a warning, and here it would also "
+        "mislabel a candidate's own missing import (CUTLASS, TileLang) as the box's fault",
     ),
 ]
 

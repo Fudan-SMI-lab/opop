@@ -231,23 +231,101 @@ def test_the_candidate_trial_path_carries_the_diagnosis():
     agent gets told 'your kernel crashed'. The baseline kills the run loudly; a per-trial failure is
     silent and gets attributed to the model.
 
-    Source-level here by necessity -- importing the orchestrator needs optuna, which is absent on
-    the Windows host by design. The A800 suite is the authoritative one and imports it fine; the
-    behavioural half of this is covered by `test_s2_wiring.py`-style tests there.
+    BEHAVIOURAL, driving the real `Orchestrator._run_trial`. It was a source-text assertion
+    (`"environment_defect" in inspect.getsource(...)`) and the revert-check on the A800 proved that
+    version was NOT EVIDENCE: with the whole diagnosis block replaced by `pass`, the test still
+    passed, because `failure_detail=detail` remained on the TrialRecord below the deleted lines and
+    the import remained at module top. Exactly the recorded failure mode -- a source-text assertion
+    passing on broken code. Windows could not catch it: the test skipped there for lack of optuna,
+    so the variant was reported UNVERIFIED rather than FAIL.
     """
-    import inspect
+    pytest.importorskip("optuna", reason="orchestrator import needs optuna")
 
-    optuna = pytest.importorskip("optuna", reason="orchestrator import needs optuna")
-    assert optuna is not None
-    from kernel_optimizer.control import orchestrator
+    record = _run_one_trial(BOX1_REAL_TAIL)
+    assert record.status == "fail"
+    assert "ENVIRONMENT DEFECT" in record.failure_detail, (
+        "a per-candidate failure caused by the BOX still reaches the repair agent as a kernel "
+        "bug; this is where G29's 12 candidates were lost")
+    assert "dotenv" in record.failure_detail, "the message does not name the missing module"
+    assert "wsl.venv" in record.failure_detail, "the message does not name the venv to fix"
+    # The original excerpt must survive alongside the diagnosis: replacing it would hide the
+    # traceback the repair agent needs when the diagnosis turns out not to apply.
+    assert "worker_main.py" in record.failure_detail, (
+        "the diagnosis REPLACED the traceback excerpt instead of being appended to it")
 
-    src = inspect.getsource(orchestrator.Orchestrator._run_trial)
-    assert "environment_defect" in src, (
-        "a per-candidate failure caused by the BOX still reaches the repair agent as a kernel bug")
-    # And that it is actually APPENDED to the detail the repair agent reads, not merely computed --
-    # a computed-and-dropped diagnosis is the `conversion` defect restated (G44).
-    assert "failure_detail=detail" in src, (
-        "the diagnosis is computed but the trial record still carries the unannotated detail")
+
+def test_the_candidate_trial_path_stays_bare_for_an_ordinary_failure():
+    """The counter-direction on the same real path. Without it, the test above is satisfied by
+    appending the text unconditionally -- and then every correctness miss and OOM tells the
+    operator to fix their box, which is how a warning stops being trusted."""
+    pytest.importorskip("optuna", reason="orchestrator import needs optuna")
+
+    tail = ("Traceback (most recent call last):\n"
+            '  File "/root/runs/r1/sandboxes/c1/candidates/cand_1.py", line 3, in <module>\n'
+            "    import cutlass\n"
+            "ModuleNotFoundError: No module named 'cutlass'\n")
+    record = _run_one_trial(tail)
+    assert record.status == "fail"
+    assert "ENVIRONMENT DEFECT" not in record.failure_detail, (
+        "a candidate's own missing import was labelled a box defect, which would stop the repair "
+        "loop from seeing a real failure")
+    assert "cutlass" in record.failure_detail, "the actual error was dropped from the detail"
+
+
+def _run_one_trial(log_tail: str):
+    """Drive the real `Orchestrator._run_trial` with a worker that fails the given way.
+
+    Builds the minimum real object graph: `_run_trial` materializes the source, runs the config
+    screen, calls the evaluator, and builds the TrialRecord. Only the evaluator and the screen are
+    faked -- the code under test is untouched.
+    """
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import patch
+
+    from kernel_optimizer.control.orchestrator import Orchestrator
+    from kernel_optimizer.models.core import (
+        Candidate,
+        ParamDomain,
+        ParameterSpace,
+        ParamSet,
+        TaskSpec,
+    )
+
+    class _Evaluator:
+        def quick_test(self, task, path, tag, backend="triton"):
+            return {"ok": False, "compiled": False, "failure_kind": "runtime_error",
+                    "log_tail": log_tail}
+
+    source = 'PARAMS = {\n    "BLOCK_M": 64,\n}\n\n\nclass ModelNew:\n    pass\n'
+    cand = Candidate(candidate_id="cand-t", family_id="fam", origin="seed", backend="triton",
+                     source_sha="0" * 64, structural_signature="0" * 64, approach_summary="x")
+    space = ParameterSpace(
+        space_id="sp", candidate_id="cand-t", version=1, source_sha="0" * 64,
+        domains=[ParamDomain(name="BLOCK_M", kind="int", choices=[32, 64])], constraints=[])
+
+    class _CandRun:
+        candidate = cand
+        source = globals().get("_src_placeholder") or ""
+
+    crun = _CandRun()
+    crun.source = source
+
+    orch = Orchestrator.__new__(Orchestrator)          # no __init__: it wants a whole app
+    orch.task = TaskSpec(name="43", level=3, problem_id=43, ref_path="/nonexistent/r.py",
+                         ref_src_sha="0" * 64)
+
+    class _Deps:
+        evaluator = _Evaluator()
+
+    orch.deps = _Deps()
+
+    with tempfile.TemporaryDirectory() as td:
+        # The config screen needs a compiler; it is not what this test is about, and returning
+        # None is its documented "no opinion" answer, which lets the real trial run.
+        with patch.object(Orchestrator, "_screen_config", return_value=None):
+            return Orchestrator._run_trial(
+                orch, crun, space, ParamSet(values={"BLOCK_M": 64}), "tr-1", Path(td))
 
 
 def test_the_two_signals_are_independent_not_one_regex():
