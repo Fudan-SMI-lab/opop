@@ -72,23 +72,30 @@ with open(ev, encoding="utf-8") as f:
                     "final_reeval_ms", "final_reeval_median_ms", "final_reeval_ok", "tuned_ms",
                     "precision", "excessive_speedup_flag", "candidate_id")})
         elif t == "CONVERGENCE_DECIDED":
-            # Two DIFFERENT events share this name and they must not be merged:
-            #   * per-family (orchestrator.py:2122) carries `family_id` and a real verdict;
-            #   * global (orchestrator.py:606) carries NO family_id -- its
+            # Two DIFFERENT decisions share this name and they must not be merged:
+            #   * scope="family" (orchestrator.py:2122) -- `family_id` sits on the PAYLOAD, beside
+            #     `decision`, not inside it; the verdict is that one family's.
+            #   * scope="global" (orchestrator.py:606) -- no family_id at all. Its
             #     `decision.evidence.families` is a snapshot of each family's STATUS
-            #     (active/frozen_*), not a verdict, and its own verdict+stop_kind is how the run
+            #     (active/frozen_*), NOT verdicts, and its own verdict+stop_kind is how the run
             #     ended.
+            # `scope` is an explicit Literal["family","global"] field on ConvergenceDecision, so
+            # read it rather than inferring the scope from whether a family_id turned up -- an
+            # inference that happens to agree today and would silently misfile a global decision
+            # that ever carried one.
+            #
             # Reading `p["verdict"]`/`p["family_id"]` (one level too shallow) printed
-            # `{fam-...: None}` for every family on every run. Merging the two into one dict then
-            # let the global snapshot overwrite the per-family verdicts AND dropped
-            # stop_kind=budget_exhausted, so verify both blocks on a finished run, not just one.
+            # `{fam-...: None}` for every family on every run. Merging the two scopes then let the
+            # global STATUS snapshot overwrite the real per-family verdicts and dropped
+            # stop_kind=budget_exhausted -- how the run actually ended. Verify both blocks on a
+            # finished run, not just one.
             dec = p.get("decision") or p
-            fid = dec.get("family_id") or p.get("family_id")
-            if fid:
-                families[fid] = "%s/%s" % (dec.get("verdict"), dec.get("stop_kind"))
-            else:
+            fid = p.get("family_id") or dec.get("family_id")
+            if dec.get("scope") == "global" or (dec.get("scope") is None and not fid):
                 global_conv = "%s/%s" % (dec.get("verdict"), dec.get("stop_kind"))
                 fam_status = dict(((dec.get("evidence") or {}).get("families") or {}))
+            elif fid:
+                families[fid] = "%s/%s" % (dec.get("verdict"), dec.get("stop_kind"))
 
 print("RUN:", run.name)
 if first_ts and last_ts:
