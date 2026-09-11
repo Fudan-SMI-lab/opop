@@ -1151,6 +1151,29 @@ class Orchestrator:
                 # 20.0 -> 22.6ms regression) would not appear in the trial log at all.
                 # Marked so it is never mistaken for a fresh measurement.
                 record = record.model_copy(update={"space_id": space.space_id})
+                # ...and it must leave the same ARTEFACT a fresh trial leaves. The record gets a new
+                # `trial_id`, but `_run_trial` -- the only writer of `trials/<trial_id>.py` -- is
+                # skipped, so the file for that id never existed. Anything that resolves a trial id
+                # back to source then finds nothing, and the one such consumer,
+                # `_measure_best_overhead`, returns SILENTLY on `path.exists()`: no
+                # LAUNCH_OVERHEAD_FAILED, no cpu_issue_ms, and `launch_bound` unreachable for that
+                # candidate. Measured across five runs: 128 of 128 reused records had no file, and
+                # it cost 3 of 11 classifications on the control arm and 3 of 14 on the treatment
+                # arm -- both arms, so not an arm-parity defect, but a fifth of every run's launch
+                # diagnostics.
+                #
+                # Written from `crun.source` at these params, which is what `_run_trial` writes and
+                # what the cached measurement was taken on -- the same bytes, not a reconstruction.
+                # Failure to write is journalled rather than swallowed, because a missing artefact
+                # is exactly what went unnoticed here.
+                try:
+                    (trials_dir / f"{trial_id}.py").write_text(
+                        materializer.materialize(crun.source, params), encoding="utf-8")
+                except Exception as exc:  # noqa: BLE001 — a reused trial must not end a run
+                    self.store.append("TRIAL_ARTIFACT_FAILED", {
+                        "candidate_id": cand.candidate_id, "trial_id": trial_id,
+                        "space_id": space.space_id, "reused_measurement": True,
+                        "error": f"{type(exc).__name__}: {exc}"[:300]})
                 self.store.append("TRIAL_DONE", {"trial": record.model_dump(),
                                                  "reused_measurement": True})
             else:
@@ -1590,6 +1613,18 @@ class Orchestrator:
         path = (self.store.candidate_dir(crun.candidate.candidate_id)
                 / "trials" / f"{best.trial_id}.py")
         if not path.exists():
+            # This return used to be silent, and that silence is how a real defect survived five
+            # runs: a reused measurement never wrote its `.py`, so the winning trial of a fifth of
+            # all candidates had no source here and the whole `launch_bound` branch became
+            # unreachable for them -- with nothing in the log to distinguish it from a kernel that
+            # simply is not launch bound. A missing artefact is now a recorded event, so an
+            # unmeasured verdict can always be told apart from a measured negative one.
+            self.store.append("LAUNCH_OVERHEAD_FAILED", {
+                "candidate_id": crun.candidate.candidate_id,
+                "trial_id": best.trial_id,
+                "error": "no source on disk for the winning trial (%s), so overhead cannot be "
+                         "measured and `launch_bound` cannot be reached for this candidate"
+                         % path.name})
             return
         try:
             result = self.deps.evaluator.measure_overhead(
