@@ -170,7 +170,7 @@ def test_a_below_floor_reading_is_counted_as_reported(tmp_path):
     d = _write_run(tmp_path, [ev])
     out = check_wrapup.check_s3_s4(d)
     assert out["below_floor_readings_reported"] == 1
-    assert out["records_whose_provenance_names_a_precision"] == 1
+    assert out["per_record_provenance_naming_a_precision"] == 1
     assert out["dimensions_seen"] == {"dram_bytes": 1}
 
 
@@ -185,7 +185,7 @@ def test_a_reading_pinned_exactly_on_the_floor_is_flagged_for_inspection(tmp_pat
     d = _write_run(tmp_path, [ev])
     out = check_wrapup.check_s3_s4(d)
     assert out["readings_sitting_exactly_on_the_floor"] == 1
-    assert out["records_whose_provenance_names_a_precision"] == 0, (
+    assert out["per_record_provenance_naming_a_precision"] == 0, (
         "an empty precision string must not count as naming one")
 
 
@@ -220,6 +220,88 @@ def test_the_checker_runs_against_a_real_corpus_run_if_present():
     # This corpus PREDATES the conversion fix, so zero-with-rounds is the correct reading here and
     # is what makes it a usable control for the wrap-up check.
     assert conv["with_conversion"] == 0 and "NEW DEFECT" in conv["verdict"]
+
+
+def test_the_compute_ceiling_precision_is_read_from_the_top_level_field(tmp_path):
+    """The reader bug this test exists for, found on live box-2 data.
+
+    `_do_diagnose` writes `compute_ceiling_provenance` BESIDE `records`, not inside them, because
+    exactly one dimension has a precision: the compute-pressure denominator, the only one that can
+    be the wrong denominator without anything looking wrong (an fp16 kernel against a tf32 ceiling
+    read 107.8% of peak). The per-record blocks are `definitional` / `device_query` and their
+    `precision` is legitimately EMPTY -- a hardware limit has no precision.
+
+    So counting per-record precisions reports 0 on a run whose S3 field says `precision: "fp16"`
+    with a full calibration identity. That is the same shape as looking for a `FINAL_REEVAL_DONE`
+    event: a clean zero on data that has the number.
+    """
+    ev = {"type": "DIMENSION_STATE", "payload": {
+        "candidate_id": "c1",
+        "prompt_mode": "vector",
+        # Verbatim from box 2's live events.jsonl.
+        "compute_ceiling_provenance": {
+            "source": "measured", "precision": "fp16", "backend": "",
+            "measured_at": "2026-09-10T20:43:45+00:00",
+            "calibration_identity": "NVIDIA GeForce RTX 4090|8.9|128|2.13.0+cu129|12.9|3.7.1",
+            "note": "the compute roof in force for this candidate, labelled 'tensor-core (fp16), "
+                    "Triton-measured (above cuBLAS)' by the classifier"},
+        "precision_mismatch": "",
+        "unreachable_ceilings": [],
+        "records": [
+            {"dimension_id": "occupancy", "measured": None, "ceiling": 1.0,
+             "provenance": {"source": "definitional", "precision": ""},
+             "bound": {"floor": None, "below_floor": False, "room": None}},
+            {"dimension_id": "n_regs", "measured": 128.0, "ceiling": 255.0,
+             "provenance": {"source": "device_query", "precision": ""},
+             "bound": {"floor": None, "below_floor": False, "room": None}},
+        ]}}
+    d = _write_run(tmp_path, [ev])
+    out = check_wrapup.check_s3_s4(d)
+    assert out["diagnoses"] == 1
+    assert out["diagnoses_whose_compute_ceiling_names_a_precision"] == 1, (
+        "the S3 precision was not read from the top-level compute_ceiling_provenance field")
+    assert out["calibration_identities"] == [
+        "NVIDIA GeForce RTX 4090|8.9|128|2.13.0+cu129|12.9|3.7.1"]
+    # And the per-record count must stay 0 and be reported SEPARATELY: a zero means opposite things
+    # in the two places, so collapsing them into one number loses the distinction either way.
+    assert out["per_record_provenance_naming_a_precision"] == 0
+    assert out["dimension_records"] == 2
+    assert out["prompt_modes"] == {"vector": 1}
+
+
+def test_a_diagnosis_with_no_compute_ceiling_reports_zero_not_a_crash(tmp_path):
+    """An overhead-bound or cannot-run candidate has no compute roof in force, and
+    `compute_ceiling_provenance` then carries `source: "none"` with an empty precision. That zero is
+    honest and must be distinguishable from the reader failing to look."""
+    ev = {"type": "DIMENSION_STATE", "payload": {
+        "candidate_id": "c2",
+        "compute_ceiling_provenance": {
+            "source": "none", "precision": "", "backend": "", "measured_at": "",
+            "calibration_identity": "", "note": "no compute ceiling was in force"},
+        "precision_mismatch": "",
+        "records": [{"dimension_id": "n_spills", "measured": 0.0, "ceiling": 0.0,
+                     "provenance": {"source": "definitional", "precision": ""},
+                     "bound": {"floor": 0.0, "below_floor": False, "room": 0.0}}]}}
+    d = _write_run(tmp_path, [ev])
+    out = check_wrapup.check_s3_s4(d)
+    assert out["diagnoses"] == 1
+    assert out["diagnoses_whose_compute_ceiling_names_a_precision"] == 0
+    assert out["calibration_identities"] == []
+
+
+def test_the_precision_mismatch_is_read_from_the_top_level_field(tmp_path):
+    """`precision_mismatch` sits beside the provenance, and it is the 107.8% incident's detector:
+    an fp16 kernel scored against a tf32 ceiling. It must be attributed to its candidate."""
+    ev = {"type": "DIMENSION_STATE", "payload": {
+        "candidate_id": "c3",
+        "compute_ceiling_provenance": {"source": "measured", "precision": "tf32",
+                                       "calibration_identity": "box|1"},
+        "precision_mismatch": "the ceiling was measured at tf32 but the kernel computes in fp16",
+        "records": []}}
+    d = _write_run(tmp_path, [ev])
+    out = check_wrapup.check_s3_s4(d)
+    assert out["precision_mismatch_fired_on"] == ["c3"], (
+        "a precision mismatch that fired was not attributed to its candidate")
 
 
 # --- reader 3b: S2d's ledger, where an event stream can look healthy and say nothing -----------

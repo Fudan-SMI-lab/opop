@@ -59,6 +59,69 @@ VARIANTS: list[tuple[str, Path, str, str, list[str], str]] = [
         "denominator of every speedup in the report",
     ),
     (
+        "THE REAL BUG #3: the S3 precision counted per-record instead of per-diagnosis",
+        CHK,
+        "            cprov = p.get(\"compute_ceiling_provenance\") or {}",
+        "            cprov = ((p.get(\"records\") or [{}])[0].get(\"provenance\")) or {}",
+        ["test_the_compute_ceiling_precision_is_read_from_the_top_level_field"],
+        "the third bug this script had, found on LIVE box-2 data. `_do_diagnose` writes "
+        "`compute_ceiling_provenance` BESIDE `records`, because exactly one dimension has a "
+        "precision -- the compute-pressure denominator, the only one that can be the wrong "
+        "denominator without anything looking wrong (an fp16 kernel against a tf32 ceiling read "
+        "107.8% of peak). The per-record blocks are `definitional`/`device_query` and their "
+        "precision is legitimately EMPTY, so counting those reports 0 on a run whose S3 field says "
+        "`precision: \"fp16\"` with a full calibration identity. Same shape as `FINAL_REEVAL_DONE`: "
+        "a clean zero on data that HAS the number, and S3's whole point is that this denominator's "
+        "provenance be checkable",
+    ),
+    (
+        "the two precision counts collapsed into one",
+        CHK,
+        "                if cprov.get(\"precision\"):\n"
+        "                    prov_with_precision += 1",
+        "                if cprov.get(\"precision\"):\n"
+        "                    prov_with_precision += 1\n"
+        "                    record_prov_with_precision += 1",
+        ["test_the_compute_ceiling_precision_is_read_from_the_top_level_field"],
+        "a zero means OPPOSITE things in the two places: 0 per-record precisions is correct and "
+        "expected (hardware limits have none), while 0 compute-ceiling precisions on a run with "
+        "diagnoses is the S3 failure. Merging the counts destroys the distinction in whichever "
+        "direction the reader happens to look, which is how a checked criterion becomes an unchecked "
+        "one without any line saying so",
+    ),
+    (
+        "the honest 'no compute roof' case counted as naming a precision",
+        CHK,
+        "                if cprov.get(\"precision\"):\n"
+        "                    prov_with_precision += 1\n"
+        "                if cprov.get(\"calibration_identity\"):",
+        "                if cprov.get(\"precision\") or cprov.get(\"source\") != \"measured\":\n"
+        "                    prov_with_precision += 1\n"
+        "                if cprov.get(\"calibration_identity\"):",
+        ["test_a_diagnosis_with_no_compute_ceiling_reports_zero_not_a_crash"],
+        "an overhead-bound or cannot-run candidate genuinely has no compute roof in force -- "
+        "`source: \"none\"`, precision empty -- and that zero is the HONEST reading, not a reader "
+        "failure. Treating it as 'names a precision' reports S3 as fully provenanced on a run where "
+        "the denominator was never measured, which is the mirror image of real bug #3: there the "
+        "reader under-reported a precision that exists, here it over-reports one that does not. "
+        "(An earlier version of this variant patched `if cprov:` to `if True:` and did NOT "
+        "discriminate -- the `source: \"none\"` provenance is a non-empty dict, so the denominator "
+        "was already being counted. Measured, not assumed.)",
+    ),
+    (
+        "the precision_mismatch read from the wrong nesting level",
+        CHK,
+        "            if p.get(\"precision_mismatch\"):\n"
+        "                mismatches.append(p.get(\"candidate_id\"))",
+        "            if (p.get(\"digest\") or {}).get(\"precision_mismatch\"):\n"
+        "                mismatches.append(p.get(\"candidate_id\"))",
+        ["test_the_precision_mismatch_is_read_from_the_top_level_field"],
+        "`precision_mismatch` sits at the top level beside the provenance. Reading it out of the "
+        "digest returns nothing, so the 107.8%-incident detector reports 'nothing' for every run -- "
+        "including one where it fired. This is the criterion that S3 exists to make checkable, and "
+        "silence from it is indistinguishable from a clean result",
+    ),
+    (
         "tuned_ms silently substituted when the re-eval is missing",
         CHK,
         "    reeval = best.get(\"final_reeval_ms\")",
@@ -129,10 +192,12 @@ VARIANTS: list[tuple[str, Path, str, str, list[str], str]] = [
     (
         "an empty precision string counted as naming a precision",
         CHK,
-        "                if prov.get(\"precision\"):",
-        "                if \"precision\" in prov:",
-        ["test_a_reading_pinned_exactly_on_the_floor_is_flagged_for_inspection"],
-        "every record carries the KEY -- the ones that are hardware limits or definitional carry it "
+        "                if cprov.get(\"precision\"):\n"
+        "                    prov_with_precision += 1",
+        "                if \"precision\" in cprov:\n"
+        "                    prov_with_precision += 1",
+        ["test_a_diagnosis_with_no_compute_ceiling_reports_zero_not_a_crash"],
+        "every provenance carries the KEY -- the ones that are hardware limits or definitional carry it "
         "empty. Counting key-presence reports 100% provenance-with-precision on a run where none "
         "has it, which is precisely the check S3 exists to make (the 107.8% incident was an fp16 "
         "kernel scored against a tf32 ceiling)",

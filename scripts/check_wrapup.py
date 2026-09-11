@@ -154,30 +154,58 @@ def check_s3_s4(run_dir: Path) -> dict:
     `precision_mismatch` firing at all, which of the four complementary-slackness states was
     reported, whether a below-floor reading was REPORTED rather than clamped, and whether any
     ceiling_provenance carries a precision.
+
+    THE PROVENANCE IS A TOP-LEVEL FIELD, not a per-record one. `_do_diagnose` writes
+    `compute_ceiling_provenance` beside `records`, because exactly ONE dimension has a precision --
+    the compute-pressure denominator, the only one that can be the wrong denominator without
+    anything looking wrong (an fp16 kernel scored against a tf32 ceiling read 107.8% of peak). The
+    per-record `provenance` blocks are `definitional` / `device_query` for occupancy, registers,
+    shared bytes and the rest, and their `precision` is legitimately empty: a hardware limit has no
+    precision.
+
+    So counting per-record precisions reports 0 on a run whose S3 field says `precision: "fp16"`
+    with a full calibration identity -- the same shape of bug as looking for a `FINAL_REEVAL_DONE`
+    event, a clean zero on data that has the number. Both counts are reported separately, because a
+    zero means opposite things in the two places.
     """
     prov_with_precision = 0
     prov_total = 0
+    record_prov_with_precision = 0
     mismatches = []
     slack_states = collections.Counter()
     below_floor = 0
     clamped_suspicion = 0
     dims = collections.Counter()
+    identities = set()
+    unreachable = collections.Counter()
+    prompt_modes = collections.Counter()
     for e in _events(run_dir):
         t = e.get("type")
         p = e.get("payload") or {}
         if t == "DIMENSION_STATE":
             for rec in (p.get("records") or []):
                 dims[rec.get("dimension_id")] += 1
-                prov_total += 1
                 prov = rec.get("provenance") or {}
                 if prov.get("precision"):
-                    prov_with_precision += 1
+                    record_prov_with_precision += 1
                 b = rec.get("bound") or {}
                 if b.get("below_floor"):
                     below_floor += 1
                 # A reading at EXACTLY the floor with room 0.0 is what a clamp looks like.
                 if b.get("floor") is not None and b.get("room") == 0.0:
                     clamped_suspicion += 1
+            # The S3 provenance: one per DIMENSION_STATE, not one per record.
+            cprov = p.get("compute_ceiling_provenance") or {}
+            if cprov:
+                prov_total += 1
+                if cprov.get("precision"):
+                    prov_with_precision += 1
+                if cprov.get("calibration_identity"):
+                    identities.add(cprov["calibration_identity"])
+            for u in (p.get("unreachable_ceilings") or []):
+                unreachable[u] += 1
+            if p.get("prompt_mode"):
+                prompt_modes[p["prompt_mode"]] += 1
             if p.get("precision_mismatch"):
                 mismatches.append(p.get("candidate_id"))
         blob = json.dumps(p)
@@ -186,12 +214,17 @@ def check_s3_s4(run_dir: Path) -> dict:
         for state in ("cannot_run", "no_dimension_judged_slack", "weak_pass", "violation_named"):
             if state in blob:
                 slack_states[state] += 1
-    return {"dimension_records": prov_total,
-            "records_whose_provenance_names_a_precision": prov_with_precision,
+    return {"dimension_records": sum(dims.values()),
+            "diagnoses": prov_total,
+            "diagnoses_whose_compute_ceiling_names_a_precision": prov_with_precision,
+            "per_record_provenance_naming_a_precision": record_prov_with_precision,
+            "calibration_identities": sorted(identities),
             "precision_mismatch_fired_on": sorted(set(m for m in mismatches if m)),
             "complementary_slackness_states": dict(slack_states),
             "below_floor_readings_reported": below_floor,
             "readings_sitting_exactly_on_the_floor": clamped_suspicion,
+            "unreachable_ceilings": dict(unreachable),
+            "prompt_modes": dict(prompt_modes),
             "dimensions_seen": dict(dims)}
 
 
@@ -324,9 +357,19 @@ def report(run_dir: Path, label: str) -> dict:
 
     s3 = check_s3_s4(run_dir)
     print("\n[3] S3 / S4' on real data")
-    print("    dimension records ............. %d" % s3["dimension_records"])
-    print("    provenance naming a precision . %d" % s3["records_whose_provenance_names_a_precision"])
+    print("    dimension records ............. %d over %d diagnoses" % (
+        s3["dimension_records"], s3["diagnoses"]))
+    print("    compute ceiling names a precision %d of %d diagnoses%s" % (
+        s3["diagnoses_whose_compute_ceiling_names_a_precision"], s3["diagnoses"],
+        "" if s3["diagnoses"] else "   (no diagnosis yet, so 0 says nothing)"))
+    print("    calibration identity .......... %s" % (
+        "; ".join(s3["calibration_identities"]) or "-"))
+    print("    per-record provenance w/ precision %d  (expected 0: occupancy/registers/shared are"
+          % s3["per_record_provenance_naming_a_precision"])
+    print("                                       definitional or hardware limits, no precision)")
     print("    precision_mismatch fired on ... %s" % (s3["precision_mismatch_fired_on"] or "nothing"))
+    print("    unreachable ceilings named .... %s" % (s3["unreachable_ceilings"] or "none"))
+    print("    prompt_mode in the events ..... %s" % (s3["prompt_modes"] or "-"))
     print("    complementary-slackness states  %s" % (s3["complementary_slackness_states"] or "none"))
     print("    below-floor readings REPORTED . %d" % s3["below_floor_readings_reported"])
     print("    readings exactly on the floor . %d%s" % (
