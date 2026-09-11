@@ -44,7 +44,14 @@ case "$BOX" in
 esac
 
 INTERVAL=240          # 4 min: an L3 trial takes minutes, so this cannot miss a phase
-STALL_MIN=25          # a single agent call may legitimately run ~25 min (read timeout is 1500 s)
+# 40 min, raised from 25. A single job may legitimately occupy the box for its whole 1800 s (30 min)
+# deadline without emitting an event, because `TRIAL_DONE` is written only when the job returns --
+# and D8 is exactly that case: box 1's cand-941ea454 drives ptxas for 13-30 min per trial, so a
+# 25 min threshold paged every ~28 min for a condition already diagnosed and decided (let it run).
+# A monitor that fires repeatedly on a known state trains its reader to ignore it, which is worse
+# than one that fires slightly late. 40 min sits above the 30 min job ceiling plus a margin, so
+# anything it reports is genuinely outside the harness's own bounds.
+STALL_MIN=40
 fails=0
 last_size=""
 stalled_since=""
