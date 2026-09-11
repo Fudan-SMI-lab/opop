@@ -640,6 +640,13 @@ class Orchestrator:
         # compiling would understate every ceiling it reports.
         self._calibrate()
         self._baseline()
+        # The physical plausibility bound, once its three inputs exist: the task's cost, this
+        # box's ceilings and the run's own reference baseline. After `_baseline()` rather than
+        # inside it, so the RESUMED path -- which returns early from `_baseline` having restored
+        # all three from the log -- installs the same bound an uninterrupted run uses. Putting
+        # the call inside would have covered only the fresh path, and a resumed run would then
+        # have flagged against nothing while looking identical in the log.
+        self._install_plausibility()
         self._generate_seeds()
 
         # S1b. Before any tuning, so a resumed run reaches its next ask holding the same evidence
@@ -794,6 +801,63 @@ class Orchestrator:
         for b in self.baselines:
             self.store.append("BASELINE_DONE", {"baseline": b.model_dump()})
         self._step_done(key)
+
+    def _install_plausibility(self) -> None:
+        """Derive this task's physical speedup ceiling on this box and hand it to the evaluator.
+
+        Replaces a 10x constant that was wrong in both directions: it fired on all three L3:48
+        runs (whose reference materializes 40.5x its compulsory traffic, so a legal fusion is
+        SUPPOSED to exceed 10x) and would be far too loose on a task with a lean reference, where
+        a kernel skipping half the work lands at 2x. The bound here is read off the task and the
+        card -- see `evaluation/plausibility.py` for the derivation and the three cases it
+        refuses to answer in.
+
+        NOT FATAL and never a gate. A box with no calibration, or a task whose cost could not be
+        counted, simply gets no flag: `set_plausibility(None)` leaves every job without a
+        threshold and the worker records `plausibility_checked: False`. That is strictly better
+        than flagging against a number nobody derived, since the flag's only consumer is a human
+        deciding whether to re-verify a result.
+        """
+        from kernel_optimizer.evaluation.plausibility import (
+            best_measured_peak_tflops,
+            speedup_ceiling,
+        )
+
+        setter = getattr(self.deps.evaluator, "set_plausibility", None)
+        if setter is None:
+            return
+
+        # The SLOWEST eager baseline is the numerator: every uncertainty here should widen the
+        # bound rather than narrow it, because a false flag costs a human a re-verification while
+        # a missed one costs nothing correctness does not already cover. `torch_compile` is
+        # excluded -- it is a competitor to beat, not the semantic reference the speedup is
+        # defined against, and using it would shrink the ceiling by the compile speedup itself.
+        eager_ms = [b.latency_ms.mean for b in self.baselines
+                    if b.kind.startswith("eager") and b.latency_ms.mean > 0]
+        cost = self.task_cost
+        ceiling = None
+        if eager_ms and cost is not None:
+            ceiling = speedup_ceiling(
+                compulsory_bytes=cost.compulsory_bytes,
+                flop_count=cost.flop_count,
+                reference_ms=max(eager_ms),
+                dram_tbs=float(getattr(self.calibration, "dram_tbs", 0.0) or 0.0),
+                peak_tflops=best_measured_peak_tflops(self.calibration),
+                l2_bytes=int(getattr(self.calibration, "l2_bytes", 0) or 0),
+            )
+        setter(ceiling)
+        # Journalled either way. "No bound could be derived" is a finding about this box, and
+        # its absence would be indistinguishable from a bound that was silently never applied --
+        # the shape that let `launch_bound` sit unreachable across 848 trials unnoticed.
+        self.store.append("PLAUSIBILITY_BOUND", {
+            "derived": ceiling is not None,
+            "bound": ceiling.model_dump() if ceiling is not None else None,
+            "reason": None if ceiling is not None else (
+                "no eager baseline" if not eager_ms else
+                "no task cost" if cost is None else
+                "neither a DRAM nor an arithmetic floor could be computed from this box's "
+                "calibration and this task's cost"),
+        })
 
     def _generate_seeds(self) -> None:
         key = "generate_seeds"

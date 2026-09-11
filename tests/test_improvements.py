@@ -103,7 +103,13 @@ def test_repair_guidance_routes_by_failure_kind():
     assert "COMPILE" in _repair_guidance("compile_error")
     assert "COMPILE" in _repair_guidance("runtime_error")
     assert "OUT-OF-MEMORY" in _repair_guidance("oom")
-    assert "10x FASTER" in _repair_guidance("excessive_speedup")
+    # No longer "10x FASTER": the flag's threshold is derived from the task's physical floor on
+    # this box, so the guidance must describe the MECHANISM rather than restate a constant the
+    # code no longer uses. Asserting the old text would pin the prompt to a number that has been
+    # removed -- and telling an agent it exceeded "10x" when the real bound was 17.5x sends it
+    # looking for a bug that is not there.
+    assert "PHYSICAL CEILING" in _repair_guidance("excessive_speedup")
+    assert "10x" not in _repair_guidance("excessive_speedup")
     # unknown kind still returns a usable generic hint
     assert _repair_guidance("weird") and "root cause" in _repair_guidance("weird")
 
@@ -1430,59 +1436,87 @@ def test_relaxed_metrics_reports_gate_criteria_not_just_max_diff():
 # correctness trials that use fresh inputs.
 
 
+def _guard_helpers():
+    """The real `_plausibility_threshold` / `_plausibility_reference_ms`, executed.
+
+    Exec'd out of the AST rather than imported, because `worker_main` imports torch at module
+    scope and the orchestrator host has no torch by design -- an import here would skip these
+    tests on the machine where the rest of the suite runs. Both functions are pure dict code.
+    """
+    import ast
+    from pathlib import Path
+
+    src = Path("src/kernel_optimizer/gpu/worker_main.py").read_text(encoding="utf-8")
+    wanted = {"_plausibility_threshold", "_plausibility_reference_ms"}
+    tree = ast.parse(src)
+    picked = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in wanted]
+    assert {n.name for n in picked} == wanted, [n.name for n in picked]
+    ns: dict = {}
+    exec(compile(ast.Module(body=picked, type_ignores=[]), "<worker_main>", "exec"), ns)
+    return ns["_plausibility_threshold"], ns["_plausibility_reference_ms"]
+
+
 def _guard_verdict(*, correct: bool, cand_ms: float, ref_ms: float,
                    thr: float = 10.0) -> dict:
-    """Replay the worker's post-timing guard block on a synthetic result."""
-    import importlib.util
+    """Replay the worker's post-timing flag on a synthetic result, through the REAL helpers.
 
-    spec = importlib.util.find_spec("kernel_optimizer.gpu.worker_main")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-
-    # The guard is inline in run_relaxed_correctness; exercise it through a job whose
-    # numbers are fixed, by calling the same arithmetic the module applies.
+    The threshold and the reference latency now come from the driver, so those two reads are
+    what this exercises; the ratio and the flag around them are three lines reproduced here.
+    """
+    thr_of, ref_of = _guard_helpers()
+    job = {"plausibility_threshold_x": thr, "plausibility_reference_ms": ref_ms}
     pass_count, num_trials = (3, 3) if correct else (1, 3)
     result = {
         "ok": correct,
         "failure_kind": None if correct else "correctness_mismatch",
         "latency_ms": {"mean": cand_ms},
-        "ref_latency_ms": {"mean": ref_ms},
     }
-    speedup = ref_ms / cand_ms
-    result["speedup_vs_ref_in_worker"] = speedup
-    if speedup >= thr:
-        result["excessive_speedup"] = True
-        if not correct:
-            result["ok"] = False
-            result["failure_kind"] = "excessive_speedup"
-        else:
+    threshold = thr_of(job)
+    reference = ref_of(job, None)
+    if threshold is not None and reference > 0 and cand_ms > 0:
+        speedup = reference / cand_ms
+        result["speedup_vs_ref_in_worker"] = speedup
+        if speedup >= threshold:
+            result["excessive_speedup"] = True
             result["excessive_speedup_note"] = f"{speedup:.1f}x flagged"
-    else:
-        result["excessive_speedup"] = False
+        else:
+            result["excessive_speedup"] = False
+    assert num_trials == 3 and pass_count in (1, 3)
     return result
 
 
-def test_guard_source_accepts_correct_fast_kernel_and_fails_incorrect_one():
-    """Assert against the real module source, so the test tracks the shipped logic
-    rather than only the replay helper above."""
+def test_a_verified_correct_kernel_is_never_rejected_by_the_plausibility_flag():
+    """The defect this replaced: the guard hard-failed verified-correct kernels for being fast.
+
+    Asserted against the REAL relaxed handler's source structure -- but as a REACHABILITY claim,
+    not a text match. The old test asserted on the text of a `if not correct:` branch inside the
+    guard, and that branch was UNREACHABLE: `ref_latency_ms` was only ever assigned under
+    `if correct and num_perf > 0`, so across 6894 recorded trials on three boxes it never ran
+    once. A test asserting the presence of dead code passes on code that does nothing, which is
+    how the 10x rule looked load-bearing while rejecting nothing.
+
+    So the assertion is now the property that matters: the flag block must not contain an
+    assignment that fails a job.
+    """
+    import ast
     from pathlib import Path
 
     src = Path("src/kernel_optimizer/gpu/worker_main.py").read_text(encoding="utf-8")
-    # Take the whole guard block: from the threshold test to where the flag is set
-    # False on the non-suspicious path. Splitting on the first "else:" would cut at
-    # the inner `if not correct:` branch and miss the accept path.
-    guard = src.split("if speedup >= thr:")[1].split('result["excessive_speedup"] = False')[0]
-    # The hard fail must be conditional on correctness, not unconditional.
-    assert "if not correct:" in guard, "guard must branch on correctness"
-    assert "excessive_speedup_note" in guard, "correct-but-fast must be flagged, not failed"
-    # And the flag itself must still be recorded.
-    assert 'result["excessive_speedup"] = True' in guard
-    # The hard-fail assignment must live inside the not-correct branch: everything
-    # before "else:" (the accept path) is the failure path.
-    fail_path = guard.split("else:")[0]
-    assert 'result["failure_kind"] = "excessive_speedup"' in fail_path
-    accept_path = guard.split("else:", 1)[1]
-    assert 'result["ok"] = False' not in accept_path, "accept path must not fail the job"
+    tree = ast.parse(src)
+    fn = next(n for n in ast.walk(tree)
+              if isinstance(n, ast.FunctionDef) and n.name == "run_relaxed_correctness")
+    # Every `if` whose test mentions the plausibility threshold -- the flag block(s).
+    flag_blocks = [n for n in ast.walk(fn)
+                   if isinstance(n, ast.If) and "thr" in ast.dump(n.test)
+                   and "speedup" in ast.dump(n.test)]
+    assert flag_blocks, "the plausibility flag block was not found; this test is asserting nothing"
+    for block in flag_blocks:
+        dumped = ast.dump(block)
+        assert "'ok'" not in dumped or "Constant(value=False)" not in dumped, (
+            "the plausibility flag must never set result['ok'] = False: correctness decides "
+            "acceptance, and 5 verified-correct trials of cand-c18203b6 were discarded at "
+            "11.1-13.9x by exactly that assignment")
+        assert "excessive_speedup" in dumped, "the flag itself must still be recorded"
 
 
 def test_correct_kernel_over_threshold_is_accepted_and_flagged():
@@ -1492,9 +1526,16 @@ def test_correct_kernel_over_threshold_is_accepted_and_flagged():
     assert r["excessive_speedup"] is True and "excessive_speedup_note" in r
 
 
-def test_incorrect_kernel_over_threshold_is_still_hard_failed():
+def test_an_incorrect_kernel_is_rejected_by_correctness_not_by_the_speed_flag():
+    """An incorrect kernel is still rejected -- one layer earlier, and for the right reason.
+
+    `result["ok"] = correct` and `failure_kind = "correctness_mismatch"` do the rejecting, before
+    any timing exists. The old test asserted `failure_kind == "excessive_speedup"` here, which
+    described a branch that could not execute: a kernel that fails correctness never reaches the
+    timing block at all, so it was never labelled that way in any of 6894 recorded trials.
+    """
     r = _guard_verdict(correct=False, cand_ms=0.0001, ref_ms=29.1)
-    assert r["ok"] is False and r["failure_kind"] == "excessive_speedup"
+    assert r["ok"] is False and r["failure_kind"] == "correctness_mismatch"
 
 
 def test_neighbouring_points_no_longer_get_opposite_verdicts():
@@ -1504,33 +1545,49 @@ def test_neighbouring_points_no_longer_get_opposite_verdicts():
     assert slow["ok"] == fast["ok"] is True
 
 
-def test_guard_uses_median_reference_not_outlier_corrupted_mean():
-    """A single scheduling stall in the guard's own reference timing must not decide a
-    verdict. Observed live on L3:48: a 10-sample reference returned mean=609ms with
-    min=29.8ms / max=5760ms / std=1720ms -- one ~5.8s outlier dragged the mean 20x and
-    manufactured a 115x 'speedup' against a candidate at 5.29ms. The reference's true
-    latency on this task is ~29ms (matching the eager baseline).
+def test_no_bound_means_no_flag_rather_than_a_constant():
+    """A job carrying no threshold must produce NO verdict, not a comparison against 10x.
 
-    Tests the BEHAVIOUR (`_stats_to_dict` produces a median, and the ratio prefers it)
-    rather than the text of one bespoke block. That block used to live only on the
-    reference side; the median is now computed centrally for reference AND candidate, so an
-    assertion on `ref_latency_ms["median"]` would fail while the protection is strictly
-    stronger than before -- the classic test-the-implementation trap.
+    This is the point of the whole change: the threshold is derived per task per box, so a box
+    without a calibration has nothing to compare against. Falling back to a constant there would
+    reinstate the failure being removed -- 10x fired on all three L3:48 runs, whose reference
+    materializes 40.5x its compulsory traffic so that a LEGAL fusion necessarily exceeds it.
     """
+    thr_of, ref_of = _guard_helpers()
+    assert thr_of({}) is None, "an empty job must yield no threshold"
+    assert thr_of({"plausibility_threshold_x": 0}) is None, "a zero threshold is not a threshold"
+    # An EXPLICIT override is still honoured, for the revert checks and targeted probes.
+    assert thr_of({"excessive_speedup_threshold": 12.5}) == 12.5
+    # The derived value wins over the legacy override when both are present.
+    assert thr_of({"plausibility_threshold_x": 17.5,
+                   "excessive_speedup_threshold": 10.0}) == 17.5
+
+
+def test_the_reference_latency_prefers_the_drivers_baseline_over_an_in_job_timing():
+    """The driver's 100-sample baseline beats 3-10 samples squeezed into a trial.
+
+    And when neither exists the answer is 0.0, so the caller emits no ratio at all: a ratio
+    against nothing is worse than an absent ratio, because it looks like a measurement.
+    """
+    _, ref_of = _guard_helpers()
+    assert ref_of({"plausibility_reference_ms": 14.0}, {"median": 99.0}) == 14.0
+    assert ref_of({}, {"median": 30.0, "mean": 609.0}) == 30.0, "median must win over mean"
+    assert ref_of({}, None) == 0.0
+    assert ref_of({}, {"mean": 0.0}) == 0.0
+
+
+def test_the_flag_reference_is_a_median_not_an_outlier_corrupted_mean():
+    """A single scheduling stall must not manufacture a flag.
+
+    Observed live on L3:48: a 10-sample in-job reference returned mean=609ms with min=29.8ms /
+    max=5760ms / std=1720ms -- one ~5.8s outlier dragged the mean 20x and produced a bogus 115x
+    "speedup" against a candidate at 5.29ms. Drives the real `_stats_to_dict` and the real
+    reference reader, rather than asserting on the text of one line.
+    """
+    import ast
     from pathlib import Path
 
-    import ast
-
     src = Path("src/kernel_optimizer/gpu/worker_main.py").read_text(encoding="utf-8")
-    # The ratio must still read the median first, whoever computed it.
-    ratio_line = next(l for l in src.splitlines() if "ref_mean = ref_latency_ms" in l)
-    assert '"median"' in ratio_line and ratio_line.index('"median"') < ratio_line.index('"mean"')
-
-    # And the median must actually be produced by the shared summarizer, for BOTH sides.
-    # `_stats_to_dict` and `_median` are pure dict/list code, but worker_main imports torch
-    # at module scope and torch is not installed on the orchestrator host -- so exec just
-    # those two functions rather than the module. That keeps the test running where the
-    # rest of the suite runs instead of being skipped exactly where it matters.
     ns: dict = {}
     tree = ast.parse(src)
     wanted = {"_median", "_stats_to_dict"}
@@ -1551,6 +1608,10 @@ def test_guard_uses_median_reference_not_outlier_corrupted_mean():
     # they must still work and simply carry no median.
     assert "median" not in stats_to_dict({"mean": 1.0, "std": 0.0, "min": 1.0,
                                           "max": 1.0, "num_trials": 1})
+
+    # And the reference reader must take that median, not the poisoned mean.
+    _, ref_of = _guard_helpers()
+    assert ref_of({}, got) == 30.0
 
     cand = 5.29
     assert got["mean"] / cand > 100          # the bogus verdict the mean produced

@@ -87,6 +87,34 @@ class CorrectnessEvaluator:
         self.seed = seed
         self._static_cache: dict[str, dict[str, Any]] = {}
         self._screen_cache: dict[str, dict[str, Any]] = {}
+        # The physical plausibility bound for this task on this box, once the orchestrator has
+        # measured the task cost, the calibration and the baseline. None until then, and None
+        # forever on a box with no calibration -- in which case no job carries a threshold and
+        # the worker reports `plausibility_checked: False` rather than comparing against a
+        # constant. Set through `set_plausibility`, never here: the three inputs are not
+        # available when the evaluator is constructed (the evaluator's own worker is what
+        # measures two of them).
+        self._plausibility: dict[str, Any] | None = None
+
+    def set_plausibility(self, ceiling, derivation: str = "") -> None:
+        """Install the derived speedup ceiling that every timed job will be flagged against.
+
+        Takes the `SpeedupCeiling` (or None) rather than loose floats so a caller cannot pass a
+        threshold without the derivation that justifies it -- a flag whose number cannot be
+        checked by a human reading the report is the thing the 10x constant already was.
+        """
+        if ceiling is None:
+            self._plausibility = None
+            return
+        self._plausibility = {
+            "plausibility_threshold_x": float(ceiling.threshold_x),
+            "plausibility_reference_ms": float(ceiling.reference_ms),
+            "plausibility_derivation": derivation or ceiling.derivation,
+        }
+
+    def _plausibility_fields(self) -> dict[str, Any] | None:
+        """What to merge into a job. A dict copy, so a job mutating it cannot alter the source."""
+        return dict(self._plausibility) if self._plausibility else None
 
     def _static_check(self, task: TaskSpec, kernel_src_path: Path, backend: str,
                       tag: str) -> dict[str, Any]:
@@ -300,7 +328,7 @@ class CorrectnessEvaluator:
                 seed=self.seed,
                 build_dir=None,
                 collect_kernel_metadata=True,
-                excessive_speedup_threshold=self.cfg.excessive_speedup,
+                plausibility=self._plausibility_fields(),
             )
         result = self.worker.run_job(job, self.cfg.build_timeout_s + self.cfg.eval_timeout_s,
                                      f"{tag}-screen", lock_mode="shared")
@@ -347,7 +375,7 @@ class CorrectnessEvaluator:
                 seed=self.seed,
                 build_dir=None,
                 collect_kernel_metadata=True,
-                excessive_speedup_threshold=self.cfg.excessive_speedup,
+                plausibility=self._plausibility_fields(),
                 measure_launch_overhead=measure_launch_overhead,
             )
         result = self.worker.run_job(job, self.cfg.build_timeout_s + self.cfg.eval_timeout_s,
@@ -415,7 +443,7 @@ class CorrectnessEvaluator:
                 seed=self.seed,
                 build_dir=None,
                 collect_kernel_metadata=False,
-                excessive_speedup_threshold=self.cfg.excessive_speedup,
+                plausibility=self._plausibility_fields(),
             )
         job["measure_launch_overhead"] = True
         result = self.worker.run_job(job, self.cfg.build_timeout_s + self.cfg.eval_timeout_s,

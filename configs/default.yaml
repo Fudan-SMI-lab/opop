@@ -71,8 +71,13 @@ evaluation:
   correctness_mode: strict
   eval_timeout_s: 600
   build_timeout_s: 1200
-  suspicious_speedup: 2.0
-  excessive_speedup: 10.0
+  # No `excessive_speedup` / `suspicious_speedup` here on purpose. The implausible-speedup flag
+  # is now DERIVED per task per box -- the task's compulsory traffic and arithmetic against this
+  # card's measured bandwidth and peak give a floor no correct kernel can beat, and the flag
+  # threshold is that floor times a margin (evaluation/plausibility.py). The old 10x constant
+  # fired on all three L3:48 runs, whose reference materializes 40.5x its own compulsory traffic
+  # so that a LEGAL fusion necessarily exceeds it, and would have been far too loose on a task
+  # whose reference is already lean. `suspicious_speedup: 2.0` had no consumer at all.
 
 gpu:
   concurrency:

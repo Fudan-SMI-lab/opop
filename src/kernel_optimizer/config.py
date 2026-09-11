@@ -264,8 +264,16 @@ class EvalConfig(StrictConfig):
     # full build_timeout_s. See `Evaluator._prescreen_timeout_s` for the measurements.
     prescreen_base_timeout_s: float = 30.0
     prescreen_per_config_timeout_s: float = 3.0
-    suspicious_speedup: float = 2.0
-    excessive_speedup: float = 10.0
+    # The plausibility flag's threshold is DERIVED per task per box (see
+    # `evaluation/plausibility.py`), not configured. This key remains only as an explicit
+    # override for a caller that deliberately wants a fixed multiplier -- a revert check, a
+    # targeted probe -- and it is no longer applied by default: a run whose bound cannot be
+    # derived records `plausibility_checked: False` rather than comparing against a constant.
+    #
+    # `suspicious_speedup: 2.0` USED TO LIVE HERE AND IS GONE. It had no consumer anywhere in the
+    # codebase -- a threshold that was read by nothing while appearing in every config file, which
+    # is worse than absent: a reader budgeting for it would have believed a 2x screen was running.
+    excessive_speedup: float | None = None
     # Improvement A: correctness judging mode.
     #   strict              -> KernelBench eval_kernel_against_ref (allclose 1e-4 for fp32)
     #   dual_witness_relaxed-> compare against the reference at BOTH tf32 and ieee fp32,

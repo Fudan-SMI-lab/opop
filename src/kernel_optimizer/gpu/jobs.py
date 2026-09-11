@@ -119,10 +119,10 @@ def make_eval_job(
     seed: int,
     build_dir: str | None,
     collect_kernel_metadata: bool,
-    excessive_speedup_threshold: float = 10.0,
+    plausibility: dict[str, Any] | None = None,
     measure_launch_overhead: bool = False,
 ) -> dict[str, Any]:
-    return {
+    job = {
         "job_type": "eval_perf" if measure_performance else "eval_correctness",
         "ref_src_path": ref_src_path,
         "kernel_src_path": kernel_src_path,
@@ -138,12 +138,17 @@ def make_eval_job(
         # `(backend == "triton")`, which made the cubin path for cuda/cutlass/cute
         # unreachable -- see `_wants_kernel_metadata` in worker_main.py.
         "collect_kernel_metadata": collect_kernel_metadata,
-        "excessive_speedup_threshold": excessive_speedup_threshold,
         # Off by default. Requested only by full_eval and the baselines: it costs ~150 extra
         # model calls, which is negligible beside their 100 timed samples but would be a real
         # tax on the 20-sample tuning trials, of which a run does hundreds.
         "measure_launch_overhead": measure_launch_overhead,
     }
+    # The plausibility bound, when the driver could compute one. MERGED rather than defaulted:
+    # a job with no bound must carry no threshold key at all, so the worker reports
+    # `plausibility_checked: False` instead of comparing against a constant nobody derived.
+    if plausibility:
+        job.update(plausibility)
+    return job
 
 
 def make_relaxed_correctness_job(
@@ -161,9 +166,10 @@ def make_relaxed_correctness_job(
     fp64_relative_gate: bool = False,
     fp64_rel_multiplier: float = 2.0,
     fp64_rel_multiplier_lowp: float = 3.0,
+    plausibility: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Improvement A: dual-precision witness relaxed correctness (no timing)."""
-    return {
+    job = {
         "job_type": "eval_correctness_relaxed",
         "ref_src_path": ref_src_path,
         "kernel_src_path": kernel_src_path,
@@ -180,6 +186,9 @@ def make_relaxed_correctness_job(
         "fp64_rel_multiplier": fp64_rel_multiplier,
         "fp64_rel_multiplier_lowp": fp64_rel_multiplier_lowp,
     }
+    if plausibility:
+        job.update(plausibility)
+    return job
 
 
 def failure_result(kind: str, detail: str) -> dict[str, Any]:

@@ -47,6 +47,66 @@ def _median(xs: list[float]) -> float:
     return s[n // 2] if n % 2 else 0.5 * (s[n // 2 - 1] + s[n // 2])
 
 
+def _plausibility_threshold(job: dict) -> float | None:
+    """The speedup at or above which this job's result should be flagged, or None for no flag.
+
+    The number is computed on the DRIVER (`evaluation/plausibility.py`) from the task's
+    compulsory traffic, the task's arithmetic and this box's measured ceilings -- all constants
+    of a run -- and passed in. The worker does not derive it, because the worker sees neither
+    the calibration nor the task cost.
+
+    RETURNS None WHEN NO BOUND WAS SUPPLIED, and that is the honest answer rather than a
+    fallback to some constant. A box with no calibration, or a task whose cost could not be
+    counted, has no physical ceiling to compare against; flagging against 10x there would
+    reintroduce exactly the constant this replaced -- one that fires on every legal fusion of a
+    wasteful reference (3 for 3 on L3:48) and never on a lean one.
+
+    `excessive_speedup_threshold` is still read, and only as an EXPLICIT override: a caller that
+    deliberately wants a fixed multiplier (the revert checks, a targeted probe) can still ask for
+    one. It is no longer defaulted, so a job that says nothing gets no flag rather than a
+    silently-wrong one.
+    """
+    thr = job.get("plausibility_threshold_x")
+    if thr is None:
+        thr = job.get("excessive_speedup_threshold")
+    if thr is None:
+        return None
+    try:
+        value = float(thr)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _plausibility_reference_ms(job: dict, ref_latency_ms: dict | None) -> float:
+    """Reference latency for the ratio: the driver's baseline, else a reference timed in-job.
+
+    The driver's figure is preferred because it is the run's own 100-sample baseline, measured
+    once on an idle box, rather than 3-10 samples squeezed into a trial. When neither is present
+    this returns 0.0 and the caller emits no ratio at all -- an absent measurement must not
+    become a ratio against nothing.
+    """
+    supplied = job.get("plausibility_reference_ms")
+    if supplied is not None:
+        try:
+            value = float(supplied)
+        except (TypeError, ValueError):
+            value = 0.0
+        if value > 0:
+            return value
+    if not ref_latency_ms:
+        return 0.0
+    # Median first: one scheduling stall in a 10-sample reference must not decide a verdict.
+    for key in ("median", "mean"):
+        try:
+            value = float(ref_latency_ms.get(key) or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            return value
+    return 0.0
+
+
 def capture_timing_samples() -> bool:
     """Make KernelBench's own timing paths retain their raw samples. Idempotent.
 
@@ -1799,6 +1859,14 @@ def run_eval(job: dict, measure_performance: bool) -> dict:
     ref_src = open(job["ref_src_path"], encoding="utf-8").read()
     kernel_src = open(job["kernel_src_path"], encoding="utf-8").read()
 
+    # KernelBench's own excessive-speedup screen re-times the reference inside the eval and
+    # compares against a constant. Both are replaced by the driver-derived plausibility bound,
+    # for the same two reasons the relaxed path gives: the constant fires on every legal fusion
+    # of a wasteful reference (L3:48, 3 for 3) and the per-trial reference timing costs ~13 extra
+    # reference executions per timed trial. `check_for_excessive_speedup=False` turns off the
+    # timing; the flag is then applied below from the driver's numbers, so the SCREEN is kept and
+    # only its threshold and its cost change.
+    _strict_thr = _plausibility_threshold(job)
     exec_result = eval_kernel_against_ref(
         original_model_src=ref_src,
         custom_model_src=kernel_src,
@@ -1811,8 +1879,7 @@ def run_eval(job: dict, measure_performance: bool) -> dict:
         device=torch.device("cuda:0"),
         backend=job["backend"],
         precision=_dtype(job["precision"]),
-        check_for_excessive_speedup=True,
-        excessive_speedup_threshold=job.get("excessive_speedup_threshold", 10.0),
+        check_for_excessive_speedup=False,
     )
     if exec_result is None:
         return {
@@ -1844,7 +1911,29 @@ def run_eval(job: dict, measure_performance: bool) -> dict:
     if measure_performance:
         stats = exec_result.runtime_stats or {}
         result["latency_ms"] = _stats_to_dict(stats)
-        result["excessive_speedup"] = bool((exec_result.metadata or {}).get("excessive_speedup"))
+        # The plausibility flag, from the driver's bound and the driver's baseline. Same
+        # computation as the relaxed path, deliberately -- the two handlers previously used
+        # different thresholds and different reference measurements for what is meant to be one
+        # rule, so a candidate's flag depended on which correctness mode the config selected.
+        ref_ms = _plausibility_reference_ms(job, None)
+        cand_mean = (result["latency_ms"] or {}).get("mean", -1.0)
+        if _strict_thr is not None and ref_ms > 0 and cand_mean > 0:
+            speedup = ref_ms / cand_mean
+            result["speedup_vs_ref_in_worker"] = speedup
+            result["plausibility_threshold_x"] = _strict_thr
+            result["excessive_speedup"] = bool(speedup >= _strict_thr)
+            if result["excessive_speedup"]:
+                result["suspicious_speedup"] = speedup
+                result["excessive_speedup_note"] = (
+                    f"{speedup:.1f}x vs the reference ({ref_ms:.3f} ms -> {cand_mean:.3f} ms) "
+                    f"exceeds {_strict_thr:.2f}x, this task's physical ceiling on this box times "
+                    f"a safety margin; correctness passed, so it is accepted and flagged. "
+                    + str(job.get("plausibility_derivation") or "")
+                )
+        else:
+            # No bound could be computed. Say so explicitly instead of leaving the key absent,
+            # which reads identically to "checked and fine".
+            result["plausibility_checked"] = False
 
     # Launch-overhead measurement, gated by the caller. Requested only on `full_eval` and
     # baselines -- never on the 20-sample tuning trials, where it would add ~150 extra model
@@ -2375,34 +2464,33 @@ def run_relaxed_correctness(job: dict) -> dict:
                     verbose=False, device=device)
             latency_ms = _stats_to_dict(get_timing_stats(elapsed, device=device), elapsed)
 
-            # Anti-reward-hacking: KernelBench's own excessive-speedup check lives in
-            # its strict eval path, which this relaxed handler deliberately bypasses
-            # (that path re-fails a legitimately tf32 candidate under strict allclose).
-            # So the guard has to be reproduced here, or a candidate that skips the
-            # real work — caching an output, eliding the compute — is reported as a
-            # spectacular win with nothing flagging it.
+            # Anti-reward-hacking measurement. Re-timing the REFERENCE inside every trial
+            # used to happen here, and it is gone: measured across 25 runs / 6894 trials on
+            # three boxes it rejected nothing and flagged three verified-correct kernels,
+            # while costing ~13 extra reference executions per timed trial (30511 on box 1
+            # alone). The plausibility bound the driver now supplies needs no per-trial
+            # reference at all -- it is derived from the task's compulsory traffic, the
+            # task's arithmetic and this box's measured ceilings, all of which are constants
+            # of the run. See `evaluation/plausibility.py`.
             #
-            # The threshold is 10x, so this screen needs an order-of-magnitude estimate
-            # of the reference, not a precise measurement: a few samples suffice and
-            # keep the added cost off the hot path (a full re-timing of the reference
-            # on every trial would roughly double the timed work per job).
-            ref_trials = max(3, min(int(num_perf), 10))
-            ref_model = Model(*init_inputs).to(device=device, dtype=precision)
-            set_seed(seed)
-            with torch.no_grad():
-                ref_elapsed = time_execution_with_cuda_event(
-                    ref_model, perf_inputs, num_warmup=3, num_trials=ref_trials,
-                    verbose=False, device=device)
-            ref_latency_ms = _stats_to_dict(
-                get_timing_stats(ref_elapsed, device=device), ref_elapsed)
-            # The guard compares against a median, not a mean: a single scheduling stall must
-            # not decide a verdict. Observed live on L3:48: a 10-sample reference came
-            # back mean=609ms with min=29.8ms, max=5760ms, std=1720ms -- one ~5.8s
-            # outlier dragged the mean 20x, producing a bogus 115x "speedup".
-            # `_stats_to_dict` now computes that median (and keeps the samples, which the
-            # bespoke block here promised "for the record" but never actually did), so this
-            # side needs no special case -- the candidate above gets the same treatment.
-            del ref_model
+            # The reference is still timed when the CALLER asks for it (`time_reference`),
+            # which is what the baseline path does once per run rather than once per trial.
+            if job.get("time_reference"):
+                ref_trials = max(3, min(int(num_perf), 10))
+                ref_model = Model(*init_inputs).to(device=device, dtype=precision)
+                set_seed(seed)
+                with torch.no_grad():
+                    ref_elapsed = time_execution_with_cuda_event(
+                        ref_model, perf_inputs, num_warmup=3, num_trials=ref_trials,
+                        verbose=False, device=device)
+                ref_latency_ms = _stats_to_dict(
+                    get_timing_stats(ref_elapsed, device=device), ref_elapsed)
+                # A median, not a mean: a single scheduling stall must not decide a verdict.
+                # Observed live on L3:48: a 10-sample reference came back mean=609ms with
+                # min=29.8ms, max=5760ms, std=1720ms -- one ~5.8s outlier dragged the mean 20x,
+                # producing a bogus 115x "speedup". `_stats_to_dict` computes that median for
+                # both sides, so neither needs a special case.
+                del ref_model
         except Exception as exc:  # noqa: BLE001 — timing failure is a runtime failure
             kind = _classify_exception(exc)
             graceful_eval_cleanup(context, device, tempfile)
@@ -2431,55 +2519,46 @@ def run_relaxed_correctness(job: dict) -> dict:
         result["latency_ms"] = latency_ms
     if ref_latency_ms is not None:
         result["ref_latency_ms"] = ref_latency_ms
-        thr = float(job.get("excessive_speedup_threshold", 10.0) or 10.0)
-        cand_mean = latency_ms.get("mean", -1.0) if latency_ms else -1.0
-        # Prefer the median reference (robust to a single scheduling stall); fall back to
-        # the mean when the median is unavailable.
-        ref_mean = ref_latency_ms.get("median") or ref_latency_ms.get("mean", -1.0)
-        if cand_mean > 0 and ref_mean > 0:
-            speedup = ref_mean / cand_mean
-            result["speedup_vs_ref_in_worker"] = speedup
-            if speedup >= thr:
-                # The guard exists to catch work-SKIPPING (a cached output, an elided
-                # compute), which shows up as an implausible speedup. It is NOT a cap on
-                # legitimate speed. A candidate that passed every correctness trial has
-                # demonstrably produced the reference's values on fresh inputs, so a
-                # hard fail here would discard a verified-correct kernel for the offence
-                # of being fast -- which is the entire point of the search.
-                #
-                # On L3:48 that is exactly what happened: four trials of cand-c18203b6
-                # were rejected at 11.1x-13.9x with correct=True and trials_passed=3/3,
-                # while a neighbouring point at 8.95x was accepted. Same kernel, verdict
-                # decided by which side of 10x the noise landed -- and the discarded
-                # points were the FASTEST ones, biasing the reported optimum downward.
-                #
-                # So: correctness decides acceptance, and the speedup only raises a flag.
-                # A fast candidate that FAILED correctness is still a hard failure (the
-                # timing-cheat fixture caches on tensor identity, so its correctness
-                # trials with fresh inputs do not pass).
-                result["excessive_speedup"] = True
-                result["suspicious_speedup"] = speedup
-                if not correct:
-                    result["ok"] = False
-                    result["failure_kind"] = "excessive_speedup"
-                    result["log_tail"] = (
-                        f"excessive speedup {speedup:.1f}x vs the reference "
-                        f"({ref_mean:.3f} ms -> {cand_mean:.3f} ms) exceeds the "
-                        f"{thr:.0f}x threshold AND correctness did not pass "
-                        f"({pass_count}/{num_trials} trials); treated as not performing "
-                        "the reference computation"
-                    )
-                else:
-                    # Verified correct: keep the measurement, but record the flag so the
-                    # report and the final re-eval can scrutinise it.
-                    result["excessive_speedup_note"] = (
-                        f"{speedup:.1f}x vs reference ({ref_mean:.3f} ms -> "
-                        f"{cand_mean:.3f} ms) exceeds the {thr:.0f}x plausibility "
-                        f"threshold, but all {pass_count}/{num_trials} correctness "
-                        "trials passed on fresh inputs; accepted and flagged for review"
-                    )
-            else:
-                result["excessive_speedup"] = False
+    # Plausibility flag. The threshold arrives from the DRIVER, already derived from the task's
+    # compulsory traffic and this box's measured ceilings (`evaluation/plausibility.py`), and it
+    # is compared against a reference latency the driver also supplies -- the run's own baseline,
+    # timed once with 100 samples, instead of 3-10 samples re-timed inside every trial.
+    #
+    # ACCEPTANCE IS NEVER DECIDED HERE. Correctness decides it, and `result["ok"] = correct`
+    # above has already done so. The old code carried a `if not correct:` reject branch in this
+    # block which was UNREACHABLE on this path -- `ref_latency_ms` was only ever set under
+    # `if correct and num_perf > 0`, so the branch could not run, and across 6894 recorded
+    # trials it never did. It is gone rather than kept as reassurance: a branch that cannot
+    # execute is not a safeguard, and reading it as one is how the 10x rule came to look
+    # load-bearing while rejecting nothing.
+    thr = _plausibility_threshold(job)
+    ref_ms = _plausibility_reference_ms(job, ref_latency_ms)
+    cand_mean = latency_ms.get("mean", -1.0) if latency_ms else -1.0
+    if thr is not None and ref_ms > 0 and cand_mean > 0:
+        speedup = ref_ms / cand_mean
+        result["speedup_vs_ref_in_worker"] = speedup
+        result["plausibility_threshold_x"] = thr
+        if speedup >= thr:
+            result["excessive_speedup"] = True
+            result["suspicious_speedup"] = speedup
+            result["excessive_speedup_note"] = (
+                f"{speedup:.1f}x vs the reference ({ref_ms:.3f} ms -> {cand_mean:.3f} ms) "
+                f"exceeds {thr:.2f}x, which is this task's physical ceiling on this box times "
+                f"a safety margin -- no correct implementation can move the task's compulsory "
+                f"bytes or issue its arithmetic that fast. All {pass_count}/{num_trials} "
+                f"correctness trials passed on fresh inputs, so the kernel is accepted and "
+                f"flagged for review: check whether the timed region really does the work "
+                f"(a cached output, a grid covering part of the result, a skipped reduction). "
+                + str(job.get("plausibility_derivation") or "")
+            )
+        else:
+            result["excessive_speedup"] = False
+    elif latency_ms is not None:
+        # Timed, but no bound was available (no calibration, or an uncountable task cost).
+        # Recorded explicitly: an absent `excessive_speedup` key otherwise reads exactly like
+        # "checked and fine", and this project has already been burned once by a screen failure
+        # that looked like a negative result.
+        result["plausibility_checked"] = False
     # P2 cause (b): this handler used to mention neither `measure_launch_overhead` nor
     # `launch_overhead`, while BOTH L3 configs route here (correctness_mode
     # dual_witness_relaxed). So the flag was honoured on a path the experiments never take.

@@ -19,6 +19,7 @@ from kernel_optimizer.models.reports import (
     NoveltyResult,
     ParameterizationResult,
     RepairResult,
+    ResourceExpectation,
     RewriteCandidate,
     RewriteResult,
     TuningStats,
@@ -474,9 +475,11 @@ def _repair_guidance(failure_kind: str) -> str:
         "intermediates."
     )
     excessive = (
-        "The kernel was measured as MORE THAN 10x FASTER than the reference. On this "
-        "hardware that is not a real optimization — it means the kernel is not doing "
-        "the reference's work. Look for: an output that is allocated but never filled "
+        "The kernel was measured FASTER THAN THIS TASK'S PHYSICAL CEILING on this hardware — "
+        "faster than moving the task's unavoidable bytes at this card's measured bandwidth, and "
+        "faster than issuing its required arithmetic at this card's measured peak. That is not an "
+        "optimization, because no correct implementation can do it: the kernel is not doing the "
+        "reference's work. Look for: an output that is allocated but never filled "
         "(or filled from a cached/stale buffer), a grid that covers only part of the "
         "output, a loop bound that skips most of the reduction, work moved outside the "
         "timed region, or an early return on a condition that is always true. Fix the "
@@ -1251,6 +1254,14 @@ Answer with JSON:
 and the result is shown to you next round, so it is how a structural claim becomes
 falsifiable rather than plausible.
 
+**Also write the same expectations to `rewrites/expectations.json`**, as
+`{{"rw_1.py": [{{"dimension": ..., "expect": ..., "why": ...}}], ...}}` — keyed by the
+rewrite's file NAME (no directory). Write it once, after your last rewrite. This is not a
+duplicate for its own sake: if the connection to you drops after you have written your
+kernels, the harness recovers the FILES from the sandbox but the JSON answer above is lost
+with the connection, and your declarations vanish with it. That happened on a recorded run
+and cost that round's entire expectation evidence. The file is the copy that survives.
+
 Four rules:
 
 * **A direction, never a magnitude.** There is no field for a percentage and one will be
@@ -1297,25 +1308,91 @@ how it ranks. Its only uses are the ledger and next round's prompt.
         timeout at 21:50:20. The rewrite was finished and discarded, so its family recorded no
         improvement and was then declared `converged` without ever having evaluated a rewrite.
 
-        Only the files are needed to proceed -- `hypothesis_id` and `change_summary` are
-        narration the pipeline does not gate on -- so the artifact is self-describing enough to
-        recover. The empty `change_summary` is deliberate and marked: a reader of the lineage
-        must be able to tell a rescued candidate from one the agent described.
+        `hypothesis_id` and `change_summary` are narration the pipeline does not gate on, so the
+        artifact is self-describing enough to recover. The empty `change_summary` is deliberate
+        and marked: a reader of the lineage must be able to tell a rescued candidate from one the
+        agent described.
 
         `backend` is NOT narration and so is read from the source, the same way the generator
         and novelty rescues do it: a rescued CUDA rewrite defaulted to "triton" would be handed
         to the Triton loader and would fail as if the candidate were broken.
+
+        S2d (A2) -- `expectations` ARE NOT NARRATION EITHER, and this is what changed. They used
+        to live only in the JSON response, i.e. only in the thing a transport failure destroys.
+        Measured on box 3's `run-l3-48-20260911-052647`: both rewrite candidates of the run's one
+        round were rescued, so both carried zero expectations, the family's ledger stayed empty,
+        and that round's S2d evidence was ZERO -- while the docstring here still described them as
+        narration, which was true before S2d and false after. The prompt now asks for a
+        sidecar file, and it is read back here.
         """
         files = sb.list_outputs("rewrites")
         if not files:
             return None
-        return RewriteResult(candidates=[
-            RewriteCandidate(file=f, hypothesis_id="",
-                             backend=_detect_backend(sb.read_output(f)),
-                             change_summary="[recovered from sandbox after a transport "
-                                            "failure; the agent's own summary never arrived]")
-            for f in files
-        ])
+        declared = self._rescue_expectations(sb)
+        out = []
+        for f in files:
+            # Keyed by BASENAME. The agent is asked for "rw_1.py" while `list_outputs` returns
+            # "rewrites/rw_1.py", and matching on the full path would silently find nothing --
+            # a rescue that recovers no expectations is indistinguishable from an agent that
+            # declared none, which is the exact ambiguity this fix exists to remove.
+            exps = declared.get(f.rsplit("/", 1)[-1]) or []
+            out.append(RewriteCandidate(
+                file=f, hypothesis_id="",
+                backend=_detect_backend(sb.read_output(f)),
+                change_summary="[recovered from sandbox after a transport "
+                               "failure; the agent's own summary never arrived]",
+                expectations=exps,
+            ))
+        return RewriteResult(candidates=out)
+
+    def _rescue_expectations(self, sb: Sandbox) -> dict[str, list[ResourceExpectation]]:
+        """Read `rewrites/expectations.json`, keeping only what validates. Never raises.
+
+        RETURNS AN EMPTY MAP ON ANY PROBLEM, per file and per entry, because the alternative is
+        worse in both directions: raising would turn a recoverable transport failure into a lost
+        round (the thing `rescue_from_sandbox` exists to prevent), and accepting unvalidated
+        content would let a half-written file put junk in the ledger and then into the next
+        round's prompt.
+
+        Validation is `ResourceExpectation` itself plus the same closed vocabulary
+        `check_output` enforces -- not a looser check. A rescued declaration must clear exactly
+        the bar a normally-delivered one clears; `_rescue` in the base class then runs
+        `check_output` over the whole result as well, so this is the inner of two gates, not a
+        bypass of the outer one.
+        """
+        # No `sb.exists()` pre-check. One was written here first and then REMOVED: its revert
+        # variant changed no behaviour, because `read_output` on an absent file raises
+        # FileNotFoundError (and on an escaping path, ValueError) and the `except Exception`
+        # below already returns `{}` for both. A guard whose removal alters nothing is dead code,
+        # not a safeguard -- the same call made for `max_families_active < 2` in `families.py`.
+        # The absent-sidecar case is the COMMON one, so it is covered by a test either way.
+        try:
+            raw = json.loads(sb.read_output("rewrites/expectations.json"))
+        except Exception:  # noqa: BLE001 — a malformed or absent sidecar must not cost the round
+            return {}
+        if not isinstance(raw, dict):
+            return {}
+        out: dict[str, list[ResourceExpectation]] = {}
+        for key, items in raw.items():
+            if not isinstance(key, str) or not isinstance(items, list):
+                continue
+            kept: list[ResourceExpectation] = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    exp = ResourceExpectation.model_validate(item)
+                except Exception:  # noqa: BLE001 — skip the entry, keep the rest
+                    continue
+                # The vocabulary is closed, and it is checked HERE too rather than left to
+                # `check_output`: one bad name there rejects the entire rescued result and the
+                # round is lost, where dropping one entry keeps the other declarations.
+                if unknown_dimensions([exp.dimension]):
+                    continue
+                kept.append(exp)
+            if kept:
+                out[key.rsplit("/", 1)[-1]] = kept
+        return out
 
     def soft_check(self, output: RewriteResult, sb: Sandbox) -> list[str]:
         # Triton-specific WARNINGS only for files that are actually Triton. `check_output` still

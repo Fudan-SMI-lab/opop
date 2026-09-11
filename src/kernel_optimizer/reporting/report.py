@@ -100,6 +100,21 @@ def _reconstruct_summary(events, candidates: dict, trials: list) -> dict:
     return out
 
 
+def _plausibility_bound(events: list) -> dict | None:
+    """The derived speedup ceiling from the log, or None if none was derived.
+
+    Reads the event rather than recomputing, so the report states the bound the RUN actually
+    flagged against. Recomputing here from the task cost and calibration would silently diverge
+    the moment `plausibility.py` changed -- the report would then justify a flag with a threshold
+    that was never applied, which is worse than no explanation. Recorded as
+    `a-correct-reader-does-not-prevent-the-guess`.
+    """
+    evs = [e for e in events if e.type == "PLAUSIBILITY_BOUND"]
+    if not evs:
+        return None
+    return (evs[-1].payload or {}).get("bound") or None
+
+
 def _search_budget_lines(summary: dict | None, trials: list,
                          dead_events: list, provisional: bool) -> list[str]:
     """How much of the intended search actually ran, stated next to the headline number.
@@ -691,6 +706,36 @@ class ReportGenerator:
                 lines.append(f"- note: {n}")
             lines.append("")
 
+        # The physical speedup ceiling this run flagged against. Reported next to the task cost
+        # because it is derived from it, and reported even when NOTHING flagged: "the bound was
+        # 17.48x and the winner reached 14.29x" is the sentence that makes a legal result
+        # defensible, and "no bound could be derived" is a finding about this box that would
+        # otherwise be indistinguishable from a check that silently never ran.
+        pb = _plausibility_bound(events)
+        pb_ev = [e for e in events if e.type == "PLAUSIBILITY_BOUND"]
+        if pb:
+            lines.append("## Implausible-speedup bound (derived, not configured)\n")
+            lines.append("- a correct implementation of this task cannot run faster than "
+                         f"**{pb.get('floor_ms', 0.0):.4f} ms** on this box "
+                         f"({pb.get('binding_term', '?')}-bound)")
+            lines.append(f"- so the largest possible speedup vs the {pb.get('reference_ms', 0.0):.3f} "
+                         f"ms reference is **{pb.get('ceiling_x', 0.0):.2f}x**; the run flags above "
+                         f"**{pb.get('threshold_x', 0.0):.2f}x** "
+                         f"(x{pb.get('margin', 0.0):.2f} margin)")
+            if not pb.get("dram_applicable", True):
+                lines.append("- ⚠ the DRAM term was DROPPED: this task's compulsory traffic fits "
+                             "in this card's measured L2, so the logical byte count does not "
+                             "describe bus traffic. The bound rests on arithmetic alone.")
+            lines.append(f"- derivation: {pb.get('derivation', '')}")
+            lines.append("")
+        elif pb_ev:
+            lines.append("## Implausible-speedup bound (derived, not configured)\n")
+            lines.append("- ⚠ **no bound could be derived** — %s. No speedup in this run was "
+                         "checked for physical plausibility; correctness is unaffected (it is "
+                         "the only thing that ever decided acceptance)."
+                         % ((pb_ev[-1].payload or {}).get("reason") or "reason not recorded"))
+            lines.append("")
+
         # The harness's own bottleneck verdicts (steps 6+7). Reported because they are the
         # deterministic half of the feedback loop: unlike the analyst's report they are
         # reproducible from the event log, so a reader can check them.
@@ -837,7 +882,21 @@ class ReportGenerator:
                     lines.append(f"- speedup vs torch.compile: "
                                  f"**{best['speedup_vs_compile']}x**")
             if best.get("excessive_speedup_flag"):
-                lines.append("- ⚠ flagged: excessive speedup — inspect before trusting")
+                # WITH the derivation, always. A flag whose number cannot be checked by the person
+                # reading it is what the old 10x constant was: three L3:48 runs each flagged a
+                # verified-correct winner and each cost a manual re-verification, because the
+                # report said only "excessive". The bound is now a physical one, so the report can
+                # say what it was and how close the result came to it.
+                bound = _plausibility_bound(events)
+                if bound:
+                    lines.append(
+                        "- ⚠ flagged: measured speedup exceeds this task's physical ceiling on "
+                        "this box (%.2fx floor-derived ceiling, flag at %.2fx). Inspect before "
+                        "trusting. Derivation: %s"
+                        % (bound.get("ceiling_x", 0.0), bound.get("threshold_x", 0.0),
+                           bound.get("derivation", "")))
+                else:
+                    lines.append("- ⚠ flagged: excessive speedup — inspect before trusting")
             lines.append(f"- best params: `{json.dumps(best['params']['values'])}`")
             lines.extend(_attribution_lines(best, trials))
             lines.append("")
