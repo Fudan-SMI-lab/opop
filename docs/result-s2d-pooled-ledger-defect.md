@@ -21,32 +21,62 @@ asked for *different hypotheses* from the same analyst report, which means their
 routinely contradict each other **about the same dimension, correctly**, because they describe
 different code.
 
-## What it would have written, on the first production ledger there has ever been
+## What it wrote, on the first production ledger there has ever been
 
-Box 2 round 0 (`run-l3-43-20260911-052630`), driving the real `conversion_verdict` + `reconcile` with
-the profiles measured on the box:
+Box 2's first `EXPECTATIONS_RECONCILED` fired at seq 717 (`run-l3-43-20260911-052630`, family
+`fam-efd15aa9`, round 1) — the pooled entry, exactly as predicted, read off disk:
+
+```
+candidate_id=None      hypothesis_id='H1+H3,H2'      hits/misses/vacuous = 7 / 6 / 3
+n_declared=16          16 rows for 8 dimensions -- each dimension appears TWICE
+```
+
+**The pooling has a fingerprint that needs no recomputation.** Four `rel` values each appear exactly
+twice in the 16 rows, once per candidate:
+
+| dimension | `rel`, appearing twice | what it measures |
+|---|---|---|
+| `candidate_aten_bytes` | 0.3616 | 2.54 GB → 1.62 GB |
+| `candidate_aten_ops` | 0.3333 | 15 → 10 |
+| `threads_launched` | 6.0000 | 1.05 M → 7.34 M |
+| `peak_alloc_bytes` | 0.0451 | below the 5% materiality floor |
+
+A `rel` is a property of a *measurement*. The same one appearing under two different candidates' rows
+is the two candidates being scored against one measurement, visible in the log itself.
+
+### The correct ledger, re-derived from the same events
+
+Each candidate's own best profile from its own `TRIAL_DONE` records, the parent reading recovered from
+the pooled entry's own `before` fields, and then the real `reconcile()` per candidate:
 
 | scored against | hits | misses | vacuous |
 |---|---|---|---|
-| H1+H3 (the winner) vs its own profile | 4 | 1 | 3 |
-| H2 vs its own profile | 2 | 5 | 0 |
-| **POOLED — what the code did** | **6** | **6** | **3** |
+| `cand-2d8eaf9a` H1+H3 (the winner, 2.8616 ms) | **3** | 2 | 3 |
+| `cand-3760b4d7` H2 (3.2031 ms) | **6** | 1 | 0 |
+| correct totals | **9** | **3** | 3 |
+| **POOLED — what the code wrote** | 7 | **6** | 3 |
 
-Wrong in both directions at once:
+**The pooling doubled the misses, 3 → 6, and lost 2 hits.** Both candidates are misrepresented, in
+opposite directions:
 
-- **The winner is diluted to a coin flip.** H1+H3 declared 8 directions, 5 falsifiable, and *every
-  falsifiable one was right*: `candidate_aten_bytes` down (2.54 GB → 1.62 GB), `candidate_aten_ops`
-  down (15 → 10), `shared_bytes` up (17408 → 32768), `threads_launched` up (1.05M → 4.19M),
-  `peak_alloc_bytes` down (2.207 GB → 2.108 GB, below the 5% materiality floor so it scores as a
-  miss). It also declined 3 with reasons. That is the strongest S2d evidence either arm has produced,
-  and pooled it reads 50/50.
-- **H2 is charged 5 misses for another candidate's changes.** It said `unchanged` about
-  `shared_bytes`, `candidate_aten_bytes`, `candidate_aten_ops`, `threads_launched` — true of *its*
-  code, which was not even tuned when the round was recorded. Each became a miss because H1+H3 moved
-  those dimensions.
+- **H2 is charged 5 misses it did not earn.** Pooled it reads 2 hits / 5 misses; measured against its
+  own code it is **6 hits / 1 miss** — the most accurate set of predictions either arm has produced.
+  It said `unchanged` about `shared_bytes`, `candidate_aten_bytes`, `candidate_aten_ops`,
+  `threads_launched` and `peak_alloc_bytes`, and every one of those was **true of its own code**. Each
+  became a miss only because H1+H3 moved those dimensions.
+- **H1+H3, the round's winner, keeps 3 of its hits but its `occupancy` row goes from `flat` to
+  `unknown`** — its own profile has no occupancy reading, so honestly reconciled that declaration is
+  *unmeasured*, not a judgement. The pooled entry silently supplied the incumbent's number instead.
+  This is the specific failure `_candidate_conversion` now returns `{}` for.
 
-`render_ledger` then printed both under one `## Round 0` heading, two rows per dimension, with
-nothing to say which row described which code.
+Note the direction: my earlier estimate of this entry, made before it existed, guessed 4/1/3 and 2/5/0
+and pooled 6/6/3. The pooled figure was nearly right (7/6/3) but I had the two candidates **backwards**
+— I predicted the winner would be the accurate one and it is H2. The defect is real either way and the
+doubled-miss count is worse than estimated, but the per-candidate split was a guess and is now a
+measurement.
+
+`render_ledger` printed both under one `## Round 1` heading, two rows per dimension, with nothing to
+say which row described which code.
 
 ## Why that mattered more than a wrong number in a log
 
@@ -89,20 +119,28 @@ Secondary, and each sufficient on its own:
   `Orchestrator.__init__`; `cmd_resume` builds a new one). Box 2 is at 5.89 h of 12; a resume makes
   its wall-clock figure incomparable with box 1's, and arm parity on the budget is the one thing the
   paired runs cannot lose.
-- **`recon=0`: no wrong ledger has been written yet.** The defect's cost is entirely in the future,
-  and round 2 is where it would first land. Nothing already on disk needs repairing.
+- **`recon=0` at the time of the decision: no wrong ledger had been written yet.** That is no longer
+  true — the pooled entry has since landed (seq 717, measured above) and the round-2 prompt will carry
+  it. It does not change the decision, because the alternative was losing the declarations entirely,
+  and the entry on disk is re-derivable: the table above IS the correct ledger, computed from the same
+  events.
 - The declarations themselves are journalled *correctly* — `REWRITE_PRODUCED.payload.expectations` is
   per candidate and always was. So **the pooled entry can be re-derived correctly offline** from the
-  events for the paper, which is exactly what the table above does. The measurement survives; only
-  the round-2 prompt is affected.
+  events for the paper, which is exactly what the table above does — now on the real entry rather than
+  a projection. The measurement survives; only the round-2 prompt is affected.
 
 ## What this costs the experiment, stated plainly
 
-Box 2 will very likely reach round 2 before its budget ends (round 0 took ~30 min of Loop C; 6.11 h
-remain). If it does, that one prompt carries a pooled ledger. That is a real, bounded cost to S2d(c)'s
-*prompt-quality* evidence, and it is the price of not destroying S2d(b)'s *declaration* evidence.
-S2d(a) (declarations made before measurement) and the reconciliation arithmetic itself are unaffected
-and re-derivable.
+Box 2 reached round 1 and its ledger entry is pooled, so **round 2's rewriter prompt will carry one
+pooled entry** — measured, not projected. That is a real, bounded cost to S2d(c)'s *prompt-quality*
+evidence: the round-2 prompt will tell H2 that 5 of its 6 correct predictions were wrong, which is the
+failure mode that makes wrong feedback worse than none. It is the price of not destroying S2d(b)'s
+*declaration* evidence, which a resume would have erased.
+
+S2d(a) (declarations made before measurement) is unaffected — the 16 declarations are journalled per
+candidate and correct. The reconciliation arithmetic is unaffected and, as shown above, fully
+re-derivable: **for the paper, report the re-derived per-candidate table, not the journalled entry**,
+and cite the `rel`-appears-twice fingerprint as the reason the journalled one is known to be pooled.
 
 The next run started from `ccca414` gets per-candidate attribution from round 0.
 
