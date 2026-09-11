@@ -1,8 +1,10 @@
 # S2d's first production declarations: 16 predictions, made before any measurement
 
-**Status: the declaration half (S2d(a)) is confirmed working on live data. The reconciliation half
-(S2d(b/c)) is still pending** — it fires with `FAMILY_ROUND_RECORDED`, after box 2's two rewrites
-finish tuning.
+**Status: the declaration half (S2d(a)) is confirmed working on live data, and the winning rewrite's
+declarations are now MEASURED — 4 hits / 1 miss / 3 vacuous, every falsifiable direction correct (see
+the last two sections). S2d(c), the ledger reaching the next round's prompt, is still pending** — it
+needs a round 2, and the round-0 entry itself is affected by the pooling defect recorded in
+`docs/result-s2d-pooled-ledger-defect.md`.
 
 ## Why the ordering is the whole point
 
@@ -71,3 +73,36 @@ One prediction is already checkable against the parent profile on disk: H2's `sh
 is against a parent best of 17408 bytes, and H1+H3's `shared_bytes: up` against the same 17408.
 Directly opposed claims about the same dimension from the same round — which is what makes this round
 a usable test rather than two agreeing guesses.
+
+## What the measurement then showed, checked against the shape above
+
+The winning rewrite `cand-2d8eaf9a` (H1+H3) landed at **2.8969 ms against the parent's 3.2128 ms, a
+9.83% gain**, and it is the run's best. Its declarations against its own measured profile:
+
+| dimension | declared | measured | |
+|---|---|---|---|
+| `candidate_aten_bytes` | down | 2 544 918 528 → 1 624 786 944 | **hit** |
+| `candidate_aten_ops` | down | 15 → 10 | **hit** |
+| `shared_bytes` | up | 17 408 → 32 768 | **hit** |
+| `threads_launched` | up | 1 048 576 → 4 194 304 | **hit** |
+| `peak_alloc_bytes` | down | 2 207 064 064 → 2 107 581 952 | miss (−4.5%, under the 5% floor) |
+| `n_regs` / `n_spills` / `occupancy` | *unknown* | 155→155, 0→0, 0.2083→0.2083 | vacuous, as declared |
+
+**4 hits, 1 miss, 3 vacuous.** Every declaration whose *direction* was falsifiable was right; the one
+miss is a materiality artefact, not a wrong direction — `peak_alloc_bytes` did fall, by 99 MB, which
+is 4.5% of its own value and therefore `flat` under `_MATERIAL_RESOURCE_DELTA = 0.05`. Worth stating
+precisely rather than rounding to "5 of 5": the agent's *sign* was right five times out of five, and
+its claim counted as a miss once because the harness requires a 5% move before it will call a
+dimension moved at all.
+
+The three `unknown` declarations were all correct to decline — every one of those dimensions came back
+flat, so there was nothing there to predict.
+
+### The prediction in "the expected ledger shape" was right about the count and wrong about the unit
+
+`n_declared = 16` and `vacuous ≥ 3` held. `hits + misses > 0` held. But writing the shape down as a
+single per-round row was itself the error the fix corrected: **16 declarations is two candidates'
+worth**, and the round has no single hits/misses figure, because H1+H3's 4/1 and H2's 2/5 are about
+different code. Pooling them gives 6/6 — see `docs/result-s2d-pooled-ledger-defect.md`. The count
+recorded in advance was the right thing to fix in advance; the granularity was not, and the
+measurement is what exposed it.
