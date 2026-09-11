@@ -324,8 +324,12 @@ def _run_one_trial(log_tail: str):
         # The config screen needs a compiler; it is not what this test is about, and returning
         # None is its documented "no opinion" answer, which lets the real trial run.
         with patch.object(Orchestrator, "_screen_config", return_value=None):
+            # The real signature is (crun, space, trial_id, params, trials_dir) -- trial_id BEFORE
+            # params. Passing them the other way round raises deep inside the materializer
+            # ("'str' object has no attribute 'values'"), and this test SKIPS on the Windows host
+            # for want of optuna, so the swap was invisible there and only failed on the A800.
             return Orchestrator._run_trial(
-                orch, crun, space, ParamSet(values={"BLOCK_M": 64}), "tr-1", Path(td))
+                orch, crun, space, "tr-1", ParamSet(values={"BLOCK_M": 64}), Path(td))
 
 
 def test_the_two_signals_are_independent_not_one_regex():
