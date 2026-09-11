@@ -6,7 +6,9 @@ post-experiment analysis.
 
 ## The arithmetic
 
-Measured at 4.78 h wall on `run-l3-48-20260911-052647` (A800, task L3:48):
+Measured at 4.78 h wall on `run-l3-48-20260911-052647` (A800, task L3:48). The numbers below are
+that snapshot; the agent-time table further down was re-measured at 5.19 h wall, by which point the
+budget remaining had fallen to 8.09 h and a transport timeout had been added to the bill.
 
 | | value |
 |---|---|
@@ -27,16 +29,45 @@ Both arms on L3:43 are healthy by contrast: box 1 projects ~3.5 h to Loop C agai
 
 ## Where box 3's time went
 
-Not to search. **1.58 h of parameterize + repair agent calls after a witness rejection**, and no
-trial is measured during any of it:
+Not to search. Measured at 5.19 h wall, **agent time is 52% of box 3's wall clock** against 21% on
+box 1 and 33% on box 2 — and the excess is concentrated in exactly the two modules the witness loop
+drives:
+
+| module | box 1 | box 2 | box 3 |
+|---|---|---|---|
+| generator | 16.4 min (1 call) | 19.8 min (1) | 13.0 min (1) |
+| analyst (median/call) | 5.2 min | 5.8 min | 9.4 min |
+| **parameterizer** | **22.1 min (7)** | **19.6 min (8)** | **66.3 min (8)** |
+| **repair** | **0 (0 calls)** | **0 (0 calls)** | **62.9 min (4)** |
+| agent total | 1.07 h (21% of wall) | 1.75 h (33%) | **2.68 h (52%)** |
+
+Box 3 spent **2.15 h** on parameterize + repair where each arm spent ~0.35 h — a **6.1×** difference.
+It is not box speed: the generator costs the same on all three (13.0 / 16.4 / 19.8 min for one call)
+and the analyst's per-call median is the same order. The entire excess is the 4 witness rejections and
+the 4 repair calls they triggered.
+
+Per candidate, the repair-loop agent time after a rejection:
 
 | candidate | rejections | repairs | agent time |
 |---|---|---|---|
 | `cand-d2cf7928` | 2 | 2 | 51.8 min |
 | `cand-2926f7cd` | 2 | 2 | 42.9 min |
 
-Box 1 and box 2: **zero** rejections, zero repair time. This is not a box-speed difference — it is
-the same failure hitting both L3:48 candidates.
+## One of the four repair calls was a transport timeout, and the harness handled it correctly
+
+At 10:38:18 a `repair` call failed with `prompt transport error (ReadTimeout): timed out` after
+**exactly 1500 s** — `opencode.request_timeout_s`, i.e. the recorded
+`request_timeout acts as a whole-call deadline` behaviour rather than a new defect.
+
+The recovery is the recorded fix working: `AGENT_SESSION_RESET` fired in the same second with
+`reason: transport_timeout`, the event carries `attempt: 1` with no `final` flag, and the run stayed
+alive. A transport timeout means no response ever arrived, so the harness keeps the ORIGINAL prompt
+(sending corrective feedback would make the agent apologise for a message it never sent) and moves to
+a fresh session rather than queueing behind an aborted turn.
+
+**No intervention warranted** — but it costs 0.42 h, 16% of box 3's agent time, for one piece of work
+done twice. That is on top of the witness cost, not instead of it.
+
 
 ## The failure is one shape, twice
 
