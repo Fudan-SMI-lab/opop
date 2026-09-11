@@ -82,6 +82,37 @@ elif gaps:
 # screen that answers, because only the timeout costs the full build_timeout_s.
 kinds = {}
 for e in evs:
-    if e.get("type") in ("SCREEN_FAILED", "COMPILE_PROBE_FAILED", "WORKER_TIMEOUT"):
+    if e.get("type") in ("SCREEN_FAILED", "COMPILE_PROBE_FAILED", "WORKER_TIMEOUT",
+                         "PRESCREEN_FAILED"):
         kinds[e.get("type")] = kinds.get(e.get("type"), 0) + 1
 print("screen/worker failure events: %s" % (kinds or "none recorded under those names"))
+
+# THE EVENT LOG UNDERSTATES THIS, so count the jobs directory too. A worker job that never finished
+# leaves its `*.json` spec with no matching `*.out.json`, and a batch that dies produces neither an
+# output file nor a `SPACE_PRESCREENED` event -- so on box 3 the log showed 4 prescreens while disk
+# showed 5, the missing one being a third timeout. Measured there: 3 of 5 batch prescreens timed out
+# (60%) against 2 of 117 per-trial screens (1.7%), which is the batching hypothesis confirmed --
+# batching 40 configs multiplies the chance that SOME member is the one whose ptxas runs 20 minutes.
+jobs = os.path.join(run, "jobs")
+if os.path.isdir(jobs):
+    specs = {}
+    for f in sorted(os.listdir(jobs)):
+        if not f.endswith(".json") or f.endswith(".out.json"):
+            continue
+        kind = "prescreen" if "prescreen" in f else (
+            "compile-screen" if "compile-screen" in f else "other")
+        done = os.path.exists(os.path.join(jobs, f[:-len(".json")] + ".out.json"))
+        tot, nod = specs.get(kind, (0, 0))
+        specs[kind] = (tot + 1, nod + (0 if done else 1))
+    print("\njobs on disk (a spec with no .out.json never completed):")
+    for kind in ("prescreen", "compile-screen", "other"):
+        if kind not in specs:
+            continue
+        tot, nod = specs[kind]
+        print("  %-16s %3d jobs, %2d with no output  (%.1f%%)%s"
+              % (kind, tot, nod, 100.0 * nod / tot,
+                 "   <- batching multiplies the chance of hitting a slow config"
+                 if kind == "prescreen" and nod else ""))
+    if "prescreen" in specs and n_screened == 0 and specs["prescreen"][1]:
+        print("  => every prescreen that timed out screened NOTHING: the batch's answers die with it")
+

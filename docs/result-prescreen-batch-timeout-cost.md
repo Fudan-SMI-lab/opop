@@ -41,6 +41,67 @@ Whole-run context: **3.16 h of non-agent blocking** in gaps ≥ 120 s (agent-cal
 largest "screen cost" would just be a rewriter call). 22 `CONFIG_SCREENED_INFEASIBLE` against 131
 `TRIAL_DONE`.
 
+### The batch path times out 35× more often than the per-trial path
+
+The event log understates this, and the `jobs/` directory settles it: a job that never completed leaves
+a `*.json` spec with no matching `*.out.json`. Counted on disk:
+
+| path | jobs | no output | rate |
+|---|---|---|---|
+| batch `prescreen` | 5 | **3** | **60%** |
+| per-trial `compile-screen` | 117 | 2 | 1.7% |
+
+```
+cand-2926f7cd-prescreen-6962ceba.json   12:23:33  NO OUTPUT (timed out)
+cand-2926f7cd-prescreen-7063a72c.json   11:02:38  NO OUTPUT (timed out)
+cand-d2cf7928-prescreen-543236f5.json   06:43:46  NO OUTPUT (timed out)
+cand-d2cf7928-prescreen-74fe8317.json   08:30:48  COMPLETED
+cand-d2cf7928-prescreen-ee95164b.json   06:30:47  COMPLETED
+```
+
+**Three of five, not two of four** — the event log shows only 4 `SPACE_PRESCREENED` entries because
+the third timed-out batch (06:43:46) never reached its event either. That is the same invisibility from
+a second direction: a batch that dies produces neither an output file nor a log line.
+
+60% against 1.7% is the batching hypothesis confirmed by measurement rather than by reading: a single
+configuration whose `ptxas` runs 20 minutes fails the whole batch, so batching 40 configurations
+multiplies the chance that *some* member is that configuration. The per-trial path screens one config at
+a time and almost never times out.
+
+### Measured on all three boxes, and the arms differ
+
+`scripts/screen_cost.py` reproduces the count from any run directory:
+
+| box | task | batch prescreens | timed out | per-trial screens | timed out |
+|---|---|---|---|---|---|
+| box 1 (control) | L3:43 | 10 | **3 (30%)** | 357 | 1 (0.3%) |
+| box 2 (treatment) | L3:43 | 13 | **0 (0%)** | 447 | 0 (0%) |
+| box 3 | L3:48 | 5 | **3 (60%)** | 117 | 2 (1.7%) |
+
+Two things follow, and the second matters more than the first.
+
+**It is not the task.** Box 1 and box 2 run the *same task* with the *same config* and differ 30% to 0%.
+So the cause is the candidates' own code — how large a PTX their kernels compile to — not the problem
+being solved.
+
+**It is not one bad candidate either.** Box 1's three timeouts are spread across three different
+candidates (`cand-52e0e567`, `cand-70cbf6bc`, `cand-b937d22f`) out of five, and two of those three had
+*another* prescreen that completed fine. So a per-candidate exclusion would not have caught them, which
+rules out option 3 below on evidence rather than on principle.
+
+**This touches arm parity.** Box 1 lost three prescreens; box 2 lost none. The runs are still comparable
+on the metric that matters — `check_search_effort` confirms both arms sit at exactly 40 trials per space,
+and a failed screen never rejects a candidate, so neither arm's *search* was narrowed. What differs is
+wall clock: box 1 spent up to 3 × 1200 s = 1 h on screens that produced nothing, and box 2 spent none.
+On runs whose binding budget is the wall clock in 5 of 5 finished cases, that is an hour of tuning the
+control arm did not get. **Report it as a caveat on any wall-clock comparison between the arms**; it does
+not invalidate the latency comparison, which is per-trial and budget-capped.
+
+**A live confirmation of the recovery, and of the gap.** While this was being written the worker for
+`cand-2926f7cd-compile-screen-986d1a43` was replaced by a fresh process (new PID, new `/tmp/*.ptx`), so
+the timeout does fire and the run does move on — nothing hangs permanently. But the event count stayed
+at **248 across the whole replacement**: no event marked the timed-out screen at all.
+
 ## Why one slow config voids forty
 
 `prescreen_batch` puts the whole batch in ONE worker process under ONE timeout:
@@ -85,11 +146,16 @@ for twice (`opop-s1-dropped-s1b-redesigned`, `retirement-of-a-value-is-unconditi
    1200 s in the worst case, and the worst case is exactly when the budget is already tight.
 3. **Skip prescreening for a candidate whose PTX exceeded some size.** A per-case threshold on a
    quantity nobody has characterized; this is the hardcoded-special-case shape the project forbids.
+   **Now also ruled out on evidence**: box 1's three timeouts hit three *different* candidates, and two
+   of those three had another prescreen that completed normally — so there is no "bad candidate" to
+   exclude, and the same candidate is sometimes fast and sometimes not depending on which 40
+   configurations the sampler drew.
 4. **Lower `build_timeout_s` for prescreens only.** Cheapest and most defensible — the measured
    marginal cost is 7 ms per config, so 48 configs finishing in 11.02 s means a 60–120 s prescreen
-   ceiling is ~10× headroom over the measurement, against the 1200 s a *build* legitimately needs. But
-   it changes a config the running arms share, so it cannot be applied mid-experiment without breaking
-   parity.
+   ceiling is ~10× headroom over the measurement, against the 1200 s a *build* legitimately needs. It
+   also bounds the damage rather than trying to predict it, which suits a cause that is per-draw rather
+   than per-candidate. But it changes a config the running arms share, so it cannot be applied
+   mid-experiment without breaking parity. **This is the recommended fix for the next run.**
 
 **The one change that is unambiguously safe and should happen regardless: emit an event when a screen
 times out.** Right now a 1200 s prescreen that answers nothing is indistinguishable in the log from a
