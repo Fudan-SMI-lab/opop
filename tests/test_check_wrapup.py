@@ -682,3 +682,107 @@ def test_the_latency_floor_widens_its_sample_with_sibling_runs(tmp_path):
     # `run_dirs` is redundant -- the sibling glob finds the arms too -- and a variant that deletes
     # it passes every test, which is how this was found.
     assert "1 is an arm" in prov, prov
+
+
+# --------------------------------------------------------------------------------------------------
+# S4': the complementary-slackness state, which no test reached until an invented-name reader was
+# found printing `none` on working data
+# --------------------------------------------------------------------------------------------------
+
+def _dim_state(*recs: dict) -> dict:
+    """A `DIMENSION_STATE` payload. Record fields copied from `DimensionRecord`
+    (evaluation/dimensions.py:78) -- `dimension_id`, `verdict`, `applicable` -- because a fixture
+    invented to match the reader proves nothing about either."""
+    return {"type": "DIMENSION_STATE", "payload": {
+        "candidate_id": "cand-1", "records": list(recs),
+        "compute_ceiling_provenance": {"precision": "bf16",
+                                       "calibration_identity": "GPU|8.9|128"}}}
+
+
+def _rec(dim: str, verdict: str, applicable: bool = True) -> dict:
+    return {"dimension_id": dim, "verdict": verdict, "applicable": applicable,
+            "measured": 1.0, "ceiling": 2.0, "higher_is_better": False, "unit": "u"}
+
+
+def _round_conv(fam: str, rnd: int, gain: float, improved: list[str], rel: float = 0.4) -> dict:
+    """A `FAMILY_ROUND_RECORDED` payload carrying a conversion, as `conversion_verdict` merges it."""
+    return {"type": "FAMILY_ROUND_RECORDED", "payload": {
+        "family_id": fam, "round": rnd, "best_ms": 3.0,
+        "conversion": "improved", "latency_gain_pct": gain,
+        "resources_improved": improved,
+        "resource_deltas": {d: {"before": 100.0, "after": 60.0, "delta": -40.0, "rel": rel,
+                                "unit": "u"} for d in improved}}}
+
+
+def test_no_dimension_judged_slack_is_reported_as_not_a_pass(tmp_path):
+    """The state that matters most to say out loud: verdicts exist, none is slack, so the theorem has
+    nothing to test. An earlier reader printed `none` here -- indistinguishable from "S4' never ran"."""
+    d = _write_run(tmp_path, [_dim_state(_rec("occupancy", "binding"),
+                                        _rec("n_regs", "binding"))])
+    out = check_wrapup.check_s3_s4(d)
+    assert out["dimensions_judged_slack"] == []
+    assert out["complementary_slackness_state"].startswith("no_dimension_judged_slack")
+    assert "NOT a pass" in out["complementary_slackness_state"]
+
+
+def test_an_inapplicable_slack_dimension_does_not_count(tmp_path):
+    """`applicable` is load-bearing. A dimension with no polarity (threads_launched) is not `slack` in
+    the shadow-price sense, and counting it would manufacture violations from a dimension the theorem
+    does not cover."""
+    d = _write_run(tmp_path, [_dim_state(_rec("threads_launched", "slack", applicable=False),
+                                         _rec("occupancy", "binding"))])
+    out = check_wrapup.check_s3_s4(d)
+    assert out["dimensions_judged_slack"] == []
+    assert out["complementary_slackness_state"].startswith("no_dimension_judged_slack")
+
+
+def test_slack_dimensions_with_no_verdict_bearing_round_cannot_run(tmp_path):
+    """Slack dimensions exist but no round carries a `conversion`, so there is nothing to cross. Says
+    `cannot_run` and names the dimensions, rather than reporting a pass it did not earn."""
+    d = _write_run(tmp_path, [_dim_state(_rec("shared_bytes", "slack"))])
+    out = check_wrapup.check_s3_s4(d)
+    assert out["dimensions_judged_slack"] == ["shared_bytes"]
+    assert out["complementary_slackness_state"].startswith("cannot_run")
+    assert "shared_bytes" in out["complementary_slackness_state"]
+
+
+def test_a_slack_dimension_improving_with_a_latency_gain_is_named_a_violation(tmp_path):
+    """The whole point: this GRADES OUR OWN VERDICTS. We called shared_bytes slack, and improving it
+    coincided with a 9.8% latency gain -- complementary slackness says a non-binding constraint has a
+    zero shadow price, so the verdict was wrong.
+
+    Driven through the real `slackness_violations`, not a restatement of its rule.
+    """
+    d = _write_run(tmp_path, [_dim_state(_rec("shared_bytes", "slack")),
+                              _round_conv("fam-1", 0, 9.8, ["shared_bytes"])])
+    out = check_wrapup.check_s3_s4(d)
+    assert out["rounds_with_a_conversion_verdict"] == 1
+    st = out["complementary_slackness_state"]
+    assert st.startswith("violation_named: 1"), st
+    assert "shared_bytes" in st and "fam-1" in st
+
+
+def test_no_violation_over_real_rounds_is_a_weak_pass_not_a_pass(tmp_path):
+    """A round improved latency but the dimension it improved was judged BINDING, so the theorem
+    holds. Reported as `weak_pass` with its n, because "no violation over one round" is not the same
+    claim as "the verdicts are right"."""
+    d = _write_run(tmp_path, [_dim_state(_rec("shared_bytes", "slack"),
+                                         _rec("occupancy", "binding")),
+                              _round_conv("fam-1", 0, 9.8, ["occupancy"])])
+    out = check_wrapup.check_s3_s4(d)
+    st = out["complementary_slackness_state"]
+    assert st.startswith("weak_pass"), st
+    assert "1 round" in st and "shared_bytes" in st
+
+
+def test_the_state_is_never_one_of_four_invented_labels(tmp_path):
+    """Regression on the defect itself. The four strings the old reader counted appear NOWHERE in
+    src/, so any run whose state came from matching them was reporting on nothing. This asserts the
+    state is derived from real fields: the same log yields different states depending on the RECORDS,
+    which a substring counter over payloads could not do."""
+    slack = _write_run(tmp_path / "a", [_dim_state(_rec("shared_bytes", "slack"))])
+    binding = _write_run(tmp_path / "b", [_dim_state(_rec("shared_bytes", "binding"))])
+    a = check_wrapup.check_s3_s4(slack)["complementary_slackness_state"]
+    b = check_wrapup.check_s3_s4(binding)["complementary_slackness_state"]
+    assert a != b, "the state must depend on the record's verdict, not on payload text"
+    assert a.startswith("cannot_run") and b.startswith("no_dimension_judged_slack")

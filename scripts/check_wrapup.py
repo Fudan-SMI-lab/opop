@@ -169,9 +169,19 @@ def compare_arms(control: dict, treatment: dict, noise_floor_pct: float) -> str:
 def check_s3_s4(run_dir: Path) -> dict:
     """Four things the preflight names, each of which has a silent-failure twin.
 
-    `precision_mismatch` firing at all, which of the four complementary-slackness states was
-    reported, whether a below-floor reading was REPORTED rather than clamped, and whether any
-    ceiling_provenance carries a precision.
+    `precision_mismatch` firing at all, WHICH complementary-slackness state the run is in, whether a
+    below-floor reading was REPORTED rather than clamped, and whether any ceiling_provenance carries
+    a precision.
+
+    THE SLACKNESS STATE IS DERIVED, NOT JOURNALLED. An earlier version of this function counted
+    occurrences of the strings "cannot_run", "no_dimension_judged_slack", "weak_pass" and
+    "violation_named" anywhere in a payload -- and not one of those appears anywhere in `src/`. It
+    printed `none` on a fully working run, which reads as "S4' produced no states" and is the
+    `a-fixture-invented-to-match-the-reader-proves-nothing` shape: the reader and my mental model
+    agreed on names the emitter never writes. The real check lives in
+    `evaluation/conversion_report.py` and needs two things off the log -- dimensions whose record
+    says `verdict == "slack"` and `applicable`, and rounds carrying a `conversion` -- so this calls
+    `slackness_violations` itself rather than restating its rule.
 
     THE PROVENANCE IS A TOP-LEVEL FIELD, not a per-record one. `_do_diagnose` writes
     `compute_ceiling_provenance` beside `records`, because exactly ONE dimension has a precision --
@@ -190,17 +200,32 @@ def check_s3_s4(run_dir: Path) -> dict:
     prov_total = 0
     record_prov_with_precision = 0
     mismatches = []
-    slack_states = collections.Counter()
     below_floor = 0
     clamped_suspicion = 0
     dims = collections.Counter()
     identities = set()
     unreachable = collections.Counter()
     prompt_modes = collections.Counter()
+    # S4' inputs, read from the fields the EMITTER writes rather than from invented state names. An
+    # earlier version of this reader counted occurrences of the four strings "cannot_run",
+    # "no_dimension_judged_slack", "weak_pass" and "violation_named" anywhere in a payload -- none of
+    # which appears anywhere in src/. It printed `none` on a working run, which is the
+    # `a-fixture-invented-to-match-the-reader-proves-nothing` shape and would have been read as "S4'
+    # produced no states" at wrap-up.
+    #
+    # What the real check needs (evaluation/conversion_report.py:150-230):
+    #   slack dimensions   DIMENSION_STATE.records[] where verdict == "slack" AND applicable
+    #   rounds with a verdict  FAMILY_ROUND_RECORDED carrying `conversion`
+    # and its four reportable outcomes are DERIVED from those two, not journalled as labels.
+    slack_dims: set[str] = set()
+    verdicts_seen = 0
+    rounds_with_conversion: list[dict] = []
+    n_dimension_states = 0
     for e in _events(run_dir):
         t = e.get("type")
         p = e.get("payload") or {}
         if t == "DIMENSION_STATE":
+            n_dimension_states += 1
             for rec in (p.get("records") or []):
                 dims[rec.get("dimension_id")] += 1
                 prov = rec.get("provenance") or {}
@@ -212,6 +237,13 @@ def check_s3_s4(run_dir: Path) -> dict:
                 # A reading at EXACTLY the floor with room 0.0 is what a clamp looks like.
                 if b.get("floor") is not None and b.get("room") == 0.0:
                     clamped_suspicion += 1
+                # `applicable` is load-bearing: a dimension with no polarity (threads_launched) is
+                # never "slack" in the shadow-price sense, and counting it would manufacture
+                # violations out of a dimension the theorem does not apply to.
+                if rec.get("verdict") == "slack" and rec.get("applicable"):
+                    slack_dims.add(rec.get("dimension_id"))
+                if rec.get("verdict"):
+                    verdicts_seen += 1
             # The S3 provenance: one per DIMENSION_STATE, not one per record.
             cprov = p.get("compute_ceiling_provenance") or {}
             if cprov:
@@ -226,19 +258,51 @@ def check_s3_s4(run_dir: Path) -> dict:
                 prompt_modes[p["prompt_mode"]] += 1
             if p.get("precision_mismatch"):
                 mismatches.append(p.get("candidate_id"))
+        elif t == "FAMILY_ROUND_RECORDED" and p.get("conversion"):
+            rounds_with_conversion.append(p)
         blob = json.dumps(p)
         if "precision_mismatch" in blob and t != "DIMENSION_STATE":
             mismatches.append("%s:%s" % (t, p.get("candidate_id")))
-        for state in ("cannot_run", "no_dimension_judged_slack", "weak_pass", "violation_named"):
-            if state in blob:
-                slack_states[state] += 1
+
+    # The four states, DERIVED the way `conversion_lines` derives them, so this reports what the
+    # report will say instead of a second opinion that can silently disagree.
+    if n_dimension_states == 0:
+        slack_state = "cannot_run: no per-dimension state was journalled"
+    elif not slack_dims:
+        slack_state = ("no_dimension_judged_slack: %d verdict(s) exist but none is an applicable "
+                       "`slack`, so the check has nothing to test -- NOT a pass" % verdicts_seen)
+    elif not rounds_with_conversion:
+        slack_state = ("cannot_run: %d dimension(s) judged slack (%s) but no rewrite round carries a "
+                       "conversion verdict yet" % (len(slack_dims), ", ".join(sorted(slack_dims))))
+    else:
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+            from kernel_optimizer.evaluation.conversion_report import slackness_violations
+            viol = slackness_violations(rounds_with_conversion, slack_dims,
+                                        min_improvement_pct=2.0)
+        except Exception as exc:  # noqa: BLE001
+            slack_state = "cannot_run: %s" % str(exc)[:120]
+            viol = None
+        if viol is not None:
+            if viol:
+                slack_state = ("violation_named: %d -- %s" % (
+                    len(viol), "; ".join("%s in %s round %s (gain %.2f%%)" % (
+                        v.dimension, v.family_id, v.round, v.latency_gain_pct)
+                        for v in viol[:3])))
+            else:
+                slack_state = ("weak_pass: no violation over %d round(s) with a verdict and %d "
+                               "slack dimension(s) (%s)" % (
+                                   len(rounds_with_conversion), len(slack_dims),
+                                   ", ".join(sorted(slack_dims))))
     return {"dimension_records": sum(dims.values()),
             "diagnoses": prov_total,
             "diagnoses_whose_compute_ceiling_names_a_precision": prov_with_precision,
             "per_record_provenance_naming_a_precision": record_prov_with_precision,
             "calibration_identities": sorted(identities),
             "precision_mismatch_fired_on": sorted(set(m for m in mismatches if m)),
-            "complementary_slackness_states": dict(slack_states),
+            "complementary_slackness_state": slack_state,
+            "dimensions_judged_slack": sorted(slack_dims),
+            "rounds_with_a_conversion_verdict": len(rounds_with_conversion),
             "below_floor_readings_reported": below_floor,
             "readings_sitting_exactly_on_the_floor": clamped_suspicion,
             "unreachable_ceilings": dict(unreachable),
@@ -574,7 +638,10 @@ def report(run_dir: Path, label: str) -> dict:
     print("    precision_mismatch fired on ... %s" % (s3["precision_mismatch_fired_on"] or "nothing"))
     print("    unreachable ceilings named .... %s" % (s3["unreachable_ceilings"] or "none"))
     print("    prompt_mode in the events ..... %s" % (s3["prompt_modes"] or "-"))
-    print("    complementary-slackness states  %s" % (s3["complementary_slackness_states"] or "none"))
+    print("    complementary slackness ....... %s" % s3["complementary_slackness_state"])
+    print("      dimensions judged slack ..... %s"
+          % (", ".join(s3["dimensions_judged_slack"]) or "none"))
+    print("      rounds with a verdict ....... %d" % s3["rounds_with_a_conversion_verdict"])
     print("    below-floor readings REPORTED . %d" % s3["below_floor_readings_reported"])
     print("    readings exactly on the floor . %d%s" % (
         s3["readings_sitting_exactly_on_the_floor"],
