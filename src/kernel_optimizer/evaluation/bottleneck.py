@@ -334,9 +334,19 @@ def classify(
     if occ_frac is not None:
         ev["occupancy"] = round(float(occ_frac), 4)
         ev["occupancy_limiter"] = (occupancy or {}).get("limiter")
-    if n_spills:
+    # `is not None`, NOT truthiness. `if n_spills:` dropped a measured ZERO, and zero is the most
+    # informative value this dimension has: it is the target. Measured on box 2's
+    # `run-l3-43-20260911-052630` -- 11 of 128 dimension records read `n_spills: measured=null,
+    # "spill count not read from the compiler"` while the candidate's own best trial carried
+    # `n_spills: 0` on disk. So the vector arm's prompt told the agent "NOT MEASURED on this
+    # candidate. Do not read this as headroom" about six candidates that had in fact been measured
+    # and were clean. `dimensions.py` handles 0 correctly (`verdict="slack"`); the loss was here.
+    #
+    # `n_regs` gets the same treatment for the same reason -- a zero-register kernel is not a thing,
+    # so it costs nothing today, but the falsy-drop is the bug and it is fixed once.
+    if n_spills is not None:
         ev["n_spills"] = n_spills
-    if n_regs:
+    if n_regs is not None:
         ev["n_regs"] = n_regs
 
     if gpu_ms <= 0:
@@ -638,6 +648,11 @@ def classify(
                      f"allows, and more independent accumulators for ILP." + extra + reach_note)
 
     near_limit = []
+    # Truthiness is CORRECT here, unlike at the `ev[...]` assignment above: this list names what is
+    # AT or near its limit, and zero spills is not near the spill limit -- it IS the limit, from the
+    # good side. The two reads look identical and mean opposite things, so the distinction is
+    # written down rather than left to be "fixed" later: recording a measurement must keep a zero,
+    # flagging a problem must drop it.
     if n_spills:
         near_limit.append(f"spills={n_spills}")
     if n_regs and max_regs_per_thread and n_regs >= max_regs_per_thread * RESOURCE_NEAR_LIMIT_FRAC:
