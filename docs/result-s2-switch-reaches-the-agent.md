@@ -1,8 +1,13 @@
-# The S2 switch reaches the agent, and the two arms differ in exactly one section
+# The S2 switch reaches the agent, and the CONTROL arm is the one with the raw numbers
 
 **First direct evidence.** Until now the arms' separation rested on `DIMENSION_STATE.prompt_mode`
 (box 1 `label`, box 2 `vector`) — which is the *orchestrator saying what it intended*. This is the
 document the agent was actually handed, read off both sandboxes on disk while the runs were live.
+
+> **Read the "Correction" section before quoting the table below.** The two arms differ in one
+> SECTION HEADING, which is what this document originally recorded — but the control arm's section
+> also carries a 31–32-line raw metric dump that the treatment arm's does not. The independent
+> variable is *judgement instead of a raw dump*, and the treatment arm gets LESS raw data, not more.
 
 ## What each arm receives
 
@@ -33,8 +38,9 @@ latency difference could be attributed to the vector.
 
 ## What the vector actually says
 
-Not a metric dump. Each dimension carries a band and, where applicable, its own reason for having
-none:
+Not a metric dump — and that is now a measured claim rather than a description, since the control
+arm's document IS one (see the Correction). Each dimension carries a band and, where applicable, its
+own reason for having none:
 
 ```
 - **occupancy** — binding: too few resident warps to hide latency; the limiter field says which
