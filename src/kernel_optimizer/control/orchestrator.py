@@ -2192,6 +2192,13 @@ class Orchestrator:
             self.failed_hypotheses[family_id] = hyps
         for family_id, entries in ledger.items():
             self.ledger[family_id] = entries
+            # S2d(c) must survive a resume. Without this the reservation silently reverts to rule 1
+            # on the resumed half of a run, and the run would report S2d(c) as administered while
+            # having administered it only before the interrupt -- the kind of half-applied treatment
+            # that is worse than none, because nothing in the log distinguishes it.
+            _recon = getattr(self.deps.families, "families_with_a_ledger", None)
+            if _recon is not None:
+                _recon.add(family_id)
         n_inflight = 0
         for cand_id, (family_id, hyp_id, change, exps) in produced.items():
             if cand_id in reconciled_cands or not family_id:
@@ -2522,6 +2529,24 @@ class Orchestrator:
         except Exception as exc:  # noqa: BLE001 -- a diagnostic must never end a round
             self.store.append("EXPECTATIONS_RECONCILE_FAILED", {
                 "family_id": family_id, "round": round_no, "error": str(exc)[:500]})
+        # S2d(c), OUTSIDE the try and keyed on what actually landed in the ledger.
+        #
+        # Two reasons, both learned the hard way in this session. (1) Inside the try, a `families`
+        # object without the attribute raises AttributeError, which `except Exception` swallows --
+        # and because the add sat AFTER the append, the swallow truncated the ledger itself: an
+        # unrelated wiring test dropped from 2 entries to 1. A support field must never be able to
+        # damage the thing it describes. (2) Reading `self.ledger` rather than tracking a flag means
+        # the set says exactly "this family has an entry a rewriter could be handed", including an
+        # EMPTY entry -- "the previous round declared nothing" is itself something the next prompt
+        # can carry, and excluding it would make the reservation depend on the agent having
+        # declared, which is not the variable under test.
+        #
+        # `getattr` guards a `families` collaborator that predates the field (several tests use a
+        # SimpleNamespace); production always has it, from FamilyManager.__init__.
+        if self.ledger.get(family_id):
+            reconciled = getattr(self.deps.families, "families_with_a_ledger", None)
+            if reconciled is not None:
+                reconciled.add(family_id)
 
     def _candidate_conversion(self, family_id: str, cand_id: str, round_conversion: dict,
                               conversion_fn, profile_before: Any = None) -> dict:

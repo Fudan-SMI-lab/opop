@@ -399,6 +399,19 @@ class V3DiagnosisConfig(StrictConfig):
     # outlets: the ledger, and the next round's prompt.
     expectation_ledger: bool = False
 
+    # S2d(c) only becomes TESTABLE with this on. Rule 1 of `active_families` is unconditional
+    # ("every family that has never had a rewrite round goes first"), and measured across every run
+    # this project has made -- 9 of 9 families in finished runs plus both paired arms -- each family
+    # received exactly ONE round, so `ledger_entries` was `[]` on every rewriter call ever made, in
+    # both arms, regardless of `expectation_ledger`. The two arms were therefore IDENTICAL with
+    # respect to S2d(c) and their latency difference is not evidence about it.
+    #
+    # With this on, ONE of the `max_families_active` slots may go to an already-reconciled family,
+    # provided an unproven family still gets a slot in the same round. Off by default and
+    # deliberately so: it changes the ORDER families are rewritten in, so a run with it on is not
+    # comparable with the finished runs or either paired arm. It is an experiment arm, not a fix.
+    reserve_round_for_reconciled: bool = False
+
     # S2b: the access-pattern coordinate (instruction-roofline "walls"), derived statically from
     # tile/stride configuration -- no counters, no run. Off until its positive control passes: at
     # least one hand-built kernel must land ON the 1/32 wall, or the derivation is just returning

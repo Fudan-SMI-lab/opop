@@ -119,9 +119,24 @@ def similarity(a_source: str, b_source: str) -> float:
 
 
 class FamilyManager:
+    # CLASS-level defaults, so a manager built with `__new__` (several tests construct one that way
+    # to drive `active_families` in isolation) has correct, inert values rather than raising
+    # AttributeError from inside the selection method. Two of those tests broke when the reservation
+    # was added, and the alternative -- a `getattr` fallback inside `active_families` -- would hide a
+    # genuinely mis-wired manager, which is the failure mode recorded on the prescreen deadline.
+    #
+    # The set default is a FROZENSET, not a set: a shared mutable class attribute would let one
+    # manager's marks leak into another's, and `frozenset` makes any accidental `.add` on the class
+    # default raise instead of silently succeeding. `__init__` replaces it with a real `set`, and the
+    # reservation reads it only when the bool above is True -- which a `__new__`-built manager never
+    # has.
+    reserve_round_for_reconciled: bool = False
+    families_with_a_ledger: frozenset[str] | set[str] = frozenset()
+
     def __init__(self, max_families_active: int = 2, max_families_total: int = 3,
                  novelty_max_similarity: float = 0.85,
-                 max_families_total_hard: int | None = None):
+                 max_families_total_hard: int | None = None,
+                 reserve_round_for_reconciled: bool = False):
         self.max_families_active = max_families_active
         self.max_families_total = max_families_total
         # Absolute ceiling on families ever created, to bound novelty growth once
@@ -130,6 +145,21 @@ class FamilyManager:
                                         if max_families_total_hard is not None
                                         else max_families_total * 2)
         self.novelty_max_similarity = novelty_max_similarity
+        # S2d(c): let rule 1 yield ONE slot to a family that already HAS a ledger, so a ledger can
+        # actually reach a rewriter prompt. Off by default -- it changes the search order, so it
+        # must be a declared arm of an experiment and never a silent default. See `active_families`.
+        self.reserve_round_for_reconciled = reserve_round_for_reconciled
+        # Families that have a ledger entry. A SET OF IDS AND NOTHING ELSE: this module may know
+        # THAT a family has a ledger, never what the ledger says. J2d-8 bans a declared direction
+        # from ranking, allocation and acceptance, and it is enforced as a text ban on the selection
+        # modules -- so this field is named for what it holds rather than for the event that fills
+        # it. That is also the more accurate name: an entry with `n_declared=0` reconciles nothing
+        # yet is still a ledger the next prompt can carry.
+        #
+        # The text ban was NOT relaxed to accommodate this. What protects the invariant is
+        # behavioural: `test_selection_cannot_see_what_the_ledger_SAYS` drives this method with
+        # hit-only and miss-only ledgers and asserts the slate is identical.
+        self.families_with_a_ledger: set[str] = set()
         self.candidates: dict[str, Candidate] = {}
         self.families: dict[str, Family] = {}
         self._sources: dict[str, str] = {}  # candidate_id -> source
@@ -269,6 +299,23 @@ class FamilyManager:
         outer loop's sweep); they simply stop ending other families' search. If EVERY
         family is empty this returns [], `progressed` stays False and the run ends --
         which is the correct outcome, since there is then genuinely nothing to rewrite.
+
+        S2d(c) RESERVATION, off by default. Rule 1 is unconditional, and that is exactly why S2d(c)
+        -- "a ledger improves the NEXT rewrite" -- has never been administered: measured
+        across every run this project has made, 9 of 9 families in finished runs plus both live arms
+        received exactly ONE round each, so the ledger argument was `[]` on every rewriter call ever
+        made, in both arms, regardless of the switch. The arithmetic is off by one family every
+        time: 4 seed families and 3 rounds fit in 12 h, so the never-rewritten queue never empties.
+
+        With `reserve_round_for_reconciled`, ONE of the `max_families_active` slots may go to a
+        family that already has a ledger, provided at least one unproven family still gets a slot.
+        Only SET MEMBERSHIP is read -- never a hit, a miss or a direction (J2d-8). That preserves rule 1's protected case -- the recorded L3:43 run where ranking on
+        latency would have deleted the eventual winner -- because an unproven family is still
+        activated in the same call; it only declines to fill EVERY slot with unproven families.
+
+        Deliberately a switch and not the new default: it changes the order in which families are
+        rewritten, so a run with it on is not comparable with the three finished runs or either
+        paired arm. It is the arm of an experiment, not a fix.
         """
         active = [f for f in self.families.values()
                   if f.status == "active" and f.best is not None]
@@ -278,7 +325,32 @@ class FamilyManager:
             return (unproven, -self._improvement_pct(f), self._incumbent(f))
 
         active.sort(key=rank)
-        return active[: self.max_families_active]
+        chosen = active[: self.max_families_active]
+        if not self.reserve_round_for_reconciled:
+            return chosen
+
+        # A family WITH A LEDGER that rule 1 pushed out, best (lowest) incumbent first among them.
+        waiting = [f for f in active[self.max_families_active:]
+                   if f.family_id in self.families_with_a_ledger]
+        if not waiting:
+            return chosen
+        # Swap out the LAST chosen unproven family, not the first: the head of the queue is the
+        # one rule 1 most wants activated, and there must still be an unproven family in the
+        # result or the reservation has become the very rule it is meant to bend.
+        unproven_idx = [i for i, f in enumerate(chosen) if f.rewrite_rounds_used == 0]
+        if len(unproven_idx) < 2:
+            # Only one unproven family in the slate: yielding it would leave zero, which is the
+            # early-pruning failure. Better to postpone S2d(c) by a round than to reintroduce it.
+            #
+            # This single guard also covers `max_families_active == 1`, where `chosen` holds one
+            # family and so `unproven_idx` can never reach 2. An explicit `max_families_active < 2`
+            # check above was written first and then REMOVED: its revert-variant changed no
+            # behaviour, which is the recorded `a-variant-that-changes-no-behaviour-is-not-a-variant`
+            # signal that the branch was dead rather than that the test was weak. Keeping an
+            # untestable branch is worse than not having it.
+            return chosen
+        out = unproven_idx[-1]
+        return chosen[:out] + chosen[out + 1:] + [waiting[0]]
 
     @staticmethod
     def _incumbent(f: Family) -> float:

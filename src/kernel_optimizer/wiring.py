@@ -124,6 +124,11 @@ def build_orchestrator(cfg: AppConfig, store: RunStore, task: TaskSpec,
         max_families_active=cfg.budgets.max_families_active,
         max_families_total=cfg.budgets.max_families_total,
         max_families_total_hard=cfg.budgets.max_families_total_hard,
+        # S2d(c). Requires the ledger itself: reserving a round for a reconciled family is
+        # meaningless when nothing is reconciled, and switching the search order on for a run that
+        # cannot use it would change the order for no reason at all.
+        reserve_round_for_reconciled=(cfg.v3.diagnosis.reserve_round_for_reconciled
+                                      and cfg.v3.diagnosis.expectation_ledger),
     )
     convergence = ConvergencePolicy(cfg.budgets)
     sandboxes = SandboxFactory(store.run_dir / "sandboxes",

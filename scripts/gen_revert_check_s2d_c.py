@@ -1,0 +1,202 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""Generate scripts/revert_check_s2d_c_reservation.py, then verify every anchor exists.
+
+A generator rather than a hand-written file because the anchors are multi-line source excerpts, and a
+shell heredoc mangles backslash escapes -- which is how a revert-check once reported "4 passed" having
+patched nothing. Anchors here are explicit line lists joined with chr(10), and this script asserts
+each one is present in its target file before writing anything.
+"""
+from __future__ import annotations
+
+import ast
+import io
+
+NL = chr(10)
+FAM = "src/kernel_optimizer/control/families.py"
+ORCH = "src/kernel_optimizer/control/orchestrator.py"
+WIRE = "src/kernel_optimizer/wiring.py"
+
+VARIANTS = [
+    ("the_reservation_never_fires", FAM,
+     ["        if not self.reserve_round_for_reconciled:"],
+     ["        if True:"],
+     "the pre-fix state: S2d(c) stays untestable"),
+    ("rule_1_is_starved_of_every_slot", FAM,
+     ["        if len(unproven_idx) < 2:"],
+     ["        if False:"],
+     "with one unproven family left, swapping leaves ZERO -- the early-pruning failure"),
+    ("reserved_for_any_family_that_had_a_round", FAM,
+     ["        waiting = [f for f in active[self.max_families_active:]",
+      "                   if f.family_id in self.families_with_a_ledger]"],
+     ["        waiting = [f for f in active[self.max_families_active:]",
+      "                   if f.rewrite_rounds_used >= 1]"],
+     "a family with a round but no reconciliation has no ledger to deliver, so revisiting it tests "
+     "nothing while still spending a rewrite round"),
+    ("the_slate_grows_instead_of_swapping", FAM,
+     ["        out = unproven_idx[-1]",
+      "        return chosen[:out] + chosen[out + 1:] + [waiting[0]]"],
+     ["        return chosen + [waiting[0]]"],
+     "appending raises the per-round rewrite budget silently, a different experiment"),
+    ("empty_families_are_no_longer_excluded", FAM,
+     ['        active = [f for f in self.families.values()',
+      '                  if f.status == "active" and f.best is not None]'],
+     ['        active = [f for f in self.families.values()',
+      '                  if f.status == "active"]'],
+     "a family with nothing correct cannot be rewritten; activating one ended "
+     "run-l3-21-20260905-071312 at 2.05 h of 12 h with 4 rounds unspent"),
+    ("the_live_emit_never_marks_the_family", ORCH,
+     ["        if self.ledger.get(family_id):",
+      "            reconciled = getattr(self.deps.families, \"families_with_a_ledger\", None)",
+      "            if reconciled is not None:",
+      "                reconciled.add(family_id)"],
+     ["        if False:",
+      "            reconciled = getattr(self.deps.families, \"families_with_a_ledger\", None)",
+      "            if reconciled is not None:",
+      "                reconciled.add(family_id)"],
+     "families_with_a_ledger then stays empty in PRODUCTION while every unit test still passes, "
+     "because they populate the set directly"),
+    ("the_set_is_updated_INSIDE_the_diagnostic_try", ORCH,
+     ["                self.store.append(\"EXPECTATIONS_RECONCILED\", entry)",
+      "                self.ledger.setdefault(family_id, []).append(entry)",
+      "",
+      "            if not by_cand:"],
+     ["                self.store.append(\"EXPECTATIONS_RECONCILED\", entry)",
+      "                self.ledger.setdefault(family_id, []).append(entry)",
+      "                self.deps.families.families_with_a_ledger.add(family_id)",
+      "",
+      "            if not by_cand:"],
+     "the defect this change actually had: a families collaborator without the attribute raises "
+     "AttributeError, `except Exception` swallows it, and because the add sits AFTER the append the "
+     "swallow TRUNCATES THE LEDGER -- a support field damaging the thing it describes"),
+    ("resume_forgets_which_families_were_reconciled", ORCH,
+     ["            _recon = getattr(self.deps.families, \"families_with_a_ledger\", None)",
+      "            if _recon is not None:",
+      "                _recon.add(family_id)"],
+     ["            _recon = None"],
+     "a resumed run would report S2d(c) as administered having administered it only before the "
+     "interrupt, with nothing in the log distinguishing the halves"),
+    ("the_switch_fires_without_a_ledger", WIRE,
+     ["        reserve_round_for_reconciled=(cfg.v3.diagnosis.reserve_round_for_reconciled",
+      "                                      and cfg.v3.diagnosis.expectation_ledger),"],
+     ["        reserve_round_for_reconciled=cfg.v3.diagnosis.reserve_round_for_reconciled,"],
+     "changing the search order for a run that cannot use a ledger costs comparability for nothing"),
+]
+
+HEADER = '''#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""Revert-check for the S2d(c) reservation. Every variant must be CAUGHT.
+
+The reservation lets ONE of the `max_families_active` slots go to an already-reconciled family, so a
+ledger can finally reach a rewriter prompt. What makes it delicate is that it BENDS `active_families`
+rule 1 -- and rule 1 exists because breaking it once cost run-l3-43-20260904-093730 its eventual
+winner. So the variants come in two groups: those that make the reservation INERT (S2d(c) stays
+untestable) and those that make it too GREEDY (rule 1 starved). Both directions must fail the suite.
+
+Generated by `scripts/gen_revert_check_s2d_c.py`, which asserts every anchor exists before writing.
+Each patch is additionally checked here for having changed bytes: a non-applying edit is a
+non-result, not a pass, and reading one as a pass has cost this project twice.
+
+    python revert_check_s2d_c_reservation.py [<repo_root>]
+"""
+from __future__ import annotations
+
+import io
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+REPO = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__)))
+_NL = chr(10)
+TESTS = ["tests/test_s2d_c_reservation.py", "tests/test_families.py",
+         "tests/test_s2d_reconcile.py", "tests/test_s2d_wiring.py",
+         "tests/test_resume_restore.py"]
+
+'''
+
+FOOTER = '''
+
+def run(cwd):
+    env = dict(os.environ, PYTHONPATH=os.path.join(cwd, "src"))
+    tests = [t for t in TESTS if os.path.exists(os.path.join(cwd, t.split("::")[0]))]
+    p = subprocess.Popen([sys.executable, "-m", "pytest"] + tests + ["-q"], cwd=cwd, env=env,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    out, _ = p.communicate()
+    return p.returncode, out.decode("utf-8", "replace")
+
+
+def main():
+    base = tempfile.mkdtemp(prefix="revert-s2dc-")
+    work = os.path.join(base, "opop")
+    shutil.copytree(REPO, work, ignore=shutil.ignore_patterns(
+        ".git", "__pycache__", "*.pyc", "runs", "runs-*", ".venv", "sandboxes"))
+
+    rc, out = run(work)
+    if rc != 0:
+        print("BASELINE FAILS -- no variant means anything until the suite is green:")
+        print(out[-3000:])
+        return 2
+    print("baseline: %s" % out.strip().splitlines()[-1])
+
+    bad = 0
+    for name, rel, old_lines, new_lines, why in VARIANTS:
+        path = os.path.join(work, rel)
+        orig = io.open(path, encoding="utf-8").read()
+        old, new = _NL.join(old_lines), _NL.join(new_lines)
+        if old not in orig:
+            print("  %-46s INVALID -- anchor absent, so NOTHING was patched" % name)
+            bad += 1
+            continue
+        patched = orig.replace(old, new, 1)
+        if patched == orig:
+            print("  %-46s INVALID -- the patch changed no bytes" % name)
+            bad += 1
+            continue
+        io.open(path, "w", encoding="utf-8", newline=_NL).write(patched)
+        try:
+            rc, out = run(work)
+        finally:
+            io.open(path, "w", encoding="utf-8", newline=_NL).write(orig)
+        tail = out.strip().splitlines()[-1] if out.strip() else "(no output)"
+        if rc == 0:
+            print("  %-46s **NOT CAUGHT** -- %s" % (name, why))
+            print("      %s" % tail)
+            bad += 1
+        else:
+            print("  %-46s CAUGHT  (%s)" % (name, tail))
+
+    shutil.rmtree(base, ignore_errors=True)
+    print("")
+    print("%d variant(s) not caught or invalid" % bad)
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+'''
+
+
+def main() -> int:
+    missing = []
+    for name, rel, old_lines, _new, _why in VARIANTS:
+        src = io.open(rel, encoding="utf-8").read()
+        ok = NL.join(old_lines) in src
+        print("  %-46s anchor present: %s" % (name, ok))
+        if not ok:
+            missing.append(name)
+    if missing:
+        print("REFUSING to write: %d anchor(s) absent -- %s" % (len(missing), ", ".join(missing)))
+        return 1
+    body = HEADER + "VARIANTS = " + repr(VARIANTS) + NL + FOOTER
+    ast.parse(body)
+    out = "scripts/revert_check_s2d_c_reservation.py"
+    io.open(out, "w", encoding="utf-8", newline=NL).write(body)
+    print("wrote %s (%d variants), syntax OK" % (out, len(VARIANTS)))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
