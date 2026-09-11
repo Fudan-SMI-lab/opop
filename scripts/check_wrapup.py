@@ -344,7 +344,7 @@ def check_reconciliation(run_dir: Path) -> dict:
 
 
 def latency_floor_from_runs(*run_dirs: Path) -> tuple[float | None, str]:
-    """Measure the LATENCY reproducibility floor from the runs themselves.
+    """Measure the LATENCY reproducibility floor from finished runs.
 
     The 2.35% this project has been using as a latency tolerance is `1 - 0.9765`, where 0.9765 is
     the reference's own `frac_within_tol` at two precisions -- a CORRECTNESS quantity, a fraction of
@@ -353,23 +353,65 @@ def latency_floor_from_runs(*run_dirs: Path) -> tuple[float | None, str]:
     20-sample median.
 
     `final_reeval` re-runs theta_best in a FRESH PROCESS, so `|tuned_ms - final_reeval_ms|` is a
-    same-kernel, same-config, same-box re-measurement -- the right units. Measured on the corpus:
-    0.27% and 2.99% (n=2), which straddles the borrowed 2.35%.
+    same-kernel, same-config, same-box re-measurement -- the right units.
 
-    Returns the widest observed delta and a provenance string. n=2 is too thin to REPLACE the
-    working number with, so the caller is told both and the comparison is run against the wider of
-    the two rather than silently picking one.
+    MEASURED over every finished run on box 1 (n=5, five tasks across three levels):
+
+        4.73%  run-l3-48-20260907-202457   48_Mamba2ReturnY        1.4800 -> 1.4100  fp16
+        4.34%  run-l1-42-20260907-022528   42_Max_Pooling_2D       5.0700 -> 4.8500  ieee_fp32
+        2.91%  run-l3-21-20260908-232211   21_EfficientNetMBConv   3.6050 -> 3.5000  fp16
+        0.93%  run-l2-37-20260907-064403   37_Matmul_Swish_Sum     0.0108 -> 0.0109  fp16
+        0.29%  run-l3-48-20260909-115701   48_Mamba2ReturnY        1.5544 -> 1.5500  fp16
+
+    median 2.91%, widest 4.73% -- so the borrowed 2.35% is BELOW the median of the real spread, and
+    a J2-5 verdict against 2.35% alone would be stricter than the measurement supports. That is why
+    the caller takes the WIDER of borrowed and measured rather than replacing one with the other.
+
+    `extra_globs` widens the sample beyond the two arms under comparison: with only the two live
+    runs the sample was n=2 (0.27% and 2.99%), which straddles 2.35% and is far too thin to bound a
+    verdict. Sibling run directories are the same box and the same harness, so they are the right
+    population; a glob that matches nothing simply leaves the sample as it was.
+
+    Returns the widest observed delta and a provenance string naming n, because "inside the noise
+    floor" means nothing without the floor and its sample size.
     """
-    deltas = []
-    for d in run_dirs:
+    deltas: list[tuple[float, str]] = []
+    seen: set[Path] = set()
+
+    def consider(d: Path) -> float | None:
+        if d in seen or not (d / "events.jsonl").exists():
+            return None
+        seen.add(d)
         fin = final_result(d)
         t, r = fin.get("tuned_ms"), fin.get("final_reeval_ms")
-        if isinstance(t, (int, float)) and isinstance(r, (int, float)) and t > 0:
-            deltas.append(abs(100.0 * (r - t) / t))
+        if not (isinstance(t, (int, float)) and isinstance(r, (int, float)) and t > 0):
+            return None
+        delta = abs(100.0 * (r - t) / t)
+        deltas.append((delta, d.name))
+        return delta
+
+    # The ARMS first and separately, because an arm is not merely one more member of the
+    # population: its delta is the one being judged, and it must be in the sample even if the
+    # sibling scan cannot see it (a run directory moved, or a parent that no longer exists).
+    # Keeping the two passes distinct also keeps the sibling widening a widening -- if the arms
+    # were left to the sibling glob, disabling this loop would change nothing and the tests would
+    # pass on a reader that never looked at its arguments.
+    named = [d for d in (consider(Path(x)) for x in run_dirs) if d is not None]
+    for d in run_dirs:
+        # Siblings of the arms under comparison: same box, same harness, so the same population.
+        parent = Path(d).parent
+        for sib in sorted(parent.glob("*")) if parent.exists() else []:
+            if sib.is_dir():
+                consider(sib)
     if not deltas:
-        return None, "no arm has re-evaluated its best kernel yet"
-    return max(deltas), "measured same-kernel re-eval delta, n=%d, widest %.2f%%" % (
-        len(deltas), max(deltas))
+        return None, "no run in the sample has re-evaluated its best kernel yet"
+    deltas.sort(reverse=True)
+    widest, where = deltas[0]
+    med = sorted(d for d, _ in deltas)[len(deltas) // 2]
+    return widest, ("same-kernel re-eval delta over n=%d finished run(s), of which %d %s an arm "
+                    "under comparison; widest %.2f%% (%s), median %.2f%%" % (
+                        len(deltas), len(named), "is" if len(named) == 1 else "are",
+                        widest, where, med))
 
 
 def check_budget_stop(run_dir: Path) -> dict:

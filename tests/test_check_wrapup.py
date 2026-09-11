@@ -561,7 +561,13 @@ def test_the_latency_floor_is_measured_from_the_reeval_not_borrowed(tmp_path):
     # _RUN_FINISHED: tuned 2.7674 -> reeval 2.76, i.e. 0.267%
     assert floor == pytest.approx(0.267, abs=0.01), (
         "the latency floor was not computed from the same-kernel re-eval delta")
-    assert "n=1" in prov and "measured" in prov
+    # The provenance must name the SAMPLE SIZE -- "inside the noise floor" means nothing without
+    # the floor and its n. Asserting on n rather than on a phrase, so rewording the sentence does
+    # not fail a test about behaviour.
+    # The provenance must name the SAMPLE SIZE and how much of it is an ARM under comparison --
+    # "inside the noise floor" means nothing without the floor and its n. Asserting on the numbers
+    # rather than on a phrase, so rewording the sentence does not fail a test about behaviour.
+    assert "n=1" in prov and "1 is an arm" in prov, prov
 
 
 def test_the_latency_floor_takes_the_WIDEST_delta_across_arms(tmp_path):
@@ -581,4 +587,41 @@ def test_no_reeval_yet_reports_the_absence_rather_than_zero(tmp_path):
     d = _write_run(tmp_path, [_BASELINE, _TRIAL_OK])
     floor, prov = check_wrapup.latency_floor_from_runs(d)
     assert floor is None
-    assert "no arm has re-evaluated" in prov
+    assert "re-evaluated" in prov, prov
+
+
+def test_the_latency_floor_widens_its_sample_with_sibling_runs(tmp_path):
+    """n=2 is too thin to bound a verdict, and sibling runs are the same box and same harness.
+
+    Measured on box 1's five finished runs the real spread is 0.29-4.73% (median 2.91%), so a
+    sample of only the two arms under comparison -- 0.27% and 2.99% -- straddles the borrowed 2.35%
+    and cannot say whether it is too strict. Passing ONE arm must therefore pick up its siblings.
+    """
+    # NOT _write_run: it names every directory "run-test", so three calls under one root produce
+    # three NESTED paths rather than three siblings, and the sibling scan legitimately finds
+    # nothing. The point of this test is the directory LAYOUT, so the layout is built explicitly.
+    root = tmp_path / "runs"
+    root.mkdir()
+
+    def run(name: str, tuned: float, reeval: float) -> Path:
+        d = root / name
+        d.mkdir()
+        (d / "events.jsonl").write_text(json.dumps({
+            "seq": 0, "ts": 1789000000.0, "type": "RUN_FINISHED",
+            "payload": {"summary": {"best": {
+                "tuned_ms": tuned, "final_reeval_ms": reeval, "final_reeval_ok": True}}},
+        }) + "\n", encoding="utf-8")
+        return d
+
+    a = run("arm-a", 2.7674, 2.76)   # 0.27%
+    run("old-1", 1.48, 1.41)         # 4.73%
+    run("old-2", 3.605, 3.50)        # 2.91%
+    floor, prov = check_wrapup.latency_floor_from_runs(a)
+    assert floor == pytest.approx(4.73, abs=0.05), (
+        "the sibling runs were not sampled, so the floor stayed at the single arm's 0.27%%: %s"
+        % prov)
+    assert "n=3" in prov, prov
+    # The ARM must be counted separately from its siblings. Without this the direct pass over
+    # `run_dirs` is redundant -- the sibling glob finds the arms too -- and a variant that deletes
+    # it passes every test, which is how this was found.
+    assert "1 is an arm" in prov, prov

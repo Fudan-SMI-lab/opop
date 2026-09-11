@@ -394,43 +394,37 @@ VARIANTS: list[tuple[str, Path, str, str, list[str], str]] = [
         "exactly the moment someone is deciding whether S2d worked",
     ),
     (
-        "no measured latency floor: only the borrowed correctness figure available",
+        "the arms not sampled separately from their siblings",
         CHK,
-        "    deltas = []\n"
-        "    for d in run_dirs:\n"
-        "        fin = final_result(d)",
-        "    deltas = []\n"
-        "    for d in []:\n"
-        "        fin = final_result(d)",
+        "    named = [d for d in (consider(Path(x)) for x in run_dirs) if d is not None]\n",
+        "    named = []\n",
         ["test_the_latency_floor_is_measured_from_the_reeval_not_borrowed",
-         "test_the_latency_floor_takes_the_WIDEST_delta_across_arms"],
-        "the state before this fix: the only tolerance was 2.35%, which is `1 - 0.9765` where "
-        "0.9765 is the reference's own frac_within_tol at two precisions -- a fraction of ELEMENTS "
-        "agreeing, used as a LATENCY tolerance. A numerics figure and a timing-jitter figure have "
-        "no reason to be equal. Measured on the corpus, the same-kernel re-eval delta is 0.27% and "
-        "2.99%, so 2.35% happens to land inside the range while being derived from the wrong "
-        "quantity -- the most durable kind of wrong number, because it never looks wrong",
+         "test_the_latency_floor_widens_its_sample_with_sibling_runs"],
+        "the reader stops looking at its own ARGUMENTS and relies on the sibling glob to find "
+        "them. FOUND BY THIS HARNESS: when the sibling widening was added, disabling the direct "
+        "pass over run_dirs changed nothing, because the glob finds the arms too -- so all three "
+        "floor tests passed on a reader that ignored what it was called with. It matters because "
+        "an arm's delta is the one being JUDGED and must be in the sample even when the glob "
+        "cannot see it (a moved run directory, an absent parent), and because the provenance line "
+        "reports how much of n is an arm -- which is unreportable if the two are indistinguishable",
     ),
     (
         "the narrower of the two arm deltas chosen instead of the wider",
         CHK,
-        "    return max(deltas), \"measured same-kernel re-eval delta, n=%d, widest %.2f%%\" % (\n"
-        "        len(deltas), max(deltas))",
-        "    return min(deltas), \"measured same-kernel re-eval delta, n=%d, widest %.2f%%\" % (\n"
-        "        len(deltas), min(deltas))",
-        ["test_the_latency_floor_takes_the_WIDEST_delta_across_arms"],
-        "a latency verdict stricter than the latency measurement. With two arms there are two "
-        "same-kernel deltas, and taking the narrower calls a difference smaller than the "
-        "measurement a regression -- on the corpus numbers, judging against 0.27% when the same "
-        "kernel re-measured 2.99% away on another run",
+        "    deltas.sort(reverse=True)\n",
+        "    deltas.sort()\n",
+        ["test_the_latency_floor_takes_the_WIDEST_delta_across_arms",
+         "test_the_latency_floor_widens_its_sample_with_sibling_runs"],
+        "a latency verdict stricter than the latency measurement. With several runs in the sample "
+        "there are several same-kernel deltas, and taking the narrowest calls a difference smaller "
+        "than the measurement a regression -- on box 1's numbers, judging against 0.29% when the "
+        "same kernel re-measured 4.73% away on another run",
     ),
     (
         "a missing re-eval reported as a floor of zero",
         CHK,
-        "    if not deltas:\n"
-        "        return None, \"no arm has re-evaluated its best kernel yet\"",
-        "    if not deltas:\n"
-        "        return 0.0, \"no arm has re-evaluated its best kernel yet\"",
+        "        return None, \"no run in the sample has re-evaluated its best kernel yet\"",
+        "        return 0.0, \"no run in the sample has re-evaluated its best kernel yet\"",
         ["test_no_reeval_yet_reports_the_absence_rather_than_zero"],
         "a floor of 0.0 makes EVERY difference a regression, down to a single microsecond. The "
         "absence of a measurement is not a measurement of zero -- and this is the friendly-looking "
