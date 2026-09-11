@@ -149,6 +149,17 @@ its own budget, not a fix.
 
 ---
 
+## D6. A measured zero was recorded as "not measured" — FIXED (`03ab1a3`)
+
+Recorded here because it is the answer to the deferred item *"investigate why `n_spills` is
+unmeasured on some candidates"*, and the answer turned out to be a defect rather than a collector
+gap. `if n_spills:` in `bottleneck.py` dropped a measured **zero**, so 11 of box 2's 128
+`DIMENSION_STATE` records said `"spill count not read from the compiler"` about candidates whose own
+best trial carried `n_spills: 0`. It fires on exactly the HEALTHY candidates, which is why it looked
+occasional. Full account in the commit; 6 tests and 3 revert variants.
+
+---
+
 ## D5. F5's compile prescreen is net NEGATIVE on L3:21
 
 **Found because it tripped a stall alarm.** A prescreen worker ran 15 minutes on a 40-variant
@@ -213,3 +224,10 @@ change which points the sampler visits.
    expansion added, so it needs thought, not a quick patch.)
 
 Item 3 is verified above: nothing to recover there, so a D5 fix is items 1 and 2 only.
+
+**PARTIALLY ADDRESSED (`59d5a71`).** That commit fixes a DIFFERENT half of the same area — the
+runaway case, where a batch borrowed `build_timeout_s` (1200 s) and answered nothing at all (box 3:
+two batches at 1200.5 s and 1201.0 s, 0.67 h for zero verdicts). The screen now has its own
+`base + per_config * n` deadline. **The pricing problem above is untouched**: items 1 and 2 remain open,
+and they are the ones that would make the screen net POSITIVE rather than merely bounded. See
+`docs/plan-after-the-paired-runs.md` §B2 for why they wait for a gap between experiments.
