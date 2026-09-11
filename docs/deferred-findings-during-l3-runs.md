@@ -270,3 +270,62 @@ with the candidate's kernel count — a multi-kernel variant compiles several ke
 which is the same root cause as D5 item 1 — so that a heavier candidate gets a proportionally
 larger budget instead of one flat number that is generous for a single-kernel candidate and tight
 for a four-kernel one.
+
+---
+
+## D8. One candidate's pathological PTX ate 43% of a run's wall clock — bounded, but very expensive
+
+**Evidence, box 1's E1 control arm (`run-l3-43-20260911-230217`), read live at 04:55 on 2026-09-12,
+5.16 h into a 12 h budget.** Wall time between consecutive `TRIAL_DONE` events, attributed to the
+candidate whose trial it was:
+
+| candidate | trials | wall time | share | complete/fail | per trial |
+|---|---|---|---|---|---|
+| **cand-941ea454** | **12** | **1.68 h** | **43.2%** | 9 / 3 | **8.4 min** |
+| cand-e254236c | 80 | 0.96 h | 24.7% | 68 / 12 | 0.7 min |
+| cand-772ea591 | 80 | 0.85 h | 21.9% | 57 / 23 | 0.6 min |
+| cand-fdfbcb59 | 40 | 0.40 h | 10.3% | 27 / 13 | 0.6 min |
+
+**14x the per-trial cost of its three siblings, for 12 trials against their 80/80/40** — and it is
+also the arm's WORST candidate (best 6.765 ms against the leader's 4.244 ms). The three slowest gaps
+in the whole run are all its: 32.9 min, 50.1 min, and a third compile still running at 24 min when
+this was written.
+
+**Root cause, observed directly rather than inferred.** The live worker's child was
+
+```
+ptxas -lineinfo -v --regAllocOptLevel 2 --gpu-name sm_89 /tmp/tmpzap322op.ptx
+    RSS 12.2 GB, 23:43 of CPU in 23:43 elapsed (100% busy, not blocked)
+    input: 74474 lines / 3.56 MB of PTX
+```
+
+Same class as the recorded `agent-script-can-oom-the-whole-box` case (272341 lines took ptxas to
+111 GiB), one order of magnitude smaller: this box has 755 GB so 12.2 GB was never dangerous, and
+`free` showed 309 GB still free. **Nothing is wedged and nothing is at risk** — `ptxas` is simply
+spending tens of minutes on register allocation for a kernel whose PTX is enormous.
+
+**The existing guard IS working.** The 1800 s job deadline caught the worst one:
+`job cand-941ea454-tr-ac5c798e-eval-aa4e2f3f exceeded 1800.0s` → recorded as `failure_kind:
+timeout`. So the cost is bounded per trial; it is not an unbounded hang.
+
+**Why not now.** This costs budget, not correctness: the trials that complete are correctly
+measured, the leader is chosen from them, and both E1 arms are subject to the same mechanism. Any
+fix changes which configurations get evaluated (or how long they may take), so a run started after
+it is not comparable with one before — and E1's two arms must stay comparable with each other. The
+`prescreen` cannot help here either: it is compile-only and would pay the SAME ptxas cost.
+
+**What a fix would have to do, and what it must not do.** It must not narrow the search space or
+lower `build_timeout_s` — a legitimate candidate whose ptxas genuinely needs ten minutes must still
+be allowed to finish (`never-narrow-the-search-space-to-control-cost`, and the explicit warning in
+`prescreen_timeout_s`). The generalizable options, in order of how well the evidence supports them:
+
+1. **Report per-candidate cost so the operator and the report can see it.** Currently nothing in
+   the event log states that one candidate consumed 43% of a run; it took a bespoke script to find.
+   Purely additive, changes no decision, and is the prerequisite for judging any of the below.
+2. **Cap PTX size before invoking ptxas**, per kernel, as a *screen* whose failure is a normal
+   trial failure with a stated reason — 74 k lines against a corpus median in the hundreds is a
+   detectable outlier. Needs the distribution measured first; a threshold guessed here would be the
+   same mistake as the 10x constant.
+3. **Let a candidate's measured per-trial cost feed its trial ALLOCATION** rather than its
+   admission — i.e. a candidate at 14x the cost gets fewer trials, not zero. This one interacts
+   with `budget-is-per-space-not-per-candidate` and needs its own design.
