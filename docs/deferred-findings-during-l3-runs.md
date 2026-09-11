@@ -329,3 +329,39 @@ be allowed to finish (`never-narrow-the-search-space-to-control-cost`, and the e
 3. **Let a candidate's measured per-trial cost feed its trial ALLOCATION** rather than its
    admission — i.e. a candidate at 14x the cost gets fewer trials, not zero. This one interacts
    with `budget-is-per-space-not-per-candidate` and needs its own design.
+
+### D8 update, read live at 05:40 — it worsened, and the decision was to let it run
+
+Re-measured 1.5 h later, same run:
+
+| | at 04:55 | at 05:40 |
+|---|---|---|
+| share of trial wall time | 43.2% | **53.4%** |
+| per trial | 8.4 min | **10.8 min** |
+| trials done | 12 | 14 |
+| ptxas peak RSS | 12.2 GB | **37.6 GB** |
+| timeouts recorded | 1 | 2 |
+
+**Not an OOM risk**: 37.6 GB against 667 GB available on a 755 GB box (5.6%), no swap, no OOM kill
+in the box's history. The 1800 s deadline keeps cutting the worst compiles off.
+
+**The contrast that makes this a per-candidate pathology rather than a task property.** Box 2's
+treatment arm, same task, same 12 h, at the same point in the run:
+
+| arm | candidates | per-trial cost | rewrite rounds |
+|---|---|---|---|
+| box 1 control | 4 | 0.6 / 0.6 / 0.7 / **10.8** min | **0** |
+| box 2 treatment | 8 | 0.6–1.1 min, all of them | 1 |
+
+**The budget consequence, projected from the measured rate.** At 6.64 h of 12 h used,
+`cand-941ea454` had 14 of its 40 trials done. The remaining 26 at 10.8 min is **4.7 h** against
+**5.4 h** of budget left — it would consume nearly all of it, and the control arm has recorded zero
+rewrite rounds so far.
+
+**DECISION (user, 2026-09-12): do not intervene; let both arms run their full 12 h.** The reasoning
+is that arm parity is worth more than this one arm's rewrite rounds: killing the candidate, or the
+run, would make the two arms structurally different and cost the comparison entirely, whereas
+letting it finish leaves every other measurement from the pair clean and usable (the conversion
+rates, the A1 threshold in production, this evidence itself). **The accepted risk is explicit: E1's
+control arm may end with 0 rewrite rounds, in which case S2d(c) has no control data and that pair
+must be re-run after D8 is fixed.** That is a known cost, not a surprise.
