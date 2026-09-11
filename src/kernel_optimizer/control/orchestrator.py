@@ -1481,6 +1481,23 @@ class Orchestrator:
             return
         crun.stats = self.deps.stats_analyzer.analyze(crun.space, crun.trials)
         self.store.append("STATS_DONE", {"stats": crun.stats.model_dump()})
+        # The third core design point: how much latency one unit of a resource actually bought, in
+        # that resource's own unit, fitted from THIS candidate's own trials. Journalled only --
+        # nothing reads it yet, so it cannot change a decision, a ranking or a prompt, and a run
+        # carrying it stays comparable with one that does not. That is deliberate: it lets E1/E3
+        # accumulate the corpus (99 usable series today) before any design consumes the number.
+        # See `evaluation/conversion_rate.py` for the measurements that limit it to `n_spills`.
+        try:
+            from kernel_optimizer.evaluation.conversion_rate import rates_payload
+
+            self.store.append("CONVERSION_RATES", {
+                "candidate_id": crun.candidate.candidate_id,
+                "space_id": crun.space.space_id,
+                **rates_payload(crun.trials)})
+        except Exception as exc:  # noqa: BLE001 — a diagnostic must never end a run
+            self.store.append("CONVERSION_RATES_FAILED", {
+                "candidate_id": crun.candidate.candidate_id,
+                "error": f"{type(exc).__name__}: {exc}"[:300]})
         unlaunched = self._unlaunched_kernels(crun)
         if unlaunched:
             # Improvement M: a kernel defined but never launched across the WHOLE tuning

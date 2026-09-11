@@ -1,0 +1,123 @@
+# E1 TREATMENT arm on BOX 2 (RTX 4090) -- pairs with experiments_e1_box1_control.yaml on BOX 1.
+#
+# THE EXPERIMENT. Both arms run `mode: vector` AND `expectation_ledger: true`. The ONLY difference
+# is `reserve_round_for_reconciled`, so the independent variable is exactly:
+#
+#     does the S2d ledger ever REACH the next round's rewrite prompt?
+#
+# WHY THAT IS NOT ALREADY ANSWERED. The ledger is stored per FAMILY, so a rewriter sees it only when
+# the SAME family gets a second round. Measured across every run this project has: the 9 families of
+# the completed runs plus both arms of the paired experiment -- EVERY family received exactly 1
+# round. So the ledger argument was `[]` on every single call in BOTH arms, and the two arms were
+# identical with respect to S2d(c) no matter what the switch said. The paired experiment's 8.68%
+# latency difference is therefore not evidence about S2d(c); it is evidence about S2 (the vector).
+#
+# The arithmetic is off by one family every time: 4 seed families, ~3 rounds fit in 12 h, and
+# `active_families` rule 1 puts every NEVER-REWRITTEN family first, so the queue never drains.
+#
+# WHAT THE TREATMENT ARM CHANGES. One slot of `max_families_active` may go to a family that already
+# has a ledger -- but only while some never-rewritten family still holds a slot in the same round.
+# Rule 1's protected case is preserved intact: on `run-l3-43-20260904-093730` the top-ranked family
+# stalled at [19.6, 19.6, 19.6] while the second-ranked went [19.5, 17.9, 17.9] and produced that
+# run's winner, so latency-ranking at `max_families_active=1` would have DELETED the champion.
+#
+# FAILURE IS ALSO A RESULT, and this is the reason to run it before the more expensive E2: "the
+# ledger arrived and changed nothing" is a publishable finding about closed-loop feedback, whereas
+# "the ledger never arrived" -- the current state -- is not a finding at all.
+#
+# THIS PAIR IS NOT COMPARABLE WITH THE THREE COMPLETED RUNS OR WITH THE EARLIER PAIRED ARMS. The
+# switch changes the ORDER families are rewritten in, so it forms its own pair and nothing else.
+#
+# EVERYTHING ELSE IN THIS FILE IS INHERITED VERBATIM from experiments_l3_glm_box2_s2.yaml -- the venv
+# pinning, the cross-box pairing evidence, the calibration precondition. Read that file's header for
+# all of it; it is deliberately NOT duplicated here so that a `diff` of these two E1 files shows
+# only what differs between the ARMS.
+#
+# THE TWO CHECKS THAT MUST PASS BEFORE LAUNCH, both from that header and both still binding:
+#   1. `wsl.venv` is kernel-opt-venv on THIS box (torch 2.13.0+cu129 / triton 3.7.1), orch-venv on
+#      box 1. The names are SWAPPED between the boxes; copying a path breaks the pairing silently.
+#      The DRIVER here is orch-venv (kernel-opt-venv has no optuna); on box 1 one venv does both.
+#   2. Run `calibrate` on both boxes and compare every ceiling against the task's noise floor
+#      BEFORE launching. Afterwards a difference in the result would have two explanations.
+#
+# Launch (these two MAY run concurrently -- different machines):
+#   box 1:  PYTHONPATH=src /root/autodl-tmp/orch-venv/bin/python -m kernel_optimizer.cli #             --config configs/experiments_e1_box1_control.yaml run --task level3:43
+#   box 2:  PYTHONPATH=src /root/autodl-tmp/orch-venv/bin/python -m kernel_optimizer.cli #             --config configs/experiments_e1_box2_reserved.yaml run --task level3:43
+
+v3:
+  diagnosis:
+    # BOTH arms. The S2 vector reaches the prompt in this experiment; it is not the variable here.
+    mode: vector
+    # BOTH arms. Declarations are collected and reconciled in both, so both build a ledger.
+    expectation_ledger: true
+    # THE VARIABLE. True here: ONE active slot may go to a family that already has a ledger, so
+    # its rewriter actually receives the reconciliation of its own previous declarations. Yields
+    # the slot whenever fewer than two never-rewritten families are in the running, which is what
+    # keeps rule 1's protected case intact.
+    reserve_round_for_reconciled: true
+
+run:
+  # A v3 runs directory under the v2 tree's opop-glm (which is where .opencode/ lives, and
+  # launch_cwd must sit under that tree), deliberately separate from box 2's v2 `runs-l3` so the
+  # four completed v2 runs there are not contaminated.
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v3
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench
+
+opencode:
+  server_url: null
+  launch_cwd: /root/autodl-tmp/opop-workspace/opop-glm
+  sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+
+wsl:
+  # THE MATCHED VENV on THIS box -- see the header. NOT orch-venv, which is torch 2.14 / triton 3.8.
+  venv: /root/autodl-tmp/kernel-opt-venv
+  kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-v3
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+# Byte-identical to the box 1 file: both boxes are the same card, verified (24564 MiB, 450 W,
+# 3105 MHz, cc 8.9). If these two blocks ever differ, the pair is invalid.
+device:
+  name: NVIDIA GeForce RTX 4090 (sm_89)
+  vram_gb: 23
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024

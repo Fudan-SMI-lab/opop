@@ -445,3 +445,110 @@ def test_neither_4090_arm_writes_into_a_v2_runs_directory():
         assert not runs.rstrip("/").endswith("runs-l3"), (
             "%s writes into the v2 corpus directory %s" % (name, runs))
 
+
+
+# --- E1: the S2d(c) pair, whose variable is a THIRD switch ------------------------------------
+#
+# This pair exists because S2d(c) has never been administered. The ledger is stored per family, so
+# a rewriter sees it only on a family's SECOND round -- and across every run this project has (the
+# 9 families of the completed runs plus both paired arms) every family received exactly ONE round.
+# The ledger argument was `[]` on every call in BOTH arms, so the paired experiment's 8.68% latency
+# difference says nothing about S2d(c). These two configs make it the only difference.
+
+_E1_CONTROL = "experiments_e1_box1_control.yaml"
+_E1_TREAT = "experiments_e1_box2_reserved.yaml"
+
+
+def test_the_e1_pair_differs_only_in_the_reservation_switch_and_machine_paths():
+    """The whole point of E1: `mode` and `expectation_ledger` must be EQUAL in both arms.
+
+    If either differed, the pair would be measuring S2 or S2d(a) again on top of the reservation,
+    and a latency difference could not be attributed. That is the failure the earlier pair had in
+    the other direction -- it varied two switches at once, which is why its result is evidence
+    about the vector rather than about the ledger reaching the prompt.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "configs"
+    control, treat = root / _E1_CONTROL, root / _E1_TREAT
+    if not (control.exists() and treat.exists()):
+        pytest.skip("the E1 pair is not present in this checkout")
+
+    diffs = set(_resolved_diff(load_config(control).model_dump(),
+                              load_config(treat).model_dump()))
+    allowed = _MACHINE_KEYS | {"v3.diagnosis.reserve_round_for_reconciled"}
+    unexpected = diffs - allowed
+    assert not unexpected, (
+        "the E1 arms differ in something other than the reservation switch and machine paths, so "
+        "a difference in the result could not be attributed to whether the ledger reached the "
+        "prompt: %s" % sorted(unexpected))
+    assert "v3.diagnosis.reserve_round_for_reconciled" in diffs, (
+        "the E1 arms do not differ in the reservation switch -- the treatment arm is not treating")
+
+
+def test_both_e1_arms_run_the_vector_and_build_a_ledger():
+    """Direction check. A diff of one key is also satisfied by an arm pair with the ledger OFF in
+    both, where the reservation switch is inert by construction (`wiring.py` ANDs it with
+    `expectation_ledger`) -- the run would complete, the diff would pass, and the experiment would
+    have measured nothing at all.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "configs"
+    control, treat = root / _E1_CONTROL, root / _E1_TREAT
+    if not (control.exists() and treat.exists()):
+        pytest.skip("the E1 pair is not present in this checkout")
+
+    c = load_config(control).v3.diagnosis
+    t = load_config(treat).v3.diagnosis
+    for name, d in (("control", c), ("treatment", t)):
+        assert d.mode == "vector", "%s arm is not running the vector" % name
+        assert d.expectation_ledger is True, (
+            "%s arm collects no declarations, so the reservation switch is inert and the "
+            "experiment measures nothing" % name)
+    assert c.reserve_round_for_reconciled is False, "the CONTROL arm reserves a slot"
+    assert t.reserve_round_for_reconciled is True, "the TREATMENT arm does not reserve a slot"
+
+
+def test_the_e1_arms_agree_on_the_device_block_and_every_budget():
+    """Same cross-box checks the S2 pair needs: two 4090s, so hardware and budgets must match."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "configs"
+    control, treat = root / _E1_CONTROL, root / _E1_TREAT
+    if not (control.exists() and treat.exists()):
+        pytest.skip("the E1 pair is not present in this checkout")
+
+    a, b = load_config(control), load_config(treat)
+    assert a.device.model_dump() == b.device.model_dump()
+    assert a.budgets.model_dump() == b.budgets.model_dump()
+    assert a.evaluation.model_dump() == b.evaluation.model_dump()
+    assert a.agents.model_dump() == b.agents.model_dump()
+
+
+def test_the_e1_arms_keep_each_boxs_matched_venv():
+    """The venv names are SWAPPED between the boxes, so a copied path breaks the pairing while
+    every other check still passes. Same trap as the S2 pair, re-asserted for these files because
+    they were created by copying."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "configs"
+    control, treat = root / _E1_CONTROL, root / _E1_TREAT
+    if not (control.exists() and treat.exists()):
+        pytest.skip("the E1 pair is not present in this checkout")
+
+    assert str(load_config(control).wsl.venv).endswith("orch-venv"), "box 1's matched venv"
+    assert str(load_config(treat).wsl.venv).endswith("kernel-opt-venv"), "box 2's matched venv"
+
+
+def test_neither_e1_arm_writes_into_a_v2_runs_directory():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "configs"
+    for name in (_E1_CONTROL, _E1_TREAT):
+        p = root / name
+        if not p.exists():
+            continue
+        runs = str(load_config(p).run.runs_dir)
+        assert not runs.rstrip("/").endswith("runs-l3"), (
+            "%s writes into the v2 corpus directory %s" % (name, runs))
