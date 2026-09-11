@@ -10370,3 +10370,130 @@ def test_capacity_headroom_is_reported_as_a_quantity_not_only_a_boolean():
         "headroom was reported for an unmeasured shared_bytes, so a missing reading became a "
         "capacity claim"
     )
+
+
+def test_a_failed_probe_is_never_cached_as_a_screen_verdict():
+    """A transient probe failure must not become a PERMANENT blind spot.
+
+    MEASURED on box 3's live run-l3-48-20260911-052647. One `prescreen` batch of 40 configurations
+    was killed mid-probe when the run took a SIGTERM at 06:43:25. `run_job` correctly returned a
+    failure, but `prescreen_batch` then wrote that single failure into `_screen_cache` for all 40
+    keys -- and `compile_screen` reads the SAME cache and returns early on a non-ok entry without
+    re-probing. So every one of those 40 configurations was unscreenable for the rest of the run.
+
+    Three of them reached a real trial and hit Triton's own
+    `out of resource: shared memory, Required: 360704, Hardware limit: 166912` -- exactly the class
+    the screen exists to remove. Cost: 0.71 h of a 12 h budget, one single trial burning 2531 s, on
+    a launch the compiler refuses in 7 ms. Box 1 (0 of 41) and box 2 (0 of 59) had no escapes,
+    which is what makes this a defect and not a task property: the discriminator is the interrupt,
+    not the box.
+
+    The rule: an ANSWER is a fact about the source and belongs in the cache. A FAILURE is a fact
+    about one probe attempt -- worker timeout, signal, transient -- so caching it converts a
+    transient into a permanent hole. Leaving the key absent costs at most one re-probe.
+    """
+    import tempfile
+    from pathlib import Path
+
+    from kernel_optimizer.evaluation.correctness import CorrectnessEvaluator
+
+    over = {"ok": True, "max_shared": 393216, "kernels": [{"name": "_k", "shared": 393216}]}
+
+    class Cfg:
+        precision = "fp32"
+        build_timeout_s = 60.0
+        eval_timeout_s = 60.0
+        correctness_mode = "dual_witness_relaxed"
+
+    class Task:
+        ref_path = Path("ref.py")
+
+    class Worker:
+        """Fails the first `fail_first_n` jobs as a WHOLE, then answers every path honestly.
+
+        The batch reply carries a per-path `results` map, which is what `run_compile_probe`
+        actually returns (`{**primary, "results": results}`). A fake omitting it would make every
+        non-primary path "not answered" -- a different scenario -- and its call count would then
+        measure the fake's shape rather than the cache's behaviour.
+        """
+
+        def __init__(self, fail_first_n=1):
+            self.calls = 0
+            self.fail_first_n = fail_first_n
+
+        def run_job(self, job, timeout, tag, lock_mode=None):
+            self.calls += 1
+            assert job["job_type"] == "compile_probe", job["job_type"]
+            if self.calls <= self.fail_first_n:
+                return {"ok": False, "failure_kind": "timeout", "reason": "exceeded 600.0s"}
+            paths = [job["kernel_src_path"]] + list(job.get("extra_kernel_src_paths") or [])
+            if len(paths) == 1:
+                return dict(over)
+            return {**over, "results": {p: dict(over) for p in paths}}
+
+    def fresh(fail_first_n=1):
+        ev = CorrectnessEvaluator.__new__(CorrectnessEvaluator)
+        ev.worker, ev.cfg, ev.seed = Worker(fail_first_n), Cfg(), 0
+        ev._screen_cache = {}
+        return ev
+
+    tmp = Path(tempfile.mkdtemp())
+    paths = []
+    for i in range(3):
+        p = tmp / ("s%03d.py" % i)
+        p.write_text("PARAMS = {'BL': %d}\n" % i, encoding="utf-8")
+        paths.append(p)
+
+    # A: the killed batch must leave the cache EMPTY, and every config must then be screened
+    # for real and refused. This is the box-3 scenario.
+    ev = fresh()
+    ev.prescreen_batch(Task(), paths, tag="t", backend="triton")
+    assert not ev._screen_cache, (
+        "a failed batch probe cached %d verdict(s); every one of those configurations is now "
+        "unscreenable for the rest of the run" % len(ev._screen_cache))
+    refused = [p.name for p in paths
+               if ev.compile_screen(Task(), p, "t", "triton", 166912) is not None]
+    assert len(refused) == 3, (
+        "after a failed batch only %d of 3 over-limit configs were refused; the rest reach a "
+        "real trial and pay Triton's out-of-resource error" % len(refused))
+
+    # B: an ANSWER is still cached -- the whole point of the cache. A re-tune after a space
+    # expansion re-asks the same configurations, and it must not re-probe any of them.
+    ev = fresh(fail_first_n=0)
+    ev.prescreen_batch(Task(), paths, tag="t", backend="triton")
+    after_batch = ev.worker.calls
+    refused = 0
+    for _ in range(2):
+        for p in paths:
+            if ev.compile_screen(Task(), p, "t", "triton", 166912) is not None:
+                refused += 1
+    assert ev.worker.calls == after_batch, (
+        "an answered batch was re-probed: %d calls, expected %d. Not caching answers would "
+        "put a worker round-trip on every trial" % (ev.worker.calls, after_batch))
+    assert refused == 6, "cached answers stopped refusing: %d of 6" % refused
+
+    # C: worst case -- a persistently broken probe. One probe per screened trial, never more:
+    # the screen is per-trial anyway, so this is the pre-cache cost, not a new multiplier.
+    ev = fresh(fail_first_n=10 ** 6)
+    ev.prescreen_batch(Task(), paths, tag="t", backend="triton")
+    for _ in range(2):
+        for p in paths:
+            ev.compile_screen(Task(), p, "t", "triton", 166912)
+    assert ev.worker.calls == 7, (
+        "expected 1 batch + 6 per-trial probes = 7, got %d: a retry loop was introduced "
+        "somewhere" % ev.worker.calls)
+
+    # C2: the OVER-CORRECTION -- caching nothing at all. Case C cannot see it (with a
+    # persistently failing worker, "cache nothing" and "cache only answers" probe identically),
+    # so the same source is screened twice here with the probe SUCCEEDING. Measured: without
+    # this, the `if probe.get("ok")` guard can be flipped to `if False` and this test still
+    # passes -- it is caught only by test_the_compile_screen_only_refuses_on_the_compilers_own_
+    # number, and a fix's own test should not depend on a neighbour to notice it went too far.
+    ev = fresh(fail_first_n=0)
+    p = paths[0]
+    ev.compile_screen(Task(), p, "t", "triton", 166912)
+    ev.compile_screen(Task(), p, "t", "triton", 166912)
+    assert ev.worker.calls == 1, (
+        "an ANSWERED per-trial probe was not cached: %d calls for one source. Refusing to cache "
+        "failures must not become refusing to cache anything -- that puts a ~16.7 s worker "
+        "round-trip on every trial" % ev.worker.calls)

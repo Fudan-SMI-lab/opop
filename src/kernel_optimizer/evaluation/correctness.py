@@ -120,6 +120,22 @@ class CorrectnessEvaluator:
             if entry is None:
                 entry = probe if path == first else {
                     "ok": False, "reason": "not answered by the batch probe"}
+            if not entry.get("ok"):
+                # DO NOT CACHE A NON-ANSWER. Measured on box 3's run-l3-48-20260911-052647:
+                # one batch of 40 was killed mid-probe when the run took a SIGTERM, and
+                # because the failure was written into the cache for all 40 keys, every one
+                # of them was unscreenable for the rest of the run -- `compile_screen` reads
+                # this same cache and returns early on a non-ok entry without re-probing. Three
+                # configurations then reached a real trial and hit Triton's own
+                # `out of resource: shared memory`, one of them burning 2531 s of a 12 h budget
+                # (0.71 h across the three) on a launch the compiler could have refused in 7 ms.
+                #
+                # An "ok" verdict is a fact about the source and caching it is the whole point.
+                # A FAILURE is a fact about that one probe attempt -- the worker, the timeout,
+                # the signal -- so caching it converts a transient into a permanent blind spot.
+                # Leaving the key absent costs at most one re-probe (7 ms marginal in a batch,
+                # ~16.7 s alone) and restores the screen for every later trial.
+                continue
             self._screen_cache[key] = entry
 
     def cached_shared_verdict(self, kernel_src: str, backend: str,
@@ -165,7 +181,8 @@ class CorrectnessEvaluator:
         the thing that rejects a candidate.
 
         Cached on the materialized source, since a re-tune after a space expansion re-asks
-        configurations it has already screened.
+        configurations it has already screened. ONLY answers are cached: see `prescreen_batch`
+        for the measured cost of caching a non-answer.
         """
         if not max_shared_bytes:
             return None
@@ -180,7 +197,13 @@ class CorrectnessEvaluator:
                                            f"{tag}-compile-screen", lock_mode="shared")
             except Exception as exc:  # noqa: BLE001 — a screen failure is never a verdict
                 probe = {"ok": False, "reason": f"{type(exc).__name__}: {exc}"[:200]}
-            self._screen_cache[key] = probe
+            if probe.get("ok"):
+                # Same rule as the batch: an ANSWER is a fact about the source and belongs in
+                # the cache; a FAILURE is a fact about this one probe attempt (a worker timeout,
+                # a signal, a transient) and caching it makes a transient permanent. The re-tune
+                # this cache exists for re-asks the same configurations, so a cached failure
+                # would blind the screen for exactly the configurations it is meant to catch.
+                self._screen_cache[key] = probe
         if not probe.get("ok"):
             return None
         max_shared = probe.get("max_shared")
