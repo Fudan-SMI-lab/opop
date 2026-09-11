@@ -102,8 +102,12 @@ def _orch(evaluator: _Evaluator, store: _Store, monkeypatch, elapsed: float):
     o.cfg = cfg
     o.store = store
     o.deps = type("D", (), {"evaluator": evaluator})()
-    o.task = TaskSpec(task_id="level3:48", level=3, problem_id=48, name="t",
-                      ref_path=Path("ref.py"))
+    # Fields copied from the model, not guessed: `TaskSpec` has NO `task_id` and REQUIRES
+    # `ref_src_sha`. A first version invented `task_id=` and omitted the sha, and pydantic said so
+    # loudly -- which is the good case; the quiet version of this mistake is a reader that returns
+    # None for a field that does not exist.
+    o.task = TaskSpec(level=3, problem_id=48, name="48_Mamba2ReturnY",
+                      ref_path=Path("ref.py"), ref_src_sha="0" * 64)
     return o
 
 
