@@ -990,3 +990,82 @@ def test_the_floor_from_flag_actually_reaches_the_floor_measurement(tmp_path, ca
         # The flag and its value must NOT survive into the positional arguments, or the second arm
         # would be a glob string and the treatment report would be built from a nonexistent path.
         assert "--floor-from" not in out
+
+
+# --------------------------------------------------------------------------------------------------
+# Search effort: config parity is necessary and not sufficient, and the per-candidate reading of it
+# raises a false alarm on a correct run
+# --------------------------------------------------------------------------------------------------
+
+
+def _trial_in(space: str, cand: str, seq: int) -> dict:
+    return {"type": "TRIAL_DONE", "payload": {"trial": {
+        "trial_id": "t%d" % seq, "candidate_id": cand, "space_id": space, "status": "complete",
+        "params": {"values": {}},
+        "latency_ms": {"mean": 1.0, "median": 1.0, "std": 0.0, "min": 1.0, "max": 1.0,
+                       "n_samples": 20}}}}
+
+
+def _run_with_budget(tmp_path: Path, name: str, events: list, budget: int = 40) -> Path:
+    d = tmp_path / name
+    d.mkdir(parents=True)
+    (d / "manifest.json").write_text(
+        json.dumps({"config": {"budgets": {"trials_per_space": budget}}}), encoding="utf-8")
+    with (d / "events.jsonl").open("w", encoding="utf-8") as fh:
+        for i, e in enumerate(events):
+            fh.write(json.dumps({"seq": i, "ts": 1789000000.0 + i, **e}) + "\n")
+    return d
+
+
+def test_two_spaces_of_40_on_one_candidate_is_NOT_a_budget_overrun(tmp_path):
+    """The false alarm this check exists to avoid. Measured on the live pair: five candidates on each
+    arm show 80 trials against `trials_per_space: 40`, which reads as a 2x overrun until the counts are
+    grouped by space -- every space is at exactly 40 and a K-expansion publishes a SECOND space for the
+    same candidate. The budget field is named `trials_per_space`.
+    """
+    evs = ([_trial_in("sp-a", "cand-1", i) for i in range(40)]
+           + [_trial_in("sp-b", "cand-1", 100 + i) for i in range(40)]
+           + [{"type": "SPACE_PUBLISHED", "payload": {"space": {"space_id": "sp-a",
+                                                               "candidate_id": "cand-1"}}},
+              {"type": "SPACE_EXPANDED", "payload": {"candidate_id": "cand-1", "knobs": ["BM"]}},
+              {"type": "SPACE_PUBLISHED", "payload": {"space": {"space_id": "sp-b",
+                                                               "candidate_id": "cand-1"}}}])
+    out = check_wrapup.check_search_effort(_run_with_budget(tmp_path, "run-x", evs))
+    assert out["trials"] == 80 and out["spaces"] == 2
+    assert out["max_per_space"] == 40
+    assert out["spaces_over_budget"] == {}, "80 trials over 2 spaces of 40 is not an overrun"
+    assert out["verdict"].startswith("PASS"), out["verdict"]
+    assert out["spaces_per_candidate"] == {2: 1}
+    assert out["spaces_expanded"] == 1
+
+
+def test_a_single_space_over_the_budget_IS_reported(tmp_path):
+    """The other direction has to fire, or the check is decoration: 41 trials in ONE space is a real
+    overrun and breaks parity on search effort."""
+    evs = [_trial_in("sp-a", "cand-1", i) for i in range(41)]
+    out = check_wrapup.check_search_effort(_run_with_budget(tmp_path, "run-y", evs))
+    assert out["spaces_over_budget"] == {"sp-a": 41}
+    assert "BUDGET OVERRUN" in out["verdict"], out["verdict"]
+
+
+def test_search_effort_reads_the_budget_from_the_manifest_not_a_default(tmp_path):
+    """A hard-coded 40 would pass on a run configured for 20. The budget must come from the run."""
+    evs = [_trial_in("sp-a", "cand-1", i) for i in range(30)]
+    out = check_wrapup.check_search_effort(_run_with_budget(tmp_path, "run-z", evs, budget=20))
+    assert out["budget"] == 20
+    assert out["spaces_over_budget"] == {"sp-a": 30}, "30 > the configured 20 must be an overrun"
+
+
+def test_search_effort_with_no_manifest_still_reports_the_counts(tmp_path):
+    """No manifest means no budget to compare against -- but the counts are still worth printing, and
+    an unreadable manifest must not be reported as an overrun of an unknown budget."""
+    d = tmp_path / "run-nomanifest"
+    d.mkdir()
+    with (d / "events.jsonl").open("w", encoding="utf-8") as fh:
+        for i in range(5):
+            fh.write(json.dumps({"seq": i, "ts": 1.0 + i, **_trial_in("sp-a", "c", i)}) + "\n")
+    out = check_wrapup.check_search_effort(d)
+    assert out["budget"] is None
+    assert out["trials"] == 5 and out["spaces"] == 1
+    assert out["spaces_over_budget"] == {}
+    assert out["verdict"].startswith("PASS"), out["verdict"]

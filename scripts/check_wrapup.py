@@ -234,6 +234,72 @@ def check_arm_parity(control_dir: Path, treatment_dir: Path) -> dict:
             "same_environment": same_env}
 
 
+def check_search_effort(run_dir: Path) -> dict:
+    """How much search each arm actually spent, grouped BY SPACE.
+
+    Config parity is necessary and not sufficient: `equal-configs-do-not-imply-equal-search` records a
+    pair whose configs matched exactly while one arm did 1.76x the trials of the other -- and the ratio
+    turned out to be a single agent timeout, not a real difference, which is why this reports the
+    distribution rather than a ratio.
+
+    GROUPED BY `space_id`, because a per-candidate count invites a false alarm. Measured on the live
+    pair: five candidates on box 1 and five on box 2 each show **80** trials against
+    `trials_per_space: 40`, which reads as a 2x budget overrun until the grouping is applied -- every
+    space is at exactly 40 and a K-expansion publishes a SECOND space for the same candidate. The
+    budget field is literally named `trials_per_space`. So the number to check is the per-space max,
+    and a per-candidate max is the wrong reading of a correct run.
+
+    Reports the per-space counts, how many spaces exceeded the configured budget (should be 0), and
+    the spaces-per-candidate distribution, which is where a real asymmetry in K-expansion would show.
+    """
+    budget = None
+    try:
+        man = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+        budget = ((man.get("config") or {}).get("budgets") or {}).get("trials_per_space")
+    except Exception:  # noqa: BLE001
+        pass
+
+    per_space: dict[str, int] = {}
+    spaces_of: dict[str, set] = {}
+    for e in _events(run_dir):
+        if e.get("type") != "TRIAL_DONE":
+            continue
+        t = (e.get("payload") or {}).get("trial") or {}
+        sid, cid = t.get("space_id"), t.get("candidate_id")
+        if not sid:
+            continue
+        per_space[sid] = per_space.get(sid, 0) + 1
+        spaces_of.setdefault(cid or "", set()).add(sid)
+
+    counts = sorted(per_space.values(), reverse=True)
+    over = {s: n for s, n in per_space.items() if budget and n > budget}
+    # SPACE_PUBLISHED nests its fields under `payload.space`; read from the emitter, not a guess.
+    n_published = n_expanded = 0
+    for e in _events(run_dir):
+        if e.get("type") == "SPACE_PUBLISHED":
+            n_published += 1
+        elif e.get("type") == "SPACE_EXPANDED":
+            n_expanded += 1
+    dist: dict[int, int] = {}
+    for cid, s in spaces_of.items():
+        dist[len(s)] = dist.get(len(s), 0) + 1
+
+    if not counts:
+        verdict = "no trial has recorded a space_id yet"
+    elif over:
+        verdict = ("**BUDGET OVERRUN** -- %d space(s) exceeded trials_per_space=%s, worst %d. This "
+                   "breaks arm parity on search effort" % (len(over), budget, max(over.values())))
+    else:
+        verdict = ("PASS -- %d space(s), %d trials, max %d per space against trials_per_space=%s"
+                   % (len(per_space), sum(counts), counts[0], budget))
+    return {"trials": sum(counts), "spaces": len(per_space), "budget": budget,
+            "max_per_space": counts[0] if counts else 0,
+            "spaces_over_budget": over,
+            "spaces_per_candidate": dist,
+            "spaces_published": n_published, "spaces_expanded": n_expanded,
+            "verdict": verdict}
+
+
 def compare_arms(control: dict, treatment: dict, noise_floor_pct: float) -> str:
     """J2-5: treatment must not be worse than control beyond the task's measured noise floor."""
     c = control["final_reeval_ms"]
@@ -845,6 +911,14 @@ def main(argv: list[str]) -> int:
             print("      all differing config keys (%d):" % len(parity["differing"]))
             for k, (a, b) in list(parity["differing"].items())[:10]:
                 print("        %-44s %r  vs  %r" % (k, a, b))
+        # Equal configs do not imply equal search: a recorded pair matched on every config key while
+        # one arm ran 1.76x the trials. Grouped BY SPACE, because a per-candidate count reads as a 2x
+        # overrun on a correct run -- K-expansion publishes a second space for the same candidate.
+        for name, d in (("control", Path(argv[0])), ("treatment", Path(argv[1]))):
+            se = check_search_effort(d)
+            print("      search effort (%s): %s" % (name, se["verdict"]))
+            print("        spaces per candidate %s ; published %d, expanded %d"
+                  % (se["spaces_per_candidate"], se["spaces_published"], se["spaces_expanded"]))
         print()
         # The tolerance: 2.35% is `1 - 0.9765`, a frac_within_tol (CORRECTNESS) figure reused as a
         # latency tolerance. Measure the latency floor from these runs too and use the WIDER of the

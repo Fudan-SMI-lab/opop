@@ -131,14 +131,24 @@ Secondary, and each sufficient on its own:
 
 ## What this costs the experiment, stated plainly
 
-Box 2 reached round 1 and its ledger entry is pooled, so **round 2's rewriter prompt will carry one
-pooled entry** — measured, not projected. That is a real, bounded cost to S2d(c)'s *prompt-quality*
-evidence: the round-2 prompt will tell H2 that 5 of its 6 correct predictions were wrong, which is the
-failure mode that makes wrong feedback worse than none. It is the price of not destroying S2d(b)'s
-*declaration* evidence, which a resume would have erased.
+Box 2 reached round 1 for `fam-efd15aa9` and its ledger entry is pooled. **The pooled entry has not
+reached any prompt yet, and may never** — measured, not assumed:
 
-S2d(a) (declarations made before measurement) is unaffected — the 16 declarations are journalled per
-candidate and correct. The reconciliation arithmetic is unaffected and, as shown above, fully
+The next rewriter call after it (12:39:41 → 12:49:26) was for **`fam-004d2810`, a different family**,
+and `ledger_entries=self.ledger.get(family_id, [])` is keyed per family, so it correctly received an
+empty ledger. Verified on disk: both rewriter sandboxes contain `failed_hypotheses.json` (2 bytes,
+`[]`) and **no `prediction_ledger.md`**, on an arm with `expectation_ledger: true`. That absence is
+correct behaviour, not the switch failing — a family must not be shown another family's predictions.
+
+So the cost lands only if `fam-efd15aa9` gets a **second** rewrite round before the wall clock. With
+4.57 h left and ~1.46 h to finish the two round-2 candidates now tuning, that is possible but not
+certain, and it depends on which family the convergence logic picks next. **If it happens, that one
+prompt will tell H2 that 5 of its 6 correct predictions were wrong** — the failure mode that makes
+wrong feedback worse than none. If it does not, the defect costs this pair nothing at all beyond a
+mislabelled log entry that is re-derivable.
+
+Either way S2d(a) (declarations made before measurement) is unaffected — the 16 declarations are
+journalled per candidate and correct. The reconciliation arithmetic is unaffected and fully
 re-derivable: **for the paper, report the re-derived per-candidate table, not the journalled entry**,
 and cite the `rel`-appears-twice fingerprint as the reason the journalled one is known to be pooled.
 
