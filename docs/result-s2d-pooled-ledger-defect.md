@@ -70,11 +70,18 @@ under suspicion was the innocent one.
 The stronger reason is not cost:
 
 **A restart would destroy the very declarations at issue.** `_restore_family_control_state` rebuilds
-`self.ledger` from `EXPECTATIONS_RECONCILED`, but **nothing rebuilds `round_expectations`** — the
+`self.ledger` from `EXPECTATIONS_RECONCILED`, but **nothing rebuilt `round_expectations`** — the
 in-flight buffer. Box 2's 16 declarations, journalled in `REWRITE_PRODUCED` at 10:40:31 and the only
 production declaration set S2d has, live in memory alone. Resuming would reconcile the round against
 an empty buffer: `n_declared=0`, no hits, no misses. The fix's own purpose would be defeated by
 applying it.
+
+> **That resume gap has since been fixed too** (`57be4df`) — declarations are now restored from
+> `REWRITE_PRODUCED` for any candidate with no `EXPECTATIONS_RECONCILED` of its own, and a comment
+> claiming both structures restored from the same event was simply wrong. It does **not** change the
+> decision for these three runs: the fix is driver-side, so the *already-running* orchestrators still
+> hold the old code and would still lose the buffer on restart. It removes the hazard for the next
+> run, not for this one.
 
 Secondary, and each sufficient on its own:
 
