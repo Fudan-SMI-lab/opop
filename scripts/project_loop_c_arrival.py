@@ -121,8 +121,14 @@ def read(rd: Path, n_seeds: int) -> dict:
 
 
 def report(lbl: str, r: dict) -> None:
+    # POOLED counts, and the pair does NOT satisfy `classifications == expansions + 1`: that
+    # invariant is PER CANDIDATE, and pooling adds the in-flight candidate's half-finished state
+    # (classified once, not yet expanded, or the reverse). Box 1 read "5 classifications over 3
+    # expansions" while all three of its per-candidate rows were exactly cls == exp + 1. Labelled
+    # as pooled so the pair is not read as a violated invariant -- which is how I first read it.
     print("%-10s elapsed %.2f h   candidates DONE %d of %d   (%d classifications over %d "
-          "expansions -- classification fires twice per expanded candidate)" % (
+          "expansions, POOLED -- the cls == exp + 1 invariant is per candidate, and pooling "
+          "includes the in-flight one)" % (
               lbl, r["elapsed_h"], r["done"], r["n_seeds"], r["classifications"],
               r["expansions"]))
     if r["rounds"]:
