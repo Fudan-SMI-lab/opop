@@ -78,3 +78,43 @@ call; no `FAMILY_ROUND_RECORDED` exists yet on either arm, so there is no rewrit
 The endpoint comparison remains what `docs/result-arms-converge-to-the-same-answer.md` records — both
 arms independently reached bf16/plain, 0.83% apart — which is a statement about the *tuning* phase,
 before either arm had seen a rewriter prompt at all.
+
+## Correction: the control arm is NOT the number-free arm — it gets MORE numbers
+
+Recorded after reading both documents field by field, because the earlier version of this file
+described only the section headings and left the wrong impression.
+
+The control document's `## Verdict` section is followed by `### The numbers behind it`: a **raw dump of
+31-32 `- \`key\` = value` lines** — `n_regs`, `n_spills`, `occupancy`, `occupancy_limiter`,
+`shared_headroom_bytes`, `shared_used_frac`, `reg_headroom_per_thread`, `achieved_tflops`,
+`pct_of_compute_peak`, `pct_of_dram_peak`, `arithmetic_intensity`, `peak_alloc_mib`, and more. The
+treatment documents carry **zero** such lines. Counted across every document on disk:
+**8 of 8 control docs carry 31 or 32 raw metric lines; 10 of 10 treatment docs carry 0.** Clean
+separation, no overlap, both directions.
+
+| | control (`label`) | treatment (`vector`) |
+|---|---|---|
+| raw `key = value` metric lines | **31-32**, in 8 of 8 docs | **0**, in 10 of 10 docs |
+| per-dimension judgements (binding/slack, with polarity) | 0 | 8 |
+| explicit "not derivable" refusals | 0 | 2 (`n_regs`, `shared_bytes` room) |
+| a single scalar verdict | `resource_limited` + prose | — |
+
+So the independent variable is **judgement instead of a raw dump**, not *numbers versus no numbers*,
+and the treatment arm is the one given LESS raw data. That is the KernelPro contrast the design cites
+— their raw-counter arm reached 1.77x against 3.35x for no feedback at all — and it makes the
+hypothesis falsifiable in the honest direction: if the vector is merely a lossy summary, the control
+arm should win.
+
+### A measurement that misled me, and why it is not evidence
+
+Counting reasons that contain the word "measured" or a `before -> after` pair gives control 6 and
+treatment 0. That looked like the control arm citing observations and the treatment reasoning
+qualitatively — the opposite of the intended effect. It is not: the control's `measured 49152->24576`
+is the agent's **own arithmetic** over tile shapes and dtypes (its document contains neither number;
+`grep -c 49152` returns 0 across all 8 analyst docs). What it did have was `shared_headroom_bytes =
+52224` and the 49152 static cap, from which those figures are derivable.
+
+So the keyword count measured PROSE STYLE, not information. Recorded because it is the same shape as
+the recorded `cross-dimension argmax` error — a statistic that tracks the presentation rather than the
+quantity — and because a style difference between the arms is real but must not be reported as an
+information difference.
