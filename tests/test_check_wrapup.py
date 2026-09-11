@@ -304,6 +304,69 @@ def test_the_precision_mismatch_is_read_from_the_top_level_field(tmp_path):
         "a precision mismatch that fired was not attributed to its candidate")
 
 
+_WALL_BATCH = {"type": "WALL_CLOCK_REACHED", "payload": {
+    "elapsed_hours": 13.51, "budget_hours": 12.0, "pipelined": 1, "skipped": 1,
+    "detail": "wall clock reached; the remaining candidates in this batch were not tuned."}}
+_WALL_ROUND = {"type": "WALL_CLOCK_REACHED", "payload": {
+    "elapsed_hours": 13.51, "budget_hours": 12.0, "round": 2,
+    "stopped_before_family": "fam-1402fc69",
+    "detail": "wall clock reached mid-round; ending this round here."}}
+
+
+def test_a_budget_stop_with_rounds_does_not_claim_loop_c_never_ran(tmp_path):
+    """The bug my first draft had, caught on the corpus run.
+
+    `_pipeline_batch` is called for the SEED batch AND from inside Loop C for rewrite candidates, so
+    a `skipped`-shaped stop does NOT mean the seed pipeline ran out of time. The corpus run
+    `run-l3-43-20260909-015247` fired exactly that stop at 13.51 h and has 5 FAMILY_ROUND_RECORDED.
+    Inferring the loop from the payload shape asserted the opposite of the truth.
+    """
+    d = _write_run(tmp_path, [_ROUND_WITH_CONV, _WALL_BATCH, _WALL_ROUND])
+    out = check_wrapup.check_budget_stop(d)
+    assert out["reached_loop_c"] is True
+    assert out["rounds"] == 1
+    assert "Loop C DID run" in out["verdict"]
+    assert "never got there" not in out["verdict"]
+    # And it must say the round count is clock-limited, not a convergence result.
+    assert "floor" in out["verdict"]
+
+
+def test_a_budget_stop_with_no_rounds_overrides_not_yet_decidable(tmp_path):
+    """With no round AND a budget stop, `NOT YET DECIDABLE` is wrong: it IS decided, the answer is
+    that the run never reached Loop C. This is the box-3 risk case."""
+    d = _write_run(tmp_path, [_BASELINE, _TRIAL_OK, _WALL_BATCH])
+    out = check_wrapup.check_budget_stop(d)
+    assert out["reached_loop_c"] is False
+    assert "never got there" in out["verdict"]
+    assert "1 candidate(s) were tuned and 1 skipped" in out["verdict"]
+    assert "stay registered" in out["verdict"], (
+        "a reader has to know the skipped candidates are recoverable by a resume")
+
+
+def test_both_emission_sites_are_recognised(tmp_path):
+    """Two sites with different payload keys. A reader keyed on one drops the other silently."""
+    d = _write_run(tmp_path, [_WALL_BATCH, _WALL_ROUND])
+    out = check_wrapup.check_budget_stop(d)
+    assert {s["site"] for s in out["stops"]} == {"candidate batch", "rewrite round"}
+    assert len(out["stops"]) == 2
+
+
+def test_no_budget_stop_is_reported_as_absence(tmp_path):
+    d = _write_run(tmp_path, [_BASELINE, _TRIAL_OK])
+    out = check_wrapup.check_budget_stop(d)
+    assert out["stops"] == []
+    assert "no wall-clock stop" in out["verdict"]
+    assert "BUDGET STOPPED" not in out["verdict"]
+
+
+def test_the_overrun_percentage_is_reported(tmp_path):
+    """13.51 h against a 12.0 h budget is a 13% overrun, and the recorded finding is that the wall
+    clock is always the binding budget -- so the size of the overrun is the number that matters."""
+    d = _write_run(tmp_path, [_WALL_BATCH])
+    out = check_wrapup.check_budget_stop(d)
+    assert "13% over" in out["verdict"], out["verdict"]
+
+
 # --- reader 3b: S2d's ledger, where an event stream can look healthy and say nothing -----------
 
 _RECON_REAL = {"type": "EXPECTATIONS_RECONCILED", "payload": {

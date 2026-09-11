@@ -122,6 +122,67 @@ VARIANTS: list[tuple[str, Path, str, str, list[str], str]] = [
         "silence from it is indistinguishable from a clean result",
     ),
     (
+        "THE REAL BUG #4: the loop inferred from the WALL_CLOCK_REACHED payload shape",
+        CHK,
+        "    if rounds == 0:\n"
+        "        tail = (\" NO rewrite round ever ran, so a zero in check 1 means 'the run never "
+        "got there' \"",
+        "    if any(s[\"site\"] == \"candidate batch\" for s in stops):\n"
+        "        tail = (\" NO rewrite round ever ran, so a zero in check 1 means 'the run never "
+        "got there' \"",
+        ["test_a_budget_stop_with_rounds_does_not_claim_loop_c_never_ran"],
+        "the fourth bug this script had, caught on the corpus run within a minute of writing it. "
+        "`_pipeline_batch` is called for the SEED batch AND from inside Loop C for rewrite "
+        "candidates, so a `skipped`-shaped stop does NOT mean the seed pipeline ran out of time. "
+        "`run-l3-43-20260909-015247` fired exactly that stop at 13.51 h AND has 5 "
+        "FAMILY_ROUND_RECORDED, the last landing in the same second. Inferring the loop from the "
+        "payload shape asserts the opposite of the truth on the first real run it sees",
+    ),
+    (
+        "a budget stop with no rounds still reported as 'not yet decidable'",
+        CHK,
+        "    if rounds == 0:\n"
+        "        tail = (\" NO rewrite round ever ran",
+        "    if False:\n"
+        "        tail = (\" NO rewrite round ever ran",
+        ["test_a_budget_stop_with_no_rounds_overrides_not_yet_decidable"],
+        "reports the wrong meaning for a run the clock ENDED before Loop C. It is decided: the "
+        "answer is 'never got there', not 'not yet decidable'. This is box 3's live risk case -- its "
+        "projected 3.53-9.66 h for three remaining candidates against a 10.23 h budget -- so the "
+        "distinction decides how its G27 contribution is reported rather than being hypothetical. "
+        "(An earlier version of this variant patched the PRINT path in `report()`, which the test "
+        "does not exercise because it calls `check_budget_stop` directly -- measured, then moved to "
+        "the branch that actually produces the verdict string.)",
+    ),
+    (
+        "only one of the two emission sites recognised",
+        CHK,
+        "        site = \"candidate batch\" if \"skipped\" in p else (\n"
+        "            \"rewrite round\" if \"round\" in p else \"unknown site\")",
+        "        if \"skipped\" not in p:\n"
+        "            continue\n"
+        "        site = \"candidate batch\"",
+        ["test_both_emission_sites_are_recognised"],
+        "`WALL_CLOCK_REACHED` is emitted from `_pipeline_batch` (payload: pipelined/skipped) and "
+        "from `_rewrite_round` (payload: round/stopped_before_family). Handling one drops the other "
+        "SILENTLY, and the rewrite-round stop is the one that says a round count is clock-limited "
+        "rather than a convergence result",
+    ),
+    (
+        "the overrun size dropped from the verdict",
+        CHK,
+        "        over = \" (%.0f%% over)\" % (\n"
+        "            100.0 * (first[\"elapsed_hours\"] - first[\"budget_hours\"]) / "
+        "first[\"budget_hours\"])",
+        "        over = \"\"",
+        ["test_the_overrun_percentage_is_reported"],
+        "the recorded finding is that the wall clock is ALWAYS the binding budget, so by how much a "
+        "run overran it is the number that matters -- this corpus run exceeded its 12 h by 13%, "
+        "which means every per-run cost figure derived from the configured budget is an "
+        "underestimate. Without the percentage the verdict says a stop happened but not that the "
+        "budget failed to hold",
+    ),
+    (
         "tuned_ms silently substituted when the re-eval is missing",
         CHK,
         "    reeval = best.get(\"final_reeval_ms\")",

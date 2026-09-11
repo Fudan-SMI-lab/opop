@@ -322,17 +322,101 @@ def latency_floor_from_runs(*run_dirs: Path) -> tuple[float | None, str]:
         len(deltas), max(deltas))
 
 
+def check_budget_stop(run_dir: Path) -> dict:
+    """Did the wall clock cut the run short, and WHERE?
+
+    `WALL_CLOCK_REACHED` is emitted from two places with DIFFERENT payloads, and a reader that
+    handles one silently drops the other:
+
+      * `_pipeline_batch` -- between candidates. Payload has `pipelined` / `skipped`. The check is
+        `if i and ...`, i.e. per candidate and never mid-candidate, so the batch always finishes the
+        one it started and the skipped candidates stay REGISTERED for a resume with a larger budget.
+        Nothing is lost.
+      * `_rewrite_round` -- between families inside a round. Payload has `round` /
+        `stopped_before_family`.
+
+    THE PAYLOAD SHAPE DOES NOT TELL YOU WHICH LOOP. `_pipeline_batch` is called for the SEED batch
+    AND from inside Loop C for rewrite candidates, so a `skipped`-shaped stop does not mean the seed
+    pipeline ran out of time. Measured on the corpus run `run-l3-43-20260909-015247`: it fired a
+    `skipped: 1` stop at 13.51 h AND has 5 FAMILY_ROUND_RECORDED, with the last round landing in the
+    same second as the stop. A first draft of this reader asserted "Loop C was never reached" from
+    the payload shape alone and was wrong on the first real run it saw.
+
+    So the loop is inferred from whether any round exists, and the stop site only refines the
+    message. That distinction matters because it decides what a zero in check 1 means: with no
+    rounds AND a budget stop, `NOT YET DECIDABLE` is wrong -- it IS decided, the answer is "the run
+    never got there".
+    """
+    stops = []
+    rounds = 0
+    for e in _events(run_dir):
+        if e.get("type") == "FAMILY_ROUND_RECORDED":
+            rounds += 1
+            continue
+        if e.get("type") != "WALL_CLOCK_REACHED":
+            continue
+        p = e.get("payload") or {}
+        site = "candidate batch" if "skipped" in p else (
+            "rewrite round" if "round" in p else "unknown site")
+        stops.append({
+            "site": site,
+            "elapsed_hours": p.get("elapsed_hours"),
+            "budget_hours": p.get("budget_hours"),
+            "skipped_candidates": p.get("skipped"),
+            "pipelined_candidates": p.get("pipelined"),
+            "round": p.get("round"),
+            "stopped_before_family": p.get("stopped_before_family"),
+        })
+    if not stops:
+        return {"stops": [], "rounds": rounds, "reached_loop_c": rounds > 0,
+                "verdict": "no wall-clock stop recorded"}
+
+    first = stops[0]
+    over = ""
+    if isinstance(first["elapsed_hours"], (int, float)) and \
+            isinstance(first["budget_hours"], (int, float)) and first["budget_hours"]:
+        over = " (%.0f%% over)" % (
+            100.0 * (first["elapsed_hours"] - first["budget_hours"]) / first["budget_hours"])
+    head = "BUDGET STOPPED THE RUN at %s h of %s h%s, at %d site(s): %s." % (
+        first["elapsed_hours"], first["budget_hours"], over, len(stops),
+        ", ".join(sorted({s["site"] for s in stops})))
+
+    if rounds == 0:
+        tail = (" NO rewrite round ever ran, so a zero in check 1 means 'the run never got there' "
+                "-- not 'nothing converted', and not 'not yet decidable'.")
+        batch = [s for s in stops if s["site"] == "candidate batch"]
+        if batch:
+            tail += (" %s candidate(s) were tuned and %s skipped; the skipped ones stay registered, "
+                     "so a resume with a larger budget picks them up." % (
+                         batch[0]["pipelined_candidates"], batch[0]["skipped_candidates"]))
+    else:
+        tail = (" Loop C DID run (%d round(s)), so the round count is a floor set by the clock "
+                "rather than by convergence -- do not read it as 'the search finished'." % rounds)
+    return {"stops": stops, "rounds": rounds, "reached_loop_c": rounds > 0,
+            "verdict": head + tail}
+
+
 def report(run_dir: Path, label: str) -> dict:
     print("=" * 78)
     print("%s   %s" % (label, run_dir))
     print("=" * 78)
     conv = check_conversion(run_dir)
+    stop = check_budget_stop(run_dir)
+    print("\n[0] the wall clock -- did the budget cut this run short, and where?")
+    print("    => %s" % stop["verdict"])
+
     print("\n[1] G27 -- conversion's first production evidence")
     print("    rewrite rounds recorded ....... %d" % conv["rounds"])
     print("    carrying `conversion` ......... %d" % conv["with_conversion"])
     print("    carrying `resource_deltas` .... %d" % conv["with_resource_deltas"])
     print("    verdict distribution .......... %s" % (conv["verdicts"] or "-"))
-    print("    => %s" % conv["verdict"])
+    # A budget stop in the seed pipeline changes what a zero MEANS, so it must be said here and not
+    # only in section 0 -- this is the line a reader quotes.
+    if conv["rounds"] == 0 and stop["stops"]:
+        print("    => NOT 'not yet decidable': the budget ended this run before any rewrite round, "
+              "so it never had the chance to produce one. See [0].")
+    else:
+        print("    => %s" % conv["verdict"])
 
     fin = final_result(run_dir)
     print("\n[2] J2-5 -- the final result, on final_reeval_ms not tuned_ms")
