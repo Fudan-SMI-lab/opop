@@ -268,7 +268,21 @@ def check_reconciliation(run_dir: Path) -> dict:
     empty = 0
     failed = []
     declared_total = 0
-    verdict_kinds = collections.Counter()
+    # The REAL content of a ledger entry. `Reconciliation` (evaluation/reconcile.py) has NO
+    # `verdict`/`outcome`/`status` field -- an earlier version of this reader guessed those three
+    # names and would have printed "verdict kinds: -" on a fully working ledger, the same
+    # clean-zero-on-good-data shape as `FINAL_REEVAL_DONE` and the per-record S3 precision. What it
+    # actually carries is a per-dimension table plus counts:
+    #   hits / misses / vacuous     -- vacuous is the agent DECLINING to predict, not being wrong
+    #   dimensions_unpredicted      -- moved and was not mentioned ("you did not think of shared")
+    #   dimensions_unmeasured       -- declared but uncheckable, no reading on one side
+    # Those last two are named rather than counted on purpose, and the distinction between a miss
+    # (a judgement) and vacuous/unmeasured (no judgement possible) is the whole point of the ledger.
+    hits = misses = vacuous = 0
+    unpredicted = collections.Counter()
+    unmeasured = collections.Counter()
+    caveats = []
+    per_dim_rows = 0
     for e in _events(run_dir):
         t = e.get("type")
         p = e.get("payload") or {}
@@ -282,10 +296,16 @@ def check_reconciliation(run_dir: Path) -> dict:
             else:
                 declared_total += int(n)
             rec = p.get("reconciliation") or {}
-            for key in ("verdict", "outcome", "status"):
-                if key in rec:
-                    verdict_kinds[str(rec[key])] += 1
-                    break
+            hits += int(rec.get("hits") or 0)
+            misses += int(rec.get("misses") or 0)
+            vacuous += int(rec.get("vacuous") or 0)
+            per_dim_rows += len(rec.get("per_dimension") or ())
+            for d in (rec.get("dimensions_unpredicted") or ()):
+                unpredicted[d] += 1
+            for d in (rec.get("dimensions_unmeasured") or ()):
+                unmeasured[d] += 1
+            if rec.get("caveat"):
+                caveats.append(str(rec["caveat"])[:200])
         elif t == "EXPECTATIONS_RECONCILE_FAILED":
             failed.append(p.get("error", "")[:120])
     if rounds == 0:
@@ -300,15 +320,27 @@ def check_reconciliation(run_dir: Path) -> dict:
                    % entries)
     elif empty:
         verdict = "PARTIAL -- %d of %d entries are empty (n_declared=0)" % (empty, entries)
+    elif hits + misses == 0 and per_dim_rows:
+        # Declarations exist and every row is vacuous/unmeasured: the ledger ran and JUDGED
+        # nothing. Distinct from an empty ledger and easy to read as success from a count.
+        verdict = ("**NO JUDGEMENT** -- %d entries over %d rounds with %d declaration(s) and %d "
+                   "per-dimension row(s), but 0 hits and 0 misses: every row was vacuous or "
+                   "unmeasured, so nothing was actually checked" % (
+                       entries, rounds, declared_total, per_dim_rows))
     else:
-        verdict = "PASS -- %d entries over %d rounds, %d declarations reconciled" % (
-            entries, rounds, declared_total)
+        verdict = ("PASS -- %d entries over %d rounds, %d declarations reconciled, %d hit / %d "
+                   "miss / %d vacuous" % (entries, rounds, declared_total, hits, misses, vacuous))
     if failed:
         verdict += "  || %d RECONCILE_FAILED (silent by design -- a diagnostic must not end a " \
                    "round): %s" % (len(failed), failed[0])
     return {"rounds": rounds, "entries": entries, "empty_entries": empty,
             "declarations_reconciled": declared_total, "reconcile_failed": len(failed),
-            "verdict_kinds": dict(verdict_kinds), "verdict": verdict}
+            "hits": hits, "misses": misses, "vacuous": vacuous,
+            "per_dimension_rows": per_dim_rows,
+            "dimensions_unpredicted": dict(unpredicted),
+            "dimensions_unmeasured": dict(unmeasured),
+            "caveats": caveats[:3],
+            "verdict": verdict}
 
 
 def latency_floor_from_runs(*run_dirs: Path) -> tuple[float | None, str]:
@@ -495,8 +527,14 @@ def report(run_dir: Path, label: str) -> dict:
     print("    ledger entries ................ %d" % rec["entries"])
     print("    of which EMPTY (n_declared=0) .. %d" % rec["empty_entries"])
     print("    declarations reconciled ....... %d" % rec["declarations_reconciled"])
+    print("    per-dimension rows ............ %d" % rec["per_dimension_rows"])
+    print("    hit / miss / vacuous .......... %d / %d / %d   (vacuous = the agent DECLINED to "
+          "predict, not a wrong call)" % (rec["hits"], rec["misses"], rec["vacuous"]))
+    print("    moved but NOT predicted ....... %s" % (rec["dimensions_unpredicted"] or "none"))
+    print("    declared but UNMEASURABLE ..... %s" % (rec["dimensions_unmeasured"] or "none"))
     print("    RECONCILE_FAILED .............. %d" % rec["reconcile_failed"])
-    print("    verdict kinds ................. %s" % (rec["verdict_kinds"] or "-"))
+    for c in rec["caveats"]:
+        print("      caveat: %s" % c)
     print("    => %s" % rec["verdict"])
     print()
     return {"conversion": conv, "final": fin, "s3": s3, "reconciliation": rec}

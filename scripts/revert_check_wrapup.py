@@ -211,6 +211,49 @@ VARIANTS: list[tuple[str, Path, str, str, list[str], str]] = [
         "actually happened is three measurements of where the bottleneck is not",
     ),
     (
+        "THE REAL BUG #5: the ledger's content read through invented key names",
+        CHK,
+        "            hits += int(rec.get(\"hits\") or 0)\n"
+        "            misses += int(rec.get(\"misses\") or 0)\n"
+        "            vacuous += int(rec.get(\"vacuous\") or 0)",
+        "            for key in (\"verdict\", \"outcome\", \"status\"):\n"
+        "                if key in rec:\n"
+        "                    hits += 1\n"
+        "                    break",
+        ["test_a_real_ledger_entry_is_reported_as_pass"],
+        "the fifth bug of this shape, and the worst kind: `Reconciliation` "
+        "(evaluation/reconcile.py) has NO `verdict`/`outcome`/`status` field -- it carries "
+        "hits/misses/vacuous plus `dimensions_unpredicted` and `dimensions_unmeasured`. My FIXTURE "
+        "invented those three names too, so reader and test agreed on keys that do not exist and "
+        "the suite was green. On a real ledger it prints nothing and the entry looks contentless. "
+        "This is why a fixture has to come from the emitting code, not from the reader's "
+        "expectations. (Only the PASS test is named: the no-judgement test reads 0 hits either way, "
+        "since that entry has no invented key to find -- measured, not assumed.)",
+    ),
+    (
+        "a ledger that judged nothing rounded up to PASS",
+        CHK,
+        "    elif hits + misses == 0 and per_dim_rows:",
+        "    elif False:",
+        ["test_a_ledger_that_judged_nothing_is_not_reported_as_pass"],
+        "declarations exist, entries exist, per-dimension rows exist -- and 0 hits with 0 misses "
+        "means every row was vacuous (the agent declined to predict) or unmeasured (no reading on "
+        "one side). From counts alone that is indistinguishable from a working ledger, and it is a "
+        "third distinct failure mode beside 'no entries' and 'all entries empty'",
+    ),
+    (
+        "the unpredicted/unmeasured dimensions counted instead of named",
+        CHK,
+        "            for d in (rec.get(\"dimensions_unpredicted\") or ()):\n"
+        "                unpredicted[d] += 1",
+        "            unpredicted[\"(count only)\"] += len(rec.get(\"dimensions_unpredicted\") or ())",
+        ["test_a_real_ledger_entry_is_reported_as_pass"],
+        "reconcile.py keeps these as NAMED tuples deliberately: 'you did not think of shared "
+        "memory' is a different sentence from 'you were wrong about it'. Collapsing them to a count "
+        "throws away which dimension the rewriter is blind to, which is the one thing the ledger "
+        "could tell the next round",
+    ),
+    (
         "tuned_ms silently substituted when the re-eval is missing",
         CHK,
         "    reeval = best.get(\"final_reeval_ms\")",

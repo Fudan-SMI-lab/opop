@@ -424,13 +424,46 @@ def test_the_unknown_conversion_shape_has_no_resource_keys(tmp_path):
 
 # --- reader 3b: S2d's ledger, where an event stream can look healthy and say nothing -----------
 
+# The REAL `Reconciliation` shape (evaluation/reconcile.py), not a guess. It has NO
+# `verdict`/`outcome`/`status` field -- my first fixture invented `{"verdict": "confirmed",
+# "checked": 2}` and the reader was written to match the fixture, so both agreed on keys that do
+# not exist and would have printed "verdict kinds: -" on a working ledger.
 _RECON_REAL = {"type": "EXPECTATIONS_RECONCILED", "payload": {
     "family_id": "f1", "round": 1, "id": "h1", "change": "fuse the projections",
-    "reconciliation": {"verdict": "confirmed", "checked": 2},
+    "reconciliation": {
+        "hypothesis_id": "h1",
+        "per_dimension": [
+            {"dimension": "n_regs", "expected": "down", "actual": "down", "match": "hit",
+             "before": 255.0, "after": 168.0, "delta": -87.0, "rel": 0.3412,
+             "unit": "registers/thread", "why": "declared down, measured down"},
+            {"dimension": "shared_bytes", "expected": "down", "actual": "flat", "match": "miss",
+             "before": 12288.0, "after": 12288.0, "delta": 0.0, "rel": 0.0,
+             "unit": "bytes", "why": "declared down, did not move"},
+        ],
+        "hits": 1, "misses": 1, "vacuous": 0,
+        "dimensions_unpredicted": ["n_spills"],
+        "dimensions_unmeasured": [],
+        "caveat": ""},
     "conversion": "improved", "latency_gain_pct": 3.4, "n_declared": 2}}
 _RECON_EMPTY = {"type": "EXPECTATIONS_RECONCILED", "payload": {
     "family_id": "f1", "round": 1, "id": "(no hypothesis id)", "change": "",
     "reconciliation": {}, "conversion": "improved", "n_declared": 0}}
+# Declarations exist but every row is vacuous: the ledger ran and JUDGED nothing. `vacuous` is the
+# agent declining to predict, which is distinct from a miss (a judgement) and from unmeasured.
+_RECON_NO_JUDGEMENT = {"type": "EXPECTATIONS_RECONCILED", "payload": {
+    "family_id": "f1", "round": 1, "id": "h2", "change": "retile",
+    "reconciliation": {
+        "hypothesis_id": "h2",
+        "per_dimension": [
+            {"dimension": "n_regs", "expected": "unknown", "actual": "down", "match": "vacuous",
+             "unit": "registers/thread", "why": "no direction declared"},
+            {"dimension": "occupancy", "expected": "up", "actual": "unknown",
+             "match": "unmeasured", "unit": "fraction", "why": "no reading after"},
+        ],
+        "hits": 0, "misses": 0, "vacuous": 1,
+        "dimensions_unpredicted": [], "dimensions_unmeasured": ["occupancy"],
+        "caveat": "one dimension could not be read on both sides"},
+    "conversion": "flat", "latency_gain_pct": 0.1, "n_declared": 2}}
 _RECON_FAILED = {"type": "EXPECTATIONS_RECONCILE_FAILED", "payload": {
     "family_id": "f1", "round": 1, "error": "KeyError: 'direction'"}}
 
@@ -447,11 +480,34 @@ def test_an_all_empty_ledger_is_not_reported_as_working(tmp_path):
 
 
 def test_a_real_ledger_entry_is_reported_as_pass(tmp_path):
+    """Against the REAL `Reconciliation` fields: hits/misses/vacuous plus the two named tuples."""
     d = _write_run(tmp_path, [_ROUND_WITH_CONV, _RECON_REAL])
     out = check_wrapup.check_reconciliation(d)
     assert out["verdict"].startswith("PASS")
     assert out["declarations_reconciled"] == 2
-    assert out["verdict_kinds"] == {"confirmed": 1}
+    assert (out["hits"], out["misses"], out["vacuous"]) == (1, 1, 0)
+    assert out["per_dimension_rows"] == 2
+    # Named, not merely counted: "you did not think of spills" is a different sentence from
+    # "you were wrong about it", which is why reconcile.py keeps them as separate tuples.
+    assert out["dimensions_unpredicted"] == {"n_spills": 1}
+    assert out["dimensions_unmeasured"] == {}
+
+
+def test_a_ledger_that_judged_nothing_is_not_reported_as_pass(tmp_path):
+    """Declarations exist and every row is vacuous or unmeasured: the ledger RAN and checked
+    nothing. From counts alone this looks identical to a working ledger -- n_declared is 2, there is
+    an entry, there are per-dimension rows -- but 0 hits and 0 misses means no judgement was made.
+    `vacuous` is the agent declining to predict; `unmeasured` is no reading on one side; only a
+    hit or a miss is an actual check."""
+    d = _write_run(tmp_path, [_ROUND_WITH_CONV, _RECON_NO_JUDGEMENT])
+    out = check_wrapup.check_reconciliation(d)
+    assert out["declarations_reconciled"] == 2
+    assert out["per_dimension_rows"] == 2
+    assert (out["hits"], out["misses"]) == (0, 0)
+    assert "NO JUDGEMENT" in out["verdict"], out["verdict"]
+    assert not out["verdict"].startswith("PASS")
+    assert out["dimensions_unmeasured"] == {"occupancy": 1}
+    assert out["caveats"] and "both sides" in out["caveats"][0]
 
 
 def test_zero_ledger_entries_with_zero_rounds_is_not_a_defect(tmp_path):
