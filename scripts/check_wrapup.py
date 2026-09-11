@@ -202,6 +202,20 @@ def check_s3_s4(run_dir: Path) -> dict:
     mismatches = []
     below_floor = 0
     clamped_suspicion = 0
+    # WHICH dimensions, not just how many. The two counters print next to each other and on box 3 both
+    # read 2 -- from two DIFFERENT dimensions, which invites reading it as one clamped pair. Measured
+    # on `run-l3-48-20260911-052647`: `candidate_aten_bytes` is 1.074 GB against a 1.351 GB floor with
+    # room -277 MB and `below_floor=True` (reported negative, which is the guard WORKING), while
+    # `candidate_aten_ops` is 1.0 = floor 1.0 with room 0.0 and `below_floor=False` (a genuinely
+    # fully-fused candidate sitting at its floor, not a clamp).
+    #
+    # And the below-floor reading is not a physics violation: `candidate_aten_bytes` is an ATEN-LEVEL
+    # LOWER BOUND (dimensions.py:316 -- "a fused kernel under-reports"), while the floor is the task's
+    # compulsory traffic measured on the REFERENCE. A fully fused Triton kernel moves its bytes inside
+    # the kernel where aten cannot see them, so reading below the floor means THE CANDIDATE IS FUSED.
+    # Naming the dimension is what makes that legible instead of alarming.
+    below_floor_dims = collections.Counter()
+    clamped_dims = collections.Counter()
     dims = collections.Counter()
     identities = set()
     unreachable = collections.Counter()
@@ -234,9 +248,11 @@ def check_s3_s4(run_dir: Path) -> dict:
                 b = rec.get("bound") or {}
                 if b.get("below_floor"):
                     below_floor += 1
+                    below_floor_dims[rec.get("dimension_id")] += 1
                 # A reading at EXACTLY the floor with room 0.0 is what a clamp looks like.
                 if b.get("floor") is not None and b.get("room") == 0.0:
                     clamped_suspicion += 1
+                    clamped_dims[rec.get("dimension_id")] += 1
                 # `applicable` is load-bearing: a dimension with no polarity (threads_launched) is
                 # never "slack" in the shadow-price sense, and counting it would manufacture
                 # violations out of a dimension the theorem does not apply to.
@@ -304,6 +320,8 @@ def check_s3_s4(run_dir: Path) -> dict:
             "dimensions_judged_slack": sorted(slack_dims),
             "rounds_with_a_conversion_verdict": len(rounds_with_conversion),
             "below_floor_readings_reported": below_floor,
+            "below_floor_dimensions": dict(below_floor_dims),
+            "clamp_suspicion_dimensions": dict(clamped_dims),
             "readings_sitting_exactly_on_the_floor": clamped_suspicion,
             "unreachable_ceilings": dict(unreachable),
             "prompt_modes": dict(prompt_modes),
@@ -642,9 +660,16 @@ def report(run_dir: Path, label: str) -> dict:
     print("      dimensions judged slack ..... %s"
           % (", ".join(s3["dimensions_judged_slack"]) or "none"))
     print("      rounds with a verdict ....... %d" % s3["rounds_with_a_conversion_verdict"])
-    print("    below-floor readings REPORTED . %d" % s3["below_floor_readings_reported"])
-    print("    readings exactly on the floor . %d%s" % (
+    print("    below-floor readings REPORTED . %d%s" % (
+        s3["below_floor_readings_reported"],
+        ("   %s" % s3["below_floor_dimensions"]) if s3["below_floor_dimensions"] else ""))
+    print("      (candidate_aten_bytes below its floor means THE CANDIDATE IS FUSED: the reading is")
+    print("       an aten-level lower bound and a fused kernel moves bytes where aten cannot see")
+    print("       them, while the floor is measured on the reference. Reported, never clamped.)")
+    print("    readings exactly on the floor . %d%s%s" % (
         s3["readings_sitting_exactly_on_the_floor"],
+        ("   %s" % s3["clamp_suspicion_dimensions"])
+        if s3["clamp_suspicion_dimensions"] else "",
         "   <- inspect: this is what a clamp looks like"
         if s3["readings_sitting_exactly_on_the_floor"] else ""))
     print("    dimensions seen ............... %s" % (s3["dimensions_seen"] or "-"))
