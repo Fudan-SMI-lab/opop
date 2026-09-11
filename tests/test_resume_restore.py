@@ -23,6 +23,7 @@ def _orch(store: RunStore, families: FamilyManager) -> Orchestrator:
     orch.failed_hypotheses = {}
     orch.round_expectations = {}
     orch.ledger = {}
+    orch.round_hypotheses = {}
 
     class _Deps:
         pass
@@ -213,3 +214,168 @@ def test_a_rewrite_that_declared_nothing_restores_nothing(tmp_path):
 
     assert orch.round_expectations == {}
     assert "EXPECTATIONS_RESTORED" not in [e.type for e in store.replay().events]
+
+
+def test_the_rounds_attempted_hypotheses_are_restored_even_with_no_expectations(tmp_path):
+    """`round_hypotheses` decides which hypotheses a failed round may mark as failed, so losing it on
+    resume lets an idea nobody implemented be retired permanently.
+
+    Deliberately with an EMPTY expectations list: the two are independent, and a rewrite that declared
+    nothing still IMPLEMENTED its hypothesis.
+    """
+    store = RunStore.create(tmp_path, "run-r", {})
+    families = FamilyManager()
+    families.families["fam-1"] = Family(
+        family_id="fam-1", anchor_candidate_id="cand-1", member_ids=["cand-1"])
+    orch = _orch(store, families)
+
+    store.append("REWRITE_PRODUCED", _rewrite_produced("cand-a", "fam-1", "H1"))
+    store.append("REWRITE_PRODUCED", _rewrite_produced("cand-b", "fam-1", "H3"))
+    orch._restore_family_control_state()
+
+    assert orch.round_hypotheses["fam-1"] == {"H1", "H3"}
+
+
+def test_a_closed_round_does_not_leak_its_attempts_into_the_next(tmp_path):
+    """The retirement signal is END OF ROUND, not `HYPOTHESES_FAILED`.
+
+    `HYPOTHESES_FAILED` fires only when a round fails to IMPROVE. An improving round emits none, so
+    keying retirement on it would leave round 0's attempts in the set -- and then a genuinely untried
+    hypothesis in round 1 would look "attempted" and be markable as failed. That is the same
+    never-tried-marked-failed defect, arriving by a different route.
+    """
+    store = RunStore.create(tmp_path, "run-r", {})
+    families = FamilyManager()
+    families.families["fam-1"] = Family(
+        family_id="fam-1", anchor_candidate_id="cand-1", member_ids=["cand-1"])
+    orch = _orch(store, families)
+
+    # Round 0 IMPROVED: recorded, no HYPOTHESES_FAILED.
+    store.append("REWRITE_PRODUCED", _rewrite_produced("cand-a", "fam-1", "H1"))
+    store.append("FAMILY_ROUND_RECORDED", {"family_id": "fam-1", "best_ms": 3.0, "round": 0})
+    # Round 1 is in flight, and implemented only H2.
+    store.append("REWRITE_PRODUCED", _rewrite_produced("cand-b", "fam-1", "H2"))
+
+    orch._restore_family_control_state()
+
+    assert orch.round_hypotheses["fam-1"] == {"H2"}, (
+        "round 0's H1 must not still be in the set: round 1 never implemented it")
+
+
+def test_a_round_that_evaluated_nothing_also_retires_its_attempts(tmp_path):
+    """`FAMILY_ROUND_NOT_EVALUATED` closes a round too -- it consumed budget. Leaving the set behind
+    would carry a failed round's attempts into the next one."""
+    store = RunStore.create(tmp_path, "run-r", {})
+    families = FamilyManager()
+    families.families["fam-1"] = Family(
+        family_id="fam-1", anchor_candidate_id="cand-1", member_ids=["cand-1"])
+    orch = _orch(store, families)
+
+    store.append("REWRITE_PRODUCED", _rewrite_produced("cand-a", "fam-1", "H1"))
+    store.append("FAMILY_ROUND_NOT_EVALUATED", {"family_id": "fam-1", "round": 0, "best_ms": 3.0})
+
+    orch._restore_family_control_state()
+
+    assert orch.round_hypotheses.get("fam-1", set()) == set()
+
+
+# --------------------------------------------------------------------------------------------------
+# Which hypotheses a failed round may mark FAILED
+# --------------------------------------------------------------------------------------------------
+
+def _hyps(*ids):
+    from kernel_optimizer.models.reports import Hypothesis
+    return [Hypothesis(id=i, change="change %s" % i, expected_effect="faster") for i in ids]
+
+
+def test_a_failed_round_marks_only_the_hypotheses_it_implemented():
+    """Measured 3 of 3 on the rounds in the corpus that reached this branch:
+
+        fam-c4d585ab  rewriter produced H1,H2  ->  marked H1,H2,H3 failed  ->  H3 never tried
+        fam-d5c28c50  rewriter produced H1,H2  ->  marked H1,H2,H3 failed  ->  H3 never tried
+        fam-4e6e7d9e  rewriter produced H1,H1  ->  marked H1,H2   failed  ->  H2 never tried
+
+    The analyst proposes 2-4 and the rewriter implements 2, so the whole list is never the right
+    answer. `failed_hypotheses` is journalled, replayed, and read by the rewriter as "already tried,
+    did NOT help" -- so a wrong entry retires a live idea permanently, on the strength of a sibling
+    candidate's failure.
+    """
+    from kernel_optimizer.control.orchestrator import _split_attempted
+
+    tried, untried = _split_attempted(_hyps("H1", "H2", "H3"), {"H1", "H2"}, 1)
+    assert [t["id"] for t in tried] == ["H1", "H2"]
+    assert untried == ["H3"]
+    # The payload keeps the change text, which is what the rewriter actually reads.
+    assert tried[0]["change"] == "change H1" and tried[0]["round"] == 1
+
+
+def test_both_candidates_implementing_the_same_hypothesis_retires_only_that_one():
+    """`fam-4e6e7d9e` produced H1 twice. Two attempts at one idea is still evidence about one idea --
+    and H2, which the analyst proposed and nobody wrote, must survive."""
+    from kernel_optimizer.control.orchestrator import _split_attempted
+
+    tried, untried = _split_attempted(_hyps("H1", "H2"), {"H1"}, 2)
+    assert [t["id"] for t in tried] == ["H1"]
+    assert untried == ["H2"]
+
+
+def test_no_declared_hypothesis_id_leaves_the_list_untouched():
+    """Seen twice in the corpus: both candidates of a round carried `hypothesis_id: ""`.
+
+    With no declaration there is no basis for saying which idea was tried, so nothing is filtered and
+    the pre-fix behaviour stands. Over-marking is the lesser error HERE, and only here: the round did
+    fail, and its ideas came from this report. Marking none would lose the round's evidence as surely
+    as marking all of them fabricates it.
+    """
+    from kernel_optimizer.control.orchestrator import _split_attempted
+
+    tried, untried = _split_attempted(_hyps("H1", "H2", "H3"), set(), 0)
+    assert [t["id"] for t in tried] == ["H1", "H2", "H3"]
+    assert untried == []
+
+
+def test_an_attempt_naming_a_hypothesis_the_analyst_never_proposed_marks_nothing_extra():
+    """The rewriter is free to answer with an id of its own. That must not inject a hypothesis into
+    `failed_hypotheses` that has no `change` text -- the rewriter would read a blank entry."""
+    from kernel_optimizer.control.orchestrator import _split_attempted
+
+    tried, untried = _split_attempted(_hyps("H1", "H2"), {"H1", "H9"}, 3)
+    assert [t["id"] for t in tried] == ["H1"]
+    assert untried == ["H2"]
+
+
+def test_the_live_and_resume_paths_agree_on_the_attempt_set(tmp_path):
+    """`round_hypotheses` is populated TWICE by independent code: `_do_rewrite` fills it live from the
+    rewriter's answer, and `_restore_family_control_state` rebuilds it from `REWRITE_PRODUCED`. Two
+    readers of the same fact drift, and a drift here is silent -- the live run marks one set failed and
+    a resumed run marks another.
+
+    The live line needs a real rewriter agent to reach, so it cannot be driven directly. What CAN be
+    checked is that both derive the set from the same field of the same event: the resume path is run
+    for real, and the live path's contribution is reproduced from the events it would have written.
+    Asserting equality of the two is weaker than driving both, and it is stated as such rather than
+    dressed up -- but it is what catches the two paths reading different fields.
+    """
+    store = RunStore.create(tmp_path, "run-r", {})
+    families = FamilyManager()
+    families.families["fam-1"] = Family(
+        family_id="fam-1", anchor_candidate_id="cand-1", member_ids=["cand-1"])
+    orch = _orch(store, families)
+
+    events = [_rewrite_produced("cand-a", "fam-1", "H1", ("n_regs", "down")),
+              _rewrite_produced("cand-b", "fam-1", "H3")]
+    for p in events:
+        store.append("REWRITE_PRODUCED", p)
+
+    orch._restore_family_control_state()
+
+    # What the live path adds, per its own line: `hypothesis_id` of each produced rewrite.
+    live = {p["hypothesis_id"] for p in events}
+    assert orch.round_hypotheses["fam-1"] == live
+
+    # And the set feeds the filter identically either way.
+    from kernel_optimizer.control.orchestrator import _split_attempted
+    from_resume, _ = _split_attempted(_hyps("H1", "H2", "H3"),
+                                      {h for h in orch.round_hypotheses["fam-1"] if h}, 0)
+    from_live, _ = _split_attempted(_hyps("H1", "H2", "H3"), {h for h in live if h}, 0)
+    assert [t["id"] for t in from_resume] == [t["id"] for t in from_live] == ["H1", "H3"]

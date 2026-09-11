@@ -2304,38 +2304,70 @@ def test_report_distinguishes_failed_branch_from_unexplored_one(tmp_path):
     assert "never entered structural search" not in explored
 
 
-def test_failed_hypotheses_survive_resume():
+def test_failed_hypotheses_survive_resume(tmp_path):
     """The rewriter reads failed_hypotheses to avoid re-proposing a change already shown
     not to help. It was memory-only with no restore path, so a resumed run started with
     an empty set and could spend rewrite rounds -- the scarcest budget in the loop --
     re-testing known dead ends. Unlike best_history there was no reconstruction from
-    another stream; it is now journalled as HYPOTHESES_FAILED and restored alongside."""
+    another stream; it is now journalled as HYPOTHESES_FAILED and restored alongside.
+
+    BEHAVIOURAL. This test used to slice the source and assert on the text of a 1600-character
+    window after `best_after >= best_before`, and adding a comment inside that window broke it while
+    the code was correct -- the recorded `source-text-assertions-can-encode-the-bug` shape, arriving
+    as a false alarm rather than a false pass. It now drives the real restore.
+    """
+    pytest.importorskip("optuna")
+    from types import SimpleNamespace
+
+    from kernel_optimizer.control.families import FamilyManager
+    from kernel_optimizer.control.orchestrator import Orchestrator
+    from kernel_optimizer.models.core import Family
+    from kernel_optimizer.store.run_store import RunStore
+
+    store = RunStore.create(tmp_path, "run-fh", {})
+    families = FamilyManager()
+    families.families["fam-1"] = Family(
+        family_id="fam-1", anchor_candidate_id="cand-1", member_ids=["cand-1"])
+
+    orch = Orchestrator.__new__(Orchestrator)
+    orch.store = store
+    orch.runs = {}
+    orch.failed_hypotheses = {}
+    orch.round_expectations = {}
+    orch.round_hypotheses = {}
+    orch.ledger = {}
+    orch.deps = SimpleNamespace(families=families)
+
+    store.append("FAMILY_ROUND_RECORDED", {"family_id": "fam-1", "best_ms": 5.5, "round": 1})
+    store.append("HYPOTHESES_FAILED", {
+        "family_id": "fam-1", "round": 1,
+        "hypotheses": [{"id": "H1", "change": "split the reduction", "round": 1}]})
+
+    orch._restore_family_control_state()
+
+    assert orch.failed_hypotheses["fam-1"] == [
+        {"id": "H1", "change": "split the reduction", "round": 1}], \
+        "the rewriter must see the dead end again after a resume"
+    # Assigned, not extended: a second restore must not double the list.
+    orch._restore_family_control_state()
+    assert len(orch.failed_hypotheses["fam-1"]) == 1
+
+    # And the budget accounting from the same pass, which is the other half of why it exists.
+    assert families.families["fam-1"].rewrite_rounds_used == 1
+
+    # Restored BEFORE Loop C runs -- otherwise the first round of a resumed run rewrites with an
+    # empty list. Kept as an ordering check on `_run`'s body, and the `evaluated` guard with it,
+    # because neither is observable from outside without a live rewriter agent. Both are STRUCTURAL
+    # claims about which code runs when, not assertions about the text of a computation -- which is
+    # the distinction that makes the rest of this test behavioural.
     from pathlib import Path
-
     src = Path("src/kernel_optimizer/control/orchestrator.py").read_text(encoding="utf-8")
-
-    # Emitted where a round failed to improve. Anchored on the guard's tail rather than its
-    # full text: the condition gained an `evaluated and` prefix when non-evaluated rounds
-    # stopped counting as no-improvement rounds, and a test that pins the exact source line
-    # breaks on a correct change while telling you nothing about behaviour.
-    emit = src.split("best_after >= best_before")[1][:1600]
-    assert '"HYPOTHESES_FAILED"' in emit
-    assert '"hypotheses": tried' in emit
-    # Only when there is something to record.
-    assert "if tried:" in emit
-    # And ONLY when a rewrite was actually evaluated: marking a hypothesis failed after a
-    # round that never ran teaches the rewriter to avoid an idea nothing tested, permanently
-    # (failed_hypotheses is journalled and replayed).
-    guard = src.split("if evaluated and best_after >= best_before")
-    assert len(guard) == 2,         "the HYPOTHESES_FAILED guard must require that a rewrite was evaluated"
-
-    # Restored before Loop C, in the same place as the other memory-only control state.
-    restore = src.split("def _restore_family_control_state")[1].split("def _rewrite_round")[0]
-    assert 'ev.type == "HYPOTHESES_FAILED"' in restore
-    assert "self.failed_hypotheses[family_id] = hyps" in restore, \
-        "must assign, not extend, so a re-entry cannot double-count"
     run_body = src.split("def _run(")[1].split("\n    def ")[0]
     assert run_body.index("_restore_family_control_state") < run_body.index("_rewrite_round")
+    # ONLY when a rewrite was actually evaluated: marking a hypothesis failed after a round that
+    # never ran teaches the rewriter to avoid an idea nothing tested, permanently.
+    assert src.count("if evaluated and best_after >= best_before") == 1, \
+        "the HYPOTHESES_FAILED guard must require that a rewrite was evaluated"
 
 
 def test_replay_tolerates_the_new_event_type():

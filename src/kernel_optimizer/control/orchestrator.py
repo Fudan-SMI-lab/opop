@@ -462,6 +462,35 @@ class _DeclaredExpectations:
     candidate_id: str = ""
 
 
+def _split_attempted(hypotheses: list, attempted: set[str],
+                     round_no: int) -> tuple[list[dict], list[str]]:
+    """Which of the analyst's hypotheses a failed round may mark FAILED, and which it may not.
+
+    The analyst proposes 2-4; the rewriter implements `n_candidates` (2) of them and declares which in
+    `hypothesis_id`. So a round that did not improve is evidence about the ones that were IMPLEMENTED
+    and about nothing else -- and `failed_hypotheses` is journalled, replayed, and read by the rewriter
+    as "already tried, did NOT help", so a wrong entry retires a live idea permanently.
+
+    Measured on the three rounds in the corpus that reached this branch, every one buried an untried
+    idea: produced H1,H2 / marked H1,H2,H3 (twice), and produced H1,H1 / marked H1,H2.
+
+    An EMPTY `attempted` means no rewrite declared a hypothesis id -- seen twice in the corpus, where
+    both candidates of a round carried `hypothesis_id: ""`. Then nothing is filtered and the old
+    behaviour stands: with no declaration there is no basis for saying which idea was tried, and
+    silently marking none would lose the round's evidence just as surely as marking all of them
+    fabricates it. That is the one case where over-marking is the lesser error, because the round DID
+    fail and its ideas came from this report.
+
+    A module-level function, not a method, so it can be driven directly: the branch it serves needs a
+    live rewriter agent to reach, and a source-text assertion about it would pass on the defect --
+    which is exactly what the existing `test_failed_hypotheses_are_journalled_and_restored` did.
+    """
+    tried = [{"id": h.id, "change": h.change, "round": round_no}
+             for h in hypotheses if not attempted or h.id in attempted]
+    untried = [h.id for h in hypotheses if attempted and h.id not in attempted]
+    return tried, untried
+
+
 @dataclass
 class CandidateRun:
     """Per-candidate pipeline products kept in memory for the current run."""
@@ -527,6 +556,13 @@ class Orchestrator:
         # `EXPECTATIONS_RECONCILED` for their family and round.
         self.round_expectations: dict[str, list[_DeclaredExpectations]] = {}
         self.ledger: dict[str, list[dict]] = {}
+        # Which hypotheses the rewriter actually IMPLEMENTED this round, per family, so a round that
+        # did not improve marks only those as failed. The analyst proposes 2-4 and the rewriter
+        # implements `n_candidates` of them, so condemning the whole list retires ideas nobody wrote
+        # code for -- measured 3 of 3 on the rounds that reached that branch. Cleared at the end of
+        # the round, like `round_expectations`, and restored on resume from
+        # `REWRITE_PRODUCED.hypothesis_id` for the same reason.
+        self.round_hypotheses: dict[str, set[str]] = {}
         # S1b. One ledger per RUN, holding per-(candidate, knob, value) pass/fail evidence, so a
         # value's unconditional failure learned in one of a candidate's spaces acts from the first
         # trial of its next space. `None` when the switch is off, which is the pre-v3 behaviour.
@@ -2048,9 +2084,15 @@ class Orchestrator:
         for ev in state.events:
             if ev.type == "FAMILY_ROUND_RECORDED":
                 rounds.setdefault(ev.payload["family_id"], []).append(ev.payload)
+                # End of round: retire its attempt set, exactly as the live path pops it. NOT keyed on
+                # `HYPOTHESES_FAILED`, which only fires when a round fails to IMPROVE -- an improving
+                # round emits none, so its attempts would leak into the next round's set and let a
+                # genuinely untried idea there be marked failed as "attempted".
+                self.round_hypotheses.pop(ev.payload["family_id"], None)
             elif ev.type == "FAMILY_ROUND_NOT_EVALUATED":
                 fid = ev.payload["family_id"]
                 not_evaluated[fid] = not_evaluated.get(fid, 0) + 1
+                self.round_hypotheses.pop(fid, None)
             elif ev.type == "HYPOTHESES_FAILED":
                 restored.setdefault(
                     ev.payload["family_id"], []).extend(ev.payload["hypotheses"])
@@ -2076,6 +2118,14 @@ class Orchestrator:
                         ev.payload.get("hypothesis_id") or "",
                         str(ev.payload.get("change_summary") or "")[:300],
                         exps)
+                # Independent of expectations: a rewrite with none still implemented its hypothesis,
+                # and losing that on resume would let the idea be marked failed as an untried one.
+                # Retired by the same event as the declarations -- `HYPOTHESES_FAILED` means the round
+                # is closed and its attempt set has already been used.
+                fid = ev.payload.get("family_id") or ""
+                if fid:
+                    self.round_hypotheses.setdefault(fid, set()).add(
+                        ev.payload.get("hypothesis_id") or "")
             elif ev.type == "FAMILY_SEEDED":
                 seeded[ev.payload["family_id"]] = ev.payload["best_ms"]
         for family_id, hyps in restored.items():
@@ -2267,8 +2317,27 @@ class Orchestrator:
                 # idea that has no evidence against it, and permanently -- failed_hypotheses is
                 # journalled and replayed. An agent-failure round would otherwise burn every
                 # hypothesis the analyst had proposed.
-                tried = [{"id": hyp.id, "change": hyp.change, "round": round_no}
-                         for hyp in source_crun.report.hypotheses]
+                #
+                # AND THE SAME RULE APPLIES WITHIN A SUCCESSFUL ROUND, which is what `evaluated`
+                # alone missed. The analyst proposes 2-4 hypotheses; the rewriter answers with
+                # `n_candidates` (2) and picks which to implement, declaring the choice in
+                # `hypothesis_id`. Marking the analyst's WHOLE list failed therefore condemns the
+                # ones nobody wrote code for. Measured on the three runs that reached this branch,
+                # every one of them buried an untried idea:
+                #
+                #   fam-c4d585ab  produced H1,H2   marked H1,H2,H3 failed   -> H3 never tried
+                #   fam-d5c28c50  produced H1,H2   marked H1,H2,H3 failed   -> H3 never tried
+                #   fam-4e6e7d9e  produced H1,H1   marked H1,H2   failed    -> H2 never tried
+                #
+                # 3 of 3, and the loss is permanent and invisible: the rewriter reads
+                # `history/failed_hypotheses.json` as "already tried, did NOT help", so a live idea
+                # is retired on the strength of a sibling candidate's failure. `attempted` is taken
+                # from what the rewriter actually declared, and a hypothesis with no declaration
+                # (`hypothesis_id: ""`, seen twice in the corpus) leaves the list untouched rather
+                # than condemning everything -- no declaration is no evidence, in both directions.
+                attempted = {h for h in self.round_hypotheses.get(family.family_id, set()) if h}
+                tried, untried = _split_attempted(source_crun.report.hypotheses, attempted,
+                                                  round_no)
                 self.failed_hypotheses.setdefault(family.family_id, []).extend(tried)
                 # Journalled for the same reason as best_history: this is memory-only
                 # state that a resume would silently lose, and the rewriter uses it to
@@ -2277,7 +2346,13 @@ class Orchestrator:
                 if tried:
                     self.store.append("HYPOTHESES_FAILED", {
                         "family_id": family.family_id, "round": round_no,
-                        "hypotheses": tried})
+                        "hypotheses": tried,
+                        # Named, not merely omitted: "the rewriter did not implement this" is a fact
+                        # about the ROUND worth reading, and an audit cannot recover it from an
+                        # absence.
+                        "not_attempted": untried,
+                        "attempted": sorted(attempted)})
+            self.round_hypotheses.pop(family.family_id, None)
             self._step_done(key)
         return progressed
 
@@ -2514,6 +2589,10 @@ class Orchestrator:
                                           change_summary=rw.change_summary[:300],
                                           expectation=e,
                                           candidate_id=cand.candidate_id))
+            # Recorded regardless of whether this rewrite declared expectations: the two are
+            # independent, and a rewrite with no expectations still IMPLEMENTED its hypothesis, so
+            # leaving it out here would let that hypothesis be marked failed as an untried one.
+            self.round_hypotheses.setdefault(family_id, set()).add(rw.hypothesis_id)
             registered.append(cand.candidate_id)
         # B1 also applies here: rewrite/novelty candidates are 10 of the 14 candidates
         # in a typical L3 run, so prefetching only in the seed loop covered under a
