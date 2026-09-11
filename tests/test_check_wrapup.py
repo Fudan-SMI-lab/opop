@@ -1217,3 +1217,30 @@ def test_the_event_span_is_measured_not_taken_from_the_payload(tmp_path):
     assert abs(out["event_span_hours"] - 20.0) < 0.01, "and the real span is measured beside it"
     assert "BUDGET STOPPED THE RUN at 12.0 h" in out["verdict"], out["verdict"]
     assert "20.00 h" in out["verdict"], out["verdict"]
+
+
+def test_a_treatment_better_than_the_floor_is_not_reported_as_a_tie():
+    """The wording bug this exists to prevent, caught on the live pair. J2-5 is one-sided, so an
+    improvement passes -- but the first version said "within the N% noise floor" for EVERY pass, and
+    on the finished arms that printed `treatment 2.84 vs control 3.11 (-8.68%), within the 4.73%
+    noise floor`: an 8.68% separation in the treatment's favour, worded as if the arms were
+    indistinguishable. A reader carries that sentence into the paper, not the number.
+
+    Three distinct outcomes all pass J2-5 and must read differently: better BY MORE than the floor
+    (a separation), better by LESS (a tie), worse but inside it (no detectable regression).
+    """
+    sep = check_wrapup.compare_arms({"final_reeval_ms": 3.11}, {"final_reeval_ms": 2.84}, 4.73)
+    assert sep.startswith("PASS"), sep
+    assert "separation" in sep and "BETTER" in sep, sep
+    assert "within the" not in sep, "an 8.68%% gain must not be worded as a tie: %s" % sep
+
+    tie = check_wrapup.compare_arms({"final_reeval_ms": 3.00}, {"final_reeval_ms": 2.97}, 4.73)
+    assert tie.startswith("PASS") and "indistinguishable" in tie, tie
+    assert "separation" not in tie, tie
+
+    inside = check_wrapup.compare_arms({"final_reeval_ms": 3.00}, {"final_reeval_ms": 3.05}, 4.73)
+    assert inside.startswith("PASS") and "not a regression" in inside, inside
+
+    # The boundary belongs to the separation case: exactly -floor% is not "less than the floor".
+    edge = check_wrapup.compare_arms({"final_reeval_ms": 100.0}, {"final_reeval_ms": 95.27}, 4.73)
+    assert "separation" in edge, edge

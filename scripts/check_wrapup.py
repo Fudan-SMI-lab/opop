@@ -311,12 +311,27 @@ def compare_arms(control: dict, treatment: dict, noise_floor_pct: float) -> str:
                 "so it is not a substitute here" % ", ".join(which))
     allowed = c * (1.0 + noise_floor_pct / 100.0)
     delta = 100.0 * (t - c) / c
-    if t <= allowed:
-        return ("PASS -- treatment %.4f ms vs control %.4f ms (%+.2f%%), within the %.2f%% noise "
-                "floor" % (t, c, delta, noise_floor_pct))
-    return ("FAIL -- treatment %.4f ms vs control %.4f ms (%+.2f%%), beyond the %.2f%% noise "
-            "floor: the extra information made the final result WORSE" % (
-                t, c, delta, noise_floor_pct))
+    if t > allowed:
+        return ("FAIL -- treatment %.4f ms vs control %.4f ms (%+.2f%%), beyond the %.2f%% noise "
+                "floor: the extra information made the final result WORSE" % (
+                    t, c, delta, noise_floor_pct))
+    # J2-5 is ONE-SIDED -- it asks only that the treatment not be worse -- so everything below the
+    # allowance passes it. But the three cases below are not the same result, and the first version of
+    # this said "within the noise floor" for all of them. On the live pair that printed
+    # "treatment 2.84 vs control 3.11 (-8.68%), within the 4.73% noise floor" -- a treatment that is
+    # 8.68% BETTER, reported as if the arms were indistinguishable, which is the opposite reading and
+    # the one a reader would carry into the paper.
+    if delta <= -noise_floor_pct:
+        return ("PASS -- treatment %.4f ms vs control %.4f ms (%+.2f%%). J2-5 asks only that the "
+                "treatment not be WORSE, and it is BETTER by more than the %.2f%% floor, so this is "
+                "a separation in the treatment's favour -- not a tie. Report the direction."
+                % (t, c, delta, noise_floor_pct))
+    if delta < 0:
+        return ("PASS -- treatment %.4f ms vs control %.4f ms (%+.2f%%): better, but by LESS than "
+                "the %.2f%% floor, so the arms are indistinguishable on final latency"
+                % (t, c, delta, noise_floor_pct))
+    return ("PASS -- treatment %.4f ms vs control %.4f ms (%+.2f%%): worse, but within the %.2f%% "
+            "floor, so not a regression J2-5 can detect" % (t, c, delta, noise_floor_pct))
 
 
 # --- check 3: S3 / S4' behaviour on real data --------------------------------------------------
