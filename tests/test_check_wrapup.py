@@ -367,6 +367,61 @@ def test_the_overrun_percentage_is_reported(tmp_path):
     assert "13% over" in out["verdict"], out["verdict"]
 
 
+def test_the_informative_no_conversion_verdict_is_not_read_as_a_failure(tmp_path):
+    """`no_conversion` is G27's whole point, not a failed round.
+
+    Payload built from the REAL contract: `_rewrite_round` does `**conversion` into the event, and
+    `conversion_verdict` returns `conversion`, `conversion_note`, `latency_gain_pct`,
+    `latency_ms_before/after`, `resource_deltas` and `resources_improved`. A resource improving
+    materially while latency does NOT move is evidence that that resource was not the limit for this
+    structure -- so a reader that scores only "improved" as success discards exactly the finding the
+    module exists to produce.
+    """
+    ev = {"type": "FAMILY_ROUND_RECORDED", "payload": {
+        "family_id": "f1", "best_ms": 3.0, "round": 1,
+        "conversion": "no_conversion",
+        "conversion_note": ("n_regs, n_spills improved but latency moved only 0.30% (below the "
+                            "2.0% floor), so those resources were NOT the limit for this "
+                            "structure."),
+        "latency_gain_pct": 0.3, "latency_ms_before": 3.009, "latency_ms_after": 3.0,
+        "resources_improved": ["n_regs", "n_spills"],
+        "resource_deltas": {
+            "n_regs": {"before": 255, "after": 168, "delta": -87.0, "rel": 0.3412,
+                       "unit": "registers/thread", "direction": "improved"},
+            "n_spills": {"before": 428, "after": 0, "delta": -428.0, "rel": 1.0,
+                         "unit": "bytes", "direction": "improved"},
+            "shared_bytes": {"before": 12288, "after": 12288, "delta": 0.0, "rel": 0.0,
+                             "unit": "bytes", "direction": "flat"}}}}
+    d = _write_run(tmp_path, [ev])
+    out = check_wrapup.check_conversion(d)
+    assert out["rounds"] == 1 and out["with_conversion"] == 1
+    assert out["verdict"].startswith("PASS"), (
+        "a `no_conversion` round still CARRIES the verdict, which is what G27 is checked on")
+    assert out["verdicts"] == {"no_conversion": 1}
+    assert out["resources_improved"] == {"n_regs": 1, "n_spills": 1}, (
+        "which resources moved is the content of the finding, not decoration")
+    assert out["latency_gains_pct"] == [0.3]
+    assert out["no_conversion_notes"] and "NOT the limit" in out["no_conversion_notes"][0], (
+        "the note carries the actual conclusion; a count alone loses it")
+
+
+def test_the_unknown_conversion_shape_has_no_resource_keys(tmp_path):
+    """When latency cannot be compared, `conversion_verdict` returns EARLY with only two keys --
+    no `latency_gain_pct`, no `resource_deltas`. A reader that assumes those keys exist would
+    KeyError on the one payload shape that is guaranteed to be sparse."""
+    ev = {"type": "FAMILY_ROUND_RECORDED", "payload": {
+        "family_id": "f1", "best_ms": None, "round": 1,
+        "conversion": "unknown",
+        "conversion_note": "latency before/after not both available"}}
+    d = _write_run(tmp_path, [ev])
+    out = check_wrapup.check_conversion(d)
+    assert out["with_conversion"] == 1
+    assert out["with_resource_deltas"] == 0
+    assert out["verdicts"] == {"unknown": 1}
+    assert out["latency_gains_pct"] == []
+    assert out["resources_improved"] == {}
+
+
 # --- reader 3b: S2d's ledger, where an event stream can look healthy and say nothing -----------
 
 _RECON_REAL = {"type": "EXPECTATIONS_RECONCILED", "payload": {

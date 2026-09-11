@@ -183,6 +183,34 @@ VARIANTS: list[tuple[str, Path, str, str, list[str], str]] = [
         "budget failed to hold",
     ),
     (
+        "only `improved` counted, discarding the informative `no_conversion`",
+        CHK,
+        "        for name in (p.get(\"resources_improved\") or []):\n"
+        "            resources_improved[name] += 1",
+        "        if p.get(\"conversion\") == \"improved\":\n"
+        "            for name in (p.get(\"resources_improved\") or []):\n"
+        "                resources_improved[name] += 1",
+        ["test_the_informative_no_conversion_verdict_is_not_read_as_a_failure"],
+        "`no_conversion` is what G27 exists to produce: a resource improved materially and latency "
+        "did NOT move, which locates where the limit is NOT. Collecting the moved resources only "
+        "from `improved` rounds throws away the finding on exactly the rounds that carry it -- and "
+        "reads as 'no resources improved' on a run whose registers went 255 -> 168 and spills "
+        "428 -> 0",
+    ),
+    (
+        "the conversion_note dropped, leaving only a count",
+        CHK,
+        "        if p.get(\"conversion\") == \"no_conversion\" and p.get(\"conversion_note\"):\n"
+        "            notes.append(str(p[\"conversion_note\"])[:200])",
+        "        if False:\n"
+        "            notes.append(str(p[\"conversion_note\"])[:200])",
+        ["test_the_informative_no_conversion_verdict_is_not_read_as_a_failure"],
+        "the note is the conclusion -- 'n_regs, n_spills improved but latency moved only 0.30%, so "
+        "those resources were NOT the limit for this structure'. A verdict distribution of "
+        "{no_conversion: 3} without the notes says three rounds were inconclusive, when what "
+        "actually happened is three measurements of where the bottleneck is not",
+    ),
+    (
         "tuned_ms silently substituted when the re-eval is missing",
         CHK,
         "    reeval = best.get(\"final_reeval_ms\")",

@@ -48,6 +48,13 @@ def check_conversion(run_dir: Path) -> dict:
     with_conv = 0
     with_deltas = 0
     verdicts = collections.Counter()
+    # `no_conversion` is the INFORMATIVE verdict, not a failure: a resource improved materially and
+    # latency did not move, which is evidence that that resource was not the limit for this
+    # structure. Counting only "improved" as success would discard exactly the finding G27 exists to
+    # produce, so which resources moved is collected alongside.
+    resources_improved = collections.Counter()
+    notes: list[str] = []
+    gains: list[float] = []
     for e in _events(run_dir):
         if e.get("type") != "FAMILY_ROUND_RECORDED":
             continue
@@ -58,6 +65,13 @@ def check_conversion(run_dir: Path) -> dict:
             verdicts[p["conversion"]] += 1
         if "resource_deltas" in p:
             with_deltas += 1
+        for name in (p.get("resources_improved") or []):
+            resources_improved[name] += 1
+        g = p.get("latency_gain_pct")
+        if isinstance(g, (int, float)):
+            gains.append(float(g))
+        if p.get("conversion") == "no_conversion" and p.get("conversion_note"):
+            notes.append(str(p["conversion_note"])[:200])
     if rounds == 0:
         verdict = "NOT YET DECIDABLE -- 0 rewrite rounds, so 0-of-0 says nothing"
     elif with_conv == 0:
@@ -70,7 +84,11 @@ def check_conversion(run_dir: Path) -> dict:
         verdict = "PASS -- G27 has production evidence for the first time (%d of %d)" % (
             with_conv, rounds)
     return {"rounds": rounds, "with_conversion": with_conv, "with_resource_deltas": with_deltas,
-            "verdicts": dict(verdicts), "verdict": verdict}
+            "verdicts": dict(verdicts),
+            "resources_improved": dict(resources_improved),
+            "latency_gains_pct": gains,
+            "no_conversion_notes": notes,
+            "verdict": verdict}
 
 
 # --- check 2: J2-5 / J2d-9, the final result must not be worse ---------------------------------
@@ -410,6 +428,15 @@ def report(run_dir: Path, label: str) -> dict:
     print("    carrying `conversion` ......... %d" % conv["with_conversion"])
     print("    carrying `resource_deltas` .... %d" % conv["with_resource_deltas"])
     print("    verdict distribution .......... %s" % (conv["verdicts"] or "-"))
+    print("    resources that improved ....... %s" % (conv["resources_improved"] or "none"))
+    if conv["latency_gains_pct"]:
+        gs = sorted(conv["latency_gains_pct"])
+        print("    latency gain per round (%%) .... median %+.2f, range %+.2f..%+.2f" % (
+            gs[len(gs) // 2], gs[0], gs[-1]))
+    # `no_conversion` is G27's whole point: a resource moved and latency did not, which locates
+    # where the limit is NOT. Print the notes, because the count alone loses the finding.
+    for n in conv["no_conversion_notes"][:3]:
+        print("      no_conversion: %s" % n)
     # A budget stop in the seed pipeline changes what a zero MEANS, so it must be said here and not
     # only in section 0 -- this is the line a reader quotes.
     if conv["rounds"] == 0 and stop["stops"]:
