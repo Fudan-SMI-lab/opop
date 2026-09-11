@@ -96,3 +96,23 @@ Any of these changes the experiment, so none is applied mid-run:
 `scripts/ledger_reach.py` reproduces the table from any set of run directories and prints the single
 line that matters: whether any family anywhere received a second round after a reconciliation. It
 currently prints `NO -- S2d(c) has never been administered`.
+
+**The conclusion is also encoded in the wrap-up report** (`check_wrapup.check_ledger_reach`, block
+`[3c]`), because leaving it to my reading at report time was the actual risk: block `[3b]` prints
+`PASS -- 1 entries over 1 rounds, 16 declarations reconciled` on exactly this state, and that PASS is
+about journalling. Live-verified on both arms — each prints `**S2d(c) NEVER ADMINISTERED** -- 2
+family(ies), max 1 round(s) each`, and the paired report adds the arm-level consequence: *the arms are
+identical with respect to S2d(c), so any latency difference between them is not evidence about it.*
+
+The reach test is **ordered, not a pair of counts**. `k >= 2 and reconciled >= 1` would call a family
+reached when its only reconciliation landed at round 2's *close* — after the last prompt that could
+have carried it — so the flag is read at each rewriter call's own position instead. And a round is one
+rewriter **call**: 9/9 measured rounds produced two candidates, so counting `REWRITE_PRODUCED` events
+would double every round and report a first round as a revisit, which is a fabricated positive rather
+than a missed detection.
+
+`scripts/revert_check_ledger_reach.py`, four variants, each probed on a fixture that reaches its own
+branch (`one_round` / `reached` / `recon_last` — a single fixed probe cannot show all four, the
+recorded SHAM failure mode). All CAUGHT: `round_counted_per_event`, `ordering_dropped`,
+`reach_never_fires` (which makes the check unfalsifiable — it prints the conclusion I already believe),
+`unreconciled_revisit_counts_as_reach`.
