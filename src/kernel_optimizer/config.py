@@ -258,6 +258,12 @@ class EvalConfig(StrictConfig):
     rtol: float = 1e-2
     eval_timeout_s: float = 600.0
     build_timeout_s: float = 1200.0
+    # A batch prescreen's OWN deadline, `base + per_config * n`, clamped by build_timeout_s.
+    # Deliberately much shorter than build_timeout_s, and safe to be: a prescreen timeout
+    # caches nothing, so every unanswered configuration still receives a real trial with the
+    # full build_timeout_s. See `Evaluator._prescreen_timeout_s` for the measurements.
+    prescreen_base_timeout_s: float = 30.0
+    prescreen_per_config_timeout_s: float = 3.0
     suspicious_speedup: float = 2.0
     excessive_speedup: float = 10.0
     # Improvement A: correctness judging mode.

@@ -28,6 +28,44 @@ def latency_from_result(result: dict[str, Any]) -> LatencyStats | None:
     )
 
 
+def prescreen_timeout_s(cfg: EvalConfig, n_configs: int) -> float:
+    """How long a BATCH prescreen may run, in its own right rather than a real trial's.
+
+    Module-level and taking the config, so the orchestrator's `SPACE_PRESCREENED` event reads the
+    SAME number the worker was handed. A `getattr(evaluator, ...)` there would fall back to
+    `build_timeout_s` whenever the attribute went missing, and then `timed_out` would read False
+    on a screen that had in fact been cut off -- the silent direction, and exactly the failure
+    `test_prescreen_observability` exists to prevent.
+
+    Separate from `build_timeout_s` on purpose, and the asymmetry is the whole point:
+
+    * A real trial's compile timeout is load-bearing. A legitimate candidate whose `ptxas`
+      genuinely needs ten minutes must be allowed to finish, so shortening `build_timeout_s`
+      would DISCARD correct kernels. It must not be touched.
+    * A prescreen's timeout removes NOTHING from the search. `prescreen_batch` caches only
+      answers, so a timeout leaves every key absent, `cached_shared_verdict` returns `None`, and
+      `_shared_memory_ok` returns True for an unscreened config -- which means the configuration
+      still gets a real trial, with its full `build_timeout_s`. The only thing a shorter deadline
+      costs is the screen's own opinion; not one configuration is excluded.
+
+    Measured on box 3's `run-l3-48-20260911-052647` and box 1's L3:21: two batches of 40 sat at
+    exactly `build_timeout_s` (1200.5 s and 1201.0 s) and answered NOTHING, while the batch's
+    intended cost is a marginal ~7 ms per configuration (48 in 11.02 s) and a real answering batch
+    on the same box took 490 s for 40. So the tail is 2.4x the slowest useful batch and buys zero
+    verdicts.
+
+    The budget scales with the batch instead of being one constant, because the marginal cost is
+    per KERNEL and a multi-kernel candidate compiles several per variant (D5: L3:21's prescreens
+    ran 76-260 s for 40 configs, 7-24x the single-kernel design figure). `base + per_config * n`,
+    then clamped by `build_timeout_s` so this can never be the LONGER deadline: 30 s of process
+    start plus 3 s per configuration is 150 s at n=40, 5x the design cost and still an eighth of
+    the 1200 s tail.
+    """
+    budget = (cfg.prescreen_base_timeout_s
+              + cfg.prescreen_per_config_timeout_s * max(0, n_configs))
+    return min(float(budget), float(cfg.build_timeout_s))
+
+
 class CorrectnessEvaluator:
     """quick_test / full_eval: static check (cached per source) -> one merged
     eval job (correctness-before-timing inside eval_kernel_against_ref).
@@ -105,9 +143,15 @@ class CorrectnessEvaluator:
         first = pending[0][1]
         job = make_compile_probe_job(str(task.ref_path), str(first), backend=backend,
                                      extra_kernel_src_paths=[str(p) for _, p in pending[1:]])
+        # Outside the try, deliberately. Inside it, a config object missing the prescreen fields
+        # would raise AttributeError, be swallowed as `{"ok": False}` and read as a PROBE failure --
+        # so a mis-wired config would look exactly like a timing-out ptxas, silently, on every
+        # batch. Caught by `test_a_failed_probe_is_never_cached_as_a_screen_verdict`, whose Cfg stub
+        # carries only the fields the screen genuinely needs: that test failed on the first version
+        # of this change, which is the guard doing its job.
+        deadline = prescreen_timeout_s(self.cfg, len(pending))
         try:
-            probe = self.worker.run_job(job, self.cfg.build_timeout_s,
-                                        f"{tag}-prescreen", lock_mode="shared")
+            probe = self.worker.run_job(job, deadline, f"{tag}-prescreen", lock_mode="shared")
         except Exception as exc:  # noqa: BLE001 — a screen failure is never a verdict
             probe = {"ok": False, "reason": f"{type(exc).__name__}: {exc}"[:200]}
         per_path = probe.get("results") or {}

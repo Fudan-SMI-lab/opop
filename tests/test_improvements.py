@@ -10436,6 +10436,15 @@ def test_a_failed_probe_is_never_cached_as_a_screen_verdict():
         build_timeout_s = 60.0
         eval_timeout_s = 60.0
         correctness_mode = "dual_witness_relaxed"
+        # The batch prescreen now has its OWN deadline (`prescreen_timeout_s`), so these are fields
+        # it genuinely reads rather than padding. Left absent, this stub made the timeout
+        # computation raise AttributeError -- and because the first version of that change computed
+        # the deadline INSIDE the swallow-everything try, the raise was caught and reported as a
+        # probe failure, so a mis-wired config would have been indistinguishable from a timing-out
+        # ptxas on every batch. This test is what caught it; the fix moved the computation out of
+        # the try, where an AttributeError is loud.
+        prescreen_base_timeout_s = 30.0
+        prescreen_per_config_timeout_s = 3.0
 
     class Task:
         ref_path = Path("ref.py")

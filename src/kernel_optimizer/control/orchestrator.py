@@ -40,7 +40,11 @@ from kernel_optimizer.control.convergence import ConvergencePolicy
 from kernel_optimizer.control.families import FamilyManager, NoveltyRejection
 from kernel_optimizer.evaluation.benchmark import Benchmarker, environment_defect
 from kernel_optimizer.evaluation.conversion import conversion_verdict
-from kernel_optimizer.evaluation.correctness import CorrectnessEvaluator, latency_from_result
+from kernel_optimizer.evaluation.correctness import (
+    CorrectnessEvaluator,
+    latency_from_result,
+    prescreen_timeout_s,
+)
 from kernel_optimizer.evaluation.profilerx import LightProfiler
 from kernel_optimizer.models.core import (
     Baseline,
@@ -1351,11 +1355,18 @@ class Orchestrator:
             self.cfg.device.max_shared_bytes_optin) for p in paths]
         infeasible = sum(1 for v in verdicts if v is False)
         answered = sum(1 for v in verdicts if v is not None)
+        # Read against the PRESCREEN's own deadline, not `build_timeout_s`. Those were the same
+        # number until the screen was given its own (much shorter) budget; comparing against
+        # build_timeout_s afterwards would report `timed_out: false` on a screen that had in
+        # fact been cut off, which is the silent direction. The SAME function the worker's
+        # deadline came from, so the two can never drift apart.
+        limit = prescreen_timeout_s(self.cfg.evaluation, len(paths))
         self.store.append("SPACE_PRESCREENED", {
             "candidate_id": crun.candidate.candidate_id, "space_id": space.space_id,
             "configs_probed": len(paths), "infeasible": infeasible,
             "answered": answered, "elapsed_s": round(elapsed, 1),
-            "timed_out": answered == 0 and elapsed >= 0.9 * self.cfg.evaluation.build_timeout_s,
+            "timeout_s": round(float(limit), 1),
+            "timed_out": answered == 0 and elapsed >= 0.9 * float(limit),
         })
 
     def _shared_memory_ok(self, crun: CandidateRun, params: ParamSet) -> bool:
