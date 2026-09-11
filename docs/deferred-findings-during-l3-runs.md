@@ -384,3 +384,120 @@ One thing this does buy: the arm is an unusually clean natural experiment for D8
 sibling candidates at 0.6–0.7 min/trial completed 40, 80 and 80 trials in the same run where one
 candidate at 13.5 min completed 15, all under identical settings — which is the controlled
 comparison any per-candidate cost mechanism would need as its evidence base.
+
+### D8 correction, 07:50 — the mean was the wrong statistic and it changed what a fix must target
+
+Every reading above reported this candidate's **mean** per-trial cost, which rose 8.4 → 10.8 →
+13.5 min and read as "this candidate is uniformly 14x slower than its siblings". Pulling the
+per-trial breakdown instead of the aggregate falsifies that framing:
+
+```
+cand-941ea454, trial-by-trial wall cost (min)
+  02:42  10.6  complete      03:19   0.8  complete      05:02  50.1  fail timeout
+  02:42   0.0  complete      03:19   0.6  complete      05:53  50.1  fail timeout
+  02:42   0.5  fail infeasible_shared_memory            06:43  50.1  fail timeout
+  02:43   0.8  complete      04:09  50.1  fail timeout   06:44-06:49  five trials at 0.8-1.8
+  02:45   2.2  complete      04:10   0.7  complete
+  03:18  32.9  fail runtime_error
+                                        median 1.1 min      mean 12.3 min
+```
+
+**The median is 1.1 min — within the 0.6–0.7 min band of its three siblings.** 16 of 21 trials are
+normal; the entire excess sits in **5 catastrophic trials** (32.9 + 50.1 × 4 = **233 min**, 94% of
+the candidate's total cost). So this is not "a slow candidate", it is **a normal candidate that
+occasionally emits pathological PTX**.
+
+This matters because it invalidates D8's option 3 above. A per-candidate cost mechanism that
+allocates trials by *measured average* cost would have throttled a candidate whose typical trial is
+as cheap as everyone else's — punishing 16 good trials for 5 bad ones, and doing it on a statistic
+(the mean) that a handful of outliers control. **The unit of the pathology is the trial, not the
+candidate**, so a fix has to act per compile, which is what options 1 and 2 already do. Option 3 is
+withdrawn unless it is re-specified on a robust statistic *and* on the per-trial unit.
+
+Same lesson as `tuning-objective-must-be-median` in a new place: an aggregate over a
+heavy-tailed distribution names the tail, not the thing.
+
+---
+
+## D9. The single-config compile screen borrows a real trial's 1200 s budget — 1200 s + 1800 s = the 50 min gaps
+
+**This is the same defect `59d5a71` fixed in `prescreen_batch`, in the sibling function that commit
+did not touch.** `compile_screen` (`correctness.py:268`) passes `self.cfg.build_timeout_s` to
+`run_job`, while `prescreen_batch` (line 180) passes `prescreen_timeout_s(...)` — a purpose-built
+`30 + 3n` budget clamped by `build_timeout_s`. The docstring on `prescreen_timeout_s` argues at
+length why a screen must not borrow a trial's compile budget; that argument applies verbatim to
+`compile_screen`, which was never brought under it.
+
+**How it was found.** Chasing box 1's four 50.1-minute gaps between `TRIAL_DONE` events. The gaps
+contain no intervening event, and `SPACE_PRESCREENED` all fired before 02:45, so a batch prescreen
+could not explain them. The job directory does, exactly:
+
+```
+04:12:07  cand-941ea454-compile-screen-fe8e01e7.json      <- written, NO .out.json ever
+04:32:08  cand-941ea454-tr-7038a5a4-eval-758c300e.json    <- 04:12:07 + 1200 s = 04:32:07
+05:02:11  cand-941ea454-compile-screen-781a63fa.json      <- 04:32:08 + 1800 s = 05:02:08
+```
+
+**1200 s (screen deadline) + 1800 s (eval deadline) = 3000 s = the 50.1 min.** Every one of the five
+hung screens is followed by a timed-out eval, 5/5.
+
+**The screen's deadline is 11x its own p99.** Measured across all three in-flight runs
+(1108 single-config screens, three tasks, two GPU models):
+
+| box | screens | answered | hung | p50 | p90 | p99 | max | cost of the hung ones |
+|---|---|---|---|---|---|---|---|---|
+| 1 (L3:43, 4090) | 214 | 208 | **6** | 11.8 s | 28.5 s | 105.0 s | 991.0 s | **2.00 h** |
+| 2 (L3:43, 4090) | 526 | 526 | 0 | 11.4 s | 26.8 s | 56.9 s | 167.2 s | 0 |
+| 3 (L3:48, A800) | 368 | 367 | **1** | 13.6 s | 26.5 s | 38.7 s | 144.7 s | 0.33 h |
+
+A **120 s** deadline would still answer 206/208, 524/526 and 366/367 — 99.0%, 99.6% and 99.7% of the
+screens that answered at all — while capping the hung tail at a tenth of its current cost. And the
+non-answer is free by construction: `compile_screen` returns `None` on anything but the compiler's
+own figure exceeding the device limit, so a timeout removes nothing from the search (the same
+three-valued property `cached_shared_verdict` relies on).
+
+**The screen does not even warm the cache for the eval that follows it.** The one slow-but-answered
+screen took **991.0 s** and its eval then took **978.8 s** — the compile was paid twice, in full.
+Against a baseline of 146 pairs where the screen finished in ≤30 s and the eval's median was 13.8 s.
+So there is no hidden benefit being bought by the long deadline.
+
+**Scale of the waste, independent of the hangs.** Screens are a serial lane (1–2 of 419/976/833 job
+windows overlap the next job's start, i.e. effectively none), so their wall time is additive:
+
+| box | screen wall | share of run span | eval wall | share |
+|---|---|---|---|---|
+| 1 | 179.3 min | **34.1%** | 219.0 min | 41.6% |
+| 2 | 138.7 min | **26.6%** | 156.4 min | 30.0% |
+| 3 | 120.8 min | **23.4%** | 146.1 min | 28.3% |
+
+**A quarter to a third of every run is spent compiling twice** — once for the screen, once for the
+eval. The hung tail is 2.33 h of that; the rest is the duplicated compile itself. D5 measured this
+same double-payment for the batch prescreen and found it net **−9.6 min** on L3:21; this is the
+per-config version of the same accounting, an order of magnitude larger because it runs per trial.
+
+**Why not now.** Changing the screen's deadline changes which configurations get a screen verdict
+versus falling through to a real trial, and therefore the order and cost of what the sampler visits
+⇒ **a run started after it is not comparable with one before**, and E1's two arms must stay
+comparable with each other. This is the same reason D5 and B2 are deferred. Both E1 arms are subject
+to the mechanism, but not equally — box 1 lost 2.00 h to it and box 2 lost 0 — which is itself worth
+recording as a **confound in the E1 pair** (see below).
+
+**What a fix must do.**
+1. Route `compile_screen` through `prescreen_timeout_s(cfg, 1)` — one line, and it inherits the
+   existing argument, tests and config fields rather than adding a fourth timeout constant. At
+   n=1 that is 33 s, which is below the measured p90 of 26.8 s only just; the honest form is to let
+   the *screen* deadline be `max(prescreen_timeout_s(cfg, n), floor)` with the floor derived from
+   the measured distribution above (120 s covers 99.0–99.7%), not guessed.
+2. It must **not** touch `build_timeout_s`. A legitimate candidate whose ptxas genuinely needs ten
+   minutes must still get its full compile budget in the real trial
+   (`never-narrow-the-search-space-to-control-cost`).
+3. The deeper fix is to stop paying the compile twice — have the screen's compile artifact serve the
+   eval, or drop the per-config screen in favour of the batch one. That is B2's territory and needs
+   its own design; the deadline fix is the cheap, low-risk half.
+
+**Confound recorded for the E1 pair.** The two arms did not pay this equally: 6 hung screens and
+2.00 h on box 1, 0 and 0 h on box 2. That is a real asymmetry in effective budget between the arms,
+caused by one candidate's PTX (D8) meeting this deadline (D9). It does not invalidate the pair —
+both arms ran the same code with the same settings, and the asymmetry is an outcome of what the
+generator produced, not of the treatment — but any claim about the arms' *search volume* must state
+it, alongside `equal-configs-do-not-imply-equal-search`.
