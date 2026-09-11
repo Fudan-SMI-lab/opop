@@ -773,12 +773,30 @@ def check_budget_stop(run_dir: Path) -> dict:
     message. That distinction matters because it decides what a zero in check 1 means: with no
     rounds AND a budget stop, `NOT YET DECIDABLE` is wrong -- it IS decided, the answer is "the run
     never got there".
+
+    RESUMES MAKE THE PAYLOAD'S OWN CLOCK UNDERSTATE THE TRUTH. `elapsed_hours` is `_elapsed_hours()`,
+    read off `self.t0` set in `Orchestrator.__init__`, and `cmd_resume` builds a NEW orchestrator -- so
+    a resumed run's reported hours count only from the resume. The wall clock actually spent is the
+    event-timestamp span, which is measured here alongside. Live case: box 3 reported 7.5 h internally
+    while its first event was 8.75 h old. This matters for arm parity above all -- comparing a resumed
+    run's 12 h against an uninterrupted run's 12 h compares different amounts of compute, and the
+    budget is the one thing a paired comparison cannot lose.
     """
     stops = []
     rounds = 0
+    interrupts = 0
+    t_first = None
+    t_last = None
     for e in _events(run_dir):
+        ts = e.get("ts")
+        if isinstance(ts, (int, float)):
+            t_first = ts if t_first is None else min(t_first, ts)
+            t_last = ts if t_last is None else max(t_last, ts)
         if e.get("type") == "FAMILY_ROUND_RECORDED":
             rounds += 1
+            continue
+        if e.get("type") == "RUN_INTERRUPTED":
+            interrupts += 1
             continue
         if e.get("type") != "WALL_CLOCK_REACHED":
             continue
@@ -794,9 +812,18 @@ def check_budget_stop(run_dir: Path) -> dict:
             "round": p.get("round"),
             "stopped_before_family": p.get("stopped_before_family"),
         })
+    span = (t_last - t_first) / 3600.0 if (t_first is not None and t_last is not None) else None
+    resume_note = ""
+    if interrupts:
+        resume_note = (" RESUMED %d time(s): the run's own `elapsed_hours` counts only from the last "
+                       "resume, so use the event span %s h as the wall clock actually spent. A "
+                       "resumed run's budget is NOT comparable with an uninterrupted arm's."
+                       % (interrupts, "%.2f" % span if span is not None else "?"))
     if not stops:
         return {"stops": [], "rounds": rounds, "reached_loop_c": rounds > 0,
-                "verdict": "no wall-clock stop recorded"}
+                "interrupts": interrupts, "event_span_hours": span,
+                "verdict": ("no wall-clock stop recorded (event span %s h)"
+                            % ("%.2f" % span if span is not None else "?")) + resume_note}
 
     first = stops[0]
     over = ""
@@ -820,7 +847,8 @@ def check_budget_stop(run_dir: Path) -> dict:
         tail = (" Loop C DID run (%d round(s)), so the round count is a floor set by the clock "
                 "rather than by convergence -- do not read it as 'the search finished'." % rounds)
     return {"stops": stops, "rounds": rounds, "reached_loop_c": rounds > 0,
-            "verdict": head + tail}
+            "interrupts": interrupts, "event_span_hours": span,
+            "verdict": head + tail + resume_note}
 
 
 def report(run_dir: Path, label: str) -> dict:
@@ -935,7 +963,7 @@ def report(run_dir: Path, label: str) -> dict:
     print("    => %s" % reach["verdict"])
     print()
     return {"conversion": conv, "final": fin, "s3": s3, "reconciliation": rec,
-            "ledger_reach": reach}
+            "ledger_reach": reach, "stop": stop}
 
 
 def main(argv: list[str]) -> int:
@@ -979,6 +1007,21 @@ def main(argv: list[str]) -> int:
         # here, keyed on the calibration identity rather than on my reading of two paths.
         parity = check_arm_parity(Path(argv[0]), Path(argv[1]))
         print("    arm parity: %s" % parity["verdict"])
+        # Parity on the CONFIG is not parity on the CLOCK. A resumed run's own `elapsed_hours` counts
+        # only from its resume, so two arms can both report "12 h" having spent different wall clocks.
+        cs, ts_ = control["stop"], treatment["stop"]
+        if cs.get("interrupts") or ts_.get("interrupts"):
+            print("      !! BUDGET CLOCKS NOT COMPARABLE: control resumed %d time(s), treatment %d. "
+                  "Event spans: control %s h, treatment %s h -- use THESE, not the runs' own "
+                  "`elapsed_hours`, and state the interruption beside any wall-clock claim."
+                  % (cs.get("interrupts") or 0, ts_.get("interrupts") or 0,
+                     "%.2f" % cs["event_span_hours"] if cs.get("event_span_hours") else "?",
+                     "%.2f" % ts_["event_span_hours"] if ts_.get("event_span_hours") else "?"))
+        else:
+            print("      budget clocks: no resume on either arm; event spans control %s h, "
+                  "treatment %s h"
+                  % ("%.2f" % cs["event_span_hours"] if cs.get("event_span_hours") else "?",
+                     "%.2f" % ts_["event_span_hours"] if ts_.get("event_span_hours") else "?"))
         if parity["differing"]:
             print("      all differing config keys (%d):" % len(parity["differing"]))
             for k, (a, b) in list(parity["differing"].items())[:10]:

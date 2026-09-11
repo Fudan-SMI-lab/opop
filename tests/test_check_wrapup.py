@@ -1155,3 +1155,65 @@ def test_no_rewrite_round_yet_is_not_a_verdict(tmp_path):
     out = check_wrapup.check_ledger_reach(_write_run(tmp_path, [_BASELINE]))
     assert out["rounds_per_family"] == {}
     assert "NOT YET DECIDABLE" in out["verdict"], out["verdict"]
+
+
+# --------------------------------------------------------------------------------------------------
+# A resumed run's own clock understates its wall clock, and the arms' budgets are the one thing a
+# paired comparison cannot lose
+# --------------------------------------------------------------------------------------------------
+
+
+def _run_spanning(tmp_path: Path, name: str, events: list, hours: float) -> Path:
+    """Events stamped over a real span, so `event_span_hours` is measured rather than assumed."""
+    d = tmp_path / name
+    d.mkdir(parents=True)
+    t0 = 1789000000.0
+    with (d / "events.jsonl").open("w", encoding="utf-8") as fh:
+        n = max(len(events) - 1, 1)
+        for i, e in enumerate(events):
+            fh.write(json.dumps({"seq": i, "ts": t0 + (hours * 3600.0) * i / n, **e}) + "\n")
+    return d
+
+
+def test_a_resumed_run_is_flagged_because_its_own_elapsed_hours_restarts(tmp_path):
+    """`elapsed_hours` is `_elapsed_hours()` off `self.t0`, set in `Orchestrator.__init__`, and
+    `cmd_resume` builds a NEW orchestrator. Measured live on box 3: it reported 7.5 h internally with
+    its first event 8.75 h old. A wall-clock claim built on the payload's figure would understate the
+    compute spent, and comparing it against an uninterrupted arm compares different budgets."""
+    evs = [_BASELINE,
+           {"type": "RUN_INTERRUPTED", "payload": {"reason": "terminated by signal or Ctrl-C"}},
+           {"type": "FAMILY_ROUND_RECORDED", "payload": {"family_id": "f", "best_ms": 1.0,
+                                                         "round": 1, "conversion": "improved"}}]
+    out = check_wrapup.check_budget_stop(_run_spanning(tmp_path, "run-resumed", evs, hours=8.75))
+    assert out["interrupts"] == 1
+    assert out["event_span_hours"] is not None
+    assert abs(out["event_span_hours"] - 8.75) < 0.01, out["event_span_hours"]
+    assert "RESUMED" in out["verdict"], out["verdict"]
+    assert "NOT comparable" in out["verdict"], out["verdict"]
+
+
+def test_an_uninterrupted_run_is_not_flagged_but_still_reports_its_span(tmp_path):
+    """The other direction: flagging every run would make the warning worthless, and the span is
+    still the number to quote because it needs no trust in the payload."""
+    out = check_wrapup.check_budget_stop(
+        _run_spanning(tmp_path, "run-clean", [_BASELINE, _TRIAL_OK], hours=3.5))
+    assert out["interrupts"] == 0
+    assert abs(out["event_span_hours"] - 3.5) < 0.01
+    assert "RESUMED" not in out["verdict"], out["verdict"]
+
+
+def test_the_event_span_is_measured_not_taken_from_the_payload(tmp_path):
+    """A run whose WALL_CLOCK_REACHED claims 12 h but whose events span 20 h has been resumed, and the
+    span is the honest figure. Reading the payload alone cannot see this."""
+    evs = [_BASELINE,
+           {"type": "RUN_INTERRUPTED", "payload": {"reason": "terminated by signal or Ctrl-C"}},
+           {"type": "WALL_CLOCK_REACHED", "payload": {"elapsed_hours": 12.0, "budget_hours": 12.0,
+                                                      "round": 3,
+                                                      "stopped_before_family": "fam-b"}},
+           {"type": "FAMILY_ROUND_RECORDED", "payload": {"family_id": "f", "best_ms": 1.0,
+                                                         "round": 1, "conversion": "improved"}}]
+    out = check_wrapup.check_budget_stop(_run_spanning(tmp_path, "run-understated", evs, hours=20.0))
+    assert out["stops"][0]["elapsed_hours"] == 12.0, "the payload figure is still reported"
+    assert abs(out["event_span_hours"] - 20.0) < 0.01, "and the real span is measured beside it"
+    assert "BUDGET STOPPED THE RUN at 12.0 h" in out["verdict"], out["verdict"]
+    assert "20.00 h" in out["verdict"], out["verdict"]
