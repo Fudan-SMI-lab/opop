@@ -531,3 +531,34 @@ caused by one candidate's PTX (D8) meeting this deadline (D9). It does not inval
 both arms ran the same code with the same settings, and the asymmetry is an outcome of what the
 generator produced, not of the treatment — but any claim about the arms' *search volume* must state
 it, alongside `equal-configs-do-not-imply-equal-search`.
+
+### D9 decomposition, 08:10 — the arm asymmetry is the timeouts, not the candidates
+
+Measured on both arms at the same point (8.80 h and 8.85 h of span), separating *answered* job time
+from *hung* job time:
+
+| | box 1 control | box 2 treatment | ratio |
+|---|---|---|---|
+| complete trials | 180 | 422 | **2.34x** |
+| complete trials / h | 20.45 | 47.58 | **2.33x** |
+| answered jobs | 411, median **13.6 s** | 1017, median **12.9 s** | **1.05x** |
+| total answered time | 2.60 h | 4.77 h | — |
+| **wall lost to hung jobs** | **4.75 h** | **1.00 h** | **4.75x** |
+| complete trials / h **excluding hang time** | 44.40 | 53.73 | **1.21x** |
+
+**The 2.33x throughput gap collapses to 1.21x once hang time is removed, and the two arms' median
+answered job differs by 5%.** So the arms are not running different-cost work — they are running
+almost identically-priced work, and one of them spent 4.75 h of a 12 h budget on jobs that produced
+no output at all. That is 39.6% of box 1's entire budget.
+
+This changes how the confound must be described. It is not "box 1 happened to draw an expensive
+candidate" — box 1's *answered* jobs are as cheap as box 2's. It is "**box 1 paid D9's deadline six
+times and box 2 paid it zero times**", which makes the asymmetry an artifact of a harness defect
+rather than a property of either arm's search. It also raises D9 from a budget-efficiency finding to
+the **largest single measured waste in the run**: 4.75 h against the 2.33 h of duplicated-compile
+overhead the screen costs even when it answers.
+
+The 1.21x residual is the real, attributable difference between the arms (different candidates,
+different spaces), and that is small enough that the pair remains usable if box 1 reaches a rewrite
+round.
+
