@@ -15,7 +15,9 @@ found something, so a wrong key path fails loudly instead of reporting a clean z
 from __future__ import annotations
 
 import collections
+import glob
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -532,7 +534,8 @@ def check_reconciliation(run_dir: Path) -> dict:
             "verdict": verdict}
 
 
-def latency_floor_from_runs(*run_dirs: Path) -> tuple[float | None, str]:
+def latency_floor_from_runs(*run_dirs: Path,
+                            extra_globs: tuple[str, ...] = ()) -> tuple[float | None, str]:
     """Measure the LATENCY reproducibility floor from finished runs.
 
     The 2.35% this project has been using as a latency tolerance is `1 - 0.9765`, where 0.9765 is
@@ -560,6 +563,14 @@ def latency_floor_from_runs(*run_dirs: Path) -> tuple[float | None, str]:
     runs the sample was n=2 (0.27% and 2.99%), which straddles 2.35% and is far too thin to bound a
     verdict. Sibling run directories are the same box and the same harness, so they are the right
     population; a glob that matches nothing simply leaves the sample as it was.
+
+    AND THE SIBLING SCAN ALONE IS NOT ENOUGH, which is why the parameter is now implemented rather
+    than only documented. It globs each arm's own PARENT, and measured on the live pair the arms sit
+    in `runs-v3/` (2 directories, both unfinished) while the 5 finished runs are in `runs-l3/`. So the
+    scan found nothing, this returned None, and the caller fell back to the borrowed 2.35% -- which
+    is BELOW the 2.91% median of the real spread, i.e. silently stricter than the measurement. A
+    parameter that a docstring promises and the signature does not have is worse than an absent
+    feature: it reads as covered.
 
     Returns the widest observed delta and a provenance string naming n, because "inside the noise
     floor" means nothing without the floor and its sample size.
@@ -592,6 +603,14 @@ def latency_floor_from_runs(*run_dirs: Path) -> tuple[float | None, str]:
         for sib in sorted(parent.glob("*")) if parent.exists() else []:
             if sib.is_dir():
                 consider(sib)
+    # And anywhere else the caller names. Separate from the sibling pass because it reaches a
+    # DIFFERENT directory -- the finished corpus lives in `runs-l3/` while the arms live in
+    # `runs-v3/`, so no amount of sibling globbing finds it. `glob.glob` rather than `Path.glob`
+    # because the patterns are absolute paths on the boxes, which `Path().glob` rejects.
+    for pattern in extra_globs:
+        for hit in sorted(glob.glob(pattern)):
+            if os.path.isdir(hit):
+                consider(Path(hit))
     if not deltas:
         return None, "no run in the sample has re-evaluated its best kernel yet"
     deltas.sort(reverse=True)
@@ -785,6 +804,28 @@ def main(argv: list[str]) -> int:
     if not argv:
         print(__doc__)
         return 2
+    # `--floor-from GLOB` widens the noise-floor sample to run directories the sibling scan cannot
+    # reach. Needed in practice, not in theory: the arms live in `runs-v3/` and the finished corpus in
+    # `runs-l3/`, so without it the floor comes back None and the verdict silently falls back to the
+    # borrowed 2.35% -- below the 2.91% median of the measured spread, i.e. stricter than the
+    # measurement supports. Repeatable.
+    floor_globs: list[str] = []
+    positional: list[str] = []
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--floor-from" and i + 1 < len(argv):
+            floor_globs.append(argv[i + 1])
+            i += 2
+        elif argv[i].startswith("--floor-from="):
+            floor_globs.append(argv[i].split("=", 1)[1])
+            i += 1
+        else:
+            positional.append(argv[i])
+            i += 1
+    if not positional:
+        print(__doc__)
+        return 2
+    argv = positional
     control = report(Path(argv[0]), "CONTROL ARM" if len(argv) > 1 else "RUN")
     if len(argv) > 1:
         treatment = report(Path(argv[1]), "TREATMENT ARM")
@@ -810,7 +851,8 @@ def main(argv: list[str]) -> int:
         # two, so the comparison is never stricter than the measurement supports -- and say which
         # one bound it, because "inside the noise floor" means nothing without naming the floor.
         BORROWED = 2.35
-        measured, prov = latency_floor_from_runs(Path(argv[0]), Path(argv[1]))
+        measured, prov = latency_floor_from_runs(Path(argv[0]), Path(argv[1]),
+                                                 extra_globs=tuple(floor_globs))
         tol = max(BORROWED, measured) if measured is not None else BORROWED
         print("    tolerance used: %.2f%%" % tol)
         print("      borrowed 2.35% = 1 - 0.9765, a frac_within_tol (CORRECTNESS) figure")

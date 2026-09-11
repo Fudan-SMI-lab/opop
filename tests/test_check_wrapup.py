@@ -887,3 +887,106 @@ def test_a_missing_manifest_refuses_to_decide(tmp_path):
     (t / "events.jsonl").write_text("", encoding="utf-8")
     out = check_wrapup.check_arm_parity(c, t)
     assert "CANNOT DECIDE" in out["verdict"]
+
+
+def _finished(tmp_path: Path, name: str, tuned: float, reeval: float) -> Path:
+    """A finished run: a completed trial plus RUN_FINISHED carrying the re-eval, which is what
+    `latency_floor_from_runs` needs to compute a same-kernel delta."""
+    d = tmp_path / name
+    d.mkdir(parents=True)
+    with (d / "events.jsonl").open("w", encoding="utf-8") as fh:
+        fh.write(json.dumps({"seq": 0, "ts": 1.0, "type": "TRIAL_DONE", "payload": {"trial": {
+            "trial_id": "t", "candidate_id": "c", "space_id": "s", "status": "complete",
+            "params": {"values": {}},
+            "latency_ms": {"mean": tuned, "median": tuned, "std": 0.0, "min": tuned,
+                           "max": tuned, "n_samples": 20}}}}) + "\n")
+        fh.write(json.dumps({"seq": 1, "ts": 2.0, "type": "RUN_FINISHED", "payload": {
+            "summary": {"best": {"candidate_id": "c", "tuned_ms": tuned,
+                                 "final_reeval_ok": True, "final_reeval_ms": reeval,
+                                 "precision": "bf16"}}}}) + "\n")
+    return d
+
+
+def test_extra_globs_reaches_a_corpus_the_sibling_scan_cannot(tmp_path):
+    """The parameter was DOCUMENTED and never implemented, and the gap is not theoretical: on the live
+    boxes the arms sit in `runs-v3/` (both unfinished) while the 5 finished runs are in `runs-l3/`, so
+    the sibling scan -- which globs each arm's own parent -- found nothing and the floor came back
+    None. The caller then falls back to the borrowed 2.35%, BELOW the 2.91% median of the measured
+    spread: silently stricter than the measurement.
+    """
+    arms = tmp_path / "runs-v3"
+    arms.mkdir()
+    a = arms / "arm-a"
+    a.mkdir()
+    (a / "events.jsonl").write_text("", encoding="utf-8")     # unfinished, like the live arms
+    corpus = tmp_path / "runs-l3"
+    corpus.mkdir()
+    _finished(corpus, "run-1", 10.0, 10.4)      # 4.0%
+    _finished(corpus, "run-2", 10.0, 10.1)      # 1.0%
+
+    none_found, prov = check_wrapup.latency_floor_from_runs(a)
+    assert none_found is None and "has re-evaluated" in prov, (
+        "the sibling scan must NOT reach a different directory -- that is the gap")
+
+    widest, prov = check_wrapup.latency_floor_from_runs(
+        a, extra_globs=(str(corpus / "run-*"),))
+    assert widest == pytest.approx(4.0), prov
+    assert "n=2" in prov and "median" in prov
+
+
+def test_extra_globs_matching_nothing_leaves_the_sample_unchanged(tmp_path):
+    """A glob that matches nothing must be inert, not an error: the flag is passed unconditionally at
+    wrap-up and a stale path should not take the comparison down with it."""
+    d = _finished(tmp_path, "run-x", 10.0, 10.2)
+    a, _ = check_wrapup.latency_floor_from_runs(d)
+    b, prov = check_wrapup.latency_floor_from_runs(d, extra_globs=("/nonexistent/run-*",))
+    assert a == b == pytest.approx(2.0), prov
+
+
+def test_extra_globs_does_not_double_count_a_run_the_sibling_scan_already_found(tmp_path):
+    """`consider` is guarded by `seen`, and it has to be: the same run reached twice would appear
+    twice in n, inflating the apparent sample size of the floor."""
+    corpus = tmp_path / "runs"
+    corpus.mkdir()
+    r1 = _finished(corpus, "run-1", 10.0, 10.4)
+    _finished(corpus, "run-2", 10.0, 10.1)
+    _, prov = check_wrapup.latency_floor_from_runs(r1, extra_globs=(str(corpus / "run-*"),))
+    assert "n=2" in prov, prov
+
+
+def test_the_floor_from_flag_actually_reaches_the_floor_measurement(tmp_path, capsys):
+    """The FLAG, not the function. `latency_floor_from_runs(extra_globs=...)` being right is worth
+    nothing if `main` never parses the flag that supplies it -- and no test reached `main`'s argument
+    handling, so an unparsed flag would have looked exactly like a correct run with a thin sample.
+
+    This is the same shape as the parameter that was documented and not implemented: the layer above
+    the fix was the untested one. Both spellings are checked because both are offered.
+    """
+    arms = tmp_path / "runs-v3"
+    arms.mkdir()
+    for name in ("arm-a", "arm-b"):
+        d = arms / name
+        d.mkdir()
+        (d / "events.jsonl").write_text("", encoding="utf-8")    # unfinished, like the live arms
+    corpus = tmp_path / "runs-l3"
+    corpus.mkdir()
+    _finished(corpus, "run-1", 10.0, 10.4)      # 4.0%
+    _finished(corpus, "run-2", 10.0, 10.1)      # 1.0%
+    pattern = str(corpus / "run-*")
+
+    for flag in ([str(arms / "arm-a"), str(arms / "arm-b"), "--floor-from", pattern],
+                 [str(arms / "arm-a"), "--floor-from=" + pattern, str(arms / "arm-b")]):
+        capsys.readouterr()
+        assert check_wrapup.main(flag) == 0
+        out = capsys.readouterr().out
+        assert "measured latency floor: 4.00%" in out, (
+            "the --floor-from glob never reached latency_floor_from_runs: %s"
+            % [ln for ln in out.splitlines() if "latency floor" in ln])
+        assert "n=2" in out
+        # And the widening must actually move the tolerance off the borrowed figure, which is the
+        # only reason the flag exists.
+        assert "tolerance used: 4.00%" in out, [
+            ln for ln in out.splitlines() if "tolerance used" in ln]
+        # The flag and its value must NOT survive into the positional arguments, or the second arm
+        # would be a glob string and the treatment report would be built from a nonexistent path.
+        assert "--floor-from" not in out
