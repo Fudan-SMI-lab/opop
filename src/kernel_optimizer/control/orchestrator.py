@@ -1302,6 +1302,7 @@ class Orchestrator:
             paths.append(path)
         if not paths:
             return
+        t_screen = time.time()
         try:
             self.deps.evaluator.prescreen_batch(
                 self.task, paths, tag=crun.candidate.candidate_id,
@@ -1312,13 +1313,26 @@ class Orchestrator:
                 "space_id": space.space_id, "detail": f"{type(exc).__name__}: {exc}"[:300],
             })
             return
-        infeasible = sum(1 for p in paths
-                         if self.deps.evaluator.cached_shared_verdict(
-                             p.read_text(encoding="utf-8"), crun.candidate.backend,
-                             self.cfg.device.max_shared_bytes_optin) is False)
+        elapsed = time.time() - t_screen
+        # ANSWERED, not just `infeasible`. A batch that times out caches nothing and reports
+        # `infeasible: 0` -- byte-identical to a fast batch that legitimately found nothing
+        # feasible-to-reject. Measured on box 3: two batches of 40 sat at 1200.5 s and 1201.0 s,
+        # exactly `build_timeout_s`, and were indistinguishable in the log from a 490 s batch that
+        # found 17. `prescreen_batch` swallows its own timeout by design (a screen is never a
+        # verdict), so PRESCREEN_FAILED above cannot fire for it and this is the only place the
+        # difference can be recorded. The intended cost is a marginal 7 ms per config -- 48 configs
+        # in 11.02 s -- so `elapsed` plus `answered` makes a runaway `ptxas` countable instead of
+        # something to be caught by noticing the GPU is idle.
+        verdicts = [self.deps.evaluator.cached_shared_verdict(
+            p.read_text(encoding="utf-8"), crun.candidate.backend,
+            self.cfg.device.max_shared_bytes_optin) for p in paths]
+        infeasible = sum(1 for v in verdicts if v is False)
+        answered = sum(1 for v in verdicts if v is not None)
         self.store.append("SPACE_PRESCREENED", {
             "candidate_id": crun.candidate.candidate_id, "space_id": space.space_id,
             "configs_probed": len(paths), "infeasible": infeasible,
+            "answered": answered, "elapsed_s": round(elapsed, 1),
+            "timed_out": answered == 0 and elapsed >= 0.9 * self.cfg.evaluation.build_timeout_s,
         })
 
     def _shared_memory_ok(self, crun: CandidateRun, params: ParamSet) -> bool:
