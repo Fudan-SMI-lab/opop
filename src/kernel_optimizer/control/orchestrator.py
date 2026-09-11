@@ -53,7 +53,7 @@ from kernel_optimizer.models.core import (
     TrialRecord,
     latency_cell,
 )
-from kernel_optimizer.models.reports import BottleneckReport, TuningStats
+from kernel_optimizer.models.reports import BottleneckReport, ResourceExpectation, TuningStats
 from kernel_optimizer.paramspace import materializer
 from kernel_optimizer.paramspace.guard import check_config
 from kernel_optimizer.paramspace.triton_lint import device_helper_names, jit_kernel_names
@@ -514,10 +514,17 @@ class Orchestrator:
         # reconciled so round N+1 can never be scored against round N's predictions. `ledger` holds
         # the reconciled entries per family, which is what the next round's prompt renders.
         #
-        # Both are memory-only by the same argument as `failed_hypotheses`, and restored from
-        # `EXPECTATIONS_RECONCILED` on resume for the same reason -- a rewriter that loses the ledger
-        # re-proposes an idea the run already checked, and rewrite rounds are the scarcest budget
-        # (measured: 5 completed L3 runs used 9 rounds in total, so losing one is expensive).
+        # Both are memory-only by the same argument as `failed_hypotheses` -- a rewriter that loses
+        # either re-proposes an idea the run already checked, and rewrite rounds are the scarcest
+        # budget (measured: 5 completed L3 runs used 9 rounds in total, so losing one is expensive).
+        #
+        # They restore from DIFFERENT events, and conflating them cost this project a restart it could
+        # not safely take. `ledger` comes from `EXPECTATIONS_RECONCILED`, which by definition exists
+        # only AFTER a round was reconciled. `round_expectations` cannot: that same event is written
+        # in the breath that POPS the buffer, so an in-flight round has declarations and no
+        # reconciliation. Those live in `REWRITE_PRODUCED.payload.expectations`, journalled at
+        # declaration time, and the un-reconciled ones are exactly the rewrites with no
+        # `EXPECTATIONS_RECONCILED` for their family and round.
         self.round_expectations: dict[str, list[_DeclaredExpectations]] = {}
         self.ledger: dict[str, list[dict]] = {}
         # S1b. One ledger per RUN, holding per-(candidate, knob, value) pass/fail evidence, so a
@@ -2024,6 +2031,20 @@ class Orchestrator:
         # and rewrite rounds are the scarcest budget in the loop -- 5 completed L3 runs used 9 in
         # total. Rebuilt rather than extended, same argument as `restored` above.
         ledger: dict[str, list[dict]] = {}
+        # S2d, the IN-FLIGHT half. Declarations from a rewrite that was produced but whose round never
+        # reached reconciliation -- a run killed between the rewriter's answer and
+        # `FAMILY_ROUND_RECORDED`. Without this a resume silently reconciles that round against an
+        # empty buffer (`n_declared=0`, no hits, no misses), and the log then shows a round that
+        # declared nothing, indistinguishable from an agent that actually declared nothing.
+        #
+        # Measured cost of not having it: box 2's `run-l3-43-20260911-052630` held 16 declarations --
+        # the only production declaration set S2d had -- in memory alone, which is why the pooled-ledger
+        # defect could not be fixed by restarting the run.
+        #
+        # Keyed by CANDIDATE, because that is what reconciliation now groups by. A candidate is
+        # reconciled once, so an `EXPECTATIONS_RECONCILED` naming it retires its declarations.
+        produced: dict[str, tuple[str, str, str, list[dict]]] = {}
+        reconciled_cands: set[str] = set()
         for ev in state.events:
             if ev.type == "FAMILY_ROUND_RECORDED":
                 rounds.setdefault(ev.payload["family_id"], []).append(ev.payload)
@@ -2035,12 +2056,56 @@ class Orchestrator:
                     ev.payload["family_id"], []).extend(ev.payload["hypotheses"])
             elif ev.type == "EXPECTATIONS_RECONCILED":
                 ledger.setdefault(ev.payload["family_id"], []).append(ev.payload)
+                cid = ev.payload.get("candidate_id")
+                if cid:
+                    reconciled_cands.add(cid)
+                else:
+                    # A pre-fix pooled entry names no candidate, so it retires every declaration of
+                    # its family up to that point. Coarser than the per-candidate rule and
+                    # deliberately so: over-retiring risks losing an in-flight round on a resumed old
+                    # run, while under-retiring would re-score a round already in the ledger, which
+                    # is the "round N+1 against round N" defect the pop exists to prevent.
+                    for k, v in list(produced.items()):
+                        if v[0] == ev.payload.get("family_id"):
+                            produced.pop(k, None)
+            elif ev.type == "REWRITE_PRODUCED":
+                exps = ev.payload.get("expectations") or []
+                if exps:
+                    produced[ev.payload.get("candidate_id") or ""] = (
+                        ev.payload.get("family_id") or "",
+                        ev.payload.get("hypothesis_id") or "",
+                        str(ev.payload.get("change_summary") or "")[:300],
+                        exps)
             elif ev.type == "FAMILY_SEEDED":
                 seeded[ev.payload["family_id"]] = ev.payload["best_ms"]
         for family_id, hyps in restored.items():
             self.failed_hypotheses[family_id] = hyps
         for family_id, entries in ledger.items():
             self.ledger[family_id] = entries
+        n_inflight = 0
+        for cand_id, (family_id, hyp_id, change, exps) in produced.items():
+            if cand_id in reconciled_cands or not family_id:
+                continue
+            for raw in exps:
+                # Rehydrated as the real model, so the restored declaration reconciles by exactly the
+                # same path as a live one. A dict shim would work in `reconcile` (it reads by
+                # attribute with a fallback) and then diverge here, which is the kind of difference
+                # that only shows up on a resumed run.
+                try:
+                    e = ResourceExpectation(**raw)
+                except Exception:  # noqa: BLE001 -- a malformed replayed row must not end the resume
+                    continue
+                self.round_expectations.setdefault(family_id, []).append(
+                    _DeclaredExpectations(hypothesis_id=hyp_id, change_summary=change,
+                                          expectation=e, candidate_id=cand_id))
+                n_inflight += 1
+        if n_inflight:
+            self.store.append("EXPECTATIONS_RESTORED", {
+                "declarations": n_inflight,
+                "candidates": sorted(c for c in produced if c not in reconciled_cands),
+                "detail": "declarations from rewrites produced but never reconciled, restored from "
+                          "REWRITE_PRODUCED so the interrupted round is still scored against what "
+                          "was actually predicted rather than against an empty buffer"})
         # Seed round 0 for every family that has a correct candidate. A family with no
         # best has nothing to seed and cannot be rewritten anyway.
         for family_id, family in self.deps.families.families.items():
