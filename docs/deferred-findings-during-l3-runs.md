@@ -365,3 +365,22 @@ letting it finish leaves every other measurement from the pair clean and usable 
 rates, the A1 threshold in production, this evidence itself). **The accepted risk is explicit: E1's
 control arm may end with 0 rewrite rounds, in which case S2d(c) has no control data and that pair
 must be re-run after D8 is fixed.** That is a known cost, not a surprise.
+
+**05:53 — the projection tightened from "may" to "near-certain".** The third 1800 s timeout fired on
+the same candidate and the arm recovered from it, so the mechanism is behaving exactly as designed;
+what changed is the arithmetic. At 6.89 h of 12 h:
+
+    share of trial wall time   60.4%   (43.2% -> 53.4% -> 60.4% over three readings)
+    per trial                  13.5 min
+    trials done                15 of 40
+    remaining 25 trials        5.6 h needed against 5.11 h of budget left
+
+So **the wall clock, not the trial budget, will end this candidate**, and the control arm will reach
+its 12 h having never entered a rewrite round. The re-run of this pair after a D8 fix should
+therefore be planned for rather than treated as contingent — the decision to protect arm parity
+stands, but its cost is now a fact rather than a risk.
+
+One thing this does buy: the arm is an unusually clean natural experiment for D8 itself. Three
+sibling candidates at 0.6–0.7 min/trial completed 40, 80 and 80 trials in the same run where one
+candidate at 13.5 min completed 15, all under identical settings — which is the controlled
+comparison any per-candidate cost mechanism would need as its evidence base.
