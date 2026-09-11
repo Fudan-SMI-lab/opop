@@ -209,7 +209,13 @@ def _fmt(v: float | None) -> str:
 
 
 def render_ledger(entries: list[dict[str, Any]]) -> str:
-    """The ledger as prompt text: ONE PARAGRAPH PER ROUND, ONE LINE PER DIMENSION.
+    """The ledger as prompt text: ONE PARAGRAPH PER CANDIDATE, ONE LINE PER DIMENSION.
+
+    Per CANDIDATE, not per round, because a round has two of them (9 of 9 measured rounds) asked for
+    different hypotheses. A heading that named only the round produced two rows per dimension under
+    one title with nothing to separate them -- so `shared_bytes` appeared twice, once `up` as
+    predicted and once `unchanged` and wrong, describing two different pieces of code. The heading
+    carries the candidate id when the entry has one, and older entries without it still render.
 
     Not a JSON dump, and the length is the design constraint rather than an afterthought. G9 measured
     that adding per-candidate measurements on top of a structured verdict bought nothing detectable
@@ -217,9 +223,9 @@ def render_ledger(entries: list[dict[str, Any]]) -> str:
     a second raw vector would reproduce KernelPro's 1.77x arm -- the one that lost to no feedback at
     all. J2d-5 asserts the growth is linear in rounds with one line per dimension.
 
-    `entries` are ledger dicts as journalled (`{id, change, round, reconciliation, conversion,
-    latency_gain_pct}`), read with `.get` so a replayed older entry without the S2d fields renders as
-    the pre-S2d line rather than raising.
+    `entries` are ledger dicts as journalled (`{id, change, round, candidate_id, reconciliation,
+    conversion, latency_gain_pct}`), read with `.get` so a replayed older entry without the S2d fields
+    renders as the pre-S2d line rather than raising.
     """
     if not entries:
         return ""
@@ -227,11 +233,14 @@ def render_ledger(entries: list[dict[str, Any]]) -> str:
         "# What earlier rounds PREDICTED, and what was measured", "",
         "Your own stated resource directions from previous rounds, checked against the "
         "measurements. This is here so a structural idea is judged on what happened, not on how it "
-        "sounded.", ""]
+        "sounded. One section per candidate: a round produces several, and each is judged only on "
+        "the code it actually changed.", ""]
     for e in entries:
         rnd = e.get("round")
         hid = e.get("id") or "?"
-        out.append("## Round %s — %s" % (rnd if rnd is not None else "?", hid))
+        cid = e.get("candidate_id")
+        out.append("## Round %s — %s%s" % (rnd if rnd is not None else "?", hid,
+                                          " (%s)" % cid if cid else ""))
         change = (e.get("change") or "").strip()
         if change:
             out.append("*Change:* %s" % change)

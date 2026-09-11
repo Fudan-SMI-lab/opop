@@ -448,11 +448,18 @@ class _DeclaredExpectations:
     Carries `hypothesis_id` and `change_summary` alongside the expectations so the ledger entry can
     say WHICH idea was being checked. Without them a `miss` would be attached to a family and a round
     number and nothing else, which is not enough for the next round's prompt to be about anything.
+
+    `candidate_id` is what makes the entry about one piece of code. Every measured rewrite round
+    produced TWO candidates (9 of 9), asked for different hypotheses, so their declarations contradict
+    each other about the same dimension by design -- and without this field the reconciliation could
+    only pool them. Defaults to "" so a replayed pre-field declaration still reconciles, as one
+    unattributed group.
     """
 
     hypothesis_id: str
     change_summary: str
     expectation: Any  # a ResourceExpectation; typed loosely to keep this module import-light
+    candidate_id: str = ""
 
 
 @dataclass
@@ -2172,7 +2179,8 @@ class Orchestrator:
                 # result where the next round will read it. Reuses `conversion`'s own
                 # `resource_deltas` rather than recomputing, so the two halves of the ledger cannot
                 # disagree about what moved.
-                self._record_reconciliation(family.family_id, round_no, conversion)
+                self._record_reconciliation(family.family_id, round_no, conversion,
+                                            profile_before)
             else:
                 # NOTHING was evaluated this round: the rewriter never answered, or every
                 # candidate it produced was a structural duplicate. Recording the unchanged
@@ -2208,8 +2216,38 @@ class Orchestrator:
             self._step_done(key)
         return progressed
 
-    def _record_reconciliation(self, family_id: str, round_no: int, conversion: dict) -> None:
-        """S2d(b/c): check the round's declared directions against what was measured.
+    def _record_reconciliation(self, family_id: str, round_no: int, conversion: dict,
+                               profile_before: Any = None) -> None:
+        """S2d(b/c): check each rewrite candidate's declared directions against what IT measured.
+
+        ONE ENTRY PER CANDIDATE, not one per round. Every rewrite round in every completed L3 run
+        produced exactly TWO candidates (9 of 9 rounds measured), and they are asked for *different*
+        hypotheses -- so their declarations routinely contradict each other about the same dimension
+        by design. Scoring both against one delta map therefore mixes two agents' claims about two
+        different pieces of code, and the arithmetic is not merely noisy but wrong in both directions
+        at once. Measured on box 2's round 0 (`run-l3-43-20260911-052630`):
+
+            H1+H3, the WINNER, against its own profile   4 hits / 1 miss / 3 vacuous
+            H2, never tuned when the round was recorded   2 hits / 5 misses
+            POOLED, as this method used to do             6 hits / 6 misses
+
+        The pooled row is what the ledger would have said, and it is unusable in both directions: the
+        winning hypothesis -- 5 declarations, every falsifiable one correct, which is the strongest
+        S2d evidence the run produced -- is diluted to 50%, while H2 is charged with 5 misses for
+        predicting `unchanged` about dimensions that a DIFFERENT candidate changed. The next round's
+        prompt then tells an agent its correct reasoning was half wrong, and `render_ledger` prints
+        both under one heading with two rows per dimension and no way to tell which is which. An agent
+        that adjusts to wrong feedback is worse off than one with none -- the measured shape of
+        KernelPro's raw-counter arm (1.77x against 3.35x for no feedback).
+
+        `reconcile`'s own caveat already presumes this: "compares the parent's best configuration
+        against THE CHILD's" -- singular. The pooling was in this method, not in the reconciler.
+
+        A candidate with no measured profile of its own is reconciled against an EMPTY delta map,
+        which `reconcile` reports as `unmeasured` per dimension. Not against the round's map: that is
+        the error above in miniature, attributing another candidate's movements to this one. And not
+        skipped either -- "declared and never measured" is a state worth seeing, since a candidate
+        whose parameterization was rejected still spent a rewrite call.
 
         Ledger entries live alongside `failed_hypotheses` on the SAME channel rather than in a new
         one: that list is already journalled (`HYPOTHESES_FAILED`) and already replayed on resume, so
@@ -2224,6 +2262,7 @@ class Orchestrator:
         a bookkeeping defect as a candidate defect.
         """
         try:
+            from kernel_optimizer.evaluation.conversion import conversion_verdict as _cv
             from kernel_optimizer.evaluation.reconcile import reconcile
 
             # Pop, so a round can never be reconciled against the PREVIOUS round's declarations.
@@ -2231,26 +2270,91 @@ class Orchestrator:
             # place would silently score round N+1 against round N's predictions, which reads as a
             # plausible ledger and is entirely wrong.
             declared = self.round_expectations.pop(family_id, [])
-            hyp_ids = sorted({e.hypothesis_id for e in declared if e.hypothesis_id})
-            rec = reconcile([e.expectation for e in declared],
-                            conversion.get("resource_deltas"),
-                            hypothesis_id=",".join(hyp_ids))
-            entry = {
-                "family_id": family_id, "round": round_no,
-                # `id` and `change` keep the ledger renderable by the same function that renders a
-                # pre-S2d `failed_hypotheses` entry, so a resumed run mixing both shapes works.
-                "id": ",".join(hyp_ids) or "(no hypothesis id)",
-                "change": "; ".join(e.change_summary for e in declared)[:300],
-                "reconciliation": rec.model_dump(),
-                "conversion": conversion.get("conversion"),
-                "latency_gain_pct": conversion.get("latency_gain_pct"),
-                "n_declared": len(declared),
-            }
-            self.store.append("EXPECTATIONS_RECONCILED", entry)
-            self.ledger.setdefault(family_id, []).append(entry)
+            # Group by the candidate that made them, preserving declaration order so the ledger reads
+            # in the order the rewriter produced its candidates.
+            by_cand: dict[str, list[_DeclaredExpectations]] = {}
+            for d in declared:
+                by_cand.setdefault(getattr(d, "candidate_id", "") or "", []).append(d)
+
+            for cand_id, group in by_cand.items():
+                # THIS candidate's own before/after, so its `resource_deltas` describe its own code.
+                # Falls back to the round's conversion only for the candidate that IS the round's
+                # incumbent, where the two are the same measurement by construction.
+                own = self._candidate_conversion(family_id, cand_id, conversion, _cv,
+                                                 profile_before)
+                hyp_ids = sorted({e.hypothesis_id for e in group if e.hypothesis_id})
+                rec = reconcile([e.expectation for e in group],
+                                own.get("resource_deltas"),
+                                hypothesis_id=",".join(hyp_ids))
+                entry = {
+                    "family_id": family_id, "round": round_no,
+                    # The candidate is named so a `miss` can be traced to the code it is about. Absent
+                    # before this was per-candidate, when an entry could only say "this family, this
+                    # round" and there were two candidates behind it.
+                    "candidate_id": cand_id or None,
+                    # `id` and `change` keep the ledger renderable by the same function that renders a
+                    # pre-S2d `failed_hypotheses` entry, so a resumed run mixing both shapes works.
+                    "id": ",".join(hyp_ids) or "(no hypothesis id)",
+                    "change": "; ".join(e.change_summary for e in group)[:300],
+                    "reconciliation": rec.model_dump(),
+                    "conversion": own.get("conversion"),
+                    "latency_gain_pct": own.get("latency_gain_pct"),
+                    "n_declared": len(group),
+                }
+                self.store.append("EXPECTATIONS_RECONCILED", entry)
+                self.ledger.setdefault(family_id, []).append(entry)
+
+            if not by_cand:
+                # A round that declared NOTHING still gets an entry: "declared nothing" and "declared
+                # and was wrong" are different states and only one of them can be learned from, and a
+                # silent round would make the ledger's own length uninterpretable.
+                rec = reconcile([], conversion.get("resource_deltas"))
+                entry = {
+                    "family_id": family_id, "round": round_no, "candidate_id": None,
+                    "id": "(no hypothesis id)", "change": "",
+                    "reconciliation": rec.model_dump(),
+                    "conversion": conversion.get("conversion"),
+                    "latency_gain_pct": conversion.get("latency_gain_pct"),
+                    "n_declared": 0,
+                }
+                self.store.append("EXPECTATIONS_RECONCILED", entry)
+                self.ledger.setdefault(family_id, []).append(entry)
         except Exception as exc:  # noqa: BLE001 -- a diagnostic must never end a round
             self.store.append("EXPECTATIONS_RECONCILE_FAILED", {
                 "family_id": family_id, "round": round_no, "error": str(exc)[:500]})
+
+    def _candidate_conversion(self, family_id: str, cand_id: str, round_conversion: dict,
+                              conversion_fn, profile_before: Any = None) -> dict:
+        """One rewrite candidate's own before/after, for its own ledger entry.
+
+        The `before` is the PARENT's profile -- `_rewrite_round`'s own `profile_before`, PASSED IN
+        rather than looked up, because by the time this runs `family.best` may already be one of the
+        children and the parent's reading is no longer reachable from the family. It is shared by
+        every candidate in the round, and correctly so: they all restructure the same parent. The
+        `after` is this candidate's own winning trial, which is what makes the entry about this
+        candidate.
+
+        Returns the round's own conversion unchanged when this candidate IS the round's incumbent:
+        there the two are the same measurement, and recomputing risks the two halves of the ledger
+        disagreeing about a number they should share.
+
+        An empty dict when the candidate has no measured profile -- `reconcile` then reports every
+        declared dimension as `unmeasured`, which is the honest reading. Deliberately not the round's
+        map: attributing another candidate's movements to this one is the defect being fixed.
+        """
+        fam = self.deps.families.families.get(family_id)
+        best = getattr(fam, "best", None) if fam else None
+        if best is not None and getattr(best, "candidate_id", None) == cand_id:
+            return round_conversion
+
+        crun = self.runs.get(cand_id)
+        if crun is None or crun.best_ms is None:
+            return {}
+        after = self._best_profile(crun)
+        if after is None:
+            return {}
+        return conversion_fn(round_conversion.get("latency_ms_before"), crun.best_ms,
+                             profile_before, after, self.cfg.budgets.min_improvement_pct)
 
     def _do_rewrite(self, family_id: str, parent_crun: CandidateRun) -> bool:
         """Run one rewrite round. Returns whether a rewrite was actually EVALUATED.
@@ -2343,7 +2447,8 @@ class Orchestrator:
                 self.round_expectations.setdefault(family_id, []).append(
                     _DeclaredExpectations(hypothesis_id=rw.hypothesis_id,
                                           change_summary=rw.change_summary[:300],
-                                          expectation=e))
+                                          expectation=e,
+                                          candidate_id=cand.candidate_id))
             registered.append(cand.candidate_id)
         # B1 also applies here: rewrite/novelty candidates are 10 of the 14 candidates
         # in a typical L3 run, so prefetching only in the seed loop covered under a

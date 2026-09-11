@@ -221,25 +221,64 @@ def _orch(ledger_on: bool = True):
     o.store = _Store()
     o.round_expectations = {}
     o.ledger = {}
+    # `runs` and `families` are what per-candidate attribution reads: each candidate's own trials give
+    # its own profile. Empty by default, so a test that declares nothing about candidates gets the
+    # `unmeasured` path rather than a silent fallback to another candidate's numbers.
+    o.runs = {}
+    o.deps = SimpleNamespace(families=SimpleNamespace(families={}))
     o.cfg = SimpleNamespace(
+        budgets=SimpleNamespace(min_improvement_pct=2.0),
         v3=SimpleNamespace(diagnosis=SimpleNamespace(expectation_ledger=ledger_on)))
     return o
 
 
-def _declare(o, family_id: str, *pairs: tuple[str, str]) -> None:
+def _declare(o, family_id: str, *pairs: tuple[str, str], candidate_id: str = "cand-a",
+             hypothesis_id: str = "H1") -> None:
     from kernel_optimizer.control.orchestrator import _DeclaredExpectations
     for dim, direction in pairs:
         o.round_expectations.setdefault(family_id, []).append(
-            _DeclaredExpectations(hypothesis_id="H1", change_summary="split the reduction",
-                                  expectation=exp(dim, direction)))
+            _DeclaredExpectations(hypothesis_id=hypothesis_id,
+                                  change_summary="split the reduction",
+                                  expectation=exp(dim, direction),
+                                  candidate_id=candidate_id))
+
+
+def _prof(**fields):
+    """A parent profile as `_rewrite_round` captures it: a ProfileRecord-shaped object, read by
+    attribute the way `conversion._read` reads it."""
+    from types import SimpleNamespace
+    return SimpleNamespace(**fields)
+
+
+def _measured(o, cand_id: str, ms: float, **prof):
+    """Give a candidate a winning trial, so `_best_profile` has something to return.
+
+    Shaped from what `_best_profile` actually reads -- `status`, `latency_ms.robust_ms`, `profile` --
+    rather than from what the reader would find convenient, because a fixture invented to match the
+    reader proves nothing about either.
+    """
+    from types import SimpleNamespace
+    o.runs[cand_id] = SimpleNamespace(
+        best_ms=ms,
+        trials=[SimpleNamespace(status="complete",
+                                latency_ms=SimpleNamespace(robust_ms=ms),
+                                profile=SimpleNamespace(**prof))])
+    return o.runs[cand_id]
 
 
 def test_a_round_is_reconciled_against_its_own_declarations_and_journalled():
+    """`_measured` is not decoration: reconciliation is PER CANDIDATE, so a declaration is judged
+    against the profile of the candidate that made it. Without a measurement this candidate correctly
+    reads `unmeasured` -- which is what the fixture said before per-candidate attribution existed, when
+    an entry was scored against the round's deltas no matter which code they came from."""
     o = _orch()
     _declare(o, "fam-1", ("shared_bytes", "down"), ("n_regs", "up"))
+    _measured(o, "cand-a", 3.0, shared_bytes=16384, n_regs=220)
     conv = {"conversion": "no_conversion", "latency_gain_pct": 0.3,
+            "latency_ms_before": 3.01, "latency_ms_after": 3.0,
             "resource_deltas": deltas(shared_bytes=(65536.0, 16384.0), n_regs=(96.0, 220.0))}
-    o._record_reconciliation("fam-1", 1, conv)
+    o._record_reconciliation("fam-1", 1, conv,
+                             _prof(shared_bytes=65536, n_regs=96))
 
     assert "EXPECTATIONS_RECONCILED" in o.store.kinds()
     p = o.store.payload("EXPECTATIONS_RECONCILED")
@@ -307,6 +346,129 @@ def test_a_reconcile_failure_journals_and_does_not_end_the_round():
     o._record_reconciliation("fam-1", 1, Hostile())
     assert "EXPECTATIONS_RECONCILE_FAILED" in o.store.kinds()
     assert "broken" in o.store.payload("EXPECTATIONS_RECONCILE_FAILED")["error"]
+
+
+def test_two_candidates_in_one_round_are_reconciled_SEPARATELY():
+    """The pooling defect, on box 2's own numbers (`run-l3-43-20260911-052630`, round 0).
+
+    Every measured rewrite round produced TWO candidates (9 of 9 across the completed L3 runs), asked
+    for different hypotheses, so their declarations contradict each other about the same dimension by
+    design. H1+H3 said `shared_bytes: up` and won; H2 said `unchanged` about the same dimension for
+    different code. Pooled, the log said 6 hits / 6 misses; separately it is 4/1 for the winner and
+    2/5 for H2.
+
+    Revert-checked against the pooled implementation: ONE entry appears with hits=6, misses=6,
+    n_declared=16, so both assertions on the winner's entry fail. That is the whole defect -- the
+    strongest S2d evidence in the run, five declarations with every falsifiable one correct, diluted
+    to a coin flip, and H2 charged with misses for another candidate's changes.
+    """
+    o = _orch()
+    WIN, OTHER = "cand-2d8eaf9a", "cand-3760b4d7"
+    _declare(o, "fam-1", ("shared_bytes", "up"), ("n_regs", "unknown"),
+             candidate_id=WIN, hypothesis_id="H1+H3")
+    _declare(o, "fam-1", ("shared_bytes", "unchanged"), ("n_regs", "down"),
+             candidate_id=OTHER, hypothesis_id="H2")
+
+    # The winner IS the family incumbent, so it reconciles against the round's own conversion.
+    from types import SimpleNamespace
+    o.deps.families.families["fam-1"] = SimpleNamespace(
+        best=SimpleNamespace(candidate_id=WIN))
+    # The other candidate's own measurement: shared memory did NOT move, exactly as H2 said.
+    _measured(o, OTHER, 3.30, n_regs=140, shared_bytes=17408)
+
+    conv = {"conversion": "improved", "latency_gain_pct": 9.833,
+            "latency_ms_before": 3.2128, "latency_ms_after": 2.8969,
+            "resource_deltas": deltas(shared_bytes=(17408.0, 32768.0), n_regs=(155.0, 155.0))}
+    o._record_reconciliation("fam-1", 0, conv,
+                             SimpleNamespace(n_regs=155, shared_bytes=17408))
+
+    entries = o.ledger["fam-1"]
+    assert len(entries) == 2, "one entry per candidate, not one per round"
+    by_cand = {e["candidate_id"]: e for e in entries}
+    assert set(by_cand) == {WIN, OTHER}
+
+    win = by_cand[WIN]["reconciliation"]
+    assert win["hits"] == 1 and win["misses"] == 0, (
+        "the winner said shared_bytes would rise and it rose; pooled this reads as 6/6")
+    assert win["vacuous"] == 1                      # n_regs declared `unknown`
+    assert by_cand[WIN]["n_declared"] == 2
+
+    oth = by_cand[OTHER]["reconciliation"]
+    rows = {r["dimension"]: r for r in oth["per_dimension"]}
+    assert rows["shared_bytes"]["match"] == "hit", (
+        "H2 said its own shared_bytes would not move, and its own measurement agrees -- charging it "
+        "a miss for the OTHER candidate's 17408->32768 is the defect")
+    assert rows["shared_bytes"]["before"] == 17408 and rows["shared_bytes"]["after"] == 17408
+
+
+def test_a_candidates_entry_is_never_scored_against_another_candidates_deltas():
+    """The narrower half: a candidate with NO measurement of its own must read `unmeasured`, not
+    inherit the round's map.
+
+    This is the mechanism behind the test above, isolated. A rewrite whose parameterization was
+    rejected has declarations and no profile; scoring it against the round's deltas would report hits
+    and misses for code that was never measured, and those are indistinguishable in the log from real
+    ones.
+    """
+    o = _orch()
+    _declare(o, "fam-1", ("shared_bytes", "up"), candidate_id="cand-never-tuned")
+    conv = {"conversion": "improved", "latency_gain_pct": 9.0,
+            "latency_ms_before": 3.2, "latency_ms_after": 2.9,
+            "resource_deltas": deltas(shared_bytes=(17408.0, 32768.0))}
+    o._record_reconciliation("fam-1", 0, conv, None)
+
+    e = o.ledger["fam-1"][0]
+    r = e["reconciliation"]
+    assert r["hits"] == 0 and r["misses"] == 0, "nothing was measured, so nothing is judged"
+    assert list(r["dimensions_unmeasured"]) == ["shared_bytes"]
+    assert e["conversion"] is None, (
+        "an unmeasured candidate has no conversion verdict of its own; carrying the round's would "
+        "credit it with another candidate's latency gain")
+
+
+def test_the_ledger_heading_names_the_candidate_so_two_sections_are_distinguishable():
+    """`render_ledger` is the only thing the agent sees, so per-candidate entries have to be
+    per-candidate THERE too.
+
+    Revert-checked against a heading that names only the round: `shared_bytes` then appears twice
+    under one title, once `up` and correct and once `unchanged` and wrong, with nothing saying they
+    describe different code. The prose is the whole treatment in S2d(c) -- a reader who cannot tell
+    the two apart is worse off than one given no ledger.
+    """
+    from kernel_optimizer.evaluation.reconcile import render_ledger
+
+    a = reconcile([exp("shared_bytes", "up")],
+                  deltas(shared_bytes=(17408.0, 32768.0)), hypothesis_id="H1+H3")
+    b = reconcile([exp("shared_bytes", "unchanged")],
+                  deltas(shared_bytes=(17408.0, 17408.0)), hypothesis_id="H2")
+    text = render_ledger([
+        {"id": "H1+H3", "round": 0, "candidate_id": "cand-2d8eaf9a", "change": "fuse projections",
+         "reconciliation": a.model_dump(), "conversion": "improved", "latency_gain_pct": 9.8},
+        {"id": "H2", "round": 0, "candidate_id": "cand-3760b4d7", "change": "reshape registers",
+         "reconciliation": b.model_dump(), "conversion": "flat", "latency_gain_pct": 0.1},
+    ])
+    assert "cand-2d8eaf9a" in text and "cand-3760b4d7" in text
+    assert text.count("## Round 0") == 2
+    # The same dimension appears in both sections with DIFFERENT readings, which is why the heading
+    # has to separate them: `up` / 17408 -> 32768 for the winner, `unchanged` / flat for H2. Both are
+    # hits (H2's own shared memory really did not move), so the discriminator is the numbers, not a
+    # hit-vs-miss contrast -- asserting one of each here would have been asserting the pooled bug.
+    # `_fmt` renders >=1000 as 3 significant figures, so the assertion is on its output, not on the
+    # raw integer: matching "32768" fails on a working renderer.
+    assert "3.28e+04" in text and text.count("shared_bytes") == 2
+    assert "you said `up`" in text and "you said `unchanged`" in text
+
+
+def test_render_ledger_still_renders_an_entry_with_no_candidate_id():
+    """A resumed run replays entries journalled before `candidate_id` existed. They must render as the
+    older shape rather than printing `None` into the agent's prompt."""
+    from kernel_optimizer.evaluation.reconcile import render_ledger
+
+    r = reconcile([exp("shared_bytes", "down")], deltas(shared_bytes=(65536.0, 16384.0)))
+    text = render_ledger([{"id": "H1", "round": 1, "change": "old",
+                           "reconciliation": r.model_dump(), "conversion": "improved"}])
+    assert "## Round 1 — H1" in text
+    assert "None" not in text
 
 
 def test_the_ledger_is_journalled_even_with_the_switch_off():
