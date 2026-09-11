@@ -786,3 +786,104 @@ def test_the_state_is_never_one_of_four_invented_labels(tmp_path):
     b = check_wrapup.check_s3_s4(binding)["complementary_slackness_state"]
     assert a != b, "the state must depend on the record's verdict, not on payload text"
     assert a.startswith("cannot_run") and b.startswith("no_dimension_judged_slack")
+
+
+# --------------------------------------------------------------------------------------------------
+# Arm parity: does the paired comparison's premise -- "one thing changed" -- actually hold?
+# --------------------------------------------------------------------------------------------------
+
+_IDENT = "NVIDIA GeForce RTX 4090|8.9|128|2.13.0+cu129|12.9|3.7.1"
+_IDENT_OTHER = "NVIDIA GeForce RTX 4090|8.9|128|2.9.1+cu129|12.9|3.5.1"
+
+
+def _arm(tmp_path: Path, name: str, *, mode: str, ledger: bool, venv: str = "/v/a",
+         ident: str = _IDENT, trials: int = 40) -> Path:
+    """A run directory with a manifest and one DIMENSION_STATE, shaped as the orchestrator writes
+    them: the config snapshot at `config` in manifest.json, and the calibration identity inside
+    `DIMENSION_STATE.payload.compute_ceiling_provenance`."""
+    d = tmp_path / name
+    d.mkdir(parents=True)
+    (d / "manifest.json").write_text(json.dumps({"run_id": name, "config": {
+        "budgets": {"trials_per_space": trials, "wall_clock_hours": 12.0},
+        "wsl": {"venv": venv, "distro": "Ubuntu"},
+        "v3": {"diagnosis": {"mode": mode, "expectation_ledger": ledger}},
+    }}), encoding="utf-8")
+    (d / "events.jsonl").write_text(json.dumps({
+        "seq": 0, "ts": 1.0, "type": "DIMENSION_STATE",
+        "payload": {"candidate_id": "c1", "records": [],
+                    "compute_ceiling_provenance": {"precision": "bf16",
+                                                   "calibration_identity": ident}}}) + "\n",
+        encoding="utf-8")
+    return d
+
+
+def test_arms_differing_only_in_the_two_switches_pass(tmp_path):
+    c = _arm(tmp_path, "ctl", mode="label", ledger=False)
+    t = _arm(tmp_path, "trt", mode="vector", ledger=True)
+    out = check_wrapup.check_arm_parity(c, t)
+    assert out["verdict"].startswith("PASS"), out["verdict"]
+    assert set(out["differing"]) == {"v3.diagnosis.mode", "v3.diagnosis.expectation_ledger"}
+
+
+def test_a_differing_venv_path_with_the_same_calibration_identity_is_not_a_confound(tmp_path):
+    """Measured on the live pair: box 1 ran `orch-venv`, box 2 `kernel-opt-venv`, and both resolve to
+    torch 2.13.0+cu129 / triton 3.7.1. A different interpreter PATH is not a different interpreter --
+    and the discriminator is the recorded calibration identity, not the path text."""
+    c = _arm(tmp_path, "ctl", mode="label", ledger=False, venv="/root/orch-venv")
+    t = _arm(tmp_path, "trt", mode="vector", ledger=True, venv="/root/kernel-opt-venv")
+    out = check_wrapup.check_arm_parity(c, t)
+    assert out["verdict"].startswith("PASS"), out["verdict"]
+    assert out["same_environment"] is True
+    assert "wsl.venv" in out["differing"], "still REPORTED, just not a confound"
+    assert "path-shaped" in out["verdict"] and "not a different interpreter" in out["verdict"]
+
+
+def test_a_differing_venv_with_a_DIFFERENT_identity_is_a_confound(tmp_path):
+    """The other half, and the reason the path exemption is conditional: torch/triton is a recorded
+    covarying factor (G23), so the same exemption granted outright would hide a real divergence."""
+    c = _arm(tmp_path, "ctl", mode="label", ledger=False, venv="/root/a", ident=_IDENT)
+    t = _arm(tmp_path, "trt", mode="vector", ledger=True, venv="/root/b", ident=_IDENT_OTHER)
+    out = check_wrapup.check_arm_parity(c, t)
+    assert out["verdict"].startswith("**CONFOUND**"), out["verdict"]
+    assert "wsl.venv" in out["unexpected"]
+    assert out["same_environment"] is False
+
+
+def test_a_differing_budget_is_a_confound_even_with_one_environment(tmp_path):
+    """A search-budget difference is exactly the confound that makes a latency comparison meaningless,
+    and it is not path-shaped, so no exemption applies."""
+    c = _arm(tmp_path, "ctl", mode="label", ledger=False, trials=40)
+    t = _arm(tmp_path, "trt", mode="vector", ledger=True, trials=80)
+    out = check_wrapup.check_arm_parity(c, t)
+    assert out["verdict"].startswith("**CONFOUND**"), out["verdict"]
+    assert "budgets.trials_per_space" in out["unexpected"]
+
+
+def test_two_arms_that_are_the_SAME_arm_are_reported_as_a_defect(tmp_path):
+    """The failure the `extra="forbid"` config fix exists to prevent, checked at the run level: a typo
+    in a v3 key used to validate cleanly and leave the default, so a "treatment" arm was a second
+    control, the two runs agreed, and the conclusion would have been "the vector changes nothing"."""
+    c = _arm(tmp_path, "ctl", mode="label", ledger=False)
+    t = _arm(tmp_path, "trt", mode="label", ledger=False)
+    out = check_wrapup.check_arm_parity(c, t)
+    assert out["verdict"].startswith("**DEFECT**"), out["verdict"]
+    assert "not a paired comparison" in out["verdict"]
+
+
+def test_only_one_switch_flipped_is_also_reported_as_a_defect(tmp_path):
+    """Half a treatment is not a treatment: S2 and S2d are two switches and J2d-9 needs both."""
+    c = _arm(tmp_path, "ctl", mode="label", ledger=False)
+    t = _arm(tmp_path, "trt", mode="vector", ledger=False)
+    out = check_wrapup.check_arm_parity(c, t)
+    assert out["verdict"].startswith("**DEFECT**"), out["verdict"]
+    assert "expectation_ledger" in out["verdict"]
+
+
+def test_a_missing_manifest_refuses_to_decide(tmp_path):
+    """Absence of a manifest is not evidence of parity."""
+    c = _arm(tmp_path, "ctl", mode="label", ledger=False)
+    t = tmp_path / "trt"
+    t.mkdir()
+    (t / "events.jsonl").write_text("", encoding="utf-8")
+    out = check_wrapup.check_arm_parity(c, t)
+    assert "CANNOT DECIDE" in out["verdict"]

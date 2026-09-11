@@ -144,6 +144,94 @@ def final_result(run_dir: Path) -> dict:
             "used_fallback": not isinstance(reeval, (int, float))}
 
 
+def _flatten(d: dict, prefix: str = "") -> dict:
+    out: dict = {}
+    for k, v in (d or {}).items():
+        key = "%s.%s" % (prefix, k) if prefix else str(k)
+        if isinstance(v, dict):
+            out.update(_flatten(v, key))
+        else:
+            out[key] = v
+    return out
+
+
+# The switches the paired runs are ALLOWED to differ in. Anything else is a confound in a comparison
+# whose whole claim is "one thing changed".
+_ARM_SWITCHES = ("v3.diagnosis.mode", "v3.diagnosis.expectation_ledger")
+# Keys that name WHERE something is rather than WHAT it is. A different interpreter PATH is not a
+# different interpreter: measured on the live pair, box 1 ran `orch-venv` and box 2 `kernel-opt-venv`
+# and both resolve to torch 2.13.0+cu129 / triton 3.7.1 -- which is why the exemption is conditional
+# on the calibration identities matching, below, rather than granted outright. A path exemption with
+# no such check would hide a real environment divergence, and G23 already records torch/triton as a
+# covarying factor across boxes.
+_ARM_PATHLIKE = ("wsl.venv", "wsl.distro", "wsl.kernelbench_src", "wsl.triton_cache_dir",
+                 "opencode.launch_cwd", "opencode.server_url", "opencode.sandbox_config_path",
+                 "runs_dir", "opencode.node_bin")
+
+
+def check_arm_parity(control_dir: Path, treatment_dir: Path) -> dict:
+    """Do the two arms differ ONLY in the switches under test?
+
+    Reads each run's `manifest.json` config snapshot -- what the run ACTUALLY loaded, not the yaml on
+    disk, which may have been edited since. That distinction is the point: a typo in a `v3` key used
+    to validate cleanly and leave the field default, so a treatment arm could silently be a SECOND
+    CONTROL and the two runs would agree. `extra="forbid"` closed that at the model layer; this
+    confirms it on the runs rather than trusting the fix.
+
+    Path-shaped keys are exempted ONLY when both runs recorded the same calibration identity, which
+    carries GPU, torch, CUDA and triton versions. A different venv path with the same identity is the
+    same environment; a different identity is a real confound no matter what the paths say.
+    """
+    def snapshot(d: Path) -> tuple[dict, set]:
+        try:
+            man = json.loads((d / "manifest.json").read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            return {}, set()
+        idents = set()
+        for e in _events(d):
+            if e.get("type") == "DIMENSION_STATE":
+                cp = (e.get("payload") or {}).get("compute_ceiling_provenance") or {}
+                if cp.get("calibration_identity"):
+                    idents.add(cp["calibration_identity"])
+        return _flatten(man.get("config") or {}), idents
+
+    c, c_ident = snapshot(control_dir)
+    t, t_ident = snapshot(treatment_dir)
+    if not c or not t:
+        return {"verdict": "CANNOT DECIDE -- a manifest.json could not be read on one or both arms",
+                "differing": {}, "calibration_identities": sorted(c_ident | t_ident)}
+
+    differing = {k: (c.get(k, "<absent>"), t.get(k, "<absent>"))
+                 for k in sorted(set(c) | set(t)) if c.get(k) != t.get(k)}
+    same_env = bool(c_ident) and bool(t_ident) and c_ident == t_ident
+    unexpected = {k: v for k, v in differing.items()
+                  if k not in _ARM_SWITCHES and not (k in _ARM_PATHLIKE and same_env)}
+    switches = {k: differing.get(k) for k in _ARM_SWITCHES}
+
+    missing_switch = [k for k in _ARM_SWITCHES if k not in differing]
+    if missing_switch:
+        verdict = ("**DEFECT** -- the arms do NOT differ in %s, so this is not a paired comparison: "
+                   "both runs are the same arm" % ", ".join(missing_switch))
+    elif unexpected:
+        verdict = ("**CONFOUND** -- %d key(s) differ beyond the switches under test: %s" % (
+            len(unexpected), ", ".join("%s (%r vs %r)" % (k, v[0], v[1])
+                                       for k, v in list(unexpected.items())[:4])))
+    else:
+        note = ""
+        pathlike = [k for k in differing if k in _ARM_PATHLIKE]
+        if pathlike:
+            note = ("  || %d path-shaped key(s) also differ (%s) and are exempt because both arms "
+                    "recorded the SAME calibration identity %s -- a different interpreter path is "
+                    "not a different interpreter" % (
+                        len(pathlike), ", ".join(pathlike), sorted(c_ident)))
+        verdict = ("PASS -- the arms differ in exactly the switches under test (%s)%s" % (
+            ", ".join("%s: %r vs %r" % (k, v[0], v[1]) for k, v in switches.items() if v), note))
+    return {"verdict": verdict, "differing": differing, "switches": switches,
+            "unexpected": unexpected,
+            "calibration_identities": {"control": sorted(c_ident), "treatment": sorted(t_ident)},
+            "same_environment": same_env}
+
+
 def compare_arms(control: dict, treatment: dict, noise_floor_pct: float) -> str:
     """J2-5: treatment must not be worse than control beyond the task's measured noise floor."""
     c = control["final_reeval_ms"]
@@ -705,6 +793,18 @@ def main(argv: list[str]) -> int:
         print("=" * 78)
         print("J2-5 / J2d-9 comparison")
         print("=" * 78)
+        # PARITY FIRST. Every number below compares two runs on the premise that one thing changed
+        # between them, so if that premise is false the comparison is not weakened -- it is answering
+        # a different question. Measured on the live pair: a THIRD key differed (`wsl.venv`) and it
+        # took a manual check of both interpreters to establish it was benign. That check now runs
+        # here, keyed on the calibration identity rather than on my reading of two paths.
+        parity = check_arm_parity(Path(argv[0]), Path(argv[1]))
+        print("    arm parity: %s" % parity["verdict"])
+        if parity["differing"]:
+            print("      all differing config keys (%d):" % len(parity["differing"]))
+            for k, (a, b) in list(parity["differing"].items())[:10]:
+                print("        %-44s %r  vs  %r" % (k, a, b))
+        print()
         # The tolerance: 2.35% is `1 - 0.9765`, a frac_within_tol (CORRECTNESS) figure reused as a
         # latency tolerance. Measure the latency floor from these runs too and use the WIDER of the
         # two, so the comparison is never stricter than the measurement supports -- and say which
