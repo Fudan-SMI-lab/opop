@@ -54,6 +54,14 @@ from kernel_optimizer.models.reports import ResourceExpectation  # noqa: E402
 
 
 def latest_run(root):
+    """Accept EITHER a runs directory or a single run directory.
+
+    Passing a run dir is the natural thing to have on hand -- every other script here takes one -- and
+    this took only a runs root, so it died on `os.path.join(None, ...)`. That is a real generality gap
+    rather than a usage error: a tool that reads one run should accept that run.
+    """
+    if os.path.exists(os.path.join(root, "events.jsonl")):
+        return root
     c = []
     for d in sorted(os.listdir(root)):
         p = os.path.join(root, d)
@@ -64,6 +72,8 @@ def latest_run(root):
 
 
 run = latest_run(RUNS)
+if run is None:
+    raise SystemExit("no run with an events.jsonl under %s" % RUNS)
 evs = []
 with io.open(os.path.join(run, "events.jsonl"), encoding="utf-8") as fh:
     for line in fh:
@@ -90,9 +100,13 @@ for e in evs:
             keep.append(ResourceExpectation(**x) if isinstance(x, dict) else x)
         except Exception as exc:                                   # noqa: BLE001
             print("  !! expectation rejected for %s: %s" % (cid, exc))
-    declared[cid] = (p.get("hypothesis_id"), keep)
+    # The family is carried too, because the parent reading a candidate is scored against is the
+    # FAMILY's incumbent -- see the parent recovery below. Free here:
+    # `REWRITE_PRODUCED.payload.family_id` is journalled (there is no parent field, but family_id is).
+    declared[cid] = (p.get("hypothesis_id"), keep, p.get("family_id") or "")
     order.append(cid)
-print("\ndeclarations: %s" % [(c, declared[c][0], len(declared[c][1])) for c in order])
+print("\ndeclarations: %s" % [(c, declared[c][0], len(declared[c][1]), declared[c][2])
+                             for c in order])
 
 # --- each candidate's OWN best profile, from its OWN trials ---------------------------------------
 # The defect is that this step never happened: the round's single conversion was reused for every
@@ -128,14 +142,23 @@ for cid in order:
 # BEFORE the round, shared by every candidate in it "and correctly so: they all restructure the same
 # parent". `DimensionReconciliation` carries that reading per row as `before`, so the parent profile
 # is recoverable from the pooled entry itself without re-running anything.
-parent_profile = {}
+#
+# KEYED PER FAMILY. A single flat dict was correct only while a run had ONE entry: with two, the second
+# family's `before` overwrote the first's and every candidate was scored against the wrong parent.
+# Measured consequence -- `cand-3760b4d7` read 1 hit / 7 misses instead of 7 / 1, an exact inversion of
+# the number this script exists to produce. Each family restructures its OWN incumbent, so the parent is
+# a property of the family, never of the run.
+parent_by_family = {}
 for e in evs:
     if e.get("type") != "EXPECTATIONS_RECONCILED":
         continue
+    fid = (e.get("payload") or {}).get("family_id") or ""
+    prof = parent_by_family.setdefault(fid, {})
     for row in ((e.get("payload") or {}).get("reconciliation") or {}).get("per_dimension") or []:
         if isinstance(row.get("before"), (int, float)):
-            parent_profile[row.get("dimension")] = row["before"]
-print("\nparent profile recovered from the pooled entry's per-dimension rows: %s" % parent_profile)
+            prof[row.get("dimension")] = row["before"]
+for fid, prof in parent_by_family.items():
+    print("\nparent profile for %s, recovered from its own entry's rows: %s" % (fid, prof))
 
 _FIELDS = ("n_regs", "n_spills", "shared_bytes", "occupancy", "threads_launched",
            "peak_alloc_bytes", "candidate_aten_bytes", "candidate_aten_ops")
@@ -175,17 +198,19 @@ print("CORRECT ledger: one entry per candidate, each against ITS OWN measurement
 print("=" * 78)
 totals = {"hit": 0, "miss": 0, "vacuous": 0}
 for cid in order:
-    hyp, exps = declared[cid]
+    hyp, exps, fid = declared[cid]
     if cid not in best:
         print("\n%s (%s): UNMEASURED -- no complete trial with a profile, so every declaration is "
               "unmeasured rather than a miss" % (cid, hyp))
         continue
+    parent_profile = parent_by_family.get(fid) or {}
     if not parent_profile:
-        print("\n%s (%s): no parent reading recoverable; cannot form a delta" % (cid, hyp))
+        print("\n%s (%s, %s): no parent reading recoverable for this family; cannot form a delta"
+              % (cid, hyp, fid))
         continue
     d = deltas(parent_profile, best[cid][1])
     rec = reconcile(exps, d, hypothesis_id=hyp or "")
-    print("\n%s (%s)   its own best = %.4f ms" % (cid, hyp, best[cid][0]))
+    print("\n%s (%s, %s)   its own best = %.4f ms" % (cid, hyp, fid, best[cid][0]))
     print("  hits/misses/vacuous = %d / %d / %d" % (rec.hits, rec.misses, rec.vacuous))
     totals["hit"] += rec.hits
     totals["miss"] += rec.misses
