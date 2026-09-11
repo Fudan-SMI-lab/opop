@@ -127,5 +127,47 @@ if want and modes and want not in modes:
     bad.append("events record prompt_mode %s but this arm was asserted as %s" % (list(modes), want))
 for b in bad:
     print("%-6s !! %s" % (label, b))
+
+# --- S2d(c): the LEDGER half of the switch, on the rewriter's sandboxes --------------------------
+#
+# A second, independent switch: `v3.diagnosis.expectation_ledger` decides whether prior rounds'
+# predictions-vs-measurements reach the rewriter, and `seed_sandbox` writes one file or the other:
+#
+#     treatment  history/prediction_ledger.md      (prose, one line per dimension)
+#     control    history/failed_hypotheses.json    ("H1 was tried and did not help", no prediction)
+#
+# Both files at once would mean the treatment arm is more informed for two reasons; neither would mean
+# the rewriter got no history at all. Reported rather than failed when the ledger is legitimately
+# EMPTY: in round 1 there is nothing to reconcile, so `ledger_entries` is empty by construction and
+# even the treatment arm correctly writes the JSON file. That is why this section reports the round-1
+# state instead of demanding the ledger from the first rewrite.
+rw = sorted((run / "sandboxes").glob("rewriter-*"))
+if rw:
+    led = [d for d in rw if (d / "history" / "prediction_ledger.md").exists()]
+    fh = [d for d in rw if (d / "history" / "failed_hypotheses.json").exists()]
+    both = [d for d in rw if d in led and d in fh]
+    neither = [d for d in rw if d not in led and d not in fh]
+    print("%-6s rewriter sandboxes: %d   with prediction_ledger.md: %d   with "
+          "failed_hypotheses.json: %d   BOTH: %d   NEITHER: %d"
+          % (label, len(rw), len(led), len(fh), len(both), len(neither)))
+    if both:
+        bad.append("%d rewriter sandbox(es) carry BOTH the ledger and failed_hypotheses -- "
+                   "seed_sandbox writes one or the other, so both means the treatment arm is more "
+                   "informed for two reasons at once" % len(both))
+    if neither:
+        bad.append("%d rewriter sandbox(es) carry NEITHER -- the rewriter was given no history"
+                   % len(neither))
+    if want == "vector" and not led:
+        print("%-6s   (no prediction_ledger.md yet: EXPECTED while every family is on round 1, "
+              "since there is nothing to reconcile before a rewrite has been measured. S2d(c) "
+              "becomes checkable from round 2.)" % label)
+    if want == "label" and led:
+        bad.append("the CONTROL arm was given a prediction_ledger.md in %d sandbox(es); the "
+                   "switch is supposed to withhold it" % len(led))
+else:
+    print("%-6s rewriter sandboxes: 0 (Loop C has not started)" % label)
+
+for b in bad:
+    print("%-6s !! %s" % (label, b))
 print("%-6s => %s" % (label, "OK" if not bad else "MISMATCH"))
 raise SystemExit(1 if bad else 0)
