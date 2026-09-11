@@ -26,41 +26,53 @@ A800 `/root/autodl-tmp/work/opop` @ `03ab1a3`,全套 **834 passed, 1 skipped**
 
 ### A 层 —— 阻塞论文结论,必须在下一轮实验前修
 
-#### A1. `excessive_speedup` 的 10x 常量对 L3:48 系统性偏低
+#### A1. ~~`excessive_speedup` 的 10x 常量对 L3:48 系统性偏低~~ —— **已修复(`c399640`)**
 
-**证据:强,已量化。** 三次 L3:48 run **三次抬旗**(1.41 / 1.55 / 0.981 ms),两个 L3:43 臂**全部不抬**。
-根因是任务性质:L3:48 的参考实现搬运了 **40.5x** 它不可避免的流量(130 个 op),所以合法融合后的加速
-**天然 > 10x**。而该任务在 A800 上的**物理最大加速是 17.50x**(`compulsory_bytes / dram_tbs` = 0.8011 ms
-对 eager 13.9597 ms),我们的 14.3x 是物理上限的 **82%**。
+**实施结果与原方案不同,而且更彻底**:不只是「阈值从物理上界导出」,还**删掉了两处死代码并去掉了
+每 trial 的参考重测**。
 
-**为什么现在必须修**:每次抬旗都要人工复核一遍才能引用数字(本轮我做了一次),而论文里 L3:48 是三次
-run 的主结果。**留着它等于把一个人工步骤写进论文流程。**
+落盘审计(25 run / 6894 trial / 三台机器)给出的三条决定性事实:
+1. **拒绝次数 0**,抬旗 3 次(全部 L3:48,全部 5/5 正确);
+2. **拒绝分支在 relaxed 路径上不可达** —— `ref_latency_ms` 只在 `if correct and num_perf > 0`
+   下赋值,而 `result["ok"] = correct` 已在上游拒掉不正确的 trial ⇒ 守卫里的 `if not correct:`
+   永不执行。**一个不能执行的分支不是保险**;
+3. **每 trial 重测参考的成本是实的** —— 每个计时 trial 多 ~13 次参考执行,仅 box1 就 30511 次,
+   换来 0 次拦截。
 
-**泛化修法(不得按任务硬编码)**:阈值从**任务自身的物理上界**导出 —— `excessive_speedup_threshold`
-= `min(10x_legacy_floor, eager_ms / (compulsory_bytes / dram_tbs)) * margin`。这样:
-- 「跳过工作」仍被抓住 —— 超过物理上界在物理上不可能;
-- 合法融合不再抬旗 —— L3:48 的 17.50x 上界让 14.3x 合法,L3:43 的上界(需实测)让 3.9x 远低于门。
+**现在的形态**:阈值 = `max(compulsory_bytes/dram_tbs, flop_count/peak_tflops)` 导出的物理下界,
+`reference_ms / floor_ms` 即**任何正确实现都不可能超过**的上界,再乘 1.5 安全边际。
+参考延迟改用 run 自己的 100 采样 baseline(不再每 trial 重测)。三个拒答情形(无标定 / 工作集
+装进 L2 / 两项都测不到)一律**不给数**并写明原因 —— 一个错的界比没有界更糟。
 
-**风险**:低。`TASK_COST_MEASURED` 与 `CALIBRATION_LOADED` 都已落盘且在 worker 可见;且改的是
-**标记**逻辑而非接受逻辑(正确性仍然唯一决定接受)。需要一个 revert 变体验证「fp16 计时作弊 fixture
-仍被拒」。
+**已在三台机器的实跑中验证(2026-09-11 23:0x,落盘 `PLAUSIBILITY_BOUND`)**:
 
-#### A2. `rescue_from_sandbox` 丢掉 S2d 的 `expectations`
+| box | 任务 | floor | 绑定项 | 物理上界 | 抬旗门 | 说明 |
+|---|---|---|---|---|---|---|
+| 1 | L3:43 | 2.3487 ms | compute | **9.20x** | 13.79x | 现有最好 3.647x,远低于门 |
+| 2 | L3:43 | 2.3487 ms | compute | **9.15x** | 13.73x | 同上 |
+| 3 | L3:48 | 0.8011 ms | dram | **17.48x** | **26.21x** | **旧 10x 抬旗三次的 14.29x 现在合法通过** |
 
-**证据:强,box3 实测。** box3 那一轮两个 rewrite 候选的 `change_summary` 都是
-`[recovered from sandbox after a transport failure; the agent's own summary never arrived]`,
-`hypothesis_id` 为空 ⇒ **账本为空 ⇒ 那一轮的 S2d(a) 证据为零**,`conversion=flat, gain=0.0`。
+顺带删除:`suspicious_speedup: 2.0`(**全代码库无任何消费者**,却出现在每个 config 里 ——
+比缺失更糟,因为读者会以为有一道 2x 筛)。
 
-`rescue_from_sandbox` 只重建**文件**,而 `expectations` 只存在于 **JSON 响应**里。该函数的 docstring
-把 `hypothesis_id`/`change_summary` 称为 "narration the pipeline does not gate on" —— **S2d 之前为真,
-现在为假**。
+守卫:14+12 个测试,`scripts/revert_check_plausibility.py` **13 变体双向覆盖**(界不再约束 /
+界误伤诚实 kernel),A800 全 CAUGHT。
 
-**修法**:改 prompt 契约,让 rewriter **把声明也写进沙箱文件**(如 `analysis/expectations.json`),
-救援时一并读回。**这是较大改动**(碰 prompt + 三个 producer 的救援路径 + `check_output`),所以要
-**单独一轮**做,并且必须验证:救回的声明仍走 `check_output`(不能成为放行normally-refused 工作的通道)。
+#### A2. ~~`rescue_from_sandbox` 丢掉 S2d 的 `expectations`~~ —— **已修复(`c399640`)**
 
-**风险**:中。改 prompt 会改变 agent 行为 ⇒ **改完之后的 run 与改之前不可比**。所以要么在下一对实验
-**之前**做,要么等到那对实验**之后**。**建议在之前**,因为 S2d(a) 的证据量本来就少(两臂各 3 轮)。
+按推荐方案实施:rewriter 额外把声明写进 `rewrites/expectations.json`,救援时读回。
+救回的每一条仍走 `ResourceExpectation`(`extra="forbid"`)与同一份封闭词表,
+且**按条丢弃而非按文件丢弃** —— 一个错名不该让整轮报废。
+
+**构建期被 revert-check 抓到一个死分支**:原先写了 `sb.exists()` 预检,其变体**不改变任何行为**
+(下面的 `except Exception` 已覆盖 FileNotFoundError)⇒ **删掉而不是留着**,与
+`families.py` 的 `max_families_active < 2` 同一处理。
+
+守卫:10 个测试,`scripts/revert_check_s2d_a2_rescue.py` **9 变体双向覆盖**(声明再次丢失 /
+未校验内容被放进账本),A800 全 CAUGHT。
+
+**风险仍然成立**:改了 prompt 契约 ⇒ **改后的 run 与改前不可比**。所以它落在 E1 之前,
+E1 两臂同时带上它,是对等的。
 
 ### B 层 —— 影响预算效率或证据完整性,不影响已有结论
 
@@ -162,10 +174,10 @@ box3 那一次有 **1 次 resume + 2 次 agent 超时(0.83 h)**,事件跨度 13.
 ### 建议顺序
 
 ```
-1. A1  excessive_speedup 阈值从物理上界导出        (0.5 天, 低风险)
-2. A2  救援保留 S2d 声明                          (1 天,   中风险, 改 prompt 契约)
-3. E1  S2d(c) 配对实验                            (12 h × 2, box1+box2)
-   ↕ 并行: E3 L3:48 A800 干净复现                 (12 h × 1, box3)
+1. A1  excessive_speedup 阈值从物理上界导出        ✅ 已完成 (c399640)
+2. A2  救援保留 S2d 声明                          ✅ 已完成 (c399640)
+3. E1  S2d(c) 配对实验                            🟢 已启动 (12 h × 2, box1+box2)
+   ↕ 并行: E3 L3:48 A800 干净复现                 🟢 已启动 (12 h × 1, box3)
 4. 分析 E1/E3 → 决定 E2 的臂数与预算
 5. E2  三臂实验(label / vector / vector+numbers)  (12 h × 3 或 18 h × 3)
 6. B1 + B2  预算效率修复                          (实验之间做, 不在实验中途)
@@ -174,6 +186,31 @@ box3 那一次有 **1 次 resume + 2 次 agent 超时(0.83 h)**,事件跨度 13.
 
 **关键约束**:B1/B2 都改变 TPE 访问的点或采样,**必须在两次实验之间**做,不能在一对实验的中途 —— 否则
 两臂不可比。A1/A2 同理,但它们在 E1 之前,所以 E1 的两臂会同时带上它们,是对等的。
+
+### 本轮启动状态(2026-09-11 23:0x,三台机器均 `842e2a6`,全套 896 passed / 1 skipped)
+
+| box | 实验 | config | run id | 自变量 |
+|---|---|---|---|---|
+| 1 | **E1 对照** | `experiments_e1_box1_control.yaml` | `run-l3-43-20260911-230217` | `reserve_round_for_reconciled: false` |
+| 2 | **E1 处理** | `experiments_e1_box2_reserved.yaml` | `run-l3-43-20260911-230736` | `reserve_round_for_reconciled: true` |
+| 3 | **E3 复现** | `experiments_l3_glm_a800_s2.yaml` | `run-l3-48-20260911-231217` | 无(单臂) |
+
+E1 两臂的**解析后 config 差异只有两项**:那个开关 + `wsl.venv`(机器路径)。
+`device` / `budgets` / `evaluation` / `agents` 四个块**逐字段相等**,由
+`tests/test_config_strictness.py` 的 5 个新测试守住。两臂**都开** `mode: vector` +
+`expectation_ledger: true` —— 否则开关会因 `wiring.py` 的合取而失效,实验测不到任何东西。
+
+**标定前置条件已复核**:box1/box2 的 `runs-v3/calibration.json` **md5 完全相同**
+(`e0c4baaa…`,含相同 `measured_at`)—— 这是**刻意**的:box2 自己的测量被保留为
+`calibration.box2-own.json.bak`(dram 0.9098 vs 0.9095,bf16 167.42 vs 164.29,**差异 ≤1.9%**),
+安装 box1 的文件是为了让两臂**除以完全相同的天花板**,使延迟差异不含分母差异。
+box3 用自己的 A800 标定(`l2_bytes` = 40 MiB,L3:48 的 1.35 GB 远超之 ⇒ DRAM 项适用)。
+
+### 顺带上线:资源→性能转化速率(`842e2a6`,**只落盘、不消费**)
+
+见 `docs/plan-resource-to-latency-conversion-efficiency.md`。`CONVERSION_RATES` 事件每候选一条,
+**代码里没有任何消费者**(由一个 grep 源码的测试守住)⇒ **携带它的 run 与不携带的仍然可比**,
+所以它可以现在上线,让 E1/E3 把语料从 99 个 series 扩到约 150 个,再决定是否进 prompt(那属于 E2)。
 
 ---
 
