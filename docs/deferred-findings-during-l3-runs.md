@@ -231,3 +231,42 @@ two batches at 1200.5 s and 1201.0 s, 0.67 h for zero verdicts). The screen now 
 `base + per_config * n` deadline. **The pricing problem above is untouched**: items 1 and 2 remain open,
 and they are the ones that would make the screen net POSITIVE rather than merely bounded. See
 `docs/plan-after-the-paired-runs.md` §B2 for why they wait for a gap between experiments.
+
+---
+
+## D7. The prescreen cap is now measured in production — bounded, but sized close to the wire
+
+**Evidence, from the three E1/E3 runs in flight (2026-09-12, all at `842e2a6`).** The
+`59d5a71` cap is doing exactly what it was built for, and the safety argument holds on disk:
+
+| box | run | prescreens | answered | elapsed | timed out | configs excluded by a timed-out screen |
+|---|---|---|---|---|---|---|
+| 1 | run-l3-43-20260911-230217 | 2 | 40, 5 | 130.4 s, 135.4 s | 0 | — |
+| 2 | run-l3-43-20260911-230736 | 2 | 40, 0 | 148.9 s, 150.3 s | 1 | **0** |
+| 3 | run-l3-48-20260911-231217 | 1 | 0 | 150.2 s | 1 | **0** |
+
+**The fix works.** The runaway tail is gone: box 3's earlier run spent 1200.5 s and 1201.0 s on
+batches that answered nothing (0.67 h for zero verdicts); the same situation now costs 150 s. And
+the property the design rests on is confirmed rather than merely argued — **the two timed-out
+screens excluded 0 configurations**, because a timeout caches nothing, so every unanswered
+configuration still received a real trial with the full `build_timeout_s`.
+
+**What is worth recording.** Two batches that DID answer finished at 130.4 s and 148.9 s against a
+150.0 s cap — the second with 0.7% of margin. That is not a defect and it did not cost anything
+(both answered in full, 16 and 12 infeasible configs found), but it says the budget
+`30 + 3 * n` is sized close to the real cost of a 40-config batch on these candidates, not
+comfortably above it. A slightly heavier candidate would time out and simply fall back to
+"every config gets a trial", which is the safe direction — it loses the screen's savings, not any
+part of the search space.
+
+**Why not now.** Raising `prescreen_per_config_timeout_s` would change what gets screened, and
+therefore which trials run: a run started after it is not comparable with one before, and E1's two
+arms must remain comparable with each other. It also interacts directly with D5's untouched
+**pricing** problem (items 1 and 2), so the two should be decided together in the gap between
+experiments rather than separately.
+
+**What a fix would have to do.** Not simply raise the constant. The per-config term should scale
+with the candidate's kernel count — a multi-kernel variant compiles several kernels per config,
+which is the same root cause as D5 item 1 — so that a heavier candidate gets a proportionally
+larger budget instead of one flat number that is generous for a single-kernel candidate and tight
+for a four-kernel one.
