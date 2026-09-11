@@ -79,7 +79,12 @@ but not certain" that document currently carries.
 
 ## What would be needed to test S2d(c)
 
-Any of these changes the experiment, so none is applied mid-run:
+**Option 3 is now IMPLEMENTED** (`da1c39b`, `docs/fix-s2d-c-reservation.md`), off by default
+behind `v3.diagnosis.reserve_round_for_reconciled`. The finding below stands unchanged for the
+three finished runs and both paired arms, which do not have it: S2d(c) is UNTESTED there, and no
+run has yet been made with the switch on.
+
+Any of these changes the experiment, so none was applied mid-run:
 
 1. **Fewer seed families** (`max_seed_candidates` 4 → 2). Then the queue empties after 2 rounds and
    round 3 revisits. Cheapest, and it trades structural breadth for depth — the opposite of what
@@ -89,7 +94,10 @@ Any of these changes the experiment, so none is applied mid-run:
 3. **Reserve a round for a reconciled family** — make rule 1 yield once a family has an
    `EXPECTATIONS_RECONCILED` entry. This is the change that makes S2d(c) testable *by design* rather
    than by budget luck, and it is the one to specify properly after the runs finish, because it alters
-   the search order the arms share.
+   the search order the arms share. **DONE** — `da1c39b`: one of the `max_families_active` slots may
+   go to a family that has a ledger, but only while an unproven family still gets a slot in the same
+   round, so rule 1's protected case survives. Details, and the two defects the build surfaced, in
+   `docs/fix-s2d-c-reservation.md`.
 
 ## Guard
 
