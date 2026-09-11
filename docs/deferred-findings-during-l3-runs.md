@@ -417,6 +417,36 @@ withdrawn unless it is re-specified on a robust statistic *and* on the per-trial
 Same lesson as `tuning-objective-must-be-median` in a new place: an aggregate over a
 heavy-tailed distribution names the tail, not the thing.
 
+### D8 second correction, 08:00 — the budget projection was wrong too, and in the same way
+
+The 05:53 reading projected "25 remaining trials need 5.6 h against 5.11 h left ⇒ the control arm
+reaches 12 h with 0 rewrite rounds", and called that "near-certain". **It did not happen.** Read at
+08:00, 8.90 h in:
+
+| | projected at 05:53 | actual at 08:00 |
+|---|---|---|
+| `cand-941ea454` trials | 15 of 40, ~25 left needing 5.6 h | **37 of 40** |
+| the last 10 trials | — | **10 consecutive completes in 8 min** |
+| remaining need | 5.6 h vs 5.11 h left | **0.45 h vs 3.10 h left** |
+| rewrite rounds reachable | no | **yes, ~2.65 h of headroom** |
+
+**Why the projection failed.** It multiplied the remaining trial count by the *mean* per-trial cost
+— the same statistic the correction above shows is controlled by five outliers. Once those five had
+fired, the candidate reverted to its median 1.1 min and burned through 22 trials in the time the
+projection said would buy four. Measured over all 72 of its jobs the hang rate is **12/72 = 16.7%**,
+so the honest projection was never "13.5 min × N" but "N × (2 jobs × (83% × 25 s + 17% × 1500 s))"
+= 9.0 min/trial — which is what actually happened.
+
+**Consequence for the plan.** The re-run of the E1 pair, which the 05:53 entry said "should be
+planned for rather than treated as contingent", is **contingent again**: if the control arm enters
+even one rewrite round, S2d(c) has control data and the pair may be usable as-is. Box 2's treatment
+arm already has three family rounds with reconciliation (7/15 → 13/16 → 11/15 hits) and gains of
+11.4% → 20.8% → 31.7%. Whether the pair is usable is decided by what box 1 does in its last 3.1 h,
+not by this projection — so the decision waits for the run to end.
+
+The user's "do not intervene" decision was right for a reason neither of us had at the time: the
+candidate was never uniformly expensive, so waiting cost far less than the mean implied.
+
 ---
 
 ## D9. The single-config compile screen borrows a real trial's 1200 s budget — 1200 s + 1800 s = the 50 min gaps
