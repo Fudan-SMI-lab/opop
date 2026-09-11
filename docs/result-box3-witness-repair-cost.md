@@ -27,6 +27,30 @@ be reached.
 Both arms on L3:43 are healthy by contrast: box 1 projects ~3.5 h to Loop C against 7.94 h left, box
 2 ~0.14 h against 7.88 h.
 
+### Re-measured at 5.94 h wall, with candidate 2's repair cost now PAID rather than pending
+
+The earlier projection charged candidate 2's repairs as an estimate. They have since completed — two
+rejections, two repairs, one of them the 1500 s transport timeout — and its space is published and
+tuning. So the bracket can be rebuilt from two real per-candidate costs instead of one:
+
+| | value |
+|---|---|
+| budget clock (resumed once, so this is the clock `_elapsed_hours` reads) | 4.66 h of 12 |
+| budget remaining | **7.34 h** |
+| candidate 1, actual | 3.94 h |
+| candidate 2, in flight | 1.76 h so far |
+| candidates 2–4 at candidate 1's rate | 10.05 h |
+| candidates 2–4 at candidate 2's rate so far | 3.53 h |
+
+Both endpoints still have to be paid **before** a rewrite round can start, and a rewrite round on this
+task costs a rewriter call plus two parameterizations plus up to 40 trials per candidate. The lower
+endpoint (3.53 h, leaving 3.81 h) is the only one that reaches Loop C at all, and it assumes
+candidate 2 finishes immediately and candidates 3 and 4 cost nothing more than it has spent so far —
+which the witness history makes unlikely, since 2 of 2 candidates so far were rejected twice each.
+
+The conclusion is unchanged, now on firmer numbers: **box 3 probably does not reach Loop C**, and its
+G27 evidence should be reported as unavailable rather than pending.
+
 ## Where box 3's time went
 
 Not to search. Measured at 5.19 h wall, **agent time is 52% of box 3's wall clock** against 21% on

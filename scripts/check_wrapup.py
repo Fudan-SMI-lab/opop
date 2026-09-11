@@ -279,6 +279,7 @@ def check_reconciliation(run_dir: Path) -> dict:
     # Those last two are named rather than counted on purpose, and the distinction between a miss
     # (a judgement) and vacuous/unmeasured (no judgement possible) is the whole point of the ledger.
     hits = misses = vacuous = 0
+    candidateless = 0
     unpredicted = collections.Counter()
     unmeasured = collections.Counter()
     caveats = []
@@ -290,6 +291,8 @@ def check_reconciliation(run_dir: Path) -> dict:
             rounds += 1
         elif t == "EXPECTATIONS_RECONCILED":
             entries += 1
+            if not p.get("candidate_id"):
+                candidateless += 1
             n = p.get("n_declared")
             if not n:
                 empty += 1
@@ -330,10 +333,26 @@ def check_reconciliation(run_dir: Path) -> dict:
     else:
         verdict = ("PASS -- %d entries over %d rounds, %d declarations reconciled, %d hit / %d "
                    "miss / %d vacuous" % (entries, rounds, declared_total, hits, misses, vacuous))
+    # ONE ENTRY PER REWRITE CANDIDATE, so entries > rounds is the CORRECT shape and must not read as
+    # an anomaly. Measured: every rewrite round in every completed L3 run produced exactly two
+    # candidates (9 of 9), and they are asked for different hypotheses, so scoring them against one
+    # delta map mixed two agents' claims about two pieces of code -- box 2's round 0 read 6 hits / 6
+    # misses pooled against 4/1 and 2/5 apart (docs/result-s2d-pooled-ledger-defect.md). A reader
+    # that expected entries == rounds would flag the fix as the defect.
+    if rounds and entries:
+        verdict += "  || %.1f entries per round (one per rewrite CANDIDATE, so >1 is expected)" % (
+            entries / float(rounds))
+    if candidateless and entries:
+        # Pre-fix entries carry no candidate_id. Worth naming rather than silently mixing, because a
+        # pooled entry's hits/misses are not comparable with a per-candidate one's.
+        verdict += ("  || %d of %d entries carry NO candidate_id: journalled before per-candidate "
+                    "attribution, so their hit/miss counts pool two candidates and are not "
+                    "comparable with the rest" % (candidateless, entries))
     if failed:
         verdict += "  || %d RECONCILE_FAILED (silent by design -- a diagnostic must not end a " \
                    "round): %s" % (len(failed), failed[0])
     return {"rounds": rounds, "entries": entries, "empty_entries": empty,
+            "entries_without_candidate_id": candidateless,
             "declarations_reconciled": declared_total, "reconcile_failed": len(failed),
             "hits": hits, "misses": misses, "vacuous": vacuous,
             "per_dimension_rows": per_dim_rows,

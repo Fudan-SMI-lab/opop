@@ -468,6 +468,63 @@ _RECON_FAILED = {"type": "EXPECTATIONS_RECONCILE_FAILED", "payload": {
     "family_id": "f1", "round": 1, "error": "KeyError: 'direction'"}}
 
 
+def _recon_for(cand: str, hyp: str, hits: int, misses: int) -> dict:
+    """A per-candidate entry, the shape the orchestrator emits since per-candidate attribution.
+
+    Copied field-for-field from `_record_reconciliation`'s own `entry` dict -- `candidate_id` beside
+    `family_id`, not inside `reconciliation` -- rather than shaped to suit the reader. `_RECON_REAL`
+    above deliberately keeps the OLD shape (no candidate_id) so a replayed pre-fix run is covered too.
+    """
+    return {"type": "EXPECTATIONS_RECONCILED", "payload": {
+        "family_id": "f1", "round": 0, "candidate_id": cand, "id": hyp, "change": "c",
+        "reconciliation": {
+            "hypothesis_id": hyp,
+            "per_dimension": [
+                {"dimension": "shared_bytes", "expected": "up", "actual": "up", "match": "hit",
+                 "before": 17408.0, "after": 32768.0, "delta": 15360.0, "rel": 0.88,
+                 "unit": "bytes", "why": ""}] * max(hits, 0) + [
+                {"dimension": "n_regs", "expected": "down", "actual": "flat", "match": "miss",
+                 "before": 155.0, "after": 155.0, "delta": 0.0, "rel": 0.0,
+                 "unit": "registers/thread", "why": ""}] * max(misses, 0),
+            "hits": hits, "misses": misses, "vacuous": 0,
+            "dimensions_unpredicted": [], "dimensions_unmeasured": [], "caveat": "c"},
+        "conversion": "improved", "latency_gain_pct": 9.8, "n_declared": hits + misses}}
+
+
+def test_two_entries_for_one_round_is_the_expected_shape_not_an_anomaly(tmp_path):
+    """One entry per rewrite CANDIDATE, and a round has two of them (9 of 9 measured rounds).
+
+    A reader that expected `entries == rounds` would flag the per-candidate fix AS the defect, so the
+    ratio is stated in the verdict. On box 2's real round 0 the two candidates read 4/1 and 2/5, while
+    pooling them read 6/6 -- so a summary that hid the split would hide the whole reason for the fix.
+    """
+    d = _write_run(tmp_path, [_ROUND_WITH_CONV,
+                              _recon_for("cand-2d8eaf9a", "H1+H3", 4, 1),
+                              _recon_for("cand-3760b4d7", "H2", 2, 5)])
+    out = check_wrapup.check_reconciliation(d)
+    assert out["rounds"] == 1 and out["entries"] == 2
+    assert out["entries_without_candidate_id"] == 0
+    assert out["hits"] == 6 and out["misses"] == 6      # the SUM is still 6/6 ...
+    assert out["declarations_reconciled"] == 12
+    assert out["verdict"].startswith("PASS")
+    # ... so the entries-per-round line is what tells a reader the 6/6 is two candidates, not one
+    # scrambled pool.
+    assert "2.0 entries per round" in out["verdict"]
+    assert "one per rewrite CANDIDATE" in out["verdict"]
+
+
+def test_a_pre_fix_entry_without_a_candidate_id_is_named_as_incomparable(tmp_path):
+    """A resumed run replays entries journalled before per-candidate attribution. Their hit/miss
+    counts pool two candidates, so silently mixing them with per-candidate entries would produce a
+    total that is neither one thing nor the other."""
+    d = _write_run(tmp_path, [_ROUND_WITH_CONV, _RECON_REAL,
+                              _recon_for("cand-x", "H9", 1, 0)])
+    out = check_wrapup.check_reconciliation(d)
+    assert out["entries_without_candidate_id"] == 1
+    assert "NO candidate_id" in out["verdict"]
+    assert "not\ncomparable" in out["verdict"] or "not comparable" in out["verdict"]
+
+
 def test_an_all_empty_ledger_is_not_reported_as_working(tmp_path):
     """THE trap. `n_declared: 0` means the entry reconciled nothing, and a count of events would
     report a healthy ledger built entirely of empty entries -- computed, journalled, saying
