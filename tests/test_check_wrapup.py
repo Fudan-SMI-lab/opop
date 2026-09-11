@@ -1069,3 +1069,89 @@ def test_search_effort_with_no_manifest_still_reports_the_counts(tmp_path):
     assert out["trials"] == 5 and out["spaces"] == 1
     assert out["spaces_over_budget"] == {}
     assert out["verdict"].startswith("PASS"), out["verdict"]
+
+
+# --------------------------------------------------------------------------------------------------
+# S2d(c) reach: the ledger's only outlet is the next round's prompt for the SAME family, so a healthy
+# reconciliation count is not evidence the treatment was ever administered
+# --------------------------------------------------------------------------------------------------
+
+
+def _rewrite(fam: str, cand: str, ts: float) -> dict:
+    """`REWRITE_PRODUCED` as the orchestrator writes it (orchestrator.py:2591) -- family_id and
+    hypothesis_id at the payload top level, expectations per candidate. Two of these share one
+    timestamp because every measured round produced exactly two candidates."""
+    return {"ts": ts, "type": "REWRITE_PRODUCED", "payload": {
+        "candidate_id": cand, "family_id": fam, "hypothesis_id": "H1",
+        "change_summary": "x", "expectations": [
+            {"dimension": "shared_bytes", "expect": "decrease", "why": "smaller tile"}]}}
+
+
+def _reconciled(fam: str, cand: str, ts: float) -> dict:
+    return {"ts": ts, "type": "EXPECTATIONS_RECONCILED", "payload": {
+        "family_id": fam, "candidate_id": cand, "round": 1, "n_declared": 1,
+        "reconciliation": {"hypothesis_id": "H1", "per_dimension": [], "hits": 1, "misses": 0,
+                           "vacuous": 0, "dimensions_unpredicted": [],
+                           "dimensions_unmeasured": [], "caveat": "c"}}}
+
+
+def test_two_candidates_in_one_round_are_ONE_round_not_two(tmp_path):
+    """Every round in every completed L3 run produced exactly two candidates (9/9). Counting
+    `REWRITE_PRODUCED` events would double every round and report a first round as a revisit -- the
+    exact false positive that would turn "never administered" into a fabricated result."""
+    evs = [_rewrite("fam-a", "c1", 100.0), _rewrite("fam-a", "c2", 100.0)]
+    out = check_wrapup.check_ledger_reach(_write_run(tmp_path, evs))
+    assert out["rounds_per_family"] == {"fam-a": 1}, out["rounds_per_family"]
+    assert out["families_revisited"] == []
+    assert "NEVER ADMINISTERED" in out["verdict"], out["verdict"]
+
+
+def test_a_reconciled_family_that_is_never_revisited_is_still_UNADMINISTERED(tmp_path):
+    """The measured state of every run this project has: entries exist and reconcile, and the next
+    round goes to a DIFFERENT family, so `ledger_entries` was [] on every call. A check keyed on
+    "were there reconciliations" would report this as working."""
+    evs = [_rewrite("fam-a", "c1", 100.0), _rewrite("fam-a", "c2", 100.0),
+           _reconciled("fam-a", "c1", 110.0),
+           _rewrite("fam-b", "c3", 200.0), _rewrite("fam-b", "c4", 200.0),
+           _reconciled("fam-b", "c3", 210.0)]
+    out = check_wrapup.check_ledger_reach(_write_run(tmp_path, evs))
+    assert out["rounds_per_family"] == {"fam-a": 1, "fam-b": 1}
+    assert out["reconciled_per_family"] == {"fam-a": 1, "fam-b": 1}
+    assert out["families_revisited"] == [], "different families, so no prompt carried a ledger"
+    assert "NEVER ADMINISTERED" in out["verdict"], out["verdict"]
+
+
+def test_a_second_round_after_a_reconciliation_IS_reach(tmp_path):
+    """The other direction has to fire or the check can only ever say no. fam-a's round 2 is issued
+    after its round-1 reconciliation, so that rewriter call did receive a ledger."""
+    evs = [_rewrite("fam-a", "c1", 100.0), _rewrite("fam-a", "c2", 100.0),
+           _reconciled("fam-a", "c1", 110.0),
+           _rewrite("fam-a", "c5", 300.0), _rewrite("fam-a", "c6", 300.0)]
+    out = check_wrapup.check_ledger_reach(_write_run(tmp_path, evs))
+    assert out["rounds_per_family"] == {"fam-a": 2}
+    assert out["families_revisited"] == ["fam-a"]
+    assert "REACHED" in out["verdict"], out["verdict"]
+
+
+def test_two_rounds_whose_only_reconciliation_lands_LAST_is_not_reach(tmp_path):
+    """Ordering, not counts. A family with 2 rounds and 1 reconciliation looks reached to a pair of
+    counters -- but if the reconciliation was emitted at the CLOSE of round 2 it came after the last
+    prompt that could have carried it, so no call ever saw a ledger. `k >= 2 and recon >= 1` gets
+    this wrong; reading the flag at each call's own position gets it right."""
+    evs = [_rewrite("fam-a", "c1", 100.0), _rewrite("fam-a", "c2", 100.0),
+           _rewrite("fam-a", "c5", 300.0), _rewrite("fam-a", "c6", 300.0),
+           _reconciled("fam-a", "c5", 310.0)]
+    out = check_wrapup.check_ledger_reach(_write_run(tmp_path, evs))
+    assert out["rounds_per_family"] == {"fam-a": 2}
+    assert out["reconciled_per_family"] == {"fam-a": 1}
+    assert out["families_revisited"] == [], \
+        "2 rounds + 1 reconciliation, but the reconciliation came after both calls"
+    assert "NEVER ADMINISTERED" in out["verdict"], out["verdict"]
+
+
+def test_no_rewrite_round_yet_is_not_a_verdict(tmp_path):
+    """A live run before its first round has nothing to say about S2d(c). Reporting it as
+    "never administered" would be a verdict on an absence of evidence."""
+    out = check_wrapup.check_ledger_reach(_write_run(tmp_path, [_BASELINE]))
+    assert out["rounds_per_family"] == {}
+    assert "NOT YET DECIDABLE" in out["verdict"], out["verdict"]

@@ -600,6 +600,67 @@ def check_reconciliation(run_dir: Path) -> dict:
             "verdict": verdict}
 
 
+def check_ledger_reach(run_dir: Path) -> dict:
+    """Did the ledger ever reach a PROMPT, or only the log?
+
+    S2d(c) is the claim that reconciled predictions improve the NEXT rewrite. The ledger reaches a
+    prompt through one line -- `ledger_entries=self.ledger.get(family_id, [])` -- keyed per FAMILY. So
+    it arrives only when the SAME family gets a SECOND rewrite round after its first was reconciled.
+    That keying is correct: a family must not see another family's predictions, which are about
+    different code.
+
+    MEASURED: no family in any run has ever had a second round. Nine families across three finished
+    runs plus both live arms, every one with exactly one round -- so `ledger_entries` has been `[]` on
+    every rewriter call this project has ever made, in both arms, regardless of the switch.
+
+    The cause is arithmetic and identical on three independent runs: 4 seed families against 3 rewrite
+    rounds that fit a 12 h budget, while `active_families()` rule 1 sends every never-rewritten family
+    first. The queue never empties, so the rotation never comes back.
+
+    This check exists because `check_reconciliation` reports PASS on exactly this state -- entries
+    exist, declarations reconcile, counts look healthy -- and PASS there is about journalling, not
+    about delivery. Reporting S2d(c) as tested-and-null when it was never administered would be the
+    worst available error: a treatment never given is not a treatment that did not work.
+
+    A round is one rewriter CALL, not one `REWRITE_PRODUCED`: every round in every completed L3 run
+    produced exactly two candidates, so counting events would double it.
+
+    The test is ORDERED, not a pair of counts. `k >= 2 and reconciled >= 1` would call a family reached
+    when its only reconciliation landed at the close of round 2 -- i.e. after the last prompt that
+    could have carried it. The reconciliation for round N is emitted at round N's close, so the flag
+    has to be read at the moment each rewriter call was made: a round reached the prompt only if a
+    reconciliation for THAT family already existed when the call went out.
+    """
+    reconciled: collections.Counter = collections.Counter()
+    rounds: dict[str, dict] = {}       # family -> {round key: ledger was non-empty at call time}
+    for e in sorted(_events(run_dir), key=lambda ev: ev.get("seq") or 0):
+        t = e.get("type")
+        p = e.get("payload") or {}
+        if t == "REWRITE_PRODUCED":
+            fid = p.get("family_id") or ""
+            key = round(e.get("ts") or 0.0, 0)
+            # Both candidates of one round share the call, so the first one to arrive fixes the flag
+            # for the round; `setdefault` keeps it rather than letting the second overwrite it.
+            rounds.setdefault(fid, {}).setdefault(key, reconciled[fid] >= 1)
+        elif t == "EXPECTATIONS_RECONCILED":
+            reconciled[p.get("family_id") or ""] += 1
+    per_family = {f: len(ks) for f, ks in rounds.items()}
+    revisited = sorted(f for f, ks in rounds.items() if any(ks.values()))
+    if not per_family:
+        verdict = "NOT YET DECIDABLE -- no rewrite round yet"
+    elif revisited:
+        verdict = ("REACHED -- %d family(ies) made a rewriter call with a non-empty ledger, so S2d(c) "
+                   "WAS administered: %s" % (len(revisited), ", ".join(revisited)))
+    else:
+        verdict = ("**S2d(c) NEVER ADMINISTERED** -- %d family(ies), max %d round(s) each, so no "
+                   "rewriter call ever received a ledger. Report S2d(c) as UNTESTED, not as null; "
+                   "S2d(a)/(b) are unaffected" % (len(per_family), max(per_family.values())))
+    return {"rounds_per_family": per_family,
+            "reconciled_per_family": dict(reconciled),
+            "families_revisited": revisited,
+            "verdict": verdict}
+
+
 def latency_floor_from_runs(*run_dirs: Path,
                             extra_globs: tuple[str, ...] = ()) -> tuple[float | None, str]:
     """Measure the LATENCY reproducibility floor from finished runs.
@@ -862,8 +923,19 @@ def report(run_dir: Path, label: str) -> dict:
     for c in rec["caveats"]:
         print("      caveat: %s" % c)
     print("    => %s" % rec["verdict"])
+
+    # [3c] exists because [3b]'s PASS is about JOURNALLING and reads as if the treatment worked. The
+    # ledger's only outlet is the next round's prompt for the SAME family, so a healthy [3b] beside an
+    # unreached [3c] is the actual state of every run this project has produced.
+    reach = check_ledger_reach(run_dir)
+    print("\n[3c] S2d(c) -- did a ledger ever REACH a rewriter prompt? (`self.ledger` is keyed per")
+    print("     FAMILY, so only a family's SECOND round can receive one)")
+    print("    rounds per family ............. %s" % (reach["rounds_per_family"] or "none yet"))
+    print("    reconciled per family ......... %s" % (reach["reconciled_per_family"] or "none"))
+    print("    => %s" % reach["verdict"])
     print()
-    return {"conversion": conv, "final": fin, "s3": s3, "reconciliation": rec}
+    return {"conversion": conv, "final": fin, "s3": s3, "reconciliation": rec,
+            "ledger_reach": reach}
 
 
 def main(argv: list[str]) -> int:
@@ -951,6 +1023,25 @@ def main(argv: list[str]) -> int:
         else:
             print("    ledger entries: control %d, treatment %d (expected in BOTH arms)"
                   % (cl["entries"], tl["entries"]))
+        # S2d(c) is the only sub-claim the switch actually gates, and it is administered only if some
+        # family got a second round. If NEITHER arm reached that, the comparison above cannot speak to
+        # S2d(c) at all and must not be written up as a null result -- the treatment was never given.
+        cr, tr = control["ledger_reach"], treatment["ledger_reach"]
+        if not cr["families_revisited"] and not tr["families_revisited"]:
+            print("    !! S2d(c) UNTESTED IN BOTH ARMS: no family in either run received a second")
+            print("       rewrite round, so `ledger_entries` was [] on every rewriter call in BOTH")
+            print("       arms. The arms are therefore IDENTICAL with respect to S2d(c); any")
+            print("       latency difference between them is NOT evidence about it. Report S2d(c)")
+            print("       as untested, not as tested-and-null. S2d(a)/(b) are unaffected -- their")
+            print("       evidence is [3b] above.")
+        elif bool(cr["families_revisited"]) != bool(tr["families_revisited"]):
+            print("    !! S2d(c) REACH ASYMMETRY: control revisited %s, treatment %s. Only the"
+                  % (cr["families_revisited"] or "none", tr["families_revisited"] or "none"))
+            print("       treatment arm renders the ledger, but the ROTATION is arm-independent, so"
+                  "  unequal reach means the arms diverged in search order -- check parity above.")
+        else:
+            print("    S2d(c) administered in both arms: control %s, treatment %s"
+                  % (cr["families_revisited"], tr["families_revisited"]))
     return 0
 
 
