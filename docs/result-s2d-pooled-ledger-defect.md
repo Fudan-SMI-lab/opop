@@ -151,26 +151,28 @@ Secondary, and each sufficient on its own:
 
 ## What this costs the experiment, stated plainly
 
-Box 2 reached round 1 for `fam-efd15aa9` and its ledger entry is pooled. **The pooled entry has not
-reached any prompt yet, and may never** — measured, not assumed:
+**Nothing at all beyond a mislabelled log entry — and that is now measured, not hoped.**
 
-The next rewriter call after it (12:39:41 → 12:49:26) was for **`fam-004d2810`, a different family**,
-and `ledger_entries=self.ledger.get(family_id, [])` is keyed per family, so it correctly received an
-empty ledger. Verified on disk: both rewriter sandboxes contain `failed_hypotheses.json` (2 bytes,
-`[]`) and **no `prediction_ledger.md`**, on an arm with `expectation_ledger: true`. That absence is
-correct behaviour, not the switch failing — a family must not be shown another family's predictions.
+The ledger's only outlet is the next round's prompt for the SAME family, and
+`docs/result-s2d-c-never-administered.md` measures that **no family in any run has ever received a
+second rewrite round**: nine families across three finished runs plus both live arms, every one with
+exactly one round. `active_families()` rule 1 sends every never-rewritten family first, and the runs
+have 4 seed families against 3 rounds that fit the budget — so the queue never empties and the rotation
+never comes back around.
 
-So the cost lands only if `fam-efd15aa9` gets a **second** rewrite round before the wall clock. With
-4.57 h left and ~1.46 h to finish the two round-2 candidates now tuning, that is possible but not
-certain, and it depends on which family the convergence logic picks next. **If it happens, that one
-prompt will tell H2 that 5 of its 6 correct predictions were wrong** — the failure mode that makes
-wrong feedback worse than none. If it does not, the defect costs this pair nothing at all beyond a
-mislabelled log entry that is re-derivable.
+Verified on disk on both arms: every `rewriter-*` sandbox holds `failed_hypotheses.json` (2 bytes,
+`[]`) and **no `prediction_ledger.md`**, including on box 2 where `expectation_ledger: true`.
 
-Either way S2d(a) (declarations made before measurement) is unaffected — the 16 declarations are
-journalled per candidate and correct. The reconciliation arithmetic is unaffected and fully
-re-derivable: **for the paper, report the re-derived per-candidate table, not the journalled entry**,
-and cite the `rel`-appears-twice fingerprint as the reason the journalled one is known to be pooled.
+An earlier version of this section said the cost "lands only if `fam-efd15aa9` gets a second rewrite
+round" and treated that as possible. It is not merely improbable — it is structurally excluded by the
+family rotation, and box 1's round 2 confirmed the pattern by going to `fam-a177e977` rather than back
+to `fam-6c8827f4`.
+
+So: S2d(a) (declarations made before measurement) and S2d(b) (the reconciliation arithmetic) are
+unaffected, journalled per candidate, and re-derivable. **For the paper, report the re-derived
+per-candidate table, not the journalled entry**, and cite the `rel`-appears-twice fingerprint as the
+evidence that the journalled one is pooled. S2d(c) is a separate matter: it was never administered on
+either arm, so the pooled entry had nothing to corrupt.
 
 The next run started from `ccca414` gets per-candidate attribution from round 0.
 
