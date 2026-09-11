@@ -157,7 +157,8 @@ def test_a_reused_measurement_writes_the_same_py_a_fresh_trial_writes(tmp_path, 
         def snapshot(self):
             return {}
 
-    monkeypatch.setattr(orch_mod, "OptunaTPETuner", lambda **kw: _Tuner())
+    monkeypatch.setattr(orch_mod, "OptunaTPETuner",
+                        lambda *a, **kw: _Tuner())   # space is passed positionally
     o.deps = type("D", (), {"evaluator": None, "profiler": None,
                             "families": type("F", (), {
                                 "update_best": staticmethod(lambda *a, **k: False)})()})()
@@ -208,7 +209,8 @@ def test_a_failed_artifact_write_is_journalled_not_swallowed(tmp_path, monkeypat
         def snapshot(self):
             return {}
 
-    monkeypatch.setattr(orch_mod, "OptunaTPETuner", lambda **kw: _Tuner())
+    monkeypatch.setattr(orch_mod, "OptunaTPETuner",
+                        lambda *a, **kw: _Tuner())   # space is passed positionally
     o.deps = type("D", (), {"evaluator": None, "profiler": None,
                             "families": type("F", (), {
                                 "update_best": staticmethod(lambda *a, **k: False)})()})()
