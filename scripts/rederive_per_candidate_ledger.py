@@ -15,15 +15,26 @@ MEASURED on box 2's first production entry (`run-l3-43-20260911-052630`, fam-efd
 
     journalled (pooled)                    7 hits /  6 misses / 3 vacuous, candidate_id=None
     cand-2d8eaf9a  H1+H3  2.8616 ms        3 hits /  2 misses / 3 vacuous
-    cand-3760b4d7  H2     3.2031 ms        6 hits /  1 miss   / 0 vacuous
-    correct total                          9 hits /  3 misses / 3 vacuous
+    cand-3760b4d7  H2     3.2031 ms        7 hits /  1 miss   / 0 vacuous
+    correct total                         10 hits /  3 misses / 3 vacuous
 
-The pooling DOUBLED the misses and lost 2 hits, and it charged H2 -- the more accurate of the two, 6
-for 7 -- with five misses earned by the other candidate's changes.
+and on box 1's, the CONTROL arm's first round -- same defect, so it is not arm-specific:
 
-Two field-name traps, both hit while writing this, both worth the comments they carry: expectations
-live in `models.reports` (not `models.core`), and `entry["conversion"]` is the verdict LABEL string,
-not the deltas dict. The parent reading comes from the entry's own per-dimension `before` fields.
+    journalled (pooled)                    6 hits / 10 misses / 0 vacuous, candidate_id=None
+    cand-70cbf6bc  H2         3.1842 ms    5 hits /  3 misses / 0 vacuous
+    cand-d02b0742  H1+H2+H3   3.1329 ms    3 hits /  5 misses / 0 vacuous
+    correct total                          8 hits /  8 misses / 0 vacuous
+
+The pooling inflates misses (3->6 and 8->10) and loses hits on both arms, and it charges box 2's H2 --
+the most accurate predictions either arm has made, 7 for 8 -- with five misses earned by the other
+candidate's changes.
+
+Three field-name traps, all hit while writing this and all worth their inline comments: expectations
+live in `models.reports` (not `models.core`); `entry["conversion"]` is the verdict LABEL string, not the
+deltas dict; and `occupancy` is NESTED (`profile["occupancy"]["occupancy"]`), which production reads via
+a `nested` flag. Missing the third silently dropped every occupancy row as `unmeasured` while the
+harness's own entry read `0.1667 -> 0.1667` -- it cost box 1 two hits and box 2 one. The parent reading
+comes from the entry's own per-dimension `before` fields.
 
     python rederive_per_candidate_ledger.py <runs_dir> [<repo_root>]
 """
@@ -130,12 +141,29 @@ _FIELDS = ("n_regs", "n_spills", "shared_bytes", "occupancy", "threads_launched"
            "peak_alloc_bytes", "candidate_aten_bytes", "candidate_aten_ops")
 
 
+def _read(profile: dict, name: str):
+    """One dimension off a trial's profile dict, matching production's `conversion._read`.
+
+    `occupancy` is NESTED: the profile holds a dict
+    `{"occupancy": 0.1667, "active_warps": 8, "limiter": "registers", ...}` under that key, and
+    production reads the inner scalar via a `nested` flag on its dimension table. A first version of
+    this script did `before.get(f)`, got a dict, failed the isinstance check and silently dropped the
+    dimension -- so every occupancy row came back `unmeasured` while the harness's own entry correctly
+    read `0.1667 -> 0.1667`. Silent, and in the direction that manufactures a missing measurement out
+    of a present one.
+    """
+    v = profile.get(name)
+    if name == "occupancy" and isinstance(v, dict):
+        v = v.get("occupancy")
+    return float(v) if isinstance(v, (int, float)) else None
+
+
 def deltas(before: dict, after: dict) -> dict:
     """`resource_deltas` in the shape `reconcile` reads: per dimension a before/after/delta/rel."""
     out = {}
     for f in _FIELDS:
-        b, a = before.get(f), after.get(f)
-        if not (isinstance(b, (int, float)) and isinstance(a, (int, float))):
+        b, a = _read(before, f), _read(after, f)
+        if b is None or a is None:
             continue
         rel = abs(a - b) / abs(b) if b else (0.0 if a == b else 1.0)
         out[f] = {"before": b, "after": a, "delta": a - b, "rel": rel}

@@ -52,28 +52,48 @@ the pooled entry's own `before` fields, and then the real `reconcile()` per cand
 | scored against | hits | misses | vacuous |
 |---|---|---|---|
 | `cand-2d8eaf9a` H1+H3 (the winner, 2.8616 ms) | **3** | 2 | 3 |
-| `cand-3760b4d7` H2 (3.2031 ms) | **6** | 1 | 0 |
-| correct totals | **9** | **3** | 3 |
+| `cand-3760b4d7` H2 (3.2031 ms) | **7** | 1 | 0 |
+| correct totals | **10** | **3** | 3 |
 | **POOLED — what the code wrote** | 7 | **6** | 3 |
 
-**The pooling doubled the misses, 3 → 6, and lost 2 hits.** Both candidates are misrepresented, in
+**The pooling doubled the misses, 3 → 6, and lost 3 hits.** Both candidates are misrepresented, in
 opposite directions:
 
 - **H2 is charged 5 misses it did not earn.** Pooled it reads 2 hits / 5 misses; measured against its
-  own code it is **6 hits / 1 miss** — the most accurate set of predictions either arm has produced.
-  It said `unchanged` about `shared_bytes`, `candidate_aten_bytes`, `candidate_aten_ops`,
+  own code it is **7 hits / 1 miss** — the most accurate set of predictions either arm has produced.
+  It said `unchanged` about `shared_bytes`, `candidate_aten_bytes`, `candidate_aten_ops`, `occupancy`,
   `threads_launched` and `peak_alloc_bytes`, and every one of those was **true of its own code**. Each
   became a miss only because H1+H3 moved those dimensions.
-- **H1+H3, the round's winner, keeps 3 of its hits but its `occupancy` row goes from `flat` to
-  `unknown`** — its own profile has no occupancy reading, so honestly reconciled that declaration is
-  *unmeasured*, not a judgement. The pooled entry silently supplied the incumbent's number instead.
-  This is the specific failure `_candidate_conversion` now returns `{}` for.
+- **H1+H3, the round's winner, keeps 3 hits** but its three `unknown` declarations are correctly
+  vacuous against its own reading rather than being scored against the incumbent's.
 
-Note the direction: my earlier estimate of this entry, made before it existed, guessed 4/1/3 and 2/5/0
-and pooled 6/6/3. The pooled figure was nearly right (7/6/3) but I had the two candidates **backwards**
-— I predicted the winner would be the accurate one and it is H2. The defect is real either way and the
-doubled-miss count is worse than estimated, but the per-candidate split was a guess and is now a
-measurement.
+### The same defect on the CONTROL arm, and it is symmetric
+
+Box 1 recorded its first round at 662 events (`fam-*`, 2 rewrites). Same pooling, same fingerprint —
+three `rel` values appearing twice:
+
+| scored against | hits | misses | vacuous |
+|---|---|---|---|
+| `cand-70cbf6bc` H2 (3.1842 ms) | **5** | 3 | 0 |
+| `cand-d02b0742` H1+H2+H3 (3.1329 ms) | **3** | 5 | 0 |
+| correct totals | **8** | **8** | 0 |
+| **POOLED — what the code wrote** | 6 | **10** | 0 |
+
+Again misses inflated (8 → 10) and hits lost (8 → 6). So the defect is **not arm-specific**, which
+matters: had it hit only one arm it would also have been an arm-parity problem. It does not.
+
+Worth recording from box 1's numbers: **both** rewrites predicted `n_regs`, `n_spills` and
+`shared_bytes` would fall, and all six predictions missed — every candidate in the family sits at
+exactly `n_regs=255, n_spills=6, shared_bytes=49152`, the register cap. Verified as a real reading and
+not a flat probe: each candidate saw 29–57 *distinct* `(n_regs, n_spills, shared_bytes)` triples across
+its trials, so the profiler is discriminating; the winning configurations simply all land on the cap.
+That is a finding about the task, not about S2d.
+
+Note the direction of my own earlier estimate: made before the entry existed, it guessed 4/1/3 and
+2/5/0 and pooled 6/6/3. The pooled figure was nearly right (7/6/3) but I had the two candidates
+**backwards** — I predicted the winner would be the accurate one and it is H2. The defect is real
+either way and the doubled-miss count is worse than estimated, but the per-candidate split was a guess
+and is now a measurement.
 
 `render_ledger` printed both under one `## Round 1` heading, two rows per dimension, with nothing to
 say which row described which code.
