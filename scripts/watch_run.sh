@@ -97,10 +97,32 @@ reported_stall=0
 reported_unreachable=0
 
 # One remote round trip returns everything, so a poll costs one ssh rather than three.
+#
+# THE `|| echo 0` TRAP, and why it is gone. This was written as
+#     n=$(pgrep -c -f '[k]ernel_optimizer.cli' 2>/dev/null || echo 0)
+# which looks like a safe default and is the exact opposite. `pgrep -c` with no match PRINTS `0`
+# and EXITS 1, so the fallback appends a SECOND `0`: `n` becomes the two-line string "0\n0", the
+# probe returns "0\n0 <size>", `nproc` parses as "0\n0", and `[ "$nproc" -eq 0 ]` fails. Result:
+# **this monitor could never report ENDED.** It reported box 2 as "alive but stalled" for 28 min
+# after that run had finished and its process was gone -- verified on disk: 0 matching processes,
+# RUN_FINISHED present, events.jsonl mtime frozen at the finish time.
+#
+# Measured, not reasoned: running the old probe by hand against the finished box printed
+#     raw probe output: [0
+#     0 2171697]
+# The same defect, in the same shape, appeared the same day in a finish-detector I wrote with
+# `grep -c RUN_FINISHED || echo 0` -- there it manufactured a FALSE POSITIVE (three runs reported
+# finished when none were). One `|| echo 0` invented an event, the other suppressed one.
+#
+# The fix is to stop translating an exit code into output at all: `pgrep -c` already prints the
+# count, so let it, and normalise on this side where the value can be checked. `tr -d` strips any
+# stray newline, and the arithmetic guard turns a non-numeric reply into "unknown" rather than
+# silently into 0 -- because "0 processes" and "I could not tell" must not be the same answer, the
+# distinction that `cached_shared_verdict`'s three-valued return exists to preserve.
 probe() {
-  "${SSH[@]}" "n=\$(pgrep -c -f '[k]ernel_optimizer.cli' 2>/dev/null || echo 0); \
-               s=\$(stat -c %s '$EVENTS' 2>/dev/null || echo 0); \
-               echo \"\$n \$s\"" 2>/dev/null
+  "${SSH[@]}" "n=\$(pgrep -c -f '[k]ernel_optimizer.cli' 2>/dev/null); \
+               s=\$(stat -c %s '$EVENTS' 2>/dev/null); \
+               echo \"\${n:-x} \${s:-x}\"" 2>/dev/null
 }
 
 while true; do
@@ -122,8 +144,28 @@ while true; do
   nproc="${out%% *}"
   size="${out##* }"
 
+  # Normalise on THIS side, where a bad value can still be distinguished from a real one. `x` is
+  # what the probe sends when a variable was empty; anything non-numeric is treated the same way.
+  # An unreadable count must NOT collapse into "0 processes" -- that would report a healthy run as
+  # ENDED and stop watching it, which is the expensive direction of this mistake.
+  case "$nproc" in
+    ''|*[!0-9]*) nproc="" ;;
+  esac
+  case "$size" in
+    ''|*[!0-9]*) size="" ;;
+  esac
+  if [ -z "$nproc" ] || [ -z "$size" ]; then
+    # Same treatment as an ssh failure: it is a failure to observe, not an observation.
+    fails=$((fails + 1))
+    if [ "$fails" -ge 4 ] && [ "$reported_unreachable" -eq 0 ]; then
+      echo "$LABEL: UNREACHABLE -- 4 consecutive unreadable probes. The run may still be fine; check by hand."
+      reported_unreachable=1
+    fi
+    sleep "$INTERVAL"; continue
+  fi
+
   # The process is gone: report and stop. This is the one terminal state.
-  if [ "${nproc:-0}" -eq 0 ]; then
+  if [ "$nproc" -eq 0 ]; then
     echo "$LABEL: ENDED -- orchestrator process is gone. events.jsonl = $size bytes. Log tail:"
     "${SSH[@]}" "tail -6 '$LOG' 2>/dev/null" 2>/dev/null
     exit 0
