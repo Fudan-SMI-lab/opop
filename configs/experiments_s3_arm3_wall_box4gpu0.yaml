@@ -1,11 +1,17 @@
-# STEP 3, ARM 3 of 3 -- TREATMENT 2 (`vector` + 2e) on BOX 1 (RTX 4090), AFTER arm 1 finishes.
+# STEP 3, ARM 3 of 3 -- TREATMENT 2 (`vector` + 2e) on BOX 4, pinned to **GPU 0**.
 #
-# Read experiments_s3_arm1_control_box1.yaml's header for the three-arm layout, the reason box 3
-# cannot host an arm, and the venv trap. This file differs from ARM 2 in exactly the two
-# `wall_attribution` switches, and from ARM 1 in those plus `diagnosis.mode`.
+# Read experiments_s3_arm2_vector_box4gpu1.yaml's header first. It carries, and this file does not
+# repeat: the three-arm topology, the MEASURED evidence that two cards in one chassis do not perturb
+# each other's timing (+1.20% worst median shift), why the per-run GPU lock never enforced the
+# one-run-per-box rule, the three things isolated per arm, the shared-calibration decision and the
+# +35% launch-floor field that motivated it, and the inherited venv trap.
 #
-# RUNS ON BOX 1, SEQUENTIALLY AFTER ARM 1. Two runs on one box may never overlap -- each would time
-# the other's kernels. So the step-3 wall clock is 24 h across two machines, not 12 h across three.
+# This file differs from ARM 2 in exactly the two `wall_attribution` switches, plus the three
+# per-arm isolation values (runs_dir, triton_cache_dir, XDG_DATA_HOME) that MUST differ because the
+# two arms share a box. It differs from ARM 1 in those plus `diagnosis.mode`.
+#
+# NO LONGER SEQUENTIAL. An earlier version of this arm waited for arm 1 to finish on box 1, because
+# a second card was not available. It now runs at the same time as both other arms.
 #
 # WHAT THIS ARM TESTS (A3). The two arms above ask whether per-dimension JUDGEMENT beats a single
 # label. This one adds a MEASUREMENT: for each knob whose refused value lies outside its tried range,
@@ -35,33 +41,38 @@
 # therefore depends on the other knobs, and an unconditional reading ("BLOCK_M is capped by shared
 # memory") would send the rewriter after a wall that does not exist where it is standing.
 #
+# THE MEASUREMENT REACHES THE REWRITER DIRECTLY, not via the analyst. The rewriter's only view of the
+# diagnosis is `analysis/bottleneck.json` -- the analyst's OUTPUT -- so routing 2e through the analyst
+# would deliver the measured wall only if the analyst chose to restate it, through the very agent
+# whose claims on this subject were confirmed 8 times out of 53. A3 would then be unattributable
+# between "the wall is not a real bottleneck" and "the analyst dropped it". So `in_prompt` also writes
+# `analysis/resource_walls.md` into the rewriter's sandbox, kept a SEPARATE file from the analyst's
+# report because that difference is the experiment.
+#
 # COST, MEASURED: 18 probe variants in ONE worker process took 8.8 s on box 2 -- a marginal 0.49 s
 # each, because `make_compile_probe_job`'s `extra_kernel_src_paths` pays the process start once. At
 # three probed walls per candidate that is ~1.5 s against a 12 h clock (~0.003%). `probe_total_s` is
 # journalled per event so it can be SUBTRACTED in the report rather than assumed to be zero.
 #
-# Launch on THIS box, only after arm 1 has ended and its orchestrator is gone:
+# Launch (GPU 0; concurrently with arm 2 on GPU 1 and arm 1 on box 1):
 #   cd /root/autodl-tmp/work/opop
+#   CUDA_VISIBLE_DEVICES=0 XDG_DATA_HOME=/root/autodl-tmp/xdg-arm3 \
 #   PYTHONPATH=src /root/autodl-tmp/orch-venv/bin/python -m kernel_optimizer.cli \
-#     --config configs/experiments_s3_arm3_wall_box1.yaml run --task level3:43
+#     --config configs/experiments_s3_arm3_wall_box4gpu0.yaml run --task level3:43
 
 v3:
   diagnosis:
-    # SAME as arm 2. This is held constant so the arm-2-vs-arm-3 difference is 2e alone.
+    # SAME as arm 2. Held constant so the arm-2-vs-arm-3 difference is 2e alone.
     mode: vector
 
-    # OFF in every step-3 arm -- S2d belongs to E1 (step 4). See arm 1's header.
+    # OFF in every step-3 arm -- S2d belongs to E1 (step 4).
     expectation_ledger: false
 
   wall_attribution:
     # THE VARIABLE, half 1: find the walls, probe them, journal RESOURCE_WALL_ATTRIBUTED.
     enabled: true
 
-    # THE VARIABLE, half 2: the attributed walls reach the analyst AND the rewriter. The rewriter
-    # gets them as a SEPARATE file (`analysis/resource_walls.md`) rather than merged into
-    # `analysis/bottleneck.json`, because that file is the analyst's judgement about the same
-    # subject -- and routing the measurement through the analyst's restatement would make a negative
-    # A3 unattributable between "the wall is not a real bottleneck" and "the analyst dropped it".
+    # THE VARIABLE, half 2: the attributed walls reach the analyst AND the rewriter.
     in_prompt: true
 
     # Diagnostic depth, NOT a search-space restriction: nothing here removes, shrinks or reorders a
@@ -75,7 +86,9 @@ v3:
     probe_second_origin: true
 
 run:
-  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v3
+  # PER-ARM directory, distinct from arm 2's. Two co-resident runs must not share a GPU lock
+  # (`store.run_dir/jobs/gpu.lock`), a jobs dir, or an events log.
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v3/arm3
   seed: 0
 
 kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench
@@ -88,12 +101,16 @@ opencode:
   sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
   server_env:
     OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+    # Isolate this arm's opencode state from arm 2's -- one SQLite db per box otherwise, written by
+    # both. See arm 2's header for the verification that XDG_DATA_HOME relocates it.
+    XDG_DATA_HOME: /root/autodl-tmp/xdg-arm3
 
 wsl:
-  # THE MATCHED VENV on box 1 -- orch-venv here, kernel-opt-venv on box 2. See arm 1's header.
-  venv: /root/autodl-tmp/orch-venv
+  # THE MATCHED VENV on this box -- NOT orch-venv, which is torch 2.14 / triton 3.8.
+  venv: /root/autodl-tmp/kernel-opt-venv
   kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src
-  triton_cache_dir: /root/autodl-tmp/.triton-cache-v3
+  # PER-ARM cache: sharing with arm 2 would let one arm hit the other's compilations.
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-arm3
 
 agents:
   default_model: zhipuai/glm-5.3
@@ -129,7 +146,7 @@ evaluation:
   quick_correctness_trials: 3
   quick_perf_trials: 20
 
-# Byte-identical across all three arms -- see arm 1.
+# Byte-identical across all three arms -- see arm 2.
 device:
   name: NVIDIA GeForce RTX 4090 (sm_89)
   vram_gb: 23

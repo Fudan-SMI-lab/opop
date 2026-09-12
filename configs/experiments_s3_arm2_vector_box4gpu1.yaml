@@ -1,0 +1,168 @@
+# STEP 3, ARM 2 of 3 -- TREATMENT 1 (`vector`, no 2e) on BOX 4, pinned to **GPU 1**.
+#
+# Replaces experiments_s3_arm2_vector_box2.yaml: box 2 was taken by another tenant after it was
+# powered down for the clone, so both treatment arms moved to box 4, which has TWO 4090s. Box 4 is
+# a clone of box 2, so it carries box 2's matched toolchain (kernel-opt-venv: torch 2.13.0+cu129 /
+# triton 3.7.1) and the same two-interpreter split.
+#
+# TOPOLOGY. Three arms, two machines, three cards:
+#   arm 1  control      mode: label   2e off   BOX 1
+#   arm 2  treatment 1  mode: vector  2e off   BOX 4 GPU 1   <-- this file
+#   arm 3  treatment 2  mode: vector  2e ON    BOX 4 GPU 0
+# All three run CONCURRENTLY. ~12 h wall clock instead of the 24 h a two-card layout needed.
+#
+# WHY TWO ARMS MAY SHARE ONE BOX, WHICH THE PROJECT'S STANDING RULE FORBIDS. The rule is "two runs
+# on one box may never overlap", and its stated reason is "each would time the other's kernels" --
+# a statement about one CARD. Two physical cards share no SMs, no VRAM and no DRAM bandwidth; they
+# share a chassis, i.e. one power budget and one thermal envelope. So the rule's reason does not
+# transfer, and the residual risk (thermal/power coupling) was MEASURED rather than argued --
+# `scripts/probes/probe_dual_card_interference.py`, three phases of 60 s sustained fp32 4096^3
+# matmul with tf32 off, medians over the steady-state tail (~11 000 samples each):
+#
+#     solo card0  2.7290 ms   |  dual card0  2.7412 ms   =  +0.45%
+#     solo card1  2.6695 ms   |  dual card1  2.7014 ms   =  +1.20%
+#
+# Worst median shift +1.20%, against this project's own noise scale: the independent re-eval gap is
+# +-2-4% with an unstable sign, the within-arm spread at G9 was 4.72%, per-trial std on L3:48 was
+# 16% of the mean and 33 near-ties spanned 9%. So co-residency is below the level at which this
+# project can measure anything at all. Card 1 does reach 74 C and drops 2775 -> 2550 MHz, but the
+# power limit is never hit (420/432 W under load against 441/445 W solo).
+#
+# THE GPU LOCK DOES NOT PREVENT THIS, AND NEVER DID. `GpuRwLock` lives at
+# `store.run_dir/jobs/gpu.lock` (wiring.py:109) -- scoped PER RUN, not per machine. Two runs on one
+# box have always had two independent locks, so the "one run per box" rule was only ever enforced by
+# hand. That is why the isolation below is explicit rather than assumed.
+#
+# THREE THINGS MUST BE ISOLATED PER ARM, or the two arms silently contaminate each other:
+#   1. CUDA_VISIBLE_DEVICES  -- passed at LAUNCH, not from this file: no code path in the harness
+#      reads or sets it (grep: 0 hits), and the native worker inherits os.environ, so the launch
+#      environment is the only route. See the launch command below.
+#   2. wsl.triton_cache_dir  -- a shared cache lets the second arm hit the first arm's compilations,
+#      so `compile_s` and the wall clock stop being comparable. Separate dirs below.
+#   3. XDG_DATA_HOME         -- `~/.local/share/opencode/opencode.db` is ONE SQLite file per box
+#      (already 180 MB here) and both arms would write it. Verified relocatable: with
+#      XDG_DATA_HOME set, opencode created its db under that path instead. There is no auth.json on
+#      this box (credentials come from .opencode/opencode.jsonc), so relocating XDG loses nothing.
+#
+# CALIBRATION IS SHARED DELIBERATELY -- all three arms load the SAME file, md5
+# e0c4baaaacbbff66b9021876c1d9fbee, which is box 1's measurement. This is what box 1 and box 2 did
+# for the E1 pair (box 2 still carried `calibration.box2-own.json.bak` proving its own was replaced),
+# and it satisfies step 3's success criterion "identical md5" directly rather than by tolerance.
+# Box 4's own measurement is archived beside it as `calibration.box4-own.json` and agrees to within
+# 3% on every ceiling (fp32 -0.98%, tf32 -1.68%, fp16 -2.96%, dram -0.09%, sm_count/l2/capability
+# exact). The ONE field that disagreed materially is `empty_launch_floor_ms`, +35.3% (0.0236 vs
+# 0.0174 ms) -- and it is why sharing matters: that field reaches the PROMPT
+# (`agents/modules.py:103` prints "smallest possible launch: X us"), so unshared calibration would
+# have given arm 2 and arm 3 a different sentence than arm 1 for a reason unrelated to the
+# experiment. Its only decision (`bottleneck.py:356`, gpu_ms <= floor x 1.15) is unreachable on this
+# task anyway: the fastest of 1077 timed trials in the L3:43 corpus is 2.8616 ms, 105x the threshold.
+#
+# The clone also inherited box 2's run directories; they were moved to
+# `runs-v3/inherited-from-box2/` rather than deleted, so no run in this arm's corpus can be mistaken
+# for one measured on box 2.
+#
+# THE VENV TRAP, inherited from box 2 and pointing the opposite way from box 1:
+#   /root/autodl-tmp/orch-venv        torch 2.14.0+cu130 / triton 3.8.0   <-- DRIVER only
+#   /root/autodl-tmp/kernel-opt-venv  torch 2.13.0+cu129 / triton 3.7.1   <-- WORKER, the MATCHED one
+# The driver never compiles or times a candidate, so its torch does not enter a measurement; the
+# matched kernel-opt-venv has no optuna, so it cannot be the driver. Both cards were verified end to
+# end through the harness's own evaluator (`verify_box_can_evaluate.py --candidate <known-good>`:
+# GPU0 2.9737 ms READY, GPU1 2.9225 ms READY) and the resource-map sweep returns box 1's digest
+# dd3eca5acd8ce656aa98160eb3d1b16c with the same 6 launch failures on BOTH cards.
+#
+# Launch (GPU 1; run concurrently with arm 3 on GPU 0 and arm 1 on box 1):
+#   cd /root/autodl-tmp/work/opop
+#   CUDA_VISIBLE_DEVICES=1 XDG_DATA_HOME=/root/autodl-tmp/xdg-arm2 \
+#   PYTHONPATH=src /root/autodl-tmp/orch-venv/bin/python -m kernel_optimizer.cli \
+#     --config configs/experiments_s3_arm2_vector_box4gpu1.yaml run --task level3:43
+
+v3:
+  diagnosis:
+    # THE VARIABLE against arm 1. One independent judgement per resource DIMENSION reaches the
+    # prompt instead of the single `kind` label. The vector is journalled in BOTH arms regardless of
+    # this switch, so the comparison is about what reaches the PROMPT -- the part with an external
+    # counter-example: few-shot optimisation exemplars measurably LOWERED fast_1 on KernelBench L1
+    # (10% -> 6%), so more information reaching an agent is not assumed to be an improvement.
+    mode: vector
+
+    # OFF in every step-3 arm -- S2d belongs to E1 (step 4). See arm 1's header.
+    expectation_ledger: false
+
+  wall_attribution:
+    # OFF here and ON in arm 3: that is the arm-2-vs-arm-3 variable.
+    enabled: false
+    in_prompt: false
+
+run:
+  # PER-ARM directory. Distinct from arm 3's, so the two co-resident runs cannot share a GPU lock,
+  # a jobs dir, or an events log. The parent `runs-v3` still holds the shared calibration.json.
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v3/arm2
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench
+
+opencode:
+  server_url: null
+  launch_cwd: /root/autodl-tmp/opop-workspace/opop-glm
+  # NOTE the provider block copied here carries a plaintext API key into every agent sandbox under
+  # runs_dir. A tar/scp of runs_dir carries the key off the box. The clone means this key now exists
+  # on a FOURTH machine.
+  sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+    # Isolate this arm's opencode state. Set here as well as at launch so the SERVER gets it even
+    # if the launch environment is ever forgotten: `OpencodeServer.start` builds the child env as
+    # {**os.environ, **server_env}, so this value wins.
+    XDG_DATA_HOME: /root/autodl-tmp/xdg-arm2
+
+wsl:
+  # THE MATCHED VENV on this box -- NOT orch-venv, which is torch 2.14 / triton 3.8.
+  venv: /root/autodl-tmp/kernel-opt-venv
+  kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src
+  # PER-ARM cache: a shared one would let this arm hit arm 3's compilations, making compile_s and
+  # the wall clock incomparable between the two arms that share this box.
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-arm2
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+# Byte-identical across all three arms. Box 1 and box 4 are the same card, verified: 24564 MiB,
+# cc 8.9, 128 SMs, and the same resource-map digest over 162 configurations.
+device:
+  name: NVIDIA GeForce RTX 4090 (sm_89)
+  vram_gb: 23
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024
