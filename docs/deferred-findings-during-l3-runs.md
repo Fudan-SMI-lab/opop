@@ -674,6 +674,62 @@ not by itself have bought loop C here: the 6.10 h tuning pass is mostly *answere
 the re-run needs both addressed — D9's deadline (fix ready, `docs/fix-ready-d9-screen-deadline.md`)
 and D8's per-compile cost (options 1 and 2 there, per-trial not per-candidate).
 
+### D8 measurement, 10:2x — `compile_s` is censored exactly where D8 lives, so option 2 is not yet justified
+
+Measured while preparing D8's fix, because option 2 (cap PTX size) needs the distribution before a
+threshold can be chosen, and option 1 (report the cost) needs to know what is already recorded.
+
+**`compile_s` cannot see the expensive compile.** Over 198 box-1 trial profiles it reads
+p50 **0.3 s**, p90 0.4 s, p99 0.8 s, max **1.6 s** — while `ptxas` was observed live on the same run
+at **25:35 elapsed and 41.0 GB RSS**. The metric is not wrong about what it measures:
+`worker_main.py:502-504` wraps the first `model(*inputs)`, so it *does* include `ptxas`. But it is
+only written **when the job returns**, and the six trials that paid the 20–50 minute compiles all
+timed out — and a timed-out job writes no `out.json`, hence no profile at all.
+
+Verified rather than assumed: every trial without a profile is a `fail`, and for `cand-941ea454`
+they are exactly **6 timeout + 1 runtime_error + 7 infeasible_shared_memory**.
+
+| candidate | trials with profile | without |
+|---|---|---|
+| cand-772ea591 | 57 | 23 (all infeasible_shared_memory) |
+| cand-e254236c | 68 | 12 (all infeasible_shared_memory) |
+| cand-fdfbcb59 | 27 | 13 (all infeasible_shared_memory) |
+| **cand-941ea454** | 46 | **14 (6 timeout, 1 runtime_error, 7 infeasible)** |
+
+So the 0.3 s median is the distribution of **Triton-cache hits**. The expensive compiles are
+*structurally absent* from it — same shape as
+`a-job-with-no-out-json-is-the-only-record-of-a-timeout`, one level in: the metric that would price
+D8 is censored precisely on D8's cases.
+
+**The PTX size distribution, for the record** (11737 cached `.ptx` on box 1 — the corpus a cap would
+act on):
+
+| statistic | lines |
+|---|---|
+| p50 | 1 378 |
+| p90 | 4 510 |
+| p99 | 17 908 |
+| max | 280 124 |
+
+| cap | refuses |
+|---|---|
+| 20 000 lines | 101 / 11737 = 0.86% |
+| 40 000 lines | 28 / 11737 = 0.24% |
+| 60 000 lines | 10 / 11737 = 0.09% |
+
+The 74 474-line PTX D8 observed sits between the 40 k and 60 k caps, and the 280 124-line file is the
+one from `agent-script-can-oom-the-whole-box`.
+
+**Conclusion, which changes D8's fix order.** A size cap looks attractive and is **not yet
+justified**, because *size → time* is unproven and cannot be proven from the event log: the cases
+that would carry the correlation have no recorded time. Picking 40 k or 60 k on the size distribution
+alone would be choosing a threshold for a proxy of a proxy — the same mistake as the 10x
+`excessive_speedup` constant, which is the reason D8 flagged it as "needs the distribution measured
+first". So **option 1 is a hard prerequisite, not merely the cheapest step**: record the compile wall
+clock even when the job is killed. Only then can option 2's threshold be derived from time rather
+than from size standing in for it.
+
+
 
 
 
