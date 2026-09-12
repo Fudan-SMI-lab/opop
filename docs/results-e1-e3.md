@@ -1,15 +1,16 @@
 # E1 / E3 results — verified from on-disk `events.jsonl`
 
-**Read** 2026-09-12 11:3x · every number below comes from parsing `events.jsonl` on the box that
+**Read** 2026-09-12 12:2x · every number below comes from parsing `events.jsonl` on the box that
 produced it, never from a notification or a report tool (`report-tool-conflates-running-with-crashed`).
-Boxes 1 and 2 have `RUN_FINISHED` on disk with 0 orchestrator processes; box 3 was still finishing
-when this was written and its section says so.
+**All three runs are finished**, each with `RUN_FINISHED` on disk and 0 orchestrator processes.
 
-**One number here is corrected from an earlier reading in the same session, deliberately left
-visible.** A first monitor reported boxes 2 and 3 as finished when neither was: it used
-`grep -c RUN_FINISHED || echo 0`, which on zero matches prints `0` *and* exits 1, so the fallback
-appended a second `0` and the caller compared `"0\n0"` against `"0"`. Every figure below was
-re-derived by parsing the `type` field. This is why the rule is to verify against disk.
+**Two monitor defects bit during this batch, in opposite directions, from the same one-line mistake.**
+A finish-detector using `grep -c RUN_FINISHED || echo 0` reported boxes 2 and 3 finished when neither
+was; `watch_run.sh`'s probe using `pgrep -c ... || echo 0` could never report ENDED at all, and
+called box 2 "alive but stalled" 37 minutes after it had finished. Both because those commands print
+`0` *and* exit 1 on no match, so the fallback appends a second `0` and the variable becomes `"0\n0"`.
+Fixed in `e9e7c8e` with three-way verification. Every figure below was re-derived by parsing the
+`type` field — which is why the rule is to verify against disk.
 
 ---
 
@@ -108,31 +109,74 @@ not a property of either search. Any statement about search *volume* must carry 
 
 ---
 
-## 2. Box 3 — E3, clean reproduction of L3:48 on the A800
+## 2. Box 3 — E3, reproduction of L3:48 on the A800
 
-`run-l3-48-20260911-231217` · read at 11.96 h of 12 h, **still finishing** · 6 rewrites, 2 family
-rounds.
+`run-l3-48-20260911-231217` · **finished at 13.159 h** (self-reported 13.152), `RUN_FINISHED` on
+disk, 0 orchestrator processes · 6 rewrites, 3 family rounds, 1043 events.
+
+### Verified best
 
 | | value |
 |---|---|
-| best (median, in-flight) | **1.0097 ms** — `cand-207eabd1`, a **rewrite** |
-| second best | 1.0245 ms — `cand-c14e907f`, also a rewrite |
-| best **seed** | 1.1320 ms |
-| rewrite vs best seed | **10.80% better** |
-| DRAM floor | 0.8011 ms ⇒ **79.3% of the physical roofline** |
-| speedup | 13.87x (A1's derived ceiling: 17.48x) |
+| winner | `cand-207eabd1`, family `fam-a5484ff4` |
+| origin | **rewrite**, parent = seed `cand-2e142acc` |
+| params | `fp16, DOT_MODE=plain, BLOCK_L=16, BLOCK_P=32, NUM_WARPS=1, NUM_STAGES=4` |
+| `tuned_ms` | 1.0097 ms |
+| **`final_reeval_median_ms`** | **1.0532 ms** (`final_reeval_ok: true`) |
+| reeval vs tuned | **4.31% SLOWER** |
 
-**Loop C contribution, and the honest both-sides version:** `fam-aac749d4` recorded
-`conversion=improved` with **`latency_gain_pct` = 41.008**, while `fam-47830987` recorded
-`conversion=flat` at **1.427%**. So 1 of 2 rounds moved the needle. Rewriting is productive here but
-**not uniformly** — and L3:48 is the task already shown to sit on a physical plateau
-(`l3:48 plateau confirmed three runs`), which is the likely reason.
+**Two corrections to figures quoted while this run was in flight**, kept visible because both were
+wrong in the direction that flatters the result:
 
-**Against the run it reproduces**: 1.0097 vs **0.9728 ms** — E3 is **3.79% slower**. That is the
-point of the run, not a failure of it. The 0.9728 came with 1 resume, 2 agent timeouts (0.83 h) and a
-13.67 h event span while self-reporting 12.383 h. E3 has **1 `RUN_CREATED`, 1 agent failure**
-(parameterizer `ReadTimeout` at 00:01) and an 11.88 h span. So the claim it licenses is *"a clean 12 h
-on this box buys ~1.01 ms"*, replacing a number that was never clean.
+1. **The verified number is 1.0532 ms, not 1.0097.** I quoted the best in-flight `tuned_ms`. The
+   reeval came in **4.31% slower**, which is the direction `reeval-gap-is-the-real-language` predicts
+   (tuned is systematically optimistic by 1.5–6.7%). Box 2 went the *other* way on the same day
+   (reeval 2.33% faster), so **the sign of that gap is not fixed** — which means neither run's
+   direction can be used to predict another's, and only `final_reeval_median_ms` may be claimed.
+2. **It ran 13.159 h, not ~12 h.** So "a clean 12 h on this box buys ~1.01 ms" — which I wrote
+   earlier — is not licensed. `WALL_CLOCK_REACHED` is 0 and the per-candidate budget check let the
+   in-flight candidate finish, giving a **9.7% overrun**. The honest form is "a clean **13.2 h**
+   buys 1.0532 ms".
+
+### Speedups on the verified number
+
+| baseline | median | speedup |
+|---|---|---|
+| eager | 13.9930 ms | **13.286x** |
+| eager_tf32 | 13.4758 ms | 12.795x |
+| torch_compile | 8.5862 ms | 8.153x |
+| torch_compile_tf32 | 8.0609 ms | **7.654x** |
+
+DRAM floor 0.8011 ms ⇒ **76.1% of the physical roofline**; A1's derived ceiling is 17.48x and the run
+reached 13.29x.
+
+### Loop C: 3 of 4 families improved
+
+| family | seed | final | improvement | rounds |
+|---|---|---|---|---|
+| fam-a5484ff4 | 1.8514 | **1.0097** | **45.5%** | 1 |
+| fam-aac749d4 | 1.7367 | 1.0245 | **41.0%** | 1 |
+| fam-47830987 | 1.1484 | 1.1320 | 1.4% | 1 |
+| fam-1b92f176 | 5.4753 | 5.4753 | — | **0** |
+
+The three families that ran a round are all won by a **rewrite**; the best seed anywhere was
+1.1484 ms, so rewriting produced the top two results. But the spread — 45.5%, 41.0%, **1.4%** — is
+the honest picture: **rewriting is not uniformly productive**, and L3:48 is the task already shown to
+sit on a physical plateau (`l3:48 plateau confirmed three runs`).
+
+The winner's hypothesis was taken from the bottleneck report: *"remove the full-T cumsum bookkeeping
+and the per-chunk O(LC*T) masked where/sum (~64 regs/thread of intermediate plus 51-barrier /
+101-shared-load class reductions)"* — a register/barrier pressure argument, acted on and measured.
+
+### Against the run it reproduces
+
+1.0532 vs **0.9728 ms** ⇒ **8.26% slower**. That is the point of the run, not a failure of it: the
+0.9728 came with 1 resume, 2 agent timeouts (0.83 h) and a 13.67 h span while self-reporting
+12.383 h, and `a-resumed-run's-own-clock-restarts` means its self-reported hours were never
+comparable. E3 has **1 `RUN_CREATED`, 1 agent failure** (parameterizer `ReadTimeout` at 00:01) and a
+13.159 h span that matches its self-report to 0.007 h. So E3 replaces an unverifiable number with a
+verifiable one — at the cost of the number being larger.
+
 
 ---
 
@@ -212,22 +256,39 @@ and it arrived as a side effect of the pair failing at its intended purpose.
 
 ## 4. What this settles, and what it does not
 
+All three runs ended by **wall clock**, none by convergence: every family on every box is
+`status: active`. That is now **8 of 8** completed runs, and it keeps
+`wall-clock-is-always-the-binding-budget` unbroken. All three also **overran** their budget, by
+4.2% / 2.9% / 9.7%, because the check is per candidate (`orchestrator.py:2790`) — so a stated
+"12 h" result is really 12.3–13.2 h and must be quoted as the measured span.
+
 **Settled.**
-- Loop C produces candidates that beat every seed, on both tasks, with the winner on each being a
-  rewrite (L3:43: 4/4 families, median 33.8%; L3:48: 10.8% over the best seed). This is the direct
-  counter-evidence to `framework diagnosis`'s "rewrites are flat".
-- S2d(a)/(b) has production evidence at 71.6% per declaration, nominal p = 0.00006.
-- A1's derived ceiling behaved correctly in production on all three boxes; nothing was flagged.
-- The wall clock ended 6 of 6 completed runs.
+- **Loop C produces the winner on all three runs.** Box 2: 4/4 families improved, winner a
+  second-generation rewrite. Box 3: 3/4 improved, winner a rewrite. Box 1: 0 rounds ran and the
+  winner is a seed — which is the same point from the other side. This is direct counter-evidence to
+  `framework diagnosis`'s "rewrites are flat".
+- **But rewriting is not uniformly productive**, and the spread is large: L3:43 gave 11.4–43.9%
+  (4/4), L3:48 gave 1.4–45.5% (3/4, one family never entered a round). The task's remaining headroom
+  governs it — L3:48 is the known plateau.
+- **S2d(a)/(b) has production evidence**: 71.6% of 81 non-vacuous declarations, nominal one-sided
+  p = 0.00006, vacuous rate 8.0%.
+- **A1's derived ceiling behaved correctly on all three boxes** and flagged nothing; the ceilings
+  were 9.15–9.20x (L3:43, compute-bound) and 17.48x (L3:48, DRAM-bound).
+- **The reeval gap's sign is not fixed**: box 2's reeval came in 2.33% *faster* than tuned, box 3's
+  4.31% *slower*. So only `final_reeval_median_ms` may ever be claimed, and no run's direction
+  predicts another's.
 
 **Not settled.**
 - **S2d(c) has no control observation.** The control arm ran 0 rewrite rounds, so
   `reserve_round_for_reconciled` is untested. **E1 must be re-run** — a fact on disk, not a
   projection.
-- The ledger's significance is per-declaration; at the round level it is 5/6, p = 0.109. Needs a
-  second arm or task.
-- Rewriting's productivity is task-dependent (4/4 on L3:43, 1/2 on L3:48), n = 2 tasks.
+- The ledger's significance is per-declaration; at the round level it is 5/6, p = 0.109 —
+  directionally consistent, not independently significant. Needs a second arm or a second task.
+- Whether E3's 1.0532 ms or the old 0.9728 ms is the better estimate of this box's capability. E3 is
+  the verifiable one, but it is also 8.26% slower, and the two differ in budget as well as
+  cleanliness.
 
 **Before the re-run:** D9 (`docs/fix-ready-d9-screen-deadline.md`) and D8 option 1
 (`docs/fix-ready-d8-job-wall-clock.md`), together in one pass — both change comparability, and D9
-alone would not have bought loop C here since the 6.10 h pass is mostly *answered* jobs.
+alone would not have bought loop C on box 1, since the 6.10 h pass was mostly *answered* jobs.
+
