@@ -9,6 +9,7 @@ from pathlib import Path
 from kernel_optimizer.evaluation.conversion_report import conversion_lines
 from kernel_optimizer.models.core import latency_cell
 from kernel_optimizer.reporting.completeness import completeness_lines
+from kernel_optimizer.reporting.wall_report import wall_lines
 from kernel_optimizer.store.run_store import RunStore
 
 
@@ -1001,6 +1002,11 @@ class ReportGenerator:
                     lines.append(f"  - {lim['param']} wants {lim['headroom_direction']}, "
                                  f"blocked by {lim['blocked_by']}")
             lines.append("")
+
+        # 2e, immediately after the analyst's own `parameter_limits`: the two sections answer the
+        # same question, one by asking the agent and one by asking the compiler, and putting them
+        # apart would hide that they disagree. Measured on box 2, they agree on 8 of 53 claims.
+        lines.extend(wall_lines(events))
 
         lines.append("## Convergence decisions\n")
         lines.extend(_why_the_run_ended(events, convergence, budgets))

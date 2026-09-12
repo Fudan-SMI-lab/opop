@@ -439,6 +439,51 @@ class V3DiagnosisConfig(StrictConfig):
     access_pattern_walls: bool = False
 
 
+class V3WallAttributionConfig(StrictConfig):
+    """2e: attribute a shared-memory refusal to a single knob, by ablation at the optimum.
+
+    The conclusion this produces already EXISTS as a field the analyst agent fills unchecked
+    (`BottleneckReport.parameter_limits`, with `param` / `blocked_by` / `predicted_gain_pct`).
+    Measured on box 2's two L3:43 runs: of 53 such claims across the six candidates that actually
+    have a wall, the harness confirms 8 -- with the wrong resource named, walls claimed on knobs
+    that have none, and `predicted_gain_pct` inverted in sign (+1.0% claimed where the measured tail
+    is -41.1%). So this is not a new capability layered onto a working one; it replaces a guess.
+    """
+
+    # Find walls, probe them, journal `RESOURCE_WALL_ATTRIBUTED`. Nothing reads the result while
+    # `in_prompt` is off, so this alone cannot change a decision, a ranking or a prompt.
+    #
+    # It is NOT free, which is why it is a switch rather than unconditional: the probes cost GPU
+    # time and a run that spends it is not byte-comparable with one that does not. Measured though,
+    # and small -- 18 variants in ONE worker process took 8.8 s on box 2, a marginal 0.49 s each,
+    # because `make_compile_probe_job`'s `extra_kernel_src_paths` pays the process start once. At
+    # three probed walls per candidate that is ~1.5 s against a 12 h clock. `probe_total_s` is
+    # journalled so it can be subtracted rather than assumed.
+    enabled: bool = False
+
+    # Diagnostic depth, NOT a search-space restriction: nothing here removes, shrinks or reorders a
+    # domain, and the tuner samples exactly what it sampled before. Same shape of cap as an
+    # independent screen timeout, which was already established as a cost bound rather than a space
+    # bound. Walls beyond the cap are counted in the event, so the number is never silently lost.
+    max_probes_per_candidate: int = 8
+
+    # Repeat each ablation from the space's DEFAULT configuration as well as from the optimum.
+    # ON by default, and the reason is measured: from the optimum 6 of 6 walls attribute to a single
+    # knob, but from the default only 1 of 6 does. At the default every dimension sits at its
+    # smallest, so enlarging one knob still fits; at the optimum the others are already large. The
+    # wall's position therefore DEPENDS on the other knobs, and without this field a reader cannot
+    # tell an intrinsic knob limit from a joint effect at one point. Doubling the probe count is
+    # affordable exactly because the probes batch.
+    probe_second_origin: bool = True
+
+    # Put the attributed walls into the analyst/rewriter prompt. OFF, and it must stay off for any
+    # run that is to be compared with an existing one: it changes what the agent sees. Every
+    # sentence it emits is conditional on the optimum (see `wall_attribution.for_prompt`) because an
+    # unconditional "BLOCK_M is capped by shared memory" would send the rewriter after a wall that
+    # is not there at the point it rewrites from.
+    in_prompt: bool = False
+
+
 class V3Config(StrictConfig):
     """The v3 stages, each behind its own switch, all off by default.
 
@@ -451,6 +496,7 @@ class V3Config(StrictConfig):
 
     search: V3SearchConfig = V3SearchConfig()
     diagnosis: V3DiagnosisConfig = V3DiagnosisConfig()
+    wall_attribution: V3WallAttributionConfig = V3WallAttributionConfig()
 
 
 class AppConfig(StrictConfig):

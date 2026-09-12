@@ -266,6 +266,21 @@ class CorrectnessEvaluator:
             return None
         return max_shared <= max_shared_bytes
 
+    def screen_cache_entry(self, kernel_src: str, backend: str) -> dict[str, Any] | None:
+        """The cached probe result for this source, or None when it was never answered.
+
+        `cached_shared_verdict` answers the question the SAMPLER asks -- fits / cannot launch /
+        unknown -- and deliberately collapses everything else, so it cannot report the compiler's
+        actual figure. 2e needs that figure: "requires 122880 against a 101376 limit" and "requires
+        212992" call for different rewrites (one knob step versus a restructure), and a bare
+        "infeasible" cannot tell them apart.
+
+        Read-only and cache-only, like `cached_shared_verdict`. Exposed as a method rather than
+        letting a caller reach into `_screen_cache` so the key format stays private to this class --
+        it is a `hash()` of the source text, which is not a contract.
+        """
+        return self._screen_cache.get(f"{backend}:{hash(kernel_src)}")
+
     def compile_screen(self, task: TaskSpec, kernel_src_path: Path, tag: str,
                        backend: str, max_shared_bytes: int | None) -> dict[str, Any] | None:
         """Compile-only feasibility screen. Returns a refusal dict, or None to proceed.

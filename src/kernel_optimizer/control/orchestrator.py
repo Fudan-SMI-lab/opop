@@ -38,6 +38,7 @@ from kernel_optimizer.agents.runtime import AgentCallError
 from kernel_optimizer.config import AppConfig
 from kernel_optimizer.control.convergence import ConvergencePolicy
 from kernel_optimizer.control.families import FamilyManager, NoveltyRejection
+from kernel_optimizer.evaluation import wall_attribution
 from kernel_optimizer.evaluation.benchmark import Benchmarker, environment_defect
 from kernel_optimizer.evaluation.conversion import conversion_verdict
 from kernel_optimizer.evaluation.correctness import (
@@ -1440,6 +1441,158 @@ class Orchestrator:
             "timed_out": answered == 0 and elapsed >= 0.9 * float(limit),
         })
 
+    def _attribute_resource_walls(self, crun: CandidateRun) -> list:
+        """2e: which single knob is responsible for each shared-memory refusal, at the optimum.
+
+        Never raises: this is a diagnostic, and a diagnostic that ended a candidate's pipeline
+        would present a bookkeeping defect as a candidate defect -- the same rule
+        `_reconcile_round` follows.
+
+        The refused configurations are read from `crun.trials` rather than from the event log: a
+        screened-out configuration is recorded as a TrialRecord with
+        `failure_kind="infeasible_shared_memory"` and its own `params`, so the in-memory trial list
+        already holds exactly the set this needs, in both a fresh run and a resumed one.
+        """
+        cfg2e = self.cfg.v3.wall_attribution
+        if not cfg2e.enabled or crun.stats is None or crun.space is None:
+            return []
+        try:
+            refused = [t.params.values for t in crun.trials
+                       if t.failure_kind == "infeasible_shared_memory" and t.params is not None]
+            walls = wall_attribution.find_walls(crun.stats, refused)
+            probe, skipped = wall_attribution.select_for_probing(
+                walls, cfg2e.max_probes_per_candidate)
+            payload: dict[str, Any] = {
+                "candidate_id": crun.candidate.candidate_id,
+                "space_id": crun.space.space_id,
+                "n_refused_configs": len(refused),
+                "walls_found": len(walls),
+                "walls_probed": len(probe),
+                "walls_skipped_by_cap": len(skipped),
+                # Walls the slope filter dropped: real, but lifting them buys nothing. Counted so
+                # "we found no wall" and "we found six worthless ones" are distinguishable.
+                "walls_worthless": len([w for w in walls
+                                        if not (w.monotone and w.tail_gain_pct > 0.0)]),
+            }
+            if not probe:
+                payload["walls"] = [w.payload() for w in walls]
+                self.store.append("RESOURCE_WALL_ATTRIBUTED", payload)
+                return []
+
+            theta_star = self._theta_star(crun)
+            if theta_star is None:
+                payload["error"] = "no winning configuration to ablate from"
+                payload["walls"] = [w.payload() for w in walls]
+                self.store.append("RESOURCE_WALL_ATTRIBUTED", payload)
+                return []
+            origins: list[tuple[str, dict[str, Any]]] = [("theta_star", theta_star)]
+            if cfg2e.probe_second_origin:
+                default = self._space_default_params(crun)
+                if default:
+                    origins.append(("default", default))
+
+            t0 = time.monotonic()
+            n_probes = self._probe_walls(crun, probe, origins)
+            payload["probe_total_s"] = round(time.monotonic() - t0, 3)
+            payload["n_probes"] = n_probes
+            payload["theta_star"] = dict(theta_star)
+            payload["origins_probed"] = [name for name, _ in origins]
+            payload["walls"] = [w.payload() for w in (probe + skipped)]
+            payload["counts"] = wall_attribution.summarize(probe)
+            self.store.append("RESOURCE_WALL_ATTRIBUTED", payload)
+            return probe
+        except Exception as exc:  # noqa: BLE001 -- a diagnostic must never end a candidate
+            self.store.append("RESOURCE_WALL_ATTRIBUTION_FAILED", {
+                "candidate_id": crun.candidate.candidate_id,
+                "error": f"{type(exc).__name__}: {exc}"[:500]})
+            return []
+
+    def _theta_star(self, crun: CandidateRun) -> dict[str, Any] | None:
+        """The parameters of this candidate's fastest completed trial.
+
+        The ablation origin, and not an arbitrary trial: the question 2e answers is whether one more
+        step is available AT THE POINT THE AGENT IS REWRITING FROM. Starting from a slow
+        configuration would report "not attributed" simply because every other dimension was small
+        -- measured, that flips 5 of 6 verdicts.
+        """
+        best: tuple[float, dict[str, Any]] | None = None
+        for t in crun.trials:
+            if t.status != "complete" or t.params is None or t.latency_ms is None:
+                continue
+            # `robust_ms`, not `.mean` and never `min`: it is this project's measured objective
+            # (93.2% rank-correctness against the mean's 64.8% at 20 samples), and the whole
+            # framework already selects on it, so a second rule here could name a different winner
+            # than the one the agent is told about.
+            ms = t.latency_ms.robust_ms
+            if not isinstance(ms, (int, float)) or ms <= 0:
+                continue
+            if best is None or ms < best[0]:
+                best = (float(ms), dict(t.params.values))
+        return best[1] if best else None
+
+    def _space_default_params(self, crun: CandidateRun) -> dict[str, Any] | None:
+        """Each domain's first choice -- the space's own default corner.
+
+        The second origin. Domains are ordered cheap-to-expensive by contract, so `choices[0]` is
+        the smallest setting, which is exactly the configuration that makes a single-knob ablation
+        LOOK innocent. That contrast is the point: it is what distinguishes an intrinsic limit of one
+        knob from a joint effect at the optimum.
+        """
+        if crun.space is None:
+            return None
+        out = {d.name: d.choices[0] for d in crun.space.domains if d.choices}
+        return out or None
+
+    def _probe_walls(self, crun: CandidateRun, walls: list, origins: list) -> int:
+        """Materialize every (wall, origin) ablation, probe them in ONE batch, read the verdicts.
+
+        One batch, deliberately: a probe in its own worker process costs a median 16.7 s, almost
+        entirely process start plus torch/CUDA/KernelBench import, while 18 variants in one process
+        measured 8.8 s total -- 0.49 s each. Probing per wall would make 2e cost more than the waste
+        it describes.
+        """
+        limit = self.cfg.device.max_shared_bytes_optin
+        backend = crun.candidate.backend
+        variants: list[tuple[object, str, Path]] = []
+        probe_dir = Path(self.store.run_dir) / "wall_probes" / crun.candidate.candidate_id
+        probe_dir.mkdir(parents=True, exist_ok=True)
+        for wi, wall in enumerate(walls):
+            for oname, theta in origins:
+                params = ParamSet(values=wall_attribution.ablation_params(theta, wall))
+                try:
+                    src = materializer.materialize(crun.source, params)
+                except materializer.MaterializeError:
+                    # A knob whose refused value cannot even be written back is not evidence about
+                    # the hardware. Left with verdict None -> "undecidable" below.
+                    continue
+                path = probe_dir / f"w{wi}-{oname}.py"
+                path.write_text(src, encoding="utf-8")
+                variants.append((wall, oname, path))
+        if not variants:
+            return 0
+        # Populates the evaluator's screen cache. `cached_shared_verdict` then reads each verdict
+        # without another worker round-trip, and a source already screened during tuning costs
+        # nothing at all.
+        self.deps.evaluator.prescreen_batch(
+            self.task, [p for _, _, p in variants],
+            tag=f"{crun.candidate.candidate_id}-wall", backend=backend)
+        for wall, oname, path in variants:
+            src = path.read_text(encoding="utf-8")
+            fits = self.deps.evaluator.cached_shared_verdict(src, backend, limit)
+            verdict = wall_attribution.verdict_from(fits)
+            probe = self.deps.evaluator.screen_cache_entry(src, backend)
+            max_shared = (probe or {}).get("max_shared")
+            if oname == "theta_star":
+                wall.verdict = verdict
+                wall.limit = limit
+                wall.max_shared = max_shared
+                if isinstance(max_shared, (int, float)) and limit:
+                    wall.over_ratio = float(max_shared) / float(limit)
+            else:
+                wall.second_origin = verdict
+                wall.second_origin_max_shared = max_shared
+        return len(variants)
+
     def _shared_memory_ok(self, crun: CandidateRun, params: ParamSet) -> bool:
         """Guard predicate: reject a configuration the compiler has ALREADY said cannot launch.
 
@@ -1540,11 +1693,24 @@ class Orchestrator:
                 "evidence": verdict.evidence,
                 "disagreement": verdict.disagreement,
             })
+        # 2e: attribute a shared-memory refusal to a single knob, by ablation at this candidate's
+        # own optimum. BEFORE the analyst, so the measured attribution can replace the analyst's
+        # unchecked `parameter_limits` guess in the prompt when `in_prompt` is on -- and outside the
+        # tuning loop, so it cannot touch the trial budget or what the sampler sees.
+        walls = self._attribute_resource_walls(crun)
+        wall_text = None
+        if walls and self.cfg.v3.wall_attribution.in_prompt:
+            wall_text = wall_attribution.for_prompt(walls)
         # S2: the per-dimension vector. Journalled UNCONDITIONALLY, in both modes -- recording costs
         # nothing and is not what carries risk; what carries risk is what reaches the prompt, and
         # that is the one thing `v3.diagnosis.mode` switches. Writing it in label mode is also what
         # makes J2-1 offline-replayable on a control run's own event log.
         digest_text = self._dimension_digest(crun, verdict)
+        if wall_text:
+            # Appended rather than merged: the digest is judgement about the candidate's resource
+            # state, this is a measured fact about one axis of its space, and a reader of the prompt
+            # (or of a later disagreement) has to be able to tell which is which.
+            digest_text = f"{digest_text}\n\n{wall_text}" if digest_text else wall_text
         try:
             outcome = self.deps.analyst.invoke(
                 AnalystInputs(
