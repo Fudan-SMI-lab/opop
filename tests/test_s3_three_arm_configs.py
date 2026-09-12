@@ -211,3 +211,40 @@ def test_arm3_is_the_only_arm_reading_walls_into_a_prompt():
     """
     on = [p.name for p in (ARM1, ARM2, ARM3) if _load(p).v3.wall_attribution.in_prompt]
     assert on == [ARM3.name], f"expected only arm 3 to read walls into a prompt, got {on}"
+
+def test_a_per_arm_runs_dir_means_calibration_must_be_placed_per_arm():
+    """A per-arm `runs_dir` silently relocates where calibration is looked up, and plan A depends on
+    all three arms loading the SAME file.
+
+    `cache_path(run_root)` is `run_root / "calibration.json"` and the orchestrator calls it with
+    `cfg.run.runs_dir`. When the two treatment arms moved into `runs-v3/arm2` and `runs-v3/arm3`, the
+    shared file in the PARENT `runs-v3` stopped being visible to them -- and the failure is silent
+    and looks like success: the arm simply measures its own, journals `CALIBRATION_MEASURED`, and
+    runs. Observed live: arm 2's first launch produced a THIRD calibration (md5 4bd36a1c...) distinct
+    from both the shared file and box 4's own archived measurement.
+
+    Why it matters rather than being cosmetic: `empty_launch_floor_ms` differs 35% between box 1 and
+    box 4, it reaches the PROMPT (`agents/modules.py` prints "smallest possible launch: X us"), and
+    every classification is a fraction of these ceilings. Unshared calibration hands the arms
+    different sentences for a reason unrelated to the experiment.
+
+    This test cannot check the boxes' filesystems, so it pins the INVARIANT that makes the operator
+    step necessary: each arm's calibration lookup path is derived from its own `runs_dir`, so two
+    arms with different `runs_dir` have different lookup paths and the file must be placed in each.
+    """
+    from kernel_optimizer.evaluation.calibration import cache_path
+
+    paths = {}
+    for p in (ARM1, ARM2, ARM3):
+        runs_dir = Path(_load(p).run.runs_dir)
+        cp = cache_path(runs_dir)
+        # Every arm looks in its OWN runs_dir, never in a shared location.
+        assert cp.parent == runs_dir, (
+            f"{p.name}: calibration is not looked up under its own runs_dir; this test's premise is "
+            f"wrong and the operator instructions derived from it may be too")
+        paths[p.name] = cp
+
+    # The two co-resident arms therefore have DISTINCT lookup paths -- which is the whole trap.
+    assert paths[ARM2.name] != paths[ARM3.name], (
+        "the co-resident arms would share one calibration path, so this trap does not apply and the "
+        "per-arm copy step should be removed from the runbook")

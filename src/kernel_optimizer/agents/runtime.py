@@ -38,14 +38,41 @@ class PromptResult(BaseModel):
     finish: str | None = None
 
 
-def _free_port(preferred: int) -> int:
-    with socket.socket() as s:
+def _free_port(preferred: int) -> tuple[int, socket.socket]:
+    """Pick a port AND keep it reserved until the caller has handed it to the server.
+
+    Returns the port and the socket still holding it. The caller MUST close that socket immediately
+    before spawning, and the window between the close and the server's own bind is the only race
+    left -- microseconds, against the whole of server startup previously.
+
+    WHY THE SOCKET IS RETURNED INSTEAD OF CLOSED HERE. The earlier version closed it and returned
+    only the number, which makes the reservation meaningless: a closed socket's port is immediately
+    rebindable (measured), so two orchestrators starting together both probed the default 4096, both
+    saw it free, and both were told to use it. The loser's server exited rc=1 with a bare
+    `ServeError` from `opencode`, surfacing as `AgentCallError: opencode serve exited rc=1` -- which
+    names no port and reads like a broken install rather than a collision.
+
+    That is not hypothetical: it is exactly how the first attempt to launch two co-resident arms on
+    one box failed, with arm 2 taking 4096 and arm 3 dying. It could not happen while the project's
+    rule was one run per box, and it became reachable the moment two arms shared a machine.
+
+    An OPEN socket does refuse a second bind (measured, OSError), so holding it is what makes the
+    probe mean something.
+    """
+    # `preferred` 0 means "any port" to bind(), which SUCCEEDS -- so the preferred path would return
+    # the literal 0 as the port while the socket holds a real one, giving a URL of :0 that nothing
+    # can reach. Only the ephemeral path below may name a port, so 0 skips straight to it.
+    if preferred:
+        s = socket.socket()
         try:
             s.bind(("127.0.0.1", preferred))
-            return preferred
         except OSError:
-            s.bind(("127.0.0.1", 0))
-            return s.getsockname()[1]
+            s.close()
+        else:
+            return preferred, s
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    return s.getsockname()[1], s
 
 
 def resolve_opencode() -> str:
@@ -106,7 +133,7 @@ class OpencodeServer:
             self.base_url = self.cfg.server_url.rstrip("/")
             self._wait_healthy()
             return self.base_url
-        port = _free_port(self.cfg.port)
+        port, reservation = _free_port(self.cfg.port)
         self.base_url = f"http://{self.cfg.host}:{port}"
         self._log_handle = self.log_path.open("ab")
         # Inherit our environment and layer `server_env` on top: a few opencode settings
@@ -118,6 +145,9 @@ class OpencodeServer:
         popen_kw: dict = {}
         if os.name != "nt":
             popen_kw["start_new_session"] = True
+        # Release the reservation as late as possible: while it is open no other orchestrator can
+        # be handed this port, and the server cannot bind it either.
+        reservation.close()
         self.proc = subprocess.Popen(
             [resolve_opencode(), "serve", "--hostname", self.cfg.host, "--port", str(port)],
             cwd=str(self.cfg.launch_cwd),
@@ -142,7 +172,13 @@ class OpencodeServer:
                 except OSError:
                     pass
                 raise AgentCallError(
-                    f"opencode serve exited rc={self.proc.returncode}: {tail}"
+                    # The URL is in the message because without it this exception names nothing
+                    # actionable. `opencode` reports a port collision as a bare `ServeError` with
+                    # rc=1 and no port, so the raised error read like a broken install -- and the
+                    # actual cause was a second orchestrator on the same box holding this port.
+                    f"opencode serve exited rc={self.proc.returncode} "
+                    f"(was starting on {self.base_url}; a bare ServeError here usually means "
+                    f"another process already holds that port): {tail}"
                 )
             try:
                 resp = httpx.get(f"{self.base_url}/config", timeout=3.0)
