@@ -562,3 +562,30 @@ The 1.21x residual is the real, attributable difference between the arms (differ
 different spaces), and that is small enough that the pair remains usable if box 1 reaches a rewrite
 round.
 
+### D9 scope check — the screen's VERDICTS are sound; only its deadline is wrong
+
+Worth stating explicitly, because it bounds what a fix may touch. Across both E1 arms, 225
+`CONFIG_SCREENED_INFEASIBLE` refusals:
+
+| | box 1 | box 2 |
+|---|---|---|
+| refusals | 51 | 174 |
+| required/limit ratio, min | 1.07 | 1.05 |
+| ratio, median | 1.62 | 1.62 |
+| ratio, max | 4.53 | 6.48 |
+| refusals within 5% of the limit (marginal calls) | **0 / 51** | **0 / 174** |
+| trials that reached a launch and *still* hit shared-memory exhaustion | **0** | **0** |
+
+**Not one refusal is marginal** — the closest asks for 5% more shared memory than the device has, and
+the median asks for 62% more. And there are **zero false negatives**: no configuration the screen
+passed then failed at launch for shared memory. So the screen is doing exactly the job D5 designed it
+for, on the criterion it was designed for (the compiler's own `metadata.shared` against the device
+limit), with no evidence of over- or under-rejection.
+
+That isolates the defect precisely: **the decision logic is right and the deadline is wrong.** A fix
+must therefore change only the timeout, and must not touch the refusal criterion, the caching rule,
+or which configurations get screened. It also means the 4.75 h box 1 lost bought nothing at all —
+those six screens were not protecting a hard call, they were compiling PTX that `ptxas` could not
+finish inside 1200 s, for a verdict the real trial would then re-derive from scratch.
+
+
