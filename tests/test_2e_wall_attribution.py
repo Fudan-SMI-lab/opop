@@ -440,3 +440,48 @@ def test_the_report_separates_worthless_walls_from_unattributed_ones():
     assert not any(line.startswith("| `c`") for line in out), \
         "an unprobed wall must not appear as a table row"
     assert "GEMM_BK" in joined, "and it must still be named somewhere"
+
+def test_refusals_with_no_walls_is_reported_as_a_finding_not_an_empty_table():
+    """"20 refusals, 0 walls" and "0 refusals" are different states and must read differently.
+
+    Measured live on arm 3: two candidates with 12 and 8 refused configurations produced 0 walls,
+    because every refused value had also RUN successfully in some other combination -- nothing was
+    truncated out of its range. A summary printing only "found 0" cannot be told apart from "this
+    card never refused anything", and the two call for opposite conclusions: the first says the
+    mechanism had input and legitimately had nothing to say, the second says the arm is on the wrong
+    hardware (the A800's 166912 B against the 4090's 101376 B).
+    """
+    from kernel_optimizer.reporting.wall_report import wall_lines
+
+    had_input = {"candidate_id": "cand-a", "n_refused_configs": 12, "walls_found": 0,
+                 "walls_probed": 0, "walls_worthless": 0, "walls": []}
+    out = "\n".join(wall_lines([{"type": "RESOURCE_WALL_ATTRIBUTED", "payload": had_input}]))
+    assert "12" in out, "the refusal count is not reported, so 0 walls is uninterpretable"
+    assert "有输入但没有墙" in out, "a run with input and no walls is not distinguished"
+    assert "没有任何输入" not in out, "a run WITH refusals was described as having no input"
+
+    no_input = dict(had_input, n_refused_configs=0)
+    out2 = "\n".join(wall_lines([{"type": "RESOURCE_WALL_ATTRIBUTED", "payload": no_input}]))
+    assert "没有任何输入" in out2, "a run with no refusals at all is not distinguished"
+    assert "有输入但没有墙" not in out2, "a run with no input was described as having had input"
+
+
+def test_neither_zero_message_appears_when_walls_were_found():
+    """The two explanatory lines are for the empty cases only.
+
+    A run that DID find walls must not also carry "there was no wall", which would contradict its own
+    table -- the kind of thing that happens when a new branch is added without an else.
+    """
+    from kernel_optimizer.reporting.wall_report import wall_lines
+
+    payload = {"candidate_id": "cand-b", "n_refused_configs": 40, "walls_found": 1,
+               "walls_probed": 1, "walls_worthless": 0,
+               "counts": {"attributed": 1},
+               "walls": [{"param": "BLOCK_M", "refused_value": 512.0,
+                          "ran_values": [64.0, 128.0, 256.0], "tail_gain_pct": 16.7,
+                          "monotone": True, "verdict": "attributed",
+                          "max_shared": 122880, "limit": 101376, "over_ratio": 1.21}]}
+    out = "\n".join(wall_lines([{"type": "RESOURCE_WALL_ATTRIBUTED", "payload": payload}]))
+    assert "有输入但没有墙" not in out
+    assert "没有任何输入" not in out
+    assert "40" in out, "the refusal count should still be reported when walls WERE found"

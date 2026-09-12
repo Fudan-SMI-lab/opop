@@ -58,6 +58,13 @@ def wall_lines(events: Any) -> list[str]:
     total_capped = sum(int(p.get("walls_skipped_by_cap") or 0) for p in payloads)
     probe_s = sum(float(p.get("probe_total_s") or 0.0) for p in payloads)
     n_probes = sum(int(p.get("n_probes") or 0) for p in payloads)
+    # The INPUT, which decides whether "0 walls" is a finding or an empty table. Measured live on
+    # arm 3: two candidates with 12 and 8 refusals produced 0 walls, because every refused value had
+    # also RUN successfully in some other combination -- no value was truncated out of its range. A
+    # summary that printed only "found 0" is indistinguishable from "this card never refused
+    # anything", and those call for opposite conclusions: the first says the mechanism had input and
+    # nothing to say, the second says the arm was on the wrong hardware.
+    total_refused = sum(int(p.get("n_refused_configs") or 0) for p in payloads)
 
     counts = {"attributed": 0, "not_attributed": 0, "undecidable": 0}
     for p in payloads:
@@ -66,9 +73,24 @@ def wall_lines(events: Any) -> list[str]:
                 counts[k] += int(v)
 
     lines.append(
-        f"- 候选数 {len(payloads)};发现墙 {total_found} 个,其中**斜率为正、值得归因**的 "
+        f"- 候选数 {len(payloads)};**被硬件拒绝的配置 {total_refused} 条**(2e 的唯一输入);"
+        f"发现墙 {total_found} 个,其中**斜率为正、值得归因**的 "
         f"{total_probed} 个,**顶住但不值钱**的 {total_worthless} 个"
         + (f",受诊断上限跳过 {total_capped} 个" if total_capped else ""))
+    if total_refused and not total_found:
+        # Not a defect, and the report must say so in words rather than leaving a reader to infer it
+        # from two numbers. Base rate measured on box 2's two completed L3:43 runs: 6 of 24
+        # candidates had any wall and only 3 of 24 had a probe-worthy one, so a run with refusals and
+        # no walls is the common case, not a broken mechanism.
+        lines.append(
+            f"- **有输入但没有墙**:{total_refused} 条拒绝里没有任何 knob 的被拒值落在它已测范围之外 —— "
+            "每个被拒的取值在别的组合下都跑通过,所以没有维度被**截断**。"
+            "这是机制的正常输出而不是缺陷(box2 两个已完成 run 的基线:24 个候选里 6 个有墙、"
+            "只有 3 个有值得探针的墙)。")
+    elif not total_refused:
+        lines.append(
+            "- **没有任何输入**:本 run 没有被硬件拒绝的配置,所以 2e 无从归因。"
+            "这通常意味着卡的共享内存上限对该任务不紧(A800 的 166912 B 对 4090 的 101376 B)。")
     lines.append(
         f"- 归因结果:**ATTRIBUTED {counts['attributed']}**、"
         f"not attributed {counts['not_attributed']}、undecidable {counts['undecidable']}")
