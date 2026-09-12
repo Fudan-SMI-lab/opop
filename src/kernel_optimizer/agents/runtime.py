@@ -120,6 +120,23 @@ def _shell_for_opencode() -> bool:
     return os.name == "nt"
 
 
+def _looks_like_port_conflict(exc: Exception) -> bool:
+    """Is this startup failure the kind another port would fix?
+
+    `opencode` does not say "address in use". It prints `Error: Unexpected error` followed by a bare
+    `ServeError` and exits rc=1 -- measured twice on box 4, both times a genuine collision. So the
+    discriminator has to include that opaque marker alongside the conventional ones, which is exactly
+    why retrying is bounded and why a non-matching error is re-raised untouched: a missing binary or
+    a config opencode rejects would fail identically on every port, and retrying it would turn one
+    clear error into several copies of itself.
+    """
+    text = str(exc).lower()
+    if "exited rc=" not in text:
+        return False           # not a startup failure at all (e.g. a health-check timeout)
+    return any(m in text for m in ("serveerror", "address already in use", "eaddrinuse",
+                                  "address in use"))
+
+
 class OpencodeServer:
     def __init__(self, cfg: OpencodeConfig, log_path: Path | None = None):
         self.cfg = cfg
@@ -133,9 +150,37 @@ class OpencodeServer:
             self.base_url = self.cfg.server_url.rstrip("/")
             self._wait_healthy()
             return self.base_url
-        port, reservation = _free_port(self.cfg.port)
+        # Retry on a FRESH port when the server loses a race for one.
+        #
+        # Reserving the port is necessary but NOT sufficient, and the first version of this fix
+        # claimed otherwise. The reservation must be released before spawning -- the server has to
+        # bind the port itself -- so the window between our close() and the server's bind stays
+        # open for as long as `opencode` takes to start, which is SECONDS, not microseconds. Two
+        # orchestrators launched together both land inside that window: measured, twice, with arm 2
+        # taking 4096 and arm 3 dying on `ServeError` even after the reservation was added.
+        #
+        # A collision is therefore a transient to be retried, not a fatal condition. Each attempt
+        # asks for an EPHEMERAL port after the first: retrying the configured one would just lose
+        # the same race again, since the winner now holds it for the life of its run.
+        attempts = max(1, self.cfg.port_attempts)
+        for attempt in range(attempts):
+            preferred = self.cfg.port if attempt == 0 else 0
+            try:
+                return self._start_once(preferred)
+            except AgentCallError as exc:
+                # Only a startup-time bind failure is retryable. Anything else (missing binary, a
+                # config opencode rejects) will fail identically on another port, and retrying would
+                # turn one clear error into `port_attempts` copies of itself.
+                if attempt == attempts - 1 or not _looks_like_port_conflict(exc):
+                    raise
+                self._reap_failed_proc()
+        raise AssertionError("unreachable: the loop either returns or raises")
+
+    def _start_once(self, preferred: int) -> str:
+        port, reservation = _free_port(preferred)
         self.base_url = f"http://{self.cfg.host}:{port}"
-        self._log_handle = self.log_path.open("ab")
+        if self._log_handle is None:
+            self._log_handle = self.log_path.open("ab")
         # Inherit our environment and layer `server_env` on top: a few opencode settings
         # (notably the per-turn output-token ceiling) exist only as env vars, with no
         # config-file route -- see OpencodeConfig.server_env.
@@ -145,8 +190,9 @@ class OpencodeServer:
         popen_kw: dict = {}
         if os.name != "nt":
             popen_kw["start_new_session"] = True
-        # Release the reservation as late as possible: while it is open no other orchestrator can
-        # be handed this port, and the server cannot bind it either.
+        # Release the reservation as late as possible. It shrinks the race -- another orchestrator
+        # cannot be HANDED this port while we hold it -- but it cannot eliminate it, which is why
+        # `start` retries.
         reservation.close()
         self.proc = subprocess.Popen(
             [resolve_opencode(), "serve", "--hostname", self.cfg.host, "--port", str(port)],
@@ -159,6 +205,22 @@ class OpencodeServer:
         )
         self._wait_healthy()
         return self.base_url
+
+    def _reap_failed_proc(self) -> None:
+        """Make sure a server that failed to bind is not left behind before the next attempt.
+
+        It has normally exited on its own -- that is how the failure was detected -- but a process
+        that exited for some other reason must not be left as an orphan holding a log handle, and
+        this project has already paid for orphaned `opencode serve` processes once.
+        """
+        proc, self.proc = self.proc, None
+        if proc is None or proc.poll() is not None:
+            return
+        try:
+            proc.terminate()
+            proc.wait(timeout=10)
+        except Exception:  # noqa: BLE001 -- best effort; the next attempt matters more
+            pass
 
     def _wait_healthy(self) -> None:
         deadline = time.monotonic() + self.cfg.startup_timeout_s

@@ -155,16 +155,282 @@ def test_the_reservation_is_closed_before_the_server_is_spawned():
 
     A fix that holds the socket too long is worse than the bug: every run would fail, not just a
     co-resident one. Checked structurally -- the `reservation.close()` must appear before the
-    `subprocess.Popen` call in `start`.
+    `subprocess.Popen` call in the method that spawns (`_start_once`, which `start` calls per attempt).
     """
     import inspect
 
     from kernel_optimizer.agents import runtime
 
-    src = inspect.getsource(runtime.OpencodeServer.start)
+    src = inspect.getsource(runtime.OpencodeServer._start_once)
     close_at = src.find("reservation.close()")
     popen_at = src.find("subprocess.Popen")
     assert close_at != -1, "the reservation is never released; the server could never bind"
     assert popen_at != -1, "this test is anchored on the wrong call"
     assert close_at < popen_at, (
         "the reservation is still held when the server is spawned, so the server cannot bind it")
+
+
+# --------------------------------------------------------------------------------------------------
+# Reserving is NOT sufficient: the harness must retry on a fresh port.
+#
+# The first version of this fix claimed the remaining window was "microseconds". It is not. The
+# reservation has to be released before spawning -- the server binds the port itself -- so the window
+# spans however long `opencode` takes to start, i.e. SECONDS. Two orchestrators launched together both
+# land inside it, which was then measured a SECOND time on box 4: arm 2 took 4096 and arm 3 died on
+# `ServeError` with the reservation already in place. So a collision is a transient to retry.
+# --------------------------------------------------------------------------------------------------
+
+class _FakeProc:
+    def __init__(self, rc: int | None = 1) -> None:
+        self._rc = rc
+        self.terminated = False
+
+    def poll(self):
+        return self._rc
+
+    def terminate(self):
+        self.terminated = True
+
+    def wait(self, timeout=None):
+        return self._rc
+
+
+def _server(tmp_path, **over):
+    from kernel_optimizer.agents.runtime import OpencodeServer
+    from kernel_optimizer.config import OpencodeConfig
+
+    cfg = OpencodeConfig(**over)
+    return OpencodeServer(cfg, log_path=tmp_path / "opencode-server.log")
+
+
+def test_a_serve_error_is_retried_on_a_different_port(tmp_path, monkeypatch):
+    """A losing race must be retried, and the retry must not ask for the same port again.
+
+    Retrying the CONFIGURED port would lose the identical race: the winner holds it for the life of
+    its run, so attempt 2 onward has to be ephemeral.
+    """
+    from kernel_optimizer.agents import runtime
+
+    srv = _server(tmp_path, port=4096, port_attempts=3)
+    asked: list[int] = []
+    real_free_port = runtime._free_port
+
+    def fake_free_port(preferred):
+        asked.append(preferred)
+        return real_free_port(0)
+
+    calls = {"n": 0}
+
+    def fake_wait(self):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            self.proc = _FakeProc(rc=1)
+            raise runtime.AgentCallError(
+                "opencode serve exited rc=1 (was starting on http://127.0.0.1:4096; a bare "
+                "ServeError here usually means another process already holds that port): ServeError")
+
+    monkeypatch.setattr(runtime, "_free_port", fake_free_port)
+    monkeypatch.setattr(runtime, "resolve_opencode", lambda: "/bin/true")
+    monkeypatch.setattr(runtime.subprocess, "Popen", lambda *a, **k: _FakeProc(rc=None))
+    monkeypatch.setattr(runtime.OpencodeServer, "_wait_healthy", fake_wait)
+
+    url = srv.start()
+    assert calls["n"] == 2, "the collision was not retried"
+    assert asked[0] == 4096, "the first attempt should honour the configured port"
+    assert asked[1] == 0, "the retry must ask for an EPHEMERAL port, not the one that just lost"
+    assert url.startswith("http://127.0.0.1:") and not url.endswith(":4096")
+
+
+def test_a_non_port_failure_is_not_retried(tmp_path, monkeypatch):
+    """An error another port would not fix must be raised on the first attempt.
+
+    Otherwise a missing binary or a config opencode rejects becomes `port_attempts` copies of the
+    same message, and the real cause is buried under retries of a hopeless start.
+    """
+    from kernel_optimizer.agents import runtime
+
+    srv = _server(tmp_path, port_attempts=3)
+    calls = {"n": 0}
+
+    def fake_wait(self):
+        calls["n"] += 1
+        self.proc = _FakeProc(rc=127)
+        raise runtime.AgentCallError(
+            "opencode serve exited rc=127 (was starting on http://127.0.0.1:4096): "
+            "command not found")
+
+    monkeypatch.setattr(runtime, "resolve_opencode", lambda: "/bin/true")
+    monkeypatch.setattr(runtime.subprocess, "Popen", lambda *a, **k: _FakeProc(rc=None))
+    monkeypatch.setattr(runtime.OpencodeServer, "_wait_healthy", fake_wait)
+
+    with pytest.raises(runtime.AgentCallError):
+        srv.start()
+    assert calls["n"] == 1, "a non-port failure was retried; the real cause gets buried"
+
+
+def test_retries_are_bounded_and_the_last_error_is_raised(tmp_path, monkeypatch):
+    """With every attempt colliding, the error must surface rather than loop.
+
+    Two ephemeral picks colliding in a row is not a race any more, so more attempts would only delay
+    the report.
+    """
+    from kernel_optimizer.agents import runtime
+
+    srv = _server(tmp_path, port_attempts=3)
+    calls = {"n": 0}
+
+    def fake_wait(self):
+        calls["n"] += 1
+        self.proc = _FakeProc(rc=1)
+        raise runtime.AgentCallError("opencode serve exited rc=1: ServeError")
+
+    monkeypatch.setattr(runtime, "resolve_opencode", lambda: "/bin/true")
+    monkeypatch.setattr(runtime.subprocess, "Popen", lambda *a, **k: _FakeProc(rc=None))
+    monkeypatch.setattr(runtime.OpencodeServer, "_wait_healthy", fake_wait)
+
+    with pytest.raises(runtime.AgentCallError):
+        srv.start()
+    assert calls["n"] == 3, f"expected exactly port_attempts tries, got {calls['n']}"
+
+
+def test_the_opaque_serve_error_is_recognised_as_a_port_conflict():
+    """`opencode` never says "address in use" -- it prints a bare `ServeError` and exits rc=1.
+
+    If the discriminator only looked for the conventional strings, the retry would never fire on the
+    one failure that actually happened, twice, on box 4.
+    """
+    from kernel_optimizer.agents.runtime import _looks_like_port_conflict
+
+    assert _looks_like_port_conflict(Exception("opencode serve exited rc=1: ServeError"))
+    assert _looks_like_port_conflict(Exception("opencode serve exited rc=1: EADDRINUSE"))
+    assert _looks_like_port_conflict(Exception("opencode serve exited rc=1: address already in use"))
+    # Not retryable: a different failure, and one no other port would fix.
+    assert not _looks_like_port_conflict(Exception("opencode serve exited rc=127: not found"))
+    # Not a startup failure at all -- a health-check timeout must not be retried as a collision.
+    assert not _looks_like_port_conflict(Exception("opencode serve did not become healthy"))
+
+
+def test_the_shipped_default_actually_retries(tmp_path, monkeypatch):
+    """`port_attempts` must default above 1, on the config a run really loads.
+
+    Every other retry test here passes `port_attempts` explicitly, so all of them would still pass
+    with the shipped default set back to 1 -- i.e. with the retry switched off for every real run.
+    The revert check caught exactly that.
+    """
+    from kernel_optimizer.agents import runtime
+    from kernel_optimizer.config import OpencodeConfig
+
+    assert OpencodeConfig().port_attempts > 1, (
+        "the shipped default does not retry, so a co-resident launch still loses the race")
+
+    # And prove the default is what `start` uses, rather than trusting the number.
+    srv = _server(tmp_path)                     # no port_attempts override
+    calls = {"n": 0}
+
+    def fake_wait(self):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            self.proc = _FakeProc(rc=1)
+            raise runtime.AgentCallError("opencode serve exited rc=1: ServeError")
+
+    monkeypatch.setattr(runtime, "resolve_opencode", lambda: "/bin/true")
+    monkeypatch.setattr(runtime.subprocess, "Popen", lambda *a, **k: _FakeProc(rc=None))
+    monkeypatch.setattr(runtime.OpencodeServer, "_wait_healthy", fake_wait)
+    srv.start()
+    assert calls["n"] == 2, "the default config did not retry a collision"
+
+
+def test_a_health_check_timeout_is_not_retried_as_a_collision(tmp_path, monkeypatch):
+    """A server that started but never became healthy must not be retried on a new port.
+
+    That failure means something else is wrong (a broken provider config, a hung server), and
+    retrying it costs another full `startup_timeout_s` per attempt while hiding the real cause. The
+    discriminator requires "exited rc=" precisely so a timeout does not qualify.
+
+    THE MESSAGE HERE IS COPIED FROM `_wait_healthy`, not invented. An earlier version of this test
+    wrote its own plausible wording ("did not become healthy"), which contains neither "exited rc="
+    nor "serveerror" -- so it passed no matter what the discriminator did, and the revert check
+    correctly reported the guard as unguarded. The real deadline message is
+    `f"opencode server not healthy at {self.base_url}: {last_err}"`, and the nastier case is that
+    `last_err` is an arbitrary exception whose text could itself contain "ServeError" -- e.g. the
+    server logged one, then hung instead of exiting. That must still not be retried, because the
+    process never exited and so nothing released a port.
+    """
+    from kernel_optimizer.agents import runtime
+
+    real_deadline_msg = (
+        "opencode server not healthy at http://127.0.0.1:4096: "
+        "ConnectError('ServeError while connecting')")
+
+    srv = _server(tmp_path, port_attempts=3)
+    calls = {"n": 0}
+
+    def fake_wait(self):
+        calls["n"] += 1
+        # Still running, never healthy -- the process did NOT exit, so no rc is reported.
+        raise runtime.AgentCallError(real_deadline_msg)
+
+    monkeypatch.setattr(runtime, "resolve_opencode", lambda: "/bin/true")
+    monkeypatch.setattr(runtime.subprocess, "Popen", lambda *a, **k: _FakeProc(rc=None))
+    monkeypatch.setattr(runtime.OpencodeServer, "_wait_healthy", fake_wait)
+
+    with pytest.raises(runtime.AgentCallError):
+        srv.start()
+    assert calls["n"] == 1, (
+        "a health-check timeout was retried as a port collision, costing a full startup timeout "
+        "per attempt and burying the real cause")
+    # And the discriminator itself, on the verbatim message, so the reason is pinned independently
+    # of `start`'s control flow.
+    assert not runtime._looks_like_port_conflict(Exception(real_deadline_msg)), (
+        "the deadline message is being read as a port conflict; note it can carry 'ServeError' "
+        "inside `last_err` without the process ever having exited")
+
+
+def test_the_retry_path_reaps_the_failed_server(tmp_path, monkeypatch):
+    """Between attempts, a server left running would be an orphan.
+
+    Driven through `start` rather than by calling `_reap_failed_proc` directly, because the test
+    below it already covers the helper in isolation -- and a helper that is never CALLED on the retry
+    path protects nothing.
+    """
+    from kernel_optimizer.agents import runtime
+
+    srv = _server(tmp_path, port_attempts=3)
+    procs: list[_FakeProc] = []
+
+    def fake_popen(*a, **k):
+        p = _FakeProc(rc=None)               # still running when the attempt fails
+        procs.append(p)
+        return p
+
+    calls = {"n": 0}
+
+    def fake_wait(self):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise runtime.AgentCallError("opencode serve exited rc=1: ServeError")
+
+    monkeypatch.setattr(runtime, "resolve_opencode", lambda: "/bin/true")
+    monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(runtime.OpencodeServer, "_wait_healthy", fake_wait)
+
+    srv.start()
+    assert len(procs) == 2, "expected one failed attempt and one successful one"
+    assert procs[0].terminated, (
+        "the first attempt's server was left running when the retry started -- an orphaned "
+        "`opencode serve`, which this project has already paid for once")
+
+
+def test_a_still_running_failed_server_is_reaped_before_the_retry(tmp_path):
+    """A server left running between attempts would be an orphan holding the log handle.
+
+    This project has already paid for orphaned `opencode serve` processes, so the retry path must not
+    create a new way to make them.
+    """
+    srv = _server(tmp_path)
+    proc = _FakeProc(rc=None)            # still running
+    srv.proc = proc
+    srv._reap_failed_proc()
+    assert proc.terminated, "a running failed server was left behind before the retry"
+    assert srv.proc is None, "the dead handle was kept, so stop() would signal the wrong process"
+

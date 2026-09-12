@@ -51,6 +51,19 @@ class OpencodeConfig(StrictConfig):
     launch_cwd: Path = Path("D:/Pyhon_projects/opop")
     host: str = "127.0.0.1"
     port: int = 4096
+    # How many ports to try before giving up when the server loses a race for one.
+    #
+    # Reserving a port cannot close the race: the reservation MUST be released before spawning,
+    # because the server binds the port itself, so the window between the release and that bind
+    # stays open for however long `opencode` takes to start -- seconds. Two orchestrators launched
+    # together both land inside it, which is measured, twice: on box 4 arm 2 took 4096 and arm 3
+    # exited with a bare `ServeError`.
+    #
+    # 3 rather than 1 because a collision is transient, and rather than a large number because
+    # attempt 2 onward asks for an EPHEMERAL port -- if two ephemeral picks in a row also collide,
+    # something other than a race is wrong and more attempts would only delay the report. Set to 1
+    # to restore the old fail-fast behaviour.
+    port_attempts: int = 3
     agent: str = "build"
     # 25 min. Measured over all 997 agent-call attempts on record (1000 minus 3 in-flight),
     # scripts/probe_agent_timeouts.py:
