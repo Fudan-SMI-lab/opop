@@ -1,0 +1,139 @@
+# STEP 3, ARM 3 of 3 -- TREATMENT 2 (`vector` + 2e) on BOX 1 (RTX 4090), AFTER arm 1 finishes.
+#
+# Read experiments_s3_arm1_control_box1.yaml's header for the three-arm layout, the reason box 3
+# cannot host an arm, and the venv trap. This file differs from ARM 2 in exactly the two
+# `wall_attribution` switches, and from ARM 1 in those plus `diagnosis.mode`.
+#
+# RUNS ON BOX 1, SEQUENTIALLY AFTER ARM 1. Two runs on one box may never overlap -- each would time
+# the other's kernels. So the step-3 wall clock is 24 h across two machines, not 12 h across three.
+#
+# WHAT THIS ARM TESTS (A3). The two arms above ask whether per-dimension JUDGEMENT beats a single
+# label. This one adds a MEASUREMENT: for each knob whose refused value lies outside its tried range,
+# the harness moves that ONE knob to the refused value at the candidate's own optimum and asks the
+# compiler. A refusal attributes the wall to that knob alone.
+#
+#   PRIMARY OUTCOME, and it is not latency: does a rewrite aimed at an attributed wall actually FREE
+#   that dimension -- `shared_bytes` falls, and the knob's refused value becomes feasible again (the
+#   same compile-only probe, re-run on the rewritten source). Both are objective, and both are
+#   readable from the log without a judgement call.
+#
+#   SECONDARY, DECLARED UNDER-POWERED IN ADVANCE: latency. G9 measured `verdict` vs `rich` 4.19%
+#   apart against a 4.72% within-arm spread, i.e. not separated; this arm's expected effect is
+#   SMALLER than arm 2's, so a null latency result is the prediction, not a disappointment. Saying so
+#   here rather than afterwards is the point.
+#
+# WHY THE MEASUREMENT IS WORTH AN ARM. The conclusion it produces already exists as a field the
+# analyst agent fills unchecked (`BottleneckReport.parameter_limits`). Measured on box 2's two L3:43
+# runs: of 53 such claims across the six candidates that actually have a wall, the harness confirms
+# EIGHT -- with the wrong resource named, walls claimed on knobs that have none, and
+# `predicted_gain_pct` inverted in sign (+1.0% claimed where the measured tail is -41.1%). So the
+# variable here is "is the sentence about which knob is blocked a guess or a measurement".
+#
+# THE ATTRIBUTION IS CONDITIONAL, AND THE PROMPT TEXT SAYS SO. From the candidate's optimum, 6 of 6
+# walls attribute to a single knob; from the space's DEFAULT configuration, only 1 of 6. At the
+# default every dimension sits at its smallest, so enlarging one knob still fits. The wall's position
+# therefore depends on the other knobs, and an unconditional reading ("BLOCK_M is capped by shared
+# memory") would send the rewriter after a wall that does not exist where it is standing.
+#
+# COST, MEASURED: 18 probe variants in ONE worker process took 8.8 s on box 2 -- a marginal 0.49 s
+# each, because `make_compile_probe_job`'s `extra_kernel_src_paths` pays the process start once. At
+# three probed walls per candidate that is ~1.5 s against a 12 h clock (~0.003%). `probe_total_s` is
+# journalled per event so it can be SUBTRACTED in the report rather than assumed to be zero.
+#
+# Launch on THIS box, only after arm 1 has ended and its orchestrator is gone:
+#   cd /root/autodl-tmp/work/opop
+#   PYTHONPATH=src /root/autodl-tmp/orch-venv/bin/python -m kernel_optimizer.cli \
+#     --config configs/experiments_s3_arm3_wall_box1.yaml run --task level3:43
+
+v3:
+  diagnosis:
+    # SAME as arm 2. This is held constant so the arm-2-vs-arm-3 difference is 2e alone.
+    mode: vector
+
+    # OFF in every step-3 arm -- S2d belongs to E1 (step 4). See arm 1's header.
+    expectation_ledger: false
+
+  wall_attribution:
+    # THE VARIABLE, half 1: find the walls, probe them, journal RESOURCE_WALL_ATTRIBUTED.
+    enabled: true
+
+    # THE VARIABLE, half 2: the attributed walls reach the analyst AND the rewriter. The rewriter
+    # gets them as a SEPARATE file (`analysis/resource_walls.md`) rather than merged into
+    # `analysis/bottleneck.json`, because that file is the analyst's judgement about the same
+    # subject -- and routing the measurement through the analyst's restatement would make a negative
+    # A3 unattributable between "the wall is not a real bottleneck" and "the analyst dropped it".
+    in_prompt: true
+
+    # Diagnostic depth, NOT a search-space restriction: nothing here removes, shrinks or reorders a
+    # domain, and the tuner samples exactly what it sampled before. Walls beyond the cap are counted
+    # in the event, so the number is never silently lost.
+    max_probes_per_candidate: 8
+
+    # Repeat each ablation from the space's DEFAULT configuration as well as from the optimum, so a
+    # reader can tell an intrinsic knob limit from a joint effect at one point (6/6 vs 1/6, above).
+    # Affordable precisely because the probes batch.
+    probe_second_origin: true
+
+run:
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v3
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench
+
+opencode:
+  server_url: null
+  launch_cwd: /root/autodl-tmp/opop-workspace/opop-glm
+  # NOTE the provider block copied here carries a plaintext API key into every agent sandbox under
+  # runs_dir. A tar/scp of runs_dir carries the key off the box.
+  sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+
+wsl:
+  # THE MATCHED VENV on box 1 -- orch-venv here, kernel-opt-venv on box 2. See arm 1's header.
+  venv: /root/autodl-tmp/orch-venv
+  kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-v3
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+# Byte-identical across all three arms -- see arm 1.
+device:
+  name: NVIDIA GeForce RTX 4090 (sm_89)
+  vram_gb: 23
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024

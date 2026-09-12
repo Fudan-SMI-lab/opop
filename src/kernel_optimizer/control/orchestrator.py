@@ -511,6 +511,18 @@ class CandidateRun:
     # once per candidate (P2), since the number describes the candidate as it would be shipped
     # and costs ~150 model calls.
     overhead: dict | None = None
+    # 2e. The rendered wall attribution for THIS candidate, kept so the rewriter can be handed the
+    # measurement directly instead of whatever the analyst chose to copy out of it.
+    #
+    # Why this field has to exist for A3 to be answerable. The rewriter's only view of the
+    # diagnosis is `analysis/bottleneck.json`, i.e. the analyst's OUTPUT. Routing 2e to the
+    # analyst alone would make the measured fact reach the rewriter only if the analyst elected to
+    # restate it -- through the very agent whose claims on this exact subject were measured at 8
+    # confirmed out of 53. A3 asks whether a rewrite aimed at an attributed wall frees that
+    # dimension; if the wall reaches the rewriter only as an analyst paraphrase, a negative result
+    # cannot be told apart from "the analyst dropped it". Set only when `in_prompt` is on, so the
+    # control and `vector` arms carry None and are unaffected.
+    wall_text: str | None = None
 
 
 class Orchestrator:
@@ -1701,6 +1713,9 @@ class Orchestrator:
         wall_text = None
         if walls and self.cfg.v3.wall_attribution.in_prompt:
             wall_text = wall_attribution.for_prompt(walls)
+            # Kept on the candidate so `_rewrite_round` can hand the rewriter the MEASUREMENT
+            # rather than the analyst's restatement of it. See `CandidateRun.wall_text`.
+            crun.wall_text = wall_text
         # S2: the per-dimension vector. Journalled UNCONDITIONALLY, in both modes -- recording costs
         # nothing and is not what carries risk; what carries risk is what reaches the prompt, and
         # that is the one thing `v3.diagnosis.mode` switches. Writing it in label mode is also what
@@ -2866,6 +2881,9 @@ class Orchestrator:
                     # log and J2d-9 needs one switch rather than a second run.
                     ledger_entries=(self.ledger.get(family_id, [])
                                     if self.cfg.v3.diagnosis.expectation_ledger else []),
+                    # 2e. The parent candidate is the one whose space was probed, so its walls are
+                    # the ones describing the source being rewritten. None in both other arms.
+                    wall_text=parent_crun.wall_text,
                 )
             )
         except AgentCallError as exc:

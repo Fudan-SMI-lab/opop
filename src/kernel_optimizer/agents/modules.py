@@ -1150,6 +1150,10 @@ class RewriterInputs:
     # there is nothing to reconcile before a rewrite has happened -- and empty in every run with
     # `v3.diagnosis.expectation_ledger: false`, which is what makes the control arm one switch.
     ledger_entries: list[dict] = field(default_factory=list)
+    # 2e: the harness's OWN measurement of which knob is held by shared memory, passed straight
+    # through rather than by way of the analyst's report. None unless
+    # `v3.wall_attribution.in_prompt` is on, so this is the third arm's only extra input.
+    wall_text: str | None = None
 
 
 class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
@@ -1175,6 +1179,13 @@ class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
         sb.write_input("docs/triton_pitfalls.md", _triton_pitfalls_doc())
         sb.write_input("docs/device.md", _device_doc(inputs.device, inputs.calibration))
         sb.write_input("task/eval_semantics.md", _eval_semantics_doc(inputs.eval_semantics))
+        if inputs.wall_text:
+            # 2e. A SEPARATE file from `analysis/bottleneck.json` on purpose: that file is the
+            # analyst's judgement, this is the compiler's answer to "does this one knob alone
+            # overflow shared memory at the optimum". Merging them would make the two
+            # indistinguishable in the one place where the difference is the experiment -- and the
+            # analyst's version of this claim was confirmed 8 times out of 53.
+            sb.write_input("analysis/resource_walls.md", inputs.wall_text)
 
     def render_prompt(self, inputs: RewriterInputs, sb: Sandbox) -> str:
         vocabulary = ", ".join("`%s`" % d for d in DIMENSION_VOCABULARY)
@@ -1182,10 +1193,20 @@ class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
                    "what was measured" if inputs.ledger_entries
                    else "`history/failed_hypotheses.json` lists changes already tried that did NOT "
                         "help")
+        # 2e. Named only when the file exists, and named as MEASURED to distinguish it from the
+        # analyst's `parameter_limits` in the same sandbox -- which claims the same kind of fact and
+        # was confirmed 8 times out of 53. The conditional wording ("at this candidate's optimum")
+        # is carried by the file's own text, because the wall's position depends on the other knobs:
+        # from the optimum 6 of 6 walls attribute to one knob, from the space default only 1 of 6.
+        walls = ("\n`analysis/resource_walls.md` is the harness's OWN compile-time measurement of "
+                 "which single parameter is held back by shared memory, and by how much latency "
+                 "was still improving toward the blocked value. It is measured, not estimated — "
+                 "where it disagrees with `analysis/bottleneck.json`, it is the one to trust.\n"
+                 if inputs.wall_text else "")
         return f"""`candidate/best.py` is the current best version of a kernel (already at
 its best-known PARAMS). `analysis/bottleneck.json` explains what limits it —
 which parameters wanted to go further and what resource blocked them.
-{history}; do not repeat them. Read `docs/candidate_contract.md`, `docs/device.md`, and
+{walls}{history}; do not repeat them. Read `docs/candidate_contract.md`, `docs/device.md`, and
 `task/eval_semantics.md` (the run mode the harness evaluates in). If
 your rewrite uses Triton, also read `docs/triton_pitfalls.md` and obey it.
 

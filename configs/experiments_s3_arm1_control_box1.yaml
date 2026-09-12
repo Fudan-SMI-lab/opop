@@ -1,0 +1,126 @@
+# STEP 3, ARM 1 of 3 -- CONTROL (`label`, no 2e) on BOX 1 (RTX 4090).
+#
+# THE THREE ARMS OF STEP 3, and what each one adds:
+#
+#   arm 1  control     mode: label   2e off   -- one bottleneck label reaches the prompt
+#   arm 2  treatment 1 mode: vector  2e off   -- one judgement per resource DIMENSION
+#   arm 3  treatment 2 mode: vector  2e ON    -- plus the harness's MEASURED shared-memory wall
+#
+# Files: experiments_s3_arm1_control_box1.yaml / _arm2_vector_box2.yaml / _arm3_wall_box1.yaml.
+# Arms 1 and 2 run concurrently (different machines). Arm 3 runs AFTER arm 1, on this same box --
+# two runs on ONE box may never overlap, because each would time the other's kernels.
+#
+# WHY ONLY TWO MACHINES FOR THREE ARMS. Box 3 (A800) cannot host any arm: 2e's input is
+# shared-memory REFUSALS, and its 166912 B limit against the 4090s' 101376 B produced 22 refusals
+# and 0 truncations where box 2 produced 402 and 6. An arm there would probe an empty table. That is
+# also why a fourth machine was not added: it would only compress 24 h of wall clock into 12 h, at
+# the cost of a fresh environment and a fresh calibration, and this pair's validity rests on a
+# calibration comparison that a new box would not satisfy (below).
+#
+# READ THE HEADER OF experiments_l3_glm_box1.yaml FIRST. It carries, and this file does not repeat:
+# the 162-configuration resource-map sweep that licenses pairing box 1 with box 2 (byte-identical
+# digest dd3eca5a..., with box 3 differing as the negative control), the venv trap on each box, and
+# the calibration comparison that must pass BEFORE any arm is launched.
+#
+# THE VENV TRAP, because it is the one thing that fails silently. On THIS box the matched toolchain
+# is `orch-venv` (torch 2.13.0+cu129 / triton 3.7.1), NOT `kernel-opt-venv` (2.9.1 / 3.5.1). On
+# box 2 the names are SWAPPED. A launch command must not be copied between the boxes.
+#
+# Launch on THIS box:
+#   cd /root/autodl-tmp/work/opop
+#   PYTHONPATH=src /root/autodl-tmp/orch-venv/bin/python -m kernel_optimizer.cli \
+#     --config configs/experiments_s3_arm1_control_box1.yaml run --task level3:43
+#
+# WHAT MUST BE IDENTICAL ACROSS ALL THREE ARMS: every budget, every evaluation knob, the whole
+# device block, the agent models. `tests/test_config_strictness.py` asserts that the resolved
+# configs differ in exactly the switches plus machine paths, so a value that drifted while someone
+# hand-edited one of these files is caught rather than discovered afterwards as an unattributable
+# difference in the final number.
+
+v3:
+  diagnosis:
+    # THE CONTROL VALUE. A single bottleneck `kind` label reaches the prompt -- which measured 19 of
+    # 20 reports on L3:21 carrying the SAME value, i.e. almost no information. The per-dimension
+    # vector is still journalled to events.jsonl in this arm (the switch gates only the PROMPT), so
+    # this run's own log stays offline-analysable for the same questions as the treatment arms'.
+    mode: label
+
+    # OFF in every step-3 arm. S2d is a DIFFERENT experiment (E1, step 4), and leaving it on here
+    # would put two independent variables in one comparison. E1's own finding is that the arms only
+    # separated once the ledger actually reached a rewriter, so this switch is not cosmetic.
+    expectation_ledger: false
+
+  wall_attribution:
+    # OFF. Both the probing and the prompt path, so this arm spends no GPU time on the diagnostic
+    # and its wall clock is comparable with arm 2's.
+    enabled: false
+    in_prompt: false
+
+run:
+  # A v3 runs directory, deliberately NOT box 1's v2 `runs-l3`: mixing v3 events into that corpus
+  # would contaminate the completed v2 runs that several conclusions rest on.
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v3
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench
+
+opencode:
+  server_url: null
+  # launch_cwd and runs_dir must both sit under the tree containing .opencode/, because opencode
+  # resolves its config from the launch directory upward.
+  launch_cwd: /root/autodl-tmp/opop-workspace/opop-glm
+  # NOTE the provider block copied by sandbox_config_path carries a plaintext API key into every
+  # agent sandbox under runs_dir. A tar/scp of runs_dir carries the key off the box.
+  sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+
+wsl:
+  # THE MATCHED VENV on THIS box -- see the header. NOT kernel-opt-venv, which is torch 2.9 / 3.5.1.
+  venv: /root/autodl-tmp/orch-venv
+  kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-v3
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+# Byte-identical across all three arms: boxes 1 and 2 are the same card, verified (24564 MiB, 450 W,
+# 3105 MHz, cc 8.9). If these blocks ever differ, the comparison is invalid.
+device:
+  name: NVIDIA GeForce RTX 4090 (sm_89)
+  vram_gb: 23
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024
