@@ -729,6 +729,38 @@ first". So **option 1 is a hard prerequisite, not merely the cheapest step**: re
 clock even when the job is killed. Only then can option 2's threshold be derived from time rather
 than from size standing in for it.
 
+### D8 final localisation, 11:0x — the pathology is per CONFIGURATION, not per candidate
+
+The straggler's K-expansion produced a second space, and the two spaces are a controlled comparison
+of the same candidate under the same settings:
+
+| | trials | span | per trial | screens (hung) | evals (hung) |
+|---|---|---|---|---|---|
+| **space 1** (1–40) | 40 | **5.99 h** | **9.2 min** | 38 (**6**) | 38 (**6**) |
+| **space 2** (41+) | 34 | **1.43 h** | **2.6 min** | 29 (2) | 27 (2) |
+
+**3.5x apart, same candidate, same code, same box.** The 6.10 h that cost the arm its rewrite round
+is space 1 alone; space 2 tuned 34 trials in 1.43 h. So the expensive thing is not "this candidate"
+but **particular points in its parameter space** — presumably the tile/stage combinations whose PTX
+explodes.
+
+This is the third and last correction to D8's framing, and it lands where the first two pointed:
+
+1. first reading — "this candidate is uniformly 14x slower" (from the mean) — **wrong**;
+2. second reading — "median 1.1 min, cost in 5 catastrophic trials" — right, and the unit is the
+   trial;
+3. now — **the trials that are catastrophic cluster in one of the candidate's two spaces**, so the
+   unit is really the *configuration*.
+
+**Why this matters for the fix.** Anything keyed on the candidate (admission, per-candidate trial
+allocation) would throttle space 2 as well, which is as cheap as its siblings — and space 2 is the
+one a K-expansion just decided was worth exploring
+(`never-narrow-the-search-space-to-control-cost`). The fix has to act at the point where a single
+configuration's compile is priced, which is exactly what D9's deadline and D8's option-1
+instrumentation do. It also gives option 2 a sharper hypothesis to test once the timing exists: the
+predictor should be sought in the *parameters*, not in the candidate identity.
+
+
 
 
 
