@@ -23,6 +23,14 @@
 #                leave a false alarm standing as the last word
 #
 # Usage: watch_run.sh <box1|box2|box3>
+#
+# ONE MONITOR PER BOX. Raising STALL_MIN in f9788c3 meant starting a fresh monitor, and the old
+# one was left running -- so box 1 had two, the 04:55 copy still reading STALL_MIN=25 and paging
+# on a condition that had already been diagnosed and decided. Found only because the negative that
+# suggested the opposite (`ps aux | grep watch_run` returning 0) was itself wrong: Git-Bash's `ps`
+# cannot see processes outside its own MSYS tree, so on Windows a process inventory must come from
+# WMI (`Get-CimInstance Win32_Process | Where CommandLine -like '*watch_run*'`), never from `ps`.
+# The guard below makes the duplicate impossible rather than relying on remembering.
 set -u
 
 BOX="${1:?usage: watch_run.sh <box1|box2|box3>}"
@@ -44,6 +52,7 @@ case "$BOX" in
 esac
 
 INTERVAL=240          # 4 min: an L3 trial takes minutes, so this cannot miss a phase
+
 # 40 min, raised from 25. A single job may legitimately occupy the box for its whole 1800 s (30 min)
 # deadline without emitting an event, because `TRIAL_DONE` is written only when the job returns --
 # and D8 is exactly that case: box 1's cand-941ea454 drives ptxas for 13-30 min per trial, so a
@@ -52,6 +61,35 @@ INTERVAL=240          # 4 min: an L3 trial takes minutes, so this cannot miss a 
 # than one that fires slightly late. 40 min sits above the 30 min job ceiling plus a margin, so
 # anything it reports is genuinely outside the harness's own bounds.
 STALL_MIN=40
+
+# Refuse to be the second monitor on this box. A PID file is the only mechanism available here that
+# works on Windows too, because `pgrep` cannot see a sibling started by a different Git-Bash
+# invocation (that blindness is what let the duplicate live for 105 min unnoticed). The stale-file
+# case is handled by rewriting it: if the recorded PID is gone, this instance takes over.
+#
+# SCOPE, measured rather than assumed: the PID written is `$$`, an MSYS pid, and `kill -0` reads MSYS
+# pids -- so the guard is self-consistent between two runs of THIS script. It does NOT see a monitor
+# whose pid you only know from WMI: the three leaf monitors alive on 2026-09-12 had Windows pids
+# 45756 / 55792 / 23984 and `kill -0` reported all three dead. So do not backfill this file from a
+# WMI listing -- a pid `kill -0` cannot see gives the weak failure (a duplicate still allowed), and
+# one that collides with an unrelated live process gives the dangerous one (a legitimate restart
+# refused). Before starting a monitor, still confirm the inventory with WMI; this guard is the
+# backstop for the case that actually bit, which is starting a second copy from a second shell.
+PIDFILE="${TMPDIR:-/tmp}/watch_run.$BOX.pid"
+if [ -f "$PIDFILE" ]; then
+  prev="$(cat "$PIDFILE" 2>/dev/null || true)"
+  # `kill -0` tests liveness without signalling. Quoted and defaulted so an empty or garbage file
+  # cannot expand into `kill -0` with no argument, which would succeed and wrongly refuse to start.
+  if [ -n "${prev:-}" ] && kill -0 "$prev" 2>/dev/null; then
+    echo "$LABEL: REFUSING TO START -- monitor pid $prev is already watching $BOX." >&2
+    echo "  Stop it first (TaskStop, or kill $prev). Two monitors on one box means the older one" >&2
+    echo "  keeps paging with whatever thresholds it was started with -- exactly the f9788c3 case." >&2
+    exit 3
+  fi
+fi
+echo $$ > "$PIDFILE"
+trap 'rm -f "$PIDFILE"' EXIT INT TERM
+
 fails=0
 last_size=""
 stalled_since=""
