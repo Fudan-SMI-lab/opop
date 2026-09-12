@@ -625,5 +625,55 @@ individual costs on box 1 were screens that answered, so any accounting keyed on
 output" misses them. Same failure mode as the D8 mean, one level up — the aggregate I chose hid the
 cases that mattered.
 
+### D9/D8 outcome, 10:0x — the E1 control arm reached 12 h without ever entering loop C
+
+Read from disk at 10:59 h of a 12 h budget, ~1.01 h left, `REWRITE_PRODUCED` count **0**:
+
+| | box 1 control | box 2 treatment |
+|---|---|---|
+| trials per candidate | 80 / 80 / 40 / **60** | 40–80 across 11 |
+| rewrites produced | **0** | **10** |
+| family rounds | **0** | 3 |
+
+The 60 on the straggler is **two spaces**, a K-expansion — that is
+`budget-is-per-space-not-per-candidate`, not overspend.
+
+**The decisive number, and it is not the one D8 was tracking.** Between `AGENT_CALL_FINISHED`
+(analyst) at 02:35:49 and the next agent call at 08:41:46 there is a **6.10 h gap with no agent call
+at all**. Inside that window the event log contains exactly:
+
+```
+  TRIAL_DONE                   40      <- all 40 for cand-941ea454
+  CONFIG_SCREENED_INFEASIBLE    4
+  QUICKTEST_DONE                2
+  SPACE_PUBLISHED / SPACE_PRESCREENED / TUNING_DONE / STATS_DONE / CONVERSION_RATES  1 each
+```
+
+**6.10 h — 50.8% of the entire budget — is one candidate's one tuning pass**, at 9.15 min/trial.
+The arm did not fail to improve on a rewrite; **it never reached loop C**. In the remaining 1.01 h it
+would have to finish the in-flight 1800 s eval and then run analyst + rewriter + quick-test +
+re-tune, which is not feasible.
+
+**Consequence for E1, stated exactly.** The independent variable is
+`reserve_round_for_reconciled`, which acts *on a rewrite round*. The control arm ran zero. So there
+is **no control observation of the thing being varied**, and the pair cannot answer S2d(c). Box 2's
+arm is real and usable — 10 rewrites, 3 family rounds, reconciliation 7/15 → 13/16 → 11/15, family
+gains 11.4% → 20.8% → 31.7% — but as a **single-arm observation**, not half of a comparison.
+
+**So the E1 re-run is now a fact on disk rather than a projection**, and this settles the question the
+D8 second correction reopened. The 08:00 reading was right that the straggler would finish its trials
+(37 → 60, it did) and wrong to infer from that that a rewrite round was therefore reachable: finishing
+the trials at 9.15 min each *was itself* what consumed the budget. Both of my projections erred by
+tracking the wrong quantity — first the mean per-trial cost, then the remaining trial count — when
+the binding quantity was always **wall clock spent inside one tuning pass**, which is exactly what
+`wall-clock-is-always-the-binding-budget` says.
+
+**What the re-run needs, beyond the D9 fix.** D9 alone recovers ~2.1 h of box 1's 12 h, which would
+not by itself have bought loop C here: the 6.10 h tuning pass is mostly *answered* jobs at
+9.15 min/trial, i.e. D8's pathological PTX rather than D9's deadline. The two defects compound and
+the re-run needs both addressed — D9's deadline (fix ready, `docs/fix-ready-d9-screen-deadline.md`)
+and D8's per-compile cost (options 1 and 2 there, per-trial not per-candidate).
+
+
 
 
