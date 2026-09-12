@@ -399,3 +399,48 @@ checkout 干净且在 `842e2a6`(与跑这两个 run 的版本一致)。
 - **A800 无输入** —— 风险 5 不变;三臂必须同卡。
 - **n 小**:6 个墙、6 个候选、2 个 run、1 个任务。A1 的 6/6 与第二 origin 的 1/6 都需要
   在第 3 步的实验里扩大。
+
+---
+
+## 11. 实施完成(commit `350e365`)
+
+| 项 | 状态 |
+|---|---|
+| `evaluation/wall_attribution.py`(第 1/2/4/5 步的纯逻辑) | 已实现 |
+| `orchestrator._attribute_resource_walls` / `_theta_star` / `_space_default_params` / `_probe_walls` | 已实现,在 analyst 之前 |
+| `Evaluator.screen_cache_entry`(读编译器的实际数字) | 新增,只读缓存 |
+| `config.v3.wall_attribution`(4 个开关) | `enabled`/`in_prompt` 默认**关**,`probe_second_origin` 默认**开** |
+| `reporting/wall_report.py` + 接进 report.md | 已实现,紧跟 analyst 的 `parameter_limits` 段 |
+| 单元测试 | **29 个,全通过** |
+| revert 检查(`scripts/probes/revert_check_2e.py`) | **13/13 变体被抓到** |
+| 权威全套(A800) | **962 passed / 1 skipped / 0 failed** |
+| 真实数据端到端(`scripts/probes/verify_2e_on_run.py`) | **6 个墙、3 个正斜率,逐个匹配离线探针** |
+
+**两处测试自身的缺陷,由 revert 检查发现并已修:**
+① bool 守卫的测试用字符串键,实际是被"三值下限"挡住的 ⇒ 守卫可以被删而测试全绿。
+改用真正能触发它的形状(混合域 `[False, 2, 4, 8]`,bool 读成 0.0 会被报成一道低墙)。
+② "一墙一进程"变体的 patch 匹配到 2 处,**从未被应用**,所以它的"通过"没有意义。已改为唯一锚点。
+
+**一处数字差异,已确认是正确的方向:** 尾部斜率与 §10.2 的表不同
+(BLOCK_M +16.7% → **+25.7%**),因为离线探针取每值**最小**延迟,而生产代码读
+`ParamStat.latency_by_value`,那是 harness 自己的**中位**表 —— 中位是本项目的判据
+(93.2% vs 均值 64.8%,`min` 偏 +9.8%…+156%)。**分类判定完全一致**(6 个墙、3 个正斜率
+逐个匹配),只有幅度按正确的统计量重算。这也说明为什么判据是**符号**而不是幅度:
+GEMM_BK 在中位上是 +11.2%、在最小值上是 −54.8%,两种读法下都非单调,所以都不探针。
+
+### 11.1 下一步:第 3 步第三臂检验 A3
+
+第 3 步的三臂改为:
+
+| 臂 | `mode` | 2e | 检验 |
+|---|---|---|---|
+| 对照 | `label` | 关 | 基线 |
+| 处理 1 | `vector` | 关 | 资源维度对齐 |
+| 处理 2 | `vector` | **`enabled` + `in_prompt`** | **A3** |
+
+**主结果**:被归因的墙所指向的改写,**是否真的腾出了那一维**(读改写后的 `shared_bytes`,
+以及那个 knob 的取值域是否重新打开),以及延迟是否改善。
+**次要结果**:延迟差异 —— 事先声明很可能测不出分离(G9 那次臂内跨度 4.72%)。
+
+**必须同卡**(风险 5:A800 上 2e 无输入),**且必须记录**每臂的
+`RESOURCE_WALL_ATTRIBUTED` 计数与 `probe_total_s`。
