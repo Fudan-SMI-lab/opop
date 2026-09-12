@@ -1337,12 +1337,19 @@ class Orchestrator:
                 space_id=space.space_id, params=params, status="fail",
                 failure_kind=result.get("failure_kind") or "runtime_error",
                 failure_detail=detail,
+                # D8: carried on the FAILURE path too, and that is the point of the change -- the
+                # expensive jobs are precisely the ones that fail at their deadline, and they are
+                # the ones the worker's own `compile_s` cannot describe because they never return.
+                job_wall_s=result.get("job_wall_s"),
+                job_timed_out=result.get("job_timed_out"),
             )
         return TrialRecord(
             trial_id=trial_id, candidate_id=cand.candidate_id, space_id=space.space_id,
             params=params, status="complete", latency_ms=lat,
             profile=self.deps.profiler.extract(result),
             fp64_rescued_trials=result.get("fp64_rescued_trials"),
+            job_wall_s=result.get("job_wall_s"),
+            job_timed_out=result.get("job_timed_out"),
         )
 
     def _prescreen_space(self, crun: CandidateRun, trials_dir: Path) -> None:

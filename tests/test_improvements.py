@@ -8710,6 +8710,15 @@ def test_the_compile_screen_only_refuses_on_the_compilers_own_number():
         build_timeout_s = 60.0
         eval_timeout_s = 60.0
         correctness_mode = "dual_witness_relaxed"
+        # D9: the single-configuration screen now has its OWN deadline too, so these three are
+        # fields it genuinely reads. Adding them here rather than making `screen_timeout_s`
+        # tolerant: this stub carries only what the screen needs, which is precisely why it caught
+        # the first version of the D9 change computing the deadline INSIDE the swallow-everything
+        # try -- where an AttributeError became "the probe failed" and a mis-wired config would
+        # have looked exactly like a timing-out ptxas.
+        prescreen_base_timeout_s = 30.0
+        prescreen_per_config_timeout_s = 3.0
+        screen_floor_timeout_s = 120.0
 
     class Task:
         ref_path = Path("ref.py")
@@ -10504,8 +10513,13 @@ def test_a_failed_probe_is_never_cached_as_a_screen_verdict():
         # probe failure, so a mis-wired config would have been indistinguishable from a timing-out
         # ptxas on every batch. This test is what caught it; the fix moved the computation out of
         # the try, where an AttributeError is loud.
+        #
+        # `screen_floor_timeout_s` (D9) joined them for the SAME reason and was caught by the SAME
+        # test: the single-configuration screen also stopped borrowing `build_timeout_s`, and the
+        # first version of that change repeated the inside-the-try mistake exactly.
         prescreen_base_timeout_s = 30.0
         prescreen_per_config_timeout_s = 3.0
+        screen_floor_timeout_s = 120.0
 
     class Task:
         ref_path = Path("ref.py")

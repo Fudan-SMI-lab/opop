@@ -261,9 +261,21 @@ class EvalConfig(StrictConfig):
     # A batch prescreen's OWN deadline, `base + per_config * n`, clamped by build_timeout_s.
     # Deliberately much shorter than build_timeout_s, and safe to be: a prescreen timeout
     # caches nothing, so every unanswered configuration still receives a real trial with the
-    # full build_timeout_s. See `Evaluator._prescreen_timeout_s` for the measurements.
+    # full build_timeout_s. See `prescreen_timeout_s` in evaluation/correctness.py for the
+    # measurements (the name in this comment used to be `Evaluator._prescreen_timeout_s`, a
+    # method that does not exist -- the function is module-level so the orchestrator's event and
+    # the worker's deadline read the same number).
     prescreen_base_timeout_s: float = 30.0
     prescreen_per_config_timeout_s: float = 3.0
+    # The FLOOR under a SINGLE-configuration screen's deadline (`screen_timeout_s`). Not a
+    # second knob for the batch: `prescreen_timeout_s(cfg, 1)` is 33 s, which sits BELOW the
+    # measured p90 of a single screen (26.5-28.5 s across three boxes, p99 38.7-105.0 s), so
+    # without a floor the one-config case would start refusing screens that were about to
+    # answer. 120 s answers 99.0/99.6/99.7% of the screens that would have answered, against a
+    # `build_timeout_s` deadline that is 11x the measured p99 and cost box 1 ~2.1 h of a 12 h
+    # budget. Raising this cannot discard a candidate -- a screen that times out caches nothing,
+    # `cached_shared_verdict` returns None, and the configuration gets its full real trial.
+    screen_floor_timeout_s: float = 120.0
     # The plausibility flag's threshold is DERIVED per task per box (see
     # `evaluation/plausibility.py`), not configured. This key remains only as an explicit
     # override for a caller that deliberately wants a fixed multiplier -- a revert check, a

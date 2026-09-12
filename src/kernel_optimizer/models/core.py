@@ -329,6 +329,24 @@ class TrialRecord(BaseModel):
     # the fp64 metrics otherwise appear only on FAILURES, i.e. never on the cases the
     # gate was added to admit.
     fp64_rescued_trials: int | None = None
+    # D8 step 1. Wall-clock seconds the GPU job for this trial occupied (lock wait included), and
+    # whether it was killed at its deadline. Stamped by the HOST in `worker_client.run_job`, which
+    # is the only vantage point that survives a killed job -- the worker's own `compile_s` is
+    # written on return, so the trials that paid 20-50 minutes of `ptxas` and then timed out have
+    # no profile and no `compile_s` at all. That censoring is why this pair exists.
+    #
+    # An EXPLICIT field, not an extra key: this model is a plain `BaseModel`, so pydantic's default
+    # `extra="ignore"` would drop an unknown key silently -- the same trap `ProfileRecord` carries
+    # (`frozen=True` only), which is why the stamp does NOT travel through the profile.
+    #
+    # None on the two paths that never launched a job (a materialize error, a screen refusal).
+    # "Not measured" and "0 seconds" must stay distinguishable; a screen refusal genuinely costs
+    # nothing and reporting it as 0.0 would be right by accident and wrong in shape.
+    #
+    # NOT A JUDGEMENT INPUT: nothing in ranking, allocation or acceptance may read these. A slow
+    # compile must never become a reason to reject a correct kernel.
+    job_wall_s: float | None = None
+    job_timed_out: bool | None = None
 
 
 class BestRecord(BaseModel):

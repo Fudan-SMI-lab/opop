@@ -34,6 +34,40 @@ from typing import Any
 from kernel_optimizer.config import GpuConcurrencyConfig, WslConfig
 from kernel_optimizer.gpu.jobs import failure_result
 
+# D8 step 1. Keys added by `_with_wall` to every `run_job` result. Named here so a test can assert
+# the set rather than re-typing the strings, and so a grep for the names finds one definition.
+JOB_WALL_KEYS = ("job_wall_s", "job_timed_out")
+
+
+def _with_wall(result: dict[str, Any], t_start: float, timed_out: bool) -> dict[str, Any]:
+    """Stamp a job result with how long the job actually took, and whether it was killed.
+
+    WHY THIS EXISTS. Box 1's E1 control arm spent 6.10 h -- 50.8% of a 12 h budget -- inside ONE
+    candidate's tuning pass and never reached the rewrite loop, and finding that out required
+    writing a throwaway script against `events.jsonl`. The report said nothing, because zero agent
+    calls is not an error.
+
+    WHY IT CANNOT BE READ OFF `compile_s`, which already exists. `compile_s` is written by the
+    worker when the job RETURNS, and the expensive cases do not return: the six trials that paid
+    20-50 minutes of `ptxas` all hit the deadline and wrote no `out.json`, so they have no profile
+    at all. Measured consequence -- `compile_s` over 198 profiles reads p50 0.3 s / max 1.6 s while
+    the same run's `ptxas` was observed running 25:35. The metric is CENSORED exactly on the
+    samples that would price it, so any threshold derived from it would be both too low and
+    suspiciously clean. This stamp is applied by the HOST, at every exit including the timeout, so
+    a killed job is the one case guaranteed to be measured.
+
+    `setdefault`, not assignment: if a worker ever reports its own `job_wall_s` that figure is
+    closer to the truth (it excludes this process's own bookkeeping) and must survive.
+
+    NOT A JUDGEMENT INPUT. Nothing in ranking, allocation or acceptance may read these keys --
+    "cheap but slow" must never become a reason to reject a kernel. Same discipline as
+    `CONVERSION_RATES`: emitted, reported, and guarded by a grep test against consumption.
+    """
+    out = dict(result)
+    out.setdefault("job_wall_s", round(time.monotonic() - t_start, 3))
+    out.setdefault("job_timed_out", timed_out)
+    return out
+
 
 def _wsl_hop_needed() -> bool:
     """Does reaching the GPU worker mean crossing into WSL?
@@ -243,6 +277,10 @@ class WslGpuWorker:
         job_path.write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
 
         argv, env = self._build_command(job_path, out_path)
+        # D8 step 1. Started before the lock, so the number includes time spent WAITING for the
+        # GPU lock as well as time spent running -- for a budget question ("where did the 12 h
+        # go") queueing is cost, and a figure that excluded it would not add up to the wall clock.
+        t_start = time.monotonic()
         self.lock.acquire(lock_mode)
         try:
             if lock_mode == "exclusive" and self.conc.timing_cooldown_s > 0:
@@ -268,20 +306,23 @@ class WslGpuWorker:
                     proc.communicate(timeout=30)
                 except subprocess.TimeoutExpired:
                     pass
-                return failure_result("timeout", f"job {job_id} exceeded {timeout_s}s")
+                return _with_wall(
+                    failure_result("timeout", f"job {job_id} exceeded {timeout_s}s"),
+                    t_start, True)
         finally:
             self.lock.release(lock_mode)
 
         if not out_path.exists():
             err = (stderr or b"").decode("utf-8", errors="replace")
-            return failure_result(
+            return _with_wall(failure_result(
                 "worker_crash",
                 f"no result file; rc={proc.returncode}; stderr tail: {err[-2000:]}",
-            )
+            ), t_start, False)
         try:
-            return json.loads(out_path.read_text(encoding="utf-8"))
+            return _with_wall(json.loads(out_path.read_text(encoding="utf-8")), t_start, False)
         except ValueError as exc:
-            return failure_result("worker_crash", f"unparseable result: {exc}")
+            return _with_wall(
+                failure_result("worker_crash", f"unparseable result: {exc}"), t_start, False)
 
     def _kill_job(self, proc: subprocess.Popen) -> None:
         """Kill ONLY this job's process tree.

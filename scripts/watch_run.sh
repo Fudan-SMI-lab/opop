@@ -38,8 +38,8 @@ BOX="${1:?usage: watch_run.sh <box1|box2|box3>}"
 case "$BOX" in
   box1) SSH=(ssh -o ConnectTimeout=60 autodl)
         EVENTS=/root/autodl-tmp/opop-workspace/opop-glm/runs-v3/run-l3-43-20260911-230217/events.jsonl
-        LOG=/root/autodl-tmp/e1-box1.log
-        LABEL="BOX1 E1-control  L3:43" ;;
+        LOG=/root/autodl-tmp/e1-box1-resume.log
+        LABEL="BOX1 E1-control-resume L3:43" ;;
   box2) SSH=(ssh -o ConnectTimeout=60 -p 22010 -i "$HOME/.ssh/autodl2_key" root@connect.bjb2.seetacloud.com)
         EVENTS=/root/autodl-tmp/opop-workspace/opop-glm/runs-v3/run-l3-43-20260911-230736/events.jsonl
         LOG=/root/autodl-tmp/e1-box2.log

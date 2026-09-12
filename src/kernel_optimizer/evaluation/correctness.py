@@ -66,6 +66,40 @@ def prescreen_timeout_s(cfg: EvalConfig, n_configs: int) -> float:
     return min(float(budget), float(cfg.build_timeout_s))
 
 
+def screen_timeout_s(cfg: EvalConfig) -> float:
+    """How long a SINGLE-configuration compile screen may run.
+
+    D9. `compile_screen` handed `run_job` the full `build_timeout_s` (1200 s) while its sibling
+    `prescreen_batch`, 88 lines away in this same file, used `prescreen_timeout_s`. That sibling
+    was added by `59d5a71` together with 30 lines arguing that a screen's deadline must be
+    separate from a real trial's compile budget -- and the argument was never carried across to
+    this caller. The generalizable form of the defect is that a fix applied to one caller leaves
+    its siblings, so the guard for it is a grep test: NO screen may pass `build_timeout_s`.
+
+    What it cost, measured on the three finished runs. 1243 single-configuration screens:
+    p50 11.4-13.6 s, p90 26.5-28.5 s, p99 38.7-105.0 s -- so the deadline was 11x its own p99.
+    A hung screen is followed by a real trial that pays its own 1800 s (`build_timeout_s +
+    eval_timeout_s`), which is where box 1's four 50.1-minute gaps between consecutive
+    `TRIAL_DONE` events came from: 1200 s of screen plus 1800 s of eval. Counted as time past a
+    120 s cap, box 1 loses ~2.1 h of a 12 h budget (17-20%); boxes 2 and 3 lose 0.02 h and 0.01 h.
+    A screen that ANSWERS at 1202 s costs the same 20 minutes as one that hangs, which is why the
+    measurement is "time past the cap" and not "hung screens".
+
+    Why the floor is necessary rather than decorative. `prescreen_timeout_s(cfg, 1)` = 33 s, only
+    4.5-6.5 s above the measured p90 -- the batch budget scales per configuration and is simply
+    not calibrated for n=1. `max()` of the two keeps one source of truth for the per-config term
+    while refusing to go below what a single screen actually needs.
+
+    Why raising the deadline cannot discard a candidate. A screen caches ONLY answers
+    (`prescreen_batch`, `compile_screen`), so a timeout leaves the key absent,
+    `cached_shared_verdict` returns `None` -- three-valued on purpose -- and the configuration
+    receives a full real trial. And the verdicts themselves are not in question: across both E1
+    arms' 225 refusals not one was marginal (tightest exceeded its limit by 5%, median by 62%)
+    with 0 false negatives. The logic is right; only the deadline was wrong.
+    """
+    return max(prescreen_timeout_s(cfg, 1), float(cfg.screen_floor_timeout_s))
+
+
 class CorrectnessEvaluator:
     """quick_test / full_eval: static check (cached per source) -> one merged
     eval job (correctness-before-timing inside eval_kernel_against_ref).
@@ -255,6 +289,10 @@ class CorrectnessEvaluator:
         Cached on the materialized source, since a re-tune after a space expansion re-asks
         configurations it has already screened. ONLY answers are cached: see `prescreen_batch`
         for the measured cost of caching a non-answer.
+
+        DEADLINE: `screen_timeout_s`, this screen's own budget -- NOT `build_timeout_s`, which is
+        what it used to pass and which cost box 1 ~2.1 h of a 12 h run (D9; see
+        `screen_timeout_s` for the distribution and for why a longer deadline buys no verdicts).
         """
         if not max_shared_bytes:
             return None
@@ -264,8 +302,20 @@ class CorrectnessEvaluator:
         if probe is None:
             job = make_compile_probe_job(str(task.ref_path), str(kernel_src_path),
                                          backend=backend)
+            # OUTSIDE the try, and for the same reason `prescreen_batch` computes its deadline
+            # outside its own: a config object missing the new fields raises AttributeError, which
+            # `except Exception` would swallow into `{"ok": False}` and report as a PROBE failure.
+            # A mis-wired config would then be byte-indistinguishable from a timing-out `ptxas`,
+            # silently, on every screen. This is the second time the same mistake has been made in
+            # this file -- the first version of THIS change had it too, and
+            # `test_the_compile_screen_only_refuses_on_the_compilers_own_number` plus
+            # `test_a_failed_probe_is_never_cached_as_a_screen_verdict` caught it, which is those
+            # guards doing exactly what they were written for. A config error is a programming
+            # error and must reach the operator; a probe failure is a fact about one attempt and
+            # must be swallowed. The two may not share an exit.
+            deadline = screen_timeout_s(self.cfg)
             try:
-                probe = self.worker.run_job(job, self.cfg.build_timeout_s,
+                probe = self.worker.run_job(job, deadline,
                                            f"{tag}-compile-screen", lock_mode="shared")
             except Exception as exc:  # noqa: BLE001 — a screen failure is never a verdict
                 probe = {"ok": False, "reason": f"{type(exc).__name__}: {exc}"[:200]}

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from kernel_optimizer.evaluation.conversion_report import conversion_lines
 from kernel_optimizer.models.core import latency_cell
+from kernel_optimizer.reporting.completeness import completeness_lines
 from kernel_optimizer.store.run_store import RunStore
 
 
@@ -1009,6 +1010,12 @@ class ReportGenerator:
             lines.append(f"- {d['scope']} `{scope_id}`: {d['verdict']}"
                          f"{' (' + str(d.get('stop_kind')) + ')' if d.get('stop_kind') else ''}")
         lines.append("")
+
+        # 1c. Which of the four loops actually ran, and where the agent-free time went.
+        # Immediately after the ending, because "why it ended" and "how far it got" are the same
+        # question asked twice, and the pair is what makes a silently truncated run visible.
+        # `_why_the_run_ended` reports the ending; this reports whether the process was complete.
+        lines.extend(completeness_lines(list(events), budgets))
 
         if rejected:
             lines.append("## Rejections\n")
