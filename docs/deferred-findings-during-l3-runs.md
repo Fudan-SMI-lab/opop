@@ -588,4 +588,42 @@ or which configurations get screened. It also means the 4.75 h box 1 lost bought
 those six screens were not protecting a hard call, they were compiling PTX that `ptxas` could not
 finish inside 1200 s, for a verdict the real trial would then re-derive from scratch.
 
+### D9 refinement, 08:40 — a screen that ANSWERS at 1202 s costs the same as one that hangs
+
+Caught live rather than in aggregate. The 40-minute monitor fired on box 1 and the job directory
+showed:
+
+```
+07:50:31  cand-941ea454-compile-screen-ae4ceff1.json    (= last events.jsonl write)
+08:10:33  cand-941ea454-tr-baab47f1-eval-6ab33506.json  -> the screen ANSWERED, after 1202 s
+08:37:10  eval still running, 1597 s into its own 1800 s
+```
+
+That screen **did not hang** — it sat at essentially exactly `build_timeout_s` (1202 s against
+1200 s) and returned a verdict. So it is counted as a *success* in the p50/p90/p99 table above, and
+it still cost **20.0 minutes**. `ptxas` was at 41.0 GB RSS and 100% busy throughout (cpu ticks
+153454 → 153855 over 4 s), with 671 GB available: not a hang, not an OOM risk, just register
+allocation on enormous PTX.
+
+**So the "hung_cost 2.00 h" figure understated the loss**, because it counted only screens with no
+output. Re-measured against a **120 s** cap, which is where the distribution says the useful work
+ends:
+
+| box | screens | answered over 120 s | their cost beyond the cap | hung, cost beyond cap | **total recoverable** |
+|---|---|---|---|---|---|
+| 1 | 222 | 2 (991 s, 236 s) | 0.27 h | 6, 1.80 h | **2.07 h** |
+| 2 | 602 | 2 (167 s, 128 s) | 0.02 h | 0 | **0.02 h** |
+| 3 | 419 | 1 (145 s) | 0.01 h | 0 | **0.01 h** |
+
+(The 1202 s screen above is not yet in this snapshot; it adds ~0.30 h to box 1.)
+
+Two things this changes. First, **the fix's payoff is a clean number**: a 120 s screen deadline
+recovers ~2.1 h of box 1's 12 h — 17% of the budget — while costing at most three screen verdicts
+across 1243 screens, each of which then falls through to a real trial anyway. Second, **the
+right statistic for this defect is time past a cap, not the hang count**: two of the three worst
+individual costs on box 1 were screens that answered, so any accounting keyed on "did it produce
+output" misses them. Same failure mode as the D8 mean, one level up — the aggregate I chose hid the
+cases that mattered.
+
+
 
