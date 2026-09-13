@@ -1,0 +1,181 @@
+# S7 PAIR, TREATMENT arm -- slope-guided sampling ON. Box 4, pinned to GPU 0.
+#
+# Read experiments_s7_control_box4gpu1.yaml's header for what is HELD CONSTANT across the pair and why
+# the pair has to be simultaneous and same-box. This file differs from the control in EXACTLY the
+# `v3.slope_guide` block below -- nothing else, including the three per-arm isolation values that must
+# differ because the two arms share a chassis (runs_dir, triton_cache_dir, XDG_DATA_HOME).
+#
+# WHAT S7 DOES. 2e runs AFTER tuning, so its slope reaches only the prompt: on the three-arm run all 80
+# trials were spent before a wall was found, and only 25% of families ever received wall text. S7
+# recomputes the SAME pure functions (`TuningStatsAnalyzer.analyze` + both wall finders, no GPU) every 10
+# finished trials and enqueues "the walled knob takes the furthest launchable value toward the wall,
+# everything else at the current optimum". It only ADDS points: an enqueued trial is consumed by the
+# ordinary `ask()` and counts against the SAME `trials_per_space`, so the budget is byte-identical to the
+# control's and every configuration that was drawable stays drawable. What changes is WHICH points that
+# budget buys -- which is exactly why this needs a paired control while item 2 did not.
+#
+# THE PREFLIGHT THAT SET THESE VALUES, and one of the two numbers is a caveat rather than support.
+# `scripts/probes/s7_acceptance.py` replays the SHIPPING mechanism over 35 candidates from three
+# finished 12h L3:43 runs on THIS box -- the only corpus that carries real `infeasible_shared_memory`
+# refusals, so the hard criterion is measurable at all:
+#
+#   hard wall alone     13 points, 6 of 35 candidates (17.1%), median tail gain +34.6%
+#   hard + soft         54 points, 15 of 35 candidates (42.9%), median tail gain +26.9%
+#   first firing        median 0.50 of each candidate's own sequence -- budget remains to act on it
+#   and it declines     181 of 224 recomputes because there is NO ACTIONABLE WALL AT ALL
+#
+# That last line is why P2/P3 below are the predictions most likely to fail, and it must not be
+# re-attributed afterwards: S7 does not fix C2's coverage problem, it INHERITS it. The same conclusion
+# 2e's 25% family coverage and item 5's "raising coverage means changing a criterion" already reached.
+#
+# THE PREFLIGHT ALSO CAUGHT A DEFECT THAT WOULD HAVE WASTED THIS PAIR. The first shipping version
+# required the proposed VALUE to be one no trial had drawn, and on this corpus that left ONE enqueued
+# point in 224 recomputes -- a treatment arm inserting 1 trial in 760, indistinguishable from its
+# control. `scripts/probes/s7_why_it_declines.py` isolated the rule (1 point -> 13). Fixed in 098c820;
+# the launch below runs the fixed code.
+#
+# WHY use_soft_wall IS ON. The hard criterion alone gives 13 points across three runs -- about 4 per 12h
+# run, or 0.5% of a 760-trial budget. That is inside the noise floor: a null result would be
+# uninterpretable, since "the mechanism does not help" and "the mechanism barely ran" would look
+# identical. With the spill wall the dose is 54 points (~18 per run, 2.4%), which is small enough to stay
+# a hint and large enough that a null result means something. The cost is that the arm now mixes two
+# criteria -- so `SLOPE_GUIDE_STEP.enqueued[].source` records which one proposed each point, and the
+# report can split them afterwards. `v3.soft_wall.enabled` must therefore also be on, and it is: S7
+# refuses to use the spill wall while the mechanism that finds it is off.
+#
+# THE PREDICTIONS, DECLARED HERE BEFORE THE RUN because a result nobody predicted can be read either way:
+#   P1  `RESOURCE_WALL_ATTRIBUTED`'s first appearance moves EARLIER, normalised to tuning progress.
+#   P2  probe-worthy walls per candidate INCREASE.
+#   P3  the share of families that receive wall text rises above 25%.
+#   P4  if P1-P3 hold and latency does NOT improve, then "knowing about the wall earlier" is not the
+#       bottleneck and C2's problem is the REWRITE's conversion rate -- a result, not a failure.
+#   P5  (added by the preflight) if P2/P3 fail while P1 holds, the binding constraint is the criterion's
+#       APPLICABILITY -- neither the timing nor the dose -- because 181 of 224 recomputes find no wall.
+#
+# THE OPEN PREMISE, unresolved and not resolvable by this pair alone: that slope is a good allocation
+# prior at all. Against remaining tuning gain, boundary saturation read Spearman -0.11..+0.24 (below the
+# 0.43/0.52 incumbents), and slope vs coverage is rho = -0.431 with 14 of 24 under-covered parameters
+# already walled -- the naive "sample what has not been sampled" finds most walls without any slope. S7
+# may spend budget on high-slope-but-low-absolute-gain dimensions and come out SLOWER. This pair is the
+# test.
+#
+# Launch (GPU 0; simultaneously with the control on GPU 1):
+#   cd /root/autodl-tmp/work/opop
+#   CUDA_VISIBLE_DEVICES=0 XDG_DATA_HOME=/root/autodl-tmp/xdg-s7t \
+#   PYTHONPATH=src /root/autodl-tmp/orch-venv/bin/python -m kernel_optimizer.cli \
+#     --config configs/experiments_s7_treatment_box4gpu0.yaml run --task level3:43
+
+v3:
+  # ---- THE VARIABLE, and the ONLY block that differs from the control ----
+  slope_guide:
+    enabled: true
+
+    # Cadence: FINISHED trials between recomputes. Told, not asked -- with `constant_liar` there are
+    # asked-but-untold trials at any moment, so counting asks would recompute against a stats table that
+    # has not moved. 10 against a 40-trial space is 3 opportunities, and the preflight's median first
+    # firing at 0.50 says the second one is where the signal appears.
+    recompute_every: 10
+
+    # Dose: points ONE recompute may enqueue. Kept separate from the cadence so a "fired but no gain"
+    # outcome can be attributed to one or the other. The preflight enqueued 54 points over 224
+    # recomputes (0.24 per recompute), so 2 is never the binding constraint -- it is the guard against a
+    # candidate whose walls all turn out to vanish, which happens to 12 of 34.
+    max_enqueued_per_recompute: 2
+
+    # Let the spill wall steer too. See the header: the hard wall alone is 0.5% of the budget, which
+    # cannot produce an interpretable null. `source` keeps the two separable in the log.
+    use_soft_wall: true
+
+  # ---- everything below is IDENTICAL in the control ----
+  soft_wall:
+    # Required for `use_soft_wall` to have any effect -- S7 AND-s the two, because a spill wall has no
+    # independent probe confirmation and must not steer the sampler while the mechanism that finds it is
+    # off. ON IN BOTH ARMS, so it is not a variable: its own contribution (an extra event and prompt
+    # text) is held constant and only the SAMPLING differs.
+    enabled: true
+    in_prompt: true
+    max_rows_in_prompt: 3
+
+  wall_attribution:
+    # 2e stays ON in both arms. P1-P3 are measured FROM its events, so switching it off would remove the
+    # instrument the pair is read with.
+    enabled: true
+    in_prompt: true
+    max_probes_per_candidate: 8
+    probe_second_origin: true
+    # Top-K origins (item 1). 1 reproduces the finished runs byte for byte, so this pair stays
+    # comparable with them; raising it would confound S7 with a second change.
+    probe_top_k: 1
+
+  ordered_categoricals:
+    # S8 OFF in both arms. It also changes what the sampler draws, and two sampling changes at once
+    # would be unattributable. It is the next pair, not part of this one.
+    enabled: false
+
+  diagnosis:
+    mode: vector
+    expectation_ledger: false
+
+run:
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v3/s7-treatment
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench
+
+opencode:
+  server_url: null
+  launch_cwd: /root/autodl-tmp/opop-workspace/opop-glm
+  # NOTE the provider block copied here carries a plaintext API key into every agent sandbox under
+  # runs_dir. A tar/scp of runs_dir carries the key off the box.
+  sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+    XDG_DATA_HOME: /root/autodl-tmp/xdg-s7t
+
+wsl:
+  # The MATCHED venv on this box -- NOT orch-venv, which is torch 2.14 / triton 3.8.
+  venv: /root/autodl-tmp/kernel-opt-venv
+  kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-s7t
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+device:
+  name: NVIDIA GeForce RTX 4090 (sm_89)
+  vram_gb: 23
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024

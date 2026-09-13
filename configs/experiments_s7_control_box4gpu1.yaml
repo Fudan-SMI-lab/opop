@@ -1,0 +1,147 @@
+# S7 PAIR, CONTROL arm -- slope-guided sampling OFF. Box 4, pinned to GPU 1.
+#
+# THE PAIR'S ONE VARIABLE. This file and experiments_s7_treatment_box4gpu0.yaml differ in the
+# `v3.slope_guide` block and in the three per-arm isolation values that MUST differ because both arms
+# share a chassis (runs_dir, triton_cache_dir, XDG_DATA_HOME). Everything else -- budgets, evaluation
+# gates, device limits, agent model, seed, 2e, item 2, S8 -- is identical, so a difference in outcome has
+# one candidate cause. Read the treatment file's header for what S7 is, the preflight that set its
+# values, and the predictions P1-P5; this file records only what makes the COMPARISON valid.
+#
+# WHY OFF IS THE LITERAL OLD PATH, not a no-op wrapper. At `enabled: false` the orchestrator's
+# `_make_slope_guide` returns None, so no guide object exists: no recompute, no `enqueue_trial`, no
+# SLOPE_GUIDE_STEP event, and `TUNING_DONE.slope_guide` is None rather than a zero-filled dict. The
+# tuner's `ask()`/`tell()` are byte-for-byte the pre-S7 code path. That matters because a control that
+# ran the mechanism and discarded its output would still perturb the RNG stream and would not be a
+# control.
+#
+# WHY THE PAIR IS SIMULTANEOUS AND SAME-BOX, both measured rather than assumed:
+#
+#   * SAME BOX because trial counts are hardware. Box 1's 8358P and box 4's 8352V differ +32% in
+#     `compile_s` and +26% in `job_wall`, which produced 840 vs 760 trials in the same 12h -- so a pair
+#     split across boxes would compare different budgets while appearing to compare a mechanism.
+#   * TWO CARDS IN ONE CHASSIS DO NOT PERTURB EACH OTHER'S TIMING: measured worst-case median shift
+#     +1.20%, against this task's 2.35% noise floor. Timing is exclusive per run via each run's own GPU
+#     lock, and the arms hold separate locks because they hold separate `runs_dir`.
+#   * SIMULTANEOUS because a resumed or later run's wall clock is not the earlier one's. Sequential arms
+#     would differ in agent-service latency and in whatever else drifted between them; the events log's
+#     own span is the only comparable clock, and running both now makes the spans concurrent.
+#
+# WHAT IS NOT ISOLATED, stated so it is not discovered later: both arms call the SAME agent service with
+# the same model, so a service-side change (rate limiting, a silent model swap) hits both -- which is the
+# right direction for a paired comparison, but means neither arm alone is a clean absolute measurement.
+# The three per-arm values above are what stop the arms colliding on disk: sharing `runs_dir` would share
+# a GPU lock and an events log, sharing `triton_cache_dir` would let one arm hit the other's
+# compilations, and sharing `XDG_DATA_HOME` would put both opencode states in one SQLite db written by
+# both processes.
+#
+# HOW THIS ARM IS READ. It supplies the denominator for every prediction: P1 needs the control's own
+# normalised first-attribution time, P2 its probe-worthy walls per candidate, P3 its family coverage
+# (expected ~25%, the figure from the three-arm run), and the latency comparison needs its best_ms. A
+# treatment number without these is not a result.
+#
+# Launch (GPU 1; simultaneously with the treatment on GPU 0):
+#   cd /root/autodl-tmp/work/opop
+#   CUDA_VISIBLE_DEVICES=1 XDG_DATA_HOME=/root/autodl-tmp/xdg-s7c \
+#   PYTHONPATH=src /root/autodl-tmp/orch-venv/bin/python -m kernel_optimizer.cli \
+#     --config configs/experiments_s7_control_box4gpu1.yaml run --task level3:43
+
+v3:
+  # ---- THE VARIABLE, and the ONLY block that differs from the treatment ----
+  slope_guide:
+    # OFF: `_make_slope_guide` returns None and the tuning loop is the pre-S7 code path exactly.
+    enabled: false
+    # Recorded even though they cannot fire, so the two files can be diffed and the difference read as
+    # "one boolean" rather than "a block that exists on one side only".
+    recompute_every: 10
+    max_enqueued_per_recompute: 2
+    use_soft_wall: true
+
+  # ---- everything below is IDENTICAL in the treatment ----
+  soft_wall:
+    # ON IN BOTH ARMS. Item 2 cannot change the trial sequence -- no configuration is refused, no
+    # sampling moves, no budget changes -- so holding it on in both keeps its own contribution (an extra
+    # event and prompt text) constant and leaves SAMPLING as the only difference. Note this is also what
+    # makes the treatment's `use_soft_wall` meaningful: S7 AND-s the two.
+    enabled: true
+    in_prompt: true
+    max_rows_in_prompt: 3
+
+  wall_attribution:
+    # 2e ON in both arms: P1-P3 are measured FROM its events, so it is the instrument, not a variable.
+    enabled: true
+    in_prompt: true
+    max_probes_per_candidate: 8
+    probe_second_origin: true
+    probe_top_k: 1
+
+  ordered_categoricals:
+    # S8 OFF in both arms -- it also changes what the sampler draws, and two sampling changes at once
+    # would be unattributable.
+    enabled: false
+
+  diagnosis:
+    mode: vector
+    expectation_ledger: false
+
+run:
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v3/s7-control
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench
+
+opencode:
+  server_url: null
+  launch_cwd: /root/autodl-tmp/opop-workspace/opop-glm
+  # NOTE the provider block copied here carries a plaintext API key into every agent sandbox under
+  # runs_dir. A tar/scp of runs_dir carries the key off the box.
+  sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+    XDG_DATA_HOME: /root/autodl-tmp/xdg-s7c
+
+wsl:
+  venv: /root/autodl-tmp/kernel-opt-venv
+  kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-s7c
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+device:
+  name: NVIDIA GeForce RTX 4090 (sm_89)
+  vram_gb: 23
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024
