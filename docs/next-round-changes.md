@@ -390,6 +390,48 @@ S7 照同一套接线,三个开关分开(**不要合成一个布尔**):
 - PRUNED 现在承载**三种**语义(硬不可行 / guard 拒绝 / S1b 降权),事件日志能靠
   `failure_kind` 分开,但在 Optuna 内部**完全无法区分**。将来若引入真正的中途早停,会混在一起。
 
+### 4.1 【本轮不改,已实测定量】共享内存拒绝被误标成 `runtime_error`
+
+**S7 对照跑期间发现**(2026-09-13,box4 s7-treatment `tr-4b6d6cdf`)。
+
+**缺陷**:`worker_main._classify_exception`(`worker_main.py:35-39`)只识别 `out of memory`,
+其余一律归为 `runtime_error`。而 Triton 在 launch 期抛的是
+`triton.runtime.errors.OutOfResources: out of resource: shared memory, Required: 131072,
+Hardware limit: 101376` —— 这是一次**拒绝**(配置的属性、必然复现),不是崩溃。
+
+**为什么平时看不到**:`compile_screen` 在 launch 前就拦住这类配置并写对标签,所以健康的 run 只会看到
+十几个 `infeasible_shared_memory` 而没有这种 `runtime_error`。要触发误标,必须**先让 screen 自己失败**
+—— 而"screen 失败绝不构成判决"是刻意设计(`correctness.py:299-303`),于是真 trial 照跑并撞上运行时。
+本次的触发原因:`ptxas` 在一个 8 MB / 161,770 行的 PTX 上跑爆了 `screen_timeout_s`。
+
+**影响面(三个消费者,方向都是坏的)**:
+- `orchestrator.py:1573` —— `find_walls` 的**全部输入**就是 `failure_kind ==
+  "infeasible_shared_memory"` 的 trial。误标的墙对 C2 与 S7 **完全不可见**。
+- `tpe.py:218` —— 硬性不可行报 `PRUNED`(留在 TPE 模型里),`runtime_error` 报 `FAIL`(被丢掉)。
+- `deweight.py:71` —— 把 `runtime_error` 汇总成"整个候选有缺陷"的证据,而单点资源拒绝不是。
+
+**实测频率**(`scripts/probes/mislabelled_walls.py`,box4 全部 7 个 run / 3095 个 trial):
+**14 / 725 = 1.9%** 的共享内存拒绝被误标;7 个 run 里 3 个至少出现一次
+(arm2 7 个、arm3 6 个、s7-treatment 1 个;两个继承自 box2 的 run 各 0 个)。
+被误标的配置全部是大 tile(`BLOCK_M ≥ 128` 且 `BLOCK_N ≥ 64`),墙钟 123–1762 s
+—— 也就是说它们同时也是**最贵**的 trial,因为都得等 `ptxas` 跑完才被拒。
+
+**为什么本轮不改(而不是"改了更安全")**:
+1. 改标签就等于把这 14 个 trial 从 `FAIL` 翻成 `PRUNED`,直接落在 §4 用户已判定
+   "风险较高、本轮不动"的那段逻辑上。
+2. worker 侧的改动**下一个 trial 就生效、无需重启**(见
+   `opop-v2-worker-vs-driver-fix-propagation`)。对照跑中途改,会在**两臂各自不同的 trial 序号处**
+   改变分类语义 —— 那是往一个正在测量 `find_walls` 输入的实验里注入混淆,是制造第二个自变量,
+   不是修复。
+3. 1.9% 落在本项目已知的噪声底(重测 ±2–4%、每 trial std 16%)以内,不足以左右本对照的结论。
+
+**下一轮怎么改**(方案已定,勿再讨论):在 `_classify_exception` 里按**异常自己的话**判定
+—— 匹配 `out of resource: shared memory` / `OutOfResources` 即返回 `infeasible_shared_memory`。
+必须连带做的两件事:(a) 从 `Required:` / `Hardware limit:` 抓出数字写进 `failure_detail`,
+因为 2e 要区分"超一格"和"超一倍"(`correctness.py:269-282` 已说明这一点);
+(b) 正对照测试 —— 一个真正的非资源崩溃仍须归为 `runtime_error`,否则"修法"可以退化成
+"把所有崩溃都叫墙"。
+
 ---
 
 ## 5. 建议次序
