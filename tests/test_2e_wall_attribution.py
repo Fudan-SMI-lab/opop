@@ -218,9 +218,28 @@ def test_an_unanswered_probe_is_undecidable_and_never_not_attributed():
 def test_summarize_counts_only_decided_walls():
     stats = _stats(_ps("A", {"1": 10.0, "2": 9.0, "3": 8.0}))
     w = wa.find_walls(stats, [{"A": 4}])[0]
-    assert wa.summarize([w]) == {"attributed": 0, "not_attributed": 0, "undecidable": 0}
+    assert wa.summarize([w]) == {"attributed": 0, "not_attributed": 0, "undecidable": 0,
+                                 "attributed_any_origin": 0}
     w.verdict = "attributed"
     assert wa.summarize([w])["attributed"] == 1
+
+
+def test_summarize_keeps_the_theta_star_counts_separate_from_the_any_origin_count():
+    """The three verdict counts must keep meaning "at theta*", so a top-K run's numbers stay
+    comparable with the finished runs' logs. `attributed_any_origin` is reported ALONGSIDE, because
+    the difference between the two is exactly what the relaxation bought and folding it in would
+    erase the measurement.
+    """
+    stats = _stats(_ps("A", {"1": 10.0, "2": 9.0, "3": 8.0}))
+    w = wa.find_walls(stats, [{"A": 4}])[0]
+    # Fits at the fastest point, refused at the 2nd and 3rd.
+    w.verdict = "not_attributed"
+    w.origin_verdicts = {"theta_star": "not_attributed", "theta_top2": "attributed",
+                         "theta_top3": "attributed"}
+    got = wa.summarize([w])
+    assert got["attributed"] == 0, "the theta*-only count must not absorb other origins"
+    assert got["not_attributed"] == 1
+    assert got["attributed_any_origin"] == 1
 
 
 # ---------------------------------------------------------------------------------------------
@@ -355,11 +374,15 @@ def test_theta_star_uses_the_projects_own_objective():
     on the word `.mean` inside the comment explaining why `.mean` is not used -- a guard that forbids
     naming the thing it forbids is unmaintainable, and the next person would have deleted the
     explanation to make it pass.
+
+    Checked on `_theta_top_k`, which is where the ranking now lives; `_theta_star` delegates to it,
+    and that delegation is asserted separately so this guard cannot be satisfied by a wrapper whose
+    body no longer ranks anything.
     """
     text = io.open(SRC / "control" / "orchestrator.py", encoding="utf-8").read()
     tree = ast.parse(text)
     fn = next(n for n in ast.walk(tree)
-              if isinstance(n, ast.FunctionDef) and n.name == "_theta_star")
+              if isinstance(n, ast.FunctionDef) and n.name == "_theta_top_k")
     # Attribute accesses on the latency object, from the AST -- comments cannot reach this.
     attrs = {n.attr for n in ast.walk(fn) if isinstance(n, ast.Attribute)}
     assert "robust_ms" in attrs
@@ -369,6 +392,36 @@ def test_theta_star_uses_the_projects_own_objective():
              if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
     assert "min" not in calls and "max" not in calls, \
         "min over samples reports the luckiest sample, not the cost"
+
+    star = next(n for n in ast.walk(tree)
+                if isinstance(n, ast.FunctionDef) and n.name == "_theta_star")
+    star_calls = {n.func.attr for n in ast.walk(star)
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
+    assert "_theta_top_k" in star_calls, \
+        "theta* must come from the same ranking, or two rules could name two different winners"
+
+
+def test_theta_star_is_the_first_of_the_top_k():
+    """The delegation, on behaviour rather than on source text: the same ranking must produce both,
+    or the report's `theta_star` field and the first probe origin could disagree.
+    """
+    from kernel_optimizer.control.orchestrator import Orchestrator
+
+    crun = _probe_crun([_trial_rec({"BLOCK_M": 64, "BLOCK_N": 32}, 3.90),
+                        _trial_rec({"BLOCK_M": 128, "BLOCK_N": 32}, 3.20),
+                        _trial_rec({"BLOCK_M": 256, "BLOCK_N": 64}, 3.55)])
+    o = object.__new__(Orchestrator)
+    assert o._theta_star(crun) == o._theta_top_k(crun, 3)[0]
+
+
+def test_theta_star_is_still_none_when_nothing_completed():
+    """The caller branches on None to journal "no winning configuration to ablate from"; an empty
+    dict would materialize a probe with no parameters."""
+    from kernel_optimizer.control.orchestrator import Orchestrator
+
+    o = object.__new__(Orchestrator)
+    assert o._theta_star(_probe_crun([])) is None
+    assert o._theta_top_k(_probe_crun([]), 3) == []
 
 
 def test_2e_is_off_by_default_and_the_prompt_path_is_off_too():
@@ -384,6 +437,8 @@ def test_2e_is_off_by_default_and_the_prompt_path_is_off_too():
     assert cfg.v3.wall_attribution.in_prompt is False
     assert cfg.v3.wall_attribution.probe_second_origin is True
     assert cfg.v3.wall_attribution.max_probes_per_candidate == 8
+    assert cfg.v3.wall_attribution.probe_top_k == 1, \
+        "probing more high-performance points costs GPU time; the default must stay comparable"
 
 
 def test_the_report_section_is_absent_when_2e_never_ran():
@@ -710,3 +765,464 @@ def test_a3_walks_the_whole_lineage_not_just_direct_children():
     ]))
     assert "grandkid" in out, "the grandchild never appeared in the table"
     assert "FREED" in out
+
+
+# ---------------------------------------------------------------------------
+# top-K origins: the wall is probed from several MEASURED high-performance points
+#
+# WHY THIS SECTION EXISTS. Until now the ablation ran from exactly one point, the candidate's single
+# fastest configuration, so "this wall holds only at that one point" and "this wall holds across the
+# whole high-performance region" produced BYTE-IDENTICAL event logs -- and to a rewriter those are
+# very different facts. Probing from the top K measured points separates them.
+#
+# The origins are MEASURED points, never extrapolated ones. Selecting a probe position by "where the
+# slope predicts a win" and then using the probe to support that slope would be circular, and the
+# reliability of slope extrapolation is precisely what this project has NOT established (the
+# strongest literature-recommended saturation signal read rho -0.11..+0.24 against remaining gain,
+# below the 0.43/0.52 incumbents).
+#
+# The tests below drive the REAL `_probe_walls` and the REAL materializer, substituting only the
+# evaluator and the store -- a test that rebuilt the (wall, origin) loop itself would pass against an
+# orchestrator that still collapsed every origin into one field, which is
+# `a-test-that-copies-the-loop-does-not-test-it`.
+# ---------------------------------------------------------------------------
+
+_PROBE_SOURCE = '''PARAMS = {
+    "BLOCK_M": 64,
+    "BLOCK_N": 32,
+}
+
+import torch
+
+
+class ModelNew(torch.nn.Module):
+    def forward(self, x):
+        return x * PARAMS["BLOCK_M"] + PARAMS["BLOCK_N"]
+'''
+
+
+class _ProbeStore:
+    def __init__(self, run_dir: Path) -> None:
+        self.run_dir = run_dir
+        self.events: list[tuple[str, dict]] = []
+
+    def append(self, type_: str, payload: dict) -> None:
+        self.events.append((type_, payload))
+
+
+class _ProbeEvaluator:
+    """Answers keyed on the MATERIALIZED SOURCE, which is all the real evaluator ever sees.
+
+    Keyed on the source's `BLOCK_N` value -- the knob the ablation does NOT touch, so it identifies
+    the origin -- and read back through the real `materializer.extract_defaults` rather than a regex.
+    Deliberately not keyed on call order: an evaluator that answered "first call False, second True"
+    would pass even against code that wrote every origin into the same field, because the assertion
+    would then only be reading back the last answer.
+    """
+
+    def __init__(self, fits_by_block_n: dict[int, bool | None],
+                 max_shared_by_block_n: dict[int, int] | None = None) -> None:
+        self.fits_by_block_n = fits_by_block_n
+        self.max_shared_by_block_n = max_shared_by_block_n or {}
+        self.batches = 0
+        self.batch_sizes: list[int] = []
+
+    @staticmethod
+    def _origin_of(src: str) -> int:
+        from kernel_optimizer.paramspace import materializer
+
+        return int(materializer.extract_defaults(src)["BLOCK_N"])
+
+    def prescreen_batch(self, task, paths, tag, backend) -> None:  # noqa: ANN001, ARG002
+        self.batches += 1
+        self.batch_sizes.append(len(list(paths)))
+
+    def cached_shared_verdict(self, src: str, backend: str, cap: int):  # noqa: ANN001, ARG002
+        return self.fits_by_block_n.get(self._origin_of(src))
+
+    def screen_cache_entry(self, src: str, backend: str):  # noqa: ANN001, ARG002
+        return {"max_shared": self.max_shared_by_block_n.get(self._origin_of(src))}
+
+
+def _probe_orch(evaluator: _ProbeEvaluator, tmp_path: Path):
+    """A real Orchestrator carrying only what `_probe_walls` touches."""
+    from kernel_optimizer.config import AppConfig
+    from kernel_optimizer.control import orchestrator as orch_mod
+    from kernel_optimizer.models.core import TaskSpec
+
+    cfg = AppConfig()
+    # `device` is frozen (deliberately: a mistyped YAML key must not silently fall back to a
+    # consumer card's limits), and its default optin limit is already the 4090's 101376 B, which is
+    # the number these tests reason about.
+    assert cfg.device.max_shared_bytes_optin == 101376
+    o = object.__new__(orch_mod.Orchestrator)
+    o.cfg = cfg
+    o.store = _ProbeStore(tmp_path)
+    o.deps = type("D", (), {"evaluator": evaluator})()
+    o.task = TaskSpec(level=3, problem_id=43, name="43_MinGPTCausalAttention",
+                      ref_path=Path("ref.py"), ref_src_sha="0" * 64)
+    return o
+
+
+def _probe_crun(trials: list | None = None):
+    from kernel_optimizer.control.orchestrator import CandidateRun
+    from kernel_optimizer.models.core import Candidate
+
+    cand = Candidate(candidate_id="cand-topk", family_id="fam-1", origin="seed", backend="triton",
+                     source_sha="0" * 64, structural_signature="s", approach_summary="a")
+    crun = object.__new__(CandidateRun)
+    crun.candidate = cand
+    crun.space = None
+    crun.source = _PROBE_SOURCE
+    crun.trials = list(trials or [])
+    crun.stats = None
+    crun.wall_text = None
+    return crun
+
+
+def _block_m_wall() -> wa.Wall:
+    """One wall on BLOCK_M whose refused value is 512, tail improving. Built by `find_walls`, not by
+    hand, so the fixture cannot drift away from what the production finder emits."""
+    stats = _stats(_ps("BLOCK_M", {"64": 3.8221, "128": 3.3807, "256": 3.1836}))
+    walls = wa.find_walls(stats, [{"BLOCK_M": 512}])
+    assert len(walls) == 1
+    return walls[0]
+
+
+def _three_optimum_origins() -> list[tuple[str, dict]]:
+    """theta*, plus the 2nd and 3rd fastest measured configurations. Each carries a distinct
+    BLOCK_N so the evaluator can answer differently per origin."""
+    return [(wa.optimum_origin_name(i), {"BLOCK_M": 256, "BLOCK_N": bn})
+            for i, bn in enumerate((32, 64, 128))]
+
+
+def test_a_third_origin_does_not_overwrite_the_second(tmp_path):
+    """THE defect this change exists to fix. The writeback used to be two-branched: `theta_star` went
+    to `wall.verdict`, and EVERY other origin went to the single scalar `wall.second_origin`, so a
+    third origin silently replaced the second. Nothing raised, no data was missing, and the event log
+    looked entirely normal -- the `a-constant-reading-is-a-broken-probe` shape, where the dangerous
+    failure is a plausible value rather than a None.
+
+    On the pre-change code this test fails: `Wall` has no `origin_verdicts` at all, because the only
+    place a non-primary origin could be recorded was that one scalar.
+    """
+    ev = _ProbeEvaluator(fits_by_block_n={32: False, 64: True, 128: False},
+                         max_shared_by_block_n={32: 122880, 64: 65536, 128: 118784})
+    wall = _block_m_wall()
+    n = _probe_orch(ev, tmp_path)._probe_walls(_probe_crun(), [wall], _three_optimum_origins())
+
+    assert n == 3
+    assert wall.origin_verdicts == {"theta_star": "attributed",
+                                    "theta_top2": "not_attributed",
+                                    "theta_top3": "attributed"}, \
+        "an origin's verdict was overwritten by a later origin"
+    assert wall.origin_max_shared == {"theta_star": 122880, "theta_top2": 65536,
+                                      "theta_top3": 118784}
+
+
+def test_a_wall_probed_from_three_origins_reports_a_count_not_a_boolean(tmp_path):
+    """The output this buys: "holds at 2 of the 3 fastest points" instead of an absolute sentence.
+
+    The denominator is the number of high-performance origins actually probed, so a candidate with
+    fewer than K completed trials reports its own smaller denominator rather than a padded one.
+    """
+    ev = _ProbeEvaluator(fits_by_block_n={32: False, 64: True, 128: False},
+                         max_shared_by_block_n={32: 122880, 64: 65536, 128: 118784})
+    wall = _block_m_wall()
+    _probe_orch(ev, tmp_path)._probe_walls(_probe_crun(), [wall], _three_optimum_origins())
+
+    assert wall.n_origins_probed == 3
+    assert wall.n_origins_attributed == 2
+    text = wa.for_prompt([wall])
+    assert text is not None
+    assert "3" in text and "2" in text, text
+    assert "高性能" in text, "the count must be rendered, not just recorded: %r" % text
+    assert wall.payload()["n_origins_attributed"] == 2
+    assert wall.payload()["n_origins_probed"] == 3
+
+
+def test_the_default_corner_is_not_counted_as_a_high_performance_point(tmp_path):
+    """The default corner is a CONDITIONALITY control, not a candidate optimum: every knob sits at its
+    smallest, which is exactly why only 1 of 6 walls attributes from there against 6 of 6 from the
+    optimum. Counting it in the denominator would turn "2 of 2 fast points" into "2 of 3" and read as
+    weaker evidence than it is, and counting it in the numerator would be worse still.
+    """
+    ev = _ProbeEvaluator(fits_by_block_n={32: False, 64: False, 16: True},
+                         max_shared_by_block_n={32: 122880, 64: 120832, 16: 40960})
+    wall = _block_m_wall()
+    origins = _three_optimum_origins()[:2] + [(wa.DEFAULT_ORIGIN, {"BLOCK_M": 64, "BLOCK_N": 16})]
+    _probe_orch(ev, tmp_path)._probe_walls(_probe_crun(), [wall], origins)
+
+    assert wall.n_origins_probed == 2, "the default corner was counted as a high-performance point"
+    assert wall.n_origins_attributed == 2
+    # And it still lands in the field the prompt and the report already read for the caveat.
+    assert wall.second_origin == "not_attributed"
+    assert wall.origin_verdicts[wa.DEFAULT_ORIGIN] == "not_attributed"
+
+
+def test_the_origins_are_measured_points_not_extrapolated_ones():
+    """Every origin must be traceable to a completed trial. Choosing a probe position by "where the
+    slope predicts a win" and then using the probe result to support that slope is circular, and the
+    reliability of slope extrapolation is the one thing here that is NOT established.
+    """
+    from kernel_optimizer.control.orchestrator import Orchestrator
+
+    trials = [_trial_rec({"BLOCK_M": 64, "BLOCK_N": 32}, 3.90),
+              _trial_rec({"BLOCK_M": 128, "BLOCK_N": 32}, 3.20),
+              _trial_rec({"BLOCK_M": 256, "BLOCK_N": 64}, 3.55)]
+    crun = _probe_crun(trials)
+    o = object.__new__(Orchestrator)
+    got = o._theta_top_k(crun, 3)
+
+    assert len(got) == 3
+    measured = [dict(t.params.values) for t in trials]
+    for params in got:
+        assert params in measured, "an origin was constructed rather than measured: %r" % params
+    # And in the framework's own order: fastest first, by robust_ms.
+    assert [p["BLOCK_M"] for p in got] == [128, 256, 64]
+
+
+def test_theta_top_k_returns_fewer_origins_than_asked_rather_than_padding():
+    """A candidate with 2 usable trials must report 2 origins, so the "2 of N" denominator stays
+    honest instead of being padded with repeats of theta*."""
+    from kernel_optimizer.control.orchestrator import Orchestrator
+
+    crun = _probe_crun([_trial_rec({"BLOCK_M": 64, "BLOCK_N": 32}, 3.90),
+                        _trial_rec({"BLOCK_M": 128, "BLOCK_N": 32}, 3.20)])
+    got = object.__new__(Orchestrator)._theta_top_k(crun, 5)
+    assert len(got) == 2
+    assert got[0]["BLOCK_M"] == 128
+
+
+def test_theta_top_k_skips_incomplete_and_zero_latency_trials():
+    """The same four filters `_theta_star` already applied. A failed trial has no measured latency, so
+    ranking it would put a configuration the hardware rejected at the head of the origin list.
+    """
+    from kernel_optimizer.control.orchestrator import Orchestrator
+
+    good = _trial_rec({"BLOCK_M": 128, "BLOCK_N": 32}, 3.20)
+    trials = [
+        _trial_rec({"BLOCK_M": 512, "BLOCK_N": 32}, 0.01, status="fail",
+                   failure_kind="infeasible_shared_memory"),
+        _trial_rec({"BLOCK_M": 64, "BLOCK_N": 32}, None),      # complete but no latency recorded
+        _trial_rec({"BLOCK_M": 32, "BLOCK_N": 32}, 0.0),       # a zero is not a measurement
+        good,
+    ]
+    got = object.__new__(Orchestrator)._theta_top_k(_probe_crun(trials), 4)
+    assert got == [dict(good.params.values)], got
+
+
+def test_k_origins_are_still_probed_in_one_batch(tmp_path):
+    """Regression guard on the property that makes this affordable. A probe in its own worker process
+    costs a median 16.7 s, almost all of it process start; 18 variants in ONE process measured 8.8 s,
+    a marginal 0.49 s each. Three origins per wall must therefore stay ONE batch of three, not three
+    batches of one -- the difference is 4.5 s against 50 s per candidate.
+    """
+    ev = _ProbeEvaluator(fits_by_block_n={32: False, 64: False, 128: False},
+                         max_shared_by_block_n={32: 122880, 64: 122880, 128: 122880})
+    _probe_orch(ev, tmp_path)._probe_walls(_probe_crun(), [_block_m_wall()],
+                                           _three_optimum_origins())
+    assert ev.batches == 1, "each origin started its own batch"
+    assert ev.batch_sizes == [3], "the batch did not carry every (wall, origin) variant"
+
+
+def test_probe_top_k_of_1_is_byte_identical_to_today(tmp_path):
+    """`probe_top_k` defaults to 1, and at 1 nothing about the output may change: probing more points
+    costs GPU time, so a run with K>1 is not comparable with the finished ones, and the default must
+    leave them comparable.
+
+    Byte-identity is checked by RENDERING, not by pasting today's paragraph into the test. A golden
+    string would have to be edited whenever the prose changes and would happily encode a defect; two
+    renderings that must agree cannot.
+    """
+    ev = _ProbeEvaluator(fits_by_block_n={32: False, 16: True},
+                         max_shared_by_block_n={32: 122880, 16: 40960})
+    wall = _block_m_wall()
+    origins = [(wa.PRIMARY_ORIGIN, {"BLOCK_M": 256, "BLOCK_N": 32}),
+               (wa.DEFAULT_ORIGIN, {"BLOCK_M": 64, "BLOCK_N": 16})]
+    _probe_orch(ev, tmp_path)._probe_walls(_probe_crun(), [wall], origins)
+
+    # The fields an existing reader (report table, replay, for_prompt's caveat) already looks at.
+    assert wall.verdict == "attributed"
+    assert wall.max_shared == 122880 and wall.limit == 101376
+    assert wall.second_origin == "not_attributed"
+    assert wall.n_origins_probed == 1
+
+    # A wall replayed from a PRE-change event carries no origin dicts at all. It must render the same.
+    old = _block_m_wall()
+    old.verdict, old.max_shared, old.limit = "attributed", 122880, 101376
+    old.over_ratio = 122880 / 101376
+    old.second_origin = "not_attributed"
+    assert wa.for_prompt([wall]) == wa.for_prompt([old]), \
+        "a K=1 run renders differently from an old replayed record"
+    assert "高性能" not in (wa.for_prompt([wall]) or ""), \
+        "the count clause must not appear when only one origin was probed"
+
+
+def test_a_wall_attributed_at_no_origin_never_reaches_the_prompt(tmp_path):
+    """The positive control for the count. A criterion that counts can render 0 of 3 as easily as 2 of
+    3, and "this wall holds at none of your fast configurations" is not a rewrite brief -- it is the
+    measurement saying the knob is innocent. Without this the relaxation could quietly widen what
+    reaches the agent from "attributed" to "mentioned".
+    """
+    ev = _ProbeEvaluator(fits_by_block_n={32: True, 64: True, 128: True},
+                         max_shared_by_block_n={32: 65536, 64: 65536, 128: 65536})
+    wall = _block_m_wall()
+    _probe_orch(ev, tmp_path)._probe_walls(_probe_crun(), [wall], _three_optimum_origins())
+
+    assert wall.n_origins_attributed == 0
+    assert wall.n_origins_probed == 3
+    assert wa.for_prompt([wall]) is None, "a 0-of-3 wall was rendered as a finding"
+
+
+def test_a_wall_that_holds_only_away_from_theta_star_still_reaches_the_prompt(tmp_path):
+    """The behaviour change the relaxation is FOR, and the reason this is not a no-op refactor.
+
+    A wall that the compiler refuses at the 2nd and 3rd fastest configurations but accepts at the
+    single fastest one used to be discarded, because the gate read theta*'s verdict alone. Those
+    points are within noise of theta* -- this project's re-evaluation gap is +-2-4% with an unstable
+    sign -- so "not at the very best point" is not evidence of "not at the points you would rewrite
+    from". The numbers rendered must come from an origin where it WAS refused, otherwise the sentence
+    would quote a footprint that fits under the limit while claiming a wall.
+    """
+    ev = _ProbeEvaluator(fits_by_block_n={32: True, 64: False, 128: False},
+                         max_shared_by_block_n={32: 65536, 64: 122880, 128: 118784})
+    wall = _block_m_wall()
+    _probe_orch(ev, tmp_path)._probe_walls(_probe_crun(), [wall], _three_optimum_origins())
+
+    assert wall.verdict == "not_attributed", "theta* itself did fit -- that fact is not overwritten"
+    assert wall.n_origins_attributed == 2
+    text = wa.for_prompt([wall])
+    assert text is not None, "a wall holding at 2 of 3 fast points was dropped"
+    assert "122880" in text, "the rendered footprint must come from an attributing origin: %r" % text
+    assert "65536" not in text, "the prompt quoted the footprint of an origin that FIT"
+
+
+def _trial_rec(values: dict, ms: float | None, status: str = "complete",
+               failure_kind: str | None = None):
+    """A TrialRecord with the fields `_theta_top_k` filters on. Spellings copied from
+    `models/core.py`, not invented: `LatencyStats` requires mean/std/min/max/n_samples and exposes
+    `robust_ms` as a PROPERTY (median else mean), which is why `median` is set here rather than
+    relying on a serialized `robust_ms` that does not exist.
+    """
+    from kernel_optimizer.models.core import LatencyStats, ParamSet, TrialRecord
+
+    lat = None
+    if ms is not None:
+        lat = LatencyStats(mean=ms, std=0.05, min=ms, max=ms, n_samples=20, median=ms)
+    return TrialRecord(trial_id=f"t-{sorted(values.items())}", candidate_id="cand-topk",
+                       space_id="sp-1", params=ParamSet(values=values), status=status,
+                       failure_kind=failure_kind, latency_ms=lat)
+
+
+# ---------------------------------------------------------------------------
+# the report side of top-K
+# ---------------------------------------------------------------------------
+
+
+def _topk_wall_ev(origin_verdicts: dict, verdict: str, cid: str = "cand-topk"):
+    return {"type": "RESOURCE_WALL_ATTRIBUTED",
+            "payload": {"candidate_id": cid, "n_refused_configs": 12, "walls_found": 1,
+                        "walls_probed": 1, "walls_worthless": 0,
+                        "counts": {"attributed": 1 if verdict == "attributed" else 0,
+                                   "not_attributed": 0 if verdict == "attributed" else 1,
+                                   "undecidable": 0, "attributed_any_origin": 1},
+                        "walls": [{"param": "BLOCK_N", "refused_value": 128.0,
+                                   "ran_values": [16.0, 32.0, 64.0], "tail_gain_pct": 7.5,
+                                   "monotone": True, "verdict": verdict,
+                                   "max_shared": 122880, "limit": 101376, "over_ratio": 1.212,
+                                   "origin_verdicts": origin_verdicts,
+                                   "origin_max_shared": {}}]}}
+
+
+def test_the_report_shows_how_many_high_performance_points_a_wall_held_at():
+    """The state the old report could not express. "attributed" told a reader nothing about whether
+    the wall survived one step away from theta*, and that is the difference between a joint effect
+    and a rewrite brief.
+    """
+    from kernel_optimizer.reporting.wall_report import wall_lines
+
+    out = "\n".join(wall_lines([_topk_wall_ev(
+        {"theta_star": "attributed", "theta_top2": "attributed", "theta_top3": "not_attributed"},
+        "attributed")]))
+    assert "2/3" in out, "the per-wall origin count is missing: %s" % out
+    assert "高性能点" in out
+
+
+def test_the_report_says_which_walls_the_relaxation_added():
+    """A wall that fits at theta* but is refused at the 2nd and 3rd fastest points is exactly what
+    top-K admits, and the report has to make that visible as its own number -- otherwise a reader
+    cannot tell what changed between a K=1 run and a K=3 one.
+    """
+    from kernel_optimizer.reporting.wall_report import wall_lines
+
+    out = "\n".join(wall_lines([_topk_wall_ev(
+        {"theta_star": "not_attributed", "theta_top2": "attributed", "theta_top3": "attributed"},
+        "not_attributed")]))
+    assert "ATTRIBUTED 0" in out, "the theta*-only count must stay comparable with old runs"
+    assert "至少在一个高性能点上成立的墙 1 个" in out, out
+    assert "并不触墙" in out, "the report must say the θ* verdict disagreed: %s" % out
+
+
+def test_the_report_does_not_turn_an_old_runs_wall_into_a_zero():
+    """A finished run's payload has no `origin_verdicts` at all. Defaulting the count to 0/0 would
+    make every historical attributed wall read as "held at no point" -- a new reader converting old
+    evidence into a negative, which is this project's recurring failure shape.
+    """
+    from kernel_optimizer.reporting.wall_report import wall_lines
+
+    payload = {"candidate_id": "cand-old", "n_refused_configs": 12, "walls_found": 1,
+               "walls_probed": 1, "walls_worthless": 0,
+               "counts": {"attributed": 1, "not_attributed": 0, "undecidable": 0},
+               "walls": [{"param": "BLOCK_M", "refused_value": 512.0,
+                          "ran_values": [64.0, 128.0, 256.0], "tail_gain_pct": 16.7,
+                          "monotone": True, "verdict": "attributed", "max_shared": 122880,
+                          "limit": 101376, "over_ratio": 1.21, "second_origin": "not_attributed"}]}
+    out = "\n".join(wall_lines([{"type": "RESOURCE_WALL_ATTRIBUTED", "payload": payload}]))
+    assert "1/1" in out, "an old record's wall was rendered as holding at 0 points: %s" % out
+    assert "0/0" not in out
+
+
+def test_a3_asks_about_the_walls_that_were_actually_delivered():
+    """A3's question is "did the rewrite the wall text steered free that dimension", so its input set
+    must be the set that REACHED the prompt. With top-K that includes a wall refused at the 2nd and
+    3rd fastest points, and a `verdict == "attributed"` gate here would silently ask about a
+    different, smaller set than the one delivered.
+    """
+    from kernel_optimizer.reporting.wall_report import wall_lines
+
+    ev = _topk_wall_ev({"theta_star": "not_attributed", "theta_top2": "attributed"},
+                       "not_attributed", cid="cand-dc87a93a")
+    out = "\n".join(wall_lines([ev, _child("kid", "cand-dc87a93a"),
+                                _trial("kid", {"BLOCK_N": 128})]))
+    assert "A3" in out, "A3 skipped a wall that was delivered to the rewriter"
+    assert "FREED" in out
+
+
+def test_the_reported_footprint_comes_from_an_origin_that_actually_refused():
+    """The row must not print a figure UNDER the limit beside a wall verdict.
+
+    A wall that fits at theta* (65536 B) but is refused at the 2nd fastest point (122880 B) would,
+    with a plain `w["max_shared"]` read, render "编译器要求 65536,上限 101376,0.65x" -- three numbers
+    that contradict the verdict beside them. Worse than no row: a reader would conclude the
+    attribution is broken. Same rule as `for_prompt.attributing_footprint`.
+    """
+    from kernel_optimizer.reporting.wall_report import wall_lines
+
+    payload = {"candidate_id": "c", "n_refused_configs": 12, "walls_found": 1, "walls_probed": 1,
+               "walls_worthless": 0,
+               "counts": {"attributed": 0, "not_attributed": 1, "undecidable": 0,
+                          "attributed_any_origin": 1},
+               "walls": [{"param": "BLOCK_N", "refused_value": 128.0,
+                          "ran_values": [16.0, 32.0, 64.0], "tail_gain_pct": 7.5, "monotone": True,
+                          "verdict": "not_attributed", "max_shared": 65536, "limit": 101376,
+                          "over_ratio": 65536 / 101376,
+                          "origin_verdicts": {"theta_star": "not_attributed",
+                                              "theta_top2": "attributed"},
+                          "origin_max_shared": {"theta_star": 65536, "theta_top2": 122880}}]}
+    row = next(ln for ln in wall_lines([{"type": "RESOURCE_WALL_ATTRIBUTED", "payload": payload}])
+               if ln.startswith("| `c`"))
+    assert "122880" in row, "the row quoted the footprint of an origin that FIT: %s" % row
+    assert "0.65x" not in row, "the row printed a ratio under 1.0 beside a wall: %s" % row
+    assert "1.21x" in row
+    assert "theta_top2" in row, "the row must name which origin the bytes came from: %s" % row

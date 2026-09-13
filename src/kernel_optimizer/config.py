@@ -480,6 +480,33 @@ class V3WallAttributionConfig(StrictConfig):
     # bound. Walls beyond the cap are counted in the event, so the number is never silently lost.
     max_probes_per_candidate: int = 8
 
+    # How many of the candidate's fastest MEASURED configurations each ablation starts from.
+    #
+    # 1 by default, which reproduces the single-origin behaviour exactly -- probes cost GPU time, so
+    # the default must leave a run comparable with the finished ones. 3 is the value to set for an
+    # experiment.
+    #
+    # WHAT K>1 BUYS, and why it is not cosmetic. At K=1 two different facts produced byte-identical
+    # records: "this wall holds only at that one point" and "this wall holds across the whole
+    # high-performance region". The first may be a joint effect that a re-evaluation dissolves --
+    # this project's re-evaluation gap is +-2-4% with an UNSTABLE SIGN, so the 2nd and 3rd fastest
+    # configurations are not meaningfully worse than the 1st -- while the second is a rewrite brief.
+    # The verdict becomes a count ("at 2 of the 3 fastest points"), and a wall that holds away from
+    # theta* is no longer discarded because the single fastest point happened to fit.
+    #
+    # MEASURED points, deliberately not extrapolated ones. Choosing origins by "where the slope
+    # predicts a win" and then using the probe to support that slope would be circular, and slope
+    # extrapolation is exactly what has not been established here: the strongest saturation signal
+    # the literature recommends read Spearman -0.11..+0.24 against remaining gain, below the
+    # 0.43/0.52 incumbents.
+    #
+    # Cost is bounded by the batch, not by K: `_probe_walls` materializes every (wall, origin) pair
+    # and screens them in ONE worker process, where the marginal cost was measured at 0.49 s
+    # (18 variants in 8.8 s, against 16.7 s for a probe in its own process). K=3 with three walls is
+    # ~4.5 s per candidate against a 12 h clock, and `probe_total_s` is journalled so it can be
+    # subtracted rather than assumed.
+    probe_top_k: int = 1
+
     # Repeat each ablation from the space's DEFAULT configuration as well as from the optimum.
     # ON by default, and the reason is measured: from the optimum 6 of 6 walls attribute to a single
     # knob, but from the default only 1 of 6 does. At the default every dimension sits at its

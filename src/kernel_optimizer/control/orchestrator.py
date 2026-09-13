@@ -1491,17 +1491,22 @@ class Orchestrator:
                 self.store.append("RESOURCE_WALL_ATTRIBUTED", payload)
                 return []
 
-            theta_star = self._theta_star(crun)
-            if theta_star is None:
+            # The top K measured high-performance points. K defaults to 1, which reproduces the
+            # single-origin behaviour byte for byte -- probing more points costs GPU time, so the
+            # default has to leave a run comparable with the finished ones.
+            top_k = self._theta_top_k(crun, max(1, cfg2e.probe_top_k))
+            if not top_k:
                 payload["error"] = "no winning configuration to ablate from"
                 payload["walls"] = [w.payload() for w in walls]
                 self.store.append("RESOURCE_WALL_ATTRIBUTED", payload)
                 return []
-            origins: list[tuple[str, dict[str, Any]]] = [("theta_star", theta_star)]
+            theta_star = top_k[0]
+            origins: list[tuple[str, dict[str, Any]]] = [
+                (wall_attribution.optimum_origin_name(i), p) for i, p in enumerate(top_k)]
             if cfg2e.probe_second_origin:
                 default = self._space_default_params(crun)
                 if default:
-                    origins.append(("default", default))
+                    origins.append((wall_attribution.DEFAULT_ORIGIN, default))
 
             t0 = time.monotonic()
             n_probes = self._probe_walls(crun, probe, origins)
@@ -1519,15 +1524,31 @@ class Orchestrator:
                 "error": f"{type(exc).__name__}: {exc}"[:500]})
             return []
 
-    def _theta_star(self, crun: CandidateRun) -> dict[str, Any] | None:
-        """The parameters of this candidate's fastest completed trial.
+    def _theta_top_k(self, crun: CandidateRun, k: int) -> list[dict[str, Any]]:
+        """The parameters of this candidate's K fastest completed trials, fastest first.
 
-        The ablation origin, and not an arbitrary trial: the question 2e answers is whether one more
-        step is available AT THE POINT THE AGENT IS REWRITING FROM. Starting from a slow
-        configuration would report "not attributed" simply because every other dimension was small
-        -- measured, that flips 5 of 6 verdicts.
+        MEASURED points, and not "wherever the slope predicts a win": selecting a probe position by
+        slope extrapolation and then using the probe result to support that extrapolation is
+        circular, and slope extrapolation is the one thing here that has NOT been established (the
+        strongest saturation signal the literature recommends read Spearman -0.11..+0.24 against
+        remaining gain, below the 0.43/0.52 incumbents).
+
+        Ablation origins, not arbitrary trials: the question 2e answers is whether one more step is
+        available AT THE POINTS THE AGENT IS REWRITING FROM. Starting from a slow configuration would
+        report "not attributed" simply because every other dimension was small -- measured, that
+        flips 5 of 6 verdicts. K > 1 because the 2nd and 3rd fastest are within this project's
+        re-evaluation noise (+-2-4%, unstable sign) of the 1st, so a wall that holds there holds at a
+        point the rewriter might just as well have landed on.
+
+        Returns FEWER than `k` when the candidate has fewer usable trials. Padding with repeats of
+        theta* would inflate the "N fastest points" denominator that `for_prompt` renders.
         """
-        best: tuple[float, dict[str, Any]] | None = None
+        scored: list[tuple[float, dict[str, Any]]] = []
+        if k <= 0:
+            # An explicit early return rather than clamping with `max(0, k)`: `_theta_top_k` is
+            # guarded against ever calling `min`/`max` (they would mean "the luckiest sample", which
+            # is biased +9.8% to +156% at n=20), and a clamp would have to name one of them here.
+            return scored
         for t in crun.trials:
             if t.status != "complete" or t.params is None or t.latency_ms is None:
                 continue
@@ -1538,9 +1559,19 @@ class Orchestrator:
             ms = t.latency_ms.robust_ms
             if not isinstance(ms, (int, float)) or ms <= 0:
                 continue
-            if best is None or ms < best[0]:
-                best = (float(ms), dict(t.params.values))
-        return best[1] if best else None
+            scored.append((float(ms), dict(t.params.values)))
+        scored.sort(key=lambda pair: pair[0])
+        return [params for _, params in scored[:k]]
+
+    def _theta_star(self, crun: CandidateRun) -> dict[str, Any] | None:
+        """The parameters of this candidate's fastest completed trial.
+
+        Kept as its own entry point on top of `_theta_top_k`: the event payload records
+        `theta_star` by name, and several readers (the report's footprint column, A3's lineage
+        matching) are about the fastest point specifically.
+        """
+        top = self._theta_top_k(crun, 1)
+        return top[0] if top else None
 
     def _space_default_params(self, crun: CandidateRun) -> dict[str, Any] | None:
         """Each domain's first choice -- the space's own default corner.
@@ -1594,15 +1625,30 @@ class Orchestrator:
             verdict = wall_attribution.verdict_from(fits)
             probe = self.deps.evaluator.screen_cache_entry(src, backend)
             max_shared = (probe or {}).get("max_shared")
-            if oname == "theta_star":
+            # EVERY origin, keyed by name. This dict is written FIRST and unconditionally: the
+            # branches below only mirror two of its entries into the scalar fields that finished
+            # runs' readers already use. Before this, a third origin overwrote the second's verdict
+            # in the single `second_origin` field -- silently, with a plausible value and a normal
+            # event log, which is the failure shape this project has recorded as the dangerous one.
+            wall.origin_verdicts[oname] = verdict
+            wall.origin_max_shared[oname] = max_shared
+            if oname == wall_attribution.PRIMARY_ORIGIN:
                 wall.verdict = verdict
                 wall.limit = limit
                 wall.max_shared = max_shared
                 if isinstance(max_shared, (int, float)) and limit:
                     wall.over_ratio = float(max_shared) / float(limit)
-            else:
+            elif oname == wall_attribution.DEFAULT_ORIGIN:
+                # Replay compatibility, not a second source of truth: the report's "第二 origin"
+                # column and `for_prompt`'s conditionality caveat both read these two fields, and a
+                # log written before top-K existed has nothing else to read.
                 wall.second_origin = verdict
                 wall.second_origin_max_shared = max_shared
+            if wall.limit is None:
+                # A wall whose theta* probe could not be materialized still needs the limit, or the
+                # rendered ratio reads "?" for a wall that has perfectly good bytes from another
+                # origin.
+                wall.limit = limit
         return len(variants)
 
     def _shared_memory_ok(self, crun: CandidateRun, params: ParamSet) -> bool:

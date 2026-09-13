@@ -62,6 +62,58 @@ def _same_value(a: Any, b: Any) -> bool:
         return a == b
 
 
+def _origin_counts(w: dict) -> tuple[int, int]:
+    """`(attributed, probed)` over HIGH-PERFORMANCE origins, for a wall payload.
+
+    Falls back to theta*'s own verdict for a record written before top-K existed, where the only
+    origin ever recorded IS theta*. A fallback of `(0, 0)` would make every finished run's walls read
+    as "attributed at 0 points" -- the shape of defect where a new reader turns old evidence into a
+    negative.
+    """
+    verdicts = w.get("origin_verdicts")
+    if isinstance(verdicts, dict) and verdicts:
+        fast = {k: v for k, v in verdicts.items() if k != "default"}
+        return sum(1 for v in fast.values() if v == "attributed"), len(fast)
+    return (1 if w.get("verdict") == "attributed" else 0), (1 if w.get("verdict") else 0)
+
+
+def _delivered(w: dict) -> bool:
+    """Whether this wall was rendered for the rewriter.
+
+    Must mirror `Wall.is_attributed`: a wall refused at the 2nd and 3rd fastest points but accepted at
+    the very fastest one IS delivered, and A3 asking about a different set than the one delivered
+    would answer a question nobody asked.
+    """
+    return _origin_counts(w)[0] >= 1
+
+
+def _attributing_footprint(w: dict) -> tuple[Any, Any, str | None]:
+    """`(max_shared, over_ratio, origin_name)` from an origin where the compiler REFUSED.
+
+    Mirrors `Wall.attributing_footprint`, and for the same reason: a row that claims a wall must not
+    quote a footprint measured where the configuration FIT. Without this, a wall refused at the 2nd
+    and 3rd fastest points but accepted at the 1st renders as "编译器要求 65536,上限 101376,0.65x"
+    -- three numbers that say the opposite of the verdict beside them, which is worse than no row.
+
+    theta* first when it attributed, so a row that was correct before top-K reads identically.
+    """
+    limit = w.get("limit")
+    verdicts = w.get("origin_verdicts") or {}
+    shares = w.get("origin_max_shared") or {}
+    if not isinstance(verdicts, dict) or not verdicts:
+        return w.get("max_shared"), w.get("over_ratio"), None
+    names = ["theta_star"] + [n for n in verdicts if n not in ("theta_star", "default")]
+    for name in names:
+        if verdicts.get(name) != "attributed":
+            continue
+        ms = shares.get(name)
+        if not isinstance(ms, (int, float)):
+            continue
+        ratio = (float(ms) / float(limit)) if isinstance(limit, (int, float)) and limit else None
+        return int(ms), ratio, (None if name == "theta_star" else name)
+    return w.get("max_shared"), w.get("over_ratio"), None
+
+
 def freed_lines(events: Any) -> list[str]:
     """A3: for each ATTRIBUTED wall, did a later rewrite in the same lineage FREE that dimension?
 
@@ -99,7 +151,7 @@ def freed_lines(events: Any) -> list[str]:
     attributed: list[tuple[str, dict]] = []
     for p in payloads:
         for w in (p.get("walls") or []):
-            if w.get("verdict") == "attributed":
+            if _delivered(w):
                 attributed.append((str(p.get("candidate_id") or "?"), w))
     if not attributed:
         return []
@@ -221,7 +273,7 @@ def wall_lines(events: Any) -> list[str]:
     # nothing to say, the second says the arm was on the wrong hardware.
     total_refused = sum(int(p.get("n_refused_configs") or 0) for p in payloads)
 
-    counts = {"attributed": 0, "not_attributed": 0, "undecidable": 0}
+    counts = {"attributed": 0, "not_attributed": 0, "undecidable": 0, "attributed_any_origin": 0}
     for p in payloads:
         for k, v in (p.get("counts") or {}).items():
             if k in counts:
@@ -248,20 +300,33 @@ def wall_lines(events: Any) -> list[str]:
             "这通常意味着卡的共享内存上限对该任务不紧(A800 的 166912 B 对 4090 的 101376 B)。")
     lines.append(
         f"- 归因结果:**ATTRIBUTED {counts['attributed']}**、"
-        f"not attributed {counts['not_attributed']}、undecidable {counts['undecidable']}")
+        f"not attributed {counts['not_attributed']}、undecidable {counts['undecidable']}"
+        "(以上三项都是**在最优点 θ\\* 处**的裁决,与历史 run 同底可比)")
+    # The top-K difference, reported as its own line rather than folded into the counts above. The
+    # gap between the two IS the measurement of what relaxing "only at the optimum" bought: a wall the
+    # compiler refuses at the 2nd and 3rd fastest configurations but accepts at the 1st used to be
+    # discarded, even though those points sit inside this project's own re-evaluation noise
+    # (+-2-4%, unstable sign) around theta*.
+    extra = counts["attributed_any_origin"] - counts["attributed"]
+    if counts["attributed_any_origin"] or extra:
+        tail = (f",其中 **{extra} 个在 θ\\* 处并不触墙**(只在第 2/3 快的点上触墙)"
+                f"—— 这 {extra} 个正是放宽「仅最优点」约束新增的"
+                if extra > 0 else "(与 θ\\* 处的裁决完全一致)")
+        lines.append(
+            f"- **至少在一个高性能点上成立的墙 {counts['attributed_any_origin']} 个**{tail}")
     if n_probes:
         lines.append(
             f"- 探针成本:{n_probes} 个变体共 {probe_s:.1f} s"
             f"(每个 {probe_s / n_probes:.2f} s)—— 批处理共享一次进程启动")
     lines.append(
-        "- **每一条归因都是有条件的**:它成立于该候选的**最优参数点**处。"
+        "- **每一条归因都是有条件的**:它成立于该候选的**实测高性能参数点**处。"
         "从空间默认配置出发,同样的改动往往并不触墙(实测 6 个墙里只有 1 个一致),"
         "因为默认配置各维都取最小。**不要把它读成该 knob 的固有上限。**")
     lines.append("")
 
-    header = ("| 候选 | knob | 已测取值 | 被拒值 | 归因 | 编译器要求 | 上限 | 倍数 "
-              "| 尾部斜率 | 第二 origin |")
-    sep = "|---|---|---|---|---|---|---|---|---|---|"
+    header = ("| 候选 | knob | 已测取值 | 被拒值 | θ\\* 处归因 | 高性能点 | 编译器要求 | 上限 | 倍数 "
+              "| 尾部斜率 | 默认配置 origin |")
+    sep = "|---|---|---|---|---|---|---|---|---|---|---|"
     body: list[str] = []
     worthless: list[str] = []
     for p in payloads:
@@ -280,9 +345,17 @@ def wall_lines(events: Any) -> list[str]:
                     f"{float(w.get('tail_gain_pct') or 0.0):+.1f}%"
                     f"{'(非单调)' if not w.get('monotone') else ''} —— 顶住但不值钱")
                 continue
-            over = w.get("over_ratio")
+            n_hit, n_probed = _origin_counts(w)
+            max_shared, over, from_origin = _attributing_footprint(w)
+            # The θ* verdict stays in its own column so the number is comparable with the finished
+            # runs; the count is the column that says whether the wall survived away from θ*, and the
+            # footprint column names its origin whenever that origin is NOT θ* -- otherwise a reader
+            # would take the bytes for θ*'s and see a figure under the limit next to "ATTRIBUTED".
             row += (f"{'**ATTRIBUTED**' if verdict == 'attributed' else verdict} | "
-                    f"{w.get('max_shared')} | {w.get('limit')} | "
+                    f"{'**' if n_hit and n_hit == n_probed else ''}{n_hit}/{n_probed}"
+                    f"{'**' if n_hit and n_hit == n_probed else ''} | "
+                    f"{max_shared}{f'(在 {from_origin})' if from_origin else ''} | "
+                    f"{w.get('limit')} | "
                     f"{f'{float(over):.2f}x' if isinstance(over, (int, float)) else '?'} | "
                     f"{float(w.get('tail_gain_pct') or 0.0):+.1f}% | ")
             so = w.get("second_origin")
@@ -306,7 +379,7 @@ def wall_lines(events: Any) -> list[str]:
     # bottleneck-report section, and repeating them would bury the comparison.
     attributed = {(str(p.get("candidate_id")), w.get("param"))
                   for p in payloads for w in (p.get("walls") or [])
-                  if w.get("verdict") == "attributed"}
+                  if _delivered(w)}
     if attributed:
         claims = 0
         confirmed = 0

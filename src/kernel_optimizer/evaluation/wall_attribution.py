@@ -32,6 +32,20 @@ result has to say "at this candidate's optimum" -- an unconditional "BLOCK_M is 
 memory" would send the rewriter after a wall that is not there at the point it is rewriting from.
 That is why `second_origin` is a recorded field and not an optional diagnostic.
 
+WHY THE ORIGIN IS A SET OF POINTS AND NOT ONE POINT. The ablation used to run from the single
+fastest configuration, which made two very different facts produce byte-identical records: "this
+wall holds only at that one point" and "this wall holds across the whole high-performance region".
+The second is a rewrite brief; the first is a joint effect that may vanish on the next re-evaluation,
+since this project's re-evaluation gap is +-2-4% with an unstable sign -- so the 2nd and 3rd fastest
+configurations are not meaningfully worse than the 1st. Probing the top K MEASURED points separates
+the two states and turns the verdict into a count ("at 2 of the 3 fastest points").
+
+Top-K, and specifically NOT "wherever the slope predicts a win". Choosing the probe position by
+slope extrapolation and then using the probe to support that extrapolation is circular, and slope
+extrapolation is exactly what this project has not established: the strongest saturation signal the
+literature recommends read Spearman -0.11..+0.24 against remaining gain, below the 0.43/0.52
+incumbents. Measured points cost nothing in assumptions.
+
 WHAT IT DELIBERATELY DOES NOT DO. It does not remove, shrink or reorder any domain: a wall is
 recorded, never enforced. The tuner keeps sampling exactly what it sampled before, and the existing
 screen keeps refusing exactly what it refused before.
@@ -52,7 +66,33 @@ _MIN_RAN_VALUES = 3
 # convention already used by `TuningStatsAnalyzer` ("last 3 choices monotone toward the edge").
 _TAIL_LEN = 3
 
+# Origin names. `theta_star` and `default` keep their exact spellings because finished runs' event
+# logs carry them and `report` regenerates purely from those logs -- renaming either would make an
+# existing run replay as though its origins had never been probed.
+PRIMARY_ORIGIN = "theta_star"
+DEFAULT_ORIGIN = "default"
+
 Verdict = Literal["attributed", "not_attributed", "undecidable"]
+
+
+def optimum_origin_name(index: int) -> str:
+    """Name of the `index`-th fastest measured configuration, 0-based.
+
+    Index 0 keeps the historical `theta_star` spelling so a K=1 run is indistinguishable from a run
+    made before top-K existed, which is what makes `probe_top_k: 1` a true no-op default.
+    """
+    return PRIMARY_ORIGIN if index == 0 else f"theta_top{index + 1}"
+
+
+def is_high_performance_origin(name: str) -> bool:
+    """Whether an origin counts toward the "N fastest points" denominator.
+
+    The default corner does NOT: every knob sits at its smallest there, which is precisely why only
+    1 of 6 walls attributes from it against 6 of 6 from the optimum. It is a conditionality control,
+    and folding it into the denominator would render "2 of 2 fast points" as the weaker-sounding
+    "2 of 3".
+    """
+    return name != DEFAULT_ORIGIN
 
 
 @dataclass
@@ -71,8 +111,11 @@ class Wall:
     # wall. The sign is what separates "capped and it costs us" from "capped and it costs nothing":
     # on box 2, 3 of 6 walls had a positive tail and 3 were negative, the worst at -54.8%.
     tail_gain_pct: float = 0.0
-    # Filled by the probe. `None` until then; "undecidable" when the probe could not answer, which
-    # is NOT the same as "not attributed" and must never be collapsed into it.
+    # Filled by the probe AT THE FASTEST ORIGIN. `None` until then; "undecidable" when the probe
+    # could not answer, which is NOT the same as "not attributed" and must never be collapsed into
+    # it. Kept as its own field, not derived from `origin_verdicts`, because the report's
+    # "编译器要求" column reports the footprint at theta* and a reader comparing two runs needs that
+    # one column to mean the same thing in both.
     verdict: Verdict | None = None
     max_shared: int | None = None
     limit: int | None = None
@@ -81,6 +124,65 @@ class Wall:
     # agreement is why this is not optional.
     second_origin: Verdict | None = None
     second_origin_max_shared: int | None = None
+    # EVERY origin's own answer, keyed by origin name. Dicts and not scalars because the writeback
+    # they replace was two-branched -- theta* to `verdict`, everything else to the single
+    # `second_origin` -- so a third origin silently replaced the second: no exception, no missing
+    # data, an event log that looked entirely normal, and one probe's GPU time thrown away. That is
+    # the `a-constant-reading-is-a-broken-probe` shape, where the dangerous failure is a plausible
+    # value rather than a None. Empty on walls replayed from logs written before top-K existed,
+    # which is why every reader below falls back to the scalars rather than treating empty as zero.
+    origin_verdicts: dict[str, Verdict] = field(default_factory=dict)
+    origin_max_shared: dict[str, int | None] = field(default_factory=dict)
+
+    @property
+    def n_origins_probed(self) -> int:
+        """How many HIGH-PERFORMANCE points answered -- the denominator of the rendered count.
+
+        A candidate with fewer completed trials than K reports its own smaller denominator: padding
+        it with repeats of theta* would make "2 of 2" read as "2 of 3".
+        """
+        return sum(1 for name in self.origin_verdicts if is_high_performance_origin(name))
+
+    @property
+    def n_origins_attributed(self) -> int:
+        return sum(1 for name, v in self.origin_verdicts.items()
+                   if is_high_performance_origin(name) and v == "attributed")
+
+    def is_attributed(self) -> bool:
+        """Whether this wall is a measured fact about one knob at points worth rewriting from.
+
+        At least one high-performance origin refused. NOT "theta* refused": a wall the compiler
+        refuses at the 2nd and 3rd fastest configurations but accepts at the very fastest is still a
+        wall at points within the re-evaluation noise floor of the best one, and the old gate threw
+        it away. Falls back to `verdict` for a record replayed from a pre-top-K log, where the only
+        origin that was ever recorded IS theta*.
+        """
+        if self.origin_verdicts:
+            return self.n_origins_attributed >= 1
+        return self.verdict == "attributed"
+
+    def attributing_footprint(self) -> tuple[int | None, float | None]:
+        """`(max_shared, over_ratio)` at an origin where the compiler REFUSED.
+
+        The rendered sentence claims a wall, so the bytes it quotes have to come from a point where
+        the wall was actually hit. Reading `self.max_shared` unconditionally would let a wall that
+        holds at the 2nd and 3rd points quote the 1st point's footprint -- a number BELOW the limit,
+        in a sentence saying the limit was exceeded.
+
+        theta* first when it attributed, so a K=1 run and a K=3 run whose fastest point walls report
+        the identical number.
+        """
+        names = [PRIMARY_ORIGIN] + [n for n in self.origin_verdicts
+                                    if n != PRIMARY_ORIGIN and is_high_performance_origin(n)]
+        for name in names:
+            if self.origin_verdicts.get(name) != "attributed":
+                continue
+            ms = self.origin_max_shared.get(name)
+            if not isinstance(ms, (int, float)):
+                continue
+            ratio = (float(ms) / float(self.limit)) if self.limit else None
+            return int(ms), ratio
+        return self.max_shared, self.over_ratio
 
     def payload(self) -> dict[str, Any]:
         return {
@@ -99,6 +201,10 @@ class Wall:
                            if isinstance(self.over_ratio, float) else self.over_ratio),
             "second_origin": self.second_origin,
             "second_origin_max_shared": self.second_origin_max_shared,
+            "origin_verdicts": dict(self.origin_verdicts),
+            "origin_max_shared": dict(self.origin_max_shared),
+            "n_origins_probed": self.n_origins_probed,
+            "n_origins_attributed": self.n_origins_attributed,
         }
 
 
@@ -222,37 +328,65 @@ def verdict_from(fits: bool | None) -> Verdict:
 
 
 def summarize(walls: list[Wall]) -> dict[str, int]:
+    """Verdict counts at the FASTEST origin, plus how many walls hold at any fast point.
+
+    `attributed`/`not_attributed`/`undecidable` keep meaning "at theta*" so the number is comparable
+    with the finished runs' logs. `attributed_any_origin` is the new count and is reported alongside
+    rather than folded in: with top-K on, the two differ exactly on the walls the relaxation admits,
+    and that difference is the measurement of what the relaxation bought.
+    """
     counts = {"attributed": 0, "not_attributed": 0, "undecidable": 0}
     for w in walls:
         if w.verdict in counts:
             counts[w.verdict] += 1
+    counts["attributed_any_origin"] = sum(1 for w in walls if w.is_attributed())
     return counts
 
 
 def for_prompt(walls: list[Wall]) -> str | None:
     """Agent-facing text for the attributed walls, or None when there is nothing measured.
 
-    EVERY sentence is conditional on the optimum. See the module docstring for the 1-of-6
-    second-origin result that makes this mandatory rather than careful.
+    EVERY sentence is conditional on the measured points it was probed at. See the module docstring
+    for the 1-of-6 second-origin result that makes this mandatory rather than careful.
 
     Carries no resource vector and no candidate latency -- only how latency MOVED along this one
     knob, which is a property of the axis rather than a ranking of the candidate. That distinction
     is what keeps this out of `assert_no_raw_vector`'s territory: `pct_of_dram_peak` and
     `pct_of_compute_peak` are 1/latency rescaled and would tell the agent how fast this candidate
     is; a per-knob trend does not.
+
+    The count clause appears only when more than one high-performance origin was probed, so a K=1
+    run renders exactly the paragraph it rendered before top-K existed.
     """
-    rows = [w for w in walls if w.verdict == "attributed"]
+    rows = [w for w in walls if w.is_attributed()]
     if not rows:
         return None
-    lines = ["共享内存墙(实测,非估计 —— 以下结论仅在该候选的最优参数点处成立):"]
+    # The heading names what the verdicts are conditional ON, so it has to follow the origins that
+    # were actually probed: "高性能参数点" would overclaim for a single-origin run, and "最优参数点"
+    # would underclaim -- and understating it is the worse direction, because a reader who thinks
+    # only one point was tested cannot see that the wall survived the noise floor around theta*.
+    multi = any(w.n_origins_probed > 1 for w in rows)
+    lines = ["共享内存墙(实测,非估计 —— 以下结论仅在该候选的"
+             + ("高性能参数点" if multi else "最优参数点") + "处成立):"]
     for w in rows:
-        over = f"{w.over_ratio:.2f}x" if isinstance(w.over_ratio, float) else "?"
+        # The footprint has to come from an origin that actually refused: quoting theta*'s bytes for
+        # a wall that only holds at the 2nd and 3rd points would print a number UNDER the limit in a
+        # sentence saying the limit was exceeded.
+        max_shared, ratio = w.attributing_footprint()
+        over = f"{ratio:.2f}x" if isinstance(ratio, float) else "?"
         trend = " -> ".join(f"{v:.4f}" for v in w.tail_latencies)
+        n_probed, n_hit = w.n_origins_probed, w.n_origins_attributed
+        where = (f"在 {n_probed} 个高性能点中的 {n_hit} 个上," if n_probed > 1
+                 else "在最优点处")
         lines.append(
-            f"  {w.param}:在最优点处单独改成 {_literal_for(w.refused_value)} 时,"
-            f"编译器要求 {w.max_shared} 字节共享内存,本卡上限 {w.limit}({over})。"
+            f"  {w.param}:{where}单独改成 {_literal_for(w.refused_value)} 时,"
+            f"编译器要求 {max_shared} 字节共享内存,本卡上限 {w.limit}({over})。"
             f"已测的 {', '.join(str(_literal_for(v)) for v in w.tail_values)} 上延迟为 {trend} ms"
             f"(尾部 {w.tail_gain_pct:+.1f}%),所以这一维仍有斜率但被共享内存截断。")
+        if n_probed > 1 and n_hit < n_probed:
+            lines.append(
+                f"    注意:在其余 {n_probed - n_hit} 个高性能点上同一改动并不触墙,"
+                "所以这道墙的位置与该点上其他 knob 的取值有关,不是这个 knob 的固有上限。")
         if w.second_origin == "not_attributed":
             lines.append(
                 "    注意:从空间默认配置出发时同一改动并不触墙,"
