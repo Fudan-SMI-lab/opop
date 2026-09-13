@@ -154,16 +154,35 @@ if __name__ == "__main__":
              100.0 * tot["free_reverts"] / tot["total_reverts"] if tot["total_reverts"] else 0.0))
     print()
     print("WHAT IT COSTS, with the record's own measured prices:")
-    # The compile-only screen is the operation, and correctness.py:242-243 measures it: 7 ms
-    # marginal per config in a batch, ~16.7 s alone. Reverts are independent, so they batch.
-    for n_eval, tag in ((tot["worst_case_evals"], "greedy worst case, every case"),
-                        (tot["total_reverts"], "first level only")):
-        print("  %-30s %6d evals = %6.1f s batched (7 ms each) | %6.1f h unbatched (16.7 s each)"
-              % (tag, n_eval, n_eval * 0.007, n_eval * 16.7 / 3600.0))
-    print("  => BATCHING IS THE WHOLE DECISION. The same search is about a minute batched and")
-    print("     tens of hours one config at a time. Any implementation must submit the reverts")
-    print("     as one screen batch, and a test must pin that -- an unbatched fallback would")
-    print("     make the feature unaffordable without failing.")
+    # correctness.py:170-191 measures the screen precisely: 48 configs in ONE worker process took
+    # 11.02 s total, a marginal 7 ms each, against a median 16.7 s for a probe in its own process
+    # -- essentially all of that being process start plus torch/CUDA/KernelBench import. So the
+    # per-config price is 7 ms but there is an ~11 s FIXED cost per batch, and the batch COUNT is
+    # what a multi-level backward pass drives up: each level is a new batch, because the next
+    # level's points depend on this level's answers. Pricing only the marginal 7 ms understates it.
+    _FIXED_S, _MARGINAL_S, _ALONE_S = 11.0, 0.007, 16.7
+    _ds = sorted(tot["d_values"])
+    _med_d = _ds[len(_ds) // 2]
+    for n_eval, n_batches, tag in (
+            (tot["total_reverts"], 1, "first level only, ONE batch"),
+            (tot["worst_case_evals"], _med_d, "greedy, one batch per level (all walls together)"),
+            (tot["worst_case_evals"], tot["cases"], "greedy, a batch per refused config")):
+        secs = n_batches * _FIXED_S + n_eval * _MARGINAL_S
+        print("  %-46s %6d evals / %4d batch(es) = %7.1f s (%.2f h)"
+              % (tag, n_eval, n_batches, secs, secs / 3600.0))
+    print("  %-46s %6d evals / one process each = %.1f h"
+          % ("for contrast, unbatched", tot["worst_case_evals"],
+             tot["worst_case_evals"] * _ALONE_S / 3600.0))
+    print()
+    print("  => THE BATCH COUNT IS THE COST, not the evaluation count. At 7 ms each the")
+    print("     evaluations are nearly free; the ~11 s process start is not. So the affordable")
+    print("     design submits each LEVEL as one batch across ALL walls at once, and the")
+    print("     unaffordable one opens a process per wall. A test must pin which one it is:")
+    print("     a per-wall fallback costs 100x and still returns the right answer.")
+    print()
+    print("  For scale, from the same measurement: the shared-affecting subgrid of a real space")
+    print("  reaches 600,000 points = 70 min at 7 ms, so EXHAUSTIVE screening is out of reach.")
+    print("  A directed backward pass is the point -- it visits d, then d-1, ..., not the grid.")
     print()
     print("TWO PRICES THIS DOES NOT INCLUDE, both of which must be measured before committing:")
     print("  * the screen CACHES per materialized source, so novel points populate the cache and")
