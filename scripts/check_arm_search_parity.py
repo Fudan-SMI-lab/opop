@@ -7,6 +7,12 @@ fewer rewrite rounds inside the same 12 h, and a latency difference then has two
 switch, or the extra search -- which is the ambiguity the paired cross-box design exists to remove
 (see `scripts/compare_calibrations.py`, which settles the *denominator* half of the same question).
 
+TWO LOOP-C COUNTS, and why both are printed. `rewrites landed` counts REWRITE_PRODUCED; `family rounds
+CLOSED` counts FAMILY_ROUND_RECORDED, which fires only once a family's round has been tuned and
+reconciled. Mid-loop-C the second is legitimately zero while the first is not -- this checker printed
+"rewrite rounds 0" for BOTH arms of the live pair while three rewrites had landed and were being tuned,
+which reads as "loop C never ran". Same shape as counting wall-search events instead of walls.
+
 WHAT THIS DOES NOT MEASURE, and why it matters more than it sounds
 -----------------------------------------------------------------
 Inter-event gaps are NOT per-trial costs. `max_shared_jobs: 2` puts `compile-screen` and `prescreen`
@@ -77,6 +83,7 @@ def read_arm(run_dir: Path) -> dict:
     agent_s = 0.0
     open_calls: dict[str, float] = {}
     rounds = 0
+    rewrites = 0
     spaces_expanded = 0
     closed_spaces: set = set()
     finished = False
@@ -104,6 +111,14 @@ def read_arm(run_dir: Path) -> dict:
                 agent_s += e["ts"] - st
         elif t == "FAMILY_ROUND_RECORDED":
             rounds += 1
+        elif t == "REWRITE_PRODUCED":
+            # Counted SEPARATELY from `rounds`, because they answer different questions and conflating
+            # them made this checker print "rewrite rounds 0" for both arms while three rewrites had
+            # already landed and were being tuned. FAMILY_ROUND_RECORDED fires when a family's ROUND
+            # closes -- after the rewrite has been tuned and reconciled -- so mid-loop-C it is legitimately
+            # zero. A reader seeing only that concludes loop C never ran. Same defect shape as counting
+            # wall-search events instead of walls.
+            rewrites += 1
         elif t == "SPACE_EXPANDED":
             spaces_expanded += 1
         elif t == "TUNING_DONE":
@@ -125,6 +140,7 @@ def read_arm(run_dir: Path) -> dict:
         "spaces": len(per_space),
         "per_space": dict(per_space),
         "rounds": rounds,
+        "rewrites": rewrites,
         "expansions": spaces_expanded,
         "trials_per_h": n / (span / 3600.0) if span else 0.0,
         "agent_frac": agent_s / span if span else 0.0,
@@ -317,8 +333,9 @@ def main(argv: list[str]) -> int:
     for lbl, r in rows:
         print("%-10s span %.2f h   %d trials (%d ok) over %d spaces   %.1f trials/h" % (
             lbl, r["span_h"], r["trials"], r["ok"], r["spaces"], r["trials_per_h"]))
-        print("%-10s rewrite rounds %d   space expansions %d   agent %.0f%% of wall clock" % (
-            "", r["rounds"], r["expansions"], 100 * r["agent_frac"]))
+        print("%-10s rewrites landed %d   family rounds CLOSED %d   space expansions %d   "
+              "agent %.0f%% of wall clock" % (
+                  "", r["rewrites"], r["rounds"], r["expansions"], 100 * r["agent_frac"]))
         print("%-10s failure kinds %s" % ("", r["kinds"]))
         print("%-10s inter-event gap: median %.1f s, sum %.2f h, top 10%% hold %.0f%%" % (
             "", r["gap_median"], r["gap_sum_h"], 100 * r["tail_share"]))

@@ -249,6 +249,40 @@ def test_the_total_check_is_silent_when_the_per_space_budget_is_unknown(tmp_path
     assert "NOT YET ANSWERABLE" in joined
 
 
+def test_a_landed_rewrite_is_not_hidden_by_an_unclosed_round(tmp_path):
+    """Loop C in progress: rewrites have landed, no family round has closed yet.
+
+    The checker printed "rewrite rounds 0" for BOTH arms of the live pair while three rewrites were
+    already being tuned, because it counted only FAMILY_ROUND_RECORDED -- which fires once a round is
+    tuned and reconciled, so it is legitimately zero mid-loop-C. A reader seeing only that concludes
+    loop C never ran, which is the same defect as counting wall-search events instead of walls.
+    """
+    ev = [{"seq": 0, "ts": 1000.0, "type": "RUN_CREATED", "payload": {"run_id": "lc"}},
+          _trial(1001.0, "sp-a"),
+          {"seq": 1002, "ts": 1002.0, "type": "TUNING_DONE",
+           "payload": {"candidate_id": "cand-x", "space_id": "sp-a", "best_ms": 2.0}},
+          {"seq": 1003, "ts": 1003.0, "type": "REWRITE_PRODUCED",
+           "payload": {"candidate_id": "cand-r1", "family_id": "fam-1", "hypothesis_id": "H1"}},
+          {"seq": 1004, "ts": 1004.0, "type": "REWRITE_PRODUCED",
+           "payload": {"candidate_id": "cand-r2", "family_id": "fam-1", "hypothesis_id": "H2"}}]
+    a = casp.read_arm(_write(tmp_path, "loopc", ev))
+    assert a["rewrites"] == 2, "REWRITE_PRODUCED is the event that says a rewrite exists"
+    assert a["rounds"] == 0, "no family round has closed -- that is correct, not a contradiction"
+
+
+def test_a_closed_round_is_counted_separately_from_the_rewrite(tmp_path):
+    """The positive control for the split: once the round closes, BOTH counts are non-zero and they do
+    not collapse into one another. Without this, "count REWRITE_PRODUCED as rounds" would also pass.
+    """
+    ev = [{"seq": 0, "ts": 1000.0, "type": "RUN_CREATED", "payload": {"run_id": "lc2"}},
+          {"seq": 1, "ts": 1001.0, "type": "REWRITE_PRODUCED",
+           "payload": {"candidate_id": "cand-r1", "family_id": "fam-1"}},
+          {"seq": 2, "ts": 1002.0, "type": "FAMILY_ROUND_RECORDED",
+           "payload": {"family_id": "fam-1", "round": 1}}]
+    a = casp.read_arm(_write(tmp_path, "loopc2", ev))
+    assert (a["rewrites"], a["rounds"]) == (1, 1)
+
+
 def test_expansions_are_counted_from_the_event(tmp_path):
     """`expansions` must come from SPACE_EXPANDED itself. Inferring it from "two spaces share a
     candidate_id" would work on today's logs and break the moment a candidate is re-parameterized for
