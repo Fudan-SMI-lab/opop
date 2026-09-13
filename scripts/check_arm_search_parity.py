@@ -36,6 +36,13 @@ from pathlib import Path
 # A rate difference this large would let the faster arm reach a whole extra space inside 12 h.
 _RATE_TOL = 1.15
 
+# How far apart the arms' TOTAL search may be, measured in space-equivalents (trials / modal per-space
+# budget). Below 1.0 on purpose: at exactly 1.0 an arm that lost a whole space to the wall clock -- so
+# its last space closed on a partial budget -- measures 0.98 spaces short and passes. The slack it does
+# allow is the few trials a closed space can carry over its nominal budget (a timeout still counts as a
+# trial, so 41 against 40 is normal).
+_SPACE_TOL = 0.9
+
 
 def _events(run_dir: Path) -> list[dict]:
     p = run_dir / "events.jsonl"
@@ -170,8 +177,10 @@ def _mode(counts: list[int]) -> int | None:
 
 
 def parity_verdict(a: dict, b: dict, la: str, lb: str) -> tuple[bool, list[str]]:
-    """Two independent questions: was the per-space budget applied equally, and did the wall clock
-    buy comparable search? A no on either makes a latency difference unattributable."""
+    """Three independent questions: was the per-space budget applied equally, did each arm get the same
+    TOTAL number of spaces to spend it on, and did the wall clock buy comparable search? A no on any one
+    makes a latency difference unattributable, and the middle one is the one this file originally
+    collected the data for (`expansions`, `per_space`) without ever asking."""
     notes: list[str] = []
     okay = True
 
@@ -205,6 +214,59 @@ def parity_verdict(a: dict, b: dict, la: str, lb: str) -> tuple[bool, list[str]]
     else:
         notes.append("per-space budget: %s vs %s over closed spaces (modal count agrees at %s)"
                      % (ca, cb, ma))
+
+    # THE THIRD QUESTION, and the one this checker's own opening paragraph promised but never asked:
+    # equal per-space budgets do not make the TOTAL budgets equal. `trials_per_space` is charged PER
+    # SPACE, and a K expansion publishes a SECOND space over the same candidate -- so each expansion
+    # hands that arm another whole `trials_per_space` of search. On the live S7 pair the treatment arm
+    # closed 3 spaces (3x40 = 120 trials) while the control arm closed 4 and opened a 5th (5x40 = 200)
+    # off the back of 2 expansions the treatment arm never made. Both arms passed the per-space budget
+    # test at 40 and the rate test on the median, and the checker printed `expansions 0` and `2` as
+    # decoration while concluding "a latency difference between these arms is attributable to the
+    # switch". It is not: one arm simply got more search.
+    #
+    # THE UNIT IS ONE SPACE, not a percentage I would have to pick: the size of a space is the modal
+    # budget this same function just measured, so the threshold comes from the data. But the comparison
+    # is made in SPACE-EQUIVALENTS (`trials / unit`) rather than on the raw trial difference, because a
+    # space that closed early contributes a FRACTION of a space of search -- 1 trial is 1/40 of one, not
+    # one. Comparing raw totals against `unit` made a 40-trial shortfall read as 39 and go silent, which
+    # is how the arm that lost a whole space to the wall clock would have passed.
+    #
+    # _SPACE_TOL is below 1.0 for exactly that reason: it must catch a space's worth of search that was
+    # truncated rather than never opened. It is not a sensitivity knob -- it is the allowance for the
+    # few trials of slack each closed space can carry (a timeout still counts as a trial, so 41 against
+    # a nominal 40 is normal), and it must stay under 1 or a truncated space hides in the rounding.
+    #
+    # WHY IT ONLY FAILS AT THE END. The trailing arm keeps opening spaces, so mid-run the totals differ
+    # by construction on any pair that is merely out of step. Before RUN_FINISHED this reports the
+    # asymmetry and names its mechanism without flipping the verdict -- the same discipline as
+    # "NOT YET ANSWERABLE" above, and the reason a live snapshot cannot be quoted as a confound.
+    unit = ma if (ma is not None and ma == mb) else None
+    sa, sb = len(a["per_space"]), len(b["per_space"])
+    ta, tb = a["trials"], b["trials"]
+    ea, eb = a["expansions"], b["expansions"]
+    gap_spaces = abs(ta - tb) / unit if unit else 0.0
+    if unit and gap_spaces >= _SPACE_TOL:
+        mech = ""
+        if ea != eb:
+            mech = (" %s made %d K expansion(s) against %d, and each expansion publishes another space "
+                    "over the same candidate => another %d trials of budget" %
+                    (la if ea > eb else lb, max(ea, eb), min(ea, eb), unit))
+        msg = ("TOTAL SEARCH DIFFERS: %d vs %d trials over %d vs %d spaces -- a gap of %d trials, "
+               "which is %.1f whole space(s) at the modal budget of %d.%s The per-space budget being "
+               "equal does not make the arms' total search equal, and the arm with more search has an "
+               "advantage no switch accounts for." %
+               (ta, tb, sa, sb, abs(ta - tb), gap_spaces, unit, mech))
+        if live:
+            notes.append("PROVISIONAL, " + msg + " Mid-run the trailing arm may still catch up, so "
+                         "this is recorded rather than judged; re-run at the end.")
+        else:
+            okay = False
+            notes.append(msg)
+    elif unit:
+        notes.append("total search: %d vs %d trials over %d vs %d spaces (%.2f space-equivalents "
+                     "apart, tolerance %.2f); K expansions %d vs %d"
+                     % (ta, tb, sa, sb, gap_spaces, _SPACE_TOL, ea, eb))
 
     ra, rb = a["trials_per_h"], b["trials_per_h"]
     if ra > 0 and rb > 0:
@@ -262,6 +324,12 @@ def main(argv: list[str]) -> int:
             "", r["gap_median"], r["gap_sum_h"], 100 * r["tail_share"]))
         print("%-10s   (gaps are NOT per-trial costs: max_shared_jobs=2 overlaps compile with "
               "timing)" % "")
+        # Spelled out because the short form above did not stop me from quoting a 1854 s gap as a trial
+        # that had breached the 1800 s deadline. It had not: the pair's slowest actual trial was
+        # 1733.8 s and `job_timed_out` was false on all 255 trials. A gap spans whatever else ran in
+        # the shared channel, so it is an UPPER BOUND on the trial's cost, never the cost itself.
+        print("%-10s   -- a gap is an upper bound; for a trial's own cost read `job_wall_s` on the "
+              "trial record, and never compare a gap against the deadline" % "")
         for g, fk, vals in r["worst"][:2]:
             keep = {k: vals.get(k) for k in ("COMPUTE_DTYPE", "DOT_MODE") if k in vals}
             print("%-10s   slowest: %.0f s  %-14s %s" % ("", g, fk, keep))
@@ -273,6 +341,15 @@ def main(argv: list[str]) -> int:
         print("  * %s" % n)
     print()
     if okay:
+        # A bare "PARITY OK" under a note that begins "PROVISIONAL, TOTAL SEARCH DIFFERS" is the kind of
+        # line that gets quoted on its own. Mid-run findings are deliberately not judged (the trailing
+        # arm may catch up), but the closing line must not read as though nothing was found.
+        pending = [n for n in notes if n.startswith("PROVISIONAL,")]
+        if pending:
+            print("PARITY OK ON WHAT IS ANSWERABLE NOW -- but %d finding(s) above are PROVISIONAL and "
+                  "would fail this check at the end of the run. Do not quote this line without them."
+                  % len(pending))
+            return 0
         print("PARITY OK -- a latency difference between these arms is attributable to the switch.")
         return 0
     print("PARITY NOT OK -- record this beside the J2-5 verdict. A difference in the final result "
