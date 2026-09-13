@@ -57,11 +57,18 @@ def _trial(ts: float, *, refused: bool = False, ms: float | None = 3.0,
 
 
 def _wall_event(walls_found: int, worthless: int, n_refused: int,
-                walls: list[dict] | None = None) -> dict:
-    return {"seq": 900, "ts": 9000.0, "type": "RESOURCE_WALL_ATTRIBUTED", "payload": {
+                walls: list[dict] | None = None, error: str | None = None) -> dict:
+    # `error` is present only on the second no-verdict branch (orchestrator.py:1598-1601), where
+    # walls were selected for probing but the space had no winning configuration to ablate from.
+    # It is what separates that branch from "select_for_probing chose none" (:1589-1591), whose
+    # payload is otherwise identical -- walls listed, verdicts unfilled.
+    payload = {
         "candidate_id": "cand-a", "space_id": "sp-a", "n_refused_configs": n_refused,
         "walls_found": walls_found, "walls_probed": 0, "walls_worthless": worthless,
-        "walls_skipped_by_cap": 0, "walls": walls or []}}
+        "walls_skipped_by_cap": 0, "walls": walls or []}
+    if error is not None:
+        payload["error"] = error
+    return {"seq": 900, "ts": 9000.0, "type": "RESOURCE_WALL_ATTRIBUTED", "payload": payload}
 
 
 def _soft_event(applicable: bool, reason: str, spills_at_best: float = 0.0) -> dict:
@@ -152,7 +159,7 @@ def test_a_wall_that_fails_attribution_is_named_as_such(tmp_path):
     assert a["walls_worthless_total"] == 0, "the slope filter kept it -- that is the point"
     assert a["walls_attributed_total"] == 0
     assert a["no_wall_cause"] is not None, "a wall that helped nobody must say why"
-    assert "ATTRIBUTION" in a["no_wall_cause"]
+    assert "PROBED AND NOT TRACED" in a["no_wall_cause"]
     assert "0.97" in a["no_wall_cause"], "the over_ratio distinguishes 'not a resource limit' from " \
                                          "'an overflow the prober could not confirm'"
     assert "worthless" in a["no_wall_cause"], "must say why walls_worthless cannot show this"
@@ -178,23 +185,70 @@ def test_attribution_failure_is_not_reported_as_the_slope_filter(tmp_path):
         _soft_event(False, "the best trial does not spill")])
     assert "ALL worthless" in slope["no_wall_cause"]
     assert "ATTRIBUTION" not in slope["no_wall_cause"]
-    assert "ATTRIBUTION" in attr["no_wall_cause"]
+    assert "PROBED AND NOT TRACED" in attr["no_wall_cause"]
     assert "ALL worthless" not in attr["no_wall_cause"]
     assert "BLOCK_N" in attr["no_wall_cause"], "naming the knob is what makes it actionable"
 
 
-def test_a_wall_with_no_verdict_field_is_not_counted_as_attributed(tmp_path):
-    """Older runs' walls carry no `verdict`. Absent must not read as passing -- that would silently
-    turn every pre-verdict run into evidence that attribution succeeds.
+def test_a_wall_with_no_verdict_field_was_never_probed_not_failed(tmp_path):
+    """Absent `verdict` means the wall NEVER REACHED attribution -- a different fact from failing it.
+
+    `payload["walls"]` is written on the no-probe branch too (orchestrator.py:1590), where verdicts
+    are unfilled, so a wall can pass the slope filter and still never be sent. Reporting that as
+    "attribution rejected it" names the wrong mechanism: the next round would go investigate why a
+    refused config does not overflow at theta*, when the actual question is why
+    `select_for_probing` chose nothing.
+
+    This test previously asserted the OPPOSITE (that the cause mentions ATTRIBUTION and "no verdict
+    field"), which pinned the confusion in place -- an assertion can encode the bug.
     """
     a = _arm(tmp_path, "noverdict", [
         _trial(1001.0), _trial(1002.0, refused=True),
         _wall_event(1, 0, 1, walls=[{"param": "NUM_WARPS", "refused_value": 16.0,
                                      "monotone": True, "tail_gain_pct": 21.9}]),
         _soft_event(False, "the best trial does not spill")])
-    assert a["walls_attributed_total"] == 0
-    assert "ATTRIBUTION" in a["no_wall_cause"]
-    assert "no verdict field" in a["no_wall_cause"]
+    assert a["walls_attributed_total"] == 0, "absent must never read as passing"
+    assert a["walls_never_probed"] == 1
+    assert not a["walls_unattributed"], "an unprobed wall is not an attribution failure"
+    assert "NEVER SENT TO ATTRIBUTION" in a["no_wall_cause"]
+    assert "PROBED AND NOT TRACED" not in a["no_wall_cause"]
+    assert "()" not in a["no_wall_cause"], "the old wording printed an empty parenthesis here"
+
+
+def test_a_wall_with_no_origin_to_ablate_from_is_named_a_defect(tmp_path):
+    """The second no-verdict branch (orchestrator.py:1598) sets payload['error'] because walls WERE
+    selected but the space had no winning configuration to ablate from. That is a defect in the run,
+    not a property of the walls, and folding it into 'never probed' would hide it.
+    """
+    a = _arm(tmp_path, "noorigin", [
+        _trial(1001.0), _trial(1002.0, refused=True),
+        _wall_event(1, 0, 1, walls=[{"param": "NUM_WARPS", "refused_value": 16.0,
+                                     "monotone": True, "tail_gain_pct": 21.9}],
+                    error="no winning configuration to ablate from"),
+        _soft_event(False, "the best trial does not spill")])
+    assert a["walls_no_origin"] == 1
+    assert a["walls_never_probed"] == 0, "the error field separates the two no-verdict branches"
+    assert "NO ORIGIN TO ABLATE FROM" in a["no_wall_cause"]
+    assert "DEFECT" in a["no_wall_cause"]
+
+
+def test_both_no_verdict_and_a_real_failure_are_reported_together(tmp_path):
+    """A run can have both. Reporting only the first cause found would let the reader fix one and
+    conclude the question is closed.
+    """
+    a = _arm(tmp_path, "both", [
+        _trial(1001.0), _trial(1002.0, refused=True),
+        _wall_event(2, 0, 2, walls=[{"param": "BLOCK_N", "refused_value": 256.0,
+                                     "monotone": True, "tail_gain_pct": 60.7,
+                                     "verdict": "not_attributed", "over_ratio": 0.727},
+                                    {"param": "NUM_WARPS", "refused_value": 16.0,
+                                     "monotone": True, "tail_gain_pct": 21.9}]),
+        _soft_event(False, "the best trial does not spill")])
+    assert a["walls_never_probed"] == 1
+    assert len(a["walls_unattributed"]) == 1
+    assert "PROBED AND NOT TRACED" in a["no_wall_cause"]
+    assert "NEVER SENT TO ATTRIBUTION" in a["no_wall_cause"]
+    assert "ALSO:" in a["no_wall_cause"], "both causes must be visible in one sentence"
 
 
 # ---------------------------------------------------------------------------------------------

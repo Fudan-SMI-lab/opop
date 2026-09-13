@@ -227,18 +227,39 @@ def _arm(run_dir: Path) -> dict:
     # `walls_found 1  worthless 0` and no cause at all, which reads as "a good wall that went unused".
     out["walls_attributed_total"] = 0
     out["walls_unattributed"] = {}
+    # THREE outcomes, not two. A wall that passed the slope filter can still never be SENT to
+    # attribution, and that is a different fact from failing it:
+    #   * `not_attributed` etc.  -- probed, and the probe could not trace it to a resource limit.
+    #   * no `verdict` field     -- never probed. `payload["walls"]` is written on the no-probe
+    #                              branch too (orchestrator.py:1590 and :1600), where verdicts
+    #                              are unfilled. Two sub-cases, distinguished by `error`:
+    #                                - select_for_probing chose none (:1589)
+    #                                - walls existed but there was no winning config to ablate
+    #                                  from (:1598), which also sets payload["error"].
+    # Reporting the second group as "failed attribution" names the wrong mechanism, and the
+    # `error` sub-case is a real defect that would be hidden by the same sentence.
+    out["walls_never_probed"] = 0
+    out["walls_no_origin"] = 0
     for e in ev:
         if e.get("type") != "RESOURCE_WALL_ATTRIBUTED":
             continue
         p = _pl(e)
         out["walls_found_total"] += int(p.get("walls_found") or 0)
         out["walls_worthless_total"] += int(p.get("walls_worthless") or 0)
+        had_error = bool(p.get("error"))
         for w in (p.get("walls") or []):
             if not isinstance(w, dict):
                 continue
             if not (w.get("monotone") and (w.get("tail_gain_pct") or 0) > 0):
                 continue  # already counted as worthless
-            v = str(w.get("verdict") or "(no verdict field)")
+            if w.get("verdict") is None:
+                # Never reached attribution. Do not fold into walls_unattributed.
+                if had_error:
+                    out["walls_no_origin"] += 1
+                else:
+                    out["walls_never_probed"] += 1
+                continue
+            v = str(w.get("verdict"))
             if v == "attributed":
                 out["walls_attributed_total"] += 1
             else:
@@ -272,11 +293,34 @@ def _arm(run_dir: Path) -> dict:
         out["no_wall_cause"] = ("walls found but ALL worthless -- latency flat or rising toward "
                                 "them, so freeing them buys nothing")
     elif out["walls_attributed_total"] == 0:
-        out["no_wall_cause"] = (
-            "walls cleared the slope filter but NONE cleared ATTRIBUTION (%s) -- the refusal was "
-            "not traced to a resource limit, so no limit is named for a rewrite to free. Note "
-            "`walls_worthless` cannot show this: attribution runs after the slope filter."
-            % ", ".join("%dx %s" % (n, k) for k, n in sorted(out["walls_unattributed"].items())))
+        # THREE distinct causes reach here, and naming the wrong one sends the next round at the
+        # wrong thing. Report whichever actually accounts for the walls, and say so when more than
+        # one does -- an unconditional "NONE cleared ATTRIBUTION" printed an empty parenthesis on
+        # a run whose walls were never probed at all.
+        parts = []
+        if out["walls_unattributed"]:
+            parts.append(
+                "PROBED AND NOT TRACED (%s): the refusal was not traced to a resource limit, so "
+                "no limit is named for a rewrite to free. Note `walls_worthless` cannot show "
+                "this: attribution runs after the slope filter."
+                % ", ".join("%dx %s" % (n, k)
+                            for k, n in sorted(out["walls_unattributed"].items())))
+        if out["walls_never_probed"]:
+            parts.append(
+                "NEVER SENT TO ATTRIBUTION (%d wall(s)): they passed the slope filter but "
+                "`select_for_probing` chose none, so the probe never ran. This is NOT an "
+                "attribution failure -- do not report it as one."
+                % out["walls_never_probed"])
+        if out["walls_no_origin"]:
+            parts.append(
+                "NO ORIGIN TO ABLATE FROM (%d wall(s)): walls were selected for probing but the "
+                "space had no winning configuration to start from (orchestrator.py:1598, which "
+                "also sets payload['error']). This is a DEFECT in the run, not a property of the "
+                "walls." % out["walls_no_origin"])
+        out["no_wall_cause"] = ("no wall reached a prompt. " + "  ALSO: ".join(parts)) if parts \
+            else ("no wall reached a prompt, and none of the three known causes accounts for it "
+                  "-- the walls carry a verdict that is neither 'attributed' nor absent. Read the "
+                  "raw payloads before quoting a cause.")
     else:
         out["no_wall_cause"] = None
 
