@@ -80,14 +80,23 @@ VARIANTS = [
      "        rows.sort(key=lambda r: r[2], reverse=False)",
      "the SHALLOWEST wall would get the bounded trial budget -- the allocation decision inverted"),
 
-    ("an already-drawn value can be proposed again", SG,
-     "        for _, choice in nums:\n"
-     "            if str(choice) not in drawn:\n"
-     "                return choice\n"
-     "        return None",
-     "        return nums[0][1]",
-     "a drawn value adds nothing to latency_by_value, so it cannot widen the coverage that makes "
-     "a wall visible -- and a drawn-and-failed one buys the same refusal back"),
+    # The variant that USED to be here -- "an already-drawn value can be proposed again" -- has been
+    # deleted, because that behaviour is now the SHIPPING behaviour. It was a defect, and the probe
+    # `s7_why_it_declines.py` measured its cost: requiring the target VALUE to be one no trial had drawn
+    # left 1 enqueued point in 224 recomputes (1 of 35 candidates) where dropping the requirement gives 13
+    # points and 6 of 35. A treatment arm inserting one trial in 760 could not be told from its control.
+    # See `_toward_wall`'s docstring for why the reasoning behind it was wrong on both counts.
+    #
+    # What replaces it is the variant BELOW, which reinstates the old rule and must be caught: a guard has
+    # to exist against the requirement coming back, since it looks eminently reasonable in review.
+    ("the value-level dedup is reinstated", SG,
+     "        target = nums[0][1]",
+     "        target = next((c for _, c in nums if str(c) not in drawn), None)\n"
+     "        if target is None:\n"
+     "            return None",
+     "measured: the value-level requirement cuts the mechanism from 13 enqueued points to 1 over 224 "
+     "recomputes, because a hard wall means the range was already swept and the domains hold a median "
+     "of 4 choices"),
 
     ("a value outside the declared choices can be proposed", SG,
      "        for c in domain.choices:\n"
@@ -277,7 +286,7 @@ VARIANTS = [
 
     ("the snapshot loses its skip counters", SG,
      "            \"n_skipped_no_wall\": self.n_skipped_no_wall,\n"
-     "            \"n_skipped_no_unmeasured_value\": self.n_skipped_no_unmeasured_value,\n"
+     "            \"n_skipped_no_value_toward_wall\": self.n_skipped_no_value_toward_wall,\n"
      "            \"n_skipped_already_proposed\": self.n_skipped_already_proposed,\n"
      "            \"n_skipped_incomplete_incumbent\": self.n_skipped_incomplete_incumbent,\n",
      "",

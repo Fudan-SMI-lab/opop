@@ -152,9 +152,14 @@ class SlopeGuide:
     n_recomputes: int = 0
     n_suggested: int = 0
     n_skipped_no_wall: int = 0
-    n_skipped_no_unmeasured_value: int = 0
+    n_skipped_no_value_toward_wall: int = 0
     n_skipped_already_proposed: int = 0
     n_skipped_incomplete_incumbent: int = 0
+    # Of the proposals made, how many name a value NO trial has drawn. Not a gate -- see `_toward_wall`
+    # for why gating on it nearly killed the mechanism -- but the distinction is real: a never-drawn value
+    # widens the measured range, while a re-drawn one sharpens the median at the optimum's partners. A
+    # reading of P1/P2 needs to know which kind fired.
+    n_proposed_never_drawn_value: int = 0
     knobs_pushed: dict[str, int] = field(default_factory=dict)
     sources: dict[str, int] = field(default_factory=dict)
 
@@ -306,37 +311,68 @@ class SlopeGuide:
             nxt = self._toward_wall(knob, side, drawn.get(knob, set()), refused,
                                     base.get(knob))
             if nxt is None:
-                self.n_skipped_no_unmeasured_value += 1
+                self.n_skipped_no_value_toward_wall += 1
                 continue
             out.append((knob, nxt, gain, source))
         return out
 
     def _toward_wall(self, knob: str, side: str, drawn: set[str], refused_value: float | None,
                      incumbent_value: ParamValue | None) -> ParamValue | None:
-        """The furthest undrawn choice that lies TOWARD the wall FROM the incumbent, or None.
+        """The furthest launchable choice TOWARD the wall FROM the incumbent, or None.
 
-        Four properties, each with a reason:
+        Three properties, each with a reason:
 
         * FROM THE DECLARED CHOICES. The space's own choice list is the only set of values the
           materializer and the guard accept, and Optuna does not raise on a queued value outside the
           distribution -- it warns and samples that knob normally, silently turning a suggestion into an
           ordinary draw. An extrapolated neighbour could be a value the candidate cannot be written with.
-        * TOWARD THE WALL FROM THE INCUMBENT. Without this anchor "toward the wall" degenerates into "any
-          undrawn value": on a knob whose wall is on the LOW side with the low neighbours already drawn,
-          the scan would run past the incumbent and propose the knob's TOP value -- a step directly away
-          from the wall, presented in the log as a step toward it.
-        * NOT DRAWN BEFORE. A drawn value contributes nothing new to `latency_by_value` (the per-choice
-          median table both criteria read), so pushing it again cannot widen the coverage that makes a
-          wall visible. Drawn-and-FAILED counts as drawn: the compiler has already answered for it.
+        * NOT THE INCUMBENT'S OWN VALUE. When the walled side holds nothing beyond the optimum -- the
+          optimum already IS the top launchable value -- the target collapses onto the incumbent, and the
+          "new" point is the point the mechanism started from. `suggest`'s point-level dedup would refuse
+          it, so no trial is wasted either way; what changes is the reason the log records. Without this
+          the entry reads "the point was already asked" (redundancy) instead of "there is nothing on the
+          walled side left to try" (the truth, and what a P2 reading needs).
+
+          NOTE this is narrower than the reason the anchor was introduced for. With the old value-level
+          filter it also stopped a proposal pointing AWAY from the wall -- the scan would run past the
+          optimum to the far end of the domain. Removing that filter removed the possibility: a refused
+          value lies above the whole measured range by definition, so the furthest launchable value below
+          it is never below the optimum. The anchor is kept for the attribution above, not for a
+          wrong-direction case that can no longer occur.
         * BELOW A KNOWN REFUSAL. For a hard wall the compiler has said `refused_value` cannot launch.
-          Proposing it, or anything past it, would spend a trial to be told that again -- so the furthest
-          useful value is the last one strictly before it. What that buys is not a new range but a
-          sharper reading of the existing one: `tail_gain_pct` comes from the last three MEASURED values,
-          so filling a hole near the wall is what makes the slope (and hence "is this wall worth
-          freeing") readable at all.
+          Proposing it, or anything past it, would spend a trial to be told that again -- and would
+          manufacture the mechanism's own extra evidence that the wall exists.
+
+        WHAT IS DELIBERATELY *NOT* A PROPERTY, and it was, and it nearly cost a 24-GPU-hour pair. An
+        earlier version also required the CHOICE to be one no trial had drawn, on the reasoning that "a
+        drawn value adds nothing to `latency_by_value`". That reasoning is wrong twice:
+
+          1. `latency_by_value` is a MEDIAN over the trials at that value, so a second measurement at the
+             same value beside DIFFERENT partner knobs does move it -- and the measurement this mechanism
+             adds is the one taken beside the OPTIMUM's partners, which is precisely the partner setting
+             the wall's tail slope should be read at. A value sampled only beside slow partners carries a
+             slow median, and a slow median is what makes a real wall look worthless.
+          2. It is structurally self-defeating here. A hard wall MEANS the refused value lies outside the
+             measured range -- i.e. the tuner has already swept the range -- and this project's domains
+             hold a median of 4 choices. So by the time a wall is detectable, every choice on the walled
+             side has usually been drawn, and the rule could only fire in the narrow window where a wall
+             exists AND a declared choice on that side happens to be untouched.
+
+        Measured (`scripts/probes/s7_why_it_declines.py`, 35 candidates over three 12h L3:43 runs, every
+        one with a published space and real refusals; both rules run in one process over the same prefixes
+        with the same walls, anchor, bound and slope filter): the value-level rule enqueued 1 point in 224
+        recomputes and fired on 1 of 35 candidates (2.9%); without it, 13 points and 6 of 35 (17.1%). A
+        treatment arm inserting 1 trial in 760 could not have been distinguished from its control.
+
+        Redundancy is still prevented, but at the level where it is actually redundancy: `suggest` refuses
+        a POINT the tuner has already asked, which is the tuner's own dedup criterion. Re-measuring one
+        knob's value beside a different optimum is new information; re-measuring the same full
+        configuration is not.
 
         Returns None when nothing on that side qualifies -- then there is nothing to suggest and the knob
-        is skipped rather than re-proposed.
+        is skipped rather than re-proposed. `drawn` is still accepted and still reported, because "the
+        proposal is a value never tried before" and "the proposal is a value tried only beside other
+        partners" are different situations and the log should say which one fired.
         """
         domain = next((d for d in self.space.domains if d.name == knob), None)
         if domain is None:
@@ -361,10 +397,10 @@ class SlopeGuide:
         if not nums:
             return None
         nums.sort(key=lambda p: p[0], reverse=(side == "high"))
-        for _, choice in nums:
-            if str(choice) not in drawn:
-                return choice
-        return None
+        target = nums[0][1]
+        if str(target) not in drawn:
+            self.n_proposed_never_drawn_value += 1
+        return target
 
     @staticmethod
     def _incumbent(trials: list[Any]) -> dict[str, ParamValue] | None:
@@ -401,7 +437,7 @@ class SlopeGuide:
         useful" from "the mechanism never got to fire".
 
         THE COUNTERS ARE NOT A PARTITION and must not be summed. `n_skipped_no_wall` and
-        `n_skipped_incomplete_incumbent` count RECOMPUTES; `n_skipped_no_unmeasured_value` and
+        `n_skipped_incomplete_incumbent` count RECOMPUTES; `n_skipped_no_value_toward_wall` and
         `n_skipped_already_proposed` count KNOBS, of which one recompute can decline several. A recompute
         whose only walled knob had nothing undrawn increments both kinds, because the row is dropped while
         resolving targets and the resulting empty list is then reported as "no wall". Measured on the real
@@ -413,8 +449,9 @@ class SlopeGuide:
             "use_soft_wall": self.use_soft_wall,
             "n_recomputes": self.n_recomputes,
             "n_suggested": self.n_suggested,
+            "n_proposed_never_drawn_value": self.n_proposed_never_drawn_value,
             "n_skipped_no_wall": self.n_skipped_no_wall,
-            "n_skipped_no_unmeasured_value": self.n_skipped_no_unmeasured_value,
+            "n_skipped_no_value_toward_wall": self.n_skipped_no_value_toward_wall,
             "n_skipped_already_proposed": self.n_skipped_already_proposed,
             "n_skipped_incomplete_incumbent": self.n_skipped_incomplete_incumbent,
             "knobs_pushed": dict(sorted(self.knobs_pushed.items())),

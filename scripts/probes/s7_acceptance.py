@@ -78,15 +78,23 @@ def _stats_from(trials: list[dict], cid: str) -> TuningStats:
                        param_stats=out)
 
 
-def _space_from(trials: list[dict], cid: str) -> ParameterSpace:
-    """The candidate's space, reconstructed as the set of values its trials actually used.
+def _space_from(trials: list[dict], cid: str,
+                published: dict[str, ParameterSpace] | None = None) -> ParameterSpace:
+    """The candidate's space: the PUBLISHED one when the log has it, else reconstructed from draws.
 
-    A RECONSTRUCTION, and its direction of error has to be stated: `SPACE_PUBLISHED` is not in every
-    locally backed-up run, so the choice list is what was DRAWN. That is a subset of what was declared, so
-    every "no undrawn value left" this probe reports is an UPPER bound on that skip -- a real space with
-    extra declared choices would give the mechanism more to propose, not less. The firing rate below is
-    therefore a LOWER bound, which is the conservative direction for a probe that motivates spending 12h.
+    PREFER THE PUBLISHED SPACE, and the difference is not cosmetic. `SPACE_PUBLISHED` carries the full
+    declared `domains`, including choices the tuner never drew -- and "a choice that exists but was never
+    drawn" is exactly what this mechanism proposes. Reconstructing from draws makes every such choice
+    invisible, so `_toward_wall` finds nothing and the knob is skipped for "no undrawn value". Measured on
+    box 4's run, where the log DOES carry the spaces: 9 knobs were skipped that way before this function
+    read them.
+
+    The reconstruction stays as the fallback because the local 19-run corpus predates the event. Its
+    direction of error has to be stated wherever it is used: choices are a SUBSET of what was declared, so
+    every "no undrawn value" it reports is an upper bound and the firing rate a LOWER bound.
     """
+    if published and cid in published:
+        return published[cid]
     seen: dict[str, set] = defaultdict(set)
     for t in trials:
         for knob, raw in (((t.get("params") or {}).get("values")) or {}).items():
@@ -134,21 +142,38 @@ def main() -> int:
             say(f"!! {rd}: {type(exc).__name__}: {exc}")
             continue
         seq: dict[str, list[dict]] = defaultdict(list)
+        # The DECLARED space per candidate, when the log carries it. A candidate can publish more than
+        # one (an expansion re-tune republishes), and the LAST one is the space its final trials ran
+        # under -- which is the one whose choices those trials' walls have to be resolved against.
+        published: dict[str, ParameterSpace] = {}
+        n_published = 0
         for ev in events:
+            if ev.get("type") == "SPACE_PUBLISHED":
+                raw = (ev.get("payload") or ev).get("space") or {}
+                try:
+                    sp = ParameterSpace.model_validate(raw)
+                except Exception:  # noqa: BLE001
+                    continue
+                published[str(sp.candidate_id)] = sp
+                n_published += 1
+                continue
             if ev.get("type") != "TRIAL_DONE":
                 continue
             t = store_read.trial_of(ev)
             cid = str(t.get("candidate_id") or "")
             if cid:
                 seq[cid].append(t)
+        totals["n_spaces_published"] += n_published
 
         for cid, trials in sorted(seq.items()):
             if len(trials) < args.every:
                 continue
             n_cands += 1
+            if cid in published:
+                totals["n_declared_space"] += 1
             if any(t.get("failure_kind") == "infeasible_shared_memory" for t in trials):
                 n_refusing += 1
-            space = _space_from(trials, cid)
+            space = _space_from(trials, cid, published)
             guide = sg.SlopeGuide(space=space, recompute_every=args.every,
                                   max_enqueued_per_recompute=args.cap,
                                   use_soft_wall=args.soft)
@@ -173,7 +198,7 @@ def main() -> int:
                     knob_counts[s.knob] += 1
                     source_counts[s.source] += 1
             snap = guide.snapshot()
-            for key in ("n_recomputes", "n_skipped_no_wall", "n_skipped_no_unmeasured_value",
+            for key in ("n_recomputes", "n_skipped_no_wall", "n_skipped_no_value_toward_wall",
                         "n_skipped_already_proposed", "n_skipped_incomplete_incumbent"):
                 totals[key] += snap[key]
             totals["n_suggested"] += n_sugg
@@ -219,7 +244,7 @@ def main() -> int:
     say("WHICH GATE DECLINED (these are the numbers a P4 reading needs). NOTE THE TWO DENOMINATORS:")
     say(f"  no actionable wall at all, PER RECOMPUTE:      {totals['n_skipped_no_wall']}"
         f" of {totals['n_recomputes']}")
-    say(f"  no undrawn value on the walled side, PER KNOB: {totals['n_skipped_no_unmeasured_value']}")
+    say(f"  no undrawn value on the walled side, PER KNOB: {totals['n_skipped_no_value_toward_wall']}")
     say(f"  the point was already asked, PER KNOB:         {totals['n_skipped_already_proposed']}")
     say(f"  incumbent not a point of the space, PER RECOMPUTE: "
         f"{totals['n_skipped_incomplete_incumbent']}")
@@ -228,10 +253,16 @@ def main() -> int:
     say("  before the wall list was tested for emptiness. So they are not a partition and must not be")
     say("  summed.")
     say()
-    say("  NOTE the space is RECONSTRUCTED from drawn values (SPACE_PUBLISHED is absent from these")
-    say("  runs), so the choice list is a SUBSET of what was declared. Every 'no undrawn value' above")
-    say("  is therefore an upper bound on that skip, and the firing rate is a LOWER bound -- the")
-    say("  conservative direction for a probe that argues for spending 12h.")
+    n_decl = totals["n_declared_space"]
+    say(f"WHERE THE CHOICE LISTS CAME FROM: {n_decl} of {n_cands} candidates had a published")
+    say("  `SPACE_PUBLISHED` and were resolved against their DECLARED domains.")
+    if n_decl < n_cands:
+        say(f"  The remaining {n_cands - n_decl} were RECONSTRUCTED from drawn values, so their choice")
+        say("  lists are a SUBSET of what was declared: for those candidates every 'no undrawn value'")
+        say("  above is an upper bound and the firing rate a LOWER bound -- the conservative direction.")
+    if n_decl:
+        say("  For the declared ones there is no such bias: a choice that exists but was never drawn is")
+        say("  exactly what this mechanism proposes, and reconstruction hides it.")
     if knob_counts:
         say()
         say("KNOBS IT WOULD HAVE PUSHED (top 12):")

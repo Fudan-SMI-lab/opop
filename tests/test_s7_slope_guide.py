@@ -210,14 +210,21 @@ def test_every_declared_choice_below_the_refusal_being_drawn_yields_nothing():
                      failure="infeasible_shared_memory")]
     g = sg.SlopeGuide(space=space)
     assert g.suggest(_stats(space, trials), trials, set()) == []
-    assert g.n_skipped_no_unmeasured_value == 1
+    assert g.n_skipped_no_value_toward_wall == 1
     assert g.snapshot()["n_suggested"] == 0
 
 
-def test_an_already_drawn_value_is_not_proposed_again():
-    """A drawn value adds nothing to `latency_by_value` -- the per-choice median table both criteria
-    read -- so re-proposing it cannot widen the coverage that makes a wall visible. Failed draws count
-    as drawn: the compiler has already answered.
+def test_the_proposal_is_the_furthest_launchable_value_toward_the_wall():
+    """Furthest, not nearest, and NOT filtered on whether some other configuration used it.
+
+    A drawn value beside DIFFERENT partner knobs is not a repeat measurement: `latency_by_value` is a
+    MEDIAN over the trials at that value, so measuring it beside the OPTIMUM's partners moves the median
+    the wall's tail slope is read from. Requiring a never-drawn value was the shipping rule until
+    `s7_why_it_declines.py` priced it -- 1 enqueued point in 224 recomputes against 13 without it -- and
+    `_toward_wall`'s docstring records why the reasoning was wrong twice.
+
+    Here 64 is drawn (and failed), and 64 is still the answer: it is the furthest launchable value below
+    the refused 128, and the point `{BLOCK_M: 64}` beside the incumbent's partners has not been asked.
     """
     space = _space(choices=[16, 24, 32, 48, 64, 128])
     trials = [_trial({"BLOCK_M": 16}, 4.0), _trial({"BLOCK_M": 24}, 3.5),
@@ -226,8 +233,24 @@ def test_an_already_drawn_value_is_not_proposed_again():
               _trial({"BLOCK_M": 128}, None, status="fail", failure="infeasible_shared_memory")]
     g = sg.SlopeGuide(space=space)
     out = g.suggest(_stats(space, trials), trials, set())
-    assert [s.knob_value for s in out] == [48], \
-        "64 was drawn (and failed), so the next undrawn value toward the wall is 48"
+    assert [s.knob_value for s in out] == [64], \
+        "64 is the furthest value below the refusal; that it was drawn before does not disqualify it"
+    # ...and the log still distinguishes the two kinds of proposal, since one widens the measured range
+    # and the other sharpens the median at the optimum.
+    assert g.snapshot()["n_proposed_never_drawn_value"] == 0
+
+
+def test_a_never_drawn_target_is_counted_separately_from_a_re_drawn_one():
+    """The positive control for the counter above. It is not a gate -- gating on it nearly killed the
+    mechanism -- but "the proposal widens the measured range" and "the proposal sharpens the median at the
+    optimum's partners" are different events, and a P1/P2 reading needs to know which fired.
+    """
+    space = _space(choices=[16, 24, 32, 64, 128])
+    _, trials = _hard_wall_case()          # 64 is declared and never drawn here
+    g = sg.SlopeGuide(space=space)
+    out = g.suggest(_stats(space, trials), trials, set())
+    assert [s.knob_value for s in out] == [64]
+    assert g.snapshot()["n_proposed_never_drawn_value"] == 1
 
 
 def test_only_declared_choices_are_ever_proposed():
@@ -533,66 +556,63 @@ def test_the_same_knob_is_pushed_once_even_when_the_two_criteria_disagree_on_the
     assert len(rows) == 1, "the dedup happens inside _walls, so this is where the count is decided"
 
 
-def test_a_proposal_is_a_step_from_the_incumbent_toward_the_wall():
-    """"Toward the wall" is defined relative to the OPTIMUM. Without that anchor it degenerates into
-    "any undrawn value on that side of the range", which can point the opposite way.
+def test_the_anchor_refuses_to_propose_the_incumbents_own_value():
+    """What the incumbent anchor still does, stated precisely rather than overclaimed.
 
-    Both directions of the failure, and it was live until the incumbent was resolved before the walls:
+    It was introduced to stop a proposal pointing AWAY from the wall, and with the old value-level filter
+    it did: the scan would run past the optimum to the far end of the domain. Removing that filter changed
+    the arithmetic. A refused value lies ABOVE the whole measured range by definition, so the furthest
+    launchable value below it is never below the optimum, and a wrong-direction proposal is no longer
+    reachable on a hard wall. The anchor's remaining effect is narrower and worth keeping:
 
-      LOW wall, undrawn value only ABOVE the incumbent.  The refusal is at 8 and every choice between it
-      and the optimum (16/32/64/128) has been drawn, so the correct answer is to SKIP the knob -- there is
-      nothing left to learn on the walled side. Unanchored, the ascending scan runs past the incumbent to
-      256: the knob's TOP value, a step directly AWAY from the wall, recorded in the log as a step toward
-      it.
+      when the walled side holds NOTHING beyond the optimum -- the optimum already IS the top launchable
+      value -- the unanchored scan returns the optimum's own value, so the proposed "new" point is the
+      incumbent itself.
 
-      HIGH wall, undrawn value BELOW the incumbent.  16/32/64 are drawn with 64 the optimum and the spill
-      curve rising, so the wall is above -- but 8 and 24 are undrawn, and an unanchored descending scan
-      picks 24, i.e. it proposes moving DOWN the knob in order to explore its upper end. Anchored, nothing
-      above 64 exists in that space and the knob is correctly skipped.
-
-    Asserted by comparing the anchored call against the unanchored one, so the test states what the anchor
-    CHANGES rather than only that today's output looks sensible. Note the space here deliberately omits the
-    `12` that `_low_hard_and_high_soft` declares: with an undrawn choice available on the walled side, BOTH
-    scans find it and the anchor makes no difference -- which is a property of that fixture, not of the
-    anchor, and testing it there would have proved nothing.
+    That point would be refused by `suggest`'s point-level dedup, so the trial is not wasted either way.
+    The difference is what the log then says: "the point was already asked" (which reads as redundancy)
+    instead of "there is nothing on the walled side left to try" (which is the truth, and is the fact a
+    P2 reading needs). A counter that misattributes its own reason is the failure this project has hit
+    repeatedly -- a plausible number pointing at the wrong cause.
     """
-    # (a) LOW wall, nothing undrawn between the refusal and the optimum.
-    space = _space(choices=[8, 16, 32, 64, 128, 256])
-    trials = [
-        _trial({"BLOCK_M": 16}, 1.0, spills=0),
-        _trial({"BLOCK_M": 32}, 2.0, spills=10),
-        _trial({"BLOCK_M": 64}, 3.0, spills=20),
-        _trial({"BLOCK_M": 128}, 0.5, spills=40),
-        _trial({"BLOCK_M": 8}, None, status="fail", failure="infeasible_shared_memory"),
-    ]
+    # The optimum (64) is already the largest value below the refused 128.
+    space = _space(choices=[16, 32, 64, 128])
+    trials = [_trial({"BLOCK_M": 16}, 4.0), _trial({"BLOCK_M": 32}, 3.5),
+              _trial({"BLOCK_M": 64}, 3.0),
+              _trial({"BLOCK_M": 128}, None, status="fail",
+                     failure="infeasible_shared_memory")]
     stats = _stats(space, trials)
     g = sg.SlopeGuide(space=space)
-    assert g._walls(stats, trials, {"BLOCK_M": 128}) == []
-    assert [r[1] for r in g._walls(stats, trials, {})] == [256], \
-        "without the anchor the low-side wall proposes the knob's TOP value"
-    assert g.suggest(stats, trials, set()) == [], \
-        "the shipping path must take the anchored answer"
+    assert g._walls(stats, trials, {"BLOCK_M": 64}) == []
+    assert [r[1] for r in g._walls(stats, trials, {})] == [64], \
+        "unanchored, the proposal is the incumbent's own value -- a point that is the incumbent"
 
-    # (b) HIGH wall: the anchor stops a proposal below the optimum.
+    # A FRESH guide for the counter assertions: the two `_walls` calls above already incremented it, and
+    # asserting on a total that includes deliberate probing calls would be asserting on the test.
+    g2 = sg.SlopeGuide(space=space)
+    assert g2.suggest(stats, trials, set()) == []
+    assert g2.snapshot()["n_skipped_no_value_toward_wall"] == 1, \
+        "the reason must be 'nothing left toward the wall', not 'already asked'"
+    assert g2.snapshot()["n_skipped_already_proposed"] == 0
+
+    # Same for a soft wall, which has no refusal bound at all: the optimum at the top of the domain.
     space2 = _space(choices=[8, 16, 24, 32, 64])
     trials2 = [_trial({"BLOCK_M": 16}, 4.0, spills=0), _trial({"BLOCK_M": 32}, 3.5, spills=10),
                _trial({"BLOCK_M": 64}, 3.0, spills=40)]
     stats2 = _stats(space2, trials2)
-    g2 = sg.SlopeGuide(space=space2, use_soft_wall=True)
-    assert g2._walls(stats2, trials2, {"BLOCK_M": 64}) == []
-    assert [r[1] for r in g2._walls(stats2, trials2, {})] == [24], \
-        "without the anchor the high-side wall proposes a value BELOW the optimum"
+    g3 = sg.SlopeGuide(space=space2, use_soft_wall=True)
+    assert g3._walls(stats2, trials2, {"BLOCK_M": 64}) == []
+    assert [r[1] for r in g3._walls(stats2, trials2, {})] == [64]
 
 
-def test_the_anchor_still_finds_an_undrawn_value_on_the_walled_side():
-    """The positive control for the previous test, and it is necessary: an anchor implemented as "return
-    None for a low-side wall" would pass every assertion there. On the fixture that DOES declare an undrawn
-    choice between the refusal and the optimum, the anchored answer is that choice.
+def test_the_anchor_leaves_a_reachable_wall_reachable():
+    """The positive control: an anchor implemented as "always return None" would pass every assertion
+    above. On a knob whose wall has a declared value between the optimum and the refusal, the anchored
+    answer is that value.
     """
-    space, trials = _low_hard_and_high_soft()
+    space, trials = _hard_wall_case()      # refusal at 128, optimum 32, 64 declared between them
     g = sg.SlopeGuide(space=space)
-    assert [r[1] for r in g._walls(_stats(space, trials), trials, {"BLOCK_M": 128})] == [12], \
-        "12 is undrawn and lies between the refused 8 and the optimum 128"
+    assert [r[1] for r in g._walls(_stats(space, trials), trials, {"BLOCK_M": 32})] == [64]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -994,7 +1014,7 @@ def test_the_snapshot_separates_the_ways_the_mechanism_can_decline():
     g = sg.SlopeGuide(space=_space())
     snap = g.snapshot()
     for key in ("recompute_every", "max_enqueued_per_recompute", "use_soft_wall", "n_recomputes",
-                "n_suggested", "n_skipped_no_wall", "n_skipped_no_unmeasured_value",
+                "n_suggested", "n_skipped_no_wall", "n_skipped_no_value_toward_wall",
                 "n_skipped_already_proposed", "n_skipped_incomplete_incumbent",
                 "knobs_pushed", "sources"):
         assert key in snap, key
