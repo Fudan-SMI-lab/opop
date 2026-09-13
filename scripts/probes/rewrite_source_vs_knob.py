@@ -83,8 +83,12 @@ def _read(path: str) -> list[dict]:
     return ev
 
 
-def report(events: list[dict], label: str) -> dict:
+def report(events: list[dict], label: str, quiet: bool = False) -> dict:
     """Returns the machine-readable findings so the selftest can assert on them."""
+    def _say(*a: object) -> None:
+        if not quiet:
+            print(*a)
+
     fam_of: dict[str, str] = {}
     rewrites: list[dict] = []
     all_trials: dict[str, list[dict]] = {}
@@ -113,25 +117,26 @@ def report(events: list[dict], label: str) -> dict:
                 if (m := _robust_ms(tr.get("latency_ms"))) is not None]
         return min(rows, key=lambda r: r[0])[1] if rows else None
 
-    print("=" * 78)
-    print(label)
-    findings = {"matched": 0, "no_common_knobs": 0, "no_matched_point": 0, "skipped_open": 0}
+    _say("=" * 78)
+    _say(label)
+    findings = {"matched": 0, "no_common_knobs": 0, "no_matched_point": 0, "skipped_open": 0,
+                "no_sibling": 0, "identity": 0, "moved": 0, "moved_dims": {}, "cases": []}
     for e in rewrites:
         p = e.get("payload") or {}
         child = str(p.get("candidate_id") or "?")
         fid = str(p.get("family_id") or fam_of.get(child, "?"))
-        print("  --- %s (%s) in %s" % (child, p.get("hypothesis_id") or "?", fid))
+        _say("  --- %s (%s) in %s" % (child, p.get("hypothesis_id") or "?", fid))
         if child not in closed:
-            print("      space still OPEN -- no verdict (winners arrive late by construction)")
+            _say("      space still OPEN -- no verdict (winners arrive late by construction)")
             findings["skipped_open"] += 1
             continue
         n_done, n_all = len(done_trials.get(child, [])), len(all_trials.get(child, []))
         # Say WHY the two numbers differ only when they do -- an unconditional "the rest failed"
         # clause on an all-complete space is a claim about trials that do not exist.
-        print("      %d measured of %d trials spent%s"
-              % (n_done, n_all,
-                 " (%d failed; the BUDGET was not short)" % (n_all - n_done)
-                 if n_all > n_done else ""))
+        _say("      %d measured of %d trials spent%s"
+             % (n_done, n_all,
+                " (%d failed; the BUDGET was not short)" % (n_all - n_done)
+                if n_all > n_done else ""))
         sibs = [c for c, f in fam_of.items() if f == fid and c != child and c in closed]
         pbest, parent = None, None
         for c in sibs:
@@ -141,44 +146,128 @@ def report(events: list[dict], label: str) -> dict:
                 pbest, parent = m, c
         cb_tr = _best(child)
         if parent is None or cb_tr is None:
-            print("      no closed sibling to compare against")
+            _say("      no closed sibling to compare against")
+            findings["no_sibling"] += 1
             continue
         p_tr = _best(parent)
         pk, ck = set(_params_of(p_tr)), set(_params_of(cb_tr))
         common = pk & ck
         if not common or common != pk or common != ck:
-            print("      knob sets DIFFER (parent-only %s, child-only %s)"
-                  % (sorted(pk - ck) or "-", sorted(ck - pk) or "-"))
+            _say("      knob sets DIFFER (parent-only %s, child-only %s)"
+                 % (sorted(pk - ck) or "-", sorted(ck - pk) or "-"))
         if not common:
-            print("      NO COMPARABLE POINT: the child re-parameterized to a disjoint knob set,")
-            print("      so no fixed-knob reading exists. The own-best comparison in")
-            print("      rewrite_vs_promise.py mixes source and knob effects and cannot be")
-            print("      substituted here.")
+            _say("      NO COMPARABLE POINT: the child re-parameterized to a disjoint knob set,")
+            _say("      so no fixed-knob reading exists. The own-best comparison in")
+            _say("      rewrite_vs_promise.py mixes source and knob effects and cannot be")
+            _say("      substituted here.")
             findings["no_common_knobs"] += 1
             continue
         target = {k: _params_of(p_tr)[k] for k in common}
         hits = [tr for tr in done_trials.get(child, [])
                 if {k: _params_of(tr).get(k) for k in common} == target]
         if not hits:
-            print("      NO MATCHED POINT: the child never measured the parent's best params")
-            print("      %s" % json.dumps(target, sort_keys=True)[:200])
-            print("      => the direction of any resource change is NOT separable from the knob")
-            print("      change. Do not read a mechanism off the own-best profiles.")
+            _say("      NO MATCHED POINT: the child never measured the parent's best params")
+            _say("      %s" % json.dumps(target, sort_keys=True)[:200])
+            _say("      => the direction of any resource change is NOT separable from the knob")
+            _say("      change. Do not read a mechanism off the own-best profiles.")
             findings["no_matched_point"] += 1
             continue
         m = min(hits, key=lambda tr: _robust_ms(tr.get("latency_ms")) or 9e9)
         pd, cd = _dims_of(p_tr), _dims_of(m)
-        print("      FIXED-KNOB reading at the parent's best params (%d common knob(s)):"
-              % len(common))
-        print("        latency       parent %-12s child %s"
-              % ("%.4f ms" % (_robust_ms(p_tr.get("latency_ms")) or 0),
-                 "%.4f ms" % (_robust_ms(m.get("latency_ms")) or 0)))
+        pms, cms = _robust_ms(p_tr.get("latency_ms")) or 0.0, _robust_ms(m.get("latency_ms")) or 0.0
+        _say("      FIXED-KNOB reading at the parent's best params (%d common knob(s)):"
+             % len(common))
+        _say("        latency       parent %-12s child %-12s (%+.2f%%)"
+             % ("%.4f ms" % pms, "%.4f ms" % cms,
+                100 * (pms - cms) / pms if pms else 0.0))
+        # Which dims MOVED is the quantity §4.4 needs across runs. A dim present on only one
+        # side counts as moved -- "the child stopped reporting it" is not "unchanged".
+        moved = []
         for k in sorted(set(pd) | set(cd)):
-            print("        %-13s parent %-12s child %s"
-                  % (k, pd.get(k, "-"), cd.get(k, "-")))
-        print("      This holds the knobs, so the difference IS the source change.")
+            same = k in pd and k in cd and pd[k] == cd[k]
+            if not same:
+                moved.append(k)
+            _say("        %-13s parent %-12s child %-12s %s"
+                 % (k, pd.get(k, "-"), cd.get(k, "-"), "" if same else "<-- MOVED"))
         findings["matched"] += 1
+        findings["cases"].append({"run": label, "child": child,
+                                  "hypothesis_id": p.get("hypothesis_id"),
+                                  "moved": moved, "n_dims": len(set(pd) | set(cd)),
+                                  "latency_pct": (100 * (pms - cms) / pms) if pms else 0.0})
+        if moved:
+            findings["moved"] += 1
+            for k in moved:
+                findings["moved_dims"][k] = findings["moved_dims"].get(k, 0) + 1
+            _say("      %d of %d dim(s) MOVED at fixed knobs => the source edit did something"
+                 % (len(moved), len(set(pd) | set(cd))))
+        else:
+            findings["identity"] += 1
+            _say("      IDENTITY on all %d dim(s) at fixed knobs => on the dimensions we"
+                 % len(set(pd) | set(cd)))
+            _say("      measure, this source edit was a NO-OP. Any improvement credited to it")
+            _say("      came from the tuner moving to a different point in the new space.")
     return findings
+    return findings
+
+
+def _pool(paths: list[str]) -> None:
+    """Cross-run tally. The DENOMINATOR is the decidable set, not the rewrite count."""
+    tot = {"matched": 0, "no_common_knobs": 0, "no_matched_point": 0, "skipped_open": 0,
+           "no_sibling": 0, "identity": 0, "moved": 0}
+    dims: dict[str, int] = {}
+    cases: list[dict] = []
+    for path in paths:
+        if not os.path.exists(path):
+            continue
+        label = "/".join(path.split(os.sep)[-3:-1])
+        f = report(_read(path), label)
+        for k in tot:
+            tot[k] += f.get(k, 0)
+        for k, v in f["moved_dims"].items():
+            dims[k] = dims.get(k, 0) + v
+        cases.extend(f["cases"])
+
+    print()
+    print("=" * 78)
+    print("POOLED OVER %d RUN(S)" % len(paths))
+    undecidable = tot["no_common_knobs"] + tot["no_matched_point"] + tot["skipped_open"] \
+        + tot["no_sibling"]
+    print("  rewrites seen            %d" % (tot["matched"] + undecidable))
+    print("  DECIDABLE (matched pt)   %d   <-- the only honest denominator" % tot["matched"])
+    print("  undecidable              %d  (open %d, no sibling %d, disjoint knobs %d, "
+          "value never measured %d)"
+          % (undecidable, tot["skipped_open"], tot["no_sibling"],
+             tot["no_common_knobs"], tot["no_matched_point"]))
+    if not tot["matched"]:
+        print("  NO RATE: nothing was decidable. This is not '0% no-ops'.")
+        return
+    print()
+    print("  source edit MOVED >=1 measured dim   %d / %d  (%.0f%%)"
+          % (tot["moved"], tot["matched"], 100.0 * tot["moved"] / tot["matched"]))
+    print("  source edit was IDENTITY on all      %d / %d  (%.0f%%)"
+          % (tot["identity"], tot["matched"], 100.0 * tot["identity"] / tot["matched"]))
+    if dims:
+        print("  which dims move, when any does:")
+        for k, v in sorted(dims.items(), key=lambda kv: -kv[1]):
+            print("      %-14s %d" % (k, v))
+    print()
+    print("  per case (latency delta is AT FIXED KNOBS, so it is the source edit's own effect;")
+    print("  +-2-4%% is the re-eval noise floor, so treat anything inside it as no signal):")
+    for c in sorted(cases, key=lambda c: -len(c["moved"])):
+        print("      %-14s %-3s %+6.2f%%  %d/%d dims moved%s"
+              % (c["child"][:14], c["hypothesis_id"] or "?", c["latency_pct"],
+                 len(c["moved"]), c["n_dims"],
+                 "  " + ",".join(c["moved"]) if c["moved"] else ""))
+    print()
+    print("READ IT WITH THESE LIMITS.")
+    print("  * The dims are the ones we MEASURE (regs, spills, shared, warps, occupancy,")
+    print("    limiter). An edit that changes instruction mix or memory access ORDER with no")
+    print("    footprint change is IDENTITY here and is NOT thereby a no-op in general --")
+    print("    the honest claim is 'a no-op on the dimensions C1 aligns'.")
+    print("  * The matched point is the parent's best. A source edit could move a dim")
+    print("    everywhere else and not there; that is the price of holding the knobs.")
+    print("  * `no sibling`/`disjoint knobs` are not failures of the rewrite, they are")
+    print("    silence. Rolling them into either rate would manufacture one.")
 
 
 def _selftest() -> int:
@@ -245,6 +334,27 @@ def _selftest() -> int:
     if _robust_ms({"median_ms": 3.0, "mean_ms": 3.0}) is not None:
         print("FAIL: the _ms spelling was accepted, so a schema change reads as a latency")
         ok = False
+    # 7. identity vs moved must actually be distinguished, in BOTH directions. Without this a
+    # classifier stuck on either answer looks like a finding: "every edit is a no-op" reads as
+    # a result, and "none is" reads as reassurance.
+    f = report(base + [_tr("kid", {"BLOCK_M": 64}, 2.7, prof_p)], "SELFTEST identity", quiet=True)
+    if f["identity"] != 1 or f["moved"]:
+        print("FAIL: an identical profile was not classified as identity (%s)" % f)
+        ok = False
+    f = report(base + [_tr("kid", {"BLOCK_M": 64}, 2.7, prof_c)], "SELFTEST moved", quiet=True)
+    if f["moved"] != 1 or f["identity"]:
+        print("FAIL: a changed profile was not classified as moved (%s)" % f)
+        ok = False
+    elif sorted(f["moved_dims"]) != ["n_regs", "occupancy", "shared_bytes"]:
+        print("FAIL: the moved dims were misnamed (%s)" % f["moved_dims"])
+        ok = False
+    # 8. a dim the child stopped reporting counts as MOVED, not as unchanged -- otherwise a
+    # profile that lost a field would read as evidence of stability.
+    f = report(base + [_tr("kid", {"BLOCK_M": 64}, 2.7, {"n_regs": 200})],
+               "SELFTEST dropped dim", quiet=True)
+    if f["moved"] != 1 or "shared_bytes" not in f["moved_dims"]:
+        print("FAIL: a dropped dim was read as unchanged (%s)" % f)
+        ok = False
     print("SELFTEST %s" % ("PASS" if ok else "FAIL"))
     return 0 if ok else 1
 
@@ -252,6 +362,10 @@ def _selftest() -> int:
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
         raise SystemExit(_selftest())
+    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    if args:
+        _pool([a if a.endswith(".jsonl") else os.path.join(a, "events.jsonl") for a in args])
+        raise SystemExit(0)
     base = "/root/autodl-tmp/opop-workspace/opop-glm/runs-v3"
     run = "run-l3-43-20260913-202332"
     for arm in ("s7-treatment", "s7-control"):
