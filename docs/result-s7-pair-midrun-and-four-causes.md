@@ -1,4 +1,4 @@
-# S7(斜率引导采样)对照跑:中途状态与四条已定量的零投递成因
+# S7(斜率引导采样)对照跑:中途状态与五条已定量的零投递成因
 
 **日期** 2026-09-13 · **box4,同机双卡 RTX 4090** · 处理臂 GPU0 `s7-treatment`、控制臂 GPU1 `s7-control`,
 两臂同一 run id `run-l3-43-20260913-202332`,均自 `39f01ea` 启动 · 任务 L3:43
@@ -37,7 +37,7 @@ latency 差只反映两次独立搜索的方差。读数器 `analyze_s7_pair.py`
 `proc.communicate(timeout=)` 执行、310 行 kill,每 job 独立进程组(288 行)
 ⇒ 一个 job 超时不会连带杀掉共享通道里健康的另一个。
 
-## 2. 零投递的四条成因(全部定量,均**非**可中途修复的缺陷)
+## 2. 零投递的五条成因(全部定量,均**非**可中途修复的缺陷)
 
 | # | 成因 | 实测率 | 能否靠采样解决 |
 |---|---|---|---|
@@ -45,6 +45,23 @@ latency 差只反映两次独立搜索的方差。读数器 `analyze_s7_pair.py`
 | 2 | **软墙适用门要求最优 trial 自己 spill** | 79 个空间只 **30 个(38.0%)** | 否 |
 | 3 | **`monotone` 单独否掉的墙比它保留的还多** | 32 道墙:留 8、增益≤0 丢 15、**仅 monotone 丢 9(28.1%)**;但 **4/6 末段回升 +27%~+120%** 远超 16% 噪声 ⇒ 多数是**真拐头** | 否(放宽会引入变差的墙,上限仅约 2 道) |
 | 4 | **软墙恒指高侧,而最优点常已在域顶** | 24 道软墙 **11 道(45.8%)** | **否 —— 只有扩域或改写** |
+| **5** | **墙可以通过斜率过滤器却在归因阶段失败** —— 归因在过滤器**之后**跑,`walls_worthless` **结构上不含**它的失败 | **16 次归因事件只有 1 道墙走完两门 = 0.06/事件** | 否(与采样无关) |
+
+**成因 5 是最紧的一条,而且它让前四条的计价全部偏高。** 三道被探测的墙全部 `not_attributed`,
+原因完全一致 —— **θ* 处根本没超共享内存上限**:
+
+| run | knob | 拒绝值 | tail_gain | `max_shared`/limit | over_ratio |
+|---|---|---|---|---|---|
+| arm3 | `BLOCK_N_G` | 256 | **60.69%** | 73728 / 101376 | 0.727 |
+| arm3 | `NUM_WARPS` | 32 | 25.56% | 73728 / 101376 | 0.727 |
+| **s7-control** | `NUM_WARPS` | 16 | 21.88% | 98304 / 101376 | **0.97** |
+
+那些 trial 的 `failure_kind` 确实是 `infeasible_shared_memory`,但从 θ* 出发按该 knob 消融重测时
+**不超限** ⇒ 归因**正确地**判 `not_attributed`,没有任何资源上限可供改写去解开。
+**控制臂 `wallsfound=1` 因此从未产出任何可用输出。**
+
+⇒ **任何"有多少道墙可用"的判据是 `verdict == "attributed"`,不是 `walls_found - walls_worthless`。**
+按后者算,seed 来源是 0.25 道/事件;按前者算是 **0.06**,**差 4 倍**。
 
 **成因 4 的现场证据**(处理臂第二候选,`spills_at_best=286.0` ⇒ 适用门**通过**):
 
@@ -117,8 +134,36 @@ RESOURCE_SOFT_WALL: applicable=True n_walls=1 param=BM_PROJ gain=16.6%
 发生在分类之前),但会让这些点进入 `PRUNED` 从而**减少重复撞墙**——
 下一轮按"减少重复碰撞次数"计价。
 
-## 4. 顺带发现的两个缺陷(**本轮不改**,已记录方案)
+## 3b. "等 K 扩展就会出新墙"—— 实测 5/48,且 5 次全被更硬的门挡住
 
+K 扩展是唯一能解除成因 4 的事件(它用**更宽的域**重调**同一候选**,于是"最优点已在域顶"不再成立)。
+实测 box4 全部 48 次域加宽(`expansion_direction_vs_soft_wall.py`):
+
+| 判据 | 结果 |
+|---|---|
+| 加宽方向 | **43/48 加在高端**,与软墙恒指高侧**同向** ⇒ 方向不是障碍 |
+| 加宽的 knob 与同空间某道墙点名的 knob 重合 | **5/48** |
+| 其中方向也一致 | 3 ALIGNED / 2 OPPOSITE |
+| **最终可用** | **0** —— 3 道 `verdict=not_attributed`,2 道增益低于噪声底 |
+
+```
+arm3       cand-dc87a93a NUM_WARPS  ALIGNED  但 verdict=not_attributed
+arm3       cand-948343ba GEMM_BN    ALIGNED  但无 verdict 字段(旧 run)
+arm3       cand-948343ba NUM_STAGES_APPLY  OPPOSITE  且 gain −23.78%
+s7-control cand-d70a3f18 NUM_WARPS  ALIGNED  但 verdict=not_attributed
+s7-control cand-13ead9f3 BLOCK_M    OPPOSITE  且 gain 0.45% < 噪声底 2.35%
+```
+
+**处理臂本轮的首次扩展加宽的是 `COMBINE_NUM_STAGES`,而该臂软墙点名的是 `BM_PROJ`** ⇒ 不重合,
+所以那 16 个 trial **不是** S7 的测试窗口,不得把它们读成对 S7 的检验。
+
+> ⚠️ **两次读法错误,记录以防重犯。** `RESOURCE_SOFT_WALL` 的 payload **只有 `candidate_id`,没有 `space_id`**
+> (空间要从紧邻其前的 `RESOURCE_WALL_ATTRIBUTED` 取)。
+> 第一版探针把软墙**按整个 arm 池化**,打印 `{'BLOCK_M': 1}`,我据此与另一个空间的 `BLOCK_M` 扩展匹配
+> ⇒ **伪造出一个匹配**;第二版按不存在的 `space_id` 分组 ⇒ 全落进 `"?"` 桶、**伪造出 0/48 无匹配**。
+> 两者是同一个错:**读了一个不存在的键**。且第二版只看软墙,漏掉硬墙,而 5/48 里 4 次是硬墙。
+
+## 4. 顺带发现的两个缺陷(**本轮不改**,已记录方案)
 - **共享内存拒绝被误标 `runtime_error`**(`worker_main.py:35-39` 只识别 `out of memory`)。
   实测 **15/755 = 2.0%** 的拒绝被误标,3/7 个 run 至少一次。影响三个消费者:
   `find_walls` 的**全部输入**、`tpe.py:218` 的 PRUNED/FAIL、`deweight.py` 的候选级汇总。
