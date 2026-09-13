@@ -10,6 +10,7 @@ from optuna.samplers import TPESampler
 from optuna.trial import TrialState
 
 from kernel_optimizer.models.core import ParameterSpace, ParamSet, TrialRecord
+from kernel_optimizer.tuning import ordered_domains
 
 
 class OptunaTPETuner:
@@ -29,6 +30,7 @@ class OptunaTPETuner:
         constant_liar: bool = False,
         max_guard_rejects_per_ask: int = 64,
         deweight_reject: Callable[[ParamSet], bool] | None = None,
+        ordered_categoricals: bool = False,
     ):
         self.space = space
         self.guard_ok = guard_ok
@@ -38,12 +40,32 @@ class OptunaTPETuner:
         # drawn configuration probabilistically because it holds a value whose failures no
         # partner explains; see tuning/deweight.py for the criterion and its measurements.
         self.deweight_reject = deweight_reject
+        # S8 / item 3.1. False = off and LITERALLY the old path: `distance_funcs` is not even
+        # called, and `categorical_distance_func=None` is what TPESampler already received.
+        #
+        # It has to be a switch rather than unconditional because it changes what the sampler
+        # draws, so a run with it on is not comparable with the finished ones. Measured before being
+        # written (scripts/probes/is_categorical_distance_func_functional.py): the argument is
+        # deprecated in optuna 4.9.0 but still functional, its CONTENT is read (a scrambled rung
+        # order loses 34.1 of 120 near-optimum draws, 12/12 seeds), and against today's sampler it
+        # wins +4.5 near-best draws and 12.1% mean cost on a synthetic 8-rung ladder, 12/12 seeds.
+        #
+        # `or None`: an empty dict and None are the same sampler, but passing {} would emit optuna's
+        # deprecation FutureWarning for a call that asked for nothing. The distinction between
+        # "asked for, nothing qualified" and "not asked for" is kept in the LOG instead, where it
+        # belongs -- the orchestrator journals `ordered_domains.snapshot()` from the same predicate
+        # on the same domains. Not stored on the tuner: every stand-in for a tuner would then have to
+        # remember the attribute, and one that forgot would journal a silent None.
+        self.ordered_categoricals = ordered_categoricals
+        distance = (ordered_domains.distance_funcs(list(space.domains)) or None
+                    if ordered_categoricals else None)
         sampler = TPESampler(
             seed=seed,
             multivariate=True,
             group=True,
             n_startup_trials=10,
             constant_liar=constant_liar,
+            categorical_distance_func=distance,
         )
         self.study = optuna.create_study(direction="minimize", sampler=sampler)
         for anchor in anchors:

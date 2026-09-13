@@ -68,6 +68,7 @@ from kernel_optimizer.paramspace.validation import (
     error_excerpt,
 )
 from kernel_optimizer.store.run_store import RunStore
+from kernel_optimizer.tuning import ordered_domains
 from kernel_optimizer.tuning.deweight import DeweightLedger
 from kernel_optimizer.tuning.stats import TuningStatsAnalyzer
 from kernel_optimizer.tuning.tpe import OptunaTPETuner
@@ -1214,6 +1215,10 @@ class Orchestrator:
                 (lambda p: self.deweight_ledger.should_reject(cand.candidate_id, p.values))
                 if self.deweight_ledger is not None else None
             ),
+            # S8 / item 3.1. Give the sampler the ORDER of the numeric knobs. Off by default; see
+            # `tuning/ordered_domains.py` for the predicate (read off the CHOICES, never off the
+            # agent-declared `kind`) and the measurements.
+            ordered_categoricals=self.cfg.v3.ordered_categoricals.enabled,
         )
 
         while True:
@@ -1275,6 +1280,17 @@ class Orchestrator:
         # re-deriving it. Emitted whether or not anything fired -- "nothing fired" is a result too,
         # and its absence would be indistinguishable from the switch being off.
         deweight = self.deweight_ledger.snapshot() if self.deweight_ledger is not None else None
+        # S8. None when the switch is off, so a run without it reads exactly as before; a DICT with
+        # `n_ordered: 0` when it is on and no knob qualified -- those are different states and only
+        # the second one says the predicate ran and found nothing.
+        #
+        # Derived HERE from the config and the space rather than read off the tuner, for two reasons:
+        # the orchestrator already holds both inputs, and requiring a new attribute on every object
+        # that can stand in for a tuner would make the log entry depend on that object remembering it
+        # (a stub that forgot would journal a silent None). It calls the SAME predicate the tuner
+        # used, on the same domains, so the two cannot disagree.
+        ordered = (ordered_domains.snapshot(list(space.domains))
+                   if self.cfg.v3.ordered_categoricals.enabled else None)
         if best is not None:
             # crun.best_ms tracks the candidate's best over ALL its spaces, so a
             # re-tune (improvement K's expansion) that lands worse must not erase a
@@ -1290,11 +1306,13 @@ class Orchestrator:
                 "candidate_id": cand.candidate_id, "space_id": space.space_id,
                 "best_ms": best.latency_ms.robust_ms, "improved_family": improved,
                 "snapshot": tuner.snapshot(), "deweight": deweight,
+                "ordered_categoricals": ordered,
             })
         else:
             self.store.append("TUNING_DONE", {
                 "candidate_id": cand.candidate_id, "space_id": space.space_id,
                 "best_ms": None, "snapshot": tuner.snapshot(), "deweight": deweight,
+                "ordered_categoricals": ordered,
             })
 
     def _run_trial(self, crun: CandidateRun, space: ParameterSpace, trial_id: str,

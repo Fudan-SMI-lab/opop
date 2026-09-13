@@ -524,6 +524,45 @@ class V3WallAttributionConfig(StrictConfig):
     in_prompt: bool = False
 
 
+class V3OrderedCategoricalsConfig(StrictConfig):
+    """S8 / item 3.1: tell TPE which knobs have an ORDER, and how far apart their values are.
+
+    Without it, `suggest_categorical` makes `BLOCK_N in {16, 32, 64, 128}` four unrelated labels:
+    learning that 64 is good changes the probability of drawing 128 by nothing. Measured consequence
+    on the real corpus -- the highest value of a knob that has a wall was sampled at a mean normalised
+    position of 0.52, i.e. the tuner RAN INTO the wall rather than walking toward it.
+
+    The premise is measured rather than assumed, which is what separates this from the other
+    candidate changes: mean |latency gap between ADJACENT values| over mean |gap between DISTANT
+    values| has p50 = 0.735 < 1 on the real trials.
+    """
+
+    # OFF, and for the standard reason: it changes what the sampler draws, so a run with it on is not
+    # comparable with the finished ones. At False the old code path is taken literally --
+    # `distance_funcs` is never called and TPESampler gets the `categorical_distance_func=None` it
+    # already got.
+    #
+    # THREE THINGS WERE MEASURED BEFORE THIS WAS WRITTEN
+    # (`scripts/probes/is_categorical_distance_func_functional.py`, optuna 4.9.0, 8-rung ladder,
+    #  +-16% noise matching this project's own per-trial sigma, 120 trials x 12 seeds):
+    #   1. the underlying optuna argument is DEPRECATED in 4.9.0 (removal scheduled for 5.0.0) but
+    #      still functional -- worth measuring, because an argument accepted and silently ignored
+    #      would have produced a "treatment" arm byte-identical to the control;
+    #   2. its CONTENT is read: the same kernel with a SCRAMBLED rung order loses 34.1 of 120
+    #      near-optimum draws, 12 of 12 seeds. That scrambled arm is the control, NOT plain TPE: a
+    #      CONSTANT distance function does not reproduce plain either (-22/600), because plain builds
+    #      a count-based categorical distribution while distance mode builds a kernel over distances;
+    #   3. against today's sampler it wins +4.5 near-best draws and 12.1% lower mean cost, 12 of 12
+    #      seeds -- on a SYNTHETIC monotone landscape, which licenses implementing this and does NOT
+    #      license claiming a speedup on the real 6-12-knob spaces.
+    #
+    # Version exposure, recorded rather than assumed: optuna removes the argument in 5.0.0.
+    # `pyproject.toml` pins `optuna~=4.9`, which admits 4.x only, so 5.0.0 cannot arrive through a
+    # resolve. If it ever does, the sampler raises on an unknown kwarg -- loudly, which is the right
+    # failure -- rather than silently dropping the ordering.
+    enabled: bool = False
+
+
 class V3Config(StrictConfig):
     """The v3 stages, each behind its own switch, all off by default.
 
@@ -537,6 +576,7 @@ class V3Config(StrictConfig):
     search: V3SearchConfig = V3SearchConfig()
     diagnosis: V3DiagnosisConfig = V3DiagnosisConfig()
     wall_attribution: V3WallAttributionConfig = V3WallAttributionConfig()
+    ordered_categoricals: V3OrderedCategoricalsConfig = V3OrderedCategoricalsConfig()
 
 
 class AppConfig(StrictConfig):
