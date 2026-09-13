@@ -85,6 +85,8 @@ def read_arm(run_dir: Path) -> dict:
     rounds = 0
     rewrites = 0
     spaces_expanded = 0
+    spaces_rejected = 0
+    expansion_refusals: dict[str, int] = {}
     closed_spaces: set = set()
     finished = False
     for e in evs:
@@ -121,6 +123,18 @@ def read_arm(run_dir: Path) -> dict:
             rewrites += 1
         elif t == "SPACE_EXPANDED":
             spaces_expanded += 1
+        elif t == "SPACE_EXPANSION_REJECTED":
+            # Counted so "this arm expanded less" and "this arm was refused more" are separable.
+            # They are different findings: the first says the arms searched unequally, the second
+            # would say the switch changed what the expander is allowed to do. On the S7 pair both
+            # arms were refused exactly once, both for `no_new_choices` -- the expansion returned a
+            # domain set identical to the one it started from, so re-tuning would spend another
+            # whole budget on the same searchable space. That is correct behaviour, not a defect,
+            # and the gap in ACCEPTED expansions comes from the arms having different numbers of
+            # candidates reach closure.
+            spaces_rejected += 1
+            reason = str((p.get("reason") or "?"))
+            expansion_refusals[reason] = expansion_refusals.get(reason, 0) + 1
         elif t == "TUNING_DONE":
             sid = p.get("space_id")
             if sid:
@@ -142,6 +156,8 @@ def read_arm(run_dir: Path) -> dict:
         "rounds": rounds,
         "rewrites": rewrites,
         "expansions": spaces_expanded,
+        "expansions_refused": spaces_rejected,
+        "expansion_refusals": dict(expansion_refusals),
         "trials_per_h": n / (span / 3600.0) if span else 0.0,
         "agent_frac": agent_s / span if span else 0.0,
         "gap_median": statistics.median(gs) if gs else 0.0,
@@ -320,6 +336,25 @@ def parity_verdict(a: dict, b: dict, la: str, lb: str) -> tuple[bool, list[str]]
         else:
             notes.append("rate %.1f vs %.1f trials/h (%.2fx, within %.0f%%): the wall clock buys "
                          "comparable search" % (ra, rb, ratio, 100 * (_RATE_TOL - 1)))
+
+    # An unequal ACCEPTED-expansion count has two very different explanations, and the checker
+    # already prints the accepted count as though it had one. Say which: if both arms were refused
+    # the same number of times for the same reason, the gap is in how many candidates reached
+    # closure (a candidate-supply difference); if the refusals themselves differ, the expander is
+    # behaving differently between arms, which a switch could be responsible for.
+    fa, fb = a["expansions_refused"], b["expansions_refused"]
+    if ea != eb or fa or fb:
+        same_reasons = a["expansion_refusals"] == b["expansion_refusals"]
+        msg = ("K expansions ACCEPTED %d vs %d, REFUSED %d vs %d (%s vs %s)"
+               % (ea, eb, fa, fb,
+                  a["expansion_refusals"] or "-", b["expansion_refusals"] or "-"))
+        if fa == fb and same_reasons and ea != eb:
+            msg += (". Equal refusals for the same reason, so the accepted gap is a difference in "
+                    "how many CANDIDATES reached closure, not in what the expander allowed")
+        elif not same_reasons:
+            msg += (". The refusal REASONS differ between arms -- check whether the switch changed "
+                    "what the expander is permitted to do before reading the accepted counts")
+        notes.append(msg)
     return okay, notes
 
 

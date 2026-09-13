@@ -51,19 +51,30 @@ def _trial(ts: float, space: str, ok: bool = True) -> dict:
 
 
 def _arm(tmp_path: Path, name: str, spaces: dict[str, int], *, closed: tuple[str, ...] = (),
-         finished: bool = False, expansions: int = 0) -> dict:
+         finished: bool = False, expansions: int = 0,
+         refusals: tuple[str, ...] = ()) -> dict:
     """One arm: `spaces` maps space_id -> trial count; `closed` lists the spaces that emitted
-    TUNING_DONE; `finished` adds RUN_FINISHED; `expansions` adds that many SPACE_EXPANDED events.
+    TUNING_DONE; `finished` adds RUN_FINISHED; `expansions` adds that many SPACE_EXPANDED events;
+    `refusals` adds one SPACE_EXPANSION_REJECTED per reason string.
 
     SPACE_EXPANDED's payload is copied from the live emitter, which carries `candidate_id` and nothing
     else -- the reader only counts these events, and inventing a richer payload would let a fixture
     prove a field the emitter does not send (`a-fixture-invented-to-match-the-reader-proves-nothing`).
+    SPACE_EXPANSION_REJECTED's payload is likewise copied field-for-field: `candidate_id`, `reason`,
+    `detail` (live: reason `no_new_choices`, detail "expansion of ['BLOCK_N'] returned an identical
+    domain set; skipping the re-tune").
     """
     ev: list[dict] = [{"seq": 0, "ts": 1000.0, "type": "RUN_CREATED", "payload": {"run_id": name}}]
     ts = 1001.0
     for _ in range(expansions):
         ev.append({"seq": int(ts), "ts": ts, "type": "SPACE_EXPANDED",
                    "payload": {"candidate_id": "cand-x"}})
+        ts += 1.0
+    for reason in refusals:
+        ev.append({"seq": int(ts), "ts": ts, "type": "SPACE_EXPANSION_REJECTED",
+                   "payload": {"candidate_id": "cand-x", "reason": reason,
+                               "detail": "expansion of ['BLOCK_N'] returned an identical domain "
+                                         "set; skipping the re-tune"}})
         ts += 1.0
     for sid, n in spaces.items():
         for _ in range(n):
@@ -357,3 +368,60 @@ def test_one_overshooting_space_does_not_shift_the_unit(tmp_path):
     assert okay is False, "161 vs 121 is one 40-trial space; only a unit of 41 hides it"
     assert "TOTAL SEARCH DIFFERS" in joined
     assert "modal budget of 40" in joined
+
+
+# ---------------------------------------------------------------------------------------------
+# an accepted-expansion gap has two causes and the checker used to print only the accepted count
+# ---------------------------------------------------------------------------------------------
+
+
+def test_equal_refusals_attribute_the_gap_to_candidate_supply(tmp_path):
+    """The S7 pair, reproduced: control accepted 3 expansions and treatment 1, and BOTH were refused
+    exactly once for `no_new_choices`. Printing only "3 vs 1" invites reading the switch as the cause.
+    Equal refusals for the same reason say the expander behaved identically and the gap is in how many
+    candidates reached closure -- a candidate-supply difference, which no switch accounts for either but
+    is a different thing to go and check.
+    """
+    a = _arm(tmp_path, "csup", {"sp-a": 40, "sp-b": 40, "sp-c": 40},
+             closed=("sp-a", "sp-b", "sp-c"), finished=True, expansions=3,
+             refusals=("no_new_choices",))
+    b = _arm(tmp_path, "tsup", {"sp-d": 40, "sp-e": 40, "sp-f": 40},
+             closed=("sp-d", "sp-e", "sp-f"), finished=True, expansions=1,
+             refusals=("no_new_choices",))
+    assert a["expansions_refused"] == 1 and b["expansions_refused"] == 1
+    assert a["expansion_refusals"] == {"no_new_choices": 1}
+    _, notes = casp.parity_verdict(a, b, "CONTROL", "TREATMENT")
+    joined = " | ".join(notes)
+    assert "ACCEPTED 3 vs 1" in joined
+    assert "REFUSED 1 vs 1" in joined
+    assert "CANDIDATES reached closure" in joined
+
+
+def test_differing_refusal_reasons_are_flagged_as_the_expander_behaving_differently(tmp_path):
+    """The positive control for the branch above. If the arms are refused for DIFFERENT reasons, the
+    expander is not behaving identically and the accepted counts cannot be read as candidate supply --
+    that is the case where a switch is a live suspect. Without this test, "equal refusals" and "the
+    checker cannot see refusal reasons at all" would print the same reassuring sentence.
+    """
+    a = _arm(tmp_path, "cdiff", {"sp-a": 40, "sp-b": 40},
+             closed=("sp-a", "sp-b"), finished=True, expansions=2,
+             refusals=("no_new_choices",))
+    b = _arm(tmp_path, "tdiff", {"sp-c": 40, "sp-d": 40},
+             closed=("sp-c", "sp-d"), finished=True, expansions=1,
+             refusals=("guard_rejected_constraint",))
+    _, notes = casp.parity_verdict(a, b, "CONTROL", "TREATMENT")
+    joined = " | ".join(notes)
+    assert "REASONS differ" in joined
+    assert "CANDIDATES reached closure" not in joined, \
+        "differing reasons must not be explained away as candidate supply"
+
+
+def test_no_expansion_activity_at_all_says_nothing(tmp_path):
+    """A pair with no expansions and no refusals must not emit the note. An unconditional line here
+    would read as a finding on every run that never expanded.
+    """
+    a = _arm(tmp_path, "cnone", {"sp-a": 40}, closed=("sp-a",), finished=True)
+    b = _arm(tmp_path, "tnone", {"sp-b": 40}, closed=("sp-b",), finished=True)
+    _, notes = casp.parity_verdict(a, b, "CONTROL", "TREATMENT")
+    joined = " | ".join(notes)
+    assert "K expansions ACCEPTED" not in joined
