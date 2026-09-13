@@ -8,6 +8,7 @@ from pathlib import Path
 
 from kernel_optimizer.evaluation.conversion_report import conversion_lines
 from kernel_optimizer.models.core import latency_cell
+from kernel_optimizer.reporting.accuracy_report import accuracy_lines
 from kernel_optimizer.reporting.completeness import completeness_lines
 from kernel_optimizer.reporting.wall_report import wall_lines
 from kernel_optimizer.store.run_store import RunStore
@@ -1007,6 +1008,11 @@ class ReportGenerator:
         # same question, one by asking the agent and one by asking the compiler, and putting them
         # apart would hide that they disagree. Measured on box 2, they agree on 8 of 53 claims.
         lines.extend(wall_lines(events))
+
+        # 2b(2)/2d, after 2e because it is about the same ledger read one level down: 2e asks the
+        # compiler which knob is walled, this asks which DIMENSIONS the agent's own declarations are
+        # reliable about. Both exist to stop a single pooled number standing in for eight unequal ones.
+        lines.extend(accuracy_lines(events))
 
         lines.append("## Convergence decisions\n")
         lines.extend(_why_the_run_ended(events, convergence, budgets))
