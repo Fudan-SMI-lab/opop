@@ -876,3 +876,19 @@ SOL 头寸对 1/latency ρ=+1.000、`logical_bytes` 对 tile 乘积 ρ=+0.978。
 
 **无论走哪条,报告都必须保留当前的负结果**:"2e 只进 prompt 时无端到端收益"是已测事实
 (同箱同 mode 的干净对比里关掉 2e 的臂快 8.0%,噪声底的 2.0 倍),改进版若成功,它就是对照。
+
+## §4.6 `scripts/screen_cost.py` keys on three event names that are never emitted
+
+`scripts/check_event_names.py` (2026-09-14) reports three names in `screen_cost.py` that `src/`
+never emits, **each the SOLE key for its branch** — so those branches have never run:
+
+| name used | nearest real name |
+|---|---|
+| `COMPILE_PROBE_FAILED` | `CONVERSION_RATES_FAILED` |
+| `SCREEN_FAILED` | `PRESCREEN_FAILED` / `SLOPE_GUIDE_FAILED` |
+| `WORKER_TIMEOUT` | (no close match) |
+
+**Certain but not urgent** (a reporting script, not the harness), so recorded rather than fixed
+mid-experiment. Fixing it needs the emitting side read first — the nearest-name suggestion is a
+string-distance guess, and picking the wrong one would swap a silent zero for a plausible wrong
+number, which is worse. Same shape as the reader bugs the checker was written for.
