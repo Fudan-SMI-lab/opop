@@ -31,7 +31,14 @@ latency 差只反映两次独立搜索的方差。读数器 `analyze_s7_pair.py`
 | **总**搜索量相同 | ⚠️ **否 —— 235 vs 160 trial(6 vs 4 空间),差 1.9 个空间**(3.50 h 处) | 同上,新增的第三问 |
 | 速率差 | ✅ 判为 **TAIL**,不随墙钟累积(实测正在**收窄**:1.67x → 1.46x);归因到**候选**而非开关 | 中位间隔 32.9 vs 34.7 s(**1.06x**,在容差内) |
 | 分母 | ✅ **同机双卡、共用一份 `calibration.json`**(schema 5)⇒ 字面相同 | 跨机才需 `compare_calibrations.py` |
+| **两臂不同卡** | ✅ **处理臂只在物理 GPU0(`CVD=0`)、控制臂只在 GPU1(`CVD=1`),无重叠** | `gpu_pinning_check.py`,连续采样 120 s |
 | 实现无缺陷 | ✅ 出厂 `SlopeGuide` 重放与运行日志 **8/8 逐字段一致**(含每个跳过计数器) | `s7_replay_vs_log.py`;负对照会失败(错 `use_soft_wall` ⇒ 3/8 MISMATCH) |
+
+**"两臂不同卡"是本次新增的第六项,此前无任何工具会查。** 若两臂挤在同一张卡,时间片共享
+SM/L2/带宽 ⇒ **两臂每个延迟都被邻居污染**,那是**必须停下重启**而非记一条注意事项。
+`CUDA_VISIBLE_DEVICES` 在**启动命令**里而不在 config 文件 ⇒ `audit_arm_comparability.py` 比不到它。
+**单次 `nvidia-smi` 不能作答**:GPU 作业是一次性子进程,臂在作业间隙显示 0% / 0 MiB
+—— 我第一次的快照就只见 GPU1 有进程,连续采样后才确认分离。
 
 **第三项是本次新增的检查,原先根本没被问过。** `trials_per_space` 是**按空间**收费的,而一次 **K 扩展会为同一候选发布第二个空间** ⇒ 该臂**再领一份 40 trial 预算**。检查器此前只问"每空间预算是否相等"(相等,40)与"速率是否相等"(中位数相等),把 `expansions 2` 与 `1` 当装饰打印,然后照旧宣布"latency 差可归因于开关"。**不可归因** —— 一臂就是多搜了 1.7 个空间。
 
@@ -261,3 +268,20 @@ python scripts/analyze_s7_pair.py <treatment_run> <control_run>
 同机对**不需要** `compare_calibrations.py`(那是给跨机对定分母的)。
 在 box4 上运行 (2) 与 (3) 时必须 `PYTHONPATH=/root/autodl-tmp/work/opop/src`,
 否则会导入另一个 checkout —— 见 §4 第二条。
+
+**三件工具已在本对的真实数据上试跑通过(3.9 h 处),收尾不会再有工具意外**:
+
+| 工具 | 试跑结果 |
+|---|---|
+| `check_arm_search_parity.py` | 跑通;报 `PARITY OK ON WHAT IS ANSWERABLE NOW` + 1 条 PROVISIONAL |
+| `audit_arm_comparability.py` | 跑通;**`COMPARABLE`**,119 键 4 处不同;并印出所加载的 config 模块路径(防导入错 checkout 的守卫) |
+| `analyze_s7_pair.py` | 跑通;试跑中**查出并修好两处**(见下) |
+
+试跑 `analyze_s7_pair.py` 查出的两处(均已修):
+1. **对控制臂那道墙无话可说** —— 它印 `walls_found 1 worthless 0` 而 `no_wall_cause` 留空,
+   读起来像"有一道可用的墙却没人用"。现会数 `walls_attributed_total`、点名
+   `not_attributed (NUM_WARPS, over_ratio 0.970)`,并说明 `walls_worthless` 为何看不到。
+2. **in-flight 警告在顶部、结论在 90 行之后** —— 任何 `tail` 读法都会拿到脱离警告的
+   `THE MECHANISM DID NOT FIRE`(**我自己就这么读了一次**)。现在警告在结论块内就地重复。
+
+另加 `gpu_pinning_check.py` 作为**第 0 步**(见 §1 第六项):它查的是别的工具都查不到的东西。
