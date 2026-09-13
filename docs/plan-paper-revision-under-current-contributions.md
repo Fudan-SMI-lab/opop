@@ -111,7 +111,24 @@ C3 撤下,P2 并入 C2 作为其中的"低成本验证"步骤而不单列。
 **⚠ 基线可得性必须先核实,这是本组实验最大的未知**
 - `paper/references.bib` 里有 `wiedemann2026kernelfoundry`、`cao2026ksearch`、`gai2026kernelpro`;
   **没有 KernelBand 与 KernelBlaster 的条目** ⇒ 需要先补引用,并确认这两个是否有**可运行的公开实现**。
-- 本地 `D:\Pyhon_projects\opop\kernelfoundry` 有完整代码树 ⇒ KernelFoundry 可实跑。
+- 本地 `D:\Pyhon_projects\opop\kernelfoundry` 有完整代码树,但**"代码在"不等于"能跑出它论文里的行为"**。
+  本 checkout 实查出**四个必须先解决的前提**(此前文档只写了"可实跑",过于乐观):
+  1. **它的 profiler 默认是 `ncu`**(`eval_pipeline/profiler_command.py:348-359`:`("cuda","ncu")`、
+     `("triton","ncu")` 都映射到 `NCU`,命令是 `ncu --set detailed --csv`)。
+     而**我们两台 AutoDL 机器 ncu 实跑均被拒**(`RmProfilingAdminOnly=1`,2/2 台已实测,
+     [[hardware-counters-are-shut-on-both-autodl-boxes-but-ir-bytes-work]])
+     ⇒ **KernelFoundry 的 profiler 反馈回路在我们机器上跑不起来**。
+     ⇒ 只能跑**关掉 profiler 反馈**的降级版,并在表注里写明"该基线运行于无硬件计数器环境,
+     其 profiler 引导被禁用" —— 否则等于自己削弱基线再宣称赢。**这是最容易被 reviewer 抓的点。**
+  2. **它默认生成 CUDA / SYCL,我们 35/35 全是 Triton**([[backend-choice-has-no-evidence]])。
+     `gpu_arch` 合法值含 `Ada`(4090 属 Ada)⇒ 硬件侧可跑;但**后端不同**
+     ⇒ 比较的是"两套方法各自最优后端",这个口径要在正文明确,不能读成同后端对比。
+  3. **它需要自己的推理服务**:`configs/inference/server.yaml` 默认 `model_name: k3`、
+     `base_url: https://api.kimi.com/coding/v1` ⇒ 要跑"同 base model"的对照,
+     必须把它指到与我方相同的模型(glm-5.3),这是一处**配置改动 + 须核实其 prompt 是否依赖特定模型能力**。
+  4. **它的依赖里没有 torch**(`pyproject.toml` 只有 numpy/pytest/pytest-dependency/ninja),
+     torch 按 README 需另行按 CUDA 版本手装 ⇒ **须新建独立 venv**,不能复用我们的
+     `kernel-opt-venv`(会污染既有结果的可比性)。
 - 其余三个若**只能引论文数字**,则:(a) 硬件/任务/预算几乎一定不同 ⇒ **不能放进同一张表直接比**;
   (b) 处理方式是**分两张表**:一张"同硬件同预算实跑"(ours + KernelFoundry + 任何可跑的),
   一张"文献报告值"并**逐列标注其硬件与预算**。混在一张表里是最容易被 reviewer 抓的点。
@@ -119,8 +136,8 @@ C3 撤下,P2 并入 C2 作为其中的"低成本验证"步骤而不单列。
 **采样与预算(20 个任务的代价必须先算)**
 - 已知:**8/8 跑完的 run 都由墙钟结束**,单 run 12 h 量级;`trials_per_space=40`。
 - ⇒ 20 任务 × 5 方法 × 3 模型 = **300 个 run**。按 12 h/run 是 3600 GPU·h。
-  **当前实际可用 GPU 只有 3 张**:box1 ×1、box4 ×2(两张 4090);
-  box2 已归其他租户、A800(box3)已关机需重开。
+  **当前实际可用 GPU 只有 3 张,且全是 RTX 4090**:box1 ×1、box4 ×2;
+  box2 已归其他租户、**A800(box3)`ssh` 拒绝连接(仍关机)**。
   ⇒ 3 卡满载也需 **约 50 天**,**不可行**。
 - **必须做的取舍(建议在文档评审时定)**:
   (a) 主表只做 **1 个 base model(glm-5.3)× 5 方法 × 20 任务 = 100 run**,
@@ -160,8 +177,21 @@ C3 撤下,P2 并入 C2 作为其中的"低成本验证"步骤而不单列。
   选择判据应写明:**每类的绑定维度不同**(GEMM 偏 compute/shared;attention 偏 shared + 寄存器;
   reduction/逐元素偏带宽)。已有支持:L3:48 已达 DRAM 屋顶的 **90.4%**、911 GB/s
   ([[l3-48-is-bandwidth-bound-at-90-percent]]);L3:43 是共享内存受限的 attention。
-- 硬件:**RTX 4090(box4 ×2)+ A800(box3,需重新开机)**。已知两者共享内存上限不同
-  (4090 **101376 B**、A800 **166912 B**)⇒ 这正是"同一算子在不同硬件上找到各自上限"的天然对照。
+- 硬件:**⚠ 这一组当前没有第二种硬件可用,这是它最大的阻塞项。**
+  2026-09-14 实测三张可用卡:box1 **RTX 4090 ×1**、box4 **RTX 4090 ×2** —— **全部同型号**;
+  A800(box3)`ssh` 返回 **Connection refused**(仍关机,不只是"需重开");box2 已归其他租户。
+  ⇒ **"同一算子在不同硬件上各自找到上限"这个对照现在一张卡型都凑不齐。**
+  已知 A800 与 4090 的共享内存上限不同(4090 **101376 B**、A800 **166912 B**),
+  这正是最理想的天然对照,**但它取决于 A800 能否重新开机并恢复环境**
+  (A800 曾验证可跑:torch 2.8/triton 3.4,[[box3-a800-verified]])。
+  ⇒ **这是一个必须先解决的资源前提,不是实验设计问题**:
+  (a) A800 重开 → 按原设计做 4090 vs A800;
+  (b) A800 不可用 → 本组**只能降为单硬件**,C1 的"跨硬件都能找到上限"这半句**无法验证**,
+      正文须改成单卡上的"到达上限"证据,并把跨硬件列为 future work;
+  (c) 或另租一台不同架构的卡(如 A100/H100),成本与时间须先估。
+  **不要在只有 4090 的情况下把 box1 与 box4 当成"两种硬件"** —— 它们卡型相同,
+  差异只在 CPU(8358P vs 8352V),那是 trial 数的混淆项而不是硬件维度
+  ([[box1-and-box4-have-different-cpus-so-trial-counts-are-not-comparable]])。
 - **⚠ 跨卡 trial 数不可直接比**:box1 与 box4 的 CPU 不同(8358P vs 8352V),
   compile_s +32%、job_wall +26% ⇒ 840 vs 760 trial 是硬件差异
   ([[box1-and-box4-have-different-cpus-so-trial-counts-are-not-comparable]])。
@@ -182,7 +212,11 @@ C3 撤下,P2 并入 C2 作为其中的"低成本验证"步骤而不单列。
 
 **figure placeholder**
 - `fig:ceiling_by_hw`:横轴 kernel 类型,纵轴"达到该卡天花板的百分比",每卡一组柱 + 各方法一色。
+  **⚠ 只有在上面 (a) 或 (c) 成立时这张图才有"每卡一组"**;若单硬件,退化为一组柱,
+  图名与 caption 都要改(不能画一张只有一组的"by_hw")。
 - `fig:binding_dims`:堆叠柱,显示每个赢家在哪些维度绑定(说明"不同硬件绑定不同维度")。
+  **⚠ 同样依赖第二种硬件** —— 单硬件下它只能说明"不同 kernel 类型绑定不同维度",
+  caption 必须相应改写,这仍是一条有价值的 C1 证据(且已有数据支持:三臂赢家 3/2/1)。
 
 ### 3.3 实验三:消融 + 逐 contribution 结果
 
@@ -322,8 +356,14 @@ method 里应写成:归因不是从 θ\* 单 knob 消融,而是**从被拒点向
 
 ## 5. 需要用户决定的事项(按紧急度)
 
+0. **⚠ 最紧急(资源前提,不是设计问题):第二种硬件从哪来?**
+   实测三张可用卡全是 RTX 4090,A800 `ssh` 拒绝连接。**§3.2 的跨硬件对照现在无法开展。**
+   选:(a) 重开 A800;(b) 另租不同架构卡;(c) 接受单硬件、把"跨硬件找上限"降为 future work。
+   **这一条决定 C1 后半句能否写进 paper**,应最先定。
 1. **base model × 方法 × level 的全交叉不可行(300 run / 3600 GPU·h)。** 采用 §3.1 的哪个缩减方案?
 2. **KernelBand / KernelBlaster 是否有可运行实现?** 若只能引数字,是否接受"实跑表 + 文献表"分两张?
+   **另:KernelFoundry 虽有完整代码树,但它默认用 `ncu` 做 profiler 反馈,而我们两台机器 ncu 均被禁**
+   ⇒ 是否接受"以关闭 profiler 反馈的降级版作为基线,并在表注声明"?(见 §3.1 的四条前提)
 3. **多卡 case study**:选 §3.4 的 (a) 多 kernel 单卡,还是 (b) 真多卡(需新增并行维度,本轮不建议)?
 4. **§2.1 的两个诊断实验(单路线 / MAP-Elites)**:补做,还是改为引用式论证?
 5. **是否补 MAP-Elites 基线?** 不补则 P3 措辞须降级。
