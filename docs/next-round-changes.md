@@ -564,6 +564,63 @@ change_summary [recovered from sandbox after a transport failure; the agent's ow
 
 ---
 
+## 4.4 【本轮实测新发现,不是代码改动,是 C1 的一条失败模式】改写声明的资源效应可以是恒等
+
+**现场**:`s7-treatment/run-l3-43-20260913-202332`,`cand-6f5cdc80` → `cand-7d02bbab`(H1),
+box4。这是本对第一个**关闭**的改写空间。
+
+改写声明(analyst H1 原文):"Keep Q/K/V/P tiles in bf16 inside `_flash_kernel` …
+**frees ~40% of operand registers -> occupancy 17%->~30%** and fewer ALU cast instructions"。
+
+**在父代最优点的同一组 6 个 knob 上复测子代**(`scripts/probes/rewrite_source_vs_knob.py`):
+
+| | parent | child |
+|---|---|---|
+| latency | 3.3649 ms | 3.3644 ms(**0.015%**,远在 ±2–4% 噪声底之下) |
+| `n_regs` | 210 | **210** |
+| `n_spills` | 0 | 0 |
+| `num_warps` | 2 | 2 |
+| `occupancy` | 0.1667 | **0.1667** |
+| `shared_bytes` | 18432 | **18432** |
+| `occ_limiter` | registers | **registers** |
+
+**六个维度全是恒等。** 而 `rewrite_vs_promise.py` 报的 **+3.06%**(3.3649 → 3.2620 ms)
+**全部来自 TPE 在新空间里换到了另一个 knob 点**,不是源码改动的功劳。
+
+### 为什么这比"声明幅度不准"严重一档
+
+已知的声明准确率问题([[declaration-accuracy-is-per-dimension-not-global]]:`shared_bytes` 36%/20%)
+是**幅度**问题,符号大体还在。这一例连符号都没有 —— 是**空操作**。
+而延迟确实改善了,于是框架把它记成**一次成功的改写**,并在族的 `best_history` 上前进一格。
+这是 [[the-framework-only-collects-confirmations]] 的一个具体机制:
+**改善由调参提供,功劳记给了改写。**
+
+### 读法上的连带教训(我自己差一步就写错)
+
+先按 `rewrite_vs_promise.py` 的"两侧各自最优点"读,得到的是
+`n_regs 210→254`、`occupancy 0.1667→0.0833`(减半)、`occ_limiter registers→shared_memory`
+—— 看起来是"改写把占用率弄差了",**方向与恒等这一真相相反**。
+那三个数全部是**换 tile** 的后果。
+⇒ **任何要归因给源码的资源方向,必须在固定 knob 的匹配点上读。**
+匹配点不存在时,正确答案是**拒绝出数**,不是退回自有最优点比较。
+
+### 下一轮该测什么(不是"修"什么)
+
+1. **把匹配点复测变成常规产物**,而不是事后探针:改写空间发布时,把父代最优 `ParamSet`
+   作为 anchor 入队(**已有机制**,K 扩展就是这么复用父代测量点的),
+   于是每个改写都自带一个固定 knob 的对照点,零额外机时(一个 trial,且它同时是有用的采样)。
+2. **在这个匹配点上比对声明**:`BottleneckReport`/`REWRITE_PRODUCED` 声明的维度与方向
+   vs 实测 Δ。这给 C1 一个**逐改写**的准确率,而不是今天的逐候选声明准确率。
+3. **正对照是必须的**:必须有改写在匹配点上**确实**移动了被点名的维度,否则"全是空操作"
+   与"我的匹配逻辑坏了"打印出同一个结果 —— 本轮就是先坏了一次
+   (`median_ms` 拼错 ⇒ 每个 trial 读成 `None` ⇒ 打印"无同族可比",一句关于 run 的假事实)。
+
+**本轮不做**:样本量是 **1**。第二个改写 `cand-c56d8286`(H2)空间仍开着,
+控制臂 `cand-8071c78e` 也开着 ⇒ 全对至多给出 3 个匹配点,不足以给"多少比例的改写是空操作"定量。
+**引用本节必须带 n=1。**
+
+---
+
 ## 5. 建议次序
 
 1. **§1(已批准)** —— top-K 原点。零机时风险,`probe_top_k=1` 时与今天逐字节相同。
