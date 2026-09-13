@@ -18,9 +18,27 @@
 #
 # WHAT K=3 CHANGES, precisely. Each ablation starts from the 3 fastest MEASURED configurations rather
 # than 1. The verdict becomes a count ("refused at 2 of the 3 fastest points"), and a wall that holds
-# away from theta* is no longer discarded because the single fastest point happened to fit. The
-# re-evaluation gap here is +-2-4% with an UNSTABLE sign, so the 2nd and 3rd fastest configurations
+# away from theta* is no longer discarded because the single fastest point happened to fit.
+# The re-evaluation gap here is +-2-4% with an UNSTABLE sign, so the 2nd and 3rd fastest configurations
 # are not meaningfully worse than the 1st -- they are equally good starting points, not fallbacks.
+#
+# ⚠ HOW MUCH IT ACTUALLY BUYS, measured rather than argued -- and it is FAR LESS than the paragraph
+# above suggests. `scripts/probes/would_top_k_rescue_attribution.py` over 458 refused configs from
+# four finished/running arms, counting how many are ONE knob from an origin (the precondition for a
+# single-knob revert to reach them at all):
+#     K=1  10/458 (2%)     K=3  16/458 (3%)     K=5  19/458 (4%)     K=8  25/458 (5%)
+# The refused point sits a MEDIAN of 6 knobs from the optimum (max 15-17), and the three origins'
+# distance distributions are nearly identical (medians 6 / 5 / 6) -- the faster points are not closer
+# to the refusal. So K=3 is worth setting (it is monotone, and ~4.5 s per candidate is nothing against
+# 12 h) but it is NOT a fix: 97% of refusals remain unreachable at any K.
+#
+# WHAT THIS MEANS FOR READING THE PAIR, and it must be said before the run rather than after: if the
+# all-on arm reports few or zero attributed walls, that is NOT evidence about C2. It is the distance
+# problem, which K cannot close because every origin K can pick is a config that RAN and is therefore
+# under the limit. Only walking BACK from the refused point traverses the limit. So this pair's
+# primary readings are the ones that do not depend on attribution succeeding -- soft walls found and
+# delivered, families that received wall text, walls freed at the walled value -- and a null on the
+# attributed-wall count should be reported as a known limitation, not as a result.
 #
 # WHAT IT COSTS, measured not assumed: the probe materializes every (wall, origin) pair and screens
 # them in ONE worker process at ~0.49 s marginal. K=3 with three walls is ~4.5 s per candidate
