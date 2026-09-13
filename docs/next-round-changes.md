@@ -473,6 +473,77 @@ NUM_STAGES=1, ieee, split3`)墙钟 **1081 s**,占该臂**全部 GPU 时间的 39
 
 ---
 
+## 4.2 【本轮不改,已实测】沙箱救援丢失改写意图 ⇒ 该改写永久不可归因
+
+**现象**(S7 控制臂,`REWRITE_PRODUCED` seq=477):
+
+```
+family_id      "fam-5546fb5f"
+candidate_id   "cand-8071c78e"
+hypothesis_id  ""
+change_summary [recovered from sandbox after a transport failure; the agent's own summary never arrived]
+```
+
+**救援路径本身是对的**(`modules.py:715`、`base.py:306`):传输失败时把 agent 已写出的候选文件
+抢救出来,摘要坦白标注不可用,且仍走 `check_output` ⇒ 半写文件照样被拒。**代码没有缺陷。**
+
+**但产生一个分析层后果,而且是静默的**:该改写的 `hypothesis_id` 为空、意图无记录
+⇒ **来源永久不可归因**。受影响的读数:
+- **P3(族的墙文本覆盖率)** —— 无法判断这次改写是否收到过墙文本;
+- 任何"改写依据什么"的统计(如 `rewrite_provenance.py`)会把它计入"无法归因",
+  而"无法归因"与"确认无墙引导"是两件事;
+- [[only-nine-percent-of-hypotheses-are-ever-implemented]] 那类实现率统计的分母。
+
+**下一轮的改法(需改 agent 路径,故不中途做)**:救援时**从抢救出的源文件里回填 `hypothesis_id`**。
+可行性已实测:处理臂两个正常改写的 `change_summary` 分别以 `H1:` / `H2:` 开头,
+即 rewriter 自己会把假设 id 写进产物文本 ⇒ 从源文件首部或注释里正则提取即可。
+**必须连带**:(a) 提取失败时**保持为空**而不是猜一个(空是诚实的,猜是伪造归因);
+(b) 写正对照 —— 一次真实的救援必须仍然被标为"摘要不可用",
+否则修法会退化成"给每个救援编一个 id"。
+
+**代价量化**:本对至今 3 个改写,1 个(33%)意图丢失。样本极小,但方向是 100% 的信息损失
+而非部分损失 —— 这个改写在任何来源分析里都只能计入"未知"。
+
+---
+
+## 4.3 【不是代码改动,是实验设计】C2 的新颖性被自己的基线威胁 —— 下一轮必须测三件事之一
+
+**实测(box4,S7 对照跑,`scripts/probes/analyst_does_c2_already.py`)**:
+
+| 臂 | 假设数 | 只提上限 | 只提斜率 | **两者兼具(= C2 形状)** |
+|---|---|---|---|---|
+| **控制**(`slope_guide: False`,0 道已归因墙) | 24 | 5 | 0 | **4(17%)** |
+| 处理 | 18 | 3 | 1 | 1(6%) |
+
+控制臂 analyst 原文:
+
+> `Picks up the boundary trends now blocked: stages 1->4 gave -25% at the winning tile;`
+> `BLOCK_N 32->128 was monotone -24%`
+> `Unblocks the shared-capped directions: NUM_STAGES 6-8 and/or BLOCK_N=256 at 4 stages`
+> `fit under the 101376 B cap (BN=256 bf16 tiles s4 = 98304 B exactly)`
+
+**这是设计使然,不是意外**:analyst 的 prompt(`agents/modules.py:1059-1088`)把
+`at_boundary`+方向、effect size、逐值失败率、best 处资源占用、`docs/device.md` 硬上限
+全部交给它,并在 **1079 行**明确要求它判断某方向是否 "prevented by a hardware/resource limit"。
+
+⇒ **"2e 让框架能做到以前做不到的事"已被否证。** 这比 BE-CBO 那条更近:那是外部先例,
+**这是我们自己的基线**。
+
+**C2 仍可主张,但只能是下列之一,且每条都要单独测量**:
+
+| 主张 | 可测量的形式 | 已知的支持/反对 |
+|---|---|---|
+| **更早** | 2e 在调参结束即产出;analyst 要等完整统计 ⇒ 比较"首次可得的 trial 序号" | 待测。S7 本就是把它提前到调参**内部**,但 16 次重算 0 投递 |
+| **更可靠** | 同一处截断,analyst 命中的比例 vs 2e 命中的比例 | 待测。需先有可归因的墙(本对 0 道) |
+| **定量更准** | 墙给出精确 `over_ratio`;agent 是估算 | **有支持**:[[triton-flash-attn-shared-memory-formula]] 实测 agent 手写共享内存约束中位只有真值 **32%** 且从不拒绝 |
+
+**"定量更准"是目前唯一已有证据的一条**,而且它把 C2 从"新能力"改写成"精度替代 agent 估算"——
+这是一个**更小但站得住**的主张。下一轮若要保 C2,应优先设计这条的实验。
+
+**不要**据上表声称"控制臂 analyst 比处理臂强":匹配器是粗糙正则,4 vs 1 在 24/18 基数上是噪声。
+
+---
+
 ## 5. 建议次序
 
 1. **§1(已批准)** —— top-K 原点。零机时风险,`probe_top_k=1` 时与今天逐字节相同。
