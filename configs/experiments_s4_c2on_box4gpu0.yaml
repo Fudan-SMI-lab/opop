@@ -1,0 +1,159 @@
+# STEP 4, ARM B of 2 -- C2 ALL-ON (treatment) on BOX 4, pinned to **GPU 0**.
+#
+# Read the header of `experiments_s4_c2off_box4gpu1.yaml` first: it states the question, the compound
+# variable, what is held constant, and how to read the pair. This file only documents the settings
+# that differ and the one non-default value chosen deliberately.
+#
+# THE ONE NON-DEFAULT VALUE, and it is the difference between an experiment and another null-input
+# result: `probe_top_k: 3`.
+#
+# WHY IT CANNOT STAY AT 1. Attribution ablates ONE knob at a time starting from the candidate's
+# single fastest configuration. On the S7 pair's control arm that produced 4 candidate walls and ZERO
+# attributed ones, and the cause was measured: the refused configuration differs from the optimum in
+# 3 to 10 knobs, so no single-knob revert from the optimum can reach it, and theta* is itself a
+# configuration that RAN -- hence always under the limit. With K=1 this arm would very likely also
+# report 0 attributed walls, and then "C2 all-on" and "C2 all-off" would be identical where it
+# matters and the pair would measure nothing. The config's own comment says "3 is the value to set
+# for an experiment".
+#
+# WHAT K=3 CHANGES, precisely. Each ablation starts from the 3 fastest MEASURED configurations rather
+# than 1. The verdict becomes a count ("refused at 2 of the 3 fastest points"), and a wall that holds
+# away from theta* is no longer discarded because the single fastest point happened to fit. The
+# re-evaluation gap here is +-2-4% with an UNSTABLE sign, so the 2nd and 3rd fastest configurations
+# are not meaningfully worse than the 1st -- they are equally good starting points, not fallbacks.
+#
+# WHAT IT COSTS, measured not assumed: the probe materializes every (wall, origin) pair and screens
+# them in ONE worker process at ~0.49 s marginal. K=3 with three walls is ~4.5 s per candidate
+# against a 12 h clock, and `probe_total_s` is journalled so it can be subtracted rather than
+# assumed. `max_probes_per_candidate: 8` still caps it, and walls beyond the cap are counted in the
+# event so the number is never silently lost.
+#
+# THE WRITEBACK DEFECT THAT WOULD HAVE MADE K>1 SILENTLY WRONG IS FIXED, and this was checked before
+# choosing K=3, not assumed: the old code sent theta* to `verdict` and EVERY other origin to a single
+# scalar `second_origin`, so a third origin silently replaced the second -- no exception, no missing
+# field, a normal-looking event log. It is now `origin_verdicts` / `origin_max_shared`, keyed by
+# origin name.
+#
+# ⚠ CONSEQUENCE FOR COMPARABILITY, stated so nobody reads across it later: K=3 makes this arm NOT
+# byte-comparable with the finished runs (they all ran K=1, which is why 1 is the default). This pair
+# is internally valid -- arm A uses the same K, and it cannot fire there anyway since attribution is
+# off -- but do NOT put this arm's numbers in a table beside step-3's or the S7 pair's.
+#
+# Launch (GPU 0; simultaneously with arm A on GPU 1):
+#   cd /root/autodl-tmp/work/opop
+#   CUDA_VISIBLE_DEVICES=0 XDG_DATA_HOME=/root/autodl-tmp/xdg-s4b \
+#   PYTHONPATH=src /root/autodl-tmp/orch-venv/bin/python -m kernel_optimizer.cli \
+#     --config configs/experiments_s4_c2on_box4gpu0.yaml run --task level3:43
+
+v3:
+  # ---- THE VARIABLE: the whole C2 chain, ON. The only block that differs from arm A. ----
+  wall_attribution:
+    # (1) FIND the hard truncation and attribute it to a single knob, with the over-limit ratio that
+    # becomes the rewriter's quantitative target.
+    enabled: true
+    in_prompt: true
+    max_probes_per_candidate: 8
+    probe_second_origin: true
+    # The one deliberate non-default -- see the header. 1 would very likely reproduce the S7 control
+    # arm's 0 attributed walls and make this pair measure nothing.
+    probe_top_k: 3
+
+  soft_wall:
+    # (2) FIND the truncation on knobs that have NO refusal criterion, via the spill count. This is
+    # what covers the dimensions the hard wall structurally cannot see: of the eight resource
+    # dimensions only shared memory has a refusal criterion.
+    #
+    # It has its own slope gate (`gain <= 0` is dropped, the same filter as the hard wall), so a knob
+    # whose latency WORSENS toward the spilling end is discarded rather than delivered. Its
+    # applicability gate is "the best trial must itself spill", which held for about a third of
+    # candidates on the S7 pair.
+    enabled: true
+    in_prompt: true
+    max_rows_in_prompt: 3
+
+  slope_guide:
+    # (3) Let the sampler go MEASURE the walled value during tuning, instead of only telling the
+    # rewriter after tuning has ended. This is the piece that makes the information EARLY: a wall's
+    # criterion is "refused value outside the measured range", so a wall DISAPPEARS once some other
+    # partner runs that value -- wall counts fall monotonically as tuning proceeds, which is why the
+    # information has to be used when found.
+    enabled: true
+    recompute_every: 10
+    max_enqueued_per_recompute: 2
+    # Let the spill wall steer too: the hard wall alone was 0.5% of the budget on the preflight, which
+    # cannot produce an interpretable null. The event's `source` keeps the two separable in the log.
+    use_soft_wall: true
+
+  # ---- everything below is IDENTICAL in arm A ----
+  ordered_categoricals:
+    # OFF in both arms: it is a second sampling change, and two at once are unattributable.
+    enabled: false
+
+  diagnosis:
+    # C1's variable, held CONSTANT here. Both arms get the per-dimension resource vector.
+    mode: vector
+    expectation_ledger: false
+
+run:
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v3/s4-c2on
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench
+
+opencode:
+  server_url: null
+  launch_cwd: /root/autodl-tmp/opop-workspace/opop-glm
+  # NOTE the provider block copied here carries a plaintext API key into every agent sandbox under
+  # runs_dir. A tar/scp of runs_dir carries the key off the box.
+  sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+    XDG_DATA_HOME: /root/autodl-tmp/xdg-s4b
+
+wsl:
+  # The MATCHED venv on this box -- NOT orch-venv, which is torch 2.14 / triton 3.8.
+  venv: /root/autodl-tmp/kernel-opt-venv
+  kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-s4b
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+device:
+  name: NVIDIA GeForce RTX 4090 (sm_89)
+  vram_gb: 23
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024
