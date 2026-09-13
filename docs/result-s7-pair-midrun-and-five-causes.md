@@ -156,6 +156,27 @@ RESOURCE_SOFT_WALL: applicable=True n_walls=1 param=BM_PROJ gain=16.6%
 
 NaN 占非有限值的 **99.8%** ⇒ 候选自己算出了 NaN(典型为 softmax 中 `exp` 上溢或除零),不是容差问题。
 
+**loop A 修好了它,而且诊断可核对**(本对首次跑通 loop A,修复调用 341 s,远低于配置注释记录的 0.99 h):
+
+> `fixed.py` 与 `broken.py` **逐字节相同**,只在 `_softmax_kernel` 里加一段:在原 store 循环之后,
+> 用 `for start_n in range(((hi + BN - 1) // BN) * BN, T, BN)` 对**从未被计算过**的 key 位置写 `tl.zeros`。
+
+这与见证门读数**完全吻合**:因果掩码下超出 `hi` 的位置从未被写 ⇒ 输出缓冲区留着未初始化内存 ⇒ 读出 NaN。
+"58.8% 非有限、其中 99.8% 是 NaN"正是"过半位置没被写"的形状。修复只加零填充、其余字节不动,
+也满足单一 `PARAMS` 契约。随后 `parameterizer` 对修好的源码重新参数化(loop A 的第 2 次尝试,
+上界 `repair_attempts = 2` ⇒ 最多 3 次参数化 / 2 次修复)。
+
+**agent 时间已排除为 trial 差的原因**(`agent_time_by_module.py`,3.56 h 处):
+
+| 臂 | agent 总时长 | 占墙钟 | 分模块(总秒)|
+|---|---|---|---|
+| 控制 | **0.97 h** | 27% | analyst 1496、parameterizer 1154、generator 846 |
+| 处理 | **1.06 h** | 30% | parameterizer 1258、analyst 1257、generator 970、**repair 341** |
+
+两臂只差 **0.09 h**,远不足以解释 80 个 trial 的差距 ⇒ trial 差仍归因于**空间预算**(扩展 2 vs 1)
+与**昂贵配置类**,与 agent 开销无关。`generator` 两臂各只 1 次调用却占各自 agent 时间的 24% / 25%,
+是一次性成本,不影响对比。
+
 **那两个误标 trial 同时是 §4 第一条缺陷的现场代价**:它们之所以能跑到 1081 s / 1734 s,
 是因为 launch 前的 screen 在 8 MB 级 PTX 上超了 120 s 的 cap(设计如此:screen 失败绝不构成判决),
 于是真 trial 照跑、直到 Triton 在 launch 时才拒绝。**修标签不会省下这些秒**(钱花在 `ptxas` 里、
