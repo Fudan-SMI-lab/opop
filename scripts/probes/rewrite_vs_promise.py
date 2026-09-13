@@ -94,6 +94,14 @@ def main() -> int:
 
         trials_of: dict[str, list[dict]] = {}
         closed: set[str] = set()
+        # WHEN each candidate closed, by event seq. The parent must be a candidate that had already
+        # closed when this rewrite was PRODUCED -- "the family's best closed candidate" read over
+        # the whole run lets a LATER sibling become the parent of an EARLIER one. Live example:
+        # cand-c56d8286 (H2, 2.9358 ms) overtook cand-7d02bbab (H1, 3.2620 ms), after which H1 was
+        # scored against H2 and printed -11.11%, reading as "this rewrite made things 11% worse".
+        # H1's real parent is cand-6f5cdc80 (3.3649 ms) and against it H1 improved. The same pair
+        # then appears twice, once with each sign.
+        closed_at: dict[str, int] = {}
         for e in ev:
             t = e.get("type")
             if t == "TRIAL_DONE":
@@ -103,7 +111,9 @@ def main() -> int:
             elif t == "TUNING_DONE":
                 p = e.get("payload") or {}
                 if p.get("candidate_id"):
-                    closed.add(str(p["candidate_id"]))
+                    cid = str(p["candidate_id"])
+                    closed.add(cid)
+                    closed_at.setdefault(cid, int(e.get("seq") or 0))
 
         def _best(cid: str) -> tuple[float | None, str | None, int]:
             rows = [(m, tr) for tr in trials_of.get(cid, [])
@@ -117,9 +127,13 @@ def main() -> int:
             p = e.get("payload") or {}
             child = str(p.get("candidate_id") or "?")
             fid = str(p.get("family_id") or fam_of.get(child, "?"))
-            # The parent is not in the payload, so take the family's best OTHER candidate that has
-            # closed -- and say that is what was done, rather than implying the payload named it.
-            sibs = [c for c, f in fam_of.items() if f == fid and c != child and c in closed]
+            # The parent is not in the payload, so take the family's best candidate that had ALREADY
+            # CLOSED when this rewrite was produced -- and say that is what was done, rather than
+            # implying the payload named it. The seq bound is what stops a later sibling becoming an
+            # earlier one's parent (see the note where closed_at is built).
+            born = int(e.get("seq") or 0)
+            sibs = [c for c, f in fam_of.items()
+                    if f == fid and c != child and c in closed and closed_at.get(c, 1 << 62) < born]
             parent_best = None
             parent = None
             for c in sibs:
@@ -128,8 +142,9 @@ def main() -> int:
                     parent_best, parent = m, c
             cb, cbid, n = _best(child)
             print("  --- %s (%s) in family %s" % (child, p.get("hypothesis_id") or "?", fid))
-            print("      parent (family's best closed candidate, NOT named in the payload): %s %s"
-                  % (parent, "%.4f ms" % parent_best if parent_best else "-"))
+            print("      parent (family's best candidate ALREADY CLOSED at seq %d, NOT named in "
+                  "the payload): %s %s"
+                  % (born, parent, "%.4f ms" % parent_best if parent_best else "-"))
             if cb is None:
                 print("      child has no complete trial yet -- NO VERDICT")
                 continue

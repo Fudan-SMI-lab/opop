@@ -94,6 +94,12 @@ def report(events: list[dict], label: str, quiet: bool = False) -> dict:
     all_trials: dict[str, list[dict]] = {}
     done_trials: dict[str, list[dict]] = {}
     closed: set[str] = set()
+    # WHEN each candidate closed. The parent must have closed BEFORE the rewrite was produced;
+    # otherwise a later sibling that overtakes an earlier one becomes its parent, and the earlier
+    # rewrite is scored against its own descendant. Live: cand-c56d8286 (2.9358 ms) overtook
+    # cand-7d02bbab (3.2620 ms), after which H1 read -11.11% against H2 instead of improving on
+    # its real parent cand-6f5cdc80 (3.3649 ms).
+    closed_at: dict[str, int] = {}
     for e in events:
         t = e.get("type")
         p = e.get("payload") or {}
@@ -110,7 +116,9 @@ def report(events: list[dict], label: str, quiet: bool = False) -> dict:
             if tr.get("status") == "complete":
                 done_trials.setdefault(cid, []).append(tr)
         elif t == "TUNING_DONE" and p.get("candidate_id"):
-            closed.add(str(p["candidate_id"]))
+            cid = str(p["candidate_id"])
+            closed.add(cid)
+            closed_at.setdefault(cid, int(e.get("seq") or 0))
 
     def _best(cid: str) -> dict | None:
         rows = [(m, tr) for tr in done_trials.get(cid, [])
@@ -137,7 +145,9 @@ def report(events: list[dict], label: str, quiet: bool = False) -> dict:
              % (n_done, n_all,
                 " (%d failed; the BUDGET was not short)" % (n_all - n_done)
                 if n_all > n_done else ""))
-        sibs = [c for c, f in fam_of.items() if f == fid and c != child and c in closed]
+        sibs = [c for c, f in fam_of.items()
+                if f == fid and c != child and c in closed
+                and closed_at.get(c, 1 << 62) < int(e.get("seq") or 0)]
         pbest, parent = None, None
         for c in sibs:
             tr = _best(c)
@@ -287,15 +297,17 @@ def _selftest() -> int:
     prof_c = {"n_regs": 160, "shared_bytes": 8192, "occupancy": {"occupancy": 0.42,
                                                                  "limiter": "registers"}}
     base = [
-        {"type": "CANDIDATE_REGISTERED", "payload": {"candidate":
+        {"seq": 1, "type": "CANDIDATE_REGISTERED", "payload": {"candidate":
             {"candidate_id": "par", "family_id": "f1"}}},
-        {"type": "CANDIDATE_REGISTERED", "payload": {"candidate":
+        {"seq": 2, "type": "CANDIDATE_REGISTERED", "payload": {"candidate":
             {"candidate_id": "kid", "family_id": "f1"}}},
-        {"type": "REWRITE_PRODUCED", "payload":
+        dict(_tr("par", {"BLOCK_M": 64}, 3.0, prof_p), seq=3),
+        {"seq": 4, "type": "TUNING_DONE", "payload": {"candidate_id": "par"}},
+        # The rewrite is PRODUCED after the parent closed (seq 4) and before the child closes.
+        # Both orderings matter: see the two seq tests below.
+        {"seq": 5, "type": "REWRITE_PRODUCED", "payload":
             {"candidate_id": "kid", "family_id": "f1", "hypothesis_id": "H1"}},
-        _tr("par", {"BLOCK_M": 64}, 3.0, prof_p),
-        {"type": "TUNING_DONE", "payload": {"candidate_id": "par"}},
-        {"type": "TUNING_DONE", "payload": {"candidate_id": "kid"}},
+        {"seq": 9, "type": "TUNING_DONE", "payload": {"candidate_id": "kid"}},
     ]
     ok = True
     # 1. matched point present -> must produce a fixed-knob delta
@@ -354,6 +366,33 @@ def _selftest() -> int:
                "SELFTEST dropped dim", quiet=True)
     if f["moved"] != 1 or "shared_bytes" not in f["moved_dims"]:
         print("FAIL: a dropped dim was read as unchanged (%s)" % f)
+        ok = False
+    # 9. A sibling that closed AFTER the rewrite was produced must not be its parent. Without the
+    # seq bound, a later rewrite that overtakes an earlier one becomes the earlier one's parent and
+    # the earlier one is scored against its own descendant -- printing an improvement as a
+    # regression, and the same pair twice with opposite signs.
+    later = [
+        {"seq": 1, "type": "CANDIDATE_REGISTERED", "payload": {"candidate":
+            {"candidate_id": "kid", "family_id": "f1"}}},
+        {"seq": 2, "type": "CANDIDATE_REGISTERED", "payload": {"candidate":
+            {"candidate_id": "gkid", "family_id": "f1"}}},
+        {"seq": 3, "type": "REWRITE_PRODUCED", "payload":
+            {"candidate_id": "kid", "family_id": "f1", "hypothesis_id": "H1"}},
+        dict(_tr("kid", {"BLOCK_M": 64}, 3.0, prof_p), seq=4),
+        {"seq": 5, "type": "TUNING_DONE", "payload": {"candidate_id": "kid"}},
+        dict(_tr("gkid", {"BLOCK_M": 64}, 2.0, prof_c), seq=6),
+        {"seq": 7, "type": "TUNING_DONE", "payload": {"candidate_id": "gkid"}},
+    ]
+    f = report(later, "SELFTEST later sibling is not a parent", quiet=True)
+    if f["no_sibling"] != 1 or f["matched"]:
+        print("FAIL: a sibling that closed after the rewrite was used as its parent (%s)" % f)
+        ok = False
+    # 10. The positive control for that bound: a sibling that closed BEFORE must still be found,
+    # or the fix would silently orphan every rewrite and read as "nothing is decidable".
+    f = report(base + [_tr("kid", {"BLOCK_M": 64}, 2.7, prof_c)],
+               "SELFTEST earlier sibling is a parent", quiet=True)
+    if f["matched"] != 1 or f["no_sibling"]:
+        print("FAIL: an earlier sibling was not accepted as the parent (%s)" % f)
         ok = False
     print("SELFTEST %s" % ("PASS" if ok else "FAIL"))
     return 0 if ok else 1
