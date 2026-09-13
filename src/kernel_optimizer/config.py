@@ -605,6 +605,87 @@ class V3OrderedCategoricalsConfig(StrictConfig):
     enabled: bool = False
 
 
+class V3SlopeGuideConfig(StrictConfig):
+    """S7 / item 3.2: recompute the walls DURING tuning and enqueue points toward the walled knob.
+
+    THE STRUCTURAL PROBLEM IT ADDRESSES. 2e runs after tuning ends, so its slope reaches only the
+    prompt. On the three-arm run all 80 trials were spent before a wall was found, and only 25% of
+    families ever received wall text. S7 recomputes the SAME pure functions
+    (`TuningStatsAnalyzer.analyze` + the wall finders, no GPU) every `recompute_every` finished trials
+    and enqueues "the walled knob takes an undrawn value toward the wall, everything else at the current
+    optimum".
+
+    IT ONLY ADDS POINTS. No value is removed, no domain narrowed, no constraint added, and
+    `trials_per_space` is unchanged: an enqueued trial is consumed by the same `ask()` and counts against
+    the same budget. What changes is WHICH points get drawn inside that budget -- which is exactly why
+    this needs a paired control arm, unlike item 2.
+
+    THE FEASIBILITY MEASUREMENT, both directions, from `scripts/probes/s7_feasibility_replay.py`
+    (prefixes of each candidate's real trial ORDER, the shipping finders on each prefix, per-choice
+    medians rebuilt from the prefix so the replay cannot see what the sampler could not):
+      FOR      a wall is available by the halfway point on 25 of 34 candidates (74%), median earliest
+               prefix 0.38 -- there IS budget left to act on it.
+      AGAINST  the knob walled early is still walled at the end on only 18 of 34 (53%): 12 vanish and
+               4 move to a different knob.
+    Both from the SOFT criterion; the hard one is unanswerable on this host (0 of 151 candidates carry a
+    single `infeasible_shared_memory` record, because the local corpus predates the screen), so the
+    earlier "wall by halfway with 40 trials left" figure stands unverified and the 12h pair re-measures
+    it.
+
+    THE OPEN PREMISE, unresolved and not resolvable by this module: that slope is a good allocation prior
+    at all. Against remaining tuning gain, boundary saturation read Spearman -0.11..+0.24 (below the
+    0.43/0.52 incumbents), and slope vs coverage is rho = -0.431 with 14 of 24 under-covered parameters
+    already walled -- the naive "sample what has not been sampled" finds most walls without any slope.
+    S7 may spend budget on high-slope-but-low-absolute-gain dimensions and come out SLOWER.
+
+    THE PREDICTIONS, DECLARED BEFORE THE RUN so the outcome cannot be read either way afterwards:
+      P1  `RESOURCE_WALL_ATTRIBUTED`'s first appearance moves earlier, normalised to tuning progress.
+      P2  probe-worthy walls per candidate increase.
+      P3  the share of families receiving wall text rises above 25%.
+      P4  if P1-P3 hold and latency does NOT improve, "knowing about the wall earlier" is not the
+          bottleneck and C2's problem is the REWRITE's conversion rate. That is a result, not a failure.
+
+    WHAT THE SHIPPING CODE DID ON THE REAL CORPUS, which changes how P2/P3 read
+    (`scripts/probes/s7_acceptance.py`, 19 L3 runs / 152 candidates / 790 recomputes; details in
+    `docs/analysis-s7-acceptance-firing-rate.md`): it fires on 16 of 152 candidates (10.5%), enqueues 48
+    points, fires EARLY (median 0.25 of the candidate's own sequence, so P1's precondition holds) on real
+    slopes (median tail gain +34.8%) -- and declines 751 of 790 recomputes (95.1%) because there is NO
+    ACTIONABLE WALL AT ALL. So S7 does not fix C2's coverage problem, it inherits it, and a P2/P3 failure
+    means the criterion's applicability is binding rather than this mechanism's timing or dose.
+    """
+
+    # OFF. Unlike every other v3 switch this one changes the TRIAL SEQUENCE, so a run with it on cannot
+    # be pooled with any finished run and needs a paired control arm. At False the tuner receives
+    # `slope_guide=None` and takes the literal pre-S7 path -- no recompute, no enqueue, no event.
+    enabled: bool = False
+
+    # How many FINISHED trials between recomputes. Told, not asked: a wall is derived from measured
+    # latencies, and with `constant_liar` there are asked-but-untold trials at any moment, so counting
+    # asks would recompute against a stats table that has not moved.
+    #
+    # 10 against a 40-trial budget = 3 opportunities (at 10/20/30), which is the dose the feasibility
+    # replay supports: the median earliest prefix holding a wall is 0.38, so the first recompute that
+    # can see anything is the second one. Separate from `enabled` on purpose -- it is what distinguishes
+    # "fired too late to matter" from "the signal is not useful" in a P4 reading.
+    recompute_every: int = 10
+
+    # How many points ONE recompute may enqueue. The dose, kept separate from the cadence for the same
+    # P4 reason. 2 x 3 recomputes = at most 6 of 40 trials (15%) even if every recompute fires and every
+    # suggestion survives dedup. The cap exists because 12 of 34 early walls VANISH by the end of
+    # tuning: an uncapped mechanism would spend a large share of the budget on knobs the final
+    # measurement does not support.
+    max_enqueued_per_recompute: int = 2
+
+    # Let the item-2 SPILL wall steer sampling too, not just the shared-memory wall. Separate switch,
+    # and it must stay off unless `v3.soft_wall.enabled` is also on: a spill wall has no independent
+    # probe confirmation (there is no cheap "would this spill" question apart from compiling), so
+    # letting it move the sampler while item 2 is off would put an unconfirmed signal into the tuning
+    # loop through a door nobody opened -- and in a run with both on, the two mechanisms' contributions
+    # would be inseparable. Note it is the only criterion the local corpus can exercise at all, so a
+    # run with this off is testing the hard wall alone.
+    use_soft_wall: bool = False
+
+
 class V3Config(StrictConfig):
     """The v3 stages, each behind its own switch, all off by default.
 
@@ -620,6 +701,7 @@ class V3Config(StrictConfig):
     wall_attribution: V3WallAttributionConfig = V3WallAttributionConfig()
     soft_wall: V3SoftWallConfig = V3SoftWallConfig()
     ordered_categoricals: V3OrderedCategoricalsConfig = V3OrderedCategoricalsConfig()
+    slope_guide: V3SlopeGuideConfig = V3SlopeGuideConfig()
 
 
 class AppConfig(StrictConfig):

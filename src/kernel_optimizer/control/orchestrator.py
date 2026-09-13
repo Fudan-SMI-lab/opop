@@ -68,7 +68,7 @@ from kernel_optimizer.paramspace.validation import (
     error_excerpt,
 )
 from kernel_optimizer.store.run_store import RunStore
-from kernel_optimizer.tuning import ordered_domains
+from kernel_optimizer.tuning import ordered_domains, slope_guide
 from kernel_optimizer.tuning.deweight import DeweightLedger
 from kernel_optimizer.tuning.stats import TuningStatsAnalyzer
 from kernel_optimizer.tuning.tpe import OptunaTPETuner
@@ -1220,6 +1220,8 @@ class Orchestrator:
             # agent-declared `kind`) and the measurements.
             ordered_categoricals=self.cfg.v3.ordered_categoricals.enabled,
         )
+        # S7 / item 3.2. None = off and the literal pre-S7 path: no recompute, no enqueue, no event.
+        guide = self._make_slope_guide(space)
 
         while True:
             asked = tuner.ask()
@@ -1274,6 +1276,8 @@ class Orchestrator:
                 # log already contained.
                 self.deweight_ledger.observe(record)
             crun.trials.append(record)
+            if guide is not None and guide.due(tuner.n_told):
+                self._slope_guide_step(crun, space, tuner, guide)
 
         best = tuner.best()
         # S1b: journalled per space so the mechanism's effect is measurable from the log without
@@ -1291,6 +1295,11 @@ class Orchestrator:
         # used, on the same domains, so the two cannot disagree.
         ordered = (ordered_domains.snapshot(list(space.domains))
                    if self.cfg.v3.ordered_categoricals.enabled else None)
+        # S7. None when off, so a run without it reads exactly as before; a DICT with `n_suggested: 0`
+        # when it is on and nothing fired -- different states, and only the second says the mechanism
+        # ran. Its skip counters are what a P4 reading needs to separate "the signal is not useful" from
+        # "the mechanism never got the chance".
+        slope = guide.snapshot() if guide is not None else None
         if best is not None:
             # crun.best_ms tracks the candidate's best over ALL its spaces, so a
             # re-tune (improvement K's expansion) that lands worse must not erase a
@@ -1307,13 +1316,86 @@ class Orchestrator:
                 "best_ms": best.latency_ms.robust_ms, "improved_family": improved,
                 "snapshot": tuner.snapshot(), "deweight": deweight,
                 "ordered_categoricals": ordered,
+                "slope_guide": slope,
             })
         else:
             self.store.append("TUNING_DONE", {
                 "candidate_id": cand.candidate_id, "space_id": space.space_id,
                 "best_ms": None, "snapshot": tuner.snapshot(), "deweight": deweight,
                 "ordered_categoricals": ordered,
+                "slope_guide": slope,
             })
+
+    def _make_slope_guide(self, space: ParameterSpace) -> "slope_guide.SlopeGuide | None":
+        """S7's collaborator, or None when the switch is off (the literal pre-S7 path).
+
+        Its own function so the decision is testable by CALLING it rather than by reading `_tune`'s
+        source. That matters for the one non-obvious part -- `use_soft_wall` is AND-ed with item 2's own
+        `enabled` -- because a source-text assertion about which config names appear in `_tune` cannot
+        distinguish "the flags are combined correctly" from "the flag is mentioned", and this project has
+        already been bitten by guards that encoded the text instead of the behaviour.
+
+        Built outside the tuner because the recompute needs the STATS ANALYZER: both wall criteria read
+        `ParamStat.latency_by_value`, the harness's own per-choice median table, and a tuner that rebuilt
+        that table itself would be free to disagree with the one the report and the analyst see.
+        """
+        cfg = self.cfg.v3.slope_guide
+        if not cfg.enabled:
+            return None
+        return slope_guide.SlopeGuide(
+            space=space,
+            recompute_every=cfg.recompute_every,
+            max_enqueued_per_recompute=cfg.max_enqueued_per_recompute,
+            # AND-ed with item 2's own switch. A spill wall has NO independent probe confirmation
+            # (there is no cheap "would this spill" question apart from compiling), so it must not
+            # steer the sampler while the mechanism that finds it is off; and in a run with both on,
+            # the two mechanisms' contributions would otherwise be inseparable.
+            use_soft_wall=(cfg.use_soft_wall and self.cfg.v3.soft_wall.enabled),
+        )
+
+    def _slope_guide_step(self, crun: CandidateRun, space: ParameterSpace,
+                          tuner: OptunaTPETuner, guide: "slope_guide.SlopeGuide") -> None:
+        """S7: recompute the walls mid-tuning and enqueue points toward the walled knobs.
+
+        Never raises. This is a sampling HINT, and a hint that ended a candidate's tuning pass would
+        present a bookkeeping defect as a candidate defect -- the same rule `_attribute_resource_walls`
+        and `_reconcile_round` follow. Costs no GPU: `analyze` and both wall finders are pure.
+
+        The stats are recomputed from the trials so far rather than read from `crun.stats`, which is
+        `None` until `_stats_and_analysis` runs at the END of tuning. That is not a workaround, it is the
+        whole mechanism: 2e's slope arrives too late precisely because it reads the end-of-tuning table.
+
+        Every enqueued point is journalled with its reason, and so is every refusal, because "the
+        mechanism fired" and "the mechanism fired and the sampler drew the point" are different claims
+        and only the log can tell them apart afterwards.
+        """
+        try:
+            stats = self.deps.stats_analyzer.analyze(space, crun.trials)
+            suggestions = guide.suggest(stats, list(crun.trials), tuner.drawn_keys())
+            accepted: list[dict[str, Any]] = []
+            refused: list[dict[str, Any]] = []
+            for s in suggestions:
+                params = ParamSet(values=dict(s.values))
+                reason = tuner.enqueue(params)
+                row = {**s.payload(), "params_key": params.key()}
+                if reason is None:
+                    accepted.append(row)
+                else:
+                    refused.append({**row, "refused": reason})
+            self.store.append("SLOPE_GUIDE_STEP", {
+                "candidate_id": crun.candidate.candidate_id,
+                "space_id": space.space_id,
+                "n_told": tuner.n_told,
+                "budget": self.cfg.budgets.trials_per_space,
+                "enqueued": accepted,
+                "refused": refused,
+                **guide.snapshot(),
+            })
+        except Exception as exc:  # noqa: BLE001 -- a sampling hint must never end a candidate
+            self.store.append("SLOPE_GUIDE_FAILED", {
+                "candidate_id": crun.candidate.candidate_id,
+                "space_id": space.space_id,
+                "error": f"{type(exc).__name__}: {exc}"[:500]})
 
     def _run_trial(self, crun: CandidateRun, space: ParameterSpace, trial_id: str,
                    params: ParamSet, trials_dir: Path) -> TrialRecord:

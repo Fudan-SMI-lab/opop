@@ -544,17 +544,49 @@ def test_the_soft_wall_is_silent_when_the_switch_is_off():
 
 
 def test_the_soft_wall_does_not_touch_the_tuning_loop():
-    """The structural difference from S7, and the reason this needs no control arm: it cannot change
-    trial-budget parity. Asserted where it would break -- the scan is invoked from
-    `_stats_and_analysis`, which runs AFTER tuning, and never from `_tune`.
+    """Item 2's own switches cannot change the trial sequence -- the reason it needs no control arm.
+
+    ORIGINALLY asserted as `"soft_wall" not in _tune`'s source, and S7 (item 3.2) made that assertion
+    false without making the invariant false: S7 can consult the SAME criterion inside the loop, but only
+    under its own `v3.slope_guide.enabled`, and even then only if `v3.soft_wall.enabled` is also on. So
+    the guard is now behavioural -- what must hold is that turning item 2 on, by itself, leaves the
+    tuning loop with no slope guide at all.
+
+    Asserted by CALLING the decision rather than reading the source, because a text assertion cannot
+    distinguish "the flags are combined correctly" from "the flag is mentioned" -- the trap recorded as
+    `source-text-assertions-can-encode-the-bug`.
     """
-    text = io.open(SRC / "control" / "orchestrator.py", encoding="utf-8").read()
-    tree = ast.parse(text)
-    tune = next(n for n in ast.walk(tree)
-                if isinstance(n, ast.FunctionDef) and n.name == "_tune")
-    tune_body = ast.get_source_segment(text, tune) or ""
-    assert "soft_wall" not in tune_body, \
-        "the soft wall must not be reachable from the tuning loop, or budget parity breaks"
+    from kernel_optimizer.config import AppConfig
+    from kernel_optimizer.control import orchestrator as orch_mod
+    from kernel_optimizer.models.core import ParamDomain, ParameterSpace
+
+    space = ParameterSpace(space_id="sp-x", candidate_id="cand-x", source_sha="0" * 8,
+                           domains=[ParamDomain(name="BLOCK_M", kind="int",
+                                                choices=[16, 32, 64, 128])])
+
+    def _guide_for(cfg) -> object | None:
+        o = object.__new__(orch_mod.Orchestrator)
+        o.cfg = cfg
+        return o._make_slope_guide(space)
+
+    # Item 2 fully on, S7 untouched: the tuning loop gets NOTHING.
+    cfg = AppConfig()
+    cfg.v3.soft_wall.enabled = True
+    cfg.v3.soft_wall.in_prompt = True
+    assert _guide_for(cfg) is None, \
+        "turning the soft wall on must not put anything into the tuning loop, or budget parity breaks"
+
+    # And the converse, which is the part S7 adds: the soft criterion reaches the sampler only when
+    # BOTH switches are on. S7 alone must not smuggle an unconfirmed signal into the loop.
+    cfg = AppConfig()
+    cfg.v3.slope_guide.enabled = True
+    cfg.v3.slope_guide.use_soft_wall = True      # ...but v3.soft_wall.enabled stays False
+    guide = _guide_for(cfg)
+    assert guide is not None and guide.use_soft_wall is False, \
+        "the spill wall has no independent probe confirmation, so S7 must not use it while item 2 is off"
+
+    cfg.v3.soft_wall.enabled = True
+    assert _guide_for(cfg).use_soft_wall is True
 
 
 def test_the_prompt_gate_is_separate_from_the_scan_gate():

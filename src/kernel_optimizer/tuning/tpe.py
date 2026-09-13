@@ -72,6 +72,11 @@ class OptunaTPETuner:
             self.study.enqueue_trial(dict(anchor.values), skip_if_exists=True)
         self._pending: dict[str, optuna.trial.Trial] = {}
         self._asked = 0
+        # Trials that have returned a result. S7's recompute cadence runs on this rather than on
+        # `_asked` (see `n_told`), and it is counted here rather than derived as `_asked - pending`
+        # because that difference is also 0 for a trial told twice -- which raises, but only after the
+        # cadence has already been computed from a wrong number.
+        self._told = 0
         self._best_record: TrialRecord | None = None
         self._seen: set[str] = set()
 
@@ -118,10 +123,63 @@ class OptunaTPETuner:
             return trial_id, params
         return None  # space is effectively exhausted for the sampler
 
+    # ---------------------------------------------------------------- S7 / item 3.2
+
+    def enqueue(self, params: ParamSet) -> str | None:
+        """S7: put one point at the head of the queue. None on success, else the refusal reason.
+
+        The point is consumed by the ordinary `ask()`, so it is subject to every rule a drawn point is
+        subject to and it counts against the SAME `budget`. That is what makes "only adds candidate
+        points, does not change `trials_per_space`" true rather than asserted: S7 changes which points
+        the budget is spent on and never how many there are.
+
+        The two refusals happen HERE rather than being discovered later, because Optuna's queue has no
+        way to report either one:
+
+        * `already_drawn` -- an enqueued duplicate would come back from `ask()`, be told PRUNED by the
+          dedup branch, and consume one of the bounded `max_guard_rejects` re-asks. The caller would see
+          a successful enqueue and a trial that never appeared.
+        * `guard_rejected` -- the same, and it is the more important of the two: a queued point that the
+          space's own constraints forbid must NOT be forced through. S7 proposes; the guard still
+          decides, exactly as for a drawn point.
+
+        A value outside the domain's declared choices cannot be refused here because Optuna does not
+        raise on one -- it warns and samples that knob normally, which would silently turn a suggestion
+        into an ordinary draw. `slope_guide._toward_wall` therefore only ever proposes declared choices;
+        this is the reason it reads the domain instead of extrapolating a neighbour.
+        """
+        key = params.key()
+        if key in self._seen:
+            return "already_drawn"
+        if not self.guard_ok(params):
+            return "guard_rejected"
+        self.study.enqueue_trial(dict(params.values), skip_if_exists=True)
+        return None
+
+    @property
+    def n_told(self) -> int:
+        """Trials that have RETURNED a result -- the clock S7's recompute cadence runs on.
+
+        Not `_asked`: a wall is derived from measured latencies, and with `constant_liar` there can be
+        asked-but-untold trials at any moment, so a cadence counted on asks would recompute against a
+        stats table that has not moved.
+        """
+        return self._told
+
+    def drawn_keys(self) -> set[str]:
+        """A copy of the parameter keys already drawn, for S7's dedup before it proposes.
+
+        A copy rather than the set itself: a caller that mutated it would change what `ask()` treats as
+        a duplicate, and the resulting extra PRUNED draws would look like the sampler exhausting the
+        space.
+        """
+        return set(self._seen)
+
     def tell(self, trial_id: str, record: TrialRecord) -> None:
         trial = self._pending.pop(trial_id, None)
         if trial is None:
             raise KeyError(f"unknown or already-told trial {trial_id}")
+        self._told += 1
         if record.status == "complete" and record.latency_ms is not None:
             # `robust_ms` (median, falling back to the mean) rather than `.mean`. A trial is
             # timed with `quick_perf_trials` samples -- 20 by default -- and at that count a

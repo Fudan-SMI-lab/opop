@@ -1,0 +1,45 @@
+====================================================================================================
+S7 ACCEPTANCE -- the SHIPPING SlopeGuide replayed over each candidate's real trial ORDER
+  recompute_every=10  max_enqueued_per_recompute=2  use_soft_wall=False
+====================================================================================================
+Per-choice medians are rebuilt FROM THE PREFIX at every recompute, so the mechanism sees only
+what the sampler could have seen. The dedup set is the prefix's own asked points.
+
+WHAT THIS CANNOT ANSWER, by construction: a replay knows what the trials WERE, not what the
+sampler would have drawn after a point was inserted. So this is a FIRING RATE, not a
+performance claim -- the 12h pair is the only thing that can price the mechanism.
+
+candidates with >= 10 trials: 152
+  ...of which any trial was refused for shared memory: 0
+
+  HARD CRITERION UNANSWERABLE ON THIS CORPUS. `find_walls`' only input is the refused
+  parameter sets, and there are none: every locally backed-up run predates the
+  shared-memory screen. The zero below is the absence of INPUT, not a property of the
+  mechanism. Re-run with --soft for the criterion this corpus can exercise.
+
+recomputes performed:            790
+candidates where it EVER fired:  0/152 = 0.0%
+points it would have enqueued:   0
+
+WHICH GATE DECLINED (these are the numbers a P4 reading needs). NOTE THE TWO DENOMINATORS:
+  no actionable wall at all, PER RECOMPUTE:      790 of 790
+  no undrawn value on the walled side, PER KNOB: 0
+  the point was already asked, PER KNOB:         0
+  incumbent not a point of the space, PER RECOMPUTE: 0
+  The per-knob counters can exceed the number of recomputes, and a recompute whose only
+  walled knob had nothing undrawn increments BOTH -- the first because the row was dropped
+  before the wall list was tested for emptiness. So they are not a partition and must not be
+  summed.
+
+  NOTE the space is RECONSTRUCTED from drawn values (SPACE_PUBLISHED is absent from these
+  runs), so the choice list is a SUBSET of what was declared. Every 'no undrawn value' above
+  is therefore an upper bound on that skip, and the firing rate is a LOWER bound -- the
+  conservative direction for a probe that argues for spending 12h.
+
+HOW TO READ THIS FOR THE S7 DECISION:
+  a low firing rate with 'no wall to act on' dominant  => the criterion, not the wiring, is
+     the binding constraint, and S7 inherits 2e's coverage problem rather than fixing it
+  a low rate with 'no undrawn value' dominant          => the mechanism is redundant with
+     naive coverage: the sampler had already measured everything on the walled side
+  a healthy rate with an early median first-firing     => there is room for the 12h pair to
+     measure something, and P1-P4 become answerable

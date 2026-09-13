@@ -1,0 +1,79 @@
+====================================================================================================
+S7 ACCEPTANCE -- the SHIPPING SlopeGuide replayed over each candidate's real trial ORDER
+  recompute_every=10  max_enqueued_per_recompute=2  use_soft_wall=True
+====================================================================================================
+Per-choice medians are rebuilt FROM THE PREFIX at every recompute, so the mechanism sees only
+what the sampler could have seen. The dedup set is the prefix's own asked points.
+
+WHAT THIS CANNOT ANSWER, by construction: a replay knows what the trials WERE, not what the
+sampler would have drawn after a point was inserted. So this is a FIRING RATE, not a
+performance claim -- the 12h pair is the only thing that can price the mechanism.
+
+candidates with >= 10 trials: 152
+  ...of which any trial was refused for shared memory: 0
+
+recomputes performed:            790
+candidates where it EVER fired:  16/152 = 10.5%
+points it would have enqueued:   48
+first firing, as a fraction of the candidate's own sequence: median 0.25  (0.50 or less means budget remained to spend on it)
+tail gain of the acted-on knob: median +34.8%  range +0.5% .. +66.6%
+
+WHICH GATE DECLINED (these are the numbers a P4 reading needs). NOTE THE TWO DENOMINATORS:
+  no actionable wall at all, PER RECOMPUTE:      751 of 790
+  no undrawn value on the walled side, PER KNOB: 194
+  the point was already asked, PER KNOB:         0
+  incumbent not a point of the space, PER RECOMPUTE: 0
+  The per-knob counters can exceed the number of recomputes, and a recompute whose only
+  walled knob had nothing undrawn increments BOTH -- the first because the row was dropped
+  before the wall list was tested for emptiness. So they are not a partition and must not be
+  summed.
+
+  NOTE the space is RECONSTRUCTED from drawn values (SPACE_PUBLISHED is absent from these
+  runs), so the choice list is a SUBSET of what was declared. Every 'no undrawn value' above
+  is therefore an upper bound on that skip, and the firing rate is a LOWER bound -- the
+  conservative direction for a probe that argues for spending 12h.
+
+KNOBS IT WOULD HAVE PUSHED (top 12):
+     13  GEMM_BLOCK_N
+     10  BLOCK_M
+      4  DEPTHWISE_WARPS
+      3  PROJECT_BLOCK_K
+      3  PARTIAL_BLOCK
+      2  GEMM_BLOCK_M
+      2  OUT_BLOCK_M
+      2  QKV_BLOCK_K
+      2  ATTN_BLOCK_M
+      2  QKV_BLOCK_M
+      1  PW_BLOCK_M
+      1  DEPTHWISE_BLOCK_C
+  by criterion: {'soft_wall': 48}
+
+PER CANDIDATE, where it fired (first 25):
+----------------------------------------------------------------------------------------------------
+run                      candidate        trials  recomp   enq   knobs
+----------------------------------------------------------------------------------------------------
+run-l3-21-20260905-07131 cand-7dcdbd99        80       8     1   PW_BLOCK_M
+run-l3-21-20260905-19561 cand-2dc4fe01        80       8     3   DEPTHWISE_BLOCK_C,GEMM_BLOCK_M
+run-l3-21-20260905-19561 cand-47371017        80       8     6   DEPTHWISE_WARPS,GEMM_BLOCK_N
+run-l3-21-20260905-19561 cand-5a3182cb        80       8     6   GEMM_BLOCK_N
+run-l3-21-20260905-19561 cand-d4fe9dfd        80       8     3   PROJECT_BLOCK_K
+run-l3-21-20260905-19561 cand-dd62990b        80       8     4   GEMM_BLOCK_N,PARTIAL_NUM_WARPS
+run-l3-21-20260905-19561 cand-f66890d0        80       8     5   GEMM_BLOCK_N,PARTIAL_BLOCK
+run-l3-43-20260904-09373 cand-0c3b5820        76       7     3   BLOCK_M
+run-l3-43-20260905-09170 cand-546e4f4b        80       8     1   BLOCK_M
+run-l3-43-20260905-09170 cand-cb7be6b4        80       8     4   OUT_BLOCK_M,QKV_BLOCK_K
+run-l3-43-20260905-09170 cand-de802450        80       8     2   BLOCK_M
+run-l3-43-20260906-09101 cand-36cda636        80       8     1   BLOCK_M
+run-l3-43-20260906-09101 cand-69b9a666        80       8     1   BLOCK_M
+run-l3-43-20260906-09101 cand-9c8d066a        80       8     1   ATTN_BLOCK_M
+run-l3-43-20260906-09101 cand-9df6f133        80       8     3   BLOCK_M,BLOCK_N
+run-l3-43-20260906-09101 cand-9f6af7bd        80       8     4   ATTN_BLOCK_M,QKV_BLOCK_M,QKV_BLOCK_N
+----------------------------------------------------------------------------------------------------
+
+HOW TO READ THIS FOR THE S7 DECISION:
+  a low firing rate with 'no wall to act on' dominant  => the criterion, not the wiring, is
+     the binding constraint, and S7 inherits 2e's coverage problem rather than fixing it
+  a low rate with 'no undrawn value' dominant          => the mechanism is redundant with
+     naive coverage: the sampler had already measured everything on the walled side
+  a healthy rate with an early median first-firing     => there is room for the 12h pair to
+     measure something, and P1-P4 become answerable
