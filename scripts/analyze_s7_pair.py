@@ -275,14 +275,32 @@ def _arm(run_dir: Path) -> dict:
     out["p3_share"] = (len(fams_with_wall & fams_rewritten) / len(all_fams)) if all_fams else None
 
     # --- latency (secondary, declared under-powered) -------------------------------------------
+    #
+    # PER CANDIDATE, not just the arm minimum, because the noise floor does not bound the quantity
+    # that actually moves this number. Measured live at ~3 h: the control arm led by 5.90%, OUTSIDE
+    # both the 2.35% noise floor and the 4.72% within-arm spread -- and the entire lead came from
+    # `cand-13ead9f3`, a DIFFERENT seed candidate its generator wrote, in a space where S7 had
+    # enqueued nothing. The arms' seeds are unpaired by construction, so a seed difference can exceed
+    # the noise floor while having nothing to do with the switch. A floor rules out MEASUREMENT noise;
+    # it says nothing about which candidates each arm happened to be given.
     best = None
+    best_cand = None
+    per_cand_best: dict[str, float] = {}
     for e in ev:
         if e.get("type") != "TRIAL_DONE":
             continue
-        ms = _robust_ms(_trial_of(e))
-        if ms is not None and (best is None or ms < best):
-            best = ms
+        tr = _trial_of(e)
+        ms = _robust_ms(tr)
+        if ms is None:
+            continue
+        cid = str(tr.get("candidate_id") or "?")
+        if cid not in per_cand_best or ms < per_cand_best[cid]:
+            per_cand_best[cid] = ms
+        if best is None or ms < best:
+            best, best_cand = ms, cid
     out["best_trial_ms"] = best
+    out["best_candidate"] = best_cand
+    out["per_candidate_best"] = per_cand_best
     fin = [e for e in ev if e.get("type") == "RUN_FINISHED"]
     out["finished"] = bool(fin)
     if fin:
@@ -418,6 +436,28 @@ def main() -> int:
             f"{'INSIDE the noise' if abs(delta) < NOISE_FLOOR_PCT else 'outside the noise floor'}"
             + (", but inside the within-arm spread" if NOISE_FLOOR_PCT <= abs(delta)
                < WITHIN_ARM_SPREAD_PCT else ""))
+
+        # WHICH CANDIDATE OWNS THE LEAD. A gap outside the noise floor is the number most likely to be
+        # quoted, and the floor only rules out MEASUREMENT noise. The arms' seed candidates are
+        # unpaired by construction, so if the faster arm's best comes from a candidate that exists in
+        # that arm ONLY, the gap is a seed difference and is not attributable to the switch. Measured
+        # live: the control led 5.90% entirely via cand-13ead9f3, its own generator's seed.
+        say()
+        say("    WHICH CANDIDATE OWNS EACH ARM'S BEST (the arms' seeds are UNPAIRED):")
+        for lbl, r in (("treatment", t), ("control", c)):
+            say(f"      {lbl}: {r.get('best_candidate')}")
+            for cid, ms in sorted((r.get("per_candidate_best") or {}).items(),
+                                  key=lambda kv: kv[1]):
+                mark = "  <== arm best" if cid == r.get("best_candidate") else ""
+                say(f"        {cid:<18} {ms:.4f} ms{mark}")
+        shared = set(t.get("per_candidate_best") or {}) & set(c.get("per_candidate_best") or {})
+        if not shared:
+            say("      NO CANDIDATE IS SHARED between the arms, so this latency gap is a SEED")
+            say("      difference plus search variance. The noise floor does not bound it, and it is")
+            say("      not attributable to the switch -- report it as unpaired, never as an effect.")
+        else:
+            say(f"      candidates present in BOTH arms: {sorted(shared)} -- only these support a")
+            say("      like-for-like latency comparison")
     say()
 
     # --- which reading the pattern selects ----------------------------------------------------

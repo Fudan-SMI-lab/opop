@@ -170,3 +170,61 @@ def test_refusals_with_no_wall_event_at_all_still_reads_as_instrument_off(tmp_pa
     a = _arm(tmp_path, "instroff", [_trial(1001.0), _trial(1002.0, refused=True)])
     assert a["n_wall_events"] == 0
     assert a["instrument_on"] is False
+
+
+# ---------------------------------------------------------------------------------------------
+# the latency gap must be attributed to a candidate, not just measured against the noise floor
+# ---------------------------------------------------------------------------------------------
+
+
+def _trial_c(ts: float, cand: str, ms: float) -> dict:
+    return {"seq": int(ts), "ts": ts, "type": "TRIAL_DONE", "payload": {"trial": {
+        "trial_id": f"tr-{int(ts)}", "candidate_id": cand, "space_id": f"sp-{cand}",
+        "status": "complete", "failure_kind": None,
+        "params": {"values": {"BLOCK_M": 32}},
+        "profile": {"n_spills": 0},
+        "latency_ms": {"mean": ms, "median": ms, "min": ms, "max": ms, "std": 0.1,
+                       "n_samples": 20}}}}
+
+
+def test_the_best_is_attributed_to_its_candidate(tmp_path):
+    """`best_trial_ms` alone cannot say whether a gap is a seed difference. The live pair's control led
+    5.90% -- outside both the 2.35% noise floor and the 4.72% within-arm spread -- entirely through a
+    candidate that existed in that arm only. So the reader records WHICH candidate owns the best.
+    """
+    a = _arm(tmp_path, "lat", [_trial_c(1001.0, "cand-slow", 4.0),
+                               _trial_c(1002.0, "cand-fast", 3.1),
+                               _wall_event(0, 0, 0),
+                               _soft_event(False, "the best trial does not spill")])
+    assert a["best_trial_ms"] == 3.1
+    assert a["best_candidate"] == "cand-fast"
+    assert a["per_candidate_best"] == {"cand-slow": 4.0, "cand-fast": 3.1}
+
+
+def test_unpaired_arms_share_no_candidate(tmp_path):
+    """The signature that makes a latency gap unattributable: the two arms' candidate sets are
+    disjoint, which is the normal case because each arm's generator writes its own seeds.
+    """
+    a = _arm(tmp_path, "lat_t", [_trial_c(1001.0, "cand-t1", 3.36),
+                                 _wall_event(0, 0, 0),
+                                 _soft_event(False, "the best trial does not spill")])
+    b = _arm(tmp_path, "lat_c", [_trial_c(1001.0, "cand-c1", 3.18),
+                                 _wall_event(0, 0, 0),
+                                 _soft_event(False, "the best trial does not spill")])
+    shared = set(a["per_candidate_best"]) & set(b["per_candidate_best"])
+    assert shared == set(), "disjoint seeds => the gap is not attributable to the switch"
+
+
+def test_a_shared_candidate_is_detected_when_present(tmp_path):
+    """The positive control: when a candidate DOES appear in both arms, that is the like-for-like
+    comparison and must be found. Without this, the 'no candidate is shared' branch could be reached
+    by a function that never finds anything.
+    """
+    a = _arm(tmp_path, "sh_t", [_trial_c(1001.0, "cand-both", 3.30),
+                                _wall_event(0, 0, 0),
+                                _soft_event(False, "the best trial does not spill")])
+    b = _arm(tmp_path, "sh_c", [_trial_c(1001.0, "cand-both", 3.40),
+                                _wall_event(0, 0, 0),
+                                _soft_event(False, "the best trial does not spill")])
+    shared = set(a["per_candidate_best"]) & set(b["per_candidate_best"])
+    assert shared == {"cand-both"}
