@@ -173,6 +173,33 @@ v3:
 
 ---
 
+## 2b. 【受阻塞,不是被否证】带宽 / 算力作为墙:等一台能开 ncu 的机器
+
+**这一条不是"待批准",是"被测量能力挡住"**,记在这里以免日后误以为这条路被否证了。
+
+**概念上它完全可以是墙**:撞到带宽上限 ⇒ 改算子降低带宽用量 ⇒ 代价是多用别的资源。
+这正是 C2 想做的事,而且是算子优化里最主流的考量对象之一。
+
+**挡住它的是"每候选的量测不到"**:
+- 现在的 `pct_of_dram_peak` 分子来自 `TaskCost`(*"a property of the task, not of a candidate"*),
+  是**任务级常数** ⇒ 一个任务内它就是 `1/延迟` 乘常数,实测 ρ(它, 1/latency) = **+1.000**(4/4 run);
+- `FlopCounterMode` 数候选自己的 FLOP:**完全融合的候选报 0** ——
+  算术没经过 dispatcher。**候选越好读数越接近 0,信号与目标反向**;
+- aten 层字节数:是真每候选测量,但*"blind inside a fused kernel, which is where a good
+  candidate works"* ⇒ 同样越好越失真;
+- **ncu:`ERR_NVGPUCTRPERM` 在容器里永久封死**,即使 ncu 存在也照样被 gate。
+
+**唯一能解除阻塞的是一台裸机或有 `CAP_SYS_ADMIN` 的机器。** AutoDL 容器给不了。
+解析推算(从 tile 几何算字节)**不要做** —— 本项目已两次证明这类推算不可靠:
+手写共享内存约束中位只有真值 32%;`BLOCK_M*BLOCK_N*stages` 在 15/15 个候选上
+可行集与不可行集重叠。
+
+⇒ **行动项**:如果将来拿到能开硬件计数器的机器,这是第一件该做的事,
+因为它一次性把两个最主流的优化对象从"任务级饱和度"升级为"可归因的墙"。
+详见 `docs/resource-dimensions-and-which-walls-are-detectable.md` §3。
+
+---
+
 ## 3. 【待批准】`categorical_distance_func`,以及 S7
 
 ### 3.1 `categorical_distance_func`(低风险)
