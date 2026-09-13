@@ -114,17 +114,87 @@ def test_all_walls_worthless_is_named_as_the_slope_filter(tmp_path):
 
 def test_a_real_wall_leaves_the_cause_unset(tmp_path):
     """THE POSITIVE CONTROL, and without it every assertion above could be satisfied by a function
-    that always returns a cause. When a wall IS found and IS worth acting on, there is nothing to
-    explain and `no_wall_cause` must be None.
+    that always returns a cause. When a wall IS found, IS worth acting on and IS attributed, there is
+    nothing to explain and `no_wall_cause` must be None.
+
+    `verdict` is part of the fixture because the emitter always writes it (`Wall.payload()` includes
+    it, and all three probed walls on the live pair carry it). A wall without a verdict is not a
+    "real wall" for this purpose -- it is a wall whose attribution is unknown.
     """
     a = _arm(tmp_path, "real", [
         _trial(1001.0), _trial(1002.0, refused=True),
         _wall_event(1, 0, 1, walls=[{"param": "NUM_WARPS", "refused_value": 16.0,
-                                     "monotone": True, "tail_gain_pct": 21.9}]),
+                                     "monotone": True, "tail_gain_pct": 21.9,
+                                     "verdict": "attributed", "over_ratio": 1.29}]),
         _soft_event(False, "the best trial does not spill")])
     assert a["walls_found_total"] == 1
     assert a["walls_worthless_total"] == 0
-    assert a["no_wall_cause"] is None, "a found, worthy wall needs no excuse"
+    assert a["walls_attributed_total"] == 1
+    assert a["no_wall_cause"] is None, "a found, worthy, attributed wall needs no excuse"
+
+
+def test_a_wall_that_fails_attribution_is_named_as_such(tmp_path):
+    """The live control arm, reproduced: ONE wall, zero worthless, and nothing happened.
+
+    Before this the reader printed `walls_found 1  worthless 0` with no cause at all, which reads as
+    "a good wall that went unused". The real reason is that attribution -- which runs AFTER the slope
+    filter, so `walls_worthless` structurally cannot contain its failures -- found the refusal was not
+    caused by a resource limit. `over_ratio 0.97` says shared-memory use at theta* never reached the
+    limit, so there is no limit for a rewrite to free.
+    """
+    a = _arm(tmp_path, "unattributed", [
+        _trial(1001.0), _trial(1002.0, refused=True),
+        _wall_event(1, 0, 1, walls=[{"param": "NUM_WARPS", "refused_value": 16.0,
+                                     "monotone": True, "tail_gain_pct": 21.88,
+                                     "verdict": "not_attributed", "over_ratio": 0.97}]),
+        _soft_event(False, "the best trial does not spill")])
+    assert a["walls_found_total"] == 1
+    assert a["walls_worthless_total"] == 0, "the slope filter kept it -- that is the point"
+    assert a["walls_attributed_total"] == 0
+    assert a["no_wall_cause"] is not None, "a wall that helped nobody must say why"
+    assert "ATTRIBUTION" in a["no_wall_cause"]
+    assert "0.97" in a["no_wall_cause"], "the over_ratio distinguishes 'not a resource limit' from " \
+                                         "'an overflow the prober could not confirm'"
+    assert "worthless" in a["no_wall_cause"], "must say why walls_worthless cannot show this"
+
+
+def test_attribution_failure_is_not_reported_as_the_slope_filter(tmp_path):
+    """The two causes must stay distinguishable. A wall the slope filter dropped and a wall attribution
+    rejected call for different next actions -- relax the filter versus investigate why a refused
+    config does not overflow at theta* -- so a reader that collapsed them would send the next round
+    after the wrong thing.
+    """
+    slope = _arm(tmp_path, "slope", [
+        _trial(1001.0), _trial(1002.0, refused=True),
+        _wall_event(1, 1, 1, walls=[{"param": "NUM_WARPS", "refused_value": 16.0,
+                                     "monotone": False, "tail_gain_pct": 11.1,
+                                     "verdict": "attributed", "over_ratio": 1.3}]),
+        _soft_event(False, "the best trial does not spill")])
+    attr = _arm(tmp_path, "attr", [
+        _trial(1001.0), _trial(1002.0, refused=True),
+        _wall_event(1, 0, 1, walls=[{"param": "BLOCK_N", "refused_value": 256.0,
+                                     "monotone": True, "tail_gain_pct": 60.69,
+                                     "verdict": "not_attributed", "over_ratio": 0.727}]),
+        _soft_event(False, "the best trial does not spill")])
+    assert "ALL worthless" in slope["no_wall_cause"]
+    assert "ATTRIBUTION" not in slope["no_wall_cause"]
+    assert "ATTRIBUTION" in attr["no_wall_cause"]
+    assert "ALL worthless" not in attr["no_wall_cause"]
+    assert "BLOCK_N" in attr["no_wall_cause"], "naming the knob is what makes it actionable"
+
+
+def test_a_wall_with_no_verdict_field_is_not_counted_as_attributed(tmp_path):
+    """Older runs' walls carry no `verdict`. Absent must not read as passing -- that would silently
+    turn every pre-verdict run into evidence that attribution succeeds.
+    """
+    a = _arm(tmp_path, "noverdict", [
+        _trial(1001.0), _trial(1002.0, refused=True),
+        _wall_event(1, 0, 1, walls=[{"param": "NUM_WARPS", "refused_value": 16.0,
+                                     "monotone": True, "tail_gain_pct": 21.9}]),
+        _soft_event(False, "the best trial does not spill")])
+    assert a["walls_attributed_total"] == 0
+    assert "ATTRIBUTION" in a["no_wall_cause"]
+    assert "no verdict field" in a["no_wall_cause"]
 
 
 # ---------------------------------------------------------------------------------------------

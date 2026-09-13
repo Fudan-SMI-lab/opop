@@ -218,12 +218,37 @@ def _arm(run_dir: Path) -> dict:
     # DECLARED gate (the best trial must itself spill; 30 of 79 box4 spaces qualify) and not a negative.
     out["walls_found_total"] = 0
     out["walls_worthless_total"] = 0
+    # THE THIRD LAYER, and the one whose absence left this reader with nothing to say about the control
+    # arm. Attribution runs AFTER the slope filter, so `walls_worthless` structurally cannot contain its
+    # failures: a wall with `verdict != "attributed"` cleared monotone and gain and was then found NOT
+    # to be caused by a resource limit, so there is no limit for a rewrite to free. Measured on this
+    # pair, the control arm's single wall is exactly that -- NUM_WARPS=16 with over_ratio 0.97, meaning
+    # shared-memory use at theta* never reached the limit. Without this the reader printed
+    # `walls_found 1  worthless 0` and no cause at all, which reads as "a good wall that went unused".
+    out["walls_attributed_total"] = 0
+    out["walls_unattributed"] = {}
     for e in ev:
         if e.get("type") != "RESOURCE_WALL_ATTRIBUTED":
             continue
         p = _pl(e)
         out["walls_found_total"] += int(p.get("walls_found") or 0)
         out["walls_worthless_total"] += int(p.get("walls_worthless") or 0)
+        for w in (p.get("walls") or []):
+            if not isinstance(w, dict):
+                continue
+            if not (w.get("monotone") and (w.get("tail_gain_pct") or 0) > 0):
+                continue  # already counted as worthless
+            v = str(w.get("verdict") or "(no verdict field)")
+            if v == "attributed":
+                out["walls_attributed_total"] += 1
+            else:
+                # Carry the over_ratio: it is what distinguishes "the refusal was not a resource
+                # limit" (ratio < 1) from a genuine overflow that the prober could not confirm.
+                ratio = w.get("over_ratio")
+                key = "%s (%s, over_ratio %s)" % (
+                    v, w.get("param") or "?",
+                    ("%.3f" % ratio) if isinstance(ratio, (int, float)) else "?")
+                out["walls_unattributed"][key] = out["walls_unattributed"].get(key, 0) + 1
     soft_reasons: dict[str, int] = {}
     soft_applicable = 0
     for e in ev:
@@ -246,6 +271,12 @@ def _arm(run_dir: Path) -> dict:
     elif out["walls_found_total"] == out["walls_worthless_total"]:
         out["no_wall_cause"] = ("walls found but ALL worthless -- latency flat or rising toward "
                                 "them, so freeing them buys nothing")
+    elif out["walls_attributed_total"] == 0:
+        out["no_wall_cause"] = (
+            "walls cleared the slope filter but NONE cleared ATTRIBUTION (%s) -- the refusal was "
+            "not traced to a resource limit, so no limit is named for a rewrite to free. Note "
+            "`walls_worthless` cannot show this: attribution runs after the slope filter."
+            % ", ".join("%dx %s" % (n, k) for k, n in sorted(out["walls_unattributed"].items())))
     else:
         out["no_wall_cause"] = None
 
@@ -464,6 +495,18 @@ def main() -> int:
     say("=" * 92)
     say("WHICH READING THIS PATTERN SELECTS")
     say("=" * 92)
+    # The in-flight warning is printed at the TOP, ~90 lines above this block. That is not enough:
+    # anyone who tails the output or copies the conclusion -- which I did myself on this very pair --
+    # gets `THE MECHANISM DID NOT FIRE` detached from the fact that neither arm has finished. A verdict
+    # has to carry its own caveat, so repeat it HERE, where the verdict is.
+    if not (t["finished"] and c["finished"]):
+        say("  *** IN FLIGHT: %s. The verdicts below are a SNAPSHOT, not results."
+            % ("neither arm has written RUN_FINISHED"
+               if not (t["finished"] or c["finished"])
+               else ("treatment has not written RUN_FINISHED" if not t["finished"]
+                     else "control has not written RUN_FINISHED")))
+        say("  *** Re-run at the end before quoting any line of this section.")
+        say()
     p1 = t.get("s7_first_frac") is not None and t["s7_enqueued"] > 0
     tp2, cp2 = t.get("p2_per_candidate"), c.get("p2_per_candidate")
     p2 = (isinstance(tp2, float) and isinstance(cp2, float) and tp2 > cp2)
@@ -492,7 +535,8 @@ def main() -> int:
         say("     WHY NO WALL (from the wall events' own payloads, both arms):")
         for lbl, r in (("treatment", t), ("control", c)):
             say(f"       {lbl}: refusals {r.get('n_refusals')}  walls_found "
-                f"{r.get('walls_found_total')}  worthless {r.get('walls_worthless_total')}")
+                f"{r.get('walls_found_total')}  worthless {r.get('walls_worthless_total')}"
+                f"  ATTRIBUTED {r.get('walls_attributed_total')}")
             if r.get("no_wall_cause"):
                 say(f"         cause: {r['no_wall_cause']}")
             say(f"         soft scans {r.get('soft_scans')}, applicable "
@@ -500,11 +544,18 @@ def main() -> int:
             for reason, n in (r.get("soft_reasons") or {}).items():
                 say(f"           {n}x {reason}")
         say()
-        say("     A wall is NOT cumulative: `find_walls` requires the refused value to lie outside its")
-        say("     knob's MEASURED range, so a later trial that succeeds at that value erases the wall.")
-        say("     And the soft criterion's gate is on the BEST trial spilling -- applicable in 30 of 79")
-        say("     box4 spaces. Neither is a defect, and neither can be fixed by running longer: both")
-        say("     bound how often this mechanism is APPLICABLE, which is the measurement to report.")
+        say("     THREE INDEPENDENT BOUNDS, none of them a defect and none fixable by running longer:")
+        say("     (1) A wall is NOT cumulative: `find_walls` requires the refused value to lie outside")
+        say("         its knob's MEASURED range, so a later trial succeeding at that value erases it.")
+        say("     (2) The soft criterion's gate is on the BEST trial spilling -- applicable in 30 of 79")
+        say("         box4 spaces (38.0%).")
+        say("     (3) ATTRIBUTION, which runs AFTER the slope filter and so cannot appear in")
+        say("         `walls_worthless`: a wall whose refusal is not traced to a resource limit names")
+        say("         no limit for a rewrite to free. Measured on box4, 16 attribution events yielded")
+        say("         ONE wall past both gates. An `over_ratio` below 1 means the shared-memory use at")
+        say("         theta* never reached the limit -- so the refusal had some other cause.")
+        say("     All three bound how OFTEN this mechanism is applicable, which is the measurement to")
+        say("     report. Of the three, (3) is the tightest on the evidence so far.")
     elif p1 and p2 and p3 and not lat_improved:
         say("  => P4. Knowing about the wall earlier is NOT the bottleneck: the mechanism delivered")
         say("     more walls, earlier, to more families, and latency did not move. That locates C2's")
