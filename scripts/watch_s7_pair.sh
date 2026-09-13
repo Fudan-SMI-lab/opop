@@ -1,7 +1,7 @@
 #!/bin/bash
 # Watch the S7 pair: one line per change, plus a loud line if an arm dies.
 #
-# TWO TRAPS THIS AVOIDS, both of which bit the first version of this watcher within one tick:
+# THREE TRAPS THIS AVOIDS, each of which bit a version of this watcher within one tick:
 #
 # 1. `grep -c PATTERN file || echo 0` prints "0\n0" on no match. `grep -c` already prints 0 AND exits
 #    non-zero, so the fallback fires on top of the real answer -- the recorded
@@ -13,6 +13,12 @@
 #    ".../src/kernel_optimizer/gpu/worker_main.py", so the count reads 4 with two arms running and the
 #    "an arm died" test never fires. Matched on the orchestrator's own argv (`kernel_optimizer.cli`)
 #    instead, with `[k]` so the pgrep pattern cannot match its own command line over ssh.
+#
+# 3. Counting `RESOURCE_WALL_ATTRIBUTED` / `RESOURCE_SOFT_WALL` EVENTS as "walls". Both are emitted
+#    unconditionally to record that the search ran, so an arm that found nothing still gets one of
+#    each. Live reading: `walls=1 soft=1` on the treatment arm whose payloads were `"walls": []`,
+#    `"walls_found": 0` and `applicable: false` -- a plausible number saying the opposite of the truth,
+#    the `a-constant-reading-is-a-broken-probe` shape. Now the WALLS INSIDE the payload are counted.
 set -u
 cd /root/autodl-tmp/opop-workspace/opop-glm/runs-v3 || exit 1
 PY=/root/autodl-tmp/orch-venv/bin/python
@@ -58,6 +64,29 @@ print(f"{acc}/{ref}")
 PYEOF
 }
 
+walls_found() {  # walls actually FOUND / soft-wall scans that were APPLICABLE -- not event counts
+  "$PY" - "$1" << 'PYEOF'
+import json, sys
+hard = soft = 0
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        for line in fh:
+            try:
+                e = json.loads(line)
+            except Exception:
+                continue
+            t = e.get("type")
+            p = e.get("payload") or e
+            if t == "RESOURCE_WALL_ATTRIBUTED":
+                hard += len(p.get("walls") or [])
+            elif t == "RESOURCE_SOFT_WALL":
+                soft += len(p.get("walls") or [])
+except OSError:
+    pass
+print(f"{hard}/{soft}")
+PYEOF
+}
+
 prev=""
 while true; do
   cur=""
@@ -69,11 +98,15 @@ while true; do
     tr=$(count "$E" TRIAL_DONE)
     sg=$(count "$E" SLOPE_GUIDE_STEP)
     sgf=$(count "$E" SLOPE_GUIDE_FAILED)
-    wa=$(count "$E" RESOURCE_WALL_ATTRIBUTED)
-    sw=$(count "$E" RESOURCE_SOFT_WALL)
+    # TRAP 3, hit live: `RESOURCE_WALL_ATTRIBUTED` and `RESOURCE_SOFT_WALL` are emitted
+    # UNCONDITIONALLY to record that the search ran -- the treatment arm's carried
+    # `"walls": [], "walls_found": 0` and its soft scan `applicable: false`. Counting the EVENTS
+    # therefore printed `walls=1 soft=1` for an arm that found nothing, which reads as the opposite
+    # of the truth at exactly the moment the reading matters. Count the WALLS inside them instead.
+    wf=$(walls_found "$E")
     fin=$(count "$E" RUN_FINISHED)
     eq=$(enqueued "$E")
-    cur="$cur | ${arm#s7-} trials=$tr walls=$wa soft=$sw s7steps=$sg enq/ref=$eq s7fail=$sgf done=$fin"
+    cur="$cur | ${arm#s7-} trials=$tr wallsfound(h/s)=$wf s7steps=$sg enq/ref=$eq s7fail=$sgf done=$fin"
   done
   alive=$(pgrep -cf "[k]ernel_optimizer.cli" || true)
   [ -z "$alive" ] && alive=0
