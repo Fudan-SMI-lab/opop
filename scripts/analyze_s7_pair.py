@@ -487,8 +487,13 @@ def main() -> int:
         say("     but were not delivered, which is a REPORTING path question, not a sampling one.")
     say()
     say("  RUN THESE BEFORE TRUSTING ANY OF THE ABOVE:")
-    say("    python scripts/check_arm_search_parity.py <control> <treatment>")
-    say("    python scripts/audit_arm_comparability.py <control> <treatment>")
+    say("    python scripts/check_arm_search_parity.py <control_run> <treatment_run>")
+    say("    python scripts/audit_arm_comparability.py <control.yaml> <treatment.yaml> \\")
+    say("        --expect v3.slope_guide.enabled")
+    say("  The first takes RUN DIRS and settles whether the wall clock bought comparable SEARCH; the")
+    say("  second takes the two CONFIG FILES and settles that they differ in one intended place. A")
+    say("  cross-box pair also needs compare_calibrations.py for the denominator -- a same-box pair")
+    say("  sharing one calibration.json does not.")
     say("  If the arms did not get comparable search, every number here has two explanations.")
 
     text = "\n".join(L) + "\n"
