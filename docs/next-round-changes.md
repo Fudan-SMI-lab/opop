@@ -457,6 +457,17 @@ NUM_STAGES=1, ieee, split3`)墙钟 **1081 s**,占该臂**全部 GPU 时间的 39
 但它会让这类点进入 `PRUNED`、从而让 TPE 知道这一片区域不可行,**减少后续同类点被重复抽到**。
 所以下一轮的收益应按"减少重复撞墙的次数"计价,**不要**记成"每次省 1081 s"。
 
+**已复验的期限(两臂一致,不是猜测)**:`screen_timeout_s` = **120 s**
+(`screen_floor_timeout_s` 120 胜过 `prescreen_timeout_s(1)`=33),即 **D9 的修复在本次实验里是生效的**
+—— 那个 screen 只花了 120 s,**不是**旧的 1200 s。真 trial 期限
+= `build_timeout_s + eval_timeout_s` = 1200 + 600 = **1800 s**,由
+`worker_client.py:301` 的 `proc.communicate(timeout=...)` 执行、超时在 310 行 kill,
+并且每个 job 独立进程组(288 行),所以一个 job 超时**不会**连带杀掉共享通道里健康的另一个 job。
+两臂至今 `job_timed_out` 与 `failure_kind: "timeout"` **均为 0**。
+
+⇒ 修正我先前的一处表述:这 1081 s 里**没有** 1200 s 的 screen 成分,
+它几乎全部是真 trial 内部的 `ptxas` 时间。D9 那笔 2.1 h 的账是 box1 旧配置的历史,本次不适用。
+
 参见 [[a-timeout-censors-the-metric-that-would-price-it]]:超时不写 `out.json`,
 所以这类最贵的编译在常规统计里**结构性缺席** —— 本次能测到它,只是因为它恰好没超时。
 
