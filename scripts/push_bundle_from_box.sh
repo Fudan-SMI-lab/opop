@@ -24,10 +24,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
-read -r TOKEN
+# WHY THIS IS NOT A BARE `read`. `read -r TOKEN` returns NON-ZERO when the input has no trailing
+# newline, and under `set -e` that ends the script instantly -- before a single line is printed. A
+# caller piping the token with `printf '%s'` (no \n) therefore gets total silence and an exit code of
+# whatever ran last in their pipeline, which reads exactly like a successful no-op push. This bit me
+# twice: once believing a push had landed when the script had never run, and once here. So: accept a
+# token with or without a trailing newline, and FAIL LOUDLY if none arrived.
+read -r TOKEN || true
+if [ -z "${TOKEN:-}" ]; then
+  echo "NO TOKEN ON STDIN. Pipe the PAT in, e.g. printf '%s\\n' \"\$PAT\" | ssh box 'bash $0 ...'" >&2
+  echo "(a bare 'read' would have exited silently here and looked like a successful push)" >&2
+  exit 2
+fi
 printf 'https://ZihangZ:%s@github.com\n' "$TOKEN" > "$CRED"
 unset TOKEN
-
 cd "$REPO"
 git config credential.helper "store --file=$CRED"
 
