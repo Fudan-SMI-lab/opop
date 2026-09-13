@@ -202,6 +202,53 @@ def _arm(run_dir: Path) -> dict:
                                if e.get("type") == "RESOURCE_WALL_ATTRIBUTION_FAILED")
     out["instrument_on"] = out["n_wall_events"] > 0
 
+    # WHY WAS THERE NO WALL? Measured live and needed here, because "0 walls" has three causes and a
+    # null that cannot name its own cause is not a finding. Read from the wall/soft-wall events' own
+    # payloads rather than recomputed, so this cannot disagree with what the run acted on:
+    #
+    #   * no refusals at all            -- find_walls had no input.
+    #   * refusals present, walls_found 0 -- every refused value was INSIDE its knob's measured range,
+    #     so nothing was truncated. Walls are NOT cumulative: measured on this pair, NUM_WARPS=16 was
+    #     refused at trial 6 and MEASURED successfully at trial 14, which erased the wall from trial 20
+    #     onward (wall_attribution.py:265 requires the refused value to be outside the measured range).
+    #   * walls_found > 0 but all worthless -- the shipping slope filter dropped them because latency is
+    #     flat or RISING toward the wall, so freeing it buys nothing.
+    #
+    # The soft wall gets its own reason string from the emitter, because `applicable: false` is a
+    # DECLARED gate (the best trial must itself spill; 30 of 79 box4 spaces qualify) and not a negative.
+    out["walls_found_total"] = 0
+    out["walls_worthless_total"] = 0
+    for e in ev:
+        if e.get("type") != "RESOURCE_WALL_ATTRIBUTED":
+            continue
+        p = _pl(e)
+        out["walls_found_total"] += int(p.get("walls_found") or 0)
+        out["walls_worthless_total"] += int(p.get("walls_worthless") or 0)
+    soft_reasons: dict[str, int] = {}
+    soft_applicable = 0
+    for e in ev:
+        if e.get("type") != "RESOURCE_SOFT_WALL":
+            continue
+        p = _pl(e)
+        if p.get("applicable"):
+            soft_applicable += 1
+        r = str(p.get("reason") or "(none given)")
+        soft_reasons[r] = soft_reasons.get(r, 0) + 1
+    out["soft_scans"] = sum(soft_reasons.values())
+    out["soft_applicable"] = soft_applicable
+    out["soft_reasons"] = soft_reasons
+    if out["n_refusals"] == 0:
+        out["no_wall_cause"] = "no shared-memory refusals at all -- find_walls had no input"
+    elif out["walls_found_total"] == 0:
+        out["no_wall_cause"] = ("refusals present but every refused value was INSIDE its knob's "
+                                "measured range (nothing truncated; a later successful trial "
+                                "erases a wall)")
+    elif out["walls_found_total"] == out["walls_worthless_total"]:
+        out["no_wall_cause"] = ("walls found but ALL worthless -- latency flat or rising toward "
+                                "them, so freeing them buys nothing")
+    else:
+        out["no_wall_cause"] = None
+
     # --- P3: family coverage of wall text ------------------------------------------------------
     # Read from the rewrite path, because that is where the text is actually delivered: a family is
     # covered when a REWRITE_PRODUCED for it follows an attribution that carried a deliverable wall on
@@ -398,6 +445,26 @@ def main() -> int:
         say("     'S7 does not help' and 'S7 barely ran' look identical from here. Check")
         say("     SLOPE_GUIDE_STEP's skip counters -- n_skipped_no_wall vs")
         say("     n_skipped_no_value_toward_wall -- before drawing any conclusion.")
+        # A null that names its own cause is a different object from a blank one. Every figure here
+        # comes from the emitters' own payloads, so it says what the run acted on rather than what a
+        # re-derivation thinks it should have.
+        say()
+        say("     WHY NO WALL (from the wall events' own payloads, both arms):")
+        for lbl, r in (("treatment", t), ("control", c)):
+            say(f"       {lbl}: refusals {r.get('n_refusals')}  walls_found "
+                f"{r.get('walls_found_total')}  worthless {r.get('walls_worthless_total')}")
+            if r.get("no_wall_cause"):
+                say(f"         cause: {r['no_wall_cause']}")
+            say(f"         soft scans {r.get('soft_scans')}, applicable "
+                f"{r.get('soft_applicable')}")
+            for reason, n in (r.get("soft_reasons") or {}).items():
+                say(f"           {n}x {reason}")
+        say()
+        say("     A wall is NOT cumulative: `find_walls` requires the refused value to lie outside its")
+        say("     knob's MEASURED range, so a later trial that succeeds at that value erases the wall.")
+        say("     And the soft criterion's gate is on the BEST trial spilling -- applicable in 30 of 79")
+        say("     box4 spaces. Neither is a defect, and neither can be fixed by running longer: both")
+        say("     bound how often this mechanism is APPLICABLE, which is the measurement to report.")
     elif p1 and p2 and p3 and not lat_improved:
         say("  => P4. Knowing about the wall earlier is NOT the bottleneck: the mechanism delivered")
         say("     more walls, earlier, to more families, and latency did not move. That locates C2's")
