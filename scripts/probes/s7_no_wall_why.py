@@ -60,13 +60,21 @@ def _events(run: Path) -> list[dict]:
     return out
 
 
-def _space(ev: list[dict]) -> ParameterSpace | None:
-    """The DECLARED space, never one reconstructed from drawn values.
+def _spaces(ev: list[dict]) -> dict[str, ParameterSpace]:
+    """EVERY declared space, keyed by `space_id` -- not just the first.
 
-    Reconstructing hid exactly the choices this mechanism proposes -- 9 knobs on box4's corpus -- because
-    a value the tuner never drew is absent from the draws by definition, and those are the values a
-    "furthest launchable choice toward the wall" is made of.
+    THE DEFECT THIS FIXES, found live. The first version returned only the first `SPACE_PUBLISHED` and
+    the caller sliced `trials[:cut]` over all candidates pooled, so once a run reached its SECOND
+    candidate the replay was scoring candidate 2's trials against candidate 1's SPACE and candidate 1's
+    per-value curves. It printed a 6-knob domain list for a 16-knob space and reported the first
+    candidate's wall arithmetic verbatim at every later prefix -- three identical blocks that looked
+    like a stable finding and were in fact one stale one. A wall is a statement about ONE knob of ONE
+    candidate's space; pooling candidates cannot produce a true one.
+
+    Reconstructing a space from drawn values is still refused: a value the tuner never drew is absent
+    from the draws by definition, and those are exactly the values a proposal is made of.
     """
+    out: dict[str, ParameterSpace] = {}
     for e in ev:
         if e.get("type") != "SPACE_PUBLISHED":
             continue
@@ -74,13 +82,13 @@ def _space(ev: list[dict]) -> ParameterSpace | None:
         doms = []
         for d in sp.get("domains") or []:
             doms.append(ParamDomain(name=d["name"], kind=d["kind"], choices=list(d["choices"])))
-        if doms:
-            return ParameterSpace(space_id=sp.get("space_id", "sp-?"),
-                                  candidate_id=sp.get("candidate_id", "cand-?"),
-                                  version=int(sp.get("version", 1)),
-                                  source_sha=sp.get("source_sha", "0" * 64), domains=doms,
-                                  constraints=[])
-    return None
+        sid = str(sp.get("space_id") or "")
+        if doms and sid:
+            out[sid] = ParameterSpace(
+                space_id=sid, candidate_id=sp.get("candidate_id", "cand-?"),
+                version=int(sp.get("version", 1)),
+                source_sha=sp.get("source_sha", "0" * 64), domains=doms, constraints=[])
+    return out
 
 
 def _trials(ev: list[dict]) -> list[TrialRecord]:
@@ -108,20 +116,25 @@ def _trials(ev: list[dict]) -> list[TrialRecord]:
     return out
 
 
-def report(arm: str, cfg_path: str, cuts: list[int] | None = None) -> None:
+def report(arm: str, cfg_path: str, every: int = 10) -> None:
+    """Replay each space SEPARATELY, at that space's own recompute points.
+
+    Per space, not per run: S7 builds a fresh `SlopeGuide` for every space and its cadence counts that
+    space's own `n_told`, so a replay that pools candidates asks the question at the wrong places with
+    the wrong curves. `every` mirrors `recompute_every`, and the prefixes are derived from each space's
+    trial count rather than hardcoded, so a space that closed early is not replayed past its end.
+    """
     runs = sorted(BASE.glob(f"{arm}/run-l3-43-*"))
     if not runs:
         print(f"=== {arm}: no run")
         return
     run = runs[-1]
     ev = _events(run)
-    space = _space(ev)
+    spaces = _spaces(ev)
     trials = _trials(ev)
-    print(f"=== {arm}  {run.name}   declared space: "
-          f"{'YES' if space else 'NO (cannot replay)'}   trials {len(trials)}")
-    if space is None:
+    print(f"=== {arm}  {run.name}   spaces declared {len(spaces)}   trials {len(trials)}")
+    if not spaces:
         return
-    print("    domains: " + ", ".join(f"{d.name}={d.choices}" for d in space.domains))
 
     # The ARM'S OWN device limits, loaded from the config the arm ran with. `max_shared_bytes_optin`
     # is what makes a refusal a refusal (4090: 101376), so a guessed limit would invent walls or erase
@@ -130,7 +143,24 @@ def report(arm: str, cfg_path: str, cuts: list[int] | None = None) -> None:
     print(f"    device: shared_optin={cfg.device.max_shared_bytes_optin} "
           f"regs={cfg.device.max_regs_per_thread}")
     analyzer = TuningStatsAnalyzer(cfg.device)
-    for cut in (cuts or [len(trials)]):
+
+    for sid, space in spaces.items():
+        own = [t for t in trials if t.space_id == sid]
+        print(f"  -- space {sid}  cand={space.candidate_id} v{space.version}  "
+              f"{len(space.domains)} knobs  {len(own)} trials")
+        print("     domains: " + ", ".join(f"{d.name}={d.choices}" for d in space.domains))
+        if not own:
+            print("     (no trials yet)")
+            continue
+        cuts = [c for c in range(every, len(own) + 1, every)] or [len(own)]
+        if cuts[-1] != len(own):
+            cuts.append(len(own))
+        _one_space(analyzer, space, own, cuts)
+
+
+def _one_space(analyzer: TuningStatsAnalyzer, space: ParameterSpace,
+               trials: list[TrialRecord], cuts: list[int]) -> None:
+    for cut in cuts:
         sub = trials[:cut]
         refused = [t.params.values for t in sub
                    if t.failure_kind == "infeasible_shared_memory" and t.params]
@@ -178,11 +208,11 @@ def report(arm: str, cfg_path: str, cuts: list[int] | None = None) -> None:
 
 def main() -> int:
     # The live recompute points, so the replay asks the question at the same places the run did.
-    report("s7-treatment", TREAT_CFG, cuts=[10, 20, 30])
+    report("s7-treatment", TREAT_CFG)
     print()
     # POSITIVE CONTROL: this arm's 2e fired and emitted RESOURCE_WALL_ATTRIBUTED. A replay that finds
     # nothing here is a broken replay, and would void every negative above.
-    report("s7-control", CONTROL_CFG, cuts=[40])
+    report("s7-control", CONTROL_CFG)
     print()
     print("READ THE CONTROL ARM FIRST. If it shows no wall, this probe proves nothing about the")
     print("treatment arm -- the run's own events say a wall WAS attributed there.")
