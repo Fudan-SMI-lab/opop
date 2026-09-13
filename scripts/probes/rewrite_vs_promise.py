@@ -146,6 +146,11 @@ def main() -> int:
             cp = _profile_at(trials_of.get(child, []), cbid)
             if pp or cp:
                 print("      resource dims at each side's OWN best point:")
+                print("      (NOT a mechanism reading. Each side sits at its own tile, so these")
+                print("       move with the KNOBS too. On cand-7d02bbab this table shows regs")
+                print("       210->254 and occupancy halved while the source edit is IDENTITY on")
+                print("       all six dims at fixed knobs -- opposite directions. For source")
+                print("       attribution use scripts/probes/rewrite_source_vs_knob.py.)")
                 for k in sorted(set(pp) | set(cp)):
                     print("        %-14s parent %-12s child %-12s" % (k, pp.get(k, "-"), cp.get(k, "-")))
             else:
