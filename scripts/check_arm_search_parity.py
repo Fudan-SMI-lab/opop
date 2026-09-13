@@ -71,6 +71,8 @@ def read_arm(run_dir: Path) -> dict:
     open_calls: dict[str, float] = {}
     rounds = 0
     spaces_expanded = 0
+    closed_spaces: set = set()
+    finished = False
     for e in evs:
         t = e.get("type")
         p = e.get("payload") or {}
@@ -97,6 +99,12 @@ def read_arm(run_dir: Path) -> dict:
             rounds += 1
         elif t == "SPACE_EXPANDED":
             spaces_expanded += 1
+        elif t == "TUNING_DONE":
+            sid = p.get("space_id")
+            if sid:
+                closed_spaces.add(sid)
+        elif t == "RUN_FINISHED":
+            finished = True
         prev = e["ts"]
 
     n = sum(per_space.values())
@@ -119,16 +127,42 @@ def read_arm(run_dir: Path) -> dict:
         # Key on the gap alone: a bare `sorted` on the tuples falls through to comparing the params
         # dict whenever two trials share a gap and a failure kind, which raises TypeError.
         "worst": sorted(gaps, key=lambda t: t[0], reverse=True)[:3],
+        # Which spaces have actually CLOSED. A space's trial count only means "the budget" once tuning
+        # over it has finished; before that it means "progress so far". Read from TUNING_DONE, which is
+        # emitted exactly once per space when its tuning pass ends.
+        "closed_spaces": closed_spaces,
+        "finished": finished,
     }
 
 
+def _closed_counts(a: dict) -> list[int]:
+    """Trial counts of the spaces that have FINISHED tuning, in ascending order.
+
+    Separated from `per_space` because the budget question is only answerable about closed spaces. On a
+    live pair this is often empty, and an empty list is the correct answer -- see `_mode`.
+    """
+    return sorted(n for sid, n in a["per_space"].items() if sid in a["closed_spaces"])
+
+
 def _mode(counts: list[int]) -> int | None:
-    """The per-space budget as the arms actually applied it.
+    """The per-space budget as the arms actually applied it, over CLOSED spaces only.
 
     NOT `max`: a space can exceed the nominal budget (a timeout still counts as a trial), so the max
-    reports 41-vs-40 and fires. NOT `min`: mid-run the smallest space is always the one in flight,
-    so the min reports 1-vs-40 and fires on every live invocation. The mode is the number most
-    spaces agree on, which is what "the budget" means, and it is stable under both.
+    reports 41-vs-40 and fires. NOT `min`: the smallest space is the one in flight, so the min reports
+    1-vs-40 on every live invocation. The mode is the number most spaces agree on, which is what "the
+    budget" means.
+
+    THE MODE IS NOT ENOUGH ON ITS OWN, and this was found on a live pair rather than by reading the
+    code. The docstring above used to justify the mode as "stable mid-run", which assumed several
+    CLOSED spaces plus one in flight -- the mode then belongs to the closed ones. Early in a run each
+    arm has exactly ONE space, still open, so the mode IS the in-flight count: the live S7 pair read
+    "PER-SPACE BUDGET DIFFERS: 15 vs 7" and declared PARITY NOT OK when both arms were configured
+    `trials_per_space: 40` and neither had emitted a single TUNING_DONE. That is a plausible number
+    pointing at the wrong cause -- the same shape as trusting an in-flight run's `ended` rows -- and it
+    would have read as a fatal confound on a pair that was in fact fine.
+
+    So the caller passes only closed spaces, and an empty list returns None, which the verdict reports
+    as "not yet answerable" rather than as agreement or as a difference.
     """
     if not counts:
         return None
@@ -141,16 +175,36 @@ def parity_verdict(a: dict, b: dict, la: str, lb: str) -> tuple[bool, list[str]]
     notes: list[str] = []
     okay = True
 
-    ca = sorted(a["per_space"].values())
-    cb = sorted(b["per_space"].values())
+    # In-flight runs first, because every verdict below means something different for one. Neither the
+    # budget question nor the rate question is settled while trials are still landing, and reporting a
+    # provisional answer in the same words as a final one is how a live snapshot gets quoted as a result.
+    live = not (a["finished"] and b["finished"])
+    if live:
+        notes.append("IN FLIGHT: %s / %s have not written RUN_FINISHED, so every verdict below is "
+                     "PROVISIONAL -- re-run at the end before quoting any of it"
+                     % ("finished" if a["finished"] else la,
+                        "finished" if b["finished"] else lb))
+
+    # Budget over CLOSED spaces only. A space's trial count is "the budget" once its tuning pass has
+    # ended and "progress so far" before that; conflating the two made this checker report
+    # "15 vs 7 trials per space, PARITY NOT OK" on a healthy pair whose arms were both set to 40 and
+    # had closed no space at all.
+    ca, cb = _closed_counts(a), _closed_counts(b)
     ma, mb = _mode(ca), _mode(cb)
-    if ma is not None and mb is not None and ma != mb:
+    if ma is None or mb is None:
+        notes.append("per-space budget: NOT YET ANSWERABLE -- closed spaces %d vs %d (a space's trial "
+                     "count is the budget only after its TUNING_DONE; in-flight counts are progress). "
+                     "Open-space progress so far: %s vs %s"
+                     % (len(a["closed_spaces"]), len(b["closed_spaces"]),
+                        sorted(a["per_space"].values()), sorted(b["per_space"].values())))
+    elif ma != mb:
         okay = False
-        notes.append("PER-SPACE BUDGET DIFFERS: %d vs %d trials per space (modal). The budget "
+        notes.append("PER-SPACE BUDGET DIFFERS: %d vs %d trials per closed space (modal). The budget "
                      "itself is being applied unequally, which is worse than a rate difference"
                      % (ma, mb))
     else:
-        notes.append("per-space budget: %s vs %s (modal count agrees at %s)" % (ca, cb, ma))
+        notes.append("per-space budget: %s vs %s over closed spaces (modal count agrees at %s)"
+                     % (ca, cb, ma))
 
     ra, rb = a["trials_per_h"], b["trials_per_h"]
     if ra > 0 and rb > 0:
