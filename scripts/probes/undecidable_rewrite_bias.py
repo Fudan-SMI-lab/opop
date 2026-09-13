@@ -1,24 +1,28 @@
-"""Is the DECIDABLE set biased? 16 of 38 rewrites never measured the parent's best params.
+"""Is the DECIDABLE set biased? Some closed rewrites never measured the parent's best params.
 
-WHY THIS MATTERS. rewrite_source_vs_knob.py pools 17 decidable rewrites and reports 24% of
-them as source no-ops. That rate is only about rewrites in general if the 16 undecidable ones
-are missing for reasons unrelated to what the edit did. Two ways it could be biased:
+WHY THIS MATTERS. rewrite_source_vs_knob.py pools the decidable rewrites and reports a share of
+them as source no-ops. That share is only about rewrites in general if the undecidable ones are
+missing for reasons unrelated to what the edit did. Two ways it could be biased:
 
   (a) The parent's best point is REFUSED in the child's space -- e.g. the edit raised the
       shared-memory footprint so the parent's tile no longer fits. Those are exactly the
       rewrites that changed a resource dim the most, so dropping them would understate
       "moved" and inflate the no-op rate.
-  (b) TPE simply never sampled that point in 40 trials. That is a sampler coincidence and
+  (b) TPE simply never sampled that point in its trials. That is a sampler coincidence and
       carries no information about the edit.
 
 (a) and (b) look identical in the pooled tally and have opposite implications, so this probe
 separates them: for each undecidable rewrite it asks whether the parent's best params were
 ATTEMPTED in the child's space and, if so, with what failure_kind.
 
+Counts are deliberately not quoted in this docstring: they moved once already when the parent
+bound was corrected (24% no-ops over 17 decidable became 11% over 28), and a number frozen in a
+comment outlives the run it came from. Read them from the output.
+
 POSITIVE CONTROL. --selftest builds a child that attempted the point and failed on shared
 memory (must be reported as refused) and one that never attempted it (must be reported as
-unsampled). Without both, "all 16 are coincidence" and "the probe cannot see attempts" print
-the same reassuring answer.
+unsampled). Without both, "every one is a coincidence" and "the probe cannot see attempts"
+print the same reassuring answer.
 """
 from __future__ import annotations
 
@@ -40,6 +44,7 @@ def audit(events: list[dict], label: str, quiet: bool = False) -> dict:
     all_trials: dict[str, list[dict]] = {}
     done: dict[str, list[dict]] = {}
     closed: set[str] = set()
+    closed_at: dict[str, int] = {}
     for e in events:
         t = e.get("type")
         p = e.get("payload") or {}
@@ -56,7 +61,13 @@ def audit(events: list[dict], label: str, quiet: bool = False) -> dict:
             if tr.get("status") == "complete":
                 done.setdefault(cid, []).append(tr)
         elif t == "TUNING_DONE" and p.get("candidate_id"):
-            closed.add(str(p["candidate_id"]))
+            cid = str(p["candidate_id"])
+            closed.add(cid)
+            # Same seq bound as rewrite_source_vs_knob.py: the parent must have closed BEFORE the
+            # rewrite was produced. Without it this probe's denominator diverges from the pooled
+            # tally's (it read 16 undecidable against the tally's 7) because a later sibling
+            # supplies a different "parent best" and therefore a different point to match.
+            closed_at.setdefault(cid, int(e.get("seq") or 0))
 
     def _best(cid: str) -> dict | None:
         rows = [(m, tr) for tr in done.get(cid, [])
@@ -70,7 +81,9 @@ def audit(events: list[dict], label: str, quiet: bool = False) -> dict:
         if child not in closed:
             continue
         fid = str(p.get("family_id") or fam_of.get(child, "?"))
-        sibs = [c for c, f in fam_of.items() if f == fid and c != child and c in closed]
+        sibs = [c for c, f in fam_of.items()
+                if f == fid and c != child and c in closed
+                and closed_at.get(c, 1 << 62) < int(e.get("seq") or 0)]
         pbest, parent = None, None
         for c in sibs:
             tr = _best(c)
@@ -131,11 +144,11 @@ def _selftest() -> int:
             {"candidate_id": "par", "family_id": "f1"}}},
         {"type": "CANDIDATE_REGISTERED", "payload": {"candidate":
             {"candidate_id": "kid", "family_id": "f1"}}},
-        {"type": "REWRITE_PRODUCED", "payload":
+        {"seq": 5, "type": "REWRITE_PRODUCED", "payload":
             {"candidate_id": "kid", "family_id": "f1", "hypothesis_id": "H1"}},
         _tr("par", {"BLOCK_M": 64}, "complete", ms=3.0),
-        {"type": "TUNING_DONE", "payload": {"candidate_id": "par"}},
-        {"type": "TUNING_DONE", "payload": {"candidate_id": "kid"}},
+        {"seq": 4, "type": "TUNING_DONE", "payload": {"candidate_id": "par"}},
+        {"seq": 9, "type": "TUNING_DONE", "payload": {"candidate_id": "kid"}},
     ]
     ok = True
     f = audit(base + [_tr("kid", {"BLOCK_M": 64}, "fail", "infeasible_shared_memory",
