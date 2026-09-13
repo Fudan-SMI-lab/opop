@@ -392,7 +392,7 @@ paper 里最好用一句话点明这个区别。
 |---|---|---|
 | **A. 综合基准** | KernelBench level 1/2/3,每 level 采样 $N$ 个任务 | 主结果表(§4.1) |
 | **B. 典型算子** | GEMM 类、attention 类、RNN/序列类、reduction/normalization 类、逐元素类 | C1 专属实验(§4.2);**选择判据是"每类的绑定维度不同"** |
-| **C. 整模型** | KernelBench level 4 的整模型任务(含数十个算子) | case study(§4.5) |
+| **C. 整模型** | KernelBench level 4 的整模型任务(**实测 20 个**,每个是一个真实 HuggingFace 模型,含数十个算子);见 §4.5 的三个前置条件 | case study(§4.5) |
 
 **采样必须公开**:采样种子、被排除的任务及排除理由、**过滤后的实际池大小**。
 (注:部分任务因结构原因不可评测,过滤后的池会明显小于名义池 ⇒ 必须报过滤后的数。)
@@ -568,6 +568,23 @@ paper 里最好用一句话点明这个区别。
 **回答**:在一个包含数十个算子的真实模型上,框架如何分配预算、端到端收益多少。
 
 **设计**:取任务集 C(整模型任务)中的 1–2 个模型。
+
+**⚠ 这一组有三个前置条件,实测结果如下(2026-09-14,box4)** ——
+它们决定这组实验能不能做、要先花多少准备时间:
+
+1. **level4 的实际池是 20 个 `.py`**(此前记的 21 把 `__pycache__` 目录算进去了)。
+2. **它们是"整模型"而非"多卡"任务。** 每个文件通过
+   `AutoModelForCausalLM.from_pretrained(model_name, config)` 加载一个真实的 HuggingFace 模型,
+   `forward` 返回 `logits`;`get_inputs()` 给出 `(batch_size, sequence_length)` 的 token id。
+   ⇒ **"多个 kernel"这一点对得上**(一个模型含数十个算子),
+   **但"多卡"这一层需要我们自己引入**,level4 本身不涉及多卡。
+3. **权重需要从 HuggingFace 下载,而这台机器上从未跑过这些任务** ——
+   `transformers 5.16.1` 已装、`/root/autodl-tmp` 有 162 G 可用,
+   但 **HF cache 为空**(`~/.cache/huggingface` 不存在)。
+   ⇒ **准备成本必须先算进去**:选模型时优先挑小的
+   (如 `google/electra-small-discriminator`,文件名已含 `bs`/`seq` 便于估算),
+   避免一上手就用 `gpt-neo-2.7B` 这类大模型;并注意**下载需要网络**。
+   ⇒ **建议先用一个小模型把这条链路跑通**,再决定 case study 用哪个模型。
 
 **要报**:
 - 端到端模型延迟(各基线 + ours),以及**逐算子表**:哪些算子被改写、各自加速比;
