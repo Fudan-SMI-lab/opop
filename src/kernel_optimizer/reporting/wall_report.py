@@ -251,11 +251,90 @@ def freed_lines(events: Any) -> list[str]:
     return lines if any_row else []
 
 
+def soft_wall_lines(events: Any) -> list[str]:
+    """The item-2 section: register-spill walls, with the denominators that make them readable.
+
+    Returns [] when the soft wall never ran, so a run without it reads exactly as before.
+
+    THE DENOMINATORS ARE THE SECTION. A count of walls cannot be interpreted on its own here, for two
+    measured reasons:
+
+      * a candidate whose fastest trial does not spill has NO wall to find at the point the agent
+        rewrites from -- 103 of 153 candidates in the local corpus, a structural non-event rather than
+        a negative result. "Not applicable" and "applicable, no wall" must not collapse.
+      * applicability is not a constant across corpora: 43% (24 of 56) on the five backed-up runs,
+        23.5% (36 of 153) locally, and 0 of 8 on the L3:48 runs. So the rate has to be computed from
+        THIS run's own numbers and never quoted from another.
+
+    And every row says it was not probe-confirmed. The hard wall's attribution is re-checked by an
+    independent question to the compiler; this is one observation of an already-measured field.
+    """
+    rows = []
+    for ev in events:
+        t = _ev(ev, "type")
+        if t != "RESOURCE_SOFT_WALL":
+            continue
+        rows.append((_ev(ev, "payload") or {}))
+    if not rows:
+        return []
+
+    n = len(rows)
+    applicable = [p for p in rows if p.get("applicable")]
+    hit = [p for p in applicable if (p.get("walls") or [])]
+    zero_spill = sum(1 for p in rows
+                     if not p.get("applicable") and "does not spill" in str(p.get("reason") or ""))
+    n_walls = sum(len(p.get("walls") or []) for p in rows)
+
+    lines = ["## 寄存器溢出墙(软墙,item 2)\n"]
+    lines.append(
+        f"- 候选数 {n};**最优点确实溢出(可适用)的 {len(applicable)} 个**"
+        + (f"({100.0 * len(applicable) / n:.0f}%)" if n else "")
+        + f";其中找到墙的 {len(hit)} 个,共 {n_walls} 条 (候选, knob)")
+    lines.append(
+        f"- **不适用 {n - len(applicable)} 个,其中 {zero_spill} 个的最优 trial 根本不溢出** —— "
+        "这不是阴性结果:最优点不溢出时,任何 knob 都不可能在该点被溢出截断。"
+        "「不适用」与「适用但无墙」是两种状态,必须分开读。")
+    lines.append(
+        "- **适用率不是常数**:五个已备份 run 上是 43%(24/56),本机语料 23.5%(36/153),"
+        "L3:48 的 8 个候选上是 0 —— 所以这一行的比例只能用**本 run 自己的**数字,不能引用别处的。")
+    lines.append(
+        "- **每一条都未经独立探针确认**:硬墙的归因由编译器的第二次独立提问复核(实测最优点 6/6),"
+        "软墙只有一次已测字段的观测,且没有廉价探针可加"
+        "(「会不会溢出」不是编译器能脱离编译单独回答的是非题)。")
+    lines.append("")
+
+    body: list[str] = []
+    for p in rows:
+        cid = str(p.get("candidate_id") or "?")
+        for w in (p.get("walls") or []):
+            spills = w.get("spills_by_value") or []
+            vals = w.get("ran_values") or []
+            span = (f"{spills[0]:.0f} → {spills[-1]:.0f}" if spills else "?")
+            body.append(
+                f"| `{cid}` | {w.get('param')} | "
+                f"{', '.join(_fmt_val(v) for v in vals)} | {span} | "
+                f"**{_fmt_val(w.get('onset_value'))}** | "
+                f"{float(w.get('tail_gain_pct') or 0.0):+.1f}% | "
+                f"{w.get('limiter_at_best') or '未测'} |")
+    if body:
+        lines.extend(["| 候选 | knob | 已测取值 | 溢出槽位 | 起始取值 | 尾部斜率 | 最优点限制者 |",
+                      "|---|---|---|---|---|---|---|", *body, ""])
+    else:
+        lines.append("**本 run 没有找到任何溢出墙。** 见上一行的分母判断这是「不适用」还是「无墙」。")
+        lines.append("")
+    return lines
+
+
 def wall_lines(events: Any) -> list[str]:
-    """The section. Returns [] when 2e never ran, so a run without it reads exactly as before."""
+    """The section. Returns [] when neither wall mechanism ran, so a run without them reads as before.
+
+    The two mechanisms are INDEPENDENTLY switched, so the early return has to check both: with only the
+    soft wall on, `_rows` is empty and returning [] here would drop a section that has content -- the
+    shape of defect where a new reader silently reports nothing for a run that produced something.
+    """
     payloads = _rows(events)
     if not payloads:
-        return []
+        return soft_wall_lines(events)
 
     lines = ["## 共享内存墙归因(2e)\n"]
 
@@ -405,4 +484,10 @@ def wall_lines(events: Any) -> list[str]:
     # the rewrite and its trials to exist. Appended here rather than at report.py's call site so
     # `wall_lines` stays the single entry point and a run without 2e still emits nothing.
     lines.extend(freed_lines(events))
+    # The soft wall LAST and as its own section, never merged into the table above. The hard wall's
+    # rows carry an independent compiler confirmation and the soft wall's do not, and a reader who took
+    # one for the other would have over-read the weaker evidence. Appended here so `wall_lines` stays
+    # the single entry point -- a run with the soft wall on and 2e off still emits the section, because
+    # `soft_wall_lines` reads its own event type and returns [] when there is none.
+    lines.extend(soft_wall_lines(events))
     return lines

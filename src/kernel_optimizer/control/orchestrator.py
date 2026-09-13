@@ -38,7 +38,7 @@ from kernel_optimizer.agents.runtime import AgentCallError
 from kernel_optimizer.config import AppConfig
 from kernel_optimizer.control.convergence import ConvergencePolicy
 from kernel_optimizer.control.families import FamilyManager, NoveltyRejection
-from kernel_optimizer.evaluation import wall_attribution
+from kernel_optimizer.evaluation import soft_wall, wall_attribution
 from kernel_optimizer.evaluation.benchmark import Benchmarker, environment_defect
 from kernel_optimizer.evaluation.conversion import conversion_verdict
 from kernel_optimizer.evaluation.correctness import (
@@ -1542,6 +1542,34 @@ class Orchestrator:
                 "error": f"{type(exc).__name__}: {exc}"[:500]})
             return []
 
+    def _attribute_soft_walls(self, crun: CandidateRun) -> str | None:
+        """Item 2: find spill walls, journal the scan, return the rendered text (or None).
+
+        Wrapped whole, like `_attribute_resource_walls`: a diagnostic that raised would present a
+        bookkeeping defect as a candidate defect. The failure is journalled rather than swallowed.
+
+        The event is written even when nothing was found, and it carries the DENOMINATORS. "0 walls
+        because the winner does not spill" and "0 walls because every spill curve was flat" are
+        different facts -- measured, 103 of 153 candidates are the first -- and applicability itself is
+        not a constant across corpora (43% on one, 23.5% on another, 0 of 8 on the L3:48 runs), so a
+        count without its denominator could not be read at all.
+        """
+        cfg = self.cfg.v3.soft_wall
+        if not cfg.enabled or crun.stats is None:
+            return None
+        try:
+            scan = soft_wall.find_soft_walls(crun.stats, list(crun.trials))
+            self.store.append("RESOURCE_SOFT_WALL", {
+                "candidate_id": crun.candidate.candidate_id,
+                **scan.payload(),
+            })
+            return soft_wall.for_prompt(scan, max_rows=cfg.max_rows_in_prompt)
+        except Exception as exc:  # noqa: BLE001 -- a diagnostic must never end a candidate
+            self.store.append("RESOURCE_SOFT_WALL_FAILED", {
+                "candidate_id": crun.candidate.candidate_id,
+                "error": f"{type(exc).__name__}: {exc}"[:500]})
+            return None
+
     def _theta_top_k(self, crun: CandidateRun, k: int) -> list[dict[str, Any]]:
         """The parameters of this candidate's K fastest completed trials, fastest first.
 
@@ -1779,6 +1807,18 @@ class Orchestrator:
             wall_text = wall_attribution.for_prompt(walls)
             # Kept on the candidate so `_rewrite_round` can hand the rewriter the MEASUREMENT
             # rather than the analyst's restatement of it. See `CandidateRun.wall_text`.
+            crun.wall_text = wall_text
+        # Item 2: the register-spill SOFT wall. Same delivery path, DIFFERENT criterion -- spilling
+        # refuses nothing, so `find_walls`' only input (the refused parameter sets) does not exist for
+        # it and no amount of parameterisation would let that function see it.
+        #
+        # Journalled unconditionally like the vector, gated on `in_prompt` for delivery, and appended
+        # after the hard wall rather than merged with it: one is confirmed by an independent compiler
+        # probe and the other is a single observation of an already-measured field, and a reader has to
+        # be able to tell which is which. Costs zero GPU -- `n_spills` is in every trial's profile.
+        soft_text = self._attribute_soft_walls(crun)
+        if soft_text and self.cfg.v3.soft_wall.in_prompt:
+            wall_text = f"{wall_text}\n\n{soft_text}" if wall_text else soft_text
             crun.wall_text = wall_text
         # S2: the per-dimension vector. Journalled UNCONDITIONALLY, in both modes -- recording costs
         # nothing and is not what carries risk; what carries risk is what reaches the prompt, and

@@ -524,6 +524,48 @@ class V3WallAttributionConfig(StrictConfig):
     in_prompt: bool = False
 
 
+class V3SoftWallConfig(StrictConfig):
+    """Item 2: the register-spill SOFT wall -- a knob whose range is clipped without being refused.
+
+    The hard shared-memory wall is a REFUSAL: the configuration cannot launch and the screen records
+    `infeasible_shared_memory`, which is `find_walls`' entire input. Spilling refuses nothing -- the
+    configuration runs and is merely clipped, with live values pushed to local memory (~2 orders of
+    magnitude slower than a register). There is no refused parameter set to read, so this needs a
+    second criterion function rather than an argument on the first.
+
+    WHY `n_spills` AND NOT `occupancy`. Both cleared the independence threshold (largest |rho| 0.497).
+    A second, stricter test separated them over 2788 trials / 56 candidates on two card types: does the
+    advice point where the measured optimum IS? `n_spills` winners sit at the BOTTOM of their own spill
+    range on 56 of 56 candidates (median position 0.00), so "reduce spilling" never conflicts with the
+    optimum. `occupancy` is PEAKED on 37 of 56 with the winner at a median position 0.33 and only 2 of
+    56 at the top, so "raise occupancy" points AWAY from the measured optimum. Occupancy must not be
+    re-proposed; its `limiter` field is used here only as the EXPLANATION of a spill wall.
+    """
+
+    # Find spill walls and journal `RESOURCE_SOFT_WALL`. Costs ZERO GPU -- `n_spills` is already in
+    # every trial's profile, so unlike the hard wall there is no probe to pay for.
+    #
+    # Still a switch, for one reason only: it adds an event and (with `in_prompt`) changes what the
+    # agent sees. It cannot change the tuning loop -- no configuration is refused, no sampling moves,
+    # no trial budget changes, and Optuna receives exactly the states it received before. That is the
+    # structural difference from S7, and it is why this needs no paired control arm.
+    enabled: bool = False
+
+    # Put the spill walls into the analyst/rewriter prompt. OFF, and must stay off for any run being
+    # compared with an existing one. The text states in its first line that there was NO independent
+    # probe confirmation -- the hard wall's attribution is re-checked by a second question to the
+    # compiler (6 of 6 from the optimum); a soft wall is one observation of an already-measured field,
+    # and no cheap probe exists because "would this spill" is not a yes/no the compiler answers apart
+    # from compiling.
+    in_prompt: bool = False
+
+    # How many walls the prompt may carry. Measured tail gains span +1.5% to +81.7% (median +17.8%),
+    # and the list is sorted by slope, so the cap keeps the lowest-value rows out of a prompt rather
+    # than truncating arbitrarily. Not a cap on what is JOURNALLED: the event carries every wall, so
+    # the cap can never hide a finding from the log.
+    max_rows_in_prompt: int = 3
+
+
 class V3OrderedCategoricalsConfig(StrictConfig):
     """S8 / item 3.1: tell TPE which knobs have an ORDER, and how far apart their values are.
 
@@ -576,6 +618,7 @@ class V3Config(StrictConfig):
     search: V3SearchConfig = V3SearchConfig()
     diagnosis: V3DiagnosisConfig = V3DiagnosisConfig()
     wall_attribution: V3WallAttributionConfig = V3WallAttributionConfig()
+    soft_wall: V3SoftWallConfig = V3SoftWallConfig()
     ordered_categoricals: V3OrderedCategoricalsConfig = V3OrderedCategoricalsConfig()
 
 
