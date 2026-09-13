@@ -485,3 +485,228 @@ def test_neither_zero_message_appears_when_walls_were_found():
     assert "有输入但没有墙" not in out
     assert "没有任何输入" not in out
     assert "40" in out, "the refusal count should still be reported when walls WERE found"
+
+
+# ---------------------------------------------------------------------------
+# A3: did the rewrite the wall text steered actually FREE the walled dimension?
+#
+# The fixtures below are built from arm 3's real log (run-l3-43-20260912-214326): candidate
+# cand-dc87a93a, knob BLOCK_N, refused 128, probe measured 122880 B against the 101376 B limit, and
+# two descendants that ran BLOCK_N=128 at 77824 B and 45056..98304 B. Field spellings are copied from
+# the emitters -- `params.values`, `profile.shared_bytes`, `parent_ids`,
+# `failure_kind == "infeasible_shared_memory"` -- not invented, because a fixture shaped to match
+# the reader proves only that the reader reads itself.
+# ---------------------------------------------------------------------------
+
+def _wall_ev(cid="cand-dc87a93a", knob="BLOCK_N", refused=128.0, verdict="attributed"):
+    return {"type": "RESOURCE_WALL_ATTRIBUTED",
+            "payload": {"candidate_id": cid, "n_refused_configs": 12, "walls_found": 1,
+                        "walls_probed": 1, "walls_worthless": 0,
+                        "counts": {"attributed": 1 if verdict == "attributed" else 0},
+                        "walls": [{"param": knob, "refused_value": refused,
+                                   "ran_values": [16.0, 32.0, 64.0], "tail_gain_pct": 7.5,
+                                   "monotone": True, "verdict": verdict,
+                                   "max_shared": 122880, "limit": 101376, "over_ratio": 1.212}]}}
+
+
+def _child(cid, parent):
+    return {"type": "CANDIDATE_REGISTERED",
+            "payload": {"candidate": {"candidate_id": cid, "family_id": "fam-8e54d0af",
+                                      "parent_ids": [parent], "origin": "rewrite"}}}
+
+
+def _trial(cid, values, status="complete", shared=77824, failure_kind=None):
+    trial = {"candidate_id": cid, "params": {"values": values}, "status": status,
+             "latency_ms": {"mean": 3.9, "median": 3.84, "std": 0.1, "min": 3.7, "max": 4.1,
+                            "n_samples": 20}}
+    if status == "complete":
+        trial["profile"] = {"shared_bytes": shared, "n_regs": 200, "n_spills": 0,
+                            "compile_s": 0.42, "num_warps": 8, "num_stages": 2}
+    else:
+        trial["failure_kind"] = failure_kind
+    return {"type": "TRIAL_DONE", "payload": {"trial": trial}}
+
+
+def test_a3_reports_FREED_when_a_descendant_runs_the_refused_value():
+    """The positive case, and the one measured live: the compiler accepted what it refused."""
+    from kernel_optimizer.reporting.wall_report import wall_lines
+
+    out = "\n".join(wall_lines([
+        _wall_ev(),
+        _child("cand-5bd8ddd3", "cand-dc87a93a"),
+        _trial("cand-5bd8ddd3", {"BLOCK_M": 64, "BLOCK_N": 128, "NUM_WARPS": 8}),
+    ]))
+    assert "A3" in out, "the A3 section did not render at all"
+    assert "FREED" in out
+    assert "cand-5bd8ddd3" in out
+    assert "77824" in out, "the footprint AT the wall's value is the evidence and must be shown"
+    assert "占用已降到上限内" in out, (
+        "77824 is under the 101376 limit, so the section must say the footprint fell -- otherwise a "
+        "reader cannot tell the mechanism worked from a coincidence")
+
+
+def test_a3_matches_a_string_knob_value_against_a_float_refused_value():
+    """The trap that would fake a negative result.
+
+    `refused_value` comes back from `find_walls` as a FLOAT (128.0) -- it passes through that
+    module's numeric coercion. The trial's `params.values` holds whatever the SPACE declared, and
+    spaces really do declare numeric-looking knobs with `kind: "str"` (COMPUTE_DTYPE is a str knob;
+    a tile size declared the same way arrives as "128"). `"128" == 128.0` is False in Python, so a
+    plain `==` prints "未曾尝试" for a dimension that was demonstrably freed -- indistinguishable
+    from a real negative A3, with the mechanism silently reported as ineffective. This is the reason
+    `_same_value` coerces before comparing.
+
+    NOT tested with int 128 against float 128.0: Python already answers True for that pair, so such a
+    test passes with or without `_same_value` and pins nothing. Found by the revert check, which
+    reported the suite still green after replacing `_same_value`'s body with `a == b`.
+    """
+    from kernel_optimizer.reporting.wall_report import wall_lines
+
+    as_str = "\n".join(wall_lines([
+        _wall_ev(refused=128.0),
+        _child("kid", "cand-dc87a93a"),
+        _trial("kid", {"BLOCK_N": "128"}),        # str in the trial, as a str-kind knob yields
+    ]))
+    as_float = "\n".join(wall_lines([
+        _wall_ev(refused=128.0),
+        _child("kid", "cand-dc87a93a"),
+        _trial("kid", {"BLOCK_N": 128.0}),
+    ]))
+    assert "FREED" in as_str, (
+        'a str trial value ("128") did not match a float refused_value (128.0)')
+    assert "FREED" in as_float
+    assert "未曾尝试" not in as_str
+
+
+def test_a3_does_not_match_values_that_merely_look_similar():
+    """The other half of `_same_value`: coercion must not turn a DIFFERENT value into a match.
+
+    Without this, "loosen the comparison until the test passes" would be a valid way to make the
+    section report FREED for a wall nothing freed -- a false positive on the project's own claim,
+    which is worse than the false negative above.
+    """
+    from kernel_optimizer.reporting.wall_report import wall_lines
+
+    out = "\n".join(wall_lines([
+        _wall_ev(refused=128.0),
+        _child("kid", "cand-dc87a93a"),
+        _trial("kid", {"BLOCK_N": 64}),
+        _trial("kid", {"BLOCK_N": "64"}),
+        _trial("kid", {"BLOCK_N": 1280}),
+    ]))
+    assert "FREED" not in out, "a non-matching value was reported as having freed the wall"
+    assert "未曾尝试" in out
+
+
+def test_a3_distinguishes_still_walled_from_dimension_gone_from_not_tried():
+    """Three non-FREED outcomes that must never be collapsed into one.
+
+    Collapsing them is the actual risk: "维度已消失" counted as failure slanders a rewrite that
+    removed the constraint by removing the tile loop, and counted as success credits one for deleting
+    the evidence. "未曾尝试" is neither -- TPE is not a uniform sampler.
+    """
+    from kernel_optimizer.reporting.wall_report import wall_lines
+
+    still = "\n".join(wall_lines([
+        _wall_ev(),
+        _child("kid", "cand-dc87a93a"),
+        _trial("kid", {"BLOCK_N": 128}, status="fail",
+               failure_kind="infeasible_shared_memory"),
+    ]))
+    assert "仍被拒" in still and "FREED" not in still
+
+    gone = "\n".join(wall_lines([
+        _wall_ev(),
+        _child("kid", "cand-dc87a93a"),
+        _trial("kid", {"TILE": 64}),   # the knob is not in this child's space at all
+    ]))
+    assert "维度已消失" in gone and "FREED" not in gone
+
+    untried = "\n".join(wall_lines([
+        _wall_ev(),
+        _child("kid", "cand-dc87a93a"),
+        _trial("kid", {"BLOCK_N": 64}),   # knob present, but never at the refused value
+    ]))
+    assert "未曾尝试" in untried and "FREED" not in untried
+
+
+def test_a3_says_so_when_the_walled_candidate_has_no_descendant_yet():
+    """A wall found late in a run has no rewrite to judge. That is not a negative result, and a blank
+    row would read as one."""
+    from kernel_optimizer.reporting.wall_report import wall_lines
+
+    out = "\n".join(wall_lines([_wall_ev()]))
+    assert "尚无后代" in out
+    assert "FREED" not in out
+
+
+def test_a3_uses_the_footprint_at_the_wall_not_at_the_childs_optimum():
+    """The distinction the whole section rests on, pinned with arm 3's real confound.
+
+    cand-e5172b8a's optimum used 73728 B -- IDENTICAL to its walled parent's -- while its trials at
+    BLOCK_N=128 ran at 45056..98304 B. A section that reported the optimum's footprint would show "no
+    change" for a candidate that demonstrably freed the wall. So the number in the row must come from
+    the trials AT the refused value, and the fastest trial (here a low-BLOCK_N one at 73728) must NOT
+    be what gets reported.
+    """
+    from kernel_optimizer.reporting.wall_report import wall_lines
+
+    out = "\n".join(wall_lines([
+        _wall_ev(),
+        _child("cand-e5172b8a", "cand-dc87a93a"),
+        # The optimum: fastest trial, but at a DIFFERENT BLOCK_N, and at the parent's footprint.
+        _trial("cand-e5172b8a", {"BLOCK_N": 32}, shared=73728),
+        # The evidence: trials at the wall's value, with a lower footprint.
+        _trial("cand-e5172b8a", {"BLOCK_N": 128}, shared=45056),
+        _trial("cand-e5172b8a", {"BLOCK_N": 128}, shared=98304),
+    ]))
+    assert "45056..98304" in out, (
+        "the row must report the footprint span AT the refused value, not the optimum's")
+    assert "FREED" in out
+
+
+def test_a3_is_silent_when_no_wall_was_attributed():
+    """A found-but-unattributed wall has no delivered measurement to have steered anything, so there
+    is nothing for A3 to check -- and an empty A3 table would read as a negative."""
+    from kernel_optimizer.reporting.wall_report import wall_lines
+
+    out = "\n".join(wall_lines([
+        _wall_ev(verdict="not_attributed"),
+        _child("kid", "cand-dc87a93a"),
+        _trial("kid", {"BLOCK_N": 128}),
+    ]))
+    assert "A3" not in out, "A3 rendered for a wall that was never attributed"
+
+
+def test_a3_names_the_counterfactual_it_cannot_supply():
+    """The section must not read as proof on its own. "the rewriter relieves shared memory anyway"
+    explains the same observation, and only an arm with 2e OFF can rule it out -- measured 0 of 7 on
+    arm 2 against 1 of 1 on arm 3. A reader who takes the FREED row as evidence of the steer without
+    that comparison has over-read it, so the caveat ships inside the section.
+    """
+    from kernel_optimizer.reporting.wall_report import wall_lines
+
+    out = "\n".join(wall_lines([
+        _wall_ev(),
+        _child("kid", "cand-dc87a93a"),
+        _trial("kid", {"BLOCK_N": 128}),
+    ]))
+    assert "不能单独证明" in out
+    assert "find_walls" in out, "the caveat must name how to run the counterfactual"
+
+
+def test_a3_walks_the_whole_lineage_not_just_direct_children():
+    """A wall can be freed two rewrites later. `descendants` is transitive for that reason, and a
+    direct-children-only reader would report "未曾尝试" for a grandchild that freed it.
+    """
+    from kernel_optimizer.reporting.wall_report import wall_lines
+
+    out = "\n".join(wall_lines([
+        _wall_ev(),
+        _child("kid", "cand-dc87a93a"),
+        _child("grandkid", "kid"),
+        _trial("kid", {"BLOCK_N": 64}),                  # child did not try it
+        _trial("grandkid", {"BLOCK_N": 128}),            # grandchild freed it
+    ]))
+    assert "grandkid" in out, "the grandchild never appeared in the table"
+    assert "FREED" in out

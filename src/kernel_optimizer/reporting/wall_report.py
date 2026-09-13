@@ -44,6 +44,161 @@ def _fmt_val(v: Any) -> str:
     return str(v)
 
 
+def _ev(ev: Any, name: str) -> Any:
+    return ev.get(name) if isinstance(ev, dict) else getattr(ev, name, None)
+
+
+def _same_value(a: Any, b: Any) -> bool:
+    """Compare a knob value across records where one side may be `128` and the other `128.0`.
+
+    The wall record's `refused_value` arrives as a float (it comes from the numeric coercion in
+    `find_walls`), while a trial's `params.values` holds whatever the space declared. A plain `==`
+    silently answers False for the very case this section exists to report, and the failure looks
+    exactly like a real negative: "the rewrite did not free it".
+    """
+    try:
+        return float(a) == float(b)
+    except (TypeError, ValueError):
+        return a == b
+
+
+def freed_lines(events: Any) -> list[str]:
+    """A3: for each ATTRIBUTED wall, did a later rewrite in the same lineage FREE that dimension?
+
+    This is the section the 2e report was missing. Everything above says which knob a wall belongs
+    to and what it would be worth; none of it says whether the rewrite that the wall text steered
+    actually bought the range back. That is the last verb in the mechanism, and it is the one an
+    ablation of the wall-attribution arm has to answer.
+
+    FREED means: a DESCENDANT of the walled candidate has a COMPLETED trial holding the knob at the
+    value the compiler refused. Descendant, not "same family": a family can contain candidates that
+    are not children of the walled one, and those say nothing about this wall.
+
+    Four outcomes, not two, because two of them are routinely mistaken for failure:
+
+      FREED           the compiler accepted what it refused before.
+      仍被拒          the child still gets `infeasible_shared_memory` at that value.
+      维度已消失      the child never samples that knob at all -- the rewriter restructured the kernel
+                      and the knob ceased to exist. Reported apart from both verdicts on purpose:
+                      counted as failure it slanders a rewrite that may have removed the constraint
+                      by removing the tile loop; counted as success it credits one for deleting the
+                      evidence.
+      未曾尝试        the knob exists but no trial sampled that value. TPE is not a uniform sampler,
+                      so absence is not refusal -- already recorded once as
+                      `trial-failure-rate-is-not-space-density`.
+
+    `shared_bytes` is reported AT THE WALL'S VALUE, not at the child's optimum, and that distinction
+    is the whole reason this reads as evidence. Measured on arm 3: the two children of the one
+    attributed wall report 36864 B and 73728 B at their own optima -- the second identical to its
+    parent's, which invites "the footprint did not change". At BLOCK_N=128 itself both fell (77824 B,
+    and 45056..98304 B) from the refused configuration's 122880 B, under the 101376 B limit. The
+    optimum sits whereever the tuner preferred, so its footprint says nothing about feasibility at
+    the wall.
+    """
+    payloads = _rows(events)
+    attributed: list[tuple[str, dict]] = []
+    for p in payloads:
+        for w in (p.get("walls") or []):
+            if w.get("verdict") == "attributed":
+                attributed.append((str(p.get("candidate_id") or "?"), w))
+    if not attributed:
+        return []
+
+    # Lineage and trials, both read from the same events the rest of the report replays from.
+    children: dict[str, list[str]] = {}
+    for ev in events:
+        if _ev(ev, "type") != "CANDIDATE_REGISTERED":
+            continue
+        c = (_ev(ev, "payload") or {}).get("candidate") or {}
+        cid = c.get("candidate_id")
+        if not cid:
+            continue
+        for parent in (c.get("parent_ids") or []):
+            children.setdefault(str(parent), []).append(str(cid))
+
+    trials: dict[str, list[dict]] = {}
+    for ev in events:
+        if _ev(ev, "type") != "TRIAL_DONE":
+            continue
+        t = (_ev(ev, "payload") or {}).get("trial") or {}
+        cid = t.get("candidate_id")
+        if cid:
+            trials.setdefault(str(cid), []).append(t)
+
+    def descendants(cid: str) -> list[str]:
+        out: list[str] = []
+        stack = list(children.get(cid, []))
+        while stack:
+            x = stack.pop(0)
+            out.append(x)
+            stack.extend(children.get(x, []))
+        return out
+
+    lines = ["### 被投递的墙,后续改写是否真的解开了它(A3)\n"]
+    lines.append(
+        "判据是**后代在被拒取值上有跑通的 trial**,且共享内存要在**墙的那个取值处**下降 —— "
+        "不是在后代自己的最优点处(最优点落在 tuner 偏好的取值上,其占用与该墙是否可行无关)。")
+    lines.append("")
+    header = "| 被墙候选 | knob | 被拒值 | 后代 | 结果 | 该取值处 shared_bytes | 上限 |"
+    lines.extend([header, "|---|---|---|---|---|---|---|"])
+    any_row = False
+    for cid, w in attributed:
+        knob = w.get("param")
+        refused = w.get("refused_value")
+        limit = w.get("limit")
+        kids = descendants(cid)
+        if not kids:
+            lines.append(
+                f"| `{cid}` | {knob} | **{_fmt_val(refused)}** | —— | "
+                f"**该墙尚无后代**(改写未产生/未注册) | —— | {limit} |")
+            any_row = True
+            continue
+        for kid in kids:
+            saw_knob = False
+            completed: list[int] = []
+            refused_again = False
+            for t in trials.get(kid, []):
+                vals = (t.get("params") or {}).get("values") or {}
+                if knob not in vals:
+                    continue
+                saw_knob = True
+                if not _same_value(vals[knob], refused):
+                    continue
+                if t.get("status") == "complete":
+                    sb = (t.get("profile") or {}).get("shared_bytes")
+                    if isinstance(sb, int):
+                        completed.append(sb)
+                    else:
+                        completed.append(-1)
+                elif t.get("failure_kind") == "infeasible_shared_memory":
+                    refused_again = True
+            if completed:
+                real = [s for s in completed if s >= 0]
+                span = (f"{min(real)}..{max(real)}" if real and min(real) != max(real)
+                        else (str(real[0]) if real else "未记录"))
+                under = (isinstance(limit, (int, float)) and real and max(real) <= limit)
+                verdict = "**FREED**" + ("(占用已降到上限内)" if under
+                                         else "(但占用仍在上限处 ⇒ 另有原因)")
+                lines.append(f"| `{cid}` | {knob} | **{_fmt_val(refused)}** | `{kid}` | "
+                             f"{verdict} | {span}({len(completed)} 个 trial) | {limit} |")
+            elif refused_again:
+                lines.append(f"| `{cid}` | {knob} | **{_fmt_val(refused)}** | `{kid}` | "
+                             f"仍被拒 | —— | {limit} |")
+            elif not saw_knob:
+                lines.append(f"| `{cid}` | {knob} | **{_fmt_val(refused)}** | `{kid}` | "
+                             f"维度已消失(改写后无此 knob) | —— | {limit} |")
+            else:
+                lines.append(f"| `{cid}` | {knob} | **{_fmt_val(refused)}** | `{kid}` | "
+                             f"未曾尝试(TPE 非均匀采样,缺席≠被拒) | —— | {limit} |")
+            any_row = True
+    lines.append("")
+    lines.append(
+        "**这一节不能单独证明 2e 有效**:「改写本来就会顺手降共享内存」会给出同样的观测。"
+        "要归因必须对照一个**关掉 2e 的同配置臂**,在它自己的 `TuningStats` 上离线跑 `find_walls`"
+        "(`scripts/probes/a3_counterfactual_arm_without_2e.py`)。")
+    return lines if any_row else []
+
+
 def wall_lines(events: Any) -> list[str]:
     """The section. Returns [] when 2e never ran, so a run without it reads exactly as before."""
     payloads = _rows(events)
@@ -173,4 +328,8 @@ def wall_lines(events: Any) -> list[str]:
                 f"({100.0 * confirmed / claims:.0f}%)。"
                 "该字段由 agent 填写、harness 从不核对,所以两者不一致时**本节是实测的那一方**。")
             lines.append("")
+    # A3 last, because it is the only part that depends on events AFTER the wall was found: it needs
+    # the rewrite and its trials to exist. Appended here rather than at report.py's call site so
+    # `wall_lines` stays the single entry point and a run without 2e still emits nothing.
+    lines.extend(freed_lines(events))
     return lines
