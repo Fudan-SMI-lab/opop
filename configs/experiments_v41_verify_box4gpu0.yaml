@@ -14,7 +14,17 @@ v4:
     # THE VARIABLE UNDER TEST. active = probes + C4 sources + E actions + fresh enqueue +
     # the conditioned brief replacing the legacy wall texts.
     mode: active
-    f_frac: 0.1          # ruling (3): the dose is NOT a tuning knob
+    # DOSE: f=0.125 (user ruling 2026-09-15, preregistered). v4.1 ruling (3) had kept
+    # f=0.1 pending pilot data; the measurement that settled it came first: a 12h run
+    # publishes 16-18 spaces at B=40, and f=0.1 gives Q=4 which the C4 source block
+    # consumes entirely -- so E ACTIONS WOULD BE STRUCTURALLY ZERO across the whole main
+    # pair, and C2's sampling side ("guides sampling") could not occur even once. f=0.125
+    # gives Q=5: exactly one complete source->action cycle (C4=4 + E1=1) per space.
+    # Cost: 5 of 40 trials per space (12.5%) are scan slots instead of ordinary TPE draws;
+    # B itself is UNCHANGED (the red line), and unused reserved slots return to TPE.
+    # Both arms carry the identical value so the pair stays comparable; the off arm never
+    # consumes Q, so this changes only what the active arm can do.
+    f_frac: 0.125
     pcap: 48
     max_probe_attempts: 4
     cadence_told: 10
