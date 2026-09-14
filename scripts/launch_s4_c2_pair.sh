@@ -20,7 +20,12 @@ TASK=level3:43
 
 cd "$W" || { echo "cannot cd to $W" >&2; exit 2; }
 
-# `[k]ernel_optimizer` so this grep does not match its own command line.
+# `[k]ernel_optimizer` so this grep does not match its own command line. VERIFIED, not assumed: run
+# bare it reports 2 against a ground truth of 2. It reports 3 when the INVOKING command also carries
+# the string unbracketed (an `echo` label, say) -- the bracket protects only the occurrence it is in,
+# so a wrapper that names the pattern inflates the count. Since this number decides whether it is safe
+# to start, and a self-match can only inflate, that direction is the safe one; do not "fix" it by
+# loosening the pattern.
 running=$(ps -eo args | grep -c "[k]ernel_optimizer.cli" || true)
 if [ "$running" != "0" ]; then
   echo "REFUSING TO START: $running orchestrator process(es) already running." >&2
