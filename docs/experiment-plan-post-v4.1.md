@@ -106,3 +106,21 @@ GPU 分离运行期查并存盘、监控 30 分钟一次、每阶段启动前 gi
 - "引导结构改写" ⇒ 墙简报交付数 + 改写假设来源分布翻转;
 - 端到端延迟差按 N1 标定的噪声底如实报告功效限制,不作主判据;
 - 全部负结果同样可发表:预注册+三次历史复现链+条件化修复的完整叙事。
+
+## 部署与阶段 0 进度(实时,2026-09-15)
+
+- **实施完成**:`kernel_optimizer/conditional` 全部落地并接入 orchestrator;
+  Windows 全测试 1225 通过(+35 v4.1 新测试),box4 全测试 1239 通过(Linux 无隐藏 skip)。
+- **两台机器已同步**:box4(4090×2)与 box1(4090×2)均在 v4 分支同一 commit;
+  box1 既有 v3 checkout 干净、v2 checkout(36 改动)未触碰;box4 step-4 现场文件已本地提交保存。
+- **V0 GPU 冒烟通过(box4)**:真实 compile-probe 批(10/10 应答)→ C4 准入 →
+  4 个锚点真 GPU 复测(全 flagged fresh)→ outward token 生成 → E1 经完成钩子准入 →
+  **fresh-intent 正对照现场确认**(普通重投被拒、fresh 重投被重抽并标记)。
+  即 v3 审核的 E1 阻断项(假 A/A 零)已在真实 GPU 上实证修复。
+- **冒烟暴露并修正的三处**(全非机制缺陷):TaskSpec 字段名、任务形状/尺寸
+  (level1:19 的 6.4GB 输入撑爆探针死线+显存,改用 level1:1 matmul)、
+  以及探针 warmup 编译期 n_regs/n_spills 恒 None(见
+  [[v41-probe-regs-spills-are-none-at-warmup-compile]]——硬墙可用、软墙须从真实 trial 读)。
+- **进行中**:全管道验证 run(active 模式、缩小预算、真实 GLM agent 栈、level1:1),
+  确认整个 orchestrator 在 v4 上端到端可跑,再启动四个 12h run。
+- **待办**:验证通过后按 v2.1 编排启动窗口 1(box4 N1 A/A 对 + box1 P1∥P2 pilot)。
