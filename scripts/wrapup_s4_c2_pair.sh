@@ -184,6 +184,29 @@ PYEOF
   # produces nothing", which would have been a wrong conclusion drawn from the wrong unit.
   $PY /root/probe-clean/traj.py 2>&1 || echo "(rc=$?)"
   echo
+  echo "-- DID ANY WALL TEXT REACH A REWRITER? (a primary reading of this pair) --"
+  # The all-on config header names "soft walls found and delivered" and "families that received wall
+  # text" as the readings that do not depend on attribution succeeding. Nothing else in this wrap-up
+  # counts them, so count them here -- from the SANDBOXES, which is where delivery actually lands.
+  #
+  # Two traps, both already hit on the S7 pair:
+  #   * hard and soft walls SHARE the filename `resource_walls.md`, so the file's existence does not say
+  #     which kind arrived -- the content does. The first line is printed for each.
+  #   * `analysis/` exists in BOTH analyst and rewriter sandboxes, so a `**/analysis/*` glob counts the
+  #     analyst's own products as deliveries. Only `rewriter-*` sandboxes are counted.
+  for label in c2on c2off; do
+    d=$ON; [ "$label" = "c2off" ] && d=$OFF
+    rw=$(ls -d "$d"/sandboxes/rewriter-* 2>/dev/null | wc -l)
+    briefs=$(find "$d"/sandboxes/rewriter-* -name "resource_walls.md" 2>/dev/null | wc -l)
+    echo "  $label: rewriter sandboxes=$rw   with resource_walls.md=$briefs"
+    find "$d"/sandboxes/rewriter-* -name "resource_walls.md" 2>/dev/null | while read -r f; do
+      echo "      $(basename "$(dirname "$(dirname "$f")")"): $(head -1 "$f" | cut -c1-88)"
+    done
+  done
+  echo "  arm A's 0 is STRUCTURAL (the mechanism is off) -- the positive control, not a finding."
+  echo "  Read the ratio only against the FINAL sandbox count; S7's figure was 1 of 4, and that one"
+  echo "  brief was a SOFT wall, so a hard-wall claim cannot rest on it."
+  echo
   echo "############ 6. DID THE ENQUEUED POINTS WIN THEIR KNOB?"
   # The reading that tests C2's premise rather than its plumbing. Pre-registered before this pair ran:
   # on S7 the steepest point (55.15% tail gain) won while shallower ones lost, and three much shallower
