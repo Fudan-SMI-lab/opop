@@ -75,7 +75,12 @@ opencode:
     XDG_DATA_HOME: /root/autodl-tmp/xdg-v4p2
 
 wsl:
-  venv: /root/autodl-tmp/kernel-opt-venv
+  # THE MATCHED WORKER VENV ON BOX 1 IS orch-venv (torch 2.13.0+cu129 /
+  # triton 3.7.1) -- NOT kernel-opt-venv (2.9.1 / 3.5.1), which is what box 4
+  # uses. The two boxes have these names SWAPPED; the box-4 template this file
+  # came from carried the wrong one, which would have run every pilot trial on a
+  # different toolchain identity than every prior box-1 result.
+  venv: /root/autodl-tmp/orch-venv
   kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src
   triton_cache_dir: /root/autodl-tmp/.triton-cache-v4p2
 
