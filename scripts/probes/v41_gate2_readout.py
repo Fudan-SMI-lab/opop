@@ -77,30 +77,74 @@ def main() -> int:
     e_admits = [a for a in admitted if a.get("kind") in ("E1", "E2", "E4")]
     print(f"E admissions:             {len(e_admits)}")
     print(f"fresh-forced bypasses:    {fresh_forced}")
-    new_values = Counter()
+    # `enqueued` holds ScanPoint.payload() — scan_id/role/axis/order/token_id/direction.
+    # It carries NO parameter values, so this counts SLOTS per axis, not distinct values;
+    # the earlier "distinct new-value enqueues" label claimed a reading the payload cannot
+    # support. Distinct values, if wanted, must come from the trials, not from here.
+    slots = Counter()
+    refused_slots = Counter()
     for a in e_admits:
-        for pt in a.get("enqueued", []):
-            new_values[a.get("axis")] += 1
-    print(f"distinct new-value enqueues by axis: {dict(new_values) or '(none)'}")
+        slots[a.get("axis")] += len(a.get("enqueued", []))
+        refused_slots[a.get("axis")] += len(a.get("refused", []))
+    print(f"E slots enqueued by axis: {dict(slots) or '(none)'}")
+    print(f"E slots refused by axis:  {dict(refused_slots) or '(none)'}")
+    directions = Counter(pt.get("direction") for a in e_admits
+                         for pt in a.get("enqueued", []))
+    print(f"E directions:             {dict(directions) or '(none)'}")
     tot_decisions = sum(s.get("scanner", {}).get("e_decisions", 0) for s in tuning_final)
     tot_comp = sum(s.get("scanner", {}).get("e_decisions_with_competition", 0)
                    for s in tuning_final)
     tot_diff = sum(s.get("scanner", {}).get("rr_gain_differed", 0) for s in tuning_final)
-    print(f"E decisions:              {tot_decisions}")
+    # These three are summed across SPACES (one final snapshot each), which is the one
+    # legitimate summation: each TUNING_DONE carries that space's terminal value, so the
+    # sum is a run total. Summing WITHIN a space across events is what produces triangular
+    # numbers, and is what the per-event reads above deliberately avoid.
+    print(f"E decisions (sum over {len(tuning_final)} space snapshots): {tot_decisions}")
     print(f"  with competition >=2:   {tot_comp}")
     print(f"  RR vs gain differed:    {tot_diff}")
 
     print("\n== probe layer ==")
     print(f"batches dispatched:       {len(probe_batches)}")
     if probe_batches:
-        last_walls = probe_batches[-1].get("walls", [])
-        kinds = Counter(w.get("kind") for w in last_walls)
-        print(f"conditioned walls (last batch): {dict(kinds) or '(none)'}")
+        # EVERY batch, not the last one. Each UW_PROBE_BATCH is scoped to ONE
+        # candidate/space, so `probe_batches[-1]` reports the last space's walls and calls
+        # them the run's -- a reading that gets quieter the more spaces the run publishes.
+        # Walls are deduplicated on their own identity (a re-planned batch for the same
+        # space can re-report a wall it already found), so this is a SET of walls, never a
+        # sum over events: the counters-are-cumulative lesson applies to counts, and
+        # summing wall lists across batches inflates the same way.
+        seen_walls: dict[tuple, dict] = {}
+        for b in probe_batches:
+            for w in b.get("walls", []):
+                key = (b.get("space_id"), w.get("kind"), w.get("axis"),
+                       w.get("partner_key"), str(w.get("refused_value")))
+                seen_walls.setdefault(key, w)
+        kinds = Counter(w.get("kind") for w in seen_walls.values())
+        spaces_with_walls = len({k[0] for k in seen_walls})
+        spaces_probed = len({b.get("space_id") for b in probe_batches})
+        print(f"distinct conditioned walls:     {dict(kinds) or '(none)'}")
+        print(f"  in {spaces_with_walls} of {spaces_probed} probed space(s)")
+        # Soft walls cannot come from this layer: compile-only probes run ptxas-free, so
+        # n_regs/n_spills are None at warmup. hard-only is the EXPECTED shape here, not a
+        # gap in the mechanism.
+        if kinds and not kinds.get("soft"):
+            print("  (soft=0 is expected: compile-only probes cannot see n_spills)")
         witnesses = sum(len(b.get("corner_witnesses", [])) for b in probe_batches)
         print(f"corner witnesses:         {witnesses}")
-        budgets = [b.get("budget", {}) for b in probe_batches if b.get("budget")]
-        if budgets:
-            print(f"D budget (last): {budgets[-1]}")
+        # D budget is per-space too. Report the spread, not one space's numbers.
+        fr = [b["budget"]["frozen_d"] for b in probe_batches
+              if b.get("budget", {}).get("frozen_d") is not None]
+        retried = sum(1 for b in probe_batches if b.get("budget", {}).get("retried"))
+        stopped = sum(1 for b in probe_batches if b.get("budget", {}).get("stopped"))
+        if fr:
+            print(f"D budget frozen_d:        min {min(fr):.1f}  max {max(fr):.1f}  "
+                  f"n={len(fr)}")
+        print(f"  batches retried:        {retried}")
+        print(f"  batches stopped:        {stopped}")
+        ans = sum(b.get("n_answered", 0) for b in probe_batches)
+        disp = sum(b.get("n_dispatched", 0) for b in probe_batches)
+        if disp:
+            print(f"probe answer rate:        {ans}/{disp} ({100.0 * ans / disp:.1f}%)")
     print(f"conditioned briefs delivered: {briefs}   (history: 0/0/0 — any >0 is new)")
 
     print("\n== gate-2 decision input ==")
