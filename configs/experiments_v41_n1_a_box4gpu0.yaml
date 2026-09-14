@@ -1,0 +1,100 @@
+# v4.1 N1 A/A PAIR, arm A -- mode OFF, BOX 4, GPU 0. Task level3:43.
+#
+# BOTH arms of this pair are byte-identical except runs_dir/XDG/GPU pin: same seed, same
+# generator output (seed-paired candidates), same budgets, v4 mechanism OFF in both.
+# It answers ONE question: under seed pairing, what final-latency difference does PURE
+# NOISE produce end-to-end? That number is the denominator for M1's P3 reading and for
+# every end-to-end claim in the paper (the historical +-2.35% floor was UNPAIRED).
+# If the A/A difference still exceeds ~2%, P3 is formally downgraded to descriptive.
+#
+# GPU separation MUST be verified at runtime and journalled (a snapshot proves nothing);
+# arm names come from the config, never hardcoded in probes.
+
+v4:
+  conditional_scan:
+    # BOTH N1 ARMS ARE OFF: this pair measures the seed-paired null distribution --
+    # what end-to-end difference two IDENTICAL configurations produce. It prices the
+    # P3 endpoint of the main pair (M1) on the SAME box.
+    mode: "off"
+
+v3:
+  # Legacy consumers ALL OFF -- mutually exclusive with active mode (v4.1 s8), enforced
+  # at config load. The legacy JOURNALLING paths that cost nothing stay as defaults.
+  wall_attribution:
+    enabled: false
+    in_prompt: false
+  soft_wall:
+    enabled: false
+    in_prompt: false
+  slope_guide:
+    enabled: false
+  ordered_categoricals:
+    enabled: false
+  diagnosis:
+    mode: vector
+    expectation_ledger: false
+
+run:
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v4/n1-a
+  # SEED PAIRING: both N1 arms read the SAME frozen candidate set (that is the whole
+  # experiment: identical configs + identical candidates => the residual difference is
+  # the pure noise floor). Shares m1-seeds so N1 prices M1's venue exactly.
+  seed_candidates_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v4/m1-seeds
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench
+
+opencode:
+  server_url: null
+  launch_cwd: /root/autodl-tmp/opop-workspace/opop-glm
+  sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+    XDG_DATA_HOME: /root/autodl-tmp/xdg-v4n1a
+
+wsl:
+  venv: /root/autodl-tmp/kernel-opt-venv
+  kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-v4n1a
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+device:
+  name: NVIDIA GeForce RTX 4090 (sm_89)
+  vram_gb: 23
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024

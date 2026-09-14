@@ -897,20 +897,43 @@ class Orchestrator:
             if self.runs:
                 return
 
-        outcome: AgentOutcome = self.deps.generator.invoke(
-            GeneratorInputs(
-                task=self.task,
-                ref_source=Path(self.task.ref_path).read_text(encoding="utf-8"),
-                device=self.cfg.device,
-                n_candidates=min(self.cfg.agents.generator.n_candidates,
-                                 self.cfg.budgets.max_seed_candidates),
-                eval_semantics=self.eval_semantics,
-                calibration=self.calibration,
+        outcome: AgentOutcome | None = None
+        # Seed pairing (v4.1 experiment plan): when `run.seed_candidates_dir` is set, the
+        # seed candidates are READ from that directory instead of generated — so two arms
+        # of a pair share the exact same candidate set and an end-to-end difference can be
+        # attributed per-candidate rather than to generator luck (the step-4 lesson: zero
+        # shared candidates made −2.31% unreadable). The directory is produced by a prior
+        # `generate-seeds`-only run (or by copying a finished run's seed sources); files
+        # are read in sorted name order for determinism.
+        seeds_dir = getattr(self.cfg.run, "seed_candidates_dir", None)
+        if seeds_dir:
+            seed_files = sorted(Path(seeds_dir).glob("*.py"))
+            if not seed_files:
+                raise RuntimeError(f"seed_candidates_dir has no .py files: {seeds_dir}")
+            for f in seed_files[: self.cfg.budgets.max_seed_candidates]:
+                source = f.read_text(encoding="utf-8")
+                backend = "cuda" if "load_inline" in source else "triton"
+                self._register(source, "seed", [], backend,
+                               f"paired seed from {f.name}")
+            self.store.append("SEEDS_IMPORTED", {
+                "dir": str(seeds_dir), "n": len(self.runs),
+                "files": [f.name for f in seed_files]})
+        else:
+            outcome = self.deps.generator.invoke(
+                GeneratorInputs(
+                    task=self.task,
+                    ref_source=Path(self.task.ref_path).read_text(encoding="utf-8"),
+                    device=self.cfg.device,
+                    n_candidates=min(self.cfg.agents.generator.n_candidates,
+                                     self.cfg.budgets.max_seed_candidates),
+                    eval_semantics=self.eval_semantics,
+                    calibration=self.calibration,
+                )
             )
-        )
-        for gen_cand in outcome.output.candidates[: self.cfg.budgets.max_seed_candidates]:
-            source = outcome.sandbox.read_output(gen_cand.file)
-            self._register(source, "seed", [], gen_cand.backend, gen_cand.approach_summary)
+            for gen_cand in outcome.output.candidates[: self.cfg.budgets.max_seed_candidates]:
+                source = outcome.sandbox.read_output(gen_cand.file)
+                self._register(source, "seed", [], gen_cand.backend,
+                               gen_cand.approach_summary)
         if not self.runs:
             raise RuntimeError("generator produced no registrable candidates")
         self._step_done(key)

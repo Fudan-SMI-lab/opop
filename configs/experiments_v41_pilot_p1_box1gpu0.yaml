@@ -1,0 +1,112 @@
+# v4.1 PILOT P1 -- ACTIVE, single-arm, BOX 1, GPU 0. Task A = level3:43 (step-4's venue).
+#
+# WHAT THIS RUN IS FOR (experiment-plan-post-v4.1.md, stage "P1"): the instrument shakedown
+# that gates the main pair. It answers ONLY:
+#   - the three rates: fresh C4 completion rate / sign rate / print-gate pass rate
+#   - the E funnel (eight-gate tri-state bitset) -- where the losses actually are
+#   - same-stratum competition frequency (eligible>=2) -- decides M2a vs M2b (gate 2)
+#   - probe-layer ground truth: walls found under frozen partners, D budget actuals
+# It is NOT a C2 experiment, produces no paper number, and its latency result is not read.
+#
+# READING (gate 2, after RUN_FINISHED only):
+#   read events.jsonl via store/read.py; SCAN_BLOCK_DONE carries the mint decisions,
+#   SCAN_BLOCK_ADMITTED the admissions, TUNING_DONE.conditional_scan the funnel summary,
+#   UW_PROBE_BATCH the conditioned walls. e_decisions_with_competition ~ 0 => M2b.
+#
+# BOX-1 SPECIFICS: 8358P CPU (compile +32% vs box4) -- funnel DENOMINATORS from this run
+# are box-1-layered and never pooled with box-4 numbers. The matched worker venv on THIS
+# box is kernel-opt-venv (torch 2.9.1 / triton 3.5.1); orchestrator runs from orch-venv.
+#
+# Launch (box1, GPU 0; simultaneously with P2 on GPU 1):
+#   cd /root/autodl-tmp/work/opop
+#   CUDA_VISIBLE_DEVICES=0 XDG_DATA_HOME=/root/autodl-tmp/xdg-v4p1 \
+#   PYTHONPATH=src /root/autodl-tmp/orch-venv/bin/python -m kernel_optimizer.cli \
+#     --config configs/experiments_v41_pilot_p1_box1gpu0.yaml run --task level3:43
+
+v4:
+  conditional_scan:
+    # THE VARIABLE UNDER TEST. active = probes + C4 sources + E actions + fresh enqueue +
+    # the conditioned brief replacing the legacy wall texts.
+    mode: active
+    f_frac: 0.1          # ruling (3): the dose is NOT a tuning knob
+    pcap: 48
+    max_probe_attempts: 4
+    cadence_told: 10
+
+v3:
+  # Legacy consumers ALL OFF -- mutually exclusive with active mode (v4.1 s8), enforced
+  # at config load. The legacy JOURNALLING paths that cost nothing stay as defaults.
+  wall_attribution:
+    enabled: false
+    in_prompt: false
+  soft_wall:
+    enabled: false
+    in_prompt: false
+  slope_guide:
+    enabled: false
+  ordered_categoricals:
+    enabled: false
+  diagnosis:
+    mode: vector
+    expectation_ledger: false
+
+run:
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v4/pilot-p1
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench
+
+opencode:
+  server_url: null
+  launch_cwd: /root/autodl-tmp/opop-workspace/opop-glm
+  sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+    XDG_DATA_HOME: /root/autodl-tmp/xdg-v4p1
+
+wsl:
+  venv: /root/autodl-tmp/kernel-opt-venv
+  kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-v4p1
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+device:
+  name: NVIDIA GeForce RTX 4090 (sm_89)
+  vram_gb: 23
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024

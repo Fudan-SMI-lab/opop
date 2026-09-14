@@ -44,6 +44,11 @@ class StrictConfig(BaseModel):
 class RunConfig(StrictConfig):
     runs_dir: Path = Path("runs")
     seed: int = 0
+    # v4.1 seed pairing: when set, seed candidates are READ from this directory (sorted
+    # *.py) instead of generated, so paired arms share the exact same candidate set and
+    # end-to-end differences attribute per-candidate (step-4's zero-shared-candidate
+    # lesson). None = generate as before.
+    seed_candidates_dir: Path | None = None
 
 
 class OpencodeConfig(StrictConfig):
