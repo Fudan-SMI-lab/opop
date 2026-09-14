@@ -30,6 +30,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -62,9 +63,47 @@ def _cmdline(pid: str) -> str:
         return ""
 
 
-def _arm_of(env: dict[str, str], cmd: str) -> str:
-    """Which arm does this process belong to? XDG_DATA_HOME is the launch-time discriminator; the
-    config path in the cmdline is the fallback for a child that did not inherit it.
+def _arm_labels(argv: list[str]) -> list[tuple[str, str]]:
+    """(label, discriminator) per arm, DERIVED from the run dirs passed on the command line.
+
+    WHY NOT HARDCODED, which is what this was: the discriminators were the literals `s7t` / `s7c` and
+    `treatment` / `control`. Pointed at the step-4 pair -- whose arms are `xdg-s4a` / `xdg-s4b` under
+    `runs-v3/s4-c2off` and `s4-c2on` -- EVERY legitimate worker fell through to "?" and was reported as
+    "UNIDENTIFIED but LIVE ... another tenant, or an arm launched without CUDA_VISIBLE_DEVICES", the
+    probe's most serious verdict. Measured live: pid 643407 was arm B's own worker (ppid = arm B's
+    orchestrator, CVD=0, XDG_DATA_HOME=/root/autodl-tmp/xdg-s4b) and was flagged as foreign.
+
+    A false "another tenant is on your GPU" is worse than no check: the response to it is to stop and
+    restart a 12 h pair. So the labels come from the arms actually being examined. The discriminator is
+    the run dir's PARENT name (`s4-c2on`, `s7-treatment`), which is `run.runs_dir`'s last component --
+    the same string that must differ per arm for the pair to be isolated at all, and which appears in
+    the orchestrator's cmdline via its config path.
+    """
+    out: list[tuple[str, str]] = []
+    for a in argv:
+        p = Path(a)
+        parent = p.parent.name or p.name
+        out.append((parent, parent))
+    return out
+
+
+def _tokens(label: str) -> list[str]:
+    """Substrings that identify an arm in an environ value or a cmdline.
+
+    `s4-c2on` has to match `xdg-s4b`? No -- and that is the point: it must NOT guess. It matches the
+    dir name itself (which is in the cmdline via `--config .../experiments_s4_c2on_box4gpu0.yaml`) and
+    the same name with separators removed, so `s7-treatment` also matches `s7treatment`. Anything
+    cleverer would be inventing a mapping between two independently chosen names.
+    """
+    lab = label.lower()
+    toks = {lab, lab.replace("-", "_"), lab.replace("-", ""), lab.replace("_", "")}
+    # A trailing/leading run-family prefix like `s4-` or `s7-` on its own is too weak to match on --
+    # both arms share it -- so only the full name and its punctuation variants are used.
+    return [t for t in toks if len(t) >= 4]
+
+
+def _arm_of(env: dict[str, str], cmd: str, arms: list[tuple[str, str]]) -> str:
+    """Which arm does this process belong to?
 
     Returns "gone" when /proc gave us nothing at all. A GPU job here is a one-shot subprocess, so
     nvidia-smi can list a pid that has already exited by the time /proc is read -- both environ and
@@ -72,22 +111,66 @@ def _arm_of(env: dict[str, str], cmd: str) -> str:
     made this probe print "the check is incomplete" on a run that had in fact confirmed separation. An
     unattributable process that really exists is a different and much more serious thing (another
     tenant, or an arm launched without CUDA_VISIBLE_DEVICES), so the two must not share a bucket.
+
+    Attribution order: the process's own environment first (XDG_DATA_HOME, then any env value naming
+    the arm), then its cmdline, then its ANCESTRY. The last is required, not optional: a worker is
+    spawned as a subprocess and inherits XDG_DATA_HOME but its cmdline names only
+    `kernel_optimizer/gpu/worker_main.py`, so a pair whose XDG names do not textually contain the arm
+    name is attributable ONLY through the parent that carries `--config`.
     """
     if not env and not cmd:
         return "gone"
-    xdg = env.get("XDG_DATA_HOME", "")
-    if "s7t" in xdg:
-        return "treatment"
-    if "s7c" in xdg:
-        return "control"
-    if "treatment" in cmd or "s7-treatment" in cmd:
-        return "treatment"
-    if "control" in cmd or "s7-control" in cmd:
-        return "control"
+    hay_env = " ".join(env.values()).lower()
+    for label, _ in arms:
+        for tok in _tokens(label):
+            if tok in hay_env or tok in cmd.lower():
+                return label
+    return "?"
+
+
+def _arm_via_ancestry(pid: str, arms: list[tuple[str, str]]) -> str:
+    """Walk /proc parents looking for one whose cmdline names an arm.
+
+    The measured need for this: arm B's worker had CVD=0 and XDG_DATA_HOME=xdg-s4b, but neither string
+    contains `s4-c2on`, so environ/cmdline matching cannot see it -- only its parent's
+    `--config configs/experiments_s4_c2on_box4gpu0.yaml` can. Without this the probe reports its own
+    healthy arms as foreign processes.
+    """
+    seen = 0
+    cur = pid
+    while cur and cur not in ("0", "1") and seen < 12:
+        cmd = _cmdline(cur)
+        for label, _ in arms:
+            for tok in _tokens(label):
+                if tok in cmd.lower():
+                    return label
+        try:
+            status = Path("/proc/%s/status" % cur).read_text("utf-8", "replace")
+        except OSError:
+            return "?"
+        nxt = ""
+        for line in status.splitlines():
+            if line.startswith("PPid:"):
+                nxt = line.split()[1].strip()
+                break
+        cur, seen = nxt, seen + 1
     return "?"
 
 
 def main() -> int:
+    # The arms come from the command line. Previously they were baked in as `s7t`/`s7c`, so this probe
+    # silently only worked for one pair; passing it any other pair turned its healthy arms into the
+    # "another tenant" verdict. The two run dirs are what every caller already passes.
+    argv = [a for a in sys.argv[1:] if not a.startswith("-")]
+    arm_specs = _arm_labels(argv)
+    if len(arm_specs) < 2:
+        print("USAGE: gpu_pinning_check.py <arm1_run_dir> <arm2_run_dir>")
+        print("The arm labels are derived from each run dir's PARENT name (e.g. s4-c2on, s7-treatment),")
+        print("which is `run.runs_dir`'s last component -- the string that must differ per arm anyway.")
+        print("Refusing to guess: a hardcoded label set is what made this probe report a pair's own")
+        print("workers as foreign processes.")
+        return 2
+    print("arms under examination: %s" % ", ".join(lbl for lbl, _ in arm_specs))
     print("PHYSICAL GPUs:")
     print(_sh(["nvidia-smi", "--query-gpu=index,uuid,utilization.gpu,memory.used",
                "--format=csv,noheader"]).strip())
@@ -115,7 +198,12 @@ def main() -> int:
             idx = uuid_to_index.get(uuid, "?")
             env = _environ(pid)
             cmd = _cmdline(pid)
-            arm = _arm_of(env, cmd)
+            arm = _arm_of(env, cmd, arm_specs)
+            if arm == "?":
+                # A worker inherits XDG_DATA_HOME but its own cmdline names only worker_main.py, so
+                # ancestry is the only attribution left. Tried second, not first, because the process's
+                # own environment is the authoritative tie when it carries one.
+                arm = _arm_via_ancestry(pid, arm_specs)
             cvd = env.get("CUDA_VISIBLE_DEVICES", "(unset)")
             seen.setdefault(arm, set()).add(idx)
             claimed.setdefault(arm, set()).add(cvd)

@@ -100,17 +100,29 @@ ps -eo pid,etimes,args | grep "[k]ernel_optimizer.cli"
 # disk. `/proc/<pid>/environ` is the attribution: a per-process CVD read, not an inference from which
 # card looks busy.
 PIN=/root/s4-gpu-pinning.txt
-( sleep 420
-  echo "=== per-process CUDA_VISIBLE_DEVICES (the attribution, read from /proc) ==="
+( echo "=== per-process CUDA_VISIBLE_DEVICES (the attribution, read from /proc) ==="
   for p in $(pgrep -f "[k]ernel_optimizer.cli"); do
     cvd=$(tr '\0' '\n' < /proc/$p/environ 2>/dev/null | grep '^CUDA_VISIBLE_DEVICES=' || echo "CVD=(unset)")
     cfg=$(tr '\0' '\n' < /proc/$p/cmdline 2>/dev/null | grep -o 'experiments_[a-z0-9_]*' | head -1)
     echo "pid=$p $cvd cfg=$cfg"
   done
   echo
-  "$PY" /root/probe-clean/gpu_pinning_check.py \
-    /root/autodl-tmp/opop-workspace/opop-glm/runs-v3/s4-c2off/* \
-    /root/autodl-tmp/opop-workspace/opop-glm/runs-v3/s4-c2on/* 2>&1
+  # RETRY UNTIL IT ANSWERS. The probe samples LIVE GPU processes and returns 1 when it saw none, which
+  # is what happened on the first attempt at 7 min: both arms were still in their opening agent calls
+  # (arm B's first Optuna study started at +28 min) and no GPU work existed yet. A single delayed shot
+  # cannot be tuned to that -- the opening phase is an LLM call whose length is not predictable -- so
+  # this retries every 10 min for up to 2 h and stops at the first run that actually answers.
+  for attempt in $(seq 1 12); do
+    echo "--- pinning attempt $attempt ($(date -u +%H:%M:%SZ)) ---"
+    if "$PY" /root/probe-clean/gpu_pinning_check.py \
+         /root/autodl-tmp/opop-workspace/opop-glm/runs-v3/s4-c2off/* \
+         /root/autodl-tmp/opop-workspace/opop-glm/runs-v3/s4-c2on/* 2>&1; then
+      echo "--- answered on attempt $attempt ---"
+      break
+    fi
+    echo "--- attempt $attempt answered nothing (no GPU processes in window); retrying in 10 min ---"
+    sleep 600
+  done
 ) > "$PIN" 2>&1 &
 echo
 echo "GPU pinning check will run in ~7 min and write $PIN -- READ IT. If the arms share a card,"
