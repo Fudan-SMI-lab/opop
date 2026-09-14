@@ -352,3 +352,74 @@ def test_a_shared_candidate_is_detected_when_present(tmp_path):
                                 _soft_event(False, "the best trial does not spill")])
     shared = set(a["per_candidate_best"]) & set(b["per_candidate_best"])
     assert shared == {"cand-both"}
+
+
+def _run_finished(ts: float = 9999.0) -> dict:
+    """A RUN_FINISHED in the emitter's real shape: everything reportable is NESTED under
+    payload.summary.best, NOT at summary top level.
+
+    Copied field-for-field off run-l3-43-20260913-202332's own payload (both arms), because the reader
+    read the top level only and printed `n/a  n/a` for a pair whose numbers were both on disk -- the
+    same shape as `BASELINE_DONE.payload["latency_ms"]`. A fixture that put these keys at the top level
+    would agree with the broken reader and prove nothing.
+    """
+    return {"seq": int(ts), "ts": ts, "type": "RUN_FINISHED", "payload": {"summary": {
+        "task": {"level": 3, "problem_id": 43},
+        "elapsed_hours": 12.644,
+        "baselines": [{"kind": "eager", "latency_ms": {"median": 21.19, "mean": 21.2}},
+                      {"kind": "torch_compile_tf32", "latency_ms": {"median": 11.06, "mean": 11.1}}],
+        "best": {
+            "candidate_id": "cand-a", "family_id": "fam-a",
+            "params": {"values": {"NUM_WARPS": 8}},
+            "tuned_ms": 2.935807943344116,
+            "final_reeval_ok": True,
+            "final_reeval_ms": 2.92,
+            "final_reeval_median_ms": 2.9224960803985596,
+            "excessive_speedup_flag": False,
+            "precision": "bf16",
+            "speedups": {"eager": 7.2603, "torch_compile_tf32": 3.8014},
+            "honest_verdict": {"candidate_precision": "bf16",
+                               "compared_against": "torch_compile_tf32",
+                               "same_precision_speedup": 3.8014,
+                               "beats_same_precision_baseline": True}}}}}
+
+
+def test_final_reeval_is_read_from_the_nested_best(tmp_path):
+    """The defect this pins: the numbers live under summary["best"], not at summary top level."""
+    a = _arm(tmp_path, "nest_t", [_trial_c(1001.0, "cand-a", 3.36),
+                                  _wall_event(0, 0, 0),
+                                  _soft_event(False, "the best trial does not spill"),
+                                  _run_finished()])
+    assert a["finished"] is True
+    assert a["summary_final_reeval_median_ms"] == 2.9224960803985596
+    assert a["summary_final_reeval_ms"] == 2.92
+    assert a["summary_best_ms"] == 2.935807943344116
+    assert a["summary_final_reeval_ok"] is True
+    assert a["summary_precision"] == "bf16"
+
+
+def test_only_the_same_precision_speedup_is_carried(tmp_path):
+    """A bf16 winner against an fp32 eager baseline reads 7.26x; the like-for-like number is 3.80x.
+    The reader must surface the honest one, or the flattering one is what gets quoted.
+    """
+    a = _arm(tmp_path, "hv_t", [_trial_c(1001.0, "cand-a", 3.36),
+                                _wall_event(0, 0, 0),
+                                _soft_event(False, "the best trial does not spill"),
+                                _run_finished()])
+    assert a["summary_same_precision_speedup"] == 3.8014
+    assert a["summary_compared_against"] == "torch_compile_tf32"
+    assert a["summary_beats_same_precision"] is True
+    # The negative half: the 7.26x figure must NOT be what any summary_* speedup key holds.
+    assert 7.2603 not in [v for k, v in a.items() if k.startswith("summary_")]
+
+
+def test_a_run_without_the_nested_best_reads_absent_not_zero(tmp_path):
+    """An in-flight or crashed run has no summary. Absent must stay absent: a 0.0 here would be
+    compared against the other arm and print a 100% difference.
+    """
+    a = _arm(tmp_path, "nofin_t", [_trial_c(1001.0, "cand-a", 3.36),
+                                   _wall_event(0, 0, 0),
+                                   _soft_event(False, "the best trial does not spill")])
+    assert a["finished"] is False
+    assert a.get("summary_final_reeval_median_ms") is None
+    assert a.get("summary_best_ms") is None

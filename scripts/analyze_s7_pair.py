@@ -383,6 +383,33 @@ def _arm(run_dir: Path) -> dict:
         for k in ("best_ms", "final_reeval_ms", "speedup", "elapsed_hours", "stop_kind"):
             if k in s:
                 out[f"summary_{k}"] = s[k]
+        # NESTED, and reading only the top level printed `n/a  n/a` for BOTH arms on a pair where both
+        # numbers were on disk -- the same "a wrong key path returns a clean nothing" shape as
+        # `BASELINE_DONE.payload["latency_ms"]`. `final_reeval_ms` / `final_reeval_median_ms` /
+        # `speedups` live under summary["best"], beside `tuned_ms` and `final_reeval_ok`. Verified
+        # against the emitted payload of run-l3-43-20260913-202332 (both arms), not from memory.
+        #
+        # The MEDIAN is preferred over `final_reeval_ms`: this project's selection chain was measured
+        # using the mean throughout and that alone cost 3.57%, and median ranks correctly 93.2% of the
+        # time against the mean's 64.8%. Both are printed so a reader can see they agree.
+        best = s.get("best") if isinstance(s.get("best"), dict) else {}
+        for src, dst in (("final_reeval_median_ms", "summary_final_reeval_median_ms"),
+                         ("final_reeval_ms", "summary_final_reeval_ms"),
+                         ("tuned_ms", "summary_best_ms"),
+                         ("final_reeval_ok", "summary_final_reeval_ok"),
+                         ("precision", "summary_precision"),
+                         ("excessive_speedup_flag", "summary_excessive_speedup_flag")):
+            if src in best and out.get(dst) is None:
+                out[dst] = best[src]
+        # The honest verdict is the harness's own same-precision comparison, and it is the ONLY speedup
+        # that may be reported: the winner here is bf16 while the headline `speedups.eager` divides by
+        # an fp32 baseline. Carried through so the reader cannot quote the flattering number.
+        hv = best.get("honest_verdict") if isinstance(best.get("honest_verdict"), dict) else {}
+        for src, dst in (("same_precision_speedup", "summary_same_precision_speedup"),
+                         ("compared_against", "summary_compared_against"),
+                         ("beats_same_precision_baseline", "summary_beats_same_precision")):
+            if src in hv:
+                out[dst] = hv[src]
     # Event span rather than wall clock: a resumed run's own clock restarts, and the log's span is the
     # only comparable duration.
     ts = [e["ts"] for e in ev if isinstance(e.get("ts"), (int, float))]
@@ -498,19 +525,43 @@ def main() -> int:
 
     say("  LATENCY (secondary, declared UNDER-POWERED before the run)")
     row("best trial (ms)", "best_trial_ms", "{:.4f}")
-    row("summary best_ms", "summary_best_ms", "{:.4f}")
-    row("summary final_reeval_ms", "summary_final_reeval_ms", "{:.4f}")
+    row("summary best_ms (tuned)", "summary_best_ms", "{:.4f}")
+    row("final_reeval_ms", "summary_final_reeval_ms", "{:.4f}")
+    row("final_reeval_median_ms", "summary_final_reeval_median_ms", "{:.4f}")
+    row("re-eval ok", "summary_final_reeval_ok")
+    row("precision", "summary_precision")
+    row("same-precision speedup", "summary_same_precision_speedup", "{:.4f}")
+    row("...against", "summary_compared_against")
+    # THE ONLY REPORTABLE SPEEDUP. Both arms' winners are bf16 here, so `speedups.eager` divides by an
+    # fp32 baseline and flatters both by ~1.9x. The harness computes the same-precision comparison
+    # itself; printing it beside the raw number is what stops the flattering one being quoted.
+    say("      the same-precision row is the only speedup that may be reported: a bf16 winner against")
+    say("      an fp32 eager baseline is not a like-for-like number.")
+    say()
+    # The re-eval MEDIAN is the primary axis, not the tuned best: only `final_reeval_*` is an
+    # independent measurement, and this project measured that its selection chain using the mean cost
+    # 3.57%. The tuned delta is still shown, because when the two disagree that is itself a finding.
+    for label, key in (("independent re-eval median", "summary_final_reeval_median_ms"),
+                       ("tuned best trial", "best_trial_ms")):
+        tv, cv = t.get(key), c.get(key)
+        if not (isinstance(tv, (int, float)) and isinstance(cv, (int, float)) and cv > 0):
+            say(f"    {label}: n/a on at least one arm -- cannot compare on this axis")
+            continue
+        d = (cv - tv) / cv * 100.0
+        say(f"    {label}: treatment {tv:.4f} vs control {cv:.4f} => treatment is {d:+.2f}% "
+            f"(positive = treatment faster)")
+        if abs(d) < NOISE_FLOOR_PCT:
+            say(f"      => within the +-{NOISE_FLOOR_PCT}% re-eval noise floor: NOT separated.")
+        elif abs(d) < WITHIN_ARM_SPREAD_PCT:
+            say(f"      => outside the {NOISE_FLOOR_PCT}% noise floor but inside the "
+                f"{WITHIN_ARM_SPREAD_PCT}% within-arm spread: weak.")
+        else:
+            say(f"      => outside both the noise floor and the {WITHIN_ARM_SPREAD_PCT}% within-arm "
+                f"spread.")
     tb, cb = t.get("best_trial_ms"), c.get("best_trial_ms")
     delta = None
     if isinstance(tb, (int, float)) and isinstance(cb, (int, float)) and cb > 0:
         delta = (cb - tb) / cb * 100.0
-        say(f"    treatment is {delta:+.2f}% vs control "
-            f"(positive = treatment faster)")
-        say(f"    noise floor {NOISE_FLOOR_PCT}%, within-arm spread {WITHIN_ARM_SPREAD_PCT}% "
-            f"=> |{delta:.2f}%| is "
-            f"{'INSIDE the noise' if abs(delta) < NOISE_FLOOR_PCT else 'outside the noise floor'}"
-            + (", but inside the within-arm spread" if NOISE_FLOOR_PCT <= abs(delta)
-               < WITHIN_ARM_SPREAD_PCT else ""))
 
         # WHICH CANDIDATE OWNS THE LEAD. A gap outside the noise floor is the number most likely to be
         # quoted, and the floor only rules out MEASUREMENT noise. The arms' seed candidates are
