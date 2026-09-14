@@ -910,14 +910,30 @@ class Orchestrator:
             seed_files = sorted(Path(seeds_dir).glob("*.py"))
             if not seed_files:
                 raise RuntimeError(f"seed_candidates_dir has no .py files: {seeds_dir}")
-            for f in seed_files[: self.cfg.budgets.max_seed_candidates]:
+            wanted = seed_files[: self.cfg.budgets.max_seed_candidates]
+            rejected: list[str] = []
+            for f in wanted:
                 source = f.read_text(encoding="utf-8")
                 backend = "cuda" if "load_inline" in source else "triton"
-                self._register(source, "seed", [], backend,
-                               f"paired seed from {f.name}")
+                if self._register(source, "seed", [], backend,
+                                  f"paired seed from {f.name}") is None:
+                    rejected.append(f.name)
             self.store.append("SEEDS_IMPORTED", {
                 "dir": str(seeds_dir), "n": len(self.runs),
-                "files": [f.name for f in seed_files]})
+                "files": [f.name for f in wanted], "rejected": rejected})
+            # A frozen seed set exists so that both arms of a pair search the SAME
+            # candidates; `_register` returns None on a structural-signature collision,
+            # which would silently drop one and leave the pair comparing 3 candidates
+            # against 3 while every config-level parity check still passed. Both arms
+            # would drop the same file, so the damage is invisible in a diff and only
+            # shows up as a pair that cost 24 GPU-hours to answer a weaker question.
+            if rejected:
+                raise RuntimeError(
+                    "seed_candidates_dir %s: %d of %d seeds were refused registration "
+                    "(structural-signature duplicates of an earlier file in sorted order): "
+                    "%s. Fix the frozen set rather than running a pair on fewer candidates "
+                    "than it declares." % (seeds_dir, len(rejected), len(wanted),
+                                           ", ".join(rejected)))
         else:
             outcome = self.deps.generator.invoke(
                 GeneratorInputs(
