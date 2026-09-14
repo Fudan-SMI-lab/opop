@@ -172,7 +172,7 @@ def judge(point: dict, trials: list[dict]) -> dict:
             "best_other": best_other, "verdict": verdict, "delta_pct": delta}
 
 
-def report(run_dir: Path, min_n: int) -> dict:
+def report(run_dir: Path, min_n: int, noise_pct: float) -> dict:
     events = _events(run_dir)
     points = enqueued_points(events)
     by_space = trials_by_space(events)
@@ -210,12 +210,45 @@ def report(run_dir: Path, min_n: int) -> dict:
                  at, ot, tag, thin))
 
     counted = [r for r in rows if min(r["n_at"], r["n_other"]) >= min_n]
-    won = sum(1 for r in counted if r["verdict"] == "won")
-    lost = sum(1 for r in counted if r["verdict"] == "lost")
+    # A margin inside the re-evaluation noise floor is a TIE, not a loss, and printing 0.3% the same
+    # way as 73.6% invites exactly the misreading it looks like: this project's independent re-eval gap
+    # is +-2-4% with an UNSTABLE SIGN and the per-trial std is 16%, so a sub-noise margin does not
+    # order the two values at all. Reported as its own bucket rather than folded into won/lost,
+    # because "the mechanism picked a value that is no worse" is a different claim from either.
+    def bucket(r: dict) -> str:
+        if r["delta_pct"] is not None and abs(r["delta_pct"]) < noise_pct:
+            return "tied"
+        return r["verdict"]
+    won = sum(1 for r in counted if bucket(r) == "won")
+    lost = sum(1 for r in counted if bucket(r) == "lost")
+    tied = sum(1 for r in counted if bucket(r) == "tied")
     print()
     print("of %d enqueued point(s), %d have >=%d trials on BOTH sides: %d won, %d lost, %d tied"
-          % (len(rows), len(counted), min_n, won, lost,
-             sum(1 for r in counted if r["verdict"] == "tied")))
+          % (len(rows), len(counted), min_n, won, lost, tied))
+    sub = [r for r in counted if r["delta_pct"] is not None and abs(r["delta_pct"]) < noise_pct]
+    if sub:
+        print("   (%d of those are within the +-%.1f%% noise floor, so they are ties rather than "
+              "losses: %s)" % (len(sub), noise_pct,
+                               ", ".join("%s %+.1f%%" % (r["knob"][:14], r["delta_pct"]) for r in sub)))
+    # Are two rows in the same space actually the same observation? Two points in one space can share
+    # most of their trials -- measured on this run, `warps=8` and `bm=128` in sp-a9438715 each had 15
+    # trials with 8 IN COMMON, and each row's best was the same trial. The verdicts are then coupled by
+    # construction, and counting them as two independent losses overstates the evidence. Not a
+    # double-count (the trial sets differ) so the rows are kept; the coupling is stated instead.
+    for space in sorted({r["space_id"] for r in counted}):
+        here = [r for r in counted if r["space_id"] == space]
+        if len(here) < 2:
+            continue
+        same = [r for r in here if r["best_at"] is not None
+                and abs(r["best_at"] - here[0]["best_at"]) < 1e-9
+                and r["best_other"] is not None
+                and abs(r["best_other"] - here[0]["best_other"]) < 1e-9]
+        if len(same) >= 2:
+            print()
+            print("   note: %d rows in %s report IDENTICAL best-at/best-elsewhere (%s) -- their trial"
+                  % (len(same), space, ", ".join(r["knob"][:16] for r in same)))
+            print("   sets overlap, so these are ~1 observation, not %d. Do not count them separately."
+                  % len(same))
     if counted and won == 0:
         print()
         print("!! NO ENQUEUED POINT WON ITS KNOB. The mechanism ran end to end -- wall found, point")
@@ -326,8 +359,20 @@ def _selftest() -> int:
     r = judge(enqueued_points(ev)[0], trials_by_space(ev)["sp1"])
     check("equal latencies read 'tied', not a win", r["verdict"] == "tied")
 
+    # 11. the noise gate: a sub-noise margin is a tie, and a real loss must SURVIVE it. Both
+    #     directions, because a gate that swallowed the 73.6% row would turn the headline result of
+    #     this run into "all ties" -- a broken probe that reads as good news.
+    ev = [_sg("sp1", [row16]), _trial("sp1", {"W": 16}, 3.6608), _trial("sp1", {"W": 8}, 3.6516)]
+    r = judge(enqueued_points(ev)[0], trials_by_space(ev)["sp1"])
+    check("a 0.3% margin is inside the 4% noise floor",
+          r["verdict"] == "lost" and abs(r["delta_pct"]) < 4.0)
+    ev = [_sg("sp1", [row16]), _trial("sp1", {"W": 16}, 6.5249), _trial("sp1", {"W": 8}, 3.7576)]
+    r = judge(enqueued_points(ev)[0], trials_by_space(ev)["sp1"])
+    check("a 73.6% loss is far outside the noise floor and stays a loss",
+          r["verdict"] == "lost" and r["delta_pct"] > 4.0)
+
     print()
-    print("%d/%d checks passed" % (10 + 2 - len(fails), 12))
+    print("%d/%d checks passed" % (14 - len(fails), 14))
     return 1 if fails else 0
 
 
@@ -337,6 +382,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("runs", nargs="*", type=Path)
     ap.add_argument("--min-n", type=int, default=2,
                     help="trials required on BOTH sides before a row counts in the summary (default 2)")
+    ap.add_argument("--noise-pct", type=float, default=4.0,
+                    help="margins smaller than this are ties, not wins/losses. Default 4.0 -- the top "
+                         "of this project's measured re-eval gap (+-2-4%%, sign unstable)")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args(argv)
 
@@ -347,7 +395,7 @@ def main(argv: list[str]) -> int:
 
     totals = {"n": 0, "won": 0, "lost": 0, "counted": 0}
     for run in args.runs:
-        res = report(run, args.min_n)
+        res = report(run, args.min_n, args.noise_pct)
         for k in totals:
             totals[k] += res[k]
         print()
