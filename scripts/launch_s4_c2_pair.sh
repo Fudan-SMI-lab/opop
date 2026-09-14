@@ -33,6 +33,29 @@ for f in configs/experiments_s4_c2off_box4gpu1.yaml configs/experiments_s4_c2on_
   [ -f "$f" ] || { echo "missing config: $f" >&2; exit 2; }
 done
 
+# COMPARABILITY, checked BEFORE spending 12 h rather than discovered in the wrap-up. This pair is a
+# deliberate COMPOUND variable -- seven C2 knobs move together -- so the audit cannot be "exactly one
+# difference"; it has to be "exactly these seven and nothing else". The seven are listed here rather
+# than left to whoever runs the audit later: an --expect list carried in someone's head is how the
+# first audit of this pair reported a false defect (`ordered_categoricals`, which the config
+# deliberately leaves off in BOTH arms because it is a SAMPLER change, not a wall-mechanism one, and
+# two sampling changes at once are unattributable).
+EXPECT=(--expect v3.wall_attribution.enabled
+        --expect v3.wall_attribution.in_prompt
+        --expect v3.wall_attribution.probe_top_k
+        --expect v3.soft_wall.enabled
+        --expect v3.soft_wall.in_prompt
+        --expect v3.slope_guide.enabled
+        --expect v3.slope_guide.use_soft_wall)
+if ! PYTHONPATH="$W/src" "$PY" scripts/audit_arm_comparability.py \
+      configs/experiments_s4_c2off_box4gpu1.yaml \
+      configs/experiments_s4_c2on_box4gpu0.yaml "${EXPECT[@]}" > /root/s4-preaudit.txt 2>&1; then
+  echo "REFUSING TO START: config audit failed. See /root/s4-preaudit.txt" >&2
+  tail -20 /root/s4-preaudit.txt >&2
+  exit 5
+fi
+echo "config audit: $(grep -c 'THE VARIABLE' /root/s4-preaudit.txt) intended difference(s), COMPARABLE"
+
 mkdir -p /root/autodl-tmp/opop-workspace/opop-glm/runs-v3/s4-c2off \
          /root/autodl-tmp/opop-workspace/opop-glm/runs-v3/s4-c2on
 

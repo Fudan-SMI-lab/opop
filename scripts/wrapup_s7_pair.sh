@@ -50,10 +50,18 @@ fi
   PYTHONPATH=$W/src $PY $W/scripts/check_arm_search_parity.py "$CTL" "$TRT" 2>&1 || echo "(rc=$?)"
   echo
   echo "############ 2. config comparability"
-  PYTHONPATH=$W/src $PY $W/scripts/audit_arm_comparability.py \
-    $W/configs/experiments_s7_control_box4gpu1.yaml \
-    $W/configs/experiments_s7_treatment_box4gpu0.yaml \
-    --expect v3.slope_guide.enabled 2>&1 || echo "(rc=$?)"
+  # `[ -f ]` first: this file was MISSING on box 4 the first time this wrap-up was staged, and
+  # `|| echo "(rc=$?)"` printed rc=127 -- a skipped step rendered as a completed one, which is the
+  # recorded `a-skip-is-not-a-verdict` shape. An absent auditor must read as absent, not as a pass.
+  if [ -f "$W/scripts/audit_arm_comparability.py" ]; then
+    PYTHONPATH=$W/src $PY $W/scripts/audit_arm_comparability.py \
+      $W/configs/experiments_s7_control_box4gpu1.yaml \
+      $W/configs/experiments_s7_treatment_box4gpu0.yaml \
+      --expect v3.slope_guide.enabled 2>&1 || echo "(audit rc=$?)"
+  else
+    echo "!! AUDITOR ABSENT: $W/scripts/audit_arm_comparability.py does not exist."
+    echo "   The config half of this pair is UNVERIFIED -- that is not the same as comparable."
+  fi
   echo
   echo "############ 3. THE RESULT"
   PYTHONPATH=$W/src $PY $W/scripts/analyze_s7_pair.py "$TRT" "$CTL" 2>&1 || echo "(rc=$?)"
@@ -63,9 +71,19 @@ fi
   echo
   echo "############ 5. would a higher origin count have helped this pair"
   $PY /root/probe-clean/tk.py "$CTL" "$TRT" 2>&1 || echo "(rc=$?)"
+  echo
+  echo "############ 6. DID THE ENQUEUED POINTS WIN THEIR KNOB?"
+  # The reading that turns S7's result from a claim into a measurement. `analyze_s7_pair.py` reports
+  # the enqueue count and that the points were drawn, and those two facts read as a success -- but
+  # "was measured" is not "was good", and C2's premise is specifically that a steep truncated
+  # direction is worth measuring. Runs LAST and only after the RUN_FINISHED gate above, because a
+  # space's "which value is best" improves monotonically with trials: judged mid-run it necessarily
+  # understates the enqueued value, and doing exactly that by hand at 10.7 h produced a "4/4 lost"
+  # verdict that became 1 won / 2 lost / 1 too-thin once the space finished tuning.
+  $PY /root/probe-clean/win.py "$TRT" "$CTL" 2>&1 || echo "(rc=$?)"
 } > "$OUT" 2>&1
 
 echo "wrap-up written to $OUT ($(wc -l < "$OUT") lines)"
 echo
 echo "############ headline lines:"
-grep -E "PARITY|COMPARABLE|SHARED|pinned|separate|enqueued|attributed|walls_found|final_reeval|NOT " "$OUT" | head -30
+grep -E "PARITY|COMPARABLE|SHARED|pinned|separate|enqueued|attributed|walls_found|final_reeval|NOT |won|lost|NO ENQUEUED|AUDITOR ABSENT" "$OUT" | head -40
