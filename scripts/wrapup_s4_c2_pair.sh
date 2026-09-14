@@ -107,7 +107,13 @@ EXPECT=(--expect v3.wall_attribution.enabled
   fi
   echo
   echo "############ 4. THE RESULT (P1-P5 reader; arm B is the treatment)"
-  PYTHONPATH=$W/src $PY $W/scripts/analyze_s7_pair.py "$ON" "$OFF" 2>&1 || echo "(rc=$?)"
+  # `--expect-2e-off control` is REQUIRED here and must NOT be passed for the S7 pair. This pair's
+  # variable includes `v3.wall_attribution.enabled`, so arm A has refusals and zero wall events BY
+  # DESIGN; without the flag the reader prints "2e was OFF (or crashed) ... the pair cannot be read"
+  # about a perfectly healthy arm, and the response to that false alarm would be to discard 12 h of
+  # work. With it, the arm is reported as the positive control it is.
+  PYTHONPATH=$W/src $PY $W/scripts/analyze_s7_pair.py "$ON" "$OFF" \
+    --expect-2e-off control 2>&1 || echo "(rc=$?)"
   echo
   echo "############ 5. WHY THE MECHANISM DECLINED (counters read per-space, never summed)"
   # These counters are CUMULATIVE per SlopeGuide instance (one per tuning pass) and count two different

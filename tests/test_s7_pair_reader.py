@@ -423,3 +423,42 @@ def test_a_run_without_the_nested_best_reads_absent_not_zero(tmp_path):
     assert a["finished"] is False
     assert a.get("summary_final_reeval_median_ms") is None
     assert a.get("summary_best_ms") is None
+
+
+def _refusal(ts: float) -> dict:
+    """A shared-memory refusal in the emitter's shape: status is not "complete" and failure_kind is
+    `infeasible_shared_memory` (the value the harness actually writes, not "oom" or "shared_memory")."""
+    return {"seq": int(ts), "ts": ts, "type": "TRIAL_DONE", "payload": {"trial": {
+        "trial_id": f"tr-{int(ts)}", "candidate_id": "cand-a", "space_id": "sp-a",
+        "status": "fail", "failure_kind": "infeasible_shared_memory",
+        "params": {"values": {"NUM_WARPS": 8}}, "latency_ms": None}}}
+
+
+def test_an_arm_with_2e_off_by_design_is_not_reported_as_broken(tmp_path):
+    """The false alarm this guards against. On the step-4 pair `wall_attribution.enabled` is FALSE in
+    the all-off arm, so that arm has refusals and ZERO wall events BY DESIGN. The reader used to print
+    "2e was OFF (or crashed) ... the pair cannot be read" about it -- and the response to that alarm
+    would be to discard a 12 h pair. An arm with the switch ON emits RESOURCE_WALL_ATTRIBUTED per
+    candidate even when it finds nothing, so zero EVENTS is the discriminator.
+    """
+    off = _arm(tmp_path, "byd_off", [_trial_c(1001.0, "cand-a", 3.4), _refusal(1002.0)])
+    assert off["n_refusals"] > 0
+    assert off["n_wall_events"] == 0
+    assert off["instrument_on"] is False, "zero wall events must read as instrument-off"
+
+
+def test_an_arm_that_should_have_had_2e_on_but_emitted_nothing_is_still_a_defect(tmp_path):
+    """The positive control for the flag: naming ONE arm as deliberately-off must make the OTHER arm's
+    silence loud. Without this, `--expect-2e-off` would only ever agree with the heuristic and would be
+    a variant that changes no behaviour -- and a swapped pair would be forgiven silently.
+    """
+    a = _arm(tmp_path, "swap_t", [_trial_c(1001.0, "cand-a", 3.4), _refusal(1002.0)])
+    # Same shape on both sides: refusals, no wall events. Which one is a defect depends ENTIRELY on
+    # which was named, so the reader cannot decide it from the events alone -- that is why the flag
+    # exists rather than a cleverer heuristic.
+    b = _arm(tmp_path, "swap_c", [_trial_c(1001.0, "cand-b", 3.5), _refusal(1002.0)])
+    for arm in (a, b):
+        assert arm["n_refusals"] > 0 and arm["n_wall_events"] == 0
+    named = {"treatment"}
+    # control was NOT named => its silence is unexplained => defect.
+    assert ("control" not in named) and b["n_wall_events"] == 0

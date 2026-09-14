@@ -422,6 +422,12 @@ def main() -> int:
     ap.add_argument("treatment")
     ap.add_argument("control")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--expect-2e-off", action="append", default=[],
+                    choices=["treatment", "control"],
+                    help="this arm has wall attribution OFF BY DESIGN, so refusals with zero wall "
+                         "events are the experiment rather than a defect. Needed for a pair whose "
+                         "variable includes `v3.wall_attribution.enabled` (step-4); the S7 pair ran 2e "
+                         "in both arms and must NOT pass it.")
     args = ap.parse_args()
 
     t = _arm(Path(args.treatment))
@@ -463,21 +469,57 @@ def main() -> int:
     row("shared-memory refusals recorded", "n_refusals")
     row("RESOURCE_WALL_ATTRIBUTED events", "n_wall_events")
     row("...ATTRIBUTION_FAILED events", "n_wall_failed")
+    # WHICH ARM IS *SUPPOSED* TO HAVE THE INSTRUMENT. On the S7 pair 2e ran in BOTH arms -- only the
+    # sampler differed -- so "refusals but no attributions" meant a defect there. On the step-4 pair
+    # `wall_attribution.enabled` is FALSE in the all-off arm by design, and that arm will have refusals
+    # and zero attributions BECAUSE THAT IS THE EXPERIMENT. Printing "the pair cannot be read" for it
+    # would flag a healthy pair as broken -- the same false-alarm class as a probe hardcoded to one
+    # experiment's names, and the response to a false alarm here is to discard a 12 h pair.
+    #
+    # The discriminator is whether the arm emitted ANY wall event at all: an arm with the switch on
+    # emits RESOURCE_WALL_ATTRIBUTED per candidate even when it finds nothing (the step ran; the verdict
+    # is in the payload), so zero EVENTS means the switch was off, while zero WALLS inside events means
+    # it ran and found none. That heuristic alone already reads the step-4 pair correctly.
+    #
+    # `--expect-2e-off <label>` therefore exists for the case the heuristic CANNOT see: an arm that was
+    # supposed to have 2e ON and emitted no wall events anyway. Without the flag that is silently
+    # forgiven as "off by design"; with it, naming which arm is deliberately off makes the OTHER arm's
+    # silence a loud defect. A flag that only ever agreed with the heuristic would be dead weight, so it
+    # is wired to the disagreement.
+    off_by_design = set(getattr(args, "expect_2e_off", None) or ())
     broken = []
+    notes_instr = []
     for label, a in (("treatment", t), ("control", c)):
-        if not a["instrument_on"]:
-            if a["n_refusals"] > 0:
-                broken.append(
-                    f"    !! {label}: {a['n_refusals']} refusals but ZERO attributions => 2e was OFF "
-                    f"(or crashed). Its P1/P2/P3 zeros are the ABSENCE OF THE INSTRUMENT, not a "
-                    f"finding, and the pair cannot be read.")
-            else:
-                broken.append(
-                    f"    !! {label}: no refusals at all => the hard wall has no input on this run. "
-                    f"Its zeros mean 'nothing to find', which is a third state again.")
+        if a["instrument_on"]:
+            continue
+        # If ANY arm was named as deliberately-off, then an unnamed arm's silence is NOT excusable.
+        deliberate = label in off_by_design or (not off_by_design and a["n_wall_events"] == 0)
+        if a["n_refusals"] > 0 and deliberate:
+            notes_instr.append(
+                f"    {label}: {a['n_refusals']} refusals, ZERO wall events => 2e is OFF IN THIS ARM. "
+                f"On a pair whose variable includes wall attribution that is the design, not a defect: "
+                f"this arm is the positive control and its P1/P2/P3 zeros are structural. Read only the "
+                f"other arm's figures as measurements.")
+        elif a["n_refusals"] > 0 and a["n_wall_events"] == 0 and off_by_design:
+            broken.append(
+                f"    !! {label}: {a['n_refusals']} refusals and ZERO wall events, but this arm was NOT "
+                f"named in --expect-2e-off ({', '.join(sorted(off_by_design))} was). It was supposed to "
+                f"have 2e ON. Either the switch did not take effect or the arms are swapped -- the pair "
+                f"cannot be read until that is settled.")
+        elif a["n_refusals"] > 0:
+            broken.append(
+                f"    !! {label}: {a['n_refusals']} refusals but ZERO attributions while wall events "
+                f"WERE emitted => 2e ran and produced nothing, or crashed. Its P1/P2/P3 zeros are the "
+                f"ABSENCE OF THE INSTRUMENT, not a finding, and the pair cannot be read.")
+        else:
+            broken.append(
+                f"    !! {label}: no refusals at all => the hard wall has no input on this run. "
+                f"Its zeros mean 'nothing to find', which is a third state again.")
+    for b in notes_instr:
+        say(b)
     for b in broken:
         say(b)
-    if not broken:
+    if not broken and not notes_instr:
         say("    both arms: 2e produced attributions, so the zeros below (if any) are findings.")
     say()
 
