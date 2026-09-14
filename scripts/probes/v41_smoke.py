@@ -67,6 +67,8 @@ def main() -> int:
     _, evaluator, _, _ = build_gpu_stack(cfg, store)
     check("wiring/task setup", True, f"{task.name} -> {store.run_dir}")
 
+    # Matches level1:19 (ReLU): ONE input — the probe execs the ref's get_inputs and
+    # calls model(*inputs), so the smoke candidate's forward must take the task's shape.
     candidate_src = '''import torch
 import triton
 import triton.language as tl
@@ -74,19 +76,19 @@ import triton.language as tl
 PARAMS = {"BLOCK": 1024, "N_STAGES": 1}
 
 @triton.jit
-def _add(x_ptr, y_ptr, out_ptr, n, BLOCK: tl.constexpr):
+def _relu(x_ptr, out_ptr, n, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offs < n
-    tl.store(out_ptr + offs, tl.load(x_ptr + offs, mask=mask) +
-             tl.load(y_ptr + offs, mask=mask), mask=mask)
+    x = tl.load(x_ptr + offs, mask=mask)
+    tl.store(out_ptr + offs, tl.maximum(x, 0.0), mask=mask)
 
 class ModelNew(torch.nn.Module):
-    def forward(self, x, y):
+    def forward(self, x):
         out = torch.empty_like(x)
         n = x.numel()
         grid = (triton.cdiv(n, PARAMS["BLOCK"]),)
-        _add[grid](x, y, out, n, BLOCK=PARAMS["BLOCK"])
+        _relu[grid](x, out, n, BLOCK=PARAMS["BLOCK"])
         return out
 '''
     space = ParameterSpace(
@@ -115,14 +117,29 @@ class ModelNew(torch.nn.Module):
     t0 = time.time()
     evaluator.prescreen_batch(task, paths, tag="v41smoke", backend="triton")
     elapsed = time.time() - t0
-    results, answered = {}, 0
-    for p in paths:
-        entry = evaluator.screen_cache_entry(p.read_text(encoding="utf-8"), "triton")
-        if entry is None or not entry.get("ok"):
-            results[str(p)] = {"ok": False, "reason": "not answered"}
-        else:
-            results[str(p)] = entry
-            answered += 1
+
+    def collect():
+        res, n = {}, 0
+        for p in paths:
+            entry = evaluator.screen_cache_entry(p.read_text(encoding="utf-8"), "triton")
+            if entry is None or not entry.get("ok"):
+                res[str(p)] = {"ok": False, "reason": "not answered"}
+            else:
+                res[str(p)] = entry
+                n += 1
+        return res, n
+
+    results, answered = collect()
+    if answered == 0:
+        # The FIRST worker job on a cold box pays process start + CUDA context + imports
+        # and can blow the 30+3n deadline; the real pipeline's DBudget retries a smaller
+        # batch for exactly this case. The smoke retries the same batch once, warm.
+        print("cold-start batch returned 0; one warm retry (mirrors DBudget retry)",
+              flush=True)
+        t0 = time.time()
+        evaluator.prescreen_batch(task, paths, tag="v41smoke-r", backend="triton")
+        elapsed = time.time() - t0
+        results, answered = collect()
     planner.record(results, kept)
     check("probe batch answered", answered > 0, f"{answered}/{len(paths)} in {elapsed:.1f}s")
     resource_ok = any(any(k.get("n_regs") is not None for k in a.kernels)
