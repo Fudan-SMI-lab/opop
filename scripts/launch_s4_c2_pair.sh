@@ -87,3 +87,32 @@ for p in "$A" "$B"; do
   fi
 done
 ps -eo pid,etimes,args | grep "[k]ernel_optimizer.cli"
+
+# Which card is each arm actually on? THIS IS THE ONLY TIME THE QUESTION CAN BE ANSWERED. The probe
+# samples LIVE compute processes, and nothing on disk records the device -- the S7 pair's `jobs/*.json`
+# and `out.json` carry no CVD, no device index, no UUID across 5689 job files. Run at wrap-up it printed
+# "NO COMPUTE PROCESSES SEEN ... this run of the probe ANSWERS NOTHING", correctly refusing to read its
+# own silence as separation, and by then the runs were over and the answer was gone for good.
+#
+# Two arms sharing one card time-slice its SMs, L2 and bandwidth, so EVERY latency in both arms would be
+# contaminated -- a pair that has to be restarted, not annotated. So this runs in the background here
+# (the probe needs ~2 min of sampling and the first GPU jobs must start first) and its output is kept on
+# disk. `/proc/<pid>/environ` is the attribution: a per-process CVD read, not an inference from which
+# card looks busy.
+PIN=/root/s4-gpu-pinning.txt
+( sleep 420
+  echo "=== per-process CUDA_VISIBLE_DEVICES (the attribution, read from /proc) ==="
+  for p in $(pgrep -f "[k]ernel_optimizer.cli"); do
+    cvd=$(tr '\0' '\n' < /proc/$p/environ 2>/dev/null | grep '^CUDA_VISIBLE_DEVICES=' || echo "CVD=(unset)")
+    cfg=$(tr '\0' '\n' < /proc/$p/cmdline 2>/dev/null | grep -o 'experiments_[a-z0-9_]*' | head -1)
+    echo "pid=$p $cvd cfg=$cfg"
+  done
+  echo
+  "$PY" /root/probe-clean/gpu_pinning_check.py \
+    /root/autodl-tmp/opop-workspace/opop-glm/runs-v3/s4-c2off/* \
+    /root/autodl-tmp/opop-workspace/opop-glm/runs-v3/s4-c2on/* 2>&1
+) > "$PIN" 2>&1 &
+echo
+echo "GPU pinning check will run in ~7 min and write $PIN -- READ IT. If the arms share a card,"
+echo "restart the pair; nothing downstream can repair contaminated latencies, and after the runs end"
+echo "the question becomes unanswerable (no device is recorded on disk)."

@@ -26,6 +26,8 @@ R=run-l3-43-20260913-202332
 CTL=$B/s7-control/$R
 TRT=$B/s7-treatment/$R
 OUT=/root/s7-wrapup.txt
+# Written DURING the run by whoever launched the pair, because pinning is not answerable afterwards.
+PIN_EVIDENCE=${PIN_EVIDENCE:-/root/s7-gpu-pinning.txt}
 
 fin() {  # 1 if the arm wrote RUN_FINISHED, else 0
   grep -c '"type": *"RUN_FINISHED"' "$1/events.jsonl" 2>/dev/null | head -1
@@ -44,7 +46,21 @@ fi
   echo "############ S7 PAIR WRAP-UP  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo
   echo "############ 0. GPU pinning -- if the arms shared a card, stop reading here"
-  $PY /root/probe-clean/gpu_pinning_check.py "$CTL" "$TRT" 2>&1 || echo "(pinning check rc=$?)"
+  # ⚠ THIS CANNOT BE ANSWERED HERE. The probe samples LIVE compute processes, and by wrap-up time both
+  # runs have ended, so it correctly reports "NO COMPUTE PROCESSES SEEN ... ANSWERS NOTHING" (rc=1)
+  # rather than reading its own silence as separation. Nothing on disk substitutes: across 5689 job
+  # files in this pair, neither `jobs/*.json` nor `out.json` records a CVD, a device index or a UUID.
+  # It is kept in the sequence only so the absence is VISIBLE in the report -- an unanswered
+  # precondition must not look like a passed one. The answer has to be taken DURING the run:
+  # `launch_s4_c2_pair.sh` now does that automatically ~7 min after launch.
+  if [ -f "$PIN_EVIDENCE" ]; then
+    echo "(live evidence captured during the run, from $PIN_EVIDENCE:)"
+    cat "$PIN_EVIDENCE"
+  else
+    echo "NO LIVE EVIDENCE FILE ($PIN_EVIDENCE). Post-hoc attempt follows and is expected to answer"
+    echo "nothing; treat pinning as UNVERIFIED for this pair unless it was checked while both ran."
+    $PY /root/probe-clean/gpu_pinning_check.py "$CTL" "$TRT" 2>&1 || echo "(pinning check rc=$?)"
+  fi
   echo
   echo "############ 1. search parity (align on TOTAL search, not per-space budget)"
   PYTHONPATH=$W/src $PY $W/scripts/check_arm_search_parity.py "$CTL" "$TRT" 2>&1 || echo "(rc=$?)"
