@@ -196,6 +196,69 @@ TPE 采样越充分,越容易把被拒值在别的搭档下测通,墙**按定义
 
 ---
 
+## 5b. 本地代码阅读地图(你就在这个工作目录里,`D:\Pyhon_projects\opop\v3`)
+
+按"要理解什么 → 去读哪里"组织。各模块的 docstring 写得很密,是**设计决策及其实测依据**
+的第一手记录(包括踩过的坑),先读 docstring 再读代码体,收益最大。
+⚠ 唯一的搜索纪律:**不要在仓库根 `D:\Pyhon_projects\opop` 做无范围的递归搜索**
+(那里有一个 14GB 的 .db);把 grep/glob 限定在 `v3/src`、`v3/docs`、`v3/scripts`、`v3/tests`。
+
+**改造对象(问题一、二所在,按管道顺序)**
+
+- `src/kernel_optimizer/tuning/stats.py` — `_param_stat`:`latency_by_value` 边际中位表的
+  发射端(问题一的数据源);同文件的 `at_boundary`/`best_trial_value` 锚定逻辑
+  docstring 里有一段 1126-knob 的实测,解释了"中位挑值 vs 最快 trial 挑值"为何分开——
+  读它能避免把两套挑值逻辑混为一谈。
+- `src/kernel_optimizer/evaluation/wall_attribution.py` — 硬墙全链:`find_walls`(范围判据,
+  问题二)、`select_for_probing`(单调过滤,问题一的消费端)、消融探针的 origin/top-K 机制、
+  `for_prompt`(简报渲染)。模块 docstring 是 C2 硬墙侧的完整设计陈述。
+- `src/kernel_optimizer/evaluation/soft_wall.py` — 软墙:适用门、spill 曲线判据
+  (同样跑在边际上)、以及"为什么选 n_spills 弃 occupancy"的 2788-trial 实测表。
+- `src/kernel_optimizer/tuning/slope_guide.py` — 投递机制:`due`/`suggest`/`_toward_wall`/
+  `_incumbent`、全部计数器及其"不是 partition,不可求和"的说明(`snapshot` docstring)。
+  docstring 末段"WHAT THE SHIPPING CODE ACTUALLY DID ON THE REAL CORPUS"预言了后来实测到的
+  95% 无墙率,值得整段读。
+- `src/kernel_optimizer/evaluation/correctness.py` — `compile_screen`/`prescreen_batch`/
+  `cached_shared_verdict`:compile-only 探针的调用端、缓存语义(答案缓存/失败不缓存)、
+  超时预算。你的方案若用探针,成本与失败语义以这里为准。
+- `src/kernel_optimizer/gpu/worker_main.py` — `run_compile_probe`(约 713 行起):
+  探针的 worker 侧实现,`warmup=True` 编译不 launch,返回每 kernel 的
+  `{shared, n_regs, n_spills, num_warps, num_stages}`——**探针能给全资源向量**这一事实
+  的出处;批量语义(`extra_kernel_src_paths`)也在这里。
+
+**接线与消费端(改判据后要跟着改的地方)**
+
+- `src/kernel_optimizer/control/orchestrator.py` — 三件套机制在外环的挂载点:
+  搜 `SlopeGuide`、`find_walls`、`find_soft_walls`、`RESOURCE_WALL_ATTRIBUTED` 的发射处,
+  可看到判据的输入(refused_sets 从哪来)与输出(事件/简报)如何进出。
+- `src/kernel_optimizer/config.py` — 三件套的开关键
+  (`v3.wall_attribution.* / v3.soft_wall.* / v3.slope_guide.*`);新开关照这个形状加。
+- `src/kernel_optimizer/models/reports.py` — `TuningStats`/`ParamStat` 的字段定义
+  (`latency_by_value` 的类型契约在此)。
+- `tests/` — 每个上述模块有同名测试;`tests/test_s7_pair_reader.py` 展示了
+  "fixture 必须逐字段抄自真实 payload"的纪律,新事件的测试照此写。
+
+**背景文档(按需读)**
+
+- `docs/next-round-changes.md` — 待办缺陷总账:**§4.8 就是本简报两个问题的原始记录**
+  (含实盘表格),§4.5 是相邻的"归因射程"缺口(含已量好的多 knob 回退价格表),
+  §5 是既有的建议次序。你的方案要与这两节对齐或明确改写它们。
+- `docs/design-conditioned-walls-and-slopes.md` — 在你之前已有一版设计稿
+  (frontier scan + 实测轴斜率)。**你的任务不是复述它**:独立设计后与它比对,
+  指出它的缺陷或给出更优替代都欢迎;若结论趋同,请说明哪些部分是被证据强制的
+  (殊途同归本身是信息)。
+- `docs/v3-design-resource-ratio-and-conversion-efficiency.md` — C2 资源维度设计的
+  上游思路与"预测数字禁止进决策"红线的完整论证。
+- 事件读法示例:`scripts/probes/read_slope_guide_counters.py` 与
+  `scripts/probes/did_the_enqueued_point_win.py` 的 docstring 记录了两个真实读错数的事故
+  (跨事件求和得三角数;中途判胜负被反转),新读数脚本照此防御。
+
+**运行数据在哪**:本机没有 GPU 也没有 run 数据;实盘 events.jsonl 都在 box4
+(§8 有路径)。本地能做的是读代码、跑 `uv run --offline --extra test --quiet python -m
+pytest -q`(纯 CPU,当前基线:1 failed——§4.7 已记录的 torch-less 既知问题——1188 passed)。
+
+---
+
 ## 6. 硬约束与红线(违反任何一条的方案会被否决)
 
 1. **不得缩小/限制搜索空间**:墙只记录、只建议,**永不 enforce**;不得删除取值、
