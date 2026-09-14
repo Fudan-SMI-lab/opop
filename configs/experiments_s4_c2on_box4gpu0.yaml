@@ -57,6 +57,33 @@
 # is internally valid -- arm A uses the same K, and it cannot fire there anyway since attribution is
 # off -- but do NOT put this arm's numbers in a table beside step-3's or the S7 pair's.
 #
+# THE BASELINE TO BEAT ON THE PRIMARY READINGS, measured on the S7 pair's treatment arm over 12.5 h of
+# the same task (level3:43) and recorded here BEFORE this pair runs, so a low number cannot be
+# explained after the fact:
+#     enqueued points          7, across 4 spaces (6 from the soft wall, 1 from the hard wall)
+#     SLOPE_GUIDE_STEP         70 recomputes, of which n_suggested fired 15 times
+#     where the rest went      n_skipped_no_wall 158  (the dominant loss: no wall to act on at all)
+#                              n_skipped_no_value_toward_wall 24  (a wall, but the optimum already sits
+#                                                                  at the top of the domain)
+#                              n_skipped_already_proposed 7  (deduplication, NOT failure)
+#     SLOPE_GUIDE_FAILED       0 in both arms -- the mechanism does not error; it runs out of walls
+# S7 held `soft_wall` ON IN BOTH ARMS so sampling was the only difference. THIS pair switches soft_wall
+# too, so its arm A has no soft-wall events at all -- the two pairs do not measure the same thing, and
+# this arm's enqueue count is expected to be >= 7 only because nothing here is narrower than S7 was.
+# Report the three skip counters alongside any enqueue count: "few enqueues" caused by scarce walls and
+# "few enqueues" caused by a wall with no value to propose have completely different fixes.
+#
+# ⚠ AND THE READING THAT MUST ACCOMPANY IT: an enqueued point that was MEASURED is not an enqueued point
+# that was GOOD. C2's premise is that a steep, truncated direction is worth measuring, so the reading
+# that tests the premise is whether the proposed value beat the other values of its own knob --
+# `scripts/probes/did_the_enqueued_point_win.py`, and ONLY after RUN_FINISHED, because a space's "which
+# value is best" improves monotonically with trials (judged mid-run on S7 by hand it gave 4/4 lost;
+# after the space finished tuning the same point had become the best in its space).
+# Pre-registered prediction for this pair: S7's steepest point (55.15% tail gain) won its knob while
+# its shallowest judgeable ones (30-34%) lost, and it later enqueued three much shallower points
+# (10.31 / 12.37 / 15.03%). If C2's premise holds, shallow points should fare visibly worse than steep
+# ones. Written down now so any outcome cannot be read as support.
+#
 # Launch (GPU 0; simultaneously with arm A on GPU 1):
 #   cd /root/autodl-tmp/work/opop
 #   CUDA_VISIBLE_DEVICES=0 XDG_DATA_HOME=/root/autodl-tmp/xdg-s4b \
