@@ -182,9 +182,31 @@ PROBE=${OPOP_PROBE_DIR:-/root/probe-clean}/gpu_pinning_check.py
     echo "!! are the only attribution; they are per-process and sufficient for CVD, but the"
     echo "!! physical-index cross-check is absent. Do not read this file as a clean verdict."
   else
+    # ONE argument per arm, and it must be a RUN dir, not the arm's runs_dir: the probe
+    # labels each arm by its argument's PARENT name (`run.runs_dir`'s last component, the
+    # string that must differ per arm anyway). So `<runs_dir>/<this run>` labels the arm
+    # `n1-a`, while `<runs_dir>` itself labels it `runs-v4` -- IDENTICAL for both arms,
+    # which would leave the probe unable to tell them apart at all. `<runs_dir>/*` is wrong
+    # in the other direction: it expands to every run the arm ever produced (evalcheck and
+    # smoke dirs included) and lists the same arm six times. A probe whose output reads
+    # like a misattribution is the failure mode this file exists to avoid.
+    #
+    # The run dir is resolved HERE, at first attempt, rather than passed in: the
+    # orchestrator names it itself (run-l3-43-<timestamp>) and it does not exist until the
+    # process has started.
     for attempt in $(seq 1 12); do
       echo "--- pinning attempt $attempt ($(date -u +%H:%M:%SZ)) ---"
-      if "$PY" "$PROBE" $(printf '%s/* ' "${RUNDIRS[@]}") 2>&1; then
+      dirs=()
+      for rd in "${RUNDIRS[@]}"; do
+        newest=$(ls -td "$rd"/run-*/ 2>/dev/null | head -1)
+        [ -n "$newest" ] && dirs+=("${newest%/}")
+      done
+      if [ ${#dirs[@]} -lt 2 ]; then
+        echo "--- only ${#dirs[@]} run dir(s) exist yet; retry in 10 min ---"
+        sleep 600
+        continue
+      fi
+      if "$PY" "$PROBE" "${dirs[@]}" 2>&1; then
         echo "--- answered on attempt $attempt ---"
         break
       fi
