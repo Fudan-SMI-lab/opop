@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
-    parser.add_argument("--task", default="level1:19")
+    parser.add_argument("--task", default="level1:1")
     args = parser.parse_args()
 
     from kernel_optimizer.conditional.probe import ConditionedWall, ProbePlanner
@@ -67,41 +67,62 @@ def main() -> int:
     _, evaluator, _, _ = build_gpu_stack(cfg, store)
     check("wiring/task setup", True, f"{task.name} -> {store.run_dir}")
 
-    # Matches level1:19 (ReLU): ONE input — the probe execs the ref's get_inputs and
-    # calls model(*inputs), so the smoke candidate's forward must take the task's shape.
+    # Matches level1:1 (4096x4096 square matmul, 64MB tensors — level1:19's 6.4GB input
+    # blew both the probe deadline and 24GB VRAM). Real tile knobs => real shared-memory
+    # behaviour, so the probe layer sees genuine fit/refused variation. input_precision
+    # "ieee": tf32 would fail the correctness gate on a 4096-deep dot.
     candidate_src = '''import torch
 import triton
 import triton.language as tl
 
-PARAMS = {"BLOCK": 1024, "N_STAGES": 1}
+PARAMS = {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 32, "N_STAGES": 2}
 
 @triton.jit
-def _relu(x_ptr, out_ptr, n, BLOCK: tl.constexpr):
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < n
-    x = tl.load(x_ptr + offs, mask=mask)
-    tl.store(out_ptr + offs, tl.maximum(x, 0.0), mask=mask)
+def _mm(a_ptr, b_ptr, c_ptr, M, N, K, sam, sak, sbk, sbn, scm, scn,
+        BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    rm = pid_m * BM + tl.arange(0, BM)
+    rn = pid_n * BN + tl.arange(0, BN)
+    rk = tl.arange(0, BK)
+    a_ptrs = a_ptr + rm[:, None] * sam + rk[None, :] * sak
+    b_ptrs = b_ptr + rk[:, None] * sbk + rn[None, :] * sbn
+    acc = tl.zeros((BM, BN), dtype=tl.float32)
+    for k in range(0, K, BK):
+        a = tl.load(a_ptrs, mask=(rm[:, None] < M) & ((rk[None, :] + k) < K), other=0.0)
+        b = tl.load(b_ptrs, mask=((rk[:, None] + k) < K) & (rn[None, :] < N), other=0.0)
+        acc += tl.dot(a, b, input_precision="ieee")
+        a_ptrs += BK * sak
+        b_ptrs += BK * sbn * 0 + BK * sbk
+    c_ptrs = c_ptr + rm[:, None] * scm + rn[None, :] * scn
+    tl.store(c_ptrs, acc, mask=(rm[:, None] < M) & (rn[None, :] < N))
 
 class ModelNew(torch.nn.Module):
-    def forward(self, x):
-        out = torch.empty_like(x)
-        n = x.numel()
-        grid = (triton.cdiv(n, PARAMS["BLOCK"]),)
-        _relu[grid](x, out, n, BLOCK=PARAMS["BLOCK"])
-        return out
+    def forward(self, a, b):
+        M, K = a.shape
+        K2, N = b.shape
+        c = torch.empty((M, N), device=a.device, dtype=a.dtype)
+        grid = (triton.cdiv(M, PARAMS["BLOCK_M"]), triton.cdiv(N, PARAMS["BLOCK_N"]))
+        _mm[grid](a, b, c, M, N, K,
+                  a.stride(0), a.stride(1), b.stride(0), b.stride(1),
+                  c.stride(0), c.stride(1),
+                  BM=PARAMS["BLOCK_M"], BN=PARAMS["BLOCK_N"], BK=PARAMS["BLOCK_K"],
+                  num_stages=PARAMS["N_STAGES"], num_warps=4)
+        return c
 '''
     space = ParameterSpace(
         space_id="sp-smoke", candidate_id="cand-smoke", version=1, source_sha="smoke",
-        domains=[ParamDomain(name="BLOCK", kind="int", choices=[256, 512, 1024, 2048]),
-                 ParamDomain(name="N_STAGES", kind="int", choices=[1, 2])],
+        domains=[ParamDomain(name="BLOCK_M", kind="int", choices=[32, 64, 128, 256]),
+                 ParamDomain(name="BLOCK_N", kind="int", choices=[32, 64, 128, 256]),
+                 ParamDomain(name="BLOCK_K", kind="int", choices=[32, 64]),
+                 ParamDomain(name="N_STAGES", kind="int", choices=[1, 2, 4])],
         constraints=[])
 
     # ---- 1. probe layer against the real worker ----
     print("\n== step 1: real compile-probe batch ==", flush=True)
     planner = ProbePlanner(space, cfg.device.max_shared_bytes_optin,
                            legal=lambda v: True, pcap=12)
-    incumbent = {"BLOCK": 1024, "N_STAGES": 1}
+    incumbent = {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 32, "N_STAGES": 2}
     planned = planner.plan_batch(incumbent)
     check("planner produced a batch", len(planned) > 0, f"{len(planned)} points")
 
@@ -155,9 +176,9 @@ class ModelNew(torch.nn.Module):
     scanner = ConditionalScanner(space, "cand-smoke", "triton", budget_b=40,
                                  tokens=TokenStore(), seed=0)
     wall = walls[0] if walls else ConditionedWall(
-        kind="soft", axis="BLOCK", partner_key="pk-smoke",
-        partner_values={"N_STAGES": 1}, point_map={},
-        f_value=512, n_value=1024, refused_value=None)
+        kind="soft", axis="BLOCK_M", partner_key="pk-smoke",
+        partner_values={"BLOCK_N": 64, "BLOCK_K": 32, "N_STAGES": 2}, point_map={},
+        f_value=32, n_value=64, refused_value=None)
     block = scanner.next_block([wall])
     check("C4 admitted", block is not None and block.kind == "C4",
           f"axis={getattr(block, 'axis', None)}")
