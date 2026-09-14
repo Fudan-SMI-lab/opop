@@ -207,6 +207,14 @@ PYEOF
   echo "  Read the ratio only against the FINAL sandbox count; S7's figure was 1 of 4, and that one"
   echo "  brief was a SOFT wall, so a hard-wall claim cannot rest on it."
   echo
+  echo "-- WHOSE IDEA WAS EACH REWRITE? (analyst hypothesis vs delivered wall text) --"
+  # The distinction most likely to be got wrong when writing up. A rewrite full of resource language
+  # ("register diet", "64 regs/thread", "occupancy 17%->25%") reads like C2 firing, and on BOTH pairs so
+  # far every rewrite carried an analyst hypothesis_id while ZERO wall briefs were delivered -- so the
+  # resource reasoning is the analyst's, and attributing it to the wall mechanism would be a false
+  # positive. This probe says so per rewrite instead of leaving it to be assumed.
+  PYTHONPATH=$W/src $PY /root/probe-clean/rp.py "$ON" "$OFF" 2>&1 || echo "(rc=$?)"
+  echo
   echo "############ 6. DID THE ENQUEUED POINTS WIN THEIR KNOB?"
   # The reading that tests C2's premise rather than its plumbing. Pre-registered before this pair ran:
   # on S7 the steepest point (55.15% tail gain) won while shallower ones lost, and three much shallower

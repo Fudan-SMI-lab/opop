@@ -18,24 +18,35 @@ This prints, per rewrite: which family and parent, the change summary, whether a
 delivered for that family, and what the analyst had reported -- so the source of each idea is
 attributable rather than assumed.
 
-Run on box4:
-  PYTHONPATH=/root/autodl-tmp/work/opop/src \
-  /root/autodl-tmp/orch-venv/bin/python /root/probe-clean/rewrite_provenance.py
+    python scripts/probes/rewrite_provenance.py <run_dir> [<run_dir> ...]
+
+TAKES THE RUN DIRS AS ARGUMENTS, and that is a fix rather than a style choice: the first version had
+`BASE` and `RUN` as module constants pinned to the S7 pair, so pointing it at any other pair silently
+re-read S7. The same shape made `gpu_pinning_check.py` report a healthy pair's own workers as a foreign
+tenant. A probe whose subject is baked in answers a question nobody asked.
 """
 
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
-BASE = Path("/root/autodl-tmp/opop-workspace/opop-glm/runs-v3")
-RUN = "run-l3-43-20260913-202332"
+# No BASE / RUN constants: they were what pinned this probe to one pair. Deleted rather than left unused
+# so nothing can drift back to reading them.
 
 
 def main() -> int:
-    for arm in ("s7-treatment", "s7-control"):
+    runs = [a for a in sys.argv[1:] if not a.startswith("-")]
+    if not runs:
+        print("USAGE: rewrite_provenance.py <run_dir> [<run_dir> ...]")
+        print("Refusing to default to a hardcoded pair: the previous version pinned the S7 run dirs as")
+        print("constants, so every later pair silently got S7's answer.")
+        return 2
+    for run in runs:
+        arm = Path(run).parent.name or Path(run).name
         ev = []
-        for line in (BASE / arm / RUN / "events.jsonl").open(encoding="utf-8"):
+        for line in (Path(run) / "events.jsonl").open(encoding="utf-8", errors="replace"):
             line = line.strip()
             if line:
                 try:
@@ -43,7 +54,7 @@ def main() -> int:
                 except ValueError:
                     pass
         print("=" * 78)
-        print(arm)
+        print("%s   (%s)" % (arm, Path(run).name))
 
         # Which families ever had an ATTRIBUTED wall? That is the only thing that can carry wall text.
         walled_families: dict[str, list[str]] = {}
