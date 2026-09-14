@@ -116,6 +116,61 @@ EXPECT=(--expect v3.wall_attribution.enabled
   # space and self-checks that sum(n_recomputes) equals the step count.
   $PY /root/probe-clean/sgc.py "$ON" "$OFF" 2>&1 || echo "(rc=$?)"
   echo
+  echo "-- WHERE EACH WALL PATH ACTUALLY FAILED (three distinct causes; do NOT merge them) --"
+  # `n_skipped_no_wall` is one number covering causes with completely different fixes, and reporting
+  # only "zero enqueues" hides all of them. Measured at 3 h on this pair: the hard path had 3 events
+  # with walls_found=0 (the refused value was inside the knob's measured range, so no wall EXISTS) and
+  # 1 event where a wall DID form and the slope filter then discarded it (walls_worthless=1); the soft
+  # path had 3 scans where the space's own best trial does not spill (the applicability gate) against 1
+  # rejected by the monotone criterion. "Widen the wall criterion", "loosen the slope filter" and
+  # "the optimum does not spill" are three different next rounds.
+  $PY - "$ON" "$OFF" << 'PYEOF' 2>&1 || echo "(rc=$?)"
+import json, sys
+from collections import Counter
+for run in sys.argv[1:]:
+    rows = []
+    with open(run + "/events.jsonl", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except Exception:
+                continue
+    hard = Counter()
+    for r in rows:
+        if r.get("type") != "RESOURCE_WALL_ATTRIBUTED":
+            continue
+        p = r.get("payload") or {}
+        found = int(p.get("walls_found") or 0)
+        worthless = int(p.get("walls_worthless") or 0)
+        if found == 0:
+            hard["no wall formed (refused value inside the measured range)"] += 1
+        elif worthless >= found:
+            hard["wall formed, slope filter discarded ALL of them"] += 1
+        else:
+            hard["wall formed and survived the slope filter"] += 1
+    soft = Counter()
+    for r in rows:
+        if r.get("type") != "RESOURCE_SOFT_WALL":
+            continue
+        p = r.get("payload") or {}
+        n = len(p.get("walls") or [])
+        if not p.get("applicable"):
+            soft["not applicable: %s" % str(p.get("reason"))[:56]] += 1
+        elif n == 0:
+            soft["applicable but 0 walls: %s" % str(p.get("reason"))[:56]] += 1
+        else:
+            soft["applicable, %d wall(s) produced" % n] += 1
+    print("  %s" % run.rstrip("/").split("/")[-2])
+    if not hard and not soft:
+        print("      no wall events at all (expected in the all-OFF arm: structural zero)")
+    for label, c in (("hard", hard), ("soft", soft)):
+        for k, v in sorted(c.items(), key=lambda x: -x[1]):
+            print("      %-4s x%-3d %s" % (label, v, k))
+PYEOF
+  echo
   echo "############ 6. DID THE ENQUEUED POINTS WIN THEIR KNOB?"
   # The reading that tests C2's premise rather than its plumbing. Pre-registered before this pair ran:
   # on S7 the steepest point (55.15% tail gain) won while shallower ones lost, and three much shallower
