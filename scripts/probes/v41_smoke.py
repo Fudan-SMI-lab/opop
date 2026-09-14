@@ -163,9 +163,11 @@ class ModelNew(torch.nn.Module):
         results, answered = collect()
     planner.record(results, kept)
     check("probe batch answered", answered > 0, f"{answered}/{len(paths)} in {elapsed:.1f}s")
-    resource_ok = any(any(k.get("n_regs") is not None for k in a.kernels)
-                      for a in planner.answers.values())
-    check("resource vectors present", resource_ok)
+    # shared-bytes is the wall criterion and is filled at warmup=True; n_regs/n_spills
+    # need ptxas and are legitimately None here (a known probe property, not a defect).
+    shared_ok = any(any(k.get("shared") is not None for k in a.kernels)
+                    for a in planner.answers.values())
+    check("shared-bytes present (wall criterion)", shared_ok)
     walls = planner.walls(incumbent)
     print(f"conditioned walls: {[w.payload() for w in walls] or '(none; expected for add)'}",
           flush=True)
@@ -173,8 +175,8 @@ class ModelNew(torch.nn.Module):
     # ---- 2. scanner + real measurements ----
     print("\n== step 2: C4 through the real tuner + worker ==", flush=True)
     tuner = OptunaTPETuner(space, guard_ok=lambda p: True, budget=12, seed=0)
-    scanner = ConditionalScanner(space, "cand-smoke", "triton", budget_b=40,
-                                 tokens=TokenStore(), seed=0)
+    scanner = ConditionalScanner(space, "cand-smoke", "triton", budget_b=80,
+                                 tokens=TokenStore(), seed=0)  # Q=8: room for C4+E1
     wall = walls[0] if walls else ConditionedWall(
         kind="soft", axis="BLOCK_M", partner_key="pk-smoke",
         partner_values={"BLOCK_N": 64, "BLOCK_K": 32, "N_STAGES": 2}, point_map={},
