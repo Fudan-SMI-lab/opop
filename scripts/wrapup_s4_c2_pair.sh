@@ -177,6 +177,13 @@ for run in sys.argv[1:]:
             print("      %-4s x%-3d %s" % (label, v, k))
 PYEOF
   echo
+  echo "-- IS A ZERO EVEN READABLE? compare against S7 in RECOMPUTES, not hours --"
+  # Hours compare the boxes; recomputes compare the mechanism. S7's treatment arm produced its FIRST
+  # enqueue at recompute 41 of 72, so an arm that has done fewer recomputes than that and enqueued
+  # nothing is EARLY, not barren -- at 22 recomputes mid-run this pair looked like "the all-on arm
+  # produces nothing", which would have been a wrong conclusion drawn from the wrong unit.
+  $PY /root/probe-clean/traj.py 2>&1 || echo "(rc=$?)"
+  echo
   echo "############ 6. DID THE ENQUEUED POINTS WIN THEIR KNOB?"
   # The reading that tests C2's premise rather than its plumbing. Pre-registered before this pair ran:
   # on S7 the steepest point (55.15% tail gain) won while shallower ones lost, and three much shallower
