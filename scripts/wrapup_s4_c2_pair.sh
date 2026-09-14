@@ -109,7 +109,14 @@ EXPECT=(--expect v3.wall_attribution.enabled
   echo "############ 4. THE RESULT (P1-P5 reader; arm B is the treatment)"
   PYTHONPATH=$W/src $PY $W/scripts/analyze_s7_pair.py "$ON" "$OFF" 2>&1 || echo "(rc=$?)"
   echo
-  echo "############ 5. DID THE ENQUEUED POINTS WIN THEIR KNOB?"
+  echo "############ 5. WHY THE MECHANISM DECLINED (counters read per-space, never summed)"
+  # These counters are CUMULATIVE per SlopeGuide instance (one per tuning pass) and count two different
+  # units, so summing them across events yields a triangular number. Summed by hand they read
+  # `no_wall 158 / n_suggested 15` for a run whose real values were 63 and 7. This reader folds per
+  # space and self-checks that sum(n_recomputes) equals the step count.
+  $PY /root/probe-clean/sgc.py "$ON" "$OFF" 2>&1 || echo "(rc=$?)"
+  echo
+  echo "############ 6. DID THE ENQUEUED POINTS WIN THEIR KNOB?"
   # The reading that tests C2's premise rather than its plumbing. Pre-registered before this pair ran:
   # on S7 the steepest point (55.15% tail gain) won while shallower ones lost, and three much shallower
   # points (10.31 / 12.37 / 15.03%) then lost by only 0.3-5.5% -- i.e. slope magnitude did NOT predict
@@ -117,10 +124,10 @@ EXPECT=(--expect v3.wall_attribution.enabled
   # sampler path still has exactly one positive instance.
   $PY /root/probe-clean/win.py "$ON" "$OFF" 2>&1 || echo "(rc=$?)"
   echo
-  echo "############ 6. budget-matched truncation (BOTH trial counts; they can disagree)"
+  echo "############ 7. budget-matched truncation (BOTH trial counts; they can disagree)"
   $PY /root/probe-clean/bm.py "$OFF" "$ON" 2>&1 || echo "(rc=$?)"
   echo
-  echo "############ 7. would a higher origin count have helped (K=3 is already set in arm B)"
+  echo "############ 8. would a higher origin count have helped (K=3 is already set in arm B)"
   $PY /root/probe-clean/tk.py "$OFF" "$ON" 2>&1 || echo "(rc=$?)"
 } > "$OUT" 2>&1
 
