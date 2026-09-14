@@ -79,6 +79,20 @@ class OptunaTPETuner:
         self._told = 0
         self._best_record: TrialRecord | None = None
         self._seen: set[str] = set()
+        # v4.1 §7: params-keys whose NEXT draws must be measured fresh — enqueued by the
+        # conditional scanner for scan endpoints (anchors re-measured, old winners out of
+        # the baseline). A COUNTER, not a set: a C4 block measures the SAME endpoint config
+        # twice (discovery + validation slots), so two fresh passes of one key must both
+        # survive the dedup branch. Each pass is handed to the caller with fresh=True via
+        # `is_fresh`, so the measured-cache reuse path is bypassed for exactly those draws.
+        # Without this, `skip_if_exists` + `_seen` + the orchestrator's measured_cache
+        # would either drop the re-measurement or fake it with a cache copy (the fake A/A
+        # zero the v3 review's E1 blocker names).
+        self._fresh_intent: dict[str, int] = {}
+        # trial_id -> the draw consumed a fresh intent. Queried by the orchestrator to
+        # bypass its measured cache; a separate map (not a wider ask() tuple) so every
+        # existing caller of ask() keeps its two-element contract.
+        self._fresh_asked: set[str] = set()
 
     def ask(self) -> tuple[str, ParamSet] | None:
         if self._asked >= self.budget:
@@ -93,7 +107,8 @@ class OptunaTPETuner:
                 )
             params = ParamSet(values=values)
             key = params.key()
-            if key in self._seen:
+            fresh = self._fresh_intent.get(key, 0) > 0
+            if key in self._seen and not fresh:
                 # Duplicate draw: prune and move on (counts toward reject budget).
                 self.study.tell(trial, state=TrialState.PRUNED)
                 rejects += 1
@@ -116,12 +131,29 @@ class OptunaTPETuner:
                 self.study.tell(trial, state=TrialState.PRUNED)
                 rejects += 1
                 continue
+            if fresh:
+                # One fresh pass consumed per intent unit; a C4's duplicated endpoint
+                # carries TWO units, so both survive dedup and a later ordinary draw of
+                # the same key is deduped as before.
+                remaining = self._fresh_intent[key] - 1
+                if remaining > 0:
+                    self._fresh_intent[key] = remaining
+                else:
+                    del self._fresh_intent[key]
             trial_id = f"tr-{uuid.uuid4().hex[:8]}"
+            if fresh:
+                self._fresh_asked.add(trial_id)
             self._pending[trial_id] = trial
             self._seen.add(key)
             self._asked += 1
             return trial_id, params
         return None  # space is effectively exhausted for the sampler
+
+    def is_fresh(self, trial_id: str) -> bool:
+        """v4.1 §7: did this draw consume a fresh-measurement intent? The orchestrator must
+        bypass its measured cache for such a draw — a cache copy with a swapped trial_id
+        would fake the scanner's A/A anchor as a zero difference."""
+        return trial_id in self._fresh_asked
 
     # ---------------------------------------------------------------- S7 / item 3.2
 
@@ -154,6 +186,23 @@ class OptunaTPETuner:
         if not self.guard_ok(params):
             return "guard_rejected"
         self.study.enqueue_trial(dict(params.values), skip_if_exists=True)
+        return None
+
+    def enqueue_fresh(self, params: ParamSet) -> str | None:
+        """v4.1 §7: enqueue a point that MUST be measured fresh even if already drawn.
+
+        The scanner's anchors are deliberate re-measurements (old winners leave the
+        baseline; a live A/A), so `already_drawn` is not a refusal here — the queue entry
+        skips Optuna's own dedup (`skip_if_exists=False`) and the key gains one fresh unit
+        so `ask()` lets it through its dedup branch and reports it via `is_fresh`, which
+        bypasses the measured cache for that draw. Guard rules still apply: the scanner
+        proposes, the guard decides — identical to `enqueue`.
+        """
+        if not self.guard_ok(params):
+            return "guard_rejected"
+        key = params.key()
+        self._fresh_intent[key] = self._fresh_intent.get(key, 0) + 1
+        self.study.enqueue_trial(dict(params.values), skip_if_exists=False)
         return None
 
     @property

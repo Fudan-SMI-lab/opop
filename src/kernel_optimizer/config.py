@@ -704,6 +704,43 @@ class V3Config(StrictConfig):
     slope_guide: V3SlopeGuideConfig = V3SlopeGuideConfig()
 
 
+class V4ConditionalScanConfig(StrictConfig):
+    """v4.1: the conditional measurement layer (U/W probes + C/E four-slot scan).
+
+    Spec `docs/implementation-conditional-scan-v4.1.md`, sign-off review
+    `docs/review-implementation-conditional-scan-v4.1.md`. Replaces the MARGINAL
+    gatekeepers (range-criterion walls + monotone filter over `latency_by_value`) with
+    conditioned measurement: walls and slopes are read with every other knob frozen at the
+    incumbent's partners. The action side (enqueue) was already conditioned; the defect this
+    fixes was in the gatekeeping measurement (docs/next-round-changes.md §4.8).
+
+    MUTUALLY EXCLUSIVE with the legacy consumers by protocol (v4.1 §8): an `active` run
+    must have `v3.slope_guide.enabled=false` — both mechanisms enqueueing would be a double
+    intervention no control arm can attribute. `load_config` enforces this.
+    """
+
+    # off = the literal v3 path (no probes, no scan, no events).
+    # observe = probe layer runs and journals; scanner NEVER admits (zero latency trials).
+    # active = full mechanism: probes + C4 sources + E actions + enqueue.
+    mode: Literal["off", "observe", "active"] = "off"
+
+    # Q = floor(f * trials_per_space). Ruling ③ keeps f = 0.1; changing it is a
+    # preregistered dose decision, not a tuning knob.
+    f_frac: float = 0.1
+
+    # Probe batch cap (unique new points per batch) and per-space started-attempt cap.
+    pcap: int = 48
+    max_probe_attempts: int = 4
+
+    # Cadence: evaluate ready work every N FINISHED trial records (failures and reused
+    # count; internal PRUNED spins do not — the tuner's n_told is the clock).
+    cadence_told: int = 10
+
+
+class V4Config(StrictConfig):
+    conditional_scan: V4ConditionalScanConfig = V4ConditionalScanConfig()
+
+
 class AppConfig(StrictConfig):
     run: RunConfig = RunConfig()
     opencode: OpencodeConfig = OpencodeConfig()
@@ -713,6 +750,7 @@ class AppConfig(StrictConfig):
     wsl: WslConfig = WslConfig()
     gpu: GpuConfig = GpuConfig()
     v3: V3Config = V3Config()
+    v4: V4Config = V4Config()
     device: DeviceLimits = DeviceLimits()
     kernelbench_root: Path = Path("D:/Pyhon_projects/opop/KernelBench")
 
@@ -737,4 +775,12 @@ def load_config(path: Path | None = None, overrides: list[str] | None = None) ->
             raise ValueError(f"override must be key.path=value, got: {ov}")
         key, _, value = ov.partition("=")
         _apply_override(data, key.strip(), value.strip())
-    return AppConfig.model_validate(data)
+    cfg = AppConfig.model_validate(data)
+    # v4.1 §8: new and legacy enqueue consumers are mutually exclusive — both live would be
+    # a double intervention no control arm can attribute. Refused HERE, loudly, because an
+    # events-level check would only notice after 12 GPU-hours.
+    if cfg.v4.conditional_scan.mode == "active" and cfg.v3.slope_guide.enabled:
+        raise ValueError(
+            "v4.conditional_scan.mode=active and v3.slope_guide.enabled=true are mutually "
+            "exclusive (v4.1 §8: one enqueue consumer per run)")
+    return cfg

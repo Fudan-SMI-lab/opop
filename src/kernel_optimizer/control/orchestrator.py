@@ -1222,6 +1222,8 @@ class Orchestrator:
         )
         # S7 / item 3.2. None = off and the literal pre-S7 path: no recompute, no enqueue, no event.
         guide = self._make_slope_guide(space)
+        # v4.1. None = off and the literal v3 path: no probes, no scan, no events.
+        cscan = self._make_conditional_scan(crun)
 
         while True:
             asked = tuner.ask()
@@ -1229,6 +1231,20 @@ class Orchestrator:
                 break
             trial_id, params = asked
             cached = measured_cache.get(params.key())
+            # v4.1 §7. `getattr` with a False default rather than a direct call: every
+            # object that can stand in for a tuner (tests, replays) would otherwise have to
+            # remember the new attribute, and one that forgot would crash the loop — the
+            # same rule the S8 snapshot follows. A stub without `is_fresh` simply keeps the
+            # pre-v4.1 reuse behaviour.
+            is_fresh = getattr(tuner, "is_fresh", None)
+            if cached is not None and is_fresh is not None and is_fresh(trial_id):
+                # v4.1 §7: a scan endpoint must be MEASURED, not copied out of the cache —
+                # a cache copy with a swapped trial_id is the fake A/A zero the review's E1
+                # blocker names. Journalled so the bypass is countable.
+                self.store.append("FRESH_MEASUREMENT_FORCED", {
+                    "candidate_id": cand.candidate_id, "space_id": space.space_id,
+                    "trial_id": trial_id, "params_key": params.key()})
+                cached = None
             if cached is not None:
                 record = cached.model_copy(update={"trial_id": trial_id})
                 # Reused measurements must still be journalled. replay() rebuilds
@@ -1276,6 +1292,8 @@ class Orchestrator:
                 # log already contained.
                 self.deweight_ledger.observe(record)
             crun.trials.append(record)
+            if cscan is not None:
+                self._conditional_scan_step(crun, space, tuner, cscan, trial_id, record)
             if guide is not None and guide.due(tuner.n_told):
                 self._slope_guide_step(crun, space, tuner, guide)
 
@@ -1300,6 +1318,8 @@ class Orchestrator:
         # ran. Its skip counters are what a P4 reading needs to separate "the signal is not useful" from
         # "the mechanism never got the chance".
         slope = guide.snapshot() if guide is not None else None
+        # v4.1. Same convention: None when off; a dict with zero counts when on and idle.
+        conditional = (cscan[0].final_snapshot(cscan[1]) if cscan is not None else None)
         if best is not None:
             # crun.best_ms tracks the candidate's best over ALL its spaces, so a
             # re-tune (improvement K's expansion) that lands worse must not erase a
@@ -1317,6 +1337,7 @@ class Orchestrator:
                 "snapshot": tuner.snapshot(), "deweight": deweight,
                 "ordered_categoricals": ordered,
                 "slope_guide": slope,
+                "conditional_scan": conditional,
             })
         else:
             self.store.append("TUNING_DONE", {
@@ -1324,7 +1345,78 @@ class Orchestrator:
                 "best_ms": None, "snapshot": tuner.snapshot(), "deweight": deweight,
                 "ordered_categoricals": ordered,
                 "slope_guide": slope,
+                "conditional_scan": conditional,
             })
+
+    def _make_conditional_scan(self, crun: CandidateRun):
+        """v4.1's collaborator, or None when mode=off (the literal v3 path).
+
+        The BRIDGE is per-candidate (token store spans a candidate's spaces, ruling ⑥
+        scopes it); the RUNTIME is per-space. Import is local so a run with the switch off
+        never pays for (or depends on) the conditional package.
+        """
+        if self.cfg.v4.conditional_scan.mode == "off" or crun.space is None:
+            return None
+        try:
+            from kernel_optimizer.conditional.bridge import ConditionalScanBridge
+
+            cand_id = crun.candidate.candidate_id
+            if not hasattr(self, "_cscan_bridges"):
+                self._cscan_bridges: dict[str, ConditionalScanBridge] = {}
+            bridge = self._cscan_bridges.get(cand_id)
+            if bridge is None:
+                bridge = ConditionalScanBridge(
+                    self.cfg, self.store, self.deps.evaluator, self.task,
+                    self.cfg.device.max_shared_bytes_optin)
+                self._cscan_bridges[cand_id] = bridge
+            rt = bridge.make_runtime(
+                crun, Path(self.store.run_dir), self.cfg.run.seed,
+                self.cfg.budgets.trials_per_space,
+                legal=lambda values: (
+                    check_config(crun.space, ParamSet(values=values), self.cfg.device)
+                    is None))
+            return (bridge, rt) if rt is not None else None
+        except Exception as exc:  # noqa: BLE001 — a diagnostic must never end a candidate
+            self.store.append("SCAN_SETUP_FAILED", {
+                "candidate_id": crun.candidate.candidate_id,
+                "error": f"{type(exc).__name__}: {exc}"[:300]})
+            return None
+
+    def _conditional_scan_step(self, crun: CandidateRun, space: ParameterSpace,
+                               tuner: OptunaTPETuner, cscan, trial_id: str,
+                               record: TrialRecord) -> None:
+        """One told trial's worth of v4.1 work. Never raises into the tuning loop."""
+        bridge, rt = cscan
+        try:
+            bridge.step(rt, crun, tuner, trial_id, record)
+        except Exception as exc:  # noqa: BLE001
+            self.store.append("SCAN_STEP_FAILED", {
+                "candidate_id": crun.candidate.candidate_id,
+                "space_id": space.space_id,
+                "error": f"{type(exc).__name__}: {exc}"[:300]})
+
+    def _conditional_brief(self, crun: CandidateRun) -> str | None:
+        """v4.1 §6: the conditioned brief for the prompt — ACTIVE mode only. Observe mode
+        records everything and delivers nothing (zero prompt intervention), matching the
+        legacy in_prompt discipline. Never raises."""
+        if self.cfg.v4.conditional_scan.mode != "active":
+            return None
+        bridge = getattr(self, "_cscan_bridges", {}).get(crun.candidate.candidate_id)
+        if bridge is None or bridge.last_runtime is None or crun.space is None:
+            return None
+        try:
+            text = bridge.brief_text(bridge.last_runtime, crun)
+            if text is not None:
+                self.store.append("CONDITIONED_BRIEF_DELIVERED", {
+                    "candidate_id": crun.candidate.candidate_id,
+                    "space_id": crun.space.space_id, "n_chars": len(text)})
+            return text
+        except Exception as exc:  # noqa: BLE001
+            self.store.append("CONDITIONED_BRIEF_FAILED", {
+                "candidate_id": crun.candidate.candidate_id,
+                "error": f"{type(exc).__name__}: {exc}"[:300]})
+            return None
+
 
     def _make_slope_guide(self, space: ParameterSpace) -> "slope_guide.SlopeGuide | None":
         """S7's collaborator, or None when the switch is off (the literal pre-S7 path).
@@ -1902,6 +1994,13 @@ class Orchestrator:
         if soft_text and self.cfg.v3.soft_wall.in_prompt:
             wall_text = f"{wall_text}\n\n{soft_text}" if wall_text else soft_text
             crun.wall_text = wall_text
+        # v4.1 §6: the conditioned brief. In ACTIVE mode it REPLACES the legacy texts (new
+        # and legacy consumers are mutually exclusive, §8 — legacy is off by config
+        # exclusivity anyway); in observe mode nothing reaches the prompt (recording only).
+        conditioned_text = self._conditional_brief(crun)
+        if conditioned_text is not None:
+            wall_text = conditioned_text
+            crun.wall_text = conditioned_text
         # S2: the per-dimension vector. Journalled UNCONDITIONALLY, in both modes -- recording costs
         # nothing and is not what carries risk; what carries risk is what reaches the prompt, and
         # that is the one thing `v3.diagnosis.mode` switches. Writing it in label mode is also what
