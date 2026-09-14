@@ -1,0 +1,102 @@
+# v4.1 FULL-PIPELINE VERIFICATION -- box4 GPU0, active mode, SHRUNK budgets, cheap task.
+#
+# NOT an experiment: it de-risks the four 12h runs by executing the WHOLE orchestrator
+# (generator -> parameterize -> tune + conditional scan -> analyst -> rewriter -> report)
+# on the v4 checkout with the real GLM agent stack, in ~15-20 min. If the orchestrator
+# wiring is broken this finds it now instead of at hour 12.
+#
+# Launch:
+#   cd /root/autodl-tmp/work/opop
+#   CUDA_VISIBLE_DEVICES=0 XDG_DATA_HOME=/root/autodl-tmp/xdg-v4verify #   PYTHONPATH=src /root/autodl-tmp/orch-venv/bin/python -m kernel_optimizer.cli #     --config configs/experiments_v41_verify_box4gpu0.yaml run --task level1:1
+
+v4:
+  conditional_scan:
+    # THE VARIABLE UNDER TEST. active = probes + C4 sources + E actions + fresh enqueue +
+    # the conditioned brief replacing the legacy wall texts.
+    mode: active
+    f_frac: 0.1          # ruling (3): the dose is NOT a tuning knob
+    pcap: 48
+    max_probe_attempts: 4
+    cadence_told: 10
+
+v3:
+  # Legacy consumers ALL OFF -- mutually exclusive with active mode (v4.1 s8), enforced
+  # at config load. The legacy JOURNALLING paths that cost nothing stay as defaults.
+  wall_attribution:
+    enabled: false
+    in_prompt: false
+  soft_wall:
+    enabled: false
+    in_prompt: false
+  slope_guide:
+    enabled: false
+  ordered_categoricals:
+    enabled: false
+  diagnosis:
+    mode: vector
+    expectation_ledger: false
+
+run:
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v4/verify
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench
+
+opencode:
+  server_url: null
+  launch_cwd: /root/autodl-tmp/opop-workspace/opop-glm
+  sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+    XDG_DATA_HOME: /root/autodl-tmp/xdg-v4verify
+
+wsl:
+  venv: /root/autodl-tmp/kernel-opt-venv
+  kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-v4verify
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  # SHRUNK for a fast full-pipeline pass: the aim is to execute every loop (generator ->
+  # parameterize -> tune+conditional-scan -> analyst -> rewriter) on the v4 checkout with
+  # the real agent stack, not to produce a result. B=20 (Q=2) is enough for the scanner to
+  # admit and to exercise the fresh-intent wiring; 1 rewrite round reaches loop C.
+  trials_per_space: 20
+  rewrite_rounds_per_family: 1
+  no_improve_rounds: 1
+  min_improvement_pct: 50.0
+  max_families_total: 2
+  max_families_active: 2
+  max_families_total_hard: 2
+  max_seed_candidates: 2
+  repair_attempts: 2
+  space_expansions_per_candidate: 0
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 1
+
+evaluation:
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+device:
+  name: NVIDIA GeForce RTX 4090 (sm_89)
+  vram_gb: 23
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024
