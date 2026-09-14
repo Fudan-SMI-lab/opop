@@ -65,7 +65,7 @@ def main() -> int:
     run_id = f"v41-smoke-{int(time.time())}"
     store = RunStore.create(Path(cfg.run.runs_dir), run_id, {"purpose": "v41 smoke"})
     _, evaluator, _, _ = build_gpu_stack(cfg, store)
-    check("wiring/task setup", True, f"{task.task_id} -> {store.run_dir}")
+    check("wiring/task setup", True, f"{task.name} -> {store.run_dir}")
 
     candidate_src = '''import torch
 import triton
