@@ -892,3 +892,35 @@ never emits, **each the SOLE key for its branch** — so those branches have nev
 mid-experiment. Fixing it needs the emitting side read first — the nearest-name suggestion is a
 string-distance guess, and picking the wrong one would swap a silent zero for a plausible wrong
 number, which is worse. Same shape as the reader bugs the checker was written for.
+
+## §4.7 `test_g10_backend_ceiling.py` FAILS (not skips) on a host without torch
+
+`PYTHONIOENCODING=utf-8 uv run --offline --extra test --quiet python -m pytest -q` on the Windows
+host, 2026-09-14: **1 failed, 1188 passed, 11 skipped**. The failure is
+
+```
+tests/test_g10_backend_ceiling.py::test_triton_ceiling_measurement_is_gated_on_correctness
+  src/kernel_optimizer/gpu/tritonmm.py:36: ModuleNotFoundError: No module named 'torch'
+```
+
+**Pre-existing, not caused by the current work**: `git log` dates both files to 2026-09-10 (a2f32e6)
+and `git diff --stat f64dd83..HEAD` shows neither is touched by any commit in this batch.
+
+**Why it is worth fixing anyway.** The host is *deliberately* torch-less — all GPU work runs in a
+worker on the box — so "no torch here" is the normal state, not a broken environment. A permanent
+red line trains the reader to ignore the suite's verdict, and then a real regression in the other
+1188 tests lands in a run that was already failing. The recorded rule is that a skip is not a
+verdict; the inverse also holds — **a failure that is really "not applicable here" is not a verdict
+either**, and it is the more corrosive of the two because it never gets quieter.
+
+The fix is a `pytest.importorskip("torch")` (or a module-level skip marker) so the test SKIPS on a
+torch-less host and still RUNS on the box. Two things to check before doing it, because the wrong
+version of this fix is worse than the bug: (1) the box's orchestrator venv does have torch, so the
+skip must be conditional on the import, never on the platform — a `skipif(sys.platform ==
+"win32")` would silently stop covering it anywhere it matters; (2) the module imports torch at
+`tritonmm.py:36`, i.e. at import time of the *source* module, so the guard belongs where the test
+imports it, and the count of skips (currently 11) should rise by exactly 1 — if it rises by more,
+the marker is too broad and has switched off real coverage.
+
+Recorded rather than fixed mid-experiment: it is a test-harness change touching a module the running
+pair imports on the box, and the step-4 pair is live.
