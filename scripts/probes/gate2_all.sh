@@ -32,3 +32,13 @@ for run in "$@"; do
   echo "--- [4/4] axis uptake (tier 4: the only tier that supports 'slope steered it') ---"
   "$PY" "$PROBE/v41_axis_uptake.py" "$run"
 done
+
+# The A/A pair is read as a PAIR, not per arm: its whole output is a difference. Pass both
+# arms as OPOP_N1_A / OPOP_N1_B to get the paired noise floor that prices P3.
+if [ -n "${OPOP_N1_A:-}" ] && [ -n "${OPOP_N1_B:-}" ]; then
+  echo
+  echo "################################################################"
+  echo "# N1 paired noise floor (the P3 denominator)"
+  echo "################################################################"
+  "$PY" "$PROBE/v41_n1_noise_floor.py" "$OPOP_N1_A" "$OPOP_N1_B"
+fi
