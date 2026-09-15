@@ -166,31 +166,56 @@ by signature dedup"(启动前的种子校验硬门)。**同一对内部两臂 co
 
 ## 2. 交付与访问
 
-**尚未执行,须先经用户批准。** 请求 §5 的两条路径都会把数据送出本机:
+**已按请求 §5 的首选路径(最小必要数据压缩包)完成打包,两个包已落地本地。**
+选择压缩包而非只读 SSH 的理由:两台机器上**窗口 2 实验正在运行**(见第 6 部分),
+对外开放 SSH 会给在跑实验带来风险,而压缩包不需要任何机器侧访问授权。
 
-- **压缩包上传**:需要一个外部可下载的位置。上传即发布,可能被缓存或索引。
-- **只读 SSH**:需要向第三方授予对生产机器的访问。两台机器上都还有**正在运行的
-  窗口 2 实验**(box4 m1-a/m1-b、box1 m2b-a/m2b-b,见第 6 部分),开放访问对在跑实验
-  有风险。
+**按机器分两个包**(两台机器不可并表,见 §1.2 的 commit / CPU 差异,分包让这个边界
+在文件层就成立):
 
-**我已按请求 §5 的要求准备好交付内容,但不会自行外发。** 待批准后可执行的方案:
+| 包 | 字节 | SHA256 | 内含 run | 清单条目 |
+|---|---|---|---|---|
+| `window1-verification-box4.tar.gz` | **1248201** | `7b4d7b8f7a55099543d773653dfeb6456bc62f408105676b8662b17b8f920787` | n1-a, n1-b | 1671 |
+| `window1-verification-box1.tar.gz` | **1532135** | `03f728333b64e3ccc80cd81f687e1ab110e0ccd83609588a32d36763d320f669` | pilot-p1, pilot-p2 | 2496 |
+
+包内结构(两包同构):
 
 ```
-window1-offline-verification.tar.gz
-├── MANIFEST.tsv                     # 每文件: 原路径 → 包内路径, 字节, SHA256
-├── runs/{n1-a,n1-b,pilot-p1,pilot-p2}/
-│   ├── events.jsonl                 # 原始未修改
-│   ├── manifest.json                # 实际生效的 resolved config
-│   ├── state.json
-│   ├── report/                      # 已有报告, 未重生成
-│   └── candidates/*/trials/*.py     # materialized source, 按 trial_id 命名(见 §4)
-├── stdout/                          # 上表 7 个已有 stdout/审计文件
-└── readers/                         # 第 3 部分的实际执行版本 + 哈希
+./MANIFEST.tsv                          # archive_path <TAB> bytes <TAB> sha256, 逐文件
+./runs/<arm>/events.jsonl               # 原始未修改, 哈希见 §1.3
+./runs/<arm>/manifest.json              # 实际生效的 resolved config
+./runs/<arm>/state.json
+./runs/<arm>/report/                    # 已有报告(report.md / best_kernel.py / trials.csv), 未重生成
+./runs/<arm>/candidates/<cid>/source.py         # 参数化后的源(注意: 与 journal sha 常不符, 见 §4)
+./runs/<arm>/candidates/<cid>/witness_*.py
+./runs/<arm>/candidates/<cid>/trials/<trial_id>.py   # materialized source, 100% 覆盖
+./runs/<arm>/sandboxes/generator-*/candidates/*.py   # ★ 注册种子源的真实位置
+./runs/<arm>/sandboxes/rewriter-*/rewrites/*.py      # ★ 注册改写源的真实位置
+./runs/<arm>/uw_probes/                 # 仅 pilot 对有
+./readers/                              # 第 3 部分的实际执行版本(原位副本, 未重跑)
+./stdout/                               # §1.3 的已有 stdout / 启动前审计 / 卡分离证据
 ```
 
-预估未压缩 ~110 MB;若省略 `sandboxes/` 与 `jobs/`(核验 P2′ 与 AA 不需要)约 ~60 MB。
+★ 两行是**按第 4 部分的发现刻意加入的**:`candidates/<cid>/source.py` 在 12 个候选里
+只有 5 个匹配 journal 的 `source_sha`,注册源实际在 generator/rewriter 沙箱里。
+不带这两个目录,核验方无法按 sha 定位注册源。
+
+**已排除**(核验 P2′ 与 AA 不需要,且体积主要在这里):`sandboxes/` 的 agent 会话记录、
+`jobs/` 的 worker 作业 JSON、`artifacts/`(空)。如需要可另行补包。
+
+**传输完整性已双向核验**:
+- 包内 `events.jsonl` 逐个解压重算哈希,与 §1.3 表中的源文件哈希**逐位相同**
+  (四个 run 全部);
+- 包内 `readers/v41_p2prime.py` 哈希 = `4cf2124b…` = commit `63d097d` 的 blob,
+  证明交付的是**当时执行版**而非修复版;
+- 两个包下载到本地后重算 SHA256,与机器侧生成时的值一致。
+
+**打包过程未干扰在跑实验**:全程 `nice -n 19 ionice -c3`,对 run 目录只读,
+**未启动任何 GPU 作业,未 import torch**。两台机器磁盘余量充足
+(box4 150G / box1 218G 可用)。
 
 **回复中不含任何密码、私钥或认证秘密**,符合请求 §5 的要求。
+包的具体传递方式(由用户决定)不在本文范围。
 
 ---
 
@@ -470,9 +495,37 @@ agent 直接交付进工作区的代码**。已核实:
 
 ---
 
-## 7. 待用户批准的两项
+## 7. 两台 Linux 服务器正在运行实验 —— 对核验方的硬约束
 
-1. **§5 的交付**:压缩包上传(需外部可下载位置)或开放只读 SSH(需向第三方授予生产机器
-   访问,且两台机器上有正在运行的实验)。**未执行。**
-2. **是否把第 0 节的 N1 更正推给外部 agent** 作为上一轮 prompt 的勘误 —— 它作废的是
-   我上一轮刚要求对方采用的措辞。
+**box4 与 box1 目前都在跑窗口 2 的实验对,预计运行至 2026-09-16 11:30 前后:**
+
+| 机器 | 在跑 run | pid | 卡 |
+|---|---|---|---|
+| box4 | `m1-a`(off 臂) | 566844 | GPU1 |
+| box4 | `m1-b`(active 臂) | 566848 | GPU0 |
+| box1 | `m2b-a`(off 臂) | 415002 | GPU0 |
+| box1 | `m2b-b`(active 臂) | 415006 | GPU1 |
+
+**实验期间不得进行任何涉及 GPU 的测试或验证。** 具体含:
+
+1. **不要提出需要跑 GPU 才能回答的核验项。** 若某个结论缺 GPU 证据(例如"实际执行
+   precision 未知"、"同代码 A/A 只有 3 例"),**正确处理是保持"未知 / n 不足"**,
+   不是安排一次测量。任何 GPU 测量都要等窗口 2 跑完后另行排期。
+2. **不要建议修改生产 `source` / `config` / `prompts` / `scorer`**,也不要建议重启。
+   窗口 2 的自变量之一就是共享 prompts,改动会作废在跑的对照。
+3. **本次交付的全部材料都是离线可核验的**:包内是 `events.jsonl` + resolved config +
+   materialized source + 当时执行版 reader,**用 CPU 与纯 Python 即可完成全部核验**,
+   不需要 GPU、不需要 torch、不需要访问这两台机器。
+4. 若核验需要额外文件(例如 `sandboxes/` 的 agent 会话或 `jobs/` 的 worker JSON),
+   **提出清单即可**,补包同样是只读拷贝,不涉及 GPU。
+
+打包本身已按此约束执行:`nice -n 19 ionice -c3`、对 run 目录只读、未 import torch、
+未起 CUDA 上下文。
+
+---
+
+## 8. 待用户决定的一项
+
+**第 0 节的 N1 更正推送给外部 agent** —— 已决定推送,随
+`docs/prompt-window1-data-delivery-and-n1-correction.md` 一同提交。
+它作废的是我上一轮 prompt 里刚要求对方采用的措辞,必须显式说明,不能默默替换。
