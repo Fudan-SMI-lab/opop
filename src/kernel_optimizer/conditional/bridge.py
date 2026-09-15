@@ -226,11 +226,21 @@ class ConditionalScanBridge:
             for point in block.points:
                 reason = tuner.enqueue_fresh(ParamSet(values=dict(point.values)))
                 key = ParamSet(values=dict(point.values)).key()
+                # The VALUE this point puts on the scanned axis, and the full config key.
+                # Preregistered endpoint "did the enqueued point win its space" is answerable
+                # only from the value: `ScanPoint.payload()` carries role/axis/order/
+                # token_id/direction and no values, so without this the endpoint cannot be
+                # read from the journal at all and a reader has to re-derive the geometry
+                # from source. `repr` because a value can be bool/int/str and JSON collapses
+                # True/1; `config_key` so a trial can be matched exactly rather than by axis.
+                row = {**point.payload(),
+                       "axis_value": repr(dict(point.values).get(block.axis)),
+                       "config_key": key}
                 if reason is None:
                     rt.pending_points.setdefault(key, []).append((block, point))
-                    accepted.append(point.payload())
+                    accepted.append(row)
                 else:
-                    refused.append({**point.payload(), "refused": reason})
+                    refused.append({**row, "refused": reason})
                     block.failed = True
                     block.told += 1              # a refused slot is a consumed opportunity
             self.store.append("SCAN_BLOCK_ADMITTED", {

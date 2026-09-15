@@ -45,6 +45,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import ast
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -101,20 +102,53 @@ def enqueued_points(events: list[dict]) -> list[dict]:
     """
     out: list[dict] = []
     for e in events:
-        if e.get("type") != "SLOPE_GUIDE_STEP":
-            continue
         payload = e.get("payload") or {}
         space_id = str(payload.get("space_id") or "")
-        for row in payload.get("enqueued") or []:
-            if not isinstance(row, dict):
-                continue
-            out.append({
-                "space_id": str(row.get("space_id") or space_id),
-                "knob": str(row.get("knob") or ""),
-                "knob_value": row.get("knob_value"),
-                "source": str(row.get("source") or "?"),
-                "tail_gain_pct": row.get("tail_gain_pct"),
-            })
+        if e.get("type") == "SLOPE_GUIDE_STEP":
+            for row in payload.get("enqueued") or []:
+                if not isinstance(row, dict):
+                    continue
+                out.append({
+                    "space_id": str(row.get("space_id") or space_id),
+                    "knob": str(row.get("knob") or ""),
+                    "knob_value": row.get("knob_value"),
+                    "source": str(row.get("source") or "?"),
+                    "tail_gain_pct": row.get("tail_gain_pct"),
+                })
+        # THE v4.1 PATH. In active mode there is no SLOPE_GUIDE_STEP at all -- the v4
+        # scanner replaces it -- so reading only the v3 event reports "0 points enqueued"
+        # for a run that enqueued plenty, and the preregistered endpoint reads as absent
+        # rather than as measured. Only E-kind blocks are enqueued VALUES in the sense this
+        # probe tests: a C4 block re-measures two existing endpoints under frozen partners
+        # (that is the source contrast, not a proposal), while E1/E2/E4 put a NEW value on
+        # the axis, which is the thing whose winning-or-not is the endpoint.
+        elif e.get("type") == "SCAN_BLOCK_ADMITTED" and payload.get("kind") in (
+                "E1", "E2", "E4"):
+            axis = str(payload.get("axis") or "")
+            for row in payload.get("enqueued") or []:
+                if not isinstance(row, dict):
+                    continue
+                raw = row.get("axis_value")
+                if raw is None:
+                    # Runs journalled before axis_value was added carry role/axis/direction
+                    # only. Say so per point instead of scoring it: a missing value is not a
+                    # loss, and silently dropping it would understate the enqueue count.
+                    out.append({"space_id": space_id, "knob": axis, "knob_value": None,
+                                "source": "v4.1:%s" % payload.get("kind"),
+                                "tail_gain_pct": None,
+                                "unreadable": "axis_value not journalled in this run"})
+                    continue
+                try:
+                    value = ast.literal_eval(raw)      # written as repr(), so eval it back
+                except (ValueError, SyntaxError):
+                    value = raw
+                out.append({
+                    "space_id": space_id,
+                    "knob": str(row.get("axis") or axis),
+                    "knob_value": value,
+                    "source": "v4.1:%s/%s" % (payload.get("kind"), row.get("direction")),
+                    "tail_gain_pct": None,             # v4.1 carries an interval, not a scalar
+                })
     return out
 
 
@@ -155,7 +189,14 @@ def judge(point: dict, trials: list[dict]) -> dict:
             other.append(ms)
     best_at = min(at) if at else None
     best_other = min(other) if other else None
-    if best_at is None:
+    if point.get("unreadable"):
+        # The value is not in the journal, so no trial can be matched to it. That is a
+        # READABILITY gap in the emitter, not a measurement outcome -- reporting it as
+        # `never_measured` would say the mechanism proposed a value nothing ever ran, which
+        # is a claim about the mechanism rather than about the log. Measured live: four v4.1
+        # E admissions, all readable-as-never_measured under the old wording.
+        verdict = "value_not_journalled"
+    elif best_at is None:
         verdict = "never_measured"
     elif best_other is None:
         verdict = "no_comparison"       # the only value of this knob ever drawn
