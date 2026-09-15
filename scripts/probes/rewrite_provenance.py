@@ -59,6 +59,7 @@ def main() -> int:
         # Which families ever had an ATTRIBUTED wall? That is the only thing that can carry wall text.
         walled_families: dict[str, list[str]] = {}
         fam_of_cand: dict[str, str] = {}
+        parents_of_cand: dict[str, list[str]] = {}
         for e in ev:
             if e.get("type") != "CANDIDATE_REGISTERED":
                 continue
@@ -66,6 +67,15 @@ def main() -> int:
             c = p.get("candidate") or p
             if c.get("candidate_id"):
                 fam_of_cand[str(c["candidate_id"])] = str(c.get("family_id") or "?")
+                # THE ONLY PLACE LINEAGE LIVES. `REWRITE_PRODUCED` carries candidate_id,
+                # family_id, hypothesis_id, change_summary and expectations -- no parents.
+                # Reading parents off the rewrite event yields [] and silently degrades
+                # every verdict to family-level matching, which is exactly what this probe
+                # must not do: a brief is delivered per (candidate, space), so "a sibling in
+                # the family was briefed" is a much weaker claim than "this rewrite's parent
+                # was", and the two must not be reported as the same thing.
+                parents_of_cand[str(c["candidate_id"])] = [
+                    str(x) for x in (c.get("parent_ids") or [])]
         for e in ev:
             if e.get("type") != "RESOURCE_WALL_ATTRIBUTED":
                 continue
@@ -97,6 +107,28 @@ def main() -> int:
             p = e.get("payload") or {}
             cid = str(p.get("candidate_id"))
             briefed_cands.setdefault(cid, []).append(int(p.get("n_chars") or 0))
+
+        # WHAT THE BRIEF ACTUALLY CONTAINED, per candidate. A brief can carry a real
+        # conditioned hard wall and still say "slope UNRESOLVED at this noise level" -- the
+        # v4.1 brief is written to disclose that. Counting such a delivery as evidence for
+        # "the tuning SLOPE steered the rewrite" would claim the half of C2 the brief itself
+        # declines to support, so the two halves are reported separately: a wall was
+        # delivered, and/or a slope that passed its gate was.
+        #
+        # Read from SCAN_BLOCK_DONE (the mint decisions) rather than by grepping the brief
+        # text: the direction is a field, and matching prose would break the moment the
+        # wording changes.
+        minted_axes: dict[str, list[str]] = {}
+        unresolved_axes: dict[str, list[str]] = {}
+        for e in ev:
+            if e.get("type") != "SCAN_BLOCK_DONE" or (e.get("payload") or {}).get("kind") != "C4":
+                continue
+            p = e["payload"]
+            cid, axis = str(p.get("candidate_id")), str(p.get("axis"))
+            if p.get("direction"):
+                minted_axes.setdefault(cid, []).append("%s/%s" % (axis, p["direction"]))
+            elif p.get("full"):
+                unresolved_axes.setdefault(cid, []).append(axis)
         briefed_families: dict[str, list[str]] = {}
         for cid, sizes in briefed_cands.items():
             fid = fam_of_cand.get(cid, "?")
@@ -160,23 +192,35 @@ def main() -> int:
             # steered" about a rewrite whose prompt DID carry a conditioned brief -- the most
             # damaging direction this probe can be wrong in, because that sentence is exactly
             # the recorded finding it would be contradicting.
-            parent_cids = p.get("parent_ids") or ([p["parent_id"]] if p.get("parent_id") else [])
-            briefed_parent = [c for c in map(str, parent_cids) if c in briefed_cands]
+            parent_cids = parents_of_cand.get(str(p.get("candidate_id")), [])
+            briefed_parent = [c for c in parent_cids if c in briefed_cands]
             if fid in walled_families:
                 print("      [v3] WALL TEXT WAS AVAILABLE for this family (walls: %s) -- check the "
                       "prompt artefact to confirm it was delivered" % ", ".join(walled_families[fid]))
             elif briefed_parent:
+                minted = [m for c in briefed_parent for m in minted_axes.get(c, [])]
+                unres = [u for c in briefed_parent for u in unresolved_axes.get(c, [])]
                 print("      [v4.1] A CONDITIONED BRIEF was delivered for this rewrite's parent (%s)"
                       % ", ".join(c[:13] for c in briefed_parent))
-                print("      => this rewrite COULD have been brief-steered. Read the brief's own text"
-                      " and the")
-                print("         change_summary together: a rewrite that repeats the brief's axis and"
-                      " direction is")
-                print("         evidence; resource language alone is not (the analyst produces the"
-                      " same words).")
+                if minted:
+                    print("      parent's GATE-PASSING slopes: %s" % ", ".join(minted))
+                    print("      => the STRONGEST attributable case: a wall AND a directed slope were")
+                    print("         available. Now check the change_summary names that axis and"
+                          " direction;")
+                    print("         resource language alone is not evidence (the analyst produces the"
+                          " same words).")
+                else:
+                    print("      parent's slopes: NONE PASSED THE GATE%s"
+                          % (" (unresolved on %s)" % ", ".join(sorted(set(unres))) if unres else ""))
+                    print("      => a conditioned WALL reached this rewrite, but NOT a usable slope:")
+                    print("         the brief itself says 'slope UNRESOLVED at this noise level'."
+                          " Report this as")
+                    print("         wall-informed, NOT as slope-steered -- claiming the latter asserts"
+                          " the half of")
+                    print("         C2 the brief declines to support.")
             elif fid in briefed_families:
                 print("      [v4.1] a brief reached this FAMILY but not this rewrite's own parent"
-                      " (%s)" % (", ".join(map(str, parent_cids)) or "parent not in payload"))
+                      " (parents: %s)" % (", ".join(parent_cids) or "NONE RECORDED"))
                 print("      => attribution is WEAKER than a parent-level match; say so rather than"
                       " claiming the mechanism fired.")
             else:
