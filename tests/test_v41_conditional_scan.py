@@ -367,3 +367,56 @@ class TestC4Protocol:
             tokens.append(sc.tell(block, p, lat[p.role] if ok else None, ok=ok))
         assert all(t is None for t in tokens)
         assert block.contrast.full is False
+
+    def test_journalled_block_names_the_endpoints_p2prime_needs(self):
+        """SCAN_BLOCK_DONE must name the axis endpoints and partners.
+
+        P2' -- the primary scientific endpoint -- compares the conditioned g_d against the
+        LEGACY marginal predictor recomputed at the same cutoff. That recomputation needs
+        to know WHICH two values the contrast used; without them on the event the endpoint
+        cannot be read from the journal at all, and reconstructing them from source is the
+        guessing the store exists to prevent. Measured on the live pilots before the field
+        existed: the reader had to fall back to matching a wall by (space_id, axis).
+
+        The positive control is the failure direction: a payload missing these keys is what
+        the pilots produced, so an assertion on their PRESENCE fails loudly if the journal
+        line is ever simplified back.
+        """
+        from kernel_optimizer.conditional.bridge import ConditionalScanBridge
+        from kernel_optimizer.conditional.probe import ConditionedWall
+
+        space = _space()
+        wall = ConditionedWall(kind="hard", axis="K0", partner_key="pk",
+                               partner_values={"K1": 16, "K2": 16, "K3": 16},
+                               point_map={}, f_value=16, n_value=32, refused_value=64)
+        sc = ConditionalScanner(space, "cand-test", "triton", budget_b=80,
+                               tokens=TokenStore())
+        block = sc.next_block([wall])
+        lat = {"F_d": 100.0, "N_d": 80.0, "F_v": 102.0, "N_v": 82.0}
+        for p in block.points:
+            sc.tell(block, p, lat[p.role], ok=True)
+
+        events: list[tuple[str, dict]] = []
+
+        class _Store:
+            def append(self, event_type, payload):
+                events.append((event_type, payload))
+
+        class _Cand:
+            candidate_id = "cand-test"
+
+        class _Crun:
+            candidate = _Cand()
+
+        bridge = object.__new__(ConditionalScanBridge)
+        bridge.store = _Store()
+        bridge._journal_block(_Crun(), block, None)
+
+        assert len(events) == 1 and events[0][0] == "SCAN_BLOCK_DONE"
+        p = events[0][1]
+        assert p["axis"] == "K0"
+        assert p["axis_f_value"] == repr(16)
+        assert p["axis_n_value"] == repr(32)
+        assert p["partner_values"] == {"K1": 16, "K2": 16, "K3": 16}
+        assert p["comparable_key"] == block.contrast.comparable_key
+        assert p["g_d"] is not None and p["y"] is not None

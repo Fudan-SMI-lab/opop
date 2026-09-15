@@ -282,6 +282,19 @@ class ConditionalScanBridge:
                 "contrast_id": contrast.contrast_id,
                 "full": contrast.full, "g_d": contrast.g_d, "y": contrast.y,
                 "f_lat": contrast.f_lat, "n_lat": contrast.n_lat,
+                # The two endpoint VALUES the geometry froze, and the partners they were
+                # held at. Required by P2' (the primary endpoint): to compare the
+                # conditioned g_d against the legacy marginal predictor, a reader has to
+                # recompute that marginal for THIS axis at THESE two values, using only the
+                # trials that existed at this block's own cutoff. Without the values on the
+                # event, the comparison is impossible from the journal and the primary
+                # endpoint would rest on re-deriving them from source — which is exactly
+                # the guessing the store exists to prevent. `repr` because a value can be
+                # bool/int/str and JSON collapses True/1.
+                "axis_f_value": repr(contrast.f_value),
+                "axis_n_value": repr(contrast.n_value),
+                "partner_values": contrast.partner_values,
+                "comparable_key": contrast.comparable_key,
             })
             if contrast.mint is not None:
                 m = contrast.mint
