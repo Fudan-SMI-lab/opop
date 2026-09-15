@@ -21,10 +21,39 @@ from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
 
-CAP = 12.0  # budgets.wall_clock_hours in configs/experiments_l3.yaml
+# The cap and the run set come from the COMMAND LINE. They were module constants
+# (`CAP = 12.0`, `Path("runs").glob("run-l3-*")`) pinned to one experiment's layout, so
+# pointed at any later campaign this printed "runs on disk: 0" and the reassuring
+# "No run has ever hit the wall clock" -- a clean, plausible, wrong verdict about runs it
+# never opened. Same shape as the hardcoded arm names that reported a healthy pair's own
+# workers as a foreign tenant.
+#
+#   python audit_wall_clock_overshoot.py [--cap H] <run_dir|glob_root> ...
+#
+# A directory containing events.jsonl is read as one run; any other directory is scanned
+# one level down for run dirs, so both a single run and a runs_dir work.
+argv = sys.argv[1:]
+CAP = 12.0
+if "--cap" in argv:
+    i = argv.index("--cap")
+    CAP = float(argv[i + 1])
+    del argv[i:i + 2]
+targets: list[Path] = []
+for a in argv:
+    p_ = Path(a.rstrip("/"))
+    if (p_ / "events.jsonl").exists():
+        targets.append(p_)
+    elif p_.is_dir():
+        targets.extend(sorted(q for q in p_.iterdir() if (q / "events.jsonl").exists()))
+if not targets:
+    print("no run directories given or found. Usage:")
+    print("  python audit_wall_clock_overshoot.py [--cap 12] <run_dir|runs_dir> ...")
+    print("Refusing to fall back to a hardcoded glob: the previous version silently")
+    print("reported 'no run has ever hit the wall clock' for campaigns it never opened.")
+    raise SystemExit(2)
 
 rows = []
-for run in sorted(Path("runs").glob("run-l3-*")):
+for run in targets:
     f = run / "events.jsonl"
     if not f.exists():
         continue
