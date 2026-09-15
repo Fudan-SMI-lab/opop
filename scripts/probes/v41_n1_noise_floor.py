@@ -109,7 +109,15 @@ def arm(run: Path) -> dict:
         "tuned": tuned, "sha_of": sha_of, "origin_of": origin_of,
         "best_cid": str(best.get("candidate_id")) if best else None,
         "best_ms": best.get("tuned_ms") or best.get("best_ms"),
-        "reeval_ms": best.get("final_reeval_ms"),
+        # `final_reeval_median_ms` in preference to `final_reeval_ms`: the latter is rounded
+        # to 2 decimals in the summary (2.89 against a median of 2.8743679), and 0.54% of
+        # rounding is the same order as the paired noise floor this probe exists to measure.
+        # Reading the rounded field would fold quantisation into the floor and inflate it.
+        "reeval_ms": best.get("final_reeval_median_ms") or best.get("final_reeval_ms"),
+        "reeval_rounded_only": (best.get("final_reeval_median_ms") is None
+                                and best.get("final_reeval_ms") is not None),
+        "same_precision": (best.get("honest_verdict") or {}).get("same_precision_speedup"),
+        "precision": best.get("precision"),
         "summary": summary,
     }
 
@@ -171,9 +179,14 @@ def main() -> int:
     # 3. The end-to-end difference, and whether it is even the same lineage.
     print("\n-- end-to-end (the P3 denominator) --")
     for x in (A, B):
-        print("  %-8s winner %s (origin %s)  tuned %s  re-eval %s"
+        print("  %-8s winner %s (origin %s, %s)  tuned %s  re-eval %s%s"
               % (x["arm"], x["best_cid"], x["origin_of"].get(x["best_cid"], "?"),
-                 x["best_ms"], x["reeval_ms"]))
+                 x["precision"], x["best_ms"], x["reeval_ms"],
+                 "  [ROUNDED to 2dp — 0.5% of quantisation, do not read a floor from this]"
+                 if x["reeval_rounded_only"] else ""))
+        if x["same_precision"]:
+            print("           same-precision speedup %s (the reportable number; "
+                  "speedup_vs_eager mixes precisions)" % x["same_precision"])
     if A["reeval_ms"] and B["reeval_ms"]:
         d = pct(float(A["reeval_ms"]), float(B["reeval_ms"]))
         print("  final_reeval_ms difference (B vs A): %+.2f%%" % d)
