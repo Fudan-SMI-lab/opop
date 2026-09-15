@@ -1,0 +1,129 @@
+# v4.1 M2b REPLICATION PAIR, arm A (off/control) -- BOX 1, GPU 0. Task level3:21.
+#
+# WHY THIS PAIR EXISTS (gate-2 verdict, experiment-plan-post-v4.1.md stage M2b).
+# Same-layer competition was 0 in BOTH pilots (0/72 and 0/68 E decisions), so M2a (the
+# ranking-policy pair) cannot be identified in this design -- and window 1 showed the
+# cause is NOT the dose: two runs each ended with 7 pending tokens while a Q slot was
+# still free. The binding constraint is the eligibility rule (a wall at the domain edge
+# leaves outward with no value beyond it; an unanswered probe point is never crossed; a
+# value the ordinary TPE already measured is not new), so raising f would relax only one
+# of three gates. M2b answers the question that IS identifiable: does the conditioned
+# measurement replicate on a SECOND venue?
+#
+# SEEDS ARE REUSED FROM pilot-p2, NOT REGENERATED (user ruling 2026-09-15). Reusing them
+# buys a second endpoint for free: pilot-p2 and this pair's ACTIVE arm then share box,
+# task and seed set, which prices an ACTIVE/ACTIVE noise floor. N1 gave the off/off floor
+# only, and the active arm carries probes and E enqueues that the off arm does not, so its
+# own floor is unmeasured -- and that floor is what M1's P3 reading needs.
+#
+# PREREGISTERED ENDPOINTS (frozen before launch; judged after RUN_FINISHED only):
+#   P2' (PRIMARY): does the conditioned predictor still beat the same-cutoff marginal on
+#       an out-of-sample holdout? pilot-p2 read 26x on this venue (n=11); l3:43 read 50x
+#       (n=12). A third independent reading is the replication.
+#   P1  dose separation: active arm E admissions > 0 AND off arm structurally 0.
+#   P3  end-to-end -- POWER-LIMITED against the 10.85% paired floor; non-separation does
+#       NOT disconfirm C2.
+#   Secondary: briefs delivered; the five attribution tiers (the fifth -- whether the
+#   rewrite MEASURABLY relieved the refusal -- is the tier whose arm difference is only
+#   testable in a same-box same-task pair, so it is a primary secondary here).
+#
+# GPU separation MUST be verified at runtime and journalled; arm names from config.
+#
+# Launch (box1, GPU 0; both arms simultaneously):
+#   cd /root/autodl-tmp/work/opop
+#   CUDA_VISIBLE_DEVICES=0 XDG_DATA_HOME=/root/autodl-tmp/xdg-v4m2ba #   PYTHONPATH=src /root/autodl-tmp/orch-venv/bin/python -m kernel_optimizer.cli #     --config configs/experiments_v41_m2b_a_box1gpu0.yaml run --task level3:21
+v4:
+  conditional_scan:
+    # THE CONTROL ARM: the whole v4.1 mechanism OFF -- the literal v3 path. Everything
+    # else in this file is byte-identical to the active arm (runs_dir/XDG/GPU aside).
+    mode: "off"
+    # DOSE, written explicitly so the pair is symmetric on paper even though this arm
+    # never consumes Q (mode=off => no scan blocks at all). An arm-parity check that
+    # diffed resolved configs would otherwise flag f_frac as an arm difference.
+    f_frac: 0.125
+
+v3:
+  # Legacy consumers ALL OFF -- mutually exclusive with active mode (v4.1 s8), enforced
+  # at config load. The legacy JOURNALLING paths that cost nothing stay as defaults.
+  wall_attribution:
+    enabled: false
+    in_prompt: false
+  soft_wall:
+    enabled: false
+    in_prompt: false
+  slope_guide:
+    enabled: false
+  ordered_categoricals:
+    enabled: false
+  diagnosis:
+    mode: vector
+    expectation_ledger: false
+
+run:
+  runs_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v4/m2b-a
+  # SEED PAIRING: both M1 arms read the same frozen candidate set, produced before the
+  # pair starts (see the header). An arm that generates its own seeds is NOT this design.
+  seed_candidates_dir: /root/autodl-tmp/opop-workspace/opop-glm/runs-v4/m2b-seeds
+  seed: 0
+
+kernelbench_root: /root/autodl-tmp/opop-workspace/KernelBench
+
+opencode:
+  server_url: null
+  launch_cwd: /root/autodl-tmp/opop-workspace/opop-glm
+  sandbox_config_path: /root/autodl-tmp/opop-workspace/opop-glm/.opencode/opencode.jsonc
+  server_env:
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072"
+    XDG_DATA_HOME: /root/autodl-tmp/xdg-v4m2ba
+
+wsl:
+  # BOX 1's WORKER VENV IS `orch-venv`, NOT `kernel-opt-venv` -- the two boxes name
+  # them the OPPOSITE way round. box1/orch-venv is torch 2.13.0+cu129 / triton 3.7.1,
+  # byte-identical toolchain to box4/kernel-opt-venv; box1/kernel-opt-venv is an OLDER
+  # torch 2.9.1 / triton 3.5.1. pilot-p2 ran on orch-venv, and this pair REUSES p2's
+  # seeds to price an active/active floor -- a different toolchain would void that.
+  venv: /root/autodl-tmp/orch-venv
+  kernelbench_src: /root/autodl-tmp/opop-workspace/KernelBench/src
+  triton_cache_dir: /root/autodl-tmp/.triton-cache-v4m2ba
+
+agents:
+  default_model: zhipuai/glm-5.3
+  generator: {model: null, max_retries: 2, n_candidates: 4}
+  rewriter: {model: null, max_retries: 2, n_candidates: 2}
+  novelty: {model: null, max_retries: 2, n_candidates: 2}
+
+budgets:
+  trials_per_space: 40
+  rewrite_rounds_per_family: 5
+  no_improve_rounds: 2
+  min_improvement_pct: 2.0
+  max_families_total: 6
+  max_families_active: 3
+  max_families_total_hard: 6
+  max_seed_candidates: 4
+  repair_attempts: 3
+  space_expansions_per_candidate: 1
+  space_expansion_idle_frac: 0.8
+  max_edge_failure_frac: 0.30
+  wall_clock_hours: 12
+
+evaluation:
+  correctness_mode: dual_witness_relaxed
+  relaxed_elem_tol: 0.01
+  relaxed_pass_frac: 0.99
+  cosine_min: 0.99985
+  fp64_relative_gate: true
+  fp64_rel_multiplier: 2.0
+  fp64_rel_multiplier_lowp: 3.0
+  correctness_trials: 5
+  perf_trials: 100
+  quick_correctness_trials: 3
+  quick_perf_trials: 20
+
+device:
+  name: NVIDIA GeForce RTX 4090 (sm_89)
+  vram_gb: 23
+  max_regs_per_thread: 255
+  max_shared_bytes_static: 49152
+  max_shared_bytes_optin: 101376
+  max_threads_per_block: 1024
