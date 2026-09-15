@@ -100,6 +100,22 @@ def enqueued_points(events: list[dict]) -> list[dict]:
     emitter is orchestrator.py's `store.append("SLOPE_GUIDE_STEP", ...)` and the row fields come from
     `slope_guide.Suggestion.payload()` -- knob, knob_value, source, tail_gain_pct.
     """
+    # Indexes for the pre-axis_value recovery path (see below). Built once: SCAN_POINT_DONE
+    # ties a (scan_id, role) to the trial that served it, and TRIAL_DONE holds that trial's
+    # params.
+    point_trial: dict[tuple, str] = {}
+    trial_params: dict[str, dict] = {}
+    for e in events:
+        p_ = e.get("payload") or {}
+        if e.get("type") == "SCAN_POINT_DONE" and p_.get("trial_id"):
+            point_trial[(str(p_.get("scan_id")), str(p_.get("role")))] = str(p_["trial_id"])
+        elif e.get("type") == "TRIAL_DONE":
+            tr = p_.get("trial") if isinstance(p_.get("trial"), dict) else p_
+            tid = tr.get("trial_id")
+            vals = (tr.get("params") or {}).get("values")
+            if tid and isinstance(vals, dict):
+                trial_params[str(tid)] = vals
+
     out: list[dict] = []
     for e in events:
         payload = e.get("payload") or {}
@@ -130,13 +146,32 @@ def enqueued_points(events: list[dict]) -> list[dict]:
                     continue
                 raw = row.get("axis_value")
                 if raw is None:
-                    # Runs journalled before axis_value was added carry role/axis/direction
-                    # only. Say so per point instead of scoring it: a missing value is not a
-                    # loss, and silently dropping it would understate the enqueue count.
+                    # RECOVERY for runs journalled before axis_value existed. SCAN_POINT_DONE
+                    # carries the scan_id AND the trial_id of the trial that served the point,
+                    # and TRIAL_DONE carries that trial's full params -- so the value is
+                    # recoverable from the log rather than lost. Keyed on (scan_id, role)
+                    # because a block enqueues several points and only the matching role's
+                    # trial holds this point's value.
+                    key = (str(row.get("scan_id") or payload.get("scan_id")),
+                           str(row.get("role")))
+                    tid = point_trial.get(key)
+                    vals = trial_params.get(tid) if tid else None
+                    if vals is not None and axis in vals:
+                        out.append({
+                            "space_id": space_id, "knob": axis,
+                            "knob_value": vals[axis],
+                            "source": "v4.1:%s/%s (value recovered via trial %s)"
+                                      % (payload.get("kind"), row.get("direction"),
+                                         str(tid)[:12]),
+                            "tail_gain_pct": None})
+                        continue
+                    # Only when recovery also fails: say the log cannot answer, rather than
+                    # scoring it as a point nothing ever ran.
                     out.append({"space_id": space_id, "knob": axis, "knob_value": None,
                                 "source": "v4.1:%s" % payload.get("kind"),
                                 "tail_gain_pct": None,
-                                "unreadable": "axis_value not journalled in this run"})
+                                "unreadable": "axis_value absent and no SCAN_POINT_DONE"
+                                              " trial to recover it from"})
                     continue
                 try:
                     value = ast.literal_eval(raw)      # written as repr(), so eval it back
