@@ -1,0 +1,79 @@
+#################### pilot-p1
+
+=== pilot-p1 ===
+completed trials: 612   C4 blocks: 12   full with prediction/holdout: 12
+completed-record coverage (unmarked is not verified fresh): {'raw_records': 612, 'marked_reused_records': 43, 'unmarked_records': 569, 'distinct_trial_ids': 612, 'records_without_trial_id': 0}
+own scan trials excluded from the marginal history: min 4 max 4 (they include this contrast's own validation pair and discovery pair under noleak)
+
+  selected definition: noleak (historical_comparison)
+  noleak: paid local discovery vs historical prefix; not matched information.
+  old/signfix/scoped: retracted diagnostics, not robustness arms.
+
+  contrast          axis            g_d        y      |err_c|   g_m        |err_m|   winner    pool
+  c4-8e8159d9      NUM_STAGES      -0.0658  -0.0650   0.0008   -         -         (thin_bucket_at_cutoff)
+  c4-9ff90349      BLOCK_N         -0.0119  -0.0089   0.0029      0.0711   0.0801  conditioned 40
+  c4-d09d2a3f      BK              -0.1620  -0.1652   0.0032   -         -         (thin_bucket_at_cutoff)
+  c4-fcb60a3e      BK              -0.1795  -0.1881   0.0086     -0.0491   0.1390  conditioned 37
+  c4-9489cb4d      BK               0.0924   0.0930   0.0007   -         -         (thin_bucket_at_cutoff)
+  c4-b14b97f2      BK               0.0872   0.0940   0.0069      0.2297   0.1357  conditioned 28
+  c4-4b20ea61      BK              -0.0442  -0.0318   0.0125      0.4883   0.5201  conditioned 6
+  c4-daa2c125      BLOCK_N         -0.0167  -0.0156   0.0011      0.1200   0.1356  conditioned 7
+  c4-aa93b3b0      COMPUTE_DTYPE   -0.7493  -0.7362   0.0131   -         -         (thin_bucket_at_cutoff)
+  c4-564746a9      COMPUTE_DTYPE   -0.7578  -0.7393   0.0185     -5.1773   4.4380  conditioned 45
+  c4-c55eadf4      BK              -0.2019  -0.2064   0.0045   -         -         (thin_bucket_at_cutoff)
+  c4-b93b09a0      BK              -0.2032  -0.2006   0.0026      0.3001   0.5007  conditioned 37
+
+  sign agreement (conditioned vs holdout): 12/12
+
+  -- every definition, so no single number hides which defect moved it --
+  defn         n  med|err_m|  med|err_c|  ratio    cond wins marginal sign
+  old         12  0.1963      0.0039      50.9x    11/12      5/12
+  signfix     12  0.1795      0.0039      46.5x    12/12      7/12
+  scoped      12  0.2392      0.0039      62.0x    10/12      6/12
+  noleak       7  0.1390      0.0069      20.3x    7/7       3/7 <== selected
+  discovery_cutoff   12  0.2010      0.0039      52.1x    12/12      8/12
+
+  marginal DECLINED under `noleak` (5/12), by reason:
+    thin_bucket_at_cutoff: 5
+  => report these as a MISSING DENOMINATOR, not as a conditioned win.
+  mint directions: {'inward': 7, 'unresolved': 3, 'outward': 2}
+
+#################### pilot-p2
+
+=== pilot-p2 ===
+completed trials: 571   C4 blocks: 11   full with prediction/holdout: 11
+completed-record coverage (unmarked is not verified fresh): {'raw_records': 571, 'marked_reused_records': 41, 'unmarked_records': 530, 'distinct_trial_ids': 571, 'records_without_trial_id': 0}
+own scan trials excluded from the marginal history: min 4 max 4 (they include this contrast's own validation pair and discovery pair under noleak)
+
+  selected definition: noleak (historical_comparison)
+  noleak: paid local discovery vs historical prefix; not matched information.
+  old/signfix/scoped: retracted diagnostics, not robustness arms.
+
+  contrast          axis            g_d        y      |err_c|   g_m        |err_m|   winner    pool
+  c4-4b32cdf2      BLOCK_K         -0.0010  -0.0027   0.0017      0.0195   0.0221  conditioned 8
+  c4-e2663b2b      BLOCK_K         -0.0018  -0.0005   0.0013     -0.1533   0.1529  conditioned 43
+  c4-8d415254      BLOCK_K          0.0590   0.0585   0.0005      0.2064   0.1479  conditioned 7
+  c4-8d5f856e      BLOCK_K          0.0600   0.0586   0.0014      0.3656   0.3070  conditioned 43
+  c4-0dee8c97      BLOCK_K         -0.0046   0.0069   0.0115   -         -         (thin_bucket_at_cutoff)
+  c4-0b8d67d4      BLOCK_K         -0.0885  -0.0890   0.0005      0.1329   0.2219  conditioned 41
+  c4-17919317      BLOCK_K         -0.0768  -0.0804   0.0036     -0.2570   0.1766  conditioned 9
+  c4-0c522cdd      BLOCK_N_PROJ     0.0624   0.0657   0.0033      0.0837   0.0181  conditioned 40
+  c4-b415cd8a      BLOCK_K          0.0690   0.1221   0.0530   -         -         (thin_bucket_at_cutoff)
+  c4-259b6287      BLOCK_K          0.0739   0.0708   0.0031     -0.1141   0.1848  conditioned 39
+  c4-6b013c15      GEMM_STAGES     -0.0507  -0.0733   0.0226     -0.5842   0.5109  conditioned 41
+
+  sign agreement (conditioned vs holdout): 10/11
+
+  -- every definition, so no single number hides which defect moved it --
+  defn         n  med|err_m|  med|err_c|  ratio    cond wins marginal sign
+  old         11  0.0802      0.0031      25.8x    10/11      7/11
+  signfix     11  0.0944      0.0031      30.3x    11/11      4/11
+  scoped      11  0.2471      0.0031      79.3x    11/11      6/11
+  noleak       9  0.1766      0.0017      104.8x   9/9       6/9 <== selected
+  discovery_cutoff   11  0.2335      0.0031      75.0x    11/11      6/11
+
+  marginal DECLINED under `noleak` (2/11), by reason:
+    thin_bucket_at_cutoff: 2
+  => report these as a MISSING DENOMINATOR, not as a conditioned win.
+  mint directions: {'unresolved': 3, 'outward': 5, 'inward': 3}
+

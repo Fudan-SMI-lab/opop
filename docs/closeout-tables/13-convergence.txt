@@ -1,0 +1,11 @@
+mine   (drop reused-minima pairs, min-of-medians): n=9  ['0.01', '0.11', '0.75', '0.83', '1.03', '1.06', '1.98', '2.33', '2.50']
+theirs (exclude reused observations, med-of-meds): n=9  ['0.01', '0.11', '0.75', '0.83', '1.03', '1.06', '1.98', '2.33', '2.50']
+
+  median  mine 1.0300   theirs 1.0311
+  max     mine 2.5000   theirs 2.5005
+  p90     mine 2.3300 (floor-index)   theirs 2.5005 (nearest-rank ceil)
+  p90 recomputed: floor-index=2.3300  nearest-rank(1-based ceil)=2.5005
+
+=> TWO independently written reuse exclusions land on the SAME n and the same
+   median/max. The p90 differs only by the quantile rule (floor-index vs nearest-rank).
+   This is convergent evidence that the 13-pair TAIL is carried by reused records.
