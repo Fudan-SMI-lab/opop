@@ -77,7 +77,36 @@ def main() -> int:
                 if (w.get("monotone") and (w.get("tail_gain_pct") or 0) > 0
                         and w.get("verdict") == "attributed"):
                     walled_families.setdefault(fid, []).append(str(w.get("param")))
-        print("  families with an ATTRIBUTED wall: %s" % (walled_families or "NONE"))
+        print("  [v3 path] families with an ATTRIBUTED wall: %s" % (walled_families or "NONE"))
+
+        # THE v4.1 PATH, which the v3 read above cannot see. v4.1 replaced the legacy wall texts with
+        # a CONDITIONED BRIEF, journalled as CONDITIONED_BRIEF_DELIVERED per (candidate, space) --
+        # there is no RESOURCE_WALL_ATTRIBUTED at all when v4 runs in active mode. Reading only the v3
+        # line against a v4.1 run therefore prints "NONE" and would be taken as "no rewrite could have
+        # been wall-steered", which is the exact false negative this project keeps paying for: the
+        # argument's scope must match the code's scope, and a probe that knows one generation of a
+        # mechanism silently reports the other generation's success as a failure.
+        #
+        # A brief is delivered per SPACE, so it is indexed by candidate: the rewriter for candidate X
+        # sees X's brief. `n_chars` is kept because a delivered-but-empty brief would be a different
+        # finding from no delivery.
+        briefed_cands: dict[str, list[int]] = {}
+        for e in ev:
+            if e.get("type") != "CONDITIONED_BRIEF_DELIVERED":
+                continue
+            p = e.get("payload") or {}
+            cid = str(p.get("candidate_id"))
+            briefed_cands.setdefault(cid, []).append(int(p.get("n_chars") or 0))
+        briefed_families: dict[str, list[str]] = {}
+        for cid, sizes in briefed_cands.items():
+            fid = fam_of_cand.get(cid, "?")
+            briefed_families.setdefault(fid, []).append(
+                "%s(%s)" % (cid[:13], ",".join(str(s) for s in sizes)))
+        print("  [v4.1 path] families with a CONDITIONED BRIEF: %s"
+              % (briefed_families or "NONE"))
+        if briefed_cands and not walled_families:
+            print("              (v3 line reads NONE by construction in active mode -- the legacy"
+                  " wall texts are REPLACED by the brief, not run alongside it)")
 
         # Index the analyst's hypotheses by (candidate, id) so a rewrite's `hypothesis_id` can be
         # resolved to the reasoning it followed. This is what makes provenance a MATCH rather than an
@@ -126,15 +155,36 @@ def main() -> int:
             elif hid:
                 print("      hypothesis_id %s matches NO analyst hypothesis -- the rewriter invented it"
                       % hid)
+            # Two generations of the mechanism, and the verdict must name which one applied.
+            # Reading only the v3 condition against a v4.1 active run says "CANNOT have been
+            # steered" about a rewrite whose prompt DID carry a conditioned brief -- the most
+            # damaging direction this probe can be wrong in, because that sentence is exactly
+            # the recorded finding it would be contradicting.
+            parent_cids = p.get("parent_ids") or ([p["parent_id"]] if p.get("parent_id") else [])
+            briefed_parent = [c for c in map(str, parent_cids) if c in briefed_cands]
             if fid in walled_families:
-                print("      WALL TEXT WAS AVAILABLE for this family (walls: %s) -- check the prompt "
-                      "artefact to confirm it was delivered" % ", ".join(walled_families[fid]))
+                print("      [v3] WALL TEXT WAS AVAILABLE for this family (walls: %s) -- check the "
+                      "prompt artefact to confirm it was delivered" % ", ".join(walled_families[fid]))
+            elif briefed_parent:
+                print("      [v4.1] A CONDITIONED BRIEF was delivered for this rewrite's parent (%s)"
+                      % ", ".join(c[:13] for c in briefed_parent))
+                print("      => this rewrite COULD have been brief-steered. Read the brief's own text"
+                      " and the")
+                print("         change_summary together: a rewrite that repeats the brief's axis and"
+                      " direction is")
+                print("         evidence; resource language alone is not (the analyst produces the"
+                      " same words).")
+            elif fid in briefed_families:
+                print("      [v4.1] a brief reached this FAMILY but not this rewrite's own parent"
+                      " (%s)" % (", ".join(map(str, parent_cids)) or "parent not in payload"))
+                print("      => attribution is WEAKER than a parent-level match; say so rather than"
+                      " claiming the mechanism fired.")
             else:
-                print("      NO ATTRIBUTED WALL for family %s => this rewrite CANNOT have been steered"
+                print("      NO WALL TEXT AND NO CONDITIONED BRIEF for family %s => this rewrite"
                       % fid)
-                print("      by wall text. Any resource reasoning in it comes from the analyst's")
-                print("      BottleneckReport or the tuning stats, NOT from 2e. Do not report it as")
-                print("      the C2 mechanism firing.")
+                print("      CANNOT have been steered by either mechanism. Any resource reasoning in")
+                print("      it comes from the analyst's BottleneckReport or the tuning stats. Do not")
+                print("      report it as the C2 mechanism firing.")
 
         # What the analyst said, since that is the alternative source of the same-sounding ideas.
         # Field names taken from a dumped record, not guessed: a hypothesis carries `id`, `change`,
