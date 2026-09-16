@@ -117,7 +117,7 @@ def run_arm(shared: Shared, options: RunOptions, services: Services) -> ArmResul
             case "direct":
                 with TaskEvaluator(Path(c2_local_adapter.__file__), "evaluate") as evaluator:
                     budgets = services.cfg.budgets.model_copy(update={"trials_per_space": 40})
-                    search = TaskSearch(evaluator, inputs.objective, budgets)
+                    search = TaskSearch(evaluator, inputs.objective, budgets, device=services.cfg.device)
                     services.store.append("SPACE_PUBLISHED", {"space": child.space.model_dump(mode="json"), "budget": 40})
                     _ = search.evaluate_candidate(child.path, child.space, {"adapter": adapter}, seed=services.cfg.run.seed)
                     records = list(search.trials)
@@ -181,7 +181,7 @@ def acquire(shared: Shared, cfg_store: tuple[AppConfig, RunStore], probe_budget:
     adapter = GpuAdapter(shared, cfg, store)
     adapter.phase = "response_acquisition"
     with TaskEvaluator(Path(c2_local_adapter.__file__), "evaluate") as evaluator:
-        search = TaskSearch(evaluator, inputs.objective, cfg.budgets)
+        search = TaskSearch(evaluator, inputs.objective, cfg.budgets, device=cfg.device)
         cid = shared.parent.candidate_id
         search.paths[cid], search.spaces[cid] = directory / "parent.py", shared.space
         search.resource_metrics, search.probe_budget = shared.resource_metrics, probe_budget
