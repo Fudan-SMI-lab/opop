@@ -1,88 +1,42 @@
-"""P2': is the CONDITIONED slope a better out-of-sample predictor than the MARGINAL one?
+"""Offline P2': compare role-keyed conditioned and marginal predictions of the same y.
 
-THE PRIMARY SCIENTIFIC ENDPOINT of the v4.1 experiments, and the one that answers the
-novelty threat: the baseline analyst already produces "ceiling + slope + rewrite" shaped
-reasoning by itself (memory: the-baseline-analyst-already-produces-the-c2-shape), so C2
-cannot claim a new capability. It can claim the number is QUANTITATIVELY BETTER, and this
-is the direct measurement of that.
+old/signfix/scoped are RETRACTED diagnostic stages, not robustness arms: old retains
+(N-F)/N and run-wide pooling; signfix uses 1-N/F; scoped restricts to the candidate.
+All three retain the block's own scan trials at SCAN_BLOCK_DONE for reproducibility.
+noleak (default) removes ALL own scan trial IDs, discovery included, at block close.
+It compares paid local discovery with a candidate's historical prefix across all spaces;
+it is a reportable historical comparison, not a universally matched-information test.
+discovery_cutoff instead includes candidate history through the last discovery TRIAL_DONE
+(inclusive), including discovery data for the marginal. It requires four distinct role
+identities and both validation completions strictly later; otherwise it declines.
+Completion order is journal evidence, not proof of physical execution start times.
 
-WHAT MAKES IT A REAL TEST. Every C4 block measures four fresh latencies under FROZEN
-partners, in two role-keyed pairs:
-
-    discovery pair  (F_d, N_d) -> g_d, the PREDICTION
-    validation pair (F_v, N_v) -> y,   the HOLDOUT
-
-g_d and y are the same quantity measured twice on disjoint measurements, so |g_d - y| is
-an honest out-of-sample error. Nothing about the prediction was fitted to the validation
-pair; the roles were frozen by the geometry before either pair ran, and the four points
-execute in RANDOMIZED order so arrival position carries no role information.
-
-THE COMPARISON. The legacy predictor is `stats.py`'s `latency_by_value`: a per-choice
-MEDIAN over whatever trials TPE happened to run, unconditioned on the partners. Reading it
-from the FINISHED run would compare two different information sets, so it is recomputed
-from the trials available at each C4's own cutoff, and both sides predict the SAME y.
-
-THREE DEFECTS THIS READER HAD, all found by external review on 2026-09-15, all real, all
-measured before being fixed (docs/audit-p2prime-reader-defects.md). They are documented
-here because each one has a "obvious" wrong version that a future edit could reintroduce:
-
-  1. SIGN AND DENOMINATOR. `scanner.py` computes g = 1 - N/F, positive when the near-wall
-     end is FASTER. This reader returned (n_med - f_med)/n_med -- opposite sign AND a
-     different denominator -- under a docstring claiming the same convention. The two
-     disagreed in sign on 12 of 12 live contrasts. Percentages must never be naively
-     negated: the exact algebra for a reversed ratio is -g/(1-g), and the fix here is to
-     compute `1 - n/f` directly instead.
-  2. POOL SCOPE. Every completed trial in the RUN went into one list, bucketed by axis name
-     with no candidate filter, so one candidate's `BK=32` was averaged with another
-     implementation's `BK=32`. On the later contrasts 90-98% of the "marginal" came from
-     other candidates. The legacy analyst's actual scope is `crun.trials`, which
-     accumulates across a candidate's space expansions and is never cleared
-     (orchestrator.py:1333, :2461) and is passed to `stats_analyzer.analyze` at :1033,
-     :1504 and :1959 -- so the faithful scope is THIS CANDIDATE, ALL ITS SPACES. Not "this
-     space" (which would understate the legacy baseline) and not "the whole run".
-  3. HOLDOUT LEAK. `TRIAL_DONE` is journalled at orchestrator.py:1324, BEFORE the scan step
-     at :1335 folds the result in and emits `SCAN_BLOCK_DONE`. A prefix cut at
-     SCAN_BLOCK_DONE therefore already contains the C4's own four trials -- the validation
-     pair included, which is what y is computed from. Cutting on event order is not cutting
-     on information. Every contrast in both pilots leaked all four of its own points.
-
-So the marginal is reported under FOUR definitions rather than one. Publishing a single
-"corrected" number would hide which change moved it, and the two runs move in opposite
-directions (l3:43 50.9x -> 20.3x while l3:21 25.8x -> 104.8x), so only the direction and
-the range survive as a claim -- never a point estimate without its definition and its n.
-
-Three ways the marginal can decline to answer, kept separate because they are different
-findings: the axis has fewer than two measured values at the cutoff (no slope exists),
-the F/N values themselves were never sampled (the marginal cannot address this contrast),
-or a bucket is a single trial (a "median" of one). Counting those as errors would let the
-conditioned side win by default. Dropping the leaked points MAKES MORE contrasts decline
-(12 -> 7 and 11 -> 9), which is itself the finding that those marginals existed only
-because of the leak -- reported as a missing denominator, never as a conditioned win.
-
-Usage:
-    python scripts/probes/v41_p2prime.py <run_dir> [<run_dir> ...]
-    python scripts/probes/v41_p2prime.py --definition old <run_dir>    # reproduce a
-                                                                       # historical table
-
-Runs are read separately and reported per run AND pooled, never silently merged: box1 and
-box4 have different CPUs and the two tasks are different venues.
+Pools retain record multiplicity. Reused flags are coverage metadata; an unmarked record
+is NOT independently verified fresh. Missing marginals are missing denominators, not
+conditioned wins. Changes in n establish eligibility, not complete holdout dependence.
+Neither these definitions nor synthetic reader tests establish general conditioned wins.
+Runs are reported separately; pooled contrasts are not independent search repeats.
 """
 
 from __future__ import annotations
 
-import json
+import argparse
 import sys
 from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
 from statistics import median
+from typing import TypedDict
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from kernel_optimizer.store.read import read_events  # noqa: E402
 
-# The four marginal definitions, weakest to strongest. `noleak` is the reportable one;
-# the others exist so a reader can see which defect moved which number, and so the
-# historical tables remain reproducible instead of being quietly overwritten.
-DEFINITIONS = ("old", "signfix", "scoped", "noleak")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from scripts.probes.v41_p2prime_history import (  # noqa: E402
+    DEFINITION_INFO, Coverage, Event, Payload, PoolMetadata, Summary, Trial, collect_prefixes,
+)
+
+DEFINITIONS = ("old", "signfix", "scoped", "noleak", "discovery_cutoff")
 DEFAULT_DEFINITION = "noleak"
 
 
@@ -95,7 +49,7 @@ def _typed(v: object) -> str:
 class Contrast:
     """One C4 block's prediction and holdout, plus the marginal recomputed at its cutoff."""
 
-    def __init__(self, payload: dict, seq: int) -> None:
+    def __init__(self, payload: Payload, seq: int) -> None:
         self.seq = seq
         self.candidate_id = payload.get("candidate_id")
         self.scan_id = payload.get("scan_id")
@@ -114,14 +68,23 @@ class Contrast:
         # neither, and this reads as "marginal not computable" rather than as a result.
         self.f_repr = payload.get("axis_f_value")
         self.n_repr = payload.get("axis_n_value")
-        # One slot per definition, so nothing is overwritten and the table can show all four.
+        # Separate slots retain the historical analyses without overwriting them.
         self.g_m: dict[str, float | None] = {d: None for d in DEFINITIONS}
         self.g_m_skip: dict[str, str | None] = {d: None for d in DEFINITIONS}
         self.n_pool: dict[str, int] = {}
         self.n_own_leaked = 0
+        self.pool_metadata: dict[str, PoolMetadata] = {}
 
 
-def _marginal_slope(trials: list[dict], axis: str, f_repr: str, n_repr: str,
+class Analysis(TypedDict):
+    run: str
+    contrasts: list[Contrast]
+    n_trials: int
+    coverage: Coverage
+    definitions: dict[str, Summary]
+
+
+def _marginal_slope(trials: Sequence[Trial], axis: str, f_repr: str, n_repr: str,
                     *, legacy_sign: bool = False) -> tuple[float | None, str | None]:
     """The LEGACY predictor, recomputed from the trials available at a cutoff.
 
@@ -166,134 +129,99 @@ def _marginal_slope(trials: list[dict], axis: str, f_repr: str, n_repr: str,
     return 1.0 - n_med / f_med, None
 
 
-def analyse(run_dir: Path) -> dict:
+def analyse(run_dir: Path) -> Analysis:
     contrasts: list[Contrast] = []
-    # Three pools, because the three defects need three different histories.
-    run_pool: list[dict] = []                          # defect 2's wrong scope, for `old`
-    cand_pool: dict[str, list[dict]] = defaultdict(list)   # the legacy scope
-    prefix_at: dict[str, dict[str, list[dict]]] = {}
-    # Which trial_ids belong to which scan block, so a C4's own points can be excluded by
-    # IDENTITY rather than by guessing from arrival order (roles are randomized).
-    own_trials: dict[str, set[str]] = defaultdict(set)
-    # Fallback for runs journalled before SCAN_BLOCK_DONE carried the endpoints: the wall
-    # a C4 was built from names them, and UW_PROBE_BATCH.walls[] reprs them already. Keyed
-    # by (space_id, axis) because that is all both events share.
-    wall_endpoints: dict[tuple, tuple[str, str]] = {}
-
-    events = read_events(run_dir)
-    # Pass 1: scan-point -> trial_id map. Needed before the main pass because a block's
-    # SCAN_POINT_DONE events can be interleaved with the trials of other blocks.
-    for ev in events:
-        p = ev.get("payload") or {}
-        if ev.get("type") == "SCAN_POINT_DONE" and p.get("trial_id"):
-            own_trials[str(p.get("scan_id"))].add(str(p["trial_id"]))
-
-    for seq, ev in enumerate(events):
-        t = ev.get("type")
-        p = ev.get("payload", {})
-        if t == "TRIAL_DONE":
-            rec = p.get("trial") or p
-            if rec.get("status") == "complete":
-                run_pool.append(rec)
-                cand_pool[str(rec.get("candidate_id"))].append(rec)
-        elif t == "UW_PROBE_BATCH":
-            for w in p.get("walls", []):
-                if w.get("f_value") is not None and w.get("n_value") is not None:
-                    wall_endpoints[(p.get("space_id"), w.get("axis"))] = (
-                        w["f_value"], w["n_value"])
-        elif t == "SCAN_BLOCK_ADMITTED" and p.get("kind") == "C4":
-            # space_id lives here, not on SCAN_BLOCK_DONE, so the wall fallback needs it.
-            wall_endpoints.setdefault(("scan:" + str(p.get("scan_id")), p.get("axis")),
-                                      wall_endpoints.get(
-                                          (p.get("space_id"), p.get("axis")), (None, None)))
-        elif t == "SCAN_BLOCK_DONE" and p.get("kind") == "C4":
-            c = Contrast(p, seq)
-            if c.f_repr is None or c.n_repr is None:
-                fb = wall_endpoints.get(("scan:" + str(c.scan_id), c.axis), (None, None))
-                c.f_repr, c.n_repr = fb
-            cid = str(c.candidate_id)
-            own = own_trials.get(str(c.scan_id), set())
-            cand_hist = list(cand_pool[cid])
-            # The leak-free prefix: this candidate's history MINUS this contrast's own four
-            # points. Cutting on event order alone leaves them in (orchestrator writes
-            # TRIAL_DONE before SCAN_BLOCK_DONE), which puts y's own measurements into the
-            # competitor's training data.
-            noleak = [x for x in cand_hist if str(x.get("trial_id")) not in own]
-            c.n_own_leaked = len(cand_hist) - len(noleak)
-            prefix_at[c.scan_id] = {
-                "old": list(run_pool), "signfix": list(run_pool),
-                "scoped": cand_hist, "noleak": noleak,
-            }
-            contrasts.append(c)
-
-    for c in contrasts:
+    events = [Event(type=ev.get("type", ""), payload=ev.get("payload") or {})
+              for ev in read_events(run_dir)]
+    prefixes, coverage = collect_prefixes(events)
+    for prefix in prefixes:
+        c = Contrast(prefix["payload"], prefix["seq"])
+        c.n_own_leaked = prefix["n_own_leaked"]
+        c.pool_metadata = prefix["metadata"]
         for d in DEFINITIONS:
+            pool = [r.trial for r in prefix["pools"][d]]
+            c.n_pool[d] = len(pool)
+            if c.pool_metadata[d]["cutoff_reason"] is not None:
+                c.g_m_skip[d] = "information_cutoff_unavailable"
+                continue
             if not (c.axis and c.f_repr and c.n_repr):
                 # Not a measurement outcome: the journal simply does not name the endpoints.
                 c.g_m_skip[d] = "endpoints_not_journalled"
                 continue
-            pool = prefix_at[c.scan_id][d]
-            c.n_pool[d] = len(pool)
             c.g_m[d], c.g_m_skip[d] = _marginal_slope(
                 pool, c.axis, c.f_repr, c.n_repr, legacy_sign=(d == "old"))
+        contrasts.append(c)
+    full = [c for c in contrasts if c.full and c.g_d is not None and c.y is not None]
+    return {"run": run_dir.name, "contrasts": contrasts, "n_trials": coverage["raw_records"],
+            "coverage": coverage, "definitions": {d: _summary(full, d) for d in DEFINITIONS}}
 
-    return {"run": run_dir.name, "contrasts": contrasts, "n_trials": len(run_pool)}
 
-
-def _summary(full: list[Contrast], definition: str) -> dict:
+def _summary(full: list[Contrast], definition: str) -> Summary:
     """Median errors, sign agreement and denominators for one definition."""
-    both = [c for c in full if c.g_m[definition] is not None]
+    both = [(g, y, m) for c in full for g, y, m in [(c.g_d, c.y, c.g_m[definition])]
+            if g is not None and y is not None and m is not None]
+    missing: dict[str, int] = defaultdict(int)
+    for c in full:
+        if c.g_m[definition] is None:
+            missing[c.g_m_skip[definition] or "unspecified"] += 1
+    metadata: Summary = {**DEFINITION_INFO[definition], "eligible_contrasts": len(full),
+                "missing_reasons": dict(missing), "ratio": None,
+                "cutoff_inclusive": True, "deduplicated": False, "n": 0,
+                "med_c": None, "med_m": None, "cond_closer": 0, "sign_m": 0}
     if not both:
-        return {"n": 0}
-    err_c = sorted(abs(c.g_d - c.y) for c in both)
-    err_m = sorted(abs(c.g_m[definition] - c.y) for c in both)
-    med = lambda a: a[len(a) // 2] if len(a) % 2 else (a[len(a) // 2 - 1] + a[len(a) // 2]) / 2
+        return {**metadata, "n": 0}
+    err_c = [abs(g - y) for g, y, m in both]
+    err_m = [abs(m - y) for g, y, m in both]
     return {
+        **metadata,
         "n": len(both),
-        "med_c": med(err_c), "med_m": med(err_m),
-        "ratio": (med(err_m) / med(err_c)) if med(err_c) else None,
-        "cond_closer": sum(1 for c in both if abs(c.g_d - c.y) < abs(c.g_m[definition] - c.y)),
-        "sign_m": sum(1 for c in both if (c.g_m[definition] > 0) == (c.y > 0)),
+        "med_c": median(err_c), "med_m": median(err_m),
+        "ratio": (median(err_m) / median(err_c)) if median(err_c) else None,
+        "cond_closer": sum(1 for g, y, m in both if abs(g - y) < abs(m - y)),
+        "sign_m": sum(1 for g, y, m in both if (m > 0) == (y > 0)),
     }
 
 
-def _report(res: dict, definition: str) -> dict:
+def _report(res: Analysis, definition: str) -> Summary:
     cs: list[Contrast] = res["contrasts"]
     full = [c for c in cs if c.full and c.g_d is not None and c.y is not None]
     print(f"\n=== {res['run']} ===")
     print(f"completed trials: {res['n_trials']}   C4 blocks: {len(cs)}   "
-          f"fresh-complete: {len(full)}")
+          f"full with prediction/holdout: {len(full)}")
+    print(f"completed-record coverage (unmarked is not verified fresh): {res['coverage']}")
     if not full:
         print("no complete contrast: P2' is unreadable in this run (not a negative result)")
-        return {"n": 0}
+        return res["definitions"][definition]
 
     leaked = [c.n_own_leaked for c in full]
     if any(leaked):
         print(f"own scan trials excluded from the marginal history: "
               f"min {min(leaked)} max {max(leaked)} (they include this contrast's own "
-              f"validation pair -- see the module docstring, defect 3)")
+               f"validation pair and discovery pair under noleak)")
 
-    print(f"\n  reportable definition: {definition}   "
-          f"(all four shown; `old` is the RETRACTED form)")
+    print(f"\n  selected definition: {definition} ({DEFINITION_INFO[definition]['status']})")
+    print("  noleak: paid local discovery vs historical prefix; not matched information.")
+    print("  old/signfix/scoped: retracted diagnostics, not robustness arms.")
     print("\n  contrast          axis            g_d        y      |err_c|   "
           "g_m        |err_m|   winner    pool")
-    for c in full:
-        err_c = abs(c.g_d - c.y)
+    for c, g, y in [(c, c.g_d, c.y) for c in full if c.g_d is not None and c.y is not None]:
+        err_c = abs(g - y)
         gm = c.g_m[definition]
         if gm is None:
-            print(f"  {c.scan_id[:16]:16s} {str(c.axis)[:14]:14s} "
-                  f"{c.g_d:8.4f} {c.y:8.4f} {err_c:8.4f}   "
+            print(f"  {str(c.scan_id)[:16]:16s} {str(c.axis)[:14]:14s} "
+                  f"{g:8.4f} {y:8.4f} {err_c:8.4f}   "
                   f"{'-':9s} {'-':8s}  ({c.g_m_skip[definition]})")
             continue
-        err_m = abs(gm - c.y)
+        err_m = abs(gm - y)
         win = "conditioned" if err_c < err_m else ("marginal" if err_m < err_c else "tie")
-        print(f"  {c.scan_id[:16]:16s} {str(c.axis)[:14]:14s} "
-              f"{c.g_d:8.4f} {c.y:8.4f} {err_c:8.4f}   "
+        print(f"  {str(c.scan_id)[:16]:16s} {str(c.axis)[:14]:14s} "
+              f"{g:8.4f} {y:8.4f} {err_c:8.4f}   "
               f"{gm:9.4f} {err_m:8.4f}  {win:11s} {c.n_pool.get(definition, 0)}")
 
     # Sign agreement is the weaker but more robust reading: it survives when the
     # magnitudes are inside the noise floor.
-    sign_c = sum(1 for c in full if (c.g_d > 0) == (c.y > 0))
+    sign_c = sum(1 for c in full if c.g_d is not None and c.y is not None
+                 and (c.g_d > 0) == (c.y > 0))
     print(f"\n  sign agreement (conditioned vs holdout): {sign_c}/{len(full)}")
 
     print("\n  -- every definition, so no single number hides which defect moved it --")
@@ -301,16 +229,14 @@ def _report(res: dict, definition: str) -> dict:
           % ("defn", "n", "med|err_m|", "med|err_c|", "ratio", "cond wins", "marginal sign"))
     out = {}
     for d in DEFINITIONS:
-        s = _summary(full, d)
+        s = res["definitions"][d]
         out[d] = s
         if not s["n"]:
-            skips = defaultdict(int)
-            for c in full:
-                skips[c.g_m_skip[d]] += 1
+            skips = s["missing_reasons"]
             print("  %-9s %4d  never computable: %s"
                   % (d, 0, ", ".join(f"{k}={v}" for k, v in sorted(skips.items()))))
             continue
-        star = " <== reportable" if d == definition else ("  (RETRACTED)" if d == "old" else "")
+        star = " <== selected" if d == definition else ""
         print("  %-9s %4d  %-11.4f %-11.4f %-8s %d/%-7d %d/%d%s"
               % (d, s["n"], s["med_m"], s["med_c"],
                  ("%.1fx" % s["ratio"]) if s["ratio"] else "-",
@@ -334,28 +260,21 @@ def _report(res: dict, definition: str) -> dict:
     for c in full:
         dirs[c.direction or "unresolved"] += 1
     print(f"  mint directions: {dict(dirs)}")
-    return out.get(definition, {"n": 0})
+    return out[definition]
 
 
 def main() -> int:
-    args = [a for a in sys.argv[1:]]
-    definition = DEFAULT_DEFINITION
-    if "--definition" in args:
-        i = args.index("--definition")
-        definition = args[i + 1]
-        del args[i:i + 2]
-        if definition not in DEFINITIONS:
-            print(f"--definition must be one of {DEFINITIONS}")
-            return 2
-    if not args:
-        print(__doc__)
-        return 2
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--definition", choices=DEFINITIONS, default=DEFAULT_DEFINITION)
+    parser.add_argument("run_dirs", nargs="+", type=Path)
+    args = parser.parse_args()
+    definition = args.definition
     tot_both = tot_wins = 0
-    for arg in args:
-        s = _report(analyse(Path(arg)), definition)
+    for run_dir in args.run_dirs:
+        s = _report(analyse(run_dir), definition)
         tot_both += s.get("n", 0)
         tot_wins += s.get("cond_closer", 0)
-    if len(args) > 1:
+    if len(args.run_dirs) > 1:
         print(f"\n=== pooled under `{definition}` "
               f"(layers kept separate above; pool only for a headline) ===")
         if tot_both:
