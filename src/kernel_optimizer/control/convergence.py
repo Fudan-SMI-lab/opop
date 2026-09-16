@@ -5,11 +5,15 @@ from __future__ import annotations
 from kernel_optimizer.config import BudgetConfig
 from kernel_optimizer.models.core import Family
 from kernel_optimizer.models.reports import ConvergenceDecision
+from kernel_optimizer.tuning.objective import Objective
 
 
 class ConvergencePolicy:
-    def __init__(self, cfg: BudgetConfig):
+    def __init__(self, cfg: BudgetConfig, objective: Objective | None = None,
+                 min_absolute_gain: float = 0.0):
         self.cfg = cfg
+        self.objective = objective
+        self.min_absolute_gain = min_absolute_gain
 
     def family_verdict(self, family: Family,
                        agent_suggestion: str | None = None) -> ConvergenceDecision:
@@ -26,6 +30,13 @@ class ConvergencePolicy:
         needed = self.cfg.no_improve_rounds
         if len(history) >= needed + 1:
             window = history[-(needed + 1):]
+            if self.objective is not None:
+                gains = [self.objective.gain(a, b) for a, b in zip(window, window[1:])]
+                evidence["recent_absolute_gains"] = gains
+                if all(gain <= self.min_absolute_gain for gain in gains):
+                    return ConvergenceDecision(scope="family", verdict="freeze",
+                                               stop_kind="converged", evidence=evidence)
+                return ConvergenceDecision(scope="family", verdict="continue", evidence=evidence)
             improvements = [
                 (window[i] - window[i + 1]) / window[i] * 100.0 if window[i] > 0 else 0.0
                 for i in range(len(window) - 1)

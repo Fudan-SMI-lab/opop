@@ -11,6 +11,7 @@ from optuna.trial import TrialState
 
 from kernel_optimizer.models.core import ParameterSpace, ParamSet, TrialRecord
 from kernel_optimizer.tuning import ordered_domains
+from kernel_optimizer.tuning.objective import Objective, objective_value, rank_record
 
 
 class OptunaTPETuner:
@@ -31,6 +32,7 @@ class OptunaTPETuner:
         max_guard_rejects_per_ask: int = 64,
         deweight_reject: Callable[[ParamSet], bool] | None = None,
         ordered_categoricals: bool = False,
+        objective: Objective | None = None,
     ):
         self.space = space
         self.guard_ok = guard_ok
@@ -67,7 +69,9 @@ class OptunaTPETuner:
             constant_liar=constant_liar,
             categorical_distance_func=distance,
         )
-        self.study = optuna.create_study(direction="minimize", sampler=sampler)
+        self.objective = objective
+        self.study = optuna.create_study(
+            direction=objective.direction if objective else "minimize", sampler=sampler)
         for anchor in anchors:
             self.study.enqueue_trial(dict(anchor.values), skip_if_exists=True)
         self._pending: dict[str, optuna.trial.Trial] = {}
@@ -229,7 +233,8 @@ class OptunaTPETuner:
         if trial is None:
             raise KeyError(f"unknown or already-told trial {trial_id}")
         self._told += 1
-        if record.status == "complete" and record.latency_ms is not None:
+        value = objective_value(record, self.objective)
+        if value is not None:
             # `robust_ms` (median, falling back to the mean) rather than `.mean`. A trial is
             # timed with `quick_perf_trials` samples -- 20 by default -- and at that count a
             # few 300-700 us scheduling stalls drag the mean 35-136% above the kernel's real
@@ -245,10 +250,10 @@ class OptunaTPETuner:
             # min_improvement_pct 2.0 and earned the family another rewrite round -- while
             # the difference was 1.90 us against a combined standard error of 17.85 us, and
             # the supposedly-better point was SLOWER by min. 40 trials spent on noise.
-            self.study.tell(trial, record.latency_ms.robust_ms)
+            self.study.tell(trial, value)
             if (
                 self._best_record is None
-                or record.latency_ms.robust_ms < self._best_record.latency_ms.robust_ms
+                or rank_record(record, self.objective) < rank_record(self._best_record, self.objective)
             ):
                 self._best_record = record
         else:
@@ -277,6 +282,9 @@ class OptunaTPETuner:
             "budget": self.budget,
             "pending": len(self._pending),
             "incumbent_ms": (
-                self._best_record.latency_ms.robust_ms if self._best_record else None
+                self._best_record.latency_ms.robust_ms
+                if self._best_record and self._best_record.latency_ms else None
             ),
+            "incumbent_score": (objective_value(self._best_record, self.objective)
+                                if self.objective and self._best_record else None),
         }

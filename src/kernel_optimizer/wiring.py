@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from kernel_optimizer.agents.task_rewriter import TaskRewriterAgent
 
 from kernel_optimizer.agents.modules import (
     BottleneckAnalystAgent,
@@ -160,3 +164,25 @@ def build_orchestrator(cfg: AppConfig, store: RunStore, task: TaskSpec,
 def load_task(cfg: AppConfig, level: int, problem_id: int) -> TaskSpec:
     adapter = KernelBenchAdapter(Path(cfg.kernelbench_root))
     return adapter.load(level, problem_id)
+
+
+def build_eval_builder(cfg: AppConfig, store: RunStore, runtime: Runtime):
+    from kernel_optimizer.agents.eval_builder import EvalBuilderAgent
+
+    assert runtime.client is not None
+    return EvalBuilderAgent(
+        runtime.client,
+        SandboxFactory(store.run_dir / "sandboxes", extra_config=_sandbox_extra_config(cfg)),
+        store, cfg.agents.module("eval_builder"), agent_name=cfg.opencode.agent,
+    )
+
+
+def build_task_rewriter(cfg: AppConfig, store: RunStore, runtime: Runtime) -> TaskRewriterAgent:
+    from kernel_optimizer.agents.task_rewriter import TaskRewriterAgent
+
+    assert runtime.client is not None
+    return TaskRewriterAgent(
+        runtime.client,
+        SandboxFactory(store.run_dir / "sandboxes", extra_config=_sandbox_extra_config(cfg)),
+        store, cfg.agents.module("rewriter"), agent_name=cfg.opencode.agent,
+    )

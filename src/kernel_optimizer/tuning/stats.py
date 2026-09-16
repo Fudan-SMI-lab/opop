@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import statistics
+from kernel_optimizer.tuning.objective import Objective, objective_value, rank_record
 from collections import Counter, defaultdict
 
 from kernel_optimizer.models.core import DeviceLimits, ParameterSpace, TrialRecord
@@ -15,16 +16,17 @@ from kernel_optimizer.models.reports import (
 
 
 class TuningStatsAnalyzer:
-    def __init__(self, device: DeviceLimits):
+    def __init__(self, device: DeviceLimits, objective: Objective | None = None):
         self.device = device
+        self.objective = objective
 
     def analyze(self, space: ParameterSpace, trials: list[TrialRecord]) -> TuningStats:
-        complete = [t for t in trials if t.status == "complete" and t.latency_ms]
-        failed = [t for t in trials if t.status == "fail"]
+        complete = [t for t in trials if objective_value(t, self.objective) is not None]
+        failed = [t for t in trials if objective_value(t, self.objective) is None]
         # robust_ms throughout: these curves are what the analyst reads to decide which
         # knob is worth pushing, and a per-choice best driven by one scheduling stall
         # points it at the wrong knob. Same statistic the tuner optimizes.
-        best = min(complete, key=lambda t: t.latency_ms.robust_ms) if complete else None
+        best = min(complete, key=lambda t: rank_record(t, self.objective)) if complete else None
 
         param_stats = [
             self._param_stat(domain.name, domain.choices, complete, failed)
@@ -79,7 +81,9 @@ class TuningStatsAnalyzer:
         lat_by_value: dict[str, float] = {}
         grouped: dict[str, list[float]] = defaultdict(list)
         for t in complete:
-            grouped[repr(t.params.values.get(name))].append(t.latency_ms.robust_ms)
+            value = objective_value(t, self.objective)
+            if value is not None:
+                grouped[repr(t.params.values.get(name))].append(value)
         for key, vals in grouped.items():
             lat_by_value[key] = statistics.median(vals)
 
@@ -99,13 +103,13 @@ class TuningStatsAnalyzer:
         effect_pct = 0.0
         measured = [(c, lat_by_value[repr(c)]) for c in choices if repr(c) in lat_by_value]
         if measured:
-            best_value = min(measured, key=lambda kv: kv[1])[0]
+            best_value = min(measured, key=lambda kv: self.objective.rank(kv[1]) if self.objective else kv[1])[0]
             lats = [kv[1] for kv in measured]
             lo, hi = min(lats), max(lats)
             effect_pct = 0.0 if lo <= 0 else (hi - lo) / lo * 100.0
 
             # The objective's own winner: the value used by the single fastest trial.
-            fastest = min(complete, key=lambda t: t.latency_ms.robust_ms)
+            fastest = min(complete, key=lambda t: rank_record(t, self.objective))
             candidate_value = fastest.params.values.get(name)
             # Only usable as an anchor if it is one of this domain's measured choices.
             measured_choices = [c for c, _ in measured]
@@ -127,7 +131,7 @@ class TuningStatsAnalyzer:
                     fail_by_value.get(repr(c), 0.0) >= 1.0 or repr(c) not in lat_by_value
                     for c in beyond
                 )
-                ordered = [lat for _, lat in measured]
+                ordered = [self.objective.rank(lat) if self.objective else lat for _, lat in measured]
                 tail = ordered[:3] if at_min_edge else ordered[-3:]
                 monotone = (
                     len(tail) >= 2
@@ -144,8 +148,11 @@ class TuningStatsAnalyzer:
             best_trial_value=best_trial_value,
             at_boundary=at_boundary,
             boundary_direction=boundary_direction,
-            effect_pct=round(effect_pct, 2),
-            latency_by_value=lat_by_value,
+            effect_pct=round(effect_pct, 2) if self.objective is None else 0.0,
+            latency_by_value=lat_by_value if self.objective is None else {},
+            objective_by_value=lat_by_value if self.objective else {},
+            effect_absolute=(max(lat_by_value.values()) - min(lat_by_value.values())
+                             if self.objective and lat_by_value else None),
             failure_rate_by_value=fail_by_value,
         )
 

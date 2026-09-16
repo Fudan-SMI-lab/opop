@@ -10,6 +10,7 @@ import tokenize
 import uuid
 
 from pydantic import BaseModel
+from kernel_optimizer.tuning.objective import Objective, objective_value, rank_record
 
 from kernel_optimizer.models.core import (
     BestRecord,
@@ -131,12 +132,15 @@ class FamilyManager:
     # reservation reads it only when the bool above is True -- which a `__new__`-built manager never
     # has.
     reserve_round_for_reconciled: bool = False
+    objective: Objective | None = None
     families_with_a_ledger: frozenset[str] | set[str] = frozenset()
 
     def __init__(self, max_families_active: int = 2, max_families_total: int = 3,
                  novelty_max_similarity: float = 0.85,
                  max_families_total_hard: int | None = None,
-                 reserve_round_for_reconciled: bool = False):
+                 reserve_round_for_reconciled: bool = False,
+                 objective: Objective | None = None):
+        self.objective = objective
         self.max_families_active = max_families_active
         self.max_families_total = max_families_total
         # Absolute ceiling on families ever created, to bound novelty growth once
@@ -318,11 +322,12 @@ class FamilyManager:
         paired arm. It is the arm of an experiment, not a fix.
         """
         active = [f for f in self.families.values()
-                  if f.status == "active" and f.best is not None]
+                  if f.status == "active" and f.best is not None
+                  and objective_value(f.best, self.objective) is not None]
 
         def rank(f: Family) -> tuple[int, float, float]:
             unproven = 0 if f.rewrite_rounds_used == 0 else 1
-            return (unproven, -self._improvement_pct(f), self._incumbent(f))
+            return (unproven, -self._improvement_pct(f, self.objective), self._incumbent(f, self.objective))
 
         active.sort(key=rank)
         chosen = active[: self.max_families_active]
@@ -353,11 +358,11 @@ class FamilyManager:
         return chosen[:out] + chosen[out + 1:] + [waiting[0]]
 
     @staticmethod
-    def _incumbent(f: Family) -> float:
-        return f.best.latency_ms if f.best else float("inf")
+    def _incumbent(f: Family, objective: Objective | None = None) -> float:
+        return rank_record(f.best, objective) if f.best else float("inf")
 
     @staticmethod
-    def _improvement_pct(f: Family) -> float:
+    def _improvement_pct(f: Family, objective: Objective | None = None) -> float:
         """Percent gained in the most recent completed rewrite round (0 if stalled).
 
         best_history holds the family's incumbent after each round, so the last step
@@ -367,6 +372,8 @@ class FamilyManager:
         if len(hist) < 2:
             return 0.0
         prev, cur = hist[-2], hist[-1]
+        if objective is not None:
+            return max(0.0, objective.gain(prev, cur))
         if not prev or prev <= 0 or cur is None:
             return 0.0
         return max(0.0, (prev - cur) / prev * 100.0)
@@ -383,15 +390,21 @@ class FamilyManager:
         Defaulted so existing callers keep working, but every in-tree caller passes it: a silent
         None here reproduces exactly the defect this parameter exists to fix.
         """
-        family = self.families[family_id]
-        if family.best is None or latency_ms < family.best.latency_ms:
-            family.best = BestRecord(candidate_id=candidate_id, params=params,
-                                     latency_ms=latency_ms, profile=profile)
-            return True
-        return False
+        return self.update_record(family_id, BestRecord(
+            candidate_id=candidate_id, params=params, latency_ms=latency_ms, profile=profile,
+        ))
 
     def record_round(self, family_id: str, best_latency_ms: float) -> None:
         self.families[family_id].best_history.append(best_latency_ms)
+
+    def update_record(self, family_id: str, record: BestRecord) -> bool:
+        family = self.families[family_id]
+        if objective_value(record, self.objective) is None:
+            return False
+        if family.best is None or rank_record(record, self.objective) < rank_record(family.best, self.objective):
+            family.best = record
+            return True
+        return False
 
     def record_round_not_evaluated(self, family_id: str) -> None:
         """A round that spent budget without evaluating any rewrite.
@@ -410,6 +423,8 @@ class FamilyManager:
                 "anchor": f.anchor_candidate_id,
                 "status": f.status,
                 "best_ms": f.best.latency_ms if f.best else None,
+                "best_score": (objective_value(f.best, self.objective)
+                               if self.objective and f.best else None),
                 "history": f.best_history,
                 # Distinguish "spent its rewrite budget" from "never got one". Both
                 # end as frozen_budget, so without this the report reads as though

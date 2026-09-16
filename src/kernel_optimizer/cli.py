@@ -564,6 +564,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-o", "--override", action="append",
                         help="dotted config override, e.g. budgets.trials_per_space=8")
     sub = parser.add_subparsers(dest="cmd", required=True)
+    from kernel_optimizer.task_cli import add_task_parser, cmd_optimize_task
+    add_task_parser(sub.add_parser("optimize-task", help="optimize a task-owned native objective"))
 
     p = sub.add_parser("doctor", help="environment health check")
     p.add_argument("--calibrate", action="store_true",
@@ -604,6 +606,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     _install_termination_handler()
     commands = {
+        "optimize-task": cmd_optimize_task,
         "doctor": cmd_doctor,
         "baseline": cmd_baseline,
         "tune-file": cmd_tune_file,

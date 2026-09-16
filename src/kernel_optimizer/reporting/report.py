@@ -5,6 +5,10 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from kernel_optimizer.control.direct_task import TaskSearch
 
 from kernel_optimizer.evaluation.conversion_report import conversion_lines
 from kernel_optimizer.models.core import latency_cell
@@ -512,6 +516,49 @@ def _why_the_run_ended(events, convergence: list[dict], budgets: dict) -> list[s
 
 
 class ReportGenerator:
+    def generate_task(self, search: TaskSearch, output: Path) -> Path:
+        from kernel_optimizer.tuning.objective import objective_value
+
+        best = search.best()
+        final = search.final_execution
+        valid = sum(objective_value(t, search.objective) is not None for t in search.trials)
+        summary = {
+            "objective": search.objective.model_dump(),
+            "best": best.model_dump(mode="json") if best else None,
+            "best_candidate": str(search.paths[best.candidate_id]) if best else None,
+            "final_execution": final.model_dump(mode="json") if final else None,
+            "valid_count": valid, "invalid_count": len(search.trials) - valid,
+            "families": {fid: family.model_dump(mode="json")
+                         for fid, family in search.families.families.items()},
+            "parents": search.parents,
+            "probe_calls": search.probe_calls,
+            "resource_metrics": search.resource_metrics,
+            "responses": [response.model_dump(mode="json") for response in search.responses],
+            "rewrites": search.rewrites,
+        }
+        output.mkdir(parents=True, exist_ok=True)
+        (output / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        (output / "trials.json").write_text(json.dumps(
+            [t.model_dump(mode="json") for t in search.trials], indent=2), encoding="utf-8")
+        (output / "tuning_stats.json").write_text(json.dumps(
+            [s.model_dump(mode="json") for s in search.stats], indent=2), encoding="utf-8")
+        report = output / "report.md"
+        report.write_text(
+            f"# {search.objective.label}\n\nDirection: {search.objective.direction}\n"
+            f"Unit: {search.objective.unit or 'unspecified'}\n\n"
+            f"J: {objective_value(best, search.objective) if best else 'no valid result'}\n"
+            f"Candidate: {summary['best_candidate']}\n"
+            f"Parameters: {best.params.values if best else {}}\n\n"
+            f"Final execution: {final.status if final else 'not run'}\n"
+            f"Final J: {objective_value(final, search.objective) if final else 'unavailable'}\n"
+            f"Final detail: {final.failure_detail if final else 'no executed winner'}\n\n"
+            f"Valid: {valid}; invalid: {len(search.trials) - valid}\n"
+            f"Fresh diagnostic probes (not selection trials): {search.probe_calls}\n\n"
+            f"## Responses\n\n```json\n{json.dumps(summary['responses'], indent=2)}\n```\n\n"
+            f"## Structural rewrites\n\n```json\n{json.dumps(search.rewrites, indent=2)}\n```\n",
+            encoding="utf-8")
+        return report
+
     def generate(self, store: RunStore) -> Path:
         events = store.iter_events()
         report_dir = store.run_dir / "report"
