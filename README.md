@@ -1,5 +1,12 @@
 # kernel-optimizer (v2)
 
+## v5 direct task entry
+
+For the current native-objective CLI (provided/generated evaluation, optional
+response-guided structural rewriting, and final winner execution), see
+[Direct task optimization](docs/direct-method.md). The sections below describe
+the retained legacy GPU/KernelBench workflow.
+
 Agent harness for GPU kernel structure search guided by parameter-tuning
 feedback. Coding agents (via an opencode server) generate, parameterize,
 analyze, and rewrite kernel candidates; the deterministic harness owns
