@@ -30,6 +30,8 @@ class ParamStat(BaseModel):
     effect_pct: float = 0.0
     # Median latency per choice (stringified choice -> ms), complete trials only.
     latency_by_value: dict[str, float] = Field(default_factory=dict)
+    objective_by_value: dict[str, float] = Field(default_factory=dict)
+    effect_absolute: float | None = None
     failure_rate_by_value: dict[str, float] = Field(default_factory=dict)
 
 
