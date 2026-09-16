@@ -388,7 +388,11 @@ def wall_lines(events: Any) -> list[str]:
     # (+-2-4%, unstable sign) around theta*.
     extra = counts["attributed_any_origin"] - counts["attributed"]
     if counts["attributed_any_origin"] or extra:
-        tail = (f",其中 **{extra} 个在 θ\\* 处并不触墙**(只在第 2/3 快的点上触墙)"
+        primary_fits = sum(1 for p in payloads for w in (p.get("walls") or [])
+                           if _delivered(w) and w.get("verdict") == "not_attributed")
+        comparison = ("并不触墙**(只在第 2/3 快的点上触墙)" if primary_fits == extra
+                      else "未确认触墙**(仅在其他高性能点确认)")
+        tail = (f",其中 **{extra} 个在 θ\\* 处{comparison}"
                 f"—— 这 {extra} 个正是放宽「仅最优点」约束新增的"
                 if extra > 0 else "(与 θ\\* 处的裁决完全一致)")
         lines.append(
@@ -414,32 +418,34 @@ def wall_lines(events: Any) -> list[str]:
             ran = ", ".join(_fmt_val(v) for v in (w.get("ran_values") or []))
             row = (f"| `{cid}` | {w.get('param')} | {ran} | "
                    f"**{_fmt_val(w.get('refused_value'))}** | ")
-            verdict = w.get("verdict")
-            if verdict is None:
-                # Found but never probed: it failed the slope filter or the cap. Kept out of the
-                # main table so the reader does not mistake "not probed" for "not attributed".
+            verdicts = w.get("origin_verdicts") or {}
+            verdict = verdicts.get("theta_star", w.get("verdict"))
+            n_hit, n_probed = _origin_counts(w)
+            if verdict is None and not verdicts:
+                # No recorded origin: keep unprobed walls separate from measured verdicts.
                 worthless.append(
                     f"- `{cid}` {w.get('param')}:已测 {ran} → 被拒 "
                     f"{_fmt_val(w.get('refused_value'))},尾部 "
                     f"{float(w.get('tail_gain_pct') or 0.0):+.1f}%"
                     f"{'(非单调)' if not w.get('monotone') else ''} —— 顶住但不值钱")
                 continue
-            n_hit, n_probed = _origin_counts(w)
             max_shared, over, from_origin = _attributing_footprint(w)
             # The θ* verdict stays in its own column so the number is comparable with the finished
             # runs; the count is the column that says whether the wall survived away from θ*, and the
             # footprint column names its origin whenever that origin is NOT θ* -- otherwise a reader
             # would take the bytes for θ*'s and see a figure under the limit next to "ATTRIBUTED".
-            row += (f"{'**ATTRIBUTED**' if verdict == 'attributed' else verdict} | "
+            row += (f"{'**ATTRIBUTED**' if verdict == 'attributed' else verdict or '未测'} | "
                     f"{'**' if n_hit and n_hit == n_probed else ''}{n_hit}/{n_probed}"
                     f"{'**' if n_hit and n_hit == n_probed else ''} | "
                     f"{max_shared}{f'(在 {from_origin})' if from_origin else ''} | "
                     f"{w.get('limit')} | "
                     f"{f'{float(over):.2f}x' if isinstance(over, (int, float)) else '?'} | "
                     f"{float(w.get('tail_gain_pct') or 0.0):+.1f}% | ")
-            so = w.get("second_origin")
+            so = verdicts.get("default", w.get("second_origin"))
             if so is None:
                 row += "未测 |"
+            elif verdict is None:
+                row += f"{so} |"
             elif so == verdict:
                 row += f"{so}(一致) |"
             else:
