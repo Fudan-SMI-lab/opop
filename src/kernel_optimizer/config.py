@@ -176,6 +176,7 @@ class AgentsConfig(StrictConfig):
     rewriter: AgentModuleConfig = AgentModuleConfig(n_candidates=2)
     novelty: AgentModuleConfig = AgentModuleConfig(n_candidates=2)
     repair: AgentModuleConfig = AgentModuleConfig()
+    eval_builder: AgentModuleConfig = AgentModuleConfig()
 
     def module(self, name: str) -> AgentModuleConfig:
         cfg: AgentModuleConfig = getattr(self, name)
