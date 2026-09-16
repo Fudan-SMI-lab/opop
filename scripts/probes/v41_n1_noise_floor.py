@@ -33,6 +33,7 @@ Usage:  python v41_n1_noise_floor.py <arm_a_run_dir> <arm_b_run_dir>
 from __future__ import annotations
 
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -68,8 +69,7 @@ def arm(run: Path) -> dict:
         if c.get("origin") == "seed" and c.get("source_sha"):
             sha_of[str(c["source_sha"])] = cid
 
-    # Per-candidate tuned best, from TUNING_DONE (the last one per candidate: a space
-    # expansion re-tunes the same candidate and the later value supersedes).
+    # TUNING_DONE reports per-space best; retain the candidate's best across spaces.
     tuned: dict[str, float] = {}
     for e in ev:
         if e.get("type") != "TUNING_DONE":
@@ -78,9 +78,12 @@ def arm(run: Path) -> dict:
         cid = str(p.get("candidate_id"))
         v = p.get("best_ms")
         if v is None:
-            v = ((p.get("best") or {}).get("latency_ms") or {}).get("median")
-        if v is not None:
-            tuned[cid] = float(v)
+            lat = (p.get("best") or {}).get("latency_ms") or {}
+            v = lat.get("median")
+            if not (type(v) in (int, float) and v > 0):
+                v = lat.get("mean")
+        if type(v) in (int, float) and math.isfinite(v) and v > 0:
+            tuned[cid] = min(tuned.get(cid, float("inf")), float(v))
 
     trials = sum(1 for e in ev if e.get("type") == "TRIAL_DONE")
     expansions = sum(1 for e in ev if e.get("type") == "SPACE_EXPANDED")
