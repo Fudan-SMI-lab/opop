@@ -28,6 +28,18 @@ Final values come from RUN_FINISHED.summary.best.final_reeval_median_ms, never f
 2-decimal final_reeval_ms, and never from the tuning best -- those are different quantities.
 speedup_vs_eager is cross-precision and is not printed at all.
 
+`same_precision_speedup` is NOT used as the arm-difference quantity, and the reason is
+arithmetic rather than stylistic. It is a mean-over-mean ratio (orchestrator.py:3474) and
+KernelBench rounds every mean to THREE SIGNIFICANT FIGURES at the source
+(kernelbench/timing.py:614, `float(f"{np.mean(...):.3g}")`). So both sides arrive
+pre-quantized: at ~2.5 ms the candidate's ulp is 0.01/2.54 = 0.39% and an ~11 ms baseline's
+is 0.1/11.0 = 0.91%, giving the published ratio a resolution floor near 1.3%. Measured
+consequence: n1-b and m1-a print the SAME 4.3307 from different kernels (median 2.537472 vs
+2.539456, baselines 10.948608 vs 10.948544) -- an identity that is pure quantization. Any
+arm difference below ~1.3% can therefore vanish, or inverted, in that field. The median
+quantities are full precision on both sides, so the difference is read from
+final_reeval_median_ms and `speedups_median` is printed next to the mean ratio.
+
 Offline: reads events.jsonl only. No GPU, no torch, no candidate execution.
 """
 from __future__ import annotations
@@ -149,13 +161,20 @@ def _final(events: list[dict]) -> dict:
         s = (e.get("payload") or {}).get("summary") or {}
         b = s.get("best") or {}
         hv = b.get("honest_verdict") or {}
+        med = b.get("speedups_median") or {}
+        against = hv.get("compared_against")
         return {
             "candidate_id": b.get("candidate_id"),
             "family_id": b.get("family_id"),
             # the unrounded value; `final_reeval_ms` is the 2-decimal one and loses precision
             "final_reeval_median_ms": b.get("final_reeval_median_ms"),
             "same_precision_speedup": hv.get("same_precision_speedup"),
-            "compared_against": hv.get("compared_against"),
+            # the same comparison computed median-over-median: both sides full precision.
+            # `speedups`/`honest_verdict` are mean-over-mean and every mean was rounded to
+            # 3 significant figures inside KernelBench, so the published ratio cannot
+            # resolve an arm difference below ~1.3%.
+            "same_precision_speedup_median": med.get(against) if against else None,
+            "compared_against": against,
             "beats_same_precision_baseline": hv.get("beats_same_precision_baseline"),
             "final_reeval_ok": b.get("final_reeval_ok"),
             "excessive_speedup_flag": b.get("excessive_speedup_flag"),
@@ -256,8 +275,10 @@ def final(off: Path, act: Path) -> None:
               % ("%.4f ms" % s["tuned_best_ms"] if s["tuned_best_ms"] else "-"))
         print("    final_reeval_median_ms           : %s" % e.get("final_reeval_median_ms"))
         print("    final_reeval_ok                  : %s" % e.get("final_reeval_ok"))
-        print("    same_precision_speedup           : %s  (vs %s)"
+        print("    same_precision_speedup [3sf]     : %s  (vs %s)"
               % (e.get("same_precision_speedup"), e.get("compared_against")))
+        print("    same_precision_speedup [median]  : %s  <== full precision on both sides"
+              % e.get("same_precision_speedup_median"))
         print("    beats_same_precision_baseline    : %s"
               % e.get("beats_same_precision_baseline"))
         print("    excessive_speedup_flag           : %s  (True => treat as suspect)"
@@ -269,9 +290,35 @@ def final(off: Path, act: Path) -> None:
     if a and b:
         d = (float(b) - float(a)) / float(a) * 100.0
         print("  active - off = %+.2f%%   (%.4f vs %.4f ms)" % (d, float(b), float(a)))
+    _quantization_note(eo, ea)
     print("  NO VERDICT IS PRINTED HERE, deliberately. There is no qualified same-code A/A")
     print("  calibration in any run to date, so no tie band exists for this comparison, and")
     print("  P3 is a descriptive endpoint. Report the difference WITH that limitation.")
+
+
+def _quantization_note(eo: dict, ea: dict) -> None:
+    """Say WHY the arm difference is read from the median and not from the published speedup.
+
+    Not decoration: the `[3sf]` row can print one identical number for two different kernels.
+    Measured on the real journals -- n1-b (median 2.537472, tf32 baseline 10.948608) and m1-a
+    (2.539456, 10.948544) both publish 4.3307, because KernelBench stores every mean as
+    `float(f"{np.mean(...):.3g}")` (kernelbench/timing.py:614) and the ratio is mean/mean
+    (orchestrator.py:3474). Both sides land on 11.0 / 2.54. Anyone reading the [3sf] row as
+    an arm contrast would conclude the arms tied when the medians differ.
+    """
+    so, sa = eo.get("same_precision_speedup"), ea.get("same_precision_speedup")
+    mo, ma = (eo.get("same_precision_speedup_median"),
+              ea.get("same_precision_speedup_median"))
+    if mo and ma:
+        dm = (float(ma) - float(mo)) / float(mo) * 100.0
+        print("  same-precision speedup, median convention: %+.2f%%  (%.4f vs %.4f)"
+              % (dm, float(ma), float(mo)))
+    print("  !! The [3sf] speedup is NOT the arm-difference quantity. It is mean-over-mean and")
+    print("  !! every mean is rounded to 3 digits of precision at the source, so at ~2.5 ms vs")
+    print("  !! ~11 ms the ratio carries a resolution floor near 1.3%: two runs whose medians")
+    print("  !! differ can publish the SAME value (measured: n1-b and m1-a both print 4.3307).")
+    if so is not None and sa is not None and float(so) == float(sa):
+        print("  !! THIS PAIR IS SUCH A CASE: both arms print %s. Read the median rows." % so)
 
 
 def main() -> int:

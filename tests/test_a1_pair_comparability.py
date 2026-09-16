@@ -57,6 +57,8 @@ def _run(tmp: Path, name: str, events: list[dict]) -> Path:
 def _finished(**best):
     # Field shapes copied from a real journal: the honest verdict is NESTED under
     # `honest_verdict`, `precision` is top-level, and knobs live under params.values.
+    # `speedups` is mean-over-mean and every mean was rounded to 3 significant figures by
+    # KernelBench, so `speedups_median` is carried alongside as the full-precision twin.
     b = {"candidate_id": "cand-1", "family_id": "fam-1", "final_reeval_median_ms": 3.0,
          "final_reeval_ok": True, "excessive_speedup_flag": False, "precision": "fp16",
          "tuned_ms": 3.05,
@@ -64,6 +66,8 @@ def _finished(**best):
                             "compared_against": "torch_compile_tf32",
                             "same_precision_speedup": 2.0,
                             "beats_same_precision_baseline": True},
+         "speedups": {"torch_compile_tf32": 2.0},
+         "speedups_median": {"torch_compile_tf32": 2.0},
          "params": {"values": {"COMPUTE_DTYPE": "fp16"}}}
     b.update(best)
     return {"type": "RUN_FINISHED",
@@ -273,3 +277,78 @@ def test_the_honest_verdict_is_read_from_its_nested_home(tmp_path):
     assert "2.0" in txt
     assert "torch_compile_tf32" in txt
     assert "None  (vs None)" not in txt
+
+
+def test_an_identical_published_speedup_is_flagged_as_quantization(tmp_path):
+    """The real n1-b / m1-a shape. Two different kernels (median 2.537472 vs 2.539456, tf32
+    baselines 10.948608 vs 10.948544) both publish 4.3307, because KernelBench stores every
+    mean as `float(f"{np.mean(...):.3g}")` and the published ratio is mean-over-mean: both
+    sides land on 11.0 / 2.54. A reader that shows only that row invites the conclusion that
+    the arms tied, when the medians differ by 0.08%. The flag must fire, and the median
+    convention must be printed with its own arm difference."""
+    off = _run(tmp_path, "n1-b", [
+        _trial("t1", "c", 2.537472),
+        _finished(final_reeval_median_ms=2.537472,
+                  speedups_median={"torch_compile_tf32": 4.3148})])
+    act = _run(tmp_path, "m1-a", [
+        _trial("t1", "c", 2.539456),
+        _finished(final_reeval_median_ms=2.539456,
+                  speedups_median={"torch_compile_tf32": 4.3114})])
+    txt = _run_probe(off, act, "--final")
+    assert "THIS PAIR IS SUCH A CASE" in txt
+    assert "resolution floor near 1.3%" in txt
+    # both conventions present, each with its own arm difference
+    assert "4.3148" in txt and "4.3114" in txt
+    assert "-0.08%" in txt          # median convention: (4.3114-4.3148)/4.3148
+    assert "+0.08%" in txt          # latency: (2.539456-2.537472)/2.537472
+    # and the tie must never be stated as a result
+    assert "NO VERDICT IS PRINTED HERE" in txt
+
+
+def test_differing_speedups_do_not_trip_the_quantization_flag(tmp_path):
+    """The negative control: the warning about the resolution floor is always printed (it is a
+    property of the field, not of this pair), but the 'THIS PAIR' line must fire only when the
+    two arms actually collide on one value -- otherwise it would cry wolf on every read."""
+    off = _run(tmp_path, "off", [_trial("t1", "c", 5.0), _finished()])
+    act = _run(tmp_path, "act", [_trial("t1", "c", 5.0),
+                                 _finished(honest_verdict={
+                                     "candidate_precision": "fp16",
+                                     "compared_against": "torch_compile_tf32",
+                                     "same_precision_speedup": 2.4,
+                                     "beats_same_precision_baseline": True})])
+    txt = _run_probe(off, act, "--final")
+    assert "resolution floor near 1.3%" in txt
+    assert "THIS PAIR IS SUCH A CASE" not in txt
+
+
+def test_the_median_speedup_is_keyed_by_the_verdicts_own_comparator(tmp_path):
+    """`speedups_median` holds every baseline kind; picking the wrong key would compare the
+    candidate against a baseline the honest verdict did not use. The key must come from
+    `compared_against`, so a journal whose verdict names tf32 must not read the ieee entry."""
+    off = _run(tmp_path, "off", [_trial("t1", "c", 5.0),
+                                 _finished(speedups_median={"torch_compile": 9.99,
+                                                            "torch_compile_tf32": 4.3148})])
+    act = _run(tmp_path, "act", [_trial("t1", "c", 5.0),
+                                 _finished(speedups_median={"torch_compile": 8.88,
+                                                            "torch_compile_tf32": 4.3114})])
+    txt = _run_probe(off, act, "--final")
+    assert "4.3148" in txt and "4.3114" in txt
+    assert "9.99" not in txt and "8.88" not in txt
+
+
+def test_a_missing_speedups_median_does_not_fabricate_a_difference(tmp_path):
+    """Older journals can carry `speedups_median_note` instead of the dict (it is omitted when
+    no baseline has a real median). The row must read '-' and NO median arm difference may be
+    printed -- inventing one from the mean ratio is exactly the mixed-statistic error the
+    production guard exists to prevent."""
+    fin_o = _finished(final_reeval_median_ms=3.0)
+    fin_a = _finished(final_reeval_median_ms=2.7)
+    for f in (fin_o, fin_a):
+        del f["payload"]["summary"]["best"]["speedups_median"]
+        f["payload"]["summary"]["best"]["speedups_median_note"] = "not computed"
+    off = _run(tmp_path, "off", [_trial("t1", "c", 5.0), fin_o])
+    act = _run(tmp_path, "act", [_trial("t1", "c", 5.0), fin_a])
+    txt = _run_probe(off, act, "--final")
+    assert "same_precision_speedup [median]  : None" in txt
+    assert "median convention" not in txt
+    assert "-10.00%" in txt        # the latency difference is still read, from the medians

@@ -62,6 +62,17 @@ if [ "$bad" -ne 0 ]; then
   exit 1
 fi
 
+# ---- step 0.5: arm parity from the RESOLVED config -----------------------------------
+# Before any contrast: did the two arms differ ONLY in the declared variable? This reads
+# manifest.json (the config AFTER defaults are filled in), not the source YAML, because a
+# source diff is blind in one direction -- m2b's arm B writes pcap/max_probe_attempts/
+# cadence_told explicitly while arm A inherits the defaults. Today those agree; the day a
+# default moves, the source diff still says "only mode differs" and the arms have diverged.
+echo
+echo "=== [0.5/7] arm parity: do the RESOLVED configs differ only in the variable? ==="
+"$PY" "$PROBE/a1_arm_parity_resolved.py" "$OFF" "$ACT" \
+  --variable v4.conditional_scan.mode
+
 # ---- step 1: comparability, BEFORE any effect size ----------------------------------
 # An effect read across arms that did not buy comparable search is not an effect. Wall
 # clock is the binding budget on every finished run so far, so equal trial COUNTS are not
