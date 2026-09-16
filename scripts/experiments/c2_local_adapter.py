@@ -10,6 +10,7 @@ from pydantic import JsonValue
 from kernel_optimizer.config import AppConfig
 from kernel_optimizer.evaluation.correctness import latency_from_result
 from kernel_optimizer.evaluation.task_eval import TaskEvaluation
+from kernel_optimizer.gpu.worker_client import to_wsl_path
 from kernel_optimizer.models.core import ParamSet, TaskSpec, TrialRecord, sha256_text
 from kernel_optimizer.paramspace.materializer import MaterializeError, materialize
 from kernel_optimizer.tasks.kernelbench import parse_task_arg
@@ -45,8 +46,18 @@ class GpuAdapter:
             source = materialize(candidate.read_text(encoding="utf-8"), params)
             path = candidate.parent / f"{trial_id}.py"
             path.write_text(source, encoding="utf-8")
-            raw = (self.benchmarker.final_reeval(self.task, path, self.backend) if self.full else
-                   self.correctness.quick_test(self.task, path, trial_id, self.backend))
+            worker = self.correctness.worker
+            original_cfg = worker.cfg
+            worker.cfg = original_cfg.model_copy(update={
+                "extra_pythonpath": ":".join(filter(None, (
+                    to_wsl_path(candidate.parent), original_cfg.extra_pythonpath,
+                ))),
+            })
+            try:
+                raw = (self.benchmarker.final_reeval(self.task, path, self.backend) if self.full else
+                       self.correctness.quick_test(self.task, path, trial_id, self.backend))
+            finally:
+                worker.cfg = original_cfg
             latency = latency_from_result(raw)
             valid = bool(raw.get("ok")) and latency is not None
             profile = self.profiler.extract(raw)
