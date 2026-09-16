@@ -36,10 +36,11 @@ class TaskSearch:
     """Own run history; borrow one open evaluator across candidates and trials."""
 
     def __init__(self, evaluator: TaskEvaluator, objective: Objective,
-                 budgets: BudgetConfig | None = None) -> None:
+                 budgets: BudgetConfig | None = None, *, device: DeviceLimits | None = None) -> None:
         self.evaluator = evaluator
         self.objective = objective
         self.budgets = budgets or BudgetConfig()
+        self.device = device or DeviceLimits()
         self.families = FamilyManager(objective=objective)
         self.convergence = ConvergencePolicy(self.budgets, objective)
         self.trials: list[TrialRecord] = []
@@ -97,7 +98,8 @@ class TaskSearch:
         )
         tuner = OptunaTPETuner(
             parameter_space,
-            lambda p: all(eval_constraint(c.expr, p.values) for c in space.constraints),
+            lambda p: all(eval_constraint(c.expr, {**self.device.as_env(), **p.values})
+                          for c in space.constraints),
             budget=self.budgets.trials_per_space, seed=seed, objective=self.objective,
         )
         records: list[TrialRecord] = []
@@ -132,7 +134,7 @@ class TaskSearch:
             if not records:
                 self.families.record_round_not_evaluated(fid)
         self.refresh_family_status(family)
-        self.stats.append(TuningStatsAnalyzer(DeviceLimits(), self.objective).analyze(parameter_space, records))
+        self.stats.append(TuningStatsAnalyzer(self.device, self.objective).analyze(parameter_space, records))
         return tuner.best()
 
     def best(self) -> TrialRecord | None:

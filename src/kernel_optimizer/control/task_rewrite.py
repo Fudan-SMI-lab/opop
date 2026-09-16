@@ -34,8 +34,9 @@ def probe_responses[T](search: TaskSearch, parent: TrialRecord,
         legal: list[ParamSet] = []
         for choice in domain.choices:
             params = ParamSet(values={**parent.params.values, domain.name: choice})
+            env = {**search.device.as_env(), **params.values}
             try:
-                admitted = all(eval_constraint(c.expr, params.values) for c in space.constraints)
+                admitted = all(eval_constraint(c.expr, env) for c in space.constraints)
             except ConstraintError:
                 admitted = False
             if admitted and params not in legal:

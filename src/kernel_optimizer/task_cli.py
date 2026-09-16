@@ -105,7 +105,7 @@ def cmd_optimize_task(args: argparse.Namespace) -> int:
         evaluator = stack.enter_context(TaskEvaluator(eval_file, function))
         search = TaskSearch(evaluator, objective, cfg.budgets.model_copy(
             update={"trials_per_space": options.trials},
-        ))
+        ), device=cfg.device)
         _ = search.evaluate_candidate(candidate, space, context, seed=cfg.run.seed)
         if options.rewrite_rounds and runtime is not None:
             from kernel_optimizer.control.task_rewrite import RewriteRun, run_rewrites
