@@ -8,9 +8,13 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from kernel_optimizer.evaluation.task_eval import TaskEvaluation
+
+from kernel_optimizer.models.candidate_artifact import GenericCandidate
+from kernel_optimizer.models.task_bundle import GenericTaskSpec
 
 ParamValue = int | float | str
 
@@ -45,6 +49,7 @@ def sha256_text(text: str) -> str:
 class TaskSpec(BaseModel):
     model_config = ConfigDict(frozen=True)
 
+    kind: Literal["legacy"] = "legacy"
     level: int
     problem_id: int
     name: str
@@ -53,6 +58,7 @@ class TaskSpec(BaseModel):
 
 
 class Candidate(BaseModel):
+    kind: Literal["legacy"] = "legacy"
     candidate_id: str
     family_id: str
     parent_ids: list[str] = Field(default_factory=list)
@@ -62,6 +68,12 @@ class Candidate(BaseModel):
     structural_signature: str
     approach_summary: str = ""
     status: Literal["registered", "parameterized", "tuned", "dropped"] = "registered"
+
+
+LegacyTaskSpec = TaskSpec
+LegacyCandidate = Candidate
+TaskLike = Annotated[TaskSpec | GenericTaskSpec, Field(discriminator="kind")]
+CandidateLike = Annotated[Candidate | GenericCandidate, Field(discriminator="kind")]
 
 
 class ParamDomain(BaseModel):
@@ -322,6 +334,7 @@ class TrialRecord(BaseModel):
     failure_kind: FailureKind | None = None
     failure_detail: str = ""
     latency_ms: LatencyStats | None = None
+    task_evaluation: TaskEvaluation | None = None
     profile: ProfileRecord | None = None
     # How many of this trial's correctness trials were accepted ONLY by the fp64
     # relative arm (0 when the gate is on and did not change the verdict, None when the
@@ -352,7 +365,8 @@ class TrialRecord(BaseModel):
 class BestRecord(BaseModel):
     candidate_id: str
     params: ParamSet
-    latency_ms: float
+    latency_ms: float | None = None
+    task_evaluation: TaskEvaluation | None = None
     # G27: the winning trial's resource profile, so a round can be judged on whether a resource
     # change CONVERTED INTO SPEED (the S4 question) rather than only on whether latency moved.
     #

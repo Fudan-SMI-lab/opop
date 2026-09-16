@@ -1,0 +1,13 @@
+{
+  "schema_version": "1", "task_id": "unregistered-orchard-model",
+  "project_ref": "project:orchard",
+  "reference": {"artifact_ref": "reference:independent", "callable": {"module": "truth.compute", "callable": "harvest"}, "input_binding_ref": "binding:reference"},
+  "workload": {"cases_ref": "data:orchard", "case_ids": ["a", "b"], "completion": "returned-observation"},
+  "state": {"kind": "stateless"},
+  "quality": {"oracle_ref": "oracle:fruit", "callable": {"module": "checks.fruit", "callable": "compare"}, "output_schema_ref": "schema:fruit", "tolerances": {"fruit_distance": 0}, "negative_controls_ref": "control:spoiled"},
+  "objective": {"name": "signed_harvest", "unit": "basket", "direction": "minimize", "required_metrics": [{"name": "ripe_fruits", "unit": "fruit"}], "aggregation": {"kind": "sum"}},
+  "constraints": [],
+  "resources": [{"name": "orchard_pressure", "entity_id": null, "unit": "twig", "scope": "task", "provenance": "sensor:branch"}],
+  "parameter_domains": [{"name": "picking_style", "kind": "nominal", "value_type": "str", "choices": ["gentle", "rapid"], "semantics": "picking method"}],
+  "protocol": {"version": "1", "execution_context": {"hardware_identity": "cpu:orchard", "software_fingerprints": [{"name": "orchard-engine", "version": "11", "build": "release", "capabilities": ["fruit"]}], "execution_policies": {"cache": "fresh"}}, "warmup_count": 0, "repeat_count": 1, "paired_repeat_count": 2, "c2_pair_roles": [{"repeat_index": 0, "phase": "discovery", "f_role": "F_d", "n_role": "N_d"}, {"repeat_index": 1, "phase": "validation", "f_role": "F_v_1", "n_role": "N_v_1"}], "c2_order_seed": 42, "c2_mode": "empirical_difference_envelope", "c2_threshold": 0, "measurement_scope": "whole-task", "cost_scope": "invocation"}
+}
