@@ -481,18 +481,17 @@ def _split_attempted(hypotheses: list, attempted: set[str],
     idea: produced H1,H2 / marked H1,H2,H3 (twice), and produced H1,H1 / marked H1,H2.
 
     An EMPTY `attempted` means no rewrite declared a hypothesis id -- seen twice in the corpus, where
-    both candidates of a round carried `hypothesis_id: ""`. Then nothing is filtered and the old
-    behaviour stands: with no declaration there is no basis for saying which idea was tried, and
-    silently marking none would lose the round's evidence just as surely as marking all of them
-    fabricates it. That is the one case where over-marking is the lesser error, because the round DID
-    fail and its ideas came from this report.
+    both candidates of a round carried `hypothesis_id: ""`. Neither return then names any hypotheses:
+    unknown provenance is evidence neither of failure nor of an idea being untried. Nonempty
+    declarations mark only matching report IDs failed. The legacy `untried` return lists IDs absent
+    from those declarations, not proof of nonexecution when provenance is incomplete.
 
     A module-level function, not a method, so it can be driven directly: the branch it serves needs a
     live rewriter agent to reach, and a source-text assertion about it would pass on the defect --
     which is exactly what the existing `test_failed_hypotheses_are_journalled_and_restored` did.
     """
     tried = [{"id": h.id, "change": h.change, "round": round_no}
-             for h in hypotheses if not attempted or h.id in attempted]
+             for h in hypotheses if h.id in attempted]
     untried = [h.id for h in hypotheses if attempted and h.id not in attempted]
     return tried, untried
 
@@ -3007,9 +3006,8 @@ class Orchestrator:
                     self.store.append("HYPOTHESES_FAILED", {
                         "family_id": family.family_id, "round": round_no,
                         "hypotheses": tried,
-                        # Named, not merely omitted: "the rewriter did not implement this" is a fact
-                        # about the ROUND worth reading, and an audit cannot recover it from an
-                        # absence.
+                        # Absent from declared attempts, not proof of nonexecution when
+                        # attribution is incomplete; keep the legacy event field name.
                         "not_attempted": untried,
                         "attempted": sorted(attempted)})
             self.round_hypotheses.pop(family.family_id, None)
@@ -3513,4 +3511,3 @@ class Orchestrator:
             # slower ieee baseline, or the speedup is measured against a strawman.
             result["best"]["honest_verdict"] = _honest_verdict(precision, speedups)
         return result
-

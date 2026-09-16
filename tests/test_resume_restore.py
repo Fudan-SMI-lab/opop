@@ -322,15 +322,13 @@ def test_both_candidates_implementing_the_same_hypothesis_retires_only_that_one(
 def test_no_declared_hypothesis_id_leaves_the_list_untouched():
     """Seen twice in the corpus: both candidates of a round carried `hypothesis_id: ""`.
 
-    With no declaration there is no basis for saying which idea was tried, so nothing is filtered and
-    the pre-fix behaviour stands. Over-marking is the lesser error HERE, and only here: the round did
-    fail, and its ideas came from this report. Marking none would lose the round's evidence as surely
-    as marking all of them fabricates it.
+    With no declaration there is no basis for saying which idea was tried. Leave failed memory
+    untouched without claiming that these hypotheses were definitely untried.
     """
     from kernel_optimizer.control.orchestrator import _split_attempted
 
     tried, untried = _split_attempted(_hyps("H1", "H2", "H3"), set(), 0)
-    assert [t["id"] for t in tried] == ["H1", "H2", "H3"]
+    assert tried == []
     assert untried == []
 
 
