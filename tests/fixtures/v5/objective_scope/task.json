@@ -1,0 +1,12 @@
+{
+  "schema_version": "1", "task_id": "unregistered-scope-task", "project_ref": "project:scope",
+  "reference": {"artifact_ref": "reference:independent", "callable": {"module": "truth.compute", "callable": "measure"}, "input_binding_ref": "binding:reference"},
+  "workload": {"cases_ref": "data:scope", "case_ids": ["a", "b"], "completion": "returned-observation"},
+  "state": {"kind": "stateless"},
+  "quality": {"oracle_ref": "oracle:independent", "callable": {"module": "checks.scope", "callable": "compare"}, "output_schema_ref": "schema:scope", "tolerances": {}, "negative_controls_ref": "control:scope"},
+  "objective": {"name": "scope_probe", "unit": "quanta", "direction": "minimize", "required_metrics": [{"name": "novel_flux", "unit": "quanta"}], "aggregation": {"kind": "sum"}},
+  "constraints": [{"id": "cap", "source_kind": "resource", "name": "novel_capacity", "unit": "cells", "operator": "le", "threshold": 10, "case_ids": ["a"], "entity_id": null, "aggregation": "max"}],
+  "resources": [{"name": "novel_capacity", "entity_id": null, "unit": "cells", "scope": "task", "provenance": "sensor"}],
+  "parameter_domains": [],
+  "protocol": {"version": "1", "execution_context": {"hardware_identity": "cpu:scope", "software_fingerprints": [{"name": "scope-engine", "version": "1", "build": "release"}]}, "warmup_count": 0, "repeat_count": 1, "paired_repeat_count": 2, "c2_pair_roles": [{"repeat_index": 0, "phase": "discovery", "f_role": "F_d", "n_role": "N_d"}, {"repeat_index": 1, "phase": "validation", "f_role": "F_v_1", "n_role": "N_v_1"}], "c2_order_seed": 42, "c2_mode": "empirical_difference_envelope", "measurement_scope": "whole-task", "cost_scope": "invocation"}
+}
