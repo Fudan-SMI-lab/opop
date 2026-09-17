@@ -60,9 +60,9 @@ class RetuneResult(BaseModel):
 
 
 def tune_existing(orch: Orchestrator, inputs: RetuneInputs) -> RetuneResult:
-    source = (orch.store.run_dir / "inputs" / "source.py").read_text(encoding="utf-8")
+    source = (orch.store.run_dir / "inputs" / inputs.source.name).read_text(encoding="utf-8")
     published = ParameterSpace.model_validate_json(inputs.space.read_text(encoding="utf-8"))
-    proposal = ParameterizationResult.model_validate({"file": "source.py", "space": {
+    proposal = ParameterizationResult.model_validate({"file": inputs.source.name, "space": {
         "params": [p.model_dump() for p in published.domains],
         "constraints": [c.model_dump() for c in published.constraints],
     }})
@@ -138,14 +138,20 @@ def retune(inputs: RetuneInputs, cfg: AppConfig, *, runtime: Runtime | None = No
         "device": cfg.device.model_dump(mode="json"), "gpu": cfg.gpu.model_dump(mode="json"),
         "search": cfg.v3.search.model_dump(mode="json"), "ordered_categoricals": cfg.v3.ordered_categoricals.model_dump(),
         "budget": 40, "conditional_scan": "off", "slope_guide": False,
+        "staged_source": f"inputs/{inputs.source.name}", "staged_reference": "reference.py",
     })
     staged = root / "inputs"
     staged.mkdir()
-    (staged / "source.py").write_text(inputs.source.read_text(encoding="utf-8"), encoding="utf-8")
-    reference = staged / "reference.py"
-    reference.write_text(inputs.reference.read_text(encoding="utf-8"), encoding="utf-8")
+    primary = staged / inputs.source.name
+    shutil.copyfile(inputs.source, primary)
+    reference = root / "reference.py"
+    shutil.copyfile(inputs.reference, reference)
     for helper in inputs.helpers:
         destination = staged / helper.resolve().relative_to(inputs.source.resolve().parent)
+        if destination == primary:
+            if helper.resolve() != inputs.source.resolve():
+                raise InputError(f"helper collides with primary source: {helper}")
+            continue
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(helper, destination)
     local = isolated_config(cfg, root)

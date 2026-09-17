@@ -7,10 +7,12 @@ import pytest
 
 from kernel_optimizer.agents.runtime import AgentCallError, OpencodeClient, OpencodeServer, PromptResult
 from kernel_optimizer.gpu.worker_client import WslGpuWorker, to_wsl_path
-from kernel_optimizer.models.core import ParamSet
+from kernel_optimizer.models.core import ParamSet, ParamValue
 from kernel_optimizer.paramspace.materializer import extract_defaults
-from tests.test_c2_information_inputs import prepared
+from tests.test_c2_information_inputs import prepared as existing_prepared
 from tests.test_c2_method_program import method_module
+
+prepared = existing_prepared
 
 
 @pytest.mark.parametrize(("slot", "mode"), [(s, "success") for s in ["A0", "A1", "B0", "B1"]]
@@ -27,7 +29,7 @@ def test_core_real_protocol_counts_and_native_selection(tmp_path, monkeypatch, p
     cfg.budgets.trials_per_space = 3
     cfg.budgets.space_expansions_per_candidate = 2
     cfg.gpu.concurrency.enabled = True
-    params = {f"x{i}": 1 for i in range(6)}
+    params: dict[str, ParamValue] = {f"x{i}": 1 for i in range(6)}
     shared = shared.model_copy(update={"task": protocol.SLOTS[slot].task,
         "source": f"PARAMS={params!r}\ndef run(): return 1\n",
         "parent": shared.parent.model_copy(update={"params": ParamSet(values=params)})})
@@ -76,18 +78,23 @@ def test_core_real_protocol_counts_and_native_selection(tmp_path, monkeypatch, p
                 raise AgentCallError("fixture parameter rejection")
         number = {"generation-G0": 2, "generation-L": 3, "generation-P": 4}[chain]
         source = f"import triton\nPARAMS={{'z': 7, 'partner': 4}}\n@triton.jit\ndef work(): return {number}\n"
+        output_file = "candidate/parameterized.py" if title == "ParameterizationResult" else "child.py"
+        if title == "ParameterizationResult":
+            source = source.replace("'partner': 4", "'partner': 4, 'STATS_STAGES': 2").replace(f"return {number}", f"return {number + 100}")
         if mode == "helpers":
             source = "import generated_helper\n" + source
-        (directory / "child.py").write_text(source)
+        (directory / output_file).parent.mkdir(exist_ok=True)
+        (directory / output_file).write_text(source)
         if mode == "helpers":
-            (directory / "generated_helper.py").write_text("VALUE = 23\n")
+            (directory / output_file).with_name("generated_helper.py").write_text("VALUE = 23\n")
         answers = {
             "BottleneckReport": {"summary": "fixture", "hypotheses": []},
             "RewriteResult": {"candidates": [{"file": "child.py", "backend": "triton",
                     "change_summary": "fixture", "hypothesis_id": "H1"}]},
-            "ParameterizationResult": {"file": "child.py", "space": {"params": [
+            "ParameterizationResult": {"file": output_file, "space": {"params": [
                 {"name": "z", "kind": "int", "choices": list(range(80))},
-                {"name": "partner", "kind": "int", "choices": [2, 4]}]}},
+                {"name": "partner", "kind": "int", "choices": [2, 4]},
+                {"name": "STATS_STAGES", "kind": "int", "choices": [1, 2]}]}},
         }
         return PromptResult(text="", structured=answers[title], session_id=session_id)
 
@@ -234,7 +241,7 @@ def test_core_real_protocol_counts_and_native_selection(tmp_path, monkeypatch, p
             if row.retune.rejection is None:
                 accepted = next(e.payload["result"] for e in native_store.iter_events() if e.type == "RETUNE_VALIDATION")
                 witnesses = accepted["witnesses"]
-                assert len(witnesses) == 2 and witnesses[0]["params"]["values"] == {"z": 7, "partner": 4}
+                assert len(witnesses) == 2 and witnesses[0]["params"]["values"] == {"z": 7, "partner": 4, "STATS_STAGES": 2}
                 assert [t.params.model_dump() for t in row.retune.trials[:2]] == [w["params"] for w in witnesses]
             if row.retune.selected_trial is not None:
                 trial = row.retune.selected_trial
