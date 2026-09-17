@@ -3,13 +3,13 @@
 # dependencies = ["kernel-optimizer"]
 # ///
 # Existing v5 environment: python -m scripts.experiments.c2_retune --config CONFIG --input INPUT
-"""Retune one existing structure through normal v5 validation and Orchestrator._tune."""
+"""Retune one existing structure via native accepted-candidate continuation."""
 
 import argparse
 import os
 import shutil
 import sys
-from contextlib import closing
+from contextlib import ExitStack, closing
 from pathlib import Path
 from time import monotonic
 from typing import ClassVar, Literal, assert_never
@@ -23,12 +23,12 @@ from kernel_optimizer.evaluation.correctness import latency_from_result
 from kernel_optimizer.gpu.worker_client import to_wsl_path
 from kernel_optimizer.models.core import Backend, BestRecord, ParameterSpace, TaskSpec, TrialRecord, sha256_text
 from kernel_optimizer.models.reports import ParameterizationResult
-from kernel_optimizer.paramspace.materializer import materialize
 from kernel_optimizer.paramspace.validation import SpaceAccepted, SpaceRejection
 from kernel_optimizer.store.run_store import RunStore
 from kernel_optimizer.tasks.kernelbench import parse_task_arg
 from kernel_optimizer.wiring import Runtime, build_orchestrator
 from scripts.experiments.c2_local_runner import isolated_config, worker_environment
+from scripts.experiments.c2_local_inputs import InputError
 
 
 class RetuneInputs(BaseModel):
@@ -42,15 +42,21 @@ class RetuneInputs(BaseModel):
     output: Path
     backend: Backend = "triton"
     helpers: tuple[Path, ...] = ()
+    final_blocks: Literal[0, 3] = 3
+    space_expansions_per_candidate: int = Field(default=0, ge=0)
+    rewrite_intent: str | None = None
 
 
 class RetuneResult(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
-    status: Literal["complete", "rejected", "no_best", "final_failed"]
+    status: Literal["complete", "rejected", "no_best", "final_failed", "artifact_error"]
     rejection: SpaceRejection | None = None
     selected: BestRecord | None = None
     trials: list[TrialRecord] = Field(default_factory=list)
     finals: list[TrialRecord] = Field(default_factory=list)
+    selected_trial: TrialRecord | None = None
+    final_blocks_requested: Literal[0, 3] = 3
+    error: str | None = None
 
 
 def tune_existing(orch: Orchestrator, inputs: RetuneInputs) -> RetuneResult:
@@ -60,9 +66,11 @@ def tune_existing(orch: Orchestrator, inputs: RetuneInputs) -> RetuneResult:
         "params": [p.model_dump() for p in published.domains],
         "constraints": [c.model_dump() for c in published.constraints],
     }})
-    candidate = orch._register(source, "seed", [], inputs.backend, "existing structure; retuning only")
+    candidate = orch._register(source, "rewrite" if inputs.rewrite_intent else "seed", [], inputs.backend,
+                               inputs.rewrite_intent or "existing structure; retuning only")
     if candidate is None:
-        return RetuneResult(status="rejected", rejection=SpaceRejection(reason="registration_refused", detail="no candidate"))
+        return RetuneResult(status="rejected", rejection=SpaceRejection(reason="registration_refused", detail="no candidate"),
+                            final_blocks_requested=inputs.final_blocks)
     crun = orch.runs[candidate.candidate_id]
     accepted = orch.deps.validator.validate_and_publish(
         candidate, source, proposal, orch.task, orch.store.candidate_dir(candidate.candidate_id))
@@ -70,33 +78,32 @@ def tune_existing(orch: Orchestrator, inputs: RetuneInputs) -> RetuneResult:
     match accepted:
         case SpaceRejection():
             candidate.status = "dropped"
-            return RetuneResult(status="rejected", rejection=accepted)
+            return RetuneResult(status="rejected", rejection=accepted, final_blocks_requested=inputs.final_blocks)
         case SpaceAccepted():
-            crun.space = accepted.space
+            orch._continue_accepted_candidate(crun, accepted, run_analysis=False)
         case unreachable:
             assert_never(unreachable)
-    orch.store.append("SPACE_PUBLISHED", {"space": accepted.space.model_dump(mode="json")})
-    anchors = tuple(w.params for w in accepted.witnesses)
-    measured_cache: dict[str, TrialRecord] = {}
-    for witness in accepted.witnesses:
-        if witness.latency_mean_ms is not None:
-            measured_cache[witness.params.key()] = TrialRecord(
-                trial_id=f"wit-{witness.params.key()}", candidate_id=candidate.candidate_id,
-                space_id=accepted.space.space_id, params=witness.params, status="complete",
-                latency_ms=latency_from_result(witness.worker_result),
-                profile=orch.deps.profiler.extract(witness.worker_result),
-            )
-    orch._tune(crun, anchors, measured_cache)
-    candidate.status = "tuned"
     selected = orch.deps.families.families[candidate.family_id].best
     if selected is None:
-        return RetuneResult(status="no_best", trials=crun.trials)
+        return RetuneResult(status="no_best", trials=crun.trials, final_blocks_requested=inputs.final_blocks)
+    selected_trial = next((t for t in crun.trials if t.status == "complete" and t.latency_ms is not None
+                           and t.candidate_id == selected.candidate_id and t.params == selected.params
+                           and t.latency_ms.robust_ms == selected.latency_ms), None)
     selected_path = orch.store.run_dir / "report" / "selected.py"
-    selected_path.write_text(materialize(source, selected.params), encoding="utf-8")
+    try:
+        if selected_trial is None:
+            raise InputError("native selection has no matching measured trial")
+        measured = orch.store.candidate_dir(selected_trial.candidate_id) / "trials" / f"{selected_trial.trial_id}.py"
+        shutil.copyfile(measured, selected_path)
+    except (OSError, InputError) as exc:
+        orch.store.append("RETUNE_ARTIFACT_ERROR", {"error": str(exc)})
+        return RetuneResult(status="artifact_error", selected=selected, selected_trial=selected_trial,
+                            trials=crun.trials, error=str(exc), final_blocks_requested=inputs.final_blocks)
     orch.store.append("RETUNE_SELECTED", {"selected": selected.model_dump(mode="json"),
+                                          "selected_trial": selected_trial.model_dump(mode="json"),
                                           "artifact": "report/selected.py"})
     finals: list[TrialRecord] = []
-    for block in range(3):
+    for block in range(inputs.final_blocks):
         started = monotonic()
         orch.store.append("RETUNE_FINAL_STARTED", {"block": block})
         try:
@@ -107,7 +114,7 @@ def tune_existing(orch: Orchestrator, inputs: RetuneInputs) -> RetuneResult:
         valid = bool(raw.get("ok")) and latency is not None
         record = TrialRecord.model_validate({
             "trial_id": f"final-{block}", "candidate_id": candidate.candidate_id,
-            "space_id": accepted.space.space_id, "params": selected.params,
+            "space_id": selected_trial.space_id, "params": selected.params,
             "status": "complete" if valid else "fail", "latency_ms": latency,
             "profile": orch.deps.profiler.extract(raw),
             "failure_kind": None if valid else raw.get("failure_kind") or "runtime_error",
@@ -117,10 +124,13 @@ def tune_existing(orch: Orchestrator, inputs: RetuneInputs) -> RetuneResult:
         orch.store.append("RETUNE_FINAL_DONE", {"block": block, "worker": raw,
                                                "trial": record.model_dump(mode="json"), "wall_s": monotonic() - started})
     return RetuneResult(status="complete" if all(t.status == "complete" for t in finals) else "final_failed",
-                        selected=selected, trials=crun.trials, finals=finals)
+                        selected=selected, selected_trial=selected_trial, trials=crun.trials, finals=finals,
+                        final_blocks_requested=inputs.final_blocks)
 
 
-def retune(inputs: RetuneInputs, cfg: AppConfig) -> RetuneResult:
+def retune(inputs: RetuneInputs, cfg: AppConfig, *, runtime: Runtime | None = None) -> RetuneResult:
+    if inputs.space_expansions_per_candidate and (runtime is None or runtime.client is None):
+        raise InputError("native expansion requires a caller-owned Runtime with a client")
     started = monotonic()
     root = inputs.output.resolve()
     store = RunStore.create(root.parent, root.name, {
@@ -140,6 +150,7 @@ def retune(inputs: RetuneInputs, cfg: AppConfig) -> RetuneResult:
         shutil.copyfile(helper, destination)
     local = isolated_config(cfg, root)
     local.run.seed = inputs.sampler_seed
+    local.budgets.space_expansions_per_candidate = inputs.space_expansions_per_candidate
     local.v4.conditional_scan.mode = "off"
     local.v3.slope_guide.enabled = False
     local.wsl.extra_pythonpath = f"{to_wsl_path(staged)}:{local.wsl.extra_pythonpath}"
@@ -149,10 +160,12 @@ def retune(inputs: RetuneInputs, cfg: AppConfig) -> RetuneResult:
     previous_seed = os.environ.get("C2_RETUNE_EVALUATION_SEED")
     try:
         os.environ["C2_RETUNE_EVALUATION_SEED"] = str(inputs.evaluation_seed)
-        with worker_environment(local), closing(OpencodeClient("http://127.0.0.1:1")) as client:
-            runtime = Runtime(local)
-            runtime.client = client
-            orch = build_orchestrator(local, store, task, runtime)
+        with worker_environment(local), ExitStack() as stack:
+            active_runtime = runtime
+            if active_runtime is None:
+                active_runtime = Runtime(local)
+                active_runtime.client = stack.enter_context(closing(OpencodeClient("http://127.0.0.1:1")))
+            orch = build_orchestrator(local, store, task, active_runtime)
             orch.deps.evaluator.seed = inputs.evaluation_seed
             orch.deps.validator.seed = inputs.evaluation_seed
             orch.deps.evaluator.worker.worker_main_path = Path(__file__).with_name("c2_retune_worker.py")

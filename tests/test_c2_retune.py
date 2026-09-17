@@ -26,7 +26,8 @@ def retune_module():
 
 @pytest.mark.parametrize(("sampler_seed", "outcome"), [(0, "complete"), (1, "complete"),
                                                      (2, "complete"), (0, "rejected"), (0, "no_best")])
-def test_native_retune_preserves_witnesses_seeds_and_final_selection(tmp_path, monkeypatch, sampler_seed, outcome):
+@pytest.mark.parametrize("final_blocks", [0, 3])
+def test_native_retune_preserves_witnesses_seeds_and_final_selection(tmp_path, monkeypatch, sampler_seed, outcome, final_blocks):
     # Given: original defaults distinct from the minimal witness, and a full space.
     module = retune_module()
     source = tmp_path / "parameterized.py"
@@ -45,9 +46,10 @@ def test_native_retune_preserves_witnesses_seeds_and_final_selection(tmp_path, m
     cfg.v3.ordered_categoricals.enabled = True
     cfg.v3.search.deweight_unconditional_failures = True
     cfg.v4.conditional_scan.mode = "active"
+    cfg.budgets.space_expansions_per_candidate = 2
     original_config = cfg.model_dump()
     spec = module.RetuneInputs(task="level3:21", source=source, space=space_file, reference=reference,
-                               sampler_seed=sampler_seed, evaluation_seed=73, output=tmp_path / "run")
+                               sampler_seed=sampler_seed, evaluation_seed=73, output=tmp_path / "run", final_blocks=final_blocks)
     calls = []
     native_calls = []
     anchors = []
@@ -85,6 +87,10 @@ def test_native_retune_preserves_witnesses_seeds_and_final_selection(tmp_path, m
         if frame.f_code is SpaceValidator.validate_and_publish.__code__:
             native_calls.append("validate")
             assert frame.f_locals["self"].seed == 73
+        if frame.f_code is Orchestrator._continue_accepted_candidate.__code__:
+            native_calls.append("continue")
+            assert frame.f_locals["run_analysis"] is False
+            assert frame.f_locals["self"].cfg.budgets.space_expansions_per_candidate == 0
         if frame.f_code is Orchestrator._tune.__code__:
             native_calls.append("tune")
             orch = frame.f_locals["self"]
@@ -110,6 +116,7 @@ def test_native_retune_preserves_witnesses_seeds_and_final_selection(tmp_path, m
         sys.setprofile(previous_profile)
     # Then: gate failures stop, accepted witnesses are the only anchors, and finals cannot rerank.
     assert result.status == outcome
+    assert result.final_blocks_requested == final_blocks
     assert cfg.model_dump() == original_config
     events = RunStore.open(spec.output).iter_events()
     assert not any(e.type.startswith("AGENT_") or e.type.startswith("SCAN_") for e in events)
@@ -118,7 +125,9 @@ def test_native_retune_preserves_witnesses_seeds_and_final_selection(tmp_path, m
         assert result.rejection.reason == "witness_default_failed"
         assert result.trials == [] and result.finals == []
         return
-    assert native_calls == ["validate", "tune", "prescreen"]
+    assert native_calls == ["validate", "continue", "tune", "prescreen"]
+    assert sum(e.type == "SPACE_PUBLISHED" for e in events) == 1
+    assert sum(e.type == "STATS_DONE" for e in events) == 1
     assert [p.values for p in anchors] == [{"x": 7, "y": 2}, {"x": 0, "y": 1}]
     assert len(result.trials) == 40
     tuning = next(e.payload for e in events if e.type == "TUNING_DONE")
@@ -137,7 +146,8 @@ def test_native_retune_preserves_witnesses_seeds_and_final_selection(tmp_path, m
     assert len(quick_calls) == 2 + expected_fresh
     assert result.selected.params.values == {"x": 7, "y": 2}
     assert result.selected.latency_ms == 1.0
-    assert len(result.finals) == 3
+    assert len(result.finals) == final_blocks
+    assert sum(j.get("num_perf_trials") == 100 for _, j in calls) == final_blocks
     assert all(t.params == result.selected.params and t.latency_ms.robust_ms == 999.0 for t in result.finals)
     assert extract_defaults((spec.output / "report" / "selected.py").read_text()) == {"x": 7, "y": 2}
 
