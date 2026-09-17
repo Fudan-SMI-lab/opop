@@ -3,14 +3,14 @@
 # dependencies = ["kernel-optimizer"]
 # ///
 # Existing environment: python -m scripts.experiments.c2_method_program --help
-"""Fixed core cell runner and fail-closed optional branch dispatch."""
+"""Fixed core cells and explicitly acknowledged exploratory A; B/C stay not ready."""
 
 import argparse
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import chdir
 from pathlib import Path
-from time import monotonic
+from time import monotonic, time
 from typing import Literal
 
 from kernel_optimizer.config import AppConfig, load_config
@@ -157,6 +157,7 @@ class Options(Strict):
 
 def main(argv: list[str] | None = None) -> int:
     started = monotonic()
+    started_unix = time()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--phase", choices=("core", "A", "B", "C"), required=True)
     parser.add_argument("--slot", choices=tuple(SLOTS), required=True)
@@ -164,6 +165,15 @@ def main(argv: list[str] | None = None) -> int:
         parser.add_argument(f"--{name}", type=Path, required=True)
     options = Options.model_validate(vars(parser.parse_args(argv)))
     try:
+        if options.phase == "A":
+            from scripts.experiments.c2_method_a import AInputs, ARun, run_a
+            a_inputs = AInputs.model_validate_json(options.inputs.read_text(encoding="utf-8"))
+            if a_inputs.slot != options.slot:
+                raise InputError("CLI slot differs from input wrapper")
+            a_inputs.load_parent()
+            result_a = run_a(a_inputs, ARun(load_config(options.config), options.output,
+                                          Deadline(started, seconds=9000), started_unix))
+            return 0 if result_a.status == "valid" else 1
         inputs = MethodInputs.model_validate_json(options.inputs.read_text(encoding="utf-8"))
         if inputs.slot != options.slot:
             raise InputError("CLI slot differs from input wrapper")
