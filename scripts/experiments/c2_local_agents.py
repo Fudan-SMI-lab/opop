@@ -2,14 +2,19 @@
 
 import csv
 import io
+import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
+
+from pydantic import JsonValue
 
 from kernel_optimizer.agents.modules import AnalystInputs, ParameterizerInputs, RewriterInputs, _detect_backend
 from kernel_optimizer.agents.task_rewriter import TaskRewriteInputs
 from kernel_optimizer.config import AppConfig
 from kernel_optimizer.control.direct_task import TaskSpace
-from kernel_optimizer.models.core import ParameterSpace, TaskSpec, sha256_text
+from kernel_optimizer.models.core import Backend, ParameterSpace, TaskSpec, sha256_text
+from kernel_optimizer.models.reports import BottleneckReport
 from kernel_optimizer.paramspace.materializer import extract_defaults
 from kernel_optimizer.store.run_store import RunStore
 from kernel_optimizer.tuning.stats import TuningStatsAnalyzer
@@ -32,6 +37,15 @@ class Child:
     backend: str
 
 
+@dataclass(frozen=True, slots=True)
+class LegacyProposal:
+    source: str
+    backend: Backend
+    change_summary: str
+    hypothesis_id: str | None
+    report: BottleneckReport
+
+
 def direct_child(inputs: TaskRewriteInputs, services: Services) -> Child:
     agent = build_task_rewriter(services.cfg, services.store, services.runtime)
     outcome = agent.invoke(inputs)
@@ -39,10 +53,18 @@ def direct_child(inputs: TaskRewriteInputs, services: Services) -> Child:
     return Child(path, outcome.output.space or inputs.space, _detect_backend(path.read_text(encoding="utf-8")))
 
 
-def legacy_child(shared: Shared, services: Services, inputs: TaskRewriteInputs) -> Child:
+def _task(shared: Shared) -> TaskSpec:
     level, problem_id = parse_task_arg(shared.task)
-    task = TaskSpec(level=level, problem_id=problem_id, name=shared.task, ref_path=Path("reference.py"),
+    return TaskSpec(level=level, problem_id=problem_id, name=shared.task, ref_path=Path("reference.py"),
                     ref_src_sha=sha256_text(shared.reference_source))
+
+
+def generate_legacy_proposal(
+    shared: Shared, services: Services, inputs: TaskRewriteInputs, *,
+    reasoning_mode: Literal["whole_task", "legacy_local"] = "whole_task",
+    failed_hypotheses: list[dict[str, JsonValue]] | None = None,
+) -> LegacyProposal:
+    task = _task(shared)
     deps = build_orchestrator(services.cfg, services.store, task, services.runtime).deps
     space = ParameterSpace(space_id=shared.parent.space_id, candidate_id=shared.parent.candidate_id,
                            source_sha=sha256_text(shared.source), domains=shared.space.params,
@@ -57,27 +79,48 @@ def legacy_child(shared: Shared, services: Services, inputs: TaskRewriteInputs) 
                          trial.latency_ms.model_dump_json() if trial.latency_ms else "",
                          trial.profile.model_dump_json() if trial.profile else ""])
     brief = "\n".join(response.model_dump_json() for response in inputs.responses)
-    common = "Full task reference source:\n```python\n" + shared.reference_source + "\n```\n"
-    common += "Evaluation contract:\n" + (Path("evaluation.json").read_text(encoding="utf-8"))
+    common = "Evaluation contract:\n" + json.dumps(shared.evaluation)
     report = deps.analyst.invoke(AnalystInputs(
         task=task, candidate_source=shared.source, stats=stats, trials_csv=buffer.getvalue(),
         device=shared.device, candidate_id=shared.parent.candidate_id,
         eval_semantics=shared.semantics, profile=shared.parent.profile,
-        digest_text=common + ("\nFresh conditional responses:\n" + brief if brief else ""),
+        digest_text=common, reasoning_mode=reasoning_mode, reference_source=shared.reference_source,
+        conditional_response_text=brief or None,
     )).output
     outcome = deps.rewriter.invoke(RewriterInputs(
-        task=task, best_source=shared.source, report=report, failed_hypotheses=[], device=shared.device,
-        n_candidates=1, eval_semantics=shared.semantics, wall_text=brief or None,
+        task=task, best_source=shared.source, report=report,
+        failed_hypotheses=shared.failed_hypotheses if failed_hypotheses is None else failed_hypotheses,
+        device=shared.device, n_candidates=1, eval_semantics=shared.semantics,
+        reasoning_mode=reasoning_mode, reference_source=shared.reference_source,
+        conditional_response_text=brief or None,
     ))
     if len(outcome.output.candidates) != 1:
         raise InputError("legacy rewriter must return exactly one child for this diagnostic")
     proposed = outcome.output.candidates[0]
     source = outcome.sandbox.read_output(proposed.file)
+    services.store.append("LEGACY_PROPOSAL_GENERATED", {
+        "parent_candidate_id": shared.parent.candidate_id, "hypothesis_id": proposed.hypothesis_id or None,
+        "change_summary": proposed.change_summary, "backend": proposed.backend,
+    })
+    return LegacyProposal(source, proposed.backend, proposed.change_summary, proposed.hypothesis_id or None, report)
+
+
+def parameterize_legacy_proposal(
+    shared: Shared, services: Services, proposal: LegacyProposal, *, pass_intent: bool = True,
+) -> Child:
+    task = _task(shared)
+    deps = build_orchestrator(services.cfg, services.store, task, services.runtime).deps
     parameterized = deps.parameterizer.invoke(ParameterizerInputs(
-        task=task, candidate_source=source, device=shared.device, candidate_id="child",
+        task=task, candidate_source=proposal.source, device=shared.device, candidate_id="child",
+        rewrite_intent=proposal.change_summary if pass_intent else None,
     ))
     path = (parameterized.sandbox.root / parameterized.output.file).resolve()
     child_space = TaskSpace.model_validate(parameterized.output.space.model_dump())
     if set(extract_defaults(path.read_text(encoding="utf-8"))) != {d.name for d in child_space.params}:
         raise InputError("child PARAMS keys and published space disagree")
-    return Child(path, child_space, proposed.backend)
+    return Child(path, child_space, proposal.backend)
+
+
+def legacy_child(shared: Shared, services: Services, inputs: TaskRewriteInputs) -> Child:
+    proposal = generate_legacy_proposal(shared, services, inputs)
+    return parameterize_legacy_proposal(shared, services, proposal)

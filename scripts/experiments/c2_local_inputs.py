@@ -76,9 +76,11 @@ class Shared(Strict):
     resource_metrics: tuple[str, ...] = ("n_regs", "n_spills", "shared_bytes")
     protocol_id: str = ""
     cutoff_seq: int | None = None
+    failed_hypotheses: list[dict[str, JsonValue]] = Field(default_factory=list)
 
     def identity(self) -> str:
-        return sha256_text(self.model_dump_json())
+        return sha256_text(self.model_dump_json(
+            exclude={"failed_hypotheses"} if not self.failed_hypotheses else None))
 
 
 class Responses(Strict):

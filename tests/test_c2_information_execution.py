@@ -51,7 +51,8 @@ def test_single_opportunity_uses_native_retune_and_tuning_only_selection(tmp_pat
             raise AgentCallError("CPU fixture generation failure")
         directory = kwargs["directory"]
         if title == "RewriteResult":
-            brief = directory / "analysis/resource_walls.md"
+            brief = directory / "analysis/conditional_responses.md"
+            assert not (directory / "analysis/resource_walls.md").exists()
             if group == "G0":
                 assert not brief.exists()
             else:
