@@ -71,7 +71,9 @@ def updated_parent(current: Shared, result: InformationResult, opportunity: Path
                and t.candidate_id == child.selected.candidate_id and t.params == child.selected.params]
     if not matches:
         raise InputError("selected child has no matching native tuning trial")
-    parent = min(matches, key=lambda t: rank_record(t, None))
+    parent = child.selected_trial or min(matches, key=lambda t: rank_record(t, None))
+    if parent not in matches:
+        raise InputError("selected artifact trial disagrees with native selection")
     events = RunStore.open(opportunity / "retune").iter_events()
     spaces = [ParameterSpace.model_validate(e.payload["space"]) for e in events
               if e.type == "SPACE_PUBLISHED" and e.payload["space"]["space_id"] == parent.space_id
@@ -80,8 +82,8 @@ def updated_parent(current: Shared, result: InformationResult, opportunity: Path
                   if e.type == "CANDIDATE_REGISTERED" and e.payload["candidate"]["candidate_id"] == parent.candidate_id]
     if len(spaces) != 1 or len(candidates) != 1:
         raise InputError("selected child lacks one consistent native space/candidate")
-    if any(t.candidate_id != parent.candidate_id or t.space_id != parent.space_id for t in child.trials):
-        raise InputError("child tuning history mixes candidates or spaces")
+    if any(t.candidate_id != parent.candidate_id for t in child.trials):
+        raise InputError("child tuning history mixes candidates")
     source = (opportunity / result.selected_artifact).read_text(encoding="utf-8")
     if extract_defaults(source) != parent.params.values:
         raise InputError("selected artifact PARAMS differ from native tuning selection")
@@ -89,13 +91,45 @@ def updated_parent(current: Shared, result: InformationResult, opportunity: Path
               if e.type == "TRIAL_DONE" and e.payload.get("reused_measurement")}
     trials = [t.model_copy(deep=True, update={
         "failure_detail": "[reused_measurement=true] native validation witness; " + t.failure_detail,
-    }) if t.trial_id in reused else t.model_copy(deep=True) for t in child.trials]
+    }) if t.trial_id in reused else t.model_copy(deep=True)
+        for t in child.trials if t.space_id == parent.space_id]
     parent = parent.model_copy(deep=True)
     return current.model_copy(deep=True, update={
         "source": source, "parent": parent, "trials": trials, "cutoff_seq": None,
         "space": TaskSpace(params=spaces[0].domains, constraints=spaces[0].constraints),
-        "backend": candidates[0].backend,
+        "backend": candidates[0].backend, "failed_hypotheses": [],
     })
+
+
+def retained_feedback(current: Shared, outcome: InformationResult, opportunity: Path) -> Shared:
+    proposals = [e.payload for e in RunStore.open(opportunity / "generation").iter_events()
+                 if e.type == "LEGACY_PROPOSAL_GENERATED"
+                 and e.payload["parent_candidate_id"] == current.parent.candidate_id]
+    if not proposals:
+        return current
+    proposal = proposals[-1]
+    child = outcome.child
+    result = "parameterization_or_tuning_failed"
+    child_ms = None
+    if child is not None:
+        child_ms = child.selected.latency_ms if child.selected else None
+        match child.status:
+            case "rejected":
+                result = "validation_rejected"
+            case "no_best":
+                result = "no_valid_tuning_result"
+            case "final_failed":
+                result = "final_measurement_failed"
+            case "artifact_error":
+                result = "artifact_unavailable"
+            case "complete":
+                result = "valid_but_not_faster"
+            case unreachable:
+                assert_never(unreachable)
+    entry = {"id": proposal["hypothesis_id"], "change": proposal["change_summary"], "outcome": result,
+             "parent_candidate_id": current.parent.candidate_id, "parent_ms": outcome.parent_baseline_ms,
+             "child_best_ms": child_ms, "error": outcome.error}
+    return current.model_copy(deep=True, update={"failed_hypotheses": [*current.failed_hypotheses, entry]})
 
 
 def run_closed_loop(initial: Shared, run: LoopRun) -> LoopResult:
@@ -149,6 +183,7 @@ def run_closed_loop(initial: Shared, run: LoopRun) -> LoopResult:
             match outcome.selected:
                 case "parent":
                     fresh = outcome.parent_finals
+                    current = retained_feedback(current, outcome, opportunity)
                 case "child":
                     if outcome.child is None or outcome.child.status != "complete" or not full_blocks_valid(outcome.child.finals):
                         raise InputError("selected child full measurements are invalid or incomplete")

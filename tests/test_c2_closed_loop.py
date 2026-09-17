@@ -2,6 +2,7 @@
 
 import csv
 import importlib
+import json
 import sys
 from pathlib import Path
 
@@ -44,6 +45,7 @@ def test_two_rounds_update_real_parent_and_preserve_elapsed_history(tmp_path, mo
     active = []
     roles = []
     analyst_inputs = {}
+    rewrite_history = {}
     acquisition_calls = []
     probe_params = {1: [], 2: []}
     opportunities = []
@@ -69,6 +71,8 @@ def test_two_rounds_update_real_parent_and_preserve_elapsed_history(tmp_path, mo
                 extract_defaults((directory / "candidate/source.py").read_text()),
                 list(csv.DictReader((directory / "tuning/trials.csv").read_text().splitlines())),
             )
+        if title == "RewriteResult":
+            rewrite_history[number] = json.loads((directory / "history/failed_hypotheses.json").read_text())
         if mode == "generation" and number == 1:
             raise AgentCallError("CPU fixture failed first opportunity")
         key, default = ("z", 7) if number == 1 else ("w", 9)
@@ -186,7 +190,18 @@ def test_two_rounds_update_real_parent_and_preserve_elapsed_history(tmp_path, mo
                 assert probe_params[2] == [{"z": 0, "partner": 4}, {"z": 79, "partner": 4},
                                            {"z": 7, "partner": 2}, {"z": 7, "partner": 4}]
         else:
-            assert next_shared.model_dump() == initial.model_dump()
+            assert next_shared.model_dump(exclude={"failed_hypotheses"}) == initial.model_dump(exclude={"failed_hypotheses"})
+            expected_history = 0 if mode == "generation" else 1
+            assert len(next_shared.failed_hypotheses) == expected_history
+            if expected_history:
+                assert next_shared.failed_hypotheses[0]["id"] == "H1"
+                assert next_shared.failed_hypotheses[0]["parent_candidate_id"] == initial.parent.candidate_id
+                assert rewrite_history[2] == next_shared.failed_hypotheses
+            if mode == "keep":
+                assert next_shared.failed_hypotheses[0]["outcome"] == "valid_but_not_faster"
+                child_ms = next_shared.failed_hypotheses[0]["child_best_ms"]
+                assert isinstance(child_ms, (int, float)) and next_shared.parent.latency_ms is not None
+                assert child_ms >= next_shared.parent.latency_ms.robust_ms
         for field in ("task", "reference_source", "evaluation", "semantics", "device"):
             assert getattr(next_shared, field) == getattr(initial, field)
         if mode != "second_parent_invalid":
