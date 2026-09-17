@@ -36,6 +36,7 @@ from kernel_optimizer.agents.modules import (
 )
 from kernel_optimizer.agents.runtime import AgentCallError
 from kernel_optimizer.config import AppConfig
+from kernel_optimizer.control.accepted_candidate import prior_source_matches, witness_inputs
 from kernel_optimizer.control.convergence import ConvergencePolicy
 from kernel_optimizer.control.families import FamilyManager, NoveltyRejection
 from kernel_optimizer.evaluation import soft_wall, wall_attribution
@@ -523,6 +524,7 @@ class CandidateRun:
     # cannot be told apart from "the analyst dropped it". Set only when `in_prompt` is on, so the
     # control and `vector` arms carry None and are unaffected.
     wall_text: str | None = None
+    conditional_response_text: str | None = None
 
 
 class Orchestrator:
@@ -988,25 +990,35 @@ class Orchestrator:
                 crun.candidate.status = "dropped"
                 self._step_done(key)
                 return
-            crun.space = accepted.space
-            self.store.append("SPACE_PUBLISHED", {"space": accepted.space.model_dump()})
-            anchors = tuple(w.params for w in accepted.witnesses)
-            for witness in accepted.witnesses:
-                if witness.latency_mean_ms is not None:
-                    record = TrialRecord(
-                        trial_id=f"wit-{witness.params.key()}",
-                        candidate_id=cand_id, space_id=accepted.space.space_id,
-                        params=witness.params, status="complete",
-                        latency_ms=latency_from_result(witness.worker_result),
-                        profile=self.deps.profiler.extract(witness.worker_result),
-                    )
-                    measured_cache[witness.params.key()] = record
+            self._continue_accepted_candidate(crun, accepted)
+            self._step_done(key)
+            return
 
         self._tune(crun, anchors, measured_cache)
         self._stats_and_analysis(crun)
         self._maybe_expand_space(crun)
         crun.candidate.status = "tuned"
         self._step_done(key)
+
+    def _continue_accepted_candidate(
+        self, crun: CandidateRun, accepted: SpaceAccepted, *, run_analysis: bool = True,
+    ) -> None:
+        """Continue an already validated source; never parameterize or validate again.
+
+        The caller installs the accepted source on crun. Expansion follows the configured
+        native budget; run_analysis=False suppresses post-tune agent/diagnostic work only.
+        """
+        crun.space = accepted.space
+        self.store.append("SPACE_PUBLISHED", {"space": accepted.space.model_dump()})
+        anchors, measured_cache = witness_inputs(accepted, self.deps.profiler)
+        self._tune(crun, anchors, measured_cache)
+        if run_analysis:
+            self._stats_and_analysis(crun)
+            self._maybe_expand_space(crun)
+        else:
+            self._stats_and_analysis(crun, run_analysis=False)
+            self._maybe_expand_space(crun, run_analysis=False)
+        crun.candidate.status = "tuned"
 
     def _restore_pipeline(self, crun: CandidateRun, state) -> None:
         for space_payload in state.spaces.values():
@@ -1069,6 +1081,9 @@ class Orchestrator:
                 device=self.cfg.device, prior_feedback=feedback,
                 candidate_id=cand_id,
                 calibration=self.calibration,
+                rewrite_intent=(self.runs[cand_id].candidate.approach_summary or None
+                                if cand_id in self.runs
+                                and self.runs[cand_id].candidate.origin == "rewrite" else None),
             )
         )
 
@@ -1952,11 +1967,13 @@ class Orchestrator:
         })
         return refusal["detail"]
 
-    def _stats_and_analysis(self, crun: CandidateRun) -> None:
+    def _stats_and_analysis(self, crun: CandidateRun, *, run_analysis: bool = True) -> None:
         if crun.space is None or not crun.trials:
             return
         crun.stats = self.deps.stats_analyzer.analyze(crun.space, crun.trials)
         self.store.append("STATS_DONE", {"stats": crun.stats.model_dump()})
+        if not run_analysis:
+            return
         # The third core design point: how much latency one unit of a resource actually bought, in
         # that resource's own unit, fitted from THIS candidate's own trials. Journalled only --
         # nothing reads it yet, so it cannot change a decision, a ranking or a prompt, and a run
@@ -2032,13 +2049,9 @@ class Orchestrator:
         if soft_text and self.cfg.v3.soft_wall.in_prompt:
             wall_text = f"{wall_text}\n\n{soft_text}" if wall_text else soft_text
             crun.wall_text = wall_text
-        # v4.1 §6: the conditioned brief. In ACTIVE mode it REPLACES the legacy texts (new
-        # and legacy consumers are mutually exclusive, §8 — legacy is off by config
-        # exclusivity anyway); in observe mode nothing reaches the prompt (recording only).
         conditioned_text = self._conditional_brief(crun)
-        if conditioned_text is not None:
-            wall_text = conditioned_text
-            crun.wall_text = conditioned_text
+        crun.wall_text = wall_text
+        crun.conditional_response_text = conditioned_text
         # S2: the per-dimension vector. Journalled UNCONDITIONALLY, in both modes -- recording costs
         # nothing and is not what carries risk; what carries risk is what reaches the prompt, and
         # that is the one thing `v3.diagnosis.mode` switches. Writing it in label mode is also what
@@ -2062,6 +2075,9 @@ class Orchestrator:
                     calibration=self.calibration,
                     profile=self._best_profile(crun),
                     digest_text=digest_text,
+                    conditional_response_text=conditioned_text,
+                    reference_source=(self.task.ref_path.read_text(encoding="utf-8")
+                                      if self.task.ref_path.is_file() else None),
                 )
             )
             crun.report = outcome.output
@@ -2346,7 +2362,7 @@ class Orchestrator:
                                "error": f"{type(exc).__name__}: {exc}"[:300]})
             return None
 
-    def _maybe_expand_space(self, crun: CandidateRun) -> None:
+    def _maybe_expand_space(self, crun: CandidateRun, *, run_analysis: bool = True) -> None:
         """Improvement K: if a knob hit the tried-range boundary while still improving
         AND resources have headroom, ask the parameterizer to extend ONLY those knobs'
         choices (structure unchanged), revalidate, and re-tune once. Bounded by
@@ -2384,6 +2400,8 @@ class Orchestrator:
                             candidate_id=cand.candidate_id,
                             prior_constraints=prior_constraints,
                             calibration=self.calibration,
+                            rewrite_intent=(cand.approach_summary or None
+                                            if cand.origin == "rewrite" else None),
                         )
                     )
                 except AgentCallError as exc:
@@ -2440,37 +2458,32 @@ class Orchestrator:
             self.store.append("SPACE_EXPANDED", {
                 "candidate_id": cand.candidate_id, "knobs": knobs,
                 "prev_best_ms": prev_best})
-            anchors = tuple(w.params for w in verdict.witnesses)
-            measured_cache: dict[str, TrialRecord] = {}
-            for witness in verdict.witnesses:
-                if witness.latency_mean_ms is not None:
-                    measured_cache[witness.params.key()] = TrialRecord(
-                        trial_id=f"wit-{witness.params.key()}",
-                        candidate_id=cand.candidate_id, space_id=verdict.space.space_id,
-                        params=witness.params, status="complete",
-                        latency_ms=latency_from_result(witness.worker_result),
-                        profile=self.deps.profiler.extract(witness.worker_result),
-                    )
+            anchors, measured_cache = witness_inputs(verdict, self.deps.profiler)
             # An expansion only ADDS choices, so the pre-expansion optimum is still a
             # legal config — but the re-tune starts a FRESH TPE study whose only
             # anchors are the two witnesses. Without carrying the old optimum over,
             # 40 fresh trials can simply fail to rediscover it and the candidate goes
             # BACKWARDS (live on L3:43 cand-0c3b5820: 20.0 -> 22.6 ms). Seed it as an
-            # anchor and reuse its measurement so it costs no GPU time.
+            # anchor; reuse its measurement only when the measured source still matches.
             prev_trials = list(crun.trials)
             prior_best = min(
-                (t for t in prev_trials if t.status == "complete" and t.latency_ms),
+                (t for t in prev_trials if t.status == "complete" and t.latency_ms
+                 and t.candidate_id == cand.candidate_id),
                 key=lambda t: t.latency_ms.robust_ms, default=None)
             if prior_best is not None and check_config(
                     verdict.space, prior_best.params, self.cfg.device) is None:
                 key = prior_best.params.key()
-                if key not in measured_cache:
+                if key not in measured_cache and prior_source_matches(
+                        param_source, prior_best, work_dir / "trials"):
                     measured_cache[key] = prior_best.model_copy(
                         update={"space_id": verdict.space.space_id})
                 if prior_best.params not in anchors:
                     anchors = (prior_best.params, *anchors)
             self._tune(crun, anchors, measured_cache)
-            self._stats_and_analysis(crun)
+            if run_analysis:
+                self._stats_and_analysis(crun)
+            else:
+                self._stats_and_analysis(crun, run_analysis=False)
             # Stop if the expansion did not meaningfully help (avoid chasing a flat edge).
             if (prev_best is not None and crun.best_ms is not None
                     and crun.best_ms > prev_best * (1 - self.cfg.budgets.min_improvement_pct / 100.0)):
@@ -3206,6 +3219,9 @@ class Orchestrator:
                     # 2e. The parent candidate is the one whose space was probed, so its walls are
                     # the ones describing the source being rewritten. None in both other arms.
                     wall_text=parent_crun.wall_text,
+                    conditional_response_text=parent_crun.conditional_response_text,
+                    reference_source=(self.task.ref_path.read_text(encoding="utf-8")
+                                      if self.task.ref_path.is_file() else None),
                 )
             )
         except AgentCallError as exc:
