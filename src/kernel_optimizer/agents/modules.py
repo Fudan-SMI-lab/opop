@@ -7,8 +7,14 @@ import json
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
+from typing import Literal
 
 from kernel_optimizer.agents.base import AgentModule
+from kernel_optimizer.agents.method_prompts import (
+    ANALYST_RESOURCE_GUIDANCE,
+    method_guidance,
+    seed_method_context,
+)
 from kernel_optimizer.agents.sandbox import Sandbox
 from kernel_optimizer.models.core import DeviceLimits, TaskSpec
 from kernel_optimizer.models.reports import (
@@ -749,6 +755,7 @@ class ParameterizerInputs:
     # precision DOMAINS, and "is fp16 worth a choice here" is a question about the ratio
     # between two ceilings it otherwise cannot see.
     calibration: object | None = None
+    rewrite_intent: str | None = None
 
 
 class ParameterizerAgent(AgentModule[ParameterizerInputs, ParameterizationResult]):
@@ -757,6 +764,8 @@ class ParameterizerAgent(AgentModule[ParameterizerInputs, ParameterizationResult
 
     def seed_sandbox(self, inputs: ParameterizerInputs, sb: Sandbox) -> None:
         sb.write_input("candidate/source.py", inputs.candidate_source)
+        if inputs.rewrite_intent:
+            sb.write_input("analysis/rewrite_intent.md", inputs.rewrite_intent)
         sb.write_input("docs/candidate_contract.md", _contract_doc())
         # The parameterizer REWRITES the kernel body (and, on an expansion, chooses new
         # tile-dimension values), so every Triton rule that constrains a tile dimension
@@ -766,14 +775,23 @@ class ParameterizerAgent(AgentModule[ParameterizerInputs, ParameterizationResult
         sb.write_input("docs/device.md", _device_doc(inputs.device, inputs.calibration))
 
     def render_prompt(self, inputs: ParameterizerInputs, sb: Sandbox) -> str:
+        intent = (
+            "Read `analysis/rewrite_intent.md`, the existing rewrite summary, as advisory intent. "
+            "Reconcile its structural goal, intended region and companion conditions with "
+            "domains, defaults and constraints. In existing parameter descriptions or constraint "
+            "rationales, briefly explain what is expressed, omitted or still unknown. "
+            "No particular axis/value is mandatory, and matching the intent is not an acceptance "
+            "gate. Preserve all existing correctness and parameterization rules.\n\n"
+            if inputs.rewrite_intent else ""
+        )
         if inputs.expand_directive:
-            return self._render_expand_prompt(inputs)
+            return intent + self._render_expand_prompt(inputs)
         feedback = (
             f"\nPrevious attempt was rejected: {inputs.prior_feedback}\n"
             if inputs.prior_feedback
             else ""
         )
-        return f"""A candidate kernel is in `candidate/source.py`. Read it, plus
+        return intent + f"""A candidate kernel is in `candidate/source.py`. Read it, plus
 `docs/candidate_contract.md` and `docs/device.md`. If the kernel is Triton
 (`@triton.jit`), you MUST also read `docs/triton_pitfalls.md` and obey it — both in
 the rewritten body AND when choosing each knob's choices: every value you offer for a
@@ -1000,6 +1018,9 @@ class AnalystInputs:
     # S2, `v3.diagnosis.mode: vector`. Already-digested TEXT, never a Digest and never a record --
     # see `_bottleneck_doc`'s note on why the boundary is typed as a string. None means label mode.
     digest_text: str | None = None
+    reasoning_mode: Literal["whole_task", "legacy_local"] = "whole_task"
+    reference_source: str | None = None
+    conditional_response_text: str | None = None
 
 
 class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
@@ -1007,6 +1028,7 @@ class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
     output_model = BottleneckReport
 
     def seed_sandbox(self, inputs: AnalystInputs, sb: Sandbox) -> None:
+        seed_method_context(inputs.reference_source, inputs.conditional_response_text, sb)
         sb.write_input("candidate/source.py", inputs.candidate_source)
         sb.write_input("tuning/stats.json", inputs.stats.model_dump_json(indent=2))
         sb.write_input("tuning/trials.csv", inputs.trials_csv)
@@ -1050,7 +1072,9 @@ class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
                 "number below measures a different path. Address that before any "
                 "resource analysis: an unreached kernel is not a slow kernel."
             )
-        return """A kernel candidate was tuned over its parameter space. These files
+        return method_guidance(
+            inputs.reasoning_mode, inputs.reference_source, inputs.conditional_response_text,
+        ) + """A kernel candidate was tuned over its parameter space. These files
 already exist in your working directory — read them with your file tools
 before answering; do NOT assume any are missing (a stale index may hide them,
 so read by path):
@@ -1074,38 +1098,13 @@ so read by path):
 - `task/eval_semantics.md` — the run mode the harness evaluates the reference in
   (train vs eval) and the state of each normalization layer
 
-Analyze which parameters still have headroom but are BLOCKED — i.e. the latency
-trend keeps improving toward a boundary value, and going further fails or is
-prevented by a hardware/resource limit (registers, shared memory, threads, OOM,
-compile failures). You may compute things (python is available) over trials.csv.
+Analyze opportunities under the reasoning scope above. You may compute things
+(python is available) over trials.csv. Distinguish an untried domain boundary
+from a measured refusal, and an observation from a hypothesis about its cause.
 
-CRITICAL — do not confuse "a resource is saturated" with "that resource is the
-performance limiter." Reason about the WHOLE resource balance before proposing a
-change:
-1. Resource balance: compare each resource at the best config against its device
-   limit. High register use (even at the 255/thread max) is often the SIGNATURE of
-   the fast configuration (large accumulator tiles live in registers), NOT a
-   pathology to relieve — relieving it by spilling to shared memory or recomputing
-   usually makes latency WORSE. Only call a saturated resource "blocking" if the
-   trial data shows latency still wants to move toward a value that resource
-   forbids AND a lower-usage config is not already just as fast.
-2. Idle resources: if a resource is far below its limit (e.g. shared memory at 24%
-   while registers are maxed), ask whether the kernel could trade the saturated
-   resource for the idle one to raise arithmetic throughput — but only if the trial
-   data suggests throughput (not that resource) is the wall.
-3. Precision / tensor-core path: check how the kernel does its core math. If it
-   uses full-IEEE fp32 matmul (e.g. tl.dot(..., input_precision="ieee")) or scalar
-   FMA loops, it is NOT using the tensor cores, and a tf32/fp16-accumulate tensor-
-   core path can be materially faster on matmul/conv-bound ops -- by the ratio between
-   this box's MEASURED ceilings, not a fixed factor (this is how torch.compile
-   wins). If the flat latency floor across many configs looks like an arithmetic-
-   throughput wall rather than a memory/occupancy wall, say so and propose switching
-   the dot path to tf32 (input_precision="tf32") or fp16 inputs with fp32
-   accumulation — the harness's dual-precision correctness gate accepts a tf32-
-   matching result, so this is allowed. This is frequently the single highest-impact
-   change and must be considered explicitly, not omitted.
+""" + ANALYST_RESOURCE_GUIDANCE + """
 
-Then propose concrete structural-change hypotheses that address the REAL limiter
+Then propose concrete structural-change hypotheses supported by this evidence
 (e.g. "switch tl.dot to input_precision='tf32' to use tensor cores", "split K so
 each block needs less shared memory", "two-stage reduction to allow larger tiles").
 Prefer a precision/tensor-core hypothesis when the evidence points to an arithmetic
@@ -1154,6 +1153,9 @@ class RewriterInputs:
     # through rather than by way of the analyst's report. None unless
     # `v3.wall_attribution.in_prompt` is on, so this is the third arm's only extra input.
     wall_text: str | None = None
+    conditional_response_text: str | None = None
+    reasoning_mode: Literal["whole_task", "legacy_local"] = "whole_task"
+    reference_source: str | None = None
 
 
 class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
@@ -1161,6 +1163,7 @@ class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
     output_model = RewriteResult
 
     def seed_sandbox(self, inputs: RewriterInputs, sb: Sandbox) -> None:
+        seed_method_context(inputs.reference_source, inputs.conditional_response_text, sb)
         sb.write_input("candidate/best.py", inputs.best_source)
         sb.write_input("analysis/bottleneck.json", inputs.report.model_dump_json(indent=2))
         if inputs.ledger_entries:
@@ -1193,27 +1196,24 @@ class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
                    "what was measured" if inputs.ledger_entries
                    else "`history/failed_hypotheses.json` lists changes already tried that did NOT "
                         "help")
-        # 2e. Named only when the file exists, and named as MEASURED to distinguish it from the
-        # analyst's `parameter_limits` in the same sandbox -- which claims the same kind of fact and
-        # was confirmed 8 times out of 53. The conditional wording ("at this candidate's optimum")
-        # is carried by the file's own text, because the wall's position depends on the other knobs:
-        # from the optimum 6 of 6 walls attribute to one knob, from the space default only 1 of 6.
-        walls = ("\n`analysis/resource_walls.md` is the harness's OWN compile-time measurement of "
-                 "which single parameter is held back by shared memory, and by how much latency "
-                 "was still improving toward the blocked value. It is measured, not estimated — "
-                 "where it disagrees with `analysis/bottleneck.json`, it is the one to trust.\n"
+        walls = ("\n`analysis/resource_walls.md` contains actual measured compiler-wall evidence. "
+                 "Read its refusal conditions and fixed companion parameters; it is separate "
+                 "from analyst hypotheses, generic responses and soft-wall observations. "
+                 "A refusal does not by itself prove the full-task latency bottleneck.\n"
                  if inputs.wall_text else "")
-        return f"""`candidate/best.py` is the current best version of a kernel (already at
-its best-known PARAMS). `analysis/bottleneck.json` explains what limits it —
-which parameters wanted to go further and what resource blocked them.
+        return method_guidance(
+            inputs.reasoning_mode, inputs.reference_source, inputs.conditional_response_text,
+        ) + f"""`candidate/best.py` is the current best version of a kernel (already at
+its best-known PARAMS). `analysis/bottleneck.json` gives the analyst's hypotheses
+and supporting evidence, not a proof of a physical limiting resource.
 {walls}{history}; do not repeat them. Read `docs/candidate_contract.md`, `docs/device.md`, and
 `task/eval_semantics.md` (the run mode the harness evaluates in). If
 your rewrite uses Triton, also read `docs/triton_pitfalls.md` and obey it.
 
 Produce up to {inputs.n_candidates} REWRITTEN kernel(s), each targeting a specific
-hypothesis from the bottleneck report: change the structure so the blocked
-parameter direction becomes reachable (less shared memory per element, fewer
-registers, different work partitioning, etc.). This is a structural change, not a
+hypothesis from the bottleneck report under the reasoning scope above. Describe the
+structural action, intended opportunity and companion conditions in change_summary.
+This is a structural change, not a
 parameter change — the new file may have different PARAMS keys.
 
 If the bottleneck report blames `arithmetic_throughput` (or the latency floor is
@@ -1250,8 +1250,8 @@ fails to compile.
 
 Write each rewrite to `rewrites/rw_1.py`, `rewrites/rw_2.py`, ... following the
 contract (ModelNew + PARAMS dict). The rewrite does NOT need to be faster at the
-old default parameters — it needs to unlock the blocked region (e.g. allow a
-bigger tile that the parent could not compile/run).
+old default parameters. Its value is full-task correctness and performance after
+retuning; an unlocked region is one possible opportunity, not a required outcome.
 
 THE OPTIMIZED PATH MUST BE THE PATH THAT ACTUALLY EXECUTES. The harness always
 evaluates in the mode stated in `task/eval_semantics.md` — it never calls
