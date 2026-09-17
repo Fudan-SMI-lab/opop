@@ -7,13 +7,13 @@
 
 import argparse
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
-from typing import Literal, assert_never
+from typing import assert_never
 
 from kernel_optimizer.conditional.task_response import TaskResponse
-from kernel_optimizer.config import AppConfig, load_config
+from kernel_optimizer.config import load_config
+from kernel_optimizer.gpu.worker_client import to_wsl_path
 from kernel_optimizer.control.direct_task import TaskSpace
 from kernel_optimizer.models.core import Candidate, ParameterSpace, TrialRecord
 from kernel_optimizer.paramspace.materializer import MaterializeError, extract_defaults, materialize
@@ -25,37 +25,8 @@ from scripts.experiments.c2_local_costs import Costs
 from scripts.experiments.c2_local_execution import acquire
 from scripts.experiments.c2_local_inputs import InputError, Responses, Shared, Strict
 from scripts.experiments.c2_local_runner import isolated_config, worker_environment
-
-LoopGroup = Literal["G0", "G2"]
-
-
-@dataclass(frozen=True, slots=True)
-class LoopRun:
-    cfg: AppConfig
-    group: LoopGroup
-    run_dir: Path
-
-
-class RoundState(Strict):
-    number: int
-    elapsed_started_s: float
-    elapsed_ready_s: float | None
-    information_result: str | None
-    responses: str | None
-    artifact: str | None
-    incumbent: TrialRecord | None
-    fresh_finals: list[TrialRecord]
-    error: str | None
-
-
-class LoopResult(Strict):
-    task: str
-    group: LoopGroup
-    initial_parent_artifact: str
-    initial_parent_finals: list[TrialRecord]
-    rounds: list[RoundState]
-    elapsed_total_s: float
-    terminal_error: str | None
+from scripts.experiments.c2_loop_inputs import LoopGroup, LoopResult, LoopRun, RoundState
+from scripts.experiments.c2_method_files import copy_helpers
 
 
 def full_blocks_valid(records: list[TrialRecord]) -> bool:
@@ -133,19 +104,23 @@ def retained_feedback(current: Shared, outcome: InformationResult, opportunity: 
 
 
 def run_closed_loop(initial: Shared, run: LoopRun) -> LoopResult:
-    started = monotonic()
+    clock = run.deadline.clock if run.deadline else monotonic
+    started = run.deadline.started if run.deadline else clock()
     root = run.run_dir.resolve()
     store = RunStore.create(root.parent, root.name, {
         "task": initial.task, "group": run.group, "planned_rounds": 2,
-        "sampler_seed": 0, "evaluation_seed": 0, "initial_parent": initial.parent.model_dump(mode="json"),
+        "sampler_seed": run.sampler_seeds[0] if len(set(run.sampler_seeds)) == 1 else None,
+        "sampler_seeds": run.sampler_seeds, "evaluation_seed": 0, "initial_parent": initial.parent.model_dump(mode="json"),
     })
     (root / "initial-parent.py").write_text(materialize(initial.source, initial.parent.params), encoding="utf-8")
     current = initial.model_copy(deep=True)
+    helpers, helper_root = run.helpers, run.helper_root
     rounds: list[RoundState] = []
     initial_finals: list[TrialRecord] = []
     terminal_error = None
     for number in (1, 2):
-        elapsed_started = monotonic() - started
+        elapsed_started = clock() - started
+        sampler_seed = run.sampler_seeds[number - 1]
         directory = root / f"round-{number}"
         directory.mkdir()
         (directory / "shared.json").write_text(current.model_dump_json(indent=2), encoding="utf-8")
@@ -156,30 +131,44 @@ def run_closed_loop(initial: Shared, run: LoopRun) -> LoopResult:
         elapsed_ready = None
         fresh: list[TrialRecord] = []
         error = None
+        status, selected, asked, acquisition_calls = "censored", "parent", None, None
         try:
+            if terminal_error:
+                raise InputError(terminal_error)
+            if run.deadline:
+                run.deadline.check()
             match run.group:
                 case "G0":
                     acquisition = Responses(shared_id=current.identity(), probe_calls=0, costs=Costs(), responses=[
                         TaskResponse(candidate_id=current.parent.candidate_id, axis=d.name,
                                      a_params=current.parent.params.model_copy(deep=True), reason="not_acquired")
                         for d in current.space.params])
-                case "G2":
+                case "G2" | "H":
                     acquisition_store = RunStore.create(directory, "acquisition", {"round": number})
                     cfg = isolated_config(run.cfg, acquisition_store.run_dir)
                     cfg.run.seed = 0
+                    copy_helpers(helpers, helper_root, directory / "imports")
+                    cfg.wsl.extra_pythonpath = f"{to_wsl_path(directory / 'imports')}:{cfg.wsl.extra_pythonpath}"
                     with worker_environment(cfg):
                         acquisition = acquire(current, (cfg, acquisition_store), probe_budget=12)
                 case unreachable:
                     assert_never(unreachable)
             (directory / "responses.json").write_text(acquisition.model_dump_json(indent=2), encoding="utf-8")
+            acquisition_calls = acquisition.probe_calls
+            if run.group == "H" and acquisition_calls != 12:
+                raise InputError("H requires one complete 12-endpoint opportunity batch")
             responses_path = f"round-{number}/responses.json"
-            outcome = run_information(current, acquisition, InformationRun(run.cfg, run.group, opportunity))
+            outcome = run_information(current, acquisition, InformationRun(run.cfg, run.group, opportunity,
+                sampler_seed, run.deadline, helpers, helper_root, run.require_b40))
             result_path = f"round-{number}/opportunity/result.json"
             error = outcome.error
+            status, selected, asked = outcome.status, outcome.selected, outcome.asked
             if number == 1:
                 initial_finals = [t.model_copy(deep=True) for t in outcome.parent_finals]
             if not full_blocks_valid(outcome.parent_finals):
                 raise InputError("parent full measurements are invalid or incomplete")
+            if run.require_b40 and status == "censored":
+                raise InputError(error or "native opportunity censored")
             match outcome.selected:
                 case "parent":
                     fresh = outcome.parent_finals
@@ -188,25 +177,31 @@ def run_closed_loop(initial: Shared, run: LoopRun) -> LoopResult:
                     if outcome.child is None or outcome.child.status != "complete" or not full_blocks_valid(outcome.child.finals):
                         raise InputError("selected child full measurements are invalid or incomplete")
                     current = updated_parent(current, outcome, opportunity)
+                    helper_root = opportunity / "retune/inputs"
+                    helpers = tuple(helper_root.rglob("*.py"))
                     fresh = outcome.child.finals
                 case unreachable:
                     assert_never(unreachable)
             artifact = (opportunity / outcome.selected_artifact).relative_to(root).as_posix()
-            elapsed_ready = monotonic() - started
+            elapsed_ready = clock() - started
         except (MaterializeError, OSError, ValueError, RuntimeError) as exc:
             terminal_error = f"round-{number}: {type(exc).__name__}: {exc}"
             error = terminal_error
+            status = "censored"
         row = RoundState(number=number, elapsed_started_s=elapsed_started, elapsed_ready_s=elapsed_ready,
                          information_result=result_path, responses=responses_path, artifact=artifact,
                          incumbent=current.parent.model_copy(deep=True) if elapsed_ready is not None else None,
-                         fresh_finals=[t.model_copy(deep=True) for t in fresh], error=error)
+                          fresh_finals=[t.model_copy(deep=True) for t in fresh], error=error, status=status,
+                          selected=selected, sampler_seed=sampler_seed, asked=asked, acquisition_calls=acquisition_calls)
         rounds.append(row)
         store.append("ROUND_READY" if elapsed_ready is not None else "ROUND_INTEGRITY_FAILED", row.model_dump(mode="json"))
-        if terminal_error is not None:
+        if terminal_error is not None and run.deadline is None:
             break
     result = LoopResult(task=initial.task, group=run.group, initial_parent_artifact="initial-parent.py",
                         initial_parent_finals=initial_finals, rounds=rounds,
-                        elapsed_total_s=monotonic() - started, terminal_error=terminal_error)
+                         elapsed_total_s=clock() - started, terminal_error=terminal_error,
+                         terminal_helper_root=helper_root, terminal_helpers=helpers)
+    (root / "current.json").write_text(current.model_dump_json(indent=2), encoding="utf-8")
     (root / "result.json").write_text(result.model_dump_json(indent=2), encoding="utf-8")
     store.append("RUN_FINISHED", {"elapsed_total_s": result.elapsed_total_s, "terminal_error": terminal_error})
     return result
