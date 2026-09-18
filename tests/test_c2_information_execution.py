@@ -75,7 +75,7 @@ def test_single_opportunity_uses_native_retune_and_tuning_only_selection(tmp_pat
         return PromptResult(text="", structured=answers[title], session_id=session_id, cost=0.1)
 
     def worker(self, job, timeout_s, tag, **kwargs):
-        assert not runtime_active, "GPU evaluation overlapped the generation runtime"
+        assert bool(runtime_active) == ("retune" in self.jobs_dir.parts)
         if job["job_type"] == "static_check":
             return {"ok": True}
         if job["job_type"] == "compile_probe":
@@ -101,7 +101,7 @@ def test_single_opportunity_uses_native_retune_and_tuning_only_selection(tmp_pat
 
     def profile(frame, event, arg):
         if event == "call" and frame.f_code is retune.__code__:
-            assert not runtime_active
+            assert runtime_active and frame.f_locals["runtime"].client is not None
             spec = frame.f_locals["inputs"]
             assert spec.sampler_seed == spec.evaluation_seed == 0
             assert extract_defaults(spec.source.read_text()) == {"z": 7}

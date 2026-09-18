@@ -6,12 +6,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, assert_never
 
+from pydantic import Field
+
 from kernel_optimizer.conditional.task_response import TaskResponse
 from kernel_optimizer.config import AppConfig
 from kernel_optimizer.models.core import ParamSet, TrialRecord
 from scripts.experiments.c2_local_costs import Costs
-from scripts.experiments.c2_local_inputs import Responses, Shared, Strict
+from scripts.experiments.c2_local_inputs import InputError, Responses, Shared, Strict
 from scripts.experiments.c2_retune import RetuneResult
+from scripts.experiments.c2_retune_studies import RetuneStudy
+from scripts.experiments.c2_promotion_full import ConfirmationPair, PromotionDecision
 
 if TYPE_CHECKING:
     from scripts.experiments.c2_method_protocol import Deadline
@@ -29,6 +33,14 @@ class InformationRun:
     helpers: tuple[Path, ...] = ()
     helper_root: Path | None = None
     require_b40: bool = False
+    space_expansions_per_candidate: int = 0
+    promotion_policy: Literal["native", "full"] = "native"
+
+    def __post_init__(self) -> None:
+        if self.space_expansions_per_candidate not in (0, 1):
+            raise InputError("information opportunities allow expansion cap 0 or 1")
+        if self.promotion_policy not in ("native", "full"):
+            raise InputError("unknown information promotion policy")
 
 
 class InformationResult(Strict):
@@ -47,6 +59,11 @@ class InformationResult(Strict):
     wall_s: float
     status: Literal["valid", "failed", "censored"] = "valid"
     asked: int | None = None
+    studies: list[RetuneStudy] = Field(default_factory=list)
+    expanded_count: int = 0
+    promotion_policy: Literal["native", "full"] = "native"
+    confirmation_pairs: list[ConfirmationPair] = Field(default_factory=list)
+    promotion_decision: PromotionDecision | None = None
 
 
 def group_responses(shared: Shared, acquisition: Responses, group: Group) -> list[TaskResponse]:

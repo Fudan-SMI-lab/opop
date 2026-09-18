@@ -89,7 +89,7 @@ def test_two_rounds_update_real_parent_and_preserve_elapsed_history(tmp_path, mo
         return PromptResult(text="", structured=answers[title], session_id=session_id, cost=0.1)
 
     def worker(self, job, timeout_s, tag, **kwargs):
-        assert not active
+        assert bool(active) == ("retune" in self.jobs_dir.parts)
         number = round_number(self.jobs_dir)
         if job["job_type"] == "static_check":
             return {"ok": True}
