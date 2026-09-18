@@ -1020,6 +1020,13 @@ class Orchestrator:
             self._maybe_expand_space(crun, run_analysis=False)
         crun.candidate.status = "tuned"
 
+    def _selected_trial(self, crun: CandidateRun) -> TrialRecord | None:
+        """Locate the already selected measurement without reranking or changing its space."""
+        return next((t for t in crun.trials
+                     if t.candidate_id == crun.candidate.candidate_id
+                     and t.status == "complete" and t.latency_ms is not None
+                     and t.latency_ms.robust_ms == crun.best_ms), None)
+
     def _restore_pipeline(self, crun: CandidateRun, state) -> None:
         for space_payload in state.spaces.values():
             if space_payload["candidate_id"] == crun.candidate.candidate_id:
@@ -2062,6 +2069,7 @@ class Orchestrator:
             # state, this is a measured fact about one axis of its space, and a reader of the prompt
             # (or of a later disagreement) has to be able to tell which is which.
             digest_text = f"{digest_text}\n\n{wall_text}" if digest_text else wall_text
+        selected_trial = self._selected_trial(crun)
         try:
             outcome = self.deps.analyst.invoke(
                 AnalystInputs(
@@ -2078,6 +2086,7 @@ class Orchestrator:
                     conditional_response_text=conditioned_text,
                     reference_source=(self.task.ref_path.read_text(encoding="utf-8")
                                       if self.task.ref_path.is_file() else None),
+                    selected_params=selected_trial.params if selected_trial else None,
                 )
             )
             crun.report = outcome.output
@@ -2378,6 +2387,21 @@ class Orchestrator:
                 crun.stats, self.cfg.budgets.space_expansion_idle_frac, crun.space,
                 min_effect_pct=self.cfg.budgets.min_improvement_pct,
                 max_edge_failure_frac=self.cfg.budgets.max_edge_failure_frac)
+            work_dir = self.store.candidate_dir(cand.candidate_id)
+            base_space_id = crun.space.space_id
+            base_source_ref = self.store.put_artifact(crun.source, f"{base_space_id}/source.py")
+            prior_best = self._selected_trial(crun)
+            best_path = (work_dir / "trials" / f"{prior_best.trial_id}.py"
+                         if prior_best is not None else None)
+            self.store.append("SPACE_EXPANSION_ELIGIBILITY", {
+                "candidate_id": cand.candidate_id,
+                "space": crun.space.model_dump(), "eligible": bool(knobs), "knobs": knobs,
+                "base_source_ref": base_source_ref,
+                "base_best": prior_best.model_dump() if prior_best is not None else None,
+                "base_best_source_ref": self.store.put_artifact(
+                    best_path.read_bytes(), f"{base_space_id}/best.py")
+                    if best_path is not None and best_path.is_file() else None,
+            })
             if not knobs:
                 return
             directive = self._expand_directive_text(crun, knobs)
@@ -2450,6 +2474,9 @@ class Orchestrator:
                     "restored": [c.expr for c in restored]})
             # Accept the expanded space and re-tune once over it.
             prev_best = crun.best_ms
+            source_changed = param_source != crun.source
+            prior_matches = prior_best is not None and prior_source_matches(
+                param_source, prior_best, work_dir / "trials")
             crun.source = param_source
             (work_dir / "source.py").write_text(param_source, encoding="utf-8")
             self.deps.families._sources[cand.candidate_id] = param_source
@@ -2457,7 +2484,12 @@ class Orchestrator:
             self.store.append("SPACE_PUBLISHED", {"space": verdict.space.model_dump()})
             self.store.append("SPACE_EXPANDED", {
                 "candidate_id": cand.candidate_id, "knobs": knobs,
-                "prev_best_ms": prev_best})
+                "prev_best_ms": prev_best, "previous_space_id": base_space_id,
+                "space_id": verdict.space.space_id, "source_changed": source_changed,
+                "source_before_ref": base_source_ref,
+                "source_after_ref": self.store.put_artifact(
+                    param_source, f"{verdict.space.space_id}/source.py"),
+                "prior_best_source_matches": prior_matches})
             anchors, measured_cache = witness_inputs(verdict, self.deps.profiler)
             # An expansion only ADDS choices, so the pre-expansion optimum is still a
             # legal config — but the re-tune starts a FRESH TPE study whose only
@@ -2465,16 +2497,10 @@ class Orchestrator:
             # 40 fresh trials can simply fail to rediscover it and the candidate goes
             # BACKWARDS (live on L3:43 cand-0c3b5820: 20.0 -> 22.6 ms). Seed it as an
             # anchor; reuse its measurement only when the measured source still matches.
-            prev_trials = list(crun.trials)
-            prior_best = min(
-                (t for t in prev_trials if t.status == "complete" and t.latency_ms
-                 and t.candidate_id == cand.candidate_id),
-                key=lambda t: t.latency_ms.robust_ms, default=None)
             if prior_best is not None and check_config(
                     verdict.space, prior_best.params, self.cfg.device) is None:
                 key = prior_best.params.key()
-                if key not in measured_cache and prior_source_matches(
-                        param_source, prior_best, work_dir / "trials"):
+                if key not in measured_cache and prior_matches:
                     measured_cache[key] = prior_best.model_copy(
                         update={"space_id": verdict.space.space_id})
                 if prior_best.params not in anchors:
@@ -3198,9 +3224,17 @@ class Orchestrator:
         """
         parent = parent_crun.candidate
         family = self.deps.families.families[family_id]
+        selected_trial = self._selected_trial(parent_crun)
+        selected_params = selected_trial.params if selected_trial else family.best.params
+        source_materialized = False
         try:
-            best_source = materializer.materialize(parent_crun.source, family.best.params)
-        except materializer.MaterializeError:
+            if selected_trial is not None:
+                best_source = (self.store.candidate_dir(parent.candidate_id) / "trials"
+                               / f"{selected_trial.trial_id}.py").read_text(encoding="utf-8")
+            else:
+                best_source = materializer.materialize(parent_crun.source, selected_params)
+            source_materialized = materializer.extract_defaults(best_source) == selected_params.values
+        except (OSError, materializer.MaterializeError):
             best_source = parent_crun.source
         try:
             outcome = self.deps.rewriter.invoke(
@@ -3222,6 +3256,8 @@ class Orchestrator:
                     conditional_response_text=parent_crun.conditional_response_text,
                     reference_source=(self.task.ref_path.read_text(encoding="utf-8")
                                       if self.task.ref_path.is_file() else None),
+                    selected_params=selected_params,
+                    source_materialized=source_materialized,
                 )
             )
         except AgentCallError as exc:
@@ -3450,7 +3486,12 @@ class Orchestrator:
             return result
 
         crun = self.runs[best_family.best.candidate_id]
-        final_src = materializer.materialize(crun.source, best_family.best.params)
+        selected_trial = self._selected_trial(crun)
+        if selected_trial is not None:
+            final_src = (self.store.candidate_dir(crun.candidate.candidate_id) / "trials"
+                         / f"{selected_trial.trial_id}.py").read_text(encoding="utf-8")
+        else:
+            final_src = materializer.materialize(crun.source, best_family.best.params)
         final_path = self.store.run_dir / "report" / "best_kernel.py"
         final_path.write_text(final_src, encoding="utf-8")
         reeval = self.deps.benchmarker.final_reeval(self.task, final_path,
@@ -3460,6 +3501,8 @@ class Orchestrator:
         result["best"] = {
             "candidate_id": best_family.best.candidate_id,
             "family_id": best_family.family_id,
+            "trial_id": selected_trial.trial_id if selected_trial else None,
+            "space_id": selected_trial.space_id if selected_trial else None,
             "params": best_family.best.params.model_dump(),
             "tuned_ms": best_family.best.latency_ms,
             "final_reeval_ok": bool(reeval.get("ok")),
