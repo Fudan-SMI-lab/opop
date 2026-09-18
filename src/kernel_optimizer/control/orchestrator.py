@@ -11,6 +11,7 @@ import ast
 import csv
 import hashlib
 import io
+import json
 import random
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -525,6 +526,8 @@ class CandidateRun:
     # control and `vector` arms carry None and are unaffected.
     wall_text: str | None = None
     conditional_response_text: str | None = None
+    recommended_configs: tuple[ParamSet, ...] = ()
+    recommendations_source_sha: str | None = None
 
 
 class Orchestrator:
@@ -626,7 +629,7 @@ class Orchestrator:
         self.store.append("STEP_DONE", {"step_key": key})
 
     def _register(self, source: str, origin: str, parents: list[str], backend: str,
-                  approach: str) -> Candidate | None:
+                  approach: str, *, recommended_configs: tuple[ParamSet, ...] = ()) -> Candidate | None:
         cand = self.deps.families.register_candidate(source, origin, parents, backend,
                                                      approach)
         if cand is None:
@@ -634,7 +637,10 @@ class Orchestrator:
         cand_dir = self.store.candidate_dir(cand.candidate_id)
         (cand_dir / "source.py").write_text(source, encoding="utf-8")
         self.store.append("CANDIDATE_REGISTERED", {"candidate": cand.model_dump()})
-        self.runs[cand.candidate_id] = CandidateRun(candidate=cand, source=source)
+        self.runs[cand.candidate_id] = CandidateRun(
+            candidate=cand, source=source, recommended_configs=recommended_configs,
+            recommendations_source_sha=hashlib.sha256(source.encode("utf-8")).hexdigest(),
+        )
         return cand
 
     # ------------------------------------------------------------------ stages
@@ -1011,6 +1017,7 @@ class Orchestrator:
         crun.space = accepted.space
         self.store.append("SPACE_PUBLISHED", {"space": accepted.space.model_dump()})
         anchors, measured_cache = witness_inputs(accepted, self.deps.profiler)
+        anchors = self._recommendation_anchors(crun, anchors)
         self._tune(crun, anchors, measured_cache)
         if run_analysis:
             self._stats_and_analysis(crun)
@@ -1019,6 +1026,45 @@ class Orchestrator:
             self._stats_and_analysis(crun, run_analysis=False)
             self._maybe_expand_space(crun, run_analysis=False)
         crun.candidate.status = "tuned"
+
+    def _set_resolved_recommendations(
+        self, crun: CandidateRun, resolved: tuple[ParamSet, ...],
+    ) -> None:
+        if crun.recommended_configs and not resolved:
+            for params in crun.recommended_configs:
+                self.store.append("RECOMMENDED_CONFIG_SKIPPED", {
+                    "candidate_id": crun.candidate.candidate_id,
+                    "params": params.model_dump(), "reason": "mapping_unknown",
+                    "source_sha": crun.recommendations_source_sha,
+                })
+        crun.recommended_configs = resolved
+        crun.recommendations_source_sha = hashlib.sha256(crun.source.encode("utf-8")).hexdigest()
+
+    def _recommendation_anchors(
+        self, crun: CandidateRun, anchors: tuple[ParamSet, ...],
+    ) -> tuple[ParamSet, ...]:
+        if crun.space is None or not crun.recommended_configs:
+            return anchors
+        queued = list(anchors)
+        source_sha = hashlib.sha256(crun.source.encode("utf-8")).hexdigest()
+        for index, params in enumerate(crun.recommended_configs):
+            payload = {"candidate_id": crun.candidate.candidate_id,
+                       "space_id": crun.space.space_id, "params": params.model_dump(),
+                       "source_sha": crun.recommendations_source_sha}
+            self.store.append("RECOMMENDED_CONFIG_REQUESTED", payload)
+            rejection = check_config(crun.space, params, self.cfg.device)
+            reason = (
+                "limit_exceeded" if index >= 2 else
+                "source_mismatch" if source_sha != crun.recommendations_source_sha else
+                rejection.reason if rejection is not None else
+                "duplicate_anchor" if params in queued else None
+            )
+            if reason is not None:
+                self.store.append("RECOMMENDED_CONFIG_SKIPPED", {**payload, "reason": reason})
+                continue
+            queued.append(params)
+            self.store.append("RECOMMENDED_CONFIG_QUEUED", payload)
+        return tuple(queued)
 
     def _selected_trial(self, crun: CandidateRun) -> TrialRecord | None:
         """Locate the already selected measurement without reranking or changing its space."""
@@ -1091,6 +1137,8 @@ class Orchestrator:
                 rewrite_intent=(self.runs[cand_id].candidate.approach_summary or None
                                 if cand_id in self.runs
                                 and self.runs[cand_id].candidate.origin == "rewrite" else None),
+                recommended_configs=(self.runs[cand_id].recommended_configs
+                                     if cand_id in self.runs else ()),
             )
         )
 
@@ -1157,6 +1205,8 @@ class Orchestrator:
             )
             if isinstance(verdict, SpaceAccepted):
                 crun.source = param_source
+                self._set_resolved_recommendations(
+                    crun, tuple(getattr(outcome.output, "recommended_configs", ())))
                 (work_dir / "source.py").write_text(param_source, encoding="utf-8")
                 # Update stored source (structure may legitimately be reorganized).
                 self.deps.families._sources[cand.candidate_id] = param_source
@@ -2393,14 +2443,16 @@ class Orchestrator:
             prior_best = self._selected_trial(crun)
             best_path = (work_dir / "trials" / f"{prior_best.trial_id}.py"
                          if prior_best is not None else None)
+            selected_source_bytes = (best_path.read_bytes()
+                                     if best_path is not None and best_path.is_file() else None)
             self.store.append("SPACE_EXPANSION_ELIGIBILITY", {
                 "candidate_id": cand.candidate_id,
                 "space": crun.space.model_dump(), "eligible": bool(knobs), "knobs": knobs,
                 "base_source_ref": base_source_ref,
                 "base_best": prior_best.model_dump() if prior_best is not None else None,
                 "base_best_source_ref": self.store.put_artifact(
-                    best_path.read_bytes(), f"{base_space_id}/best.py")
-                    if best_path is not None and best_path.is_file() else None,
+                    selected_source_bytes, f"{base_space_id}/best.py")
+                    if selected_source_bytes is not None else None,
             })
             if not knobs:
                 return
@@ -2426,6 +2478,15 @@ class Orchestrator:
                             calibration=self.calibration,
                             rewrite_intent=(cand.approach_summary or None
                                             if cand.origin == "rewrite" else None),
+                            recommended_configs=crun.recommended_configs,
+                            selected_trial=prior_best,
+                            selected_source=(selected_source_bytes.decode("utf-8")
+                                             if selected_source_bytes is not None else None),
+                            expansion_stats=crun.stats,
+                            expansion_trials=tuple(t for t in crun.trials
+                                                   if t.candidate_id == cand.candidate_id),
+                            reference_source=(self.task.ref_path.read_text(encoding="utf-8")
+                                              if self.task.ref_path.is_file() else None),
                         )
                     )
                 except AgentCallError as exc:
@@ -2481,6 +2542,8 @@ class Orchestrator:
             (work_dir / "source.py").write_text(param_source, encoding="utf-8")
             self.deps.families._sources[cand.candidate_id] = param_source
             crun.space = verdict.space
+            self._set_resolved_recommendations(
+                crun, tuple(getattr(outcome.output, "recommended_configs", ())))
             self.store.append("SPACE_PUBLISHED", {"space": verdict.space.model_dump()})
             self.store.append("SPACE_EXPANDED", {
                 "candidate_id": cand.candidate_id, "knobs": knobs,
@@ -2505,6 +2568,7 @@ class Orchestrator:
                         update={"space_id": verdict.space.space_id})
                 if prior_best.params not in anchors:
                     anchors = (prior_best.params, *anchors)
+            anchors = self._recommendation_anchors(crun, anchors)
             self._tune(crun, anchors, measured_cache)
             if run_analysis:
                 self._stats_and_analysis(crun)
@@ -2586,16 +2650,71 @@ class Orchestrator:
         return False
 
     def _expand_directive_text(self, crun: CandidateRun, knobs: list[dict]) -> str:
-        lines = ["The following knobs hit the edge of their offered range and latency "
-                 "was still improving toward that edge (resources had headroom):"]
+        lines = ["Consider the requested directions below under the existing native eligibility rule. "
+                 "These are marginal summaries with potentially varying partners, not fixed-partner "
+                 "contrasts or proof of monotonic improvement. A median-edge fallback is a search "
+                 "opportunity, not evidence that the selected configuration sits at that edge. "
+                 "Check the actual reference shape, active branch and companion parameters; their "
+                 "effect and the benefit of new choices remain unknown until measured. The selected "
+                 "artifact is supplied separately when available; historical scores must not be "
+                 "attributed to the current source body without source compatibility."]
         stat_by_name = {ps.name: ps for ps in (crun.stats.param_stats if crun.stats else [])}
+        domains = {d.name: d for d in crun.space.domains} if crun.space else {}
+        trials = [t for t in crun.trials if t.candidate_id == crun.candidate.candidate_id]
+        selected = self._selected_trial(crun)
+        requests = []
         for k in knobs:
             ps = stat_by_name.get(k["name"])
-            cur = crun.space.domain(k["name"]).choices if crun.space else []
-            lines.append(
-                f"- `{k['name']}`: extend toward {k['direction']} "
-                f"(current choices {list(cur)}; best sat at the {k['direction']} edge)"
-            )
+            domain = domains.get(k["name"])
+            choices = domain.choices if domain else []
+            actual_best = selected.params.values.get(k["name"]) if selected else None
+            indication = "marginal_uncertain"
+            if ps is not None:
+                anchored = ps.at_boundary and ps.boundary_direction == k["direction"]
+                measured = [v for v in choices if repr(v) in ps.latency_by_value]
+                if anchored and ps.best_trial_value is not None and ps.best_trial_value == actual_best:
+                    indication = "winner_anchored_marginal"
+                elif not anchored and len(measured) >= 2:
+                    median_best = min(measured, key=lambda v: ps.latency_by_value[repr(v)])
+                    if median_best == {"min": measured[0], "max": measured[-1]}.get(k["direction"]):
+                        indication = "median_edge_fallback"
+            partner_configs = {
+                tuple(sorted((name, repr(value)) for name, value in t.params.values.items()
+                             if name != k["name"]))
+                for t in trials if k["name"] in t.params.values
+            }
+            per_value = []
+            for value in choices:
+                group = [t for t in trials if t.params.values.get(k["name"]) == value]
+                per_value.append({
+                    "value": value,
+                    "median_ms": ps.latency_by_value.get(repr(value)) if ps else None,
+                    "n_complete": sum(t.status == "complete" and t.latency_ms is not None for t in group),
+                    "n_fail": sum(t.status != "complete" for t in group),
+                    "n_missing_latency": sum(t.status == "complete" and t.latency_ms is None for t in group),
+                    "failure_rate": ps.failure_rate_by_value.get(repr(value)) if ps else None,
+                })
+            requests.append({
+                "name": k["name"], "requested_direction": k["direction"], "indication": indication,
+                "domain_kind": domain.kind if domain else None,
+                "description": domain.description if domain else None,
+                "actual_best_trial_value": actual_best,
+                "marginal_best_value": ps.best_value if ps else None,
+                "effect_pct": ps.effect_pct if ps else None,
+                "varying_partners": len(partner_configs) > 1 if partner_configs else None,
+                "partner_config_count": len(partner_configs), "conditional_trend": None,
+                "active_branch_effect": None, "per_value": per_value,
+            })
+        evidence = {
+            "statistics_scope": "marginal_nonconditional",
+            "current_space_id": crun.space.space_id if crun.space else None,
+            "stats_space_id": crun.stats.space_id if crun.stats else None,
+            "selected_space_id": selected.space_id if selected else None,
+            "selected_trial_id": selected.trial_id if selected else None,
+            "trial_space_ids": sorted({t.space_id for t in trials}),
+            "source_equivalence": "not_assumed", "requests": requests,
+        }
+        lines.extend(["```json", json.dumps(evidence, indent=2), "```"])
         # Spell out the full knob inventory so the agent re-declares every one of them
         # (a partial space.params list is rejected as key_mismatch).
         if crun.space is not None:
@@ -2604,7 +2723,7 @@ class Orchestrator:
                          "(repeat the unexpanded ones verbatim):")
             for d in crun.space.domains:
                 mark = " <- EXPAND" if any(k["name"] == d.name for k in knobs) else ""
-                lines.append(f"  - {d.name} ({d.kind}): {list(d.choices)}{mark}")
+                lines.append(f"  - {d.name} ({d.kind}): {list(d.choices)}{mark}; {d.description}")
         return "\n".join(lines)
 
     def _trials_csv(self, crun: CandidateRun) -> str:
@@ -3287,7 +3406,8 @@ class Orchestrator:
                     "declared": rw.backend, "detected": detected,
                 })
             cand = self._register(source, "rewrite", [parent.candidate_id],
-                                  detected, rw.change_summary)
+                                  detected, rw.change_summary,
+                                  recommended_configs=tuple(getattr(rw, "recommended_configs", ())))
             if cand is None:
                 # REWRITE_REJECTED, not NOVELTY_REJECTED. This site used to borrow the novelty
                 # event type, distinguished only by an `origin: "rewrite"` field -- so any count
