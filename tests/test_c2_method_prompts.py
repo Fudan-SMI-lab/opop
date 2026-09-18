@@ -63,7 +63,9 @@ def test_baseline_parameterizer_when_old_inputs(task: TaskSpec, tmp_path: Path) 
     # Then
     assert sandbox.read_output("candidate/source.py") == inputs.candidate_source
     assert "candidate/parameterized.py" in prompt
-    assert set(agent.output_model.model_fields) == {"file", "space"}
+    legacy = agent.output_model.model_validate_json('{"file":"old.py","space":{"params":[]}}')
+    assert legacy.file == "old.py" and legacy.space.params == []
+    assert legacy.recommended_configs == []
 
 
 @pytest.mark.parametrize("wall", [None, '{"status":"infeasible_shared_memory"}'])
@@ -104,7 +106,9 @@ def test_intent_delivery_when_optional(
     assert ("analysis/rewrite_intent.md" in prompt) == bool(intent)
     if intent:
         assert sandbox.read_output("analysis/rewrite_intent.md") == intent
-    assert set(agent.output_model.model_fields) == {"file", "space"}
+    legacy = agent.output_model.model_validate_json('{"file":"old.py","space":{"params":[]}}')
+    assert legacy.file == "old.py" and legacy.space.params == []
+    assert legacy.recommended_configs == []
 
 
 @pytest.mark.parametrize("mode", ["whole_task", "legacy_local"])
@@ -205,4 +209,6 @@ def test_intent_delivery_when_expanding(task: TaskSpec, tmp_path: Path) -> None:
     assert sandbox.read_output("analysis/rewrite_intent.md") == inputs.rewrite_intent
     assert "analysis/rewrite_intent.md" in prompt
     assert inputs.expand_directive in prompt
-    assert set(agent.output_model.model_fields) == {"file", "space"}
+    legacy = agent.output_model.model_validate_json('{"file":"old.py","space":{"params":[]}}')
+    assert legacy.file == "old.py" and legacy.space.params == []
+    assert legacy.recommended_configs == []

@@ -12,14 +12,19 @@ from typing import Literal
 from kernel_optimizer.agents.base import AgentModule
 from kernel_optimizer.agents.method_prompts import (
     ANALYST_RESOURCE_GUIDANCE,
+    EXPANSION_EVIDENCE_GUIDANCE,
     PARAMETERIZER_BODY_GUIDANCE,
     PARAMETERIZER_INTENT_GUIDANCE,
+    PARAMETERIZER_RECOMMENDATIONS_GUIDANCE,
+    PRELIMINARY_REPORT_GUIDANCE,
+    PROBE_PLANNING_GUIDANCE,
+    REWRITER_RECOMMENDATIONS_GUIDANCE,
     method_guidance,
     seed_method_context,
     selected_context_guidance,
 )
 from kernel_optimizer.agents.sandbox import Sandbox
-from kernel_optimizer.models.core import DeviceLimits, ParamSet, TaskSpec
+from kernel_optimizer.models.core import DeviceLimits, ParamSet, TaskSpec, TrialRecord
 from kernel_optimizer.models.reports import (
     BottleneckReport,
     GeneratedCandidate,
@@ -759,6 +764,12 @@ class ParameterizerInputs:
     # between two ceilings it otherwise cannot see.
     calibration: object | None = None
     rewrite_intent: str | None = None
+    recommended_configs: tuple[ParamSet, ...] = ()
+    selected_trial: TrialRecord | None = None
+    selected_source: str | None = None
+    expansion_stats: TuningStats | None = None
+    expansion_trials: tuple[TrialRecord, ...] = ()
+    reference_source: str | None = None
 
 
 class ParameterizerAgent(AgentModule[ParameterizerInputs, ParameterizationResult]):
@@ -767,6 +778,22 @@ class ParameterizerAgent(AgentModule[ParameterizerInputs, ParameterizationResult
 
     def seed_sandbox(self, inputs: ParameterizerInputs, sb: Sandbox) -> None:
         sb.write_input("candidate/source.py", inputs.candidate_source)
+        if inputs.selected_trial is not None:
+            sb.write_input("tuning/selected_trial.json", inputs.selected_trial.model_dump_json(indent=2))
+        if inputs.selected_source:
+            sb.write_input("candidate/selected.py", inputs.selected_source)
+        if inputs.expansion_stats is not None:
+            sb.write_input("tuning/stats.json", inputs.expansion_stats.model_dump_json(indent=2))
+        if inputs.expansion_trials:
+            sb.write_input("tuning/trials.json", json.dumps(
+                [trial.model_dump(mode="json") for trial in inputs.expansion_trials], indent=2,
+            ))
+        if inputs.reference_source:
+            sb.write_input("task/ref.py", inputs.reference_source)
+        if inputs.recommended_configs:
+            sb.write_input("analysis/recommended_configs.json", json.dumps(
+                [config.model_dump() for config in inputs.recommended_configs], indent=2,
+            ))
         if inputs.rewrite_intent:
             sb.write_input("analysis/rewrite_intent.md", inputs.rewrite_intent)
         sb.write_input("docs/candidate_contract.md", _contract_doc())
@@ -779,14 +806,25 @@ class ParameterizerAgent(AgentModule[ParameterizerInputs, ParameterizationResult
 
     def render_prompt(self, inputs: ParameterizerInputs, sb: Sandbox) -> str:
         intent = PARAMETERIZER_INTENT_GUIDANCE if inputs.rewrite_intent else ""
+        evidence = "".join(f"Read `{path}` for the supplied candidate context.\n" for path, present in (
+            ("tuning/selected_trial.json", inputs.selected_trial is not None),
+            ("candidate/selected.py", bool(inputs.selected_source)),
+            ("tuning/stats.json", inputs.expansion_stats is not None),
+            ("tuning/trials.json", bool(inputs.expansion_trials)),
+            ("task/ref.py", bool(inputs.reference_source)),
+        ) if present)
+        recommendations = (
+            "Read `analysis/recommended_configs.json` for this candidate's requests.\n"
+            if inputs.recommended_configs else ""
+        ) + PARAMETERIZER_RECOMMENDATIONS_GUIDANCE
         if inputs.expand_directive:
-            return intent + PARAMETERIZER_BODY_GUIDANCE + self._render_expand_prompt(inputs)
+            return evidence + intent + recommendations + PARAMETERIZER_BODY_GUIDANCE + self._render_expand_prompt(inputs)
         feedback = (
             f"\nPrevious attempt was rejected: {inputs.prior_feedback}\n"
             if inputs.prior_feedback
             else ""
         )
-        return intent + PARAMETERIZER_BODY_GUIDANCE + f"""A candidate kernel is in `candidate/source.py`. Read it, plus
+        return evidence + intent + recommendations + PARAMETERIZER_BODY_GUIDANCE + f"""A candidate kernel is in `candidate/source.py`. Read it, plus
 `docs/candidate_contract.md` and `docs/device.md`. If the kernel is Triton
 (`@triton.jit`), you MUST also read `docs/triton_pitfalls.md` and obey it — both in
 the rewritten body AND when choosing each knob's choices: every value you offer for a
@@ -893,15 +931,14 @@ tools before answering. A JSON answer that references a file you did not write
 is rejected and wastes an attempt.
 
 Answer with JSON:
-{{"file": "candidate/parameterized.py",
+{{"file": "candidate/parameterized.py", "recommended_configs": [],
   "space": {{"params": [{{"name": "BLOCK_M", "kind": "int", "choices": [32, 64, 128],
              "description": "..."}}, ...],
             "constraints": [{{"expr": "...", "rationale": "..."}}, ...]}}}}
 """
 
     def _render_expand_prompt(self, inputs: ParameterizerInputs) -> str:
-        """Improvement K: focused space EXPANSION — extend only the boundary knobs'
-        choices toward the improving direction, keeping structure and other knobs."""
+        """Render focused expansion with advisory, nonconditional evidence."""
         if inputs.prior_constraints:
             prior = "\n".join(
                 f"  - `{expr}`" + (f"  ({why})" if why else "")
@@ -931,16 +968,14 @@ knob actually feeds before expanding it downward: an M or N tile may legally go 
 at its legal floor, expand a different knob or leave that domain unchanged — an illegal
 value makes the witness fail to compile and the ENTIRE expansion is rejected.
 
-During tuning, some knobs reached the EDGE of the value range that was offered and
-latency was still improving toward that edge, while hardware resources still had
-headroom. Your job is a FOCUSED EXPANSION, not a redesign:
+{EXPANSION_EVIDENCE_GUIDANCE}
 
 {inputs.expand_directive}
 {prior_block}
 Rules:
-- Keep the kernel STRUCTURE and all other knobs' choices UNCHANGED. Rewrite the file
-  to `candidate/parameterized.py` (it may be nearly identical to the source — only
-  the PARAMS choices for the named knobs and any dependent constraints change).
+- Keep the computational approach and unrequested domains. Necessary parameter wiring
+  or body repairs remain allowed; explain them in existing descriptions/rationales.
+  Write `candidate/parameterized.py` with the proposed choices and dependent constraints.
 - For each named knob, ADD 1-2 larger/smaller legal values in the improving
   direction (e.g. append 256 to [64,128,256]... keep values legal for tl.dot dims,
   powers of two where the kernel requires it, and within device limits).
@@ -967,7 +1002,7 @@ Rules:
 IMPORTANT: actually create `candidate/parameterized.py` before answering.
 
 Answer with JSON:
-{{"file": "candidate/parameterized.py",
+{{"file": "candidate/parameterized.py", "recommended_configs": [],
   "space": {{"params": [{{"name": "...", "kind": "int", "choices": [...],
              "description": "..."}}, ...],
             "constraints": [{{"expr": "...", "rationale": "..."}}, ...]}}}}
@@ -1017,6 +1052,8 @@ class AnalystInputs:
     reference_source: str | None = None
     conditional_response_text: str | None = None
     selected_params: ParamSet | None = None
+    plan_probes: bool = False
+    probe_budget: int = 12
 
 
 class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
@@ -1024,7 +1061,8 @@ class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
     output_model = BottleneckReport
 
     def seed_sandbox(self, inputs: AnalystInputs, sb: Sandbox) -> None:
-        seed_method_context(inputs.reference_source, inputs.conditional_response_text, sb)
+        responses = None if inputs.plan_probes else inputs.conditional_response_text
+        seed_method_context(inputs.reference_source, responses, sb)
         if inputs.selected_params is not None:
             sb.write_input("tuning/selected_params.json", inputs.selected_params.model_dump_json(indent=2))
         sb.write_input("candidate/source.py", inputs.candidate_source)
@@ -1060,6 +1098,10 @@ class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
             )
 
     def render_prompt(self, inputs: AnalystInputs, sb: Sandbox) -> str:
+        planning = PROBE_PLANNING_GUIDANCE.format(
+            endpoint_budget=max(0, inputs.probe_budget), request_limit=min(6, max(0, inputs.probe_budget // 2)),
+        ) if inputs.plan_probes else ""
+        responses = None if inputs.plan_probes else inputs.conditional_response_text
         dead = ""
         if inputs.never_launched_kernels:
             dead = (
@@ -1070,8 +1112,8 @@ class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
                 "number below measures a different path. Address that before any "
                 "resource analysis: an unreached kernel is not a slow kernel."
             )
-        return method_guidance(
-            inputs.reasoning_mode, inputs.reference_source, inputs.conditional_response_text,
+        return planning + method_guidance(
+            inputs.reasoning_mode, inputs.reference_source, responses,
         ) + selected_context_guidance(inputs.selected_params) + """A kernel candidate was tuned over its parameter space. These files
 already exist in your working directory — read them with your file tools
 before answering; do NOT assume any are missing (a stale index may hide them,
@@ -1154,6 +1196,7 @@ class RewriterInputs:
     reference_source: str | None = None
     selected_params: ParamSet | None = None
     source_materialized: bool = False
+    report_precedes_responses: bool = False
 
 
 class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
@@ -1191,6 +1234,7 @@ class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
             sb.write_input("analysis/resource_walls.md", inputs.wall_text)
 
     def render_prompt(self, inputs: RewriterInputs, sb: Sandbox) -> str:
+        preliminary = PRELIMINARY_REPORT_GUIDANCE if inputs.report_precedes_responses else ""
         vocabulary = ", ".join("`%s`" % d for d in DIMENSION_VOCABULARY)
         history = ("`history/prediction_ledger.md` shows what you PREDICTED in earlier rounds and "
                    "what was measured" if inputs.ledger_entries
@@ -1201,9 +1245,9 @@ class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
                  "from analyst hypotheses, generic responses and soft-wall observations. "
                  "A refusal does not by itself prove the full-task latency bottleneck.\n"
                  if inputs.wall_text else "")
-        return method_guidance(
+        return preliminary + method_guidance(
             inputs.reasoning_mode, inputs.reference_source, inputs.conditional_response_text,
-        ) + selected_context_guidance(inputs.selected_params, inputs.source_materialized) + f"""`candidate/best.py` is the supplied parent source.
+        ) + selected_context_guidance(inputs.selected_params, inputs.source_materialized) + REWRITER_RECOMMENDATIONS_GUIDANCE + f"""`candidate/best.py` is the supplied parent source.
 `analysis/bottleneck.json` gives the analyst's hypotheses
 and supporting evidence, not a proof of a physical limiting resource.
 {walls}{history}; do not repeat them. Read `docs/candidate_contract.md`, `docs/device.md`, and
@@ -1262,7 +1306,7 @@ partial-reduction kernel) and fuse around that, or fuse something else.
 
 Answer with JSON:
 {{"candidates": [{{"file": "rewrites/rw_1.py", "backend": "triton", "hypothesis_id": "H1",
-  "change_summary": "...",
+  "change_summary": "...", "recommended_configs": [],
   "expectations": [{{"dimension": "shared_bytes", "expect": "up",
                     "why": "the tile grows from 64x64 to 128x64"}}]}}, ...]}}
 

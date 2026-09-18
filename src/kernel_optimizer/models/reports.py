@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic_core import PydanticCustomError
 
 from kernel_optimizer.models.core import (
     FailureKind,
+    ParamSet,
     ParamValue,
     TrialRecord,
 )
@@ -76,6 +78,24 @@ class Hypothesis(BaseModel):
     risk: str = ""
 
 
+class ProbeRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    axis: str
+    a_value: ParamValue
+    b_value: ParamValue
+    partners: dict[str, ParamValue] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def axis_excluded_from_partners(self) -> Self:
+        if self.axis in self.partners:
+            raise PydanticCustomError(
+                "probe_axis_in_partners", "Probe axis {axis} cannot also be a fixed partner",
+                {"axis": self.axis},
+            )
+        return self
+
+
 class BottleneckReport(BaseModel):
     """Agent-produced analysis of one candidate's tuning results. Advisory only."""
 
@@ -83,6 +103,7 @@ class BottleneckReport(BaseModel):
     parameter_limits: list[ParamLimit] = Field(default_factory=list)
     hypotheses: list[Hypothesis] = Field(default_factory=list)
     suggested_action: Literal["tune_more", "rewrite", "stop"] = "rewrite"
+    probe_requests: list[ProbeRequest] = Field(default_factory=list, max_length=6)
 
 
 class ConvergenceDecision(BaseModel):
@@ -126,6 +147,7 @@ class ProposedSpace(BaseModel):
 class ParameterizationResult(BaseModel):
     file: str  # sandbox-relative path to the rewritten (PARAMS-routed) candidate
     space: ProposedSpace
+    recommended_configs: list[ParamSet] = Field(default_factory=list, max_length=2)
 
 
 class ResourceExpectation(BaseModel):
@@ -181,6 +203,7 @@ class RewriteCandidate(BaseModel):
     # list is itself recorded and counted, because "declared nothing" and "declared and was wrong"
     # are different states and only one of them can be learned from.
     expectations: list[ResourceExpectation] = Field(default_factory=list)
+    recommended_configs: list[ParamSet] = Field(default_factory=list, max_length=2)
 
 
 class RewriteResult(BaseModel):

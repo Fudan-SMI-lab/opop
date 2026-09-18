@@ -169,7 +169,9 @@ def test_joint_region_intent_when_parameterizing(
     # Then
     assert sandbox.read_output("analysis/rewrite_intent.md") == intent
     assert "analysis/rewrite_intent.md" in prompt
-    assert set(agent.output_model.model_fields) == {"file", "space"}
+    legacy = agent.output_model.model_validate_json('{"file":"old.py","space":{"params":[]}}')
+    assert legacy.file == "old.py" and legacy.space.params == []
+    assert legacy.recommended_configs == []
 
 
 def test_selected_payload_when_empty_paramset(analyst: AnalystInputs, tmp_path: Path) -> None:

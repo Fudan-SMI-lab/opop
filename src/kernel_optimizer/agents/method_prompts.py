@@ -99,6 +99,80 @@ PARAMETERIZER_INTENT_GUIDANCE: Final = (
     "gate. Preserve all existing correctness and parameterization rules.\n\n"
 )
 
+REWRITER_RECOMMENDATIONS_GUIDANCE: Final = """When your structural opportunity has a
+concrete joint regime, optionally return one or two COMPLETE configurations in that
+candidate's recommended_configs list, each as {"values": {<own PARAMS keys and values>}}.
+Use every key of your own emitted candidate, with explicit companion values. If the
+mapping or regime is unknown, omit the field or return []; do not pad unknown values.
+These are unmeasured requests, not proof of feasibility, correctness or performance.
+Keep the main hypothesis about a new feasible/efficient region after retuning, not
+winning at the parent's old point. No predicted J/latency or resource-proof schema is
+required. Do not import configurations from another candidate, competing arm or a
+hindsight winner. Autonomous tests remain allowed, but private timing/pass claims
+must not be represented as formal cached scores. Existing quality rules still apply.
+
+"""
+
+PARAMETERIZER_RECOMMENDATIONS_GUIDANCE: Final = """Treat recommended configurations as
+candidate-local, unmeasured requests. In this existing call, resolve them against your
+own output source's keys, defaults and companion relationships; necessary parameter
+wiring/body fixes remain allowed. Include legal requested values in domains when
+justified by this source and its constraints, not merely to satisfy a request. If a
+mapping is uncertain, omit that request and briefly explain in existing parameter
+descriptions or constraint rationales rather than inventing missing values.
+Return at most two resolved COMPLETE configurations for candidate/parameterized.py in
+recommended_configs, each as {"values": {<every output PARAMS key and value>}}. This
+same contract applies to initial parameterization and expansion. With no supplied
+requests, [] is normal; do not invent a historical point from another candidate/arm
+or read hindsight winners to fill it. A concrete recommendation must be grounded in
+this candidate's own source and intent. Omission or semantic inadmissibility of a
+request is not a rejection of an otherwise valid candidate. The consumer checks
+keys/domains/constraints and admits requests only within the existing tuning budget.
+Private scores and private pass claims are not cached formal measurements; recommendations
+carry no performance scores. No new evaluation or model call is required to supply them.
+
+"""
+
+EXPANSION_EVIDENCE_GUIDANCE: Final = """This is a focused expansion request, not evidence
+that an optimum lies at an edge or that extending it will improve performance. Read
+the supplied selected trial/source, reference, stats and raw own-candidate trials when
+available. The selected trial's actual params/profile/space identify its measurement;
+latest published space and source defaults need not identify that winner. Winner-anchored
+marginal statistics AND fallback summaries are NONCONDITIONAL: partners vary, so neither
+proves a fixed-partner monotonic gradient or hardware causality. Without reliable data,
+state unknown; missing/failed measurements are not zero scores or confirmed headroom.
+Use reference shape/run semantics, actual source branch, selected config and partner
+conditions to explain whether an axis is active/significant and what coupling matters.
+An axis inactive at the selected point is not globally forbidden in other branches.
+Measurements can refute an intent claim; reconcile the evidence and remaining hypothesis
+rather than blindly preserving or discarding intent. Compiler refusals remain distinct
+from soft costs and marginal trends. Preserve native eligibility, budgets and quality
+rules; source changes do not make prior scores measurements of the new source.
+"""
+
+PROBE_PLANNING_GUIDANCE: Final = """This report PRECEDES fresh conditional probes.
+Using source, selected parameters and ordinary history, propose up to {request_limit}
+probe_requests within {endpoint_budget} endpoint attempts (two endpoints per request,
+never more than six requests). Each request has axis, a_value, b_value and optional
+partners. Choose both values from that axis's EXISTING domain. Partners are explicit
+overrides of the selected fixed partners, never including the axis itself; unspecified
+partners stay selected. Motivate promising hypotheses and uncertainty in existing report
+fields, not by picking the largest counter. Do not assert measurements not yet collected.
+Requests are advisory: consumer domain/constraint checks and actual attempt budget apply,
+failures consume attempts, and no new domains are opened to accommodate a request.
+Nominal values form contrasts, not numeric slopes. Unknown or unsupported requests may
+be omitted. This is the existing analyst call, not a request for more model analysis.
+"""
+
+PRELIMINARY_REPORT_GUIDANCE: Final = """The analyst report was written BEFORE fresh
+conditional probes; its hypotheses and probe requests are preliminary, not observations
+of those future probes. Any separately supplied conditional response file contains the
+later measured observations and is authoritative for its actual endpoints/partners.
+Reconcile contradictions with the source and intent, preserving uncertainty and coverage
+limits. If no useful responses arrived, do not invent them. True compiler-wall evidence
+remains separate; ordinary response-first reports retain their original timing context.
+"""
+
 
 def seed_method_context(
     reference_source: str | None, conditional_response_text: str | None, sb: Sandbox,
