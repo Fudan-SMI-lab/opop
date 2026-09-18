@@ -21,7 +21,7 @@ from kernel_optimizer.config import AppConfig, load_config
 from kernel_optimizer.control.orchestrator import Orchestrator
 from kernel_optimizer.evaluation.correctness import latency_from_result
 from kernel_optimizer.gpu.worker_client import to_wsl_path
-from kernel_optimizer.models.core import Backend, BestRecord, ParameterSpace, TaskSpec, TrialRecord, sha256_text
+from kernel_optimizer.models.core import Backend, BestRecord, ParameterSpace, ParamSet, TaskSpec, TrialRecord, sha256_text
 from kernel_optimizer.models.reports import ParameterizationResult
 from kernel_optimizer.paramspace.validation import SpaceAccepted, SpaceRejection
 from kernel_optimizer.store.run_store import RunStore
@@ -46,6 +46,7 @@ class RetuneInputs(BaseModel):
     final_blocks: Literal[0, 3] = 3
     space_expansions_per_candidate: int = Field(default=0, ge=0)
     rewrite_intent: str | None = None
+    recommended_configs: tuple[ParamSet, ...] = Field(default=(), max_length=2)
 
 
 class RetuneResult(BaseModel):
@@ -82,7 +83,8 @@ def tune_existing(orch: Orchestrator, inputs: RetuneInputs) -> RetuneResult:
         "constraints": [c.model_dump() for c in published.constraints],
     }})
     candidate = orch._register(source, "rewrite" if inputs.rewrite_intent else "seed", [], inputs.backend,
-                               inputs.rewrite_intent or "existing structure; retuning only")
+                               inputs.rewrite_intent or "existing structure; retuning only",
+                               recommended_configs=inputs.recommended_configs)
     if candidate is None:
         return _accounted(RetuneResult(status="rejected", rejection=SpaceRejection(reason="registration_refused", detail="no candidate"),
                              final_blocks_requested=inputs.final_blocks), orch.store)
