@@ -29,6 +29,7 @@ from kernel_optimizer.tasks.kernelbench import parse_task_arg
 from kernel_optimizer.wiring import Runtime, build_orchestrator
 from scripts.experiments.c2_local_runner import isolated_config, worker_environment
 from scripts.experiments.c2_local_inputs import InputError
+from scripts.experiments.c2_retune_studies import RetuneStudy, read_studies
 
 
 class RetuneInputs(BaseModel):
@@ -57,6 +58,20 @@ class RetuneResult(BaseModel):
     selected_trial: TrialRecord | None = None
     final_blocks_requested: Literal[0, 3] = 3
     error: str | None = None
+    spaces: list[ParameterSpace] = Field(default_factory=list)
+    studies: list[RetuneStudy] = Field(default_factory=list)
+    asked: int | None = None
+    expanded_count: int = 0
+    selected_space: ParameterSpace | None = None
+
+
+def _accounted(result: RetuneResult, store: RunStore) -> RetuneResult:
+    accounting = read_studies(store)
+    selected = result.selected_trial
+    selected_space = next((s for s in accounting.spaces if selected is not None
+                           and s.candidate_id == selected.candidate_id and s.space_id == selected.space_id), None)
+    return result.model_copy(update={"spaces": accounting.spaces, "studies": accounting.studies,
+        "asked": accounting.asked_total, "expanded_count": accounting.expanded_count, "selected_space": selected_space})
 
 
 def tune_existing(orch: Orchestrator, inputs: RetuneInputs) -> RetuneResult:
@@ -69,8 +84,8 @@ def tune_existing(orch: Orchestrator, inputs: RetuneInputs) -> RetuneResult:
     candidate = orch._register(source, "rewrite" if inputs.rewrite_intent else "seed", [], inputs.backend,
                                inputs.rewrite_intent or "existing structure; retuning only")
     if candidate is None:
-        return RetuneResult(status="rejected", rejection=SpaceRejection(reason="registration_refused", detail="no candidate"),
-                            final_blocks_requested=inputs.final_blocks)
+        return _accounted(RetuneResult(status="rejected", rejection=SpaceRejection(reason="registration_refused", detail="no candidate"),
+                             final_blocks_requested=inputs.final_blocks), orch.store)
     crun = orch.runs[candidate.candidate_id]
     accepted = orch.deps.validator.validate_and_publish(
         candidate, source, proposal, orch.task, orch.store.candidate_dir(candidate.candidate_id))
@@ -78,14 +93,14 @@ def tune_existing(orch: Orchestrator, inputs: RetuneInputs) -> RetuneResult:
     match accepted:
         case SpaceRejection():
             candidate.status = "dropped"
-            return RetuneResult(status="rejected", rejection=accepted, final_blocks_requested=inputs.final_blocks)
+            return _accounted(RetuneResult(status="rejected", rejection=accepted, final_blocks_requested=inputs.final_blocks), orch.store)
         case SpaceAccepted():
             orch._continue_accepted_candidate(crun, accepted, run_analysis=False)
         case unreachable:
             assert_never(unreachable)
     selected = orch.deps.families.families[candidate.family_id].best
     if selected is None:
-        return RetuneResult(status="no_best", trials=crun.trials, final_blocks_requested=inputs.final_blocks)
+        return _accounted(RetuneResult(status="no_best", trials=crun.trials, final_blocks_requested=inputs.final_blocks), orch.store)
     selected_trial = next((t for t in crun.trials if t.status == "complete" and t.latency_ms is not None
                            and t.candidate_id == selected.candidate_id and t.params == selected.params
                            and t.latency_ms.robust_ms == selected.latency_ms), None)
@@ -97,8 +112,8 @@ def tune_existing(orch: Orchestrator, inputs: RetuneInputs) -> RetuneResult:
         shutil.copyfile(measured, selected_path)
     except (OSError, InputError) as exc:
         orch.store.append("RETUNE_ARTIFACT_ERROR", {"error": str(exc)})
-        return RetuneResult(status="artifact_error", selected=selected, selected_trial=selected_trial,
-                            trials=crun.trials, error=str(exc), final_blocks_requested=inputs.final_blocks)
+        return _accounted(RetuneResult(status="artifact_error", selected=selected, selected_trial=selected_trial,
+                             trials=crun.trials, error=str(exc), final_blocks_requested=inputs.final_blocks), orch.store)
     orch.store.append("RETUNE_SELECTED", {"selected": selected.model_dump(mode="json"),
                                           "selected_trial": selected_trial.model_dump(mode="json"),
                                           "artifact": "report/selected.py"})
@@ -123,9 +138,9 @@ def tune_existing(orch: Orchestrator, inputs: RetuneInputs) -> RetuneResult:
         finals.append(record)
         orch.store.append("RETUNE_FINAL_DONE", {"block": block, "worker": raw,
                                                "trial": record.model_dump(mode="json"), "wall_s": monotonic() - started})
-    return RetuneResult(status="complete" if all(t.status == "complete" for t in finals) else "final_failed",
+    return _accounted(RetuneResult(status="complete" if all(t.status == "complete" for t in finals) else "final_failed",
                         selected=selected, selected_trial=selected_trial, trials=crun.trials, finals=finals,
-                        final_blocks_requested=inputs.final_blocks)
+                         final_blocks_requested=inputs.final_blocks), orch.store)
 
 
 def retune(inputs: RetuneInputs, cfg: AppConfig, *, runtime: Runtime | None = None) -> RetuneResult:
