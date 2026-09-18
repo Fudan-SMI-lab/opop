@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import uuid
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
@@ -82,12 +83,14 @@ class AgentModule(ABC, Generic[TIn, TOut]):
         store: RunStore,
         cfg: AgentModuleConfig,
         agent_name: str = "build",
+        self_test_context: Callable[[Sandbox], str] | None = None,
     ):
         self.client = client
         self.sandboxes = sandboxes
         self.store = store
         self.cfg = cfg
         self.agent_name = agent_name
+        self.self_test_context = self_test_context
 
     @abstractmethod
     def seed_sandbox(self, inputs: TIn, sb: Sandbox) -> None: ...
@@ -99,7 +102,8 @@ class AgentModule(ABC, Generic[TIn, TOut]):
         call_id = f"{self.name}-{uuid.uuid4().hex[:8]}"
         sb = self.sandboxes.create(call_id)
         self.seed_sandbox(inputs, sb)
-        prompt = self.render_prompt(inputs, sb)
+        helper = self.self_test_context(sb) if self.self_test_context else ""
+        prompt = self.render_prompt(inputs, sb) + helper
 
         session_id = self.client.create_session(sb.root, title=call_id)
         # Optional subject of the call, read generically so adding it to one Inputs type
@@ -191,7 +195,8 @@ class AgentModule(ABC, Generic[TIn, TOut]):
                     # note the agent's own OUTPUT files are left alone, so a finished artifact
                     # from attempt 1 still survives for `check_output` to find.
                     self.seed_sandbox(inputs, sb)
-                    prompt = self.render_prompt(inputs, sb)
+                    helper = self.self_test_context(sb) if self.self_test_context else ""
+                    prompt = self.render_prompt(inputs, sb) + helper
                     session_id = self.client.create_session(sb.root, title=f"{call_id}-r{attempt}")
                     self.store.append(
                         "AGENT_SESSION_RESET",

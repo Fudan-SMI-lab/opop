@@ -19,6 +19,7 @@ from kernel_optimizer.agents.modules import (
 )
 from kernel_optimizer.agents.runtime import OpencodeClient, OpencodeServer
 from kernel_optimizer.agents.sandbox import PermissionAutoResponder, SandboxFactory
+from kernel_optimizer.agents.self_test_context import self_test_context_factory
 from kernel_optimizer.config import AppConfig
 from kernel_optimizer.control.convergence import ConvergencePolicy
 from kernel_optimizer.control.families import FamilyManager
@@ -141,7 +142,8 @@ def build_orchestrator(cfg: AppConfig, store: RunStore, task: TaskSpec,
     def agent(cls, name: str):
         module_cfg = cfg.agents.module(name)
         return cls(runtime.client, sandboxes, store, module_cfg,
-                   agent_name=cfg.opencode.agent)
+                   agent_name=cfg.opencode.agent,
+                   self_test_context=self_test_context_factory(task, evaluator))
 
     deps = Wiring(
         evaluator=evaluator,
