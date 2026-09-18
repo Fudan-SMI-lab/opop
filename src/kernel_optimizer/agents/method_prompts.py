@@ -3,11 +3,12 @@
 from typing import Final, Literal, assert_never
 
 from kernel_optimizer.agents.sandbox import Sandbox
+from kernel_optimizer.models.core import ParamSet
 
 
-WHOLE_TASK_GUIDANCE: Final = """Reason about the complete task's dataflow, not only a
-resource-heavy kernel or a blocked parameter direction. Consider fusion boundaries,
-materialization, layout and scheduling where supported by the source and run semantics.
+WHOLE_TASK_GUIDANCE: Final = """Reason from the source, run semantics, ordinary trial
+history and measured resource context about the complete task's performance.
+Compare plausible mechanisms and their dataflow costs, not just resource peaks.
 Choose a coherent structural scope: explain the mechanism, the new retuning opportunity,
 its companion conditions, costs and tradeoffs, and what remains uncertain. A resource
 peak need not identify the latency bottleneck; minimizing resource use is not the goal.
@@ -26,32 +27,77 @@ existing summary or change_summary. Evaluate the resulting complete task after r
 not merely at the parent's old defaults.
 """
 
-ANALYST_RESOURCE_GUIDANCE: Final = """CRITICAL — do not confuse "a resource is saturated" with "that resource is the
-performance limiter." Reason about the WHOLE resource balance before proposing a
-change:
-1. Resource balance: compare each resource at the best config against its device
-   limit. High register use (even at the 255/thread max) is often the SIGNATURE of
-   the fast configuration (large accumulator tiles live in registers), NOT a
-   pathology to relieve — relieving it by spilling to shared memory or recomputing
-   usually makes latency WORSE. Only call a saturated resource "blocking" if the
-   trial data shows latency still wants to move toward a value that resource
-   forbids AND a lower-usage config is not already just as fast.
-2. Idle resources: if a resource is far below its limit (e.g. shared memory at 24%
-   while registers are maxed), ask whether the kernel could trade the saturated
-   resource for the idle one to raise arithmetic throughput — but only if the trial
-   data suggests throughput (not that resource) is the wall.
-3. Precision / tensor-core path: check how the kernel does its core math. If it
-   uses full-IEEE fp32 matmul (e.g. tl.dot(..., input_precision="ieee")) or scalar
-   FMA loops, it is NOT using the tensor cores, and a tf32/fp16-accumulate tensor-
-   core path can be materially faster on matmul/conv-bound ops -- by the ratio between
-   this box's MEASURED ceilings, not a fixed factor (this is how torch.compile
-   wins). If the flat latency floor across many configs looks like an arithmetic-
-   throughput wall rather than a memory/occupancy wall, say so and propose switching
-   the dot path to tf32 (input_precision="tf32") or fp16 inputs with fp32
-   accumulation — the harness's dual-precision correctness gate accepts a tf32-
-   matching result, so this is allowed. This is frequently the single highest-impact
-   change and must be considered explicitly, not omitted.
+ANALYST_RESOURCE_GUIDANCE: Final = """Use ordinary resource measurements as context:
+compare registers, shared memory, spills, occupancy, launches and arithmetic paths
+with the measured task cost and device ceilings. High usage can accompany a fast
+configuration; spare capacity is not by itself an optimization opportunity. Distinguish
+measurements from inferred limiters, and compare tradeoffs against actual latency.
+Aggregate profiles do not prove hardware causality or rule out structural hypotheses.
+For arithmetic-heavy work, consider the precision/tensor-core paths allowed by the
+existing contract and correctness gate, using this box's measured ceilings. A throughput
+label or a flat profile alone does not identify a uniquely best implementation path.
 """
+
+C2_OPPORTUNITY_GUIDANCE: Final = """Read `analysis/conditional_responses.md`. For this
+response-supplied call, let the measured opportunity lead mechanism choice; the general
+whole-task guidance is the scale for checking its net cost, not a replacement menu
+of unrelated optimizations. Work through this chain in the existing analyst summary
+and hypotheses.change/expected_effect/risk, or the rewriter change_summary:
+1. Relate the responses to the supplied source, reference/run semantics and selected
+   parameter context. Identify the native objective direction and units, endpoint
+   configurations, resource observations and fixed partners. If their source/config
+   correspondence is unclear, state that limitation instead of assuming a match.
+2. Identify a valuable parameter direction or nominal contrast from valid measurements
+   under those partners. Preserve native J/delta signs and units; improvement depends
+   on the declared objective, not a preferred sign. Nominal contrasts are not numeric
+   slopes. Finite differences are neither global gradients nor hardware-causality proof.
+3. Use the source to explain the constraint, cost growth or partner coupling that may
+   limit that direction's value. Distinguish measured facts from inferred mechanisms.
+   A hard wall is not required: continuous costs, spills, occupancy tradeoffs or coupling
+   can motivate a bounded hypothesis. A domain endpoint is not a compiler refusal.
+4. Choose a coherent structural action and necessary companion changes that could
+   alter the opportunity's benefit or cost. Explain the connection, rather than listing
+   generic fusion/layout/scheduling ideas or chasing the largest resource counter.
+5. Describe the intended useful joint region and partner relationships. Name axes and
+   values when supported; otherwise give the dataflow target and unknowns. Resource
+   increases and loss of the parent's old best point are allowed tradeoffs, not rejection
+   conditions. Do not demand resource minimization or preservation of that point.
+6. Account for added full-task work, traffic, synchronization, correctness risk and
+   failure conditions along this opportunity. The child's own retuning and, when native
+   eligibility permits, expansion must verify the full-task net effect. Keep claims,
+   implementation and measurements distinct; intent alone is not realized opportunity.
+Keep actual compiler walls separate from responses, soft costs and analyst judgments.
+Missing, failed or uncovered observations are unknown, not zero. If the supplied brief
+has no valid contrast, state insufficient response evidence and use ordinary source-
+guided reasoning without inventing an opportunity. No numeric gain prediction, new proof
+schema, evidence citation/ID gate or extra analysis call is required.
+"""
+
+RAW_SOURCE_GUIDANCE: Final = """The supplied source is not declared materialized at
+the selected operating point; its PARAMS defaults may differ from selected values.
+Use explicit selected context when available, not the filename or defaults as evidence.
+"""
+
+MATERIALIZED_SOURCE_GUIDANCE: Final = """The caller marks the supplied source as
+materialized. Check its PARAMS against the supplied selected context before treating
+it as that operating point; the filename alone does not establish correspondence.
+"""
+
+PARAMETERIZER_BODY_GUIDANCE: Final = """Parameter wiring or necessary repairs may
+change the computational body while preserving task semantics and existing quality
+requirements. If you change indexing, masks or reductions, briefly explain the concrete
+relation to wiring or repair and its risk in existing parameter descriptions or constraint
+rationales. This is advisory, not a body/dtype ban or an equivalence-proof gate.
+"""
+
+PARAMETERIZER_INTENT_GUIDANCE: Final = (
+    "Read `analysis/rewrite_intent.md`, the existing rewrite summary, as advisory intent. "
+    "Reconcile its structural goal, intended region and companion conditions with "
+    "domains, defaults and constraints. In existing parameter descriptions or constraint "
+    "rationales, briefly explain what is expressed, omitted or still unknown. "
+    "No particular axis/value is mandatory, and matching the intent is not an acceptance "
+    "gate. Preserve all existing correctness and parameterization rules.\n\n"
+)
 
 
 def seed_method_context(
@@ -81,19 +127,17 @@ def method_guidance(
         "Reference source was not supplied; reason from the candidate and supplied task facts, "
         "and state uncertainty rather than inventing missing reference behavior.\n"
     )
-    responses = (
-        "Read `analysis/conditional_responses.md` as local empirical response evidence.\n"
-        if conditional_response_text else ""
-    )
-    return scope + reference + responses + """
-For any response evidence, preserve the native objective direction, signs and units.
-Either direction of a contrast is useful; improvement depends on the declared objective,
-not on a universally preferred sign. Interpret endpoints with their fixed companion
-parameters. Nominal axes have contrasts, not numeric slopes. Responses do not establish
-hardware causality or a compile wall. Keep actual compiler refusals distinct from
-soft-wall observations such as spills, and both distinct from ordinary response trends.
-Missing, failed and uncovered measurements are unknown, not zero; a small endpoint
-budget is not a survey of the full domain. With no useful responses, ordinary source-
-guided structural reasoning remains valid. Do not invent measurements or expected gains.
+    responses = C2_OPPORTUNITY_GUIDANCE if conditional_response_text else ""
+    return scope + reference + responses + "\n"
 
-"""
+
+def selected_context_guidance(selected_params: ParamSet | None, source_materialized: bool = False) -> str:
+    source = MATERIALIZED_SOURCE_GUIDANCE if source_materialized else RAW_SOURCE_GUIDANCE
+    selected = (
+        "Read `tuning/selected_params.json` for the selected ParamSet (`values`), independently "
+        "of source defaults. Relate measurements and fixed partners to this context; it does "
+        "not replace the tunable source, full domains, constraints or trial history.\n"
+        if selected_params is not None else
+        "Selected parameters were not supplied; the selected operating point is unknown.\n"
+    )
+    return source + selected

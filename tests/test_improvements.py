@@ -3,6 +3,7 @@ repair failure-class guidance (F), and the relaxed-correctness slack gate (A).""
 
 import importlib.util
 import json
+from pathlib import Path
 
 import pytest
 
@@ -7320,27 +7321,42 @@ def test_the_bottleneck_analysis_reaches_the_agent_as_detect_analyze_recommend()
     assert "not constants" in doc
 
 
-def test_the_task_level_fusion_headroom_reaches_the_agent():
-    """The single largest lever L3:43 offers, and it is a TASK property no per-candidate
-    measurement produces. If it does not reach the agent it may as well not be measured.
-    """
-    from kernel_optimizer.agents.modules import _bottleneck_doc
+@pytest.mark.parametrize("task_key", ["level3:43_attention", "level1:1_matmul"])
+def test_the_task_level_fusion_headroom_reaches_the_agent(tmp_path: Path, task_key: str) -> None:
+    from kernel_optimizer.agents.modules import AnalystInputs, BottleneckAnalystAgent, _bottleneck_doc
+    from kernel_optimizer.agents.sandbox import Sandbox
     from kernel_optimizer.evaluation.task_cost import cost_from_worker
+    from kernel_optimizer.models.core import DeviceLimits, TaskSpec
+    from kernel_optimizer.models.reports import TuningStats
 
+    # Given
     cal, _ = _peaks_4090()
-    cost = cost_from_worker({"task_cost": MEASURED_TASK_COSTS["level3:43_attention"]})
-    doc = _bottleneck_doc(None, cost, cal)
+    recorded = MEASURED_TASK_COSTS[task_key]
+    cost = cost_from_worker({"task_cost": recorded})
+    level, name = task_key.split(":")
+    inputs = AnalystInputs(
+        task=TaskSpec(level=int(level.removeprefix("level")), problem_id=int(name.split("_")[0]),
+                      name=name, ref_path=tmp_path / "ref.py", ref_src_sha="0" * 64),
+        candidate_source="PARAMS = {}\n",
+        stats=TuningStats(space_id="s", candidate_id="c", n_trials=0, n_complete=0, n_fail=0),
+        trials_csv="status,latency\n", device=DeviceLimits(), task_cost=cost, calibration=cal,
+    )
+    expected_payload = _bottleneck_doc(None, cost, cal)
+    missing_cost_payload = _bottleneck_doc(None, None, cal)
+    agent = BottleneckAnalystAgent.__new__(BottleneckAnalystAgent)
+    sandbox = Sandbox(tmp_path / "sandbox")
 
-    assert "69.1x" in doc, "the measured fusion headroom is not in the agent's input"
-    assert "intermediates" in doc
-    assert "property of the TASK" in doc, (
-        "the agent must be told this cannot be reached by tuning a per-op kernel")
+    # When
+    agent.seed_sandbox(inputs, sandbox)
 
-    # A single-op task has nothing to fuse and must NOT be told to fuse.
-    one_op = cost_from_worker({"task_cost": MEASURED_TASK_COSTS["level1:1_matmul"]})
-    doc2 = _bottleneck_doc(None, one_op, cal)
-    assert "largest single lever" not in doc2, (
-        "a 1-op reference was told fusion is its largest lever; there is nothing to fuse")
+    # Then
+    assert cost.reference_bytes == recorded["reference_bytes"]
+    assert cost.compulsory_bytes == recorded["compulsory_bytes"]
+    assert cost.op_count == recorded["op_count"]
+    assert cost.fusion_headroom == pytest.approx(recorded["reference_bytes"] / recorded["compulsory_bytes"])
+    assert sandbox.read_output("analysis/bottleneck.md") == expected_payload
+    assert expected_payload != missing_cost_payload
+    assert "analysis/bottleneck.md" in agent.render_prompt(inputs, sandbox)
 
 
 def test_a_task_that_cannot_be_compute_bound_is_told_so_before_it_tries():

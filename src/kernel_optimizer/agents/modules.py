@@ -12,11 +12,14 @@ from typing import Literal
 from kernel_optimizer.agents.base import AgentModule
 from kernel_optimizer.agents.method_prompts import (
     ANALYST_RESOURCE_GUIDANCE,
+    PARAMETERIZER_BODY_GUIDANCE,
+    PARAMETERIZER_INTENT_GUIDANCE,
     method_guidance,
     seed_method_context,
+    selected_context_guidance,
 )
 from kernel_optimizer.agents.sandbox import Sandbox
-from kernel_optimizer.models.core import DeviceLimits, TaskSpec
+from kernel_optimizer.models.core import DeviceLimits, ParamSet, TaskSpec
 from kernel_optimizer.models.reports import (
     BottleneckReport,
     GeneratedCandidate,
@@ -193,9 +196,9 @@ def _bottleneck_doc(verdict, task_cost, calibration, digest_text: str | None = N
             out.append(
                 f"- **The reference materializes {task_cost.fusion_headroom:.1f}x the traffic it "
                 f"cannot avoid**, across {task_cost.op_count} ops. That difference is "
-                f"intermediates written and re-read. Fusing them away is the largest single lever "
-                f"this task offers, and it is a property of the TASK -- no amount of tuning a "
-                f"per-op kernel reaches it.\n")
+                    f"intermediates written and re-read. This is potential dataflow headroom, "
+                    f"not proof of the largest latency opportunity; compare its cost with the "
+                    f"measured objective evidence before choosing a structural action.\n")
         if calibration is not None and task_cost.compulsory_bytes:
             # NOT guarded on flop_count being nonzero. A 0-FLOP task is the CLEAREST case of
             # "cannot be compute-bound" -- a pure elementwise or pooling op has no
@@ -775,23 +778,15 @@ class ParameterizerAgent(AgentModule[ParameterizerInputs, ParameterizationResult
         sb.write_input("docs/device.md", _device_doc(inputs.device, inputs.calibration))
 
     def render_prompt(self, inputs: ParameterizerInputs, sb: Sandbox) -> str:
-        intent = (
-            "Read `analysis/rewrite_intent.md`, the existing rewrite summary, as advisory intent. "
-            "Reconcile its structural goal, intended region and companion conditions with "
-            "domains, defaults and constraints. In existing parameter descriptions or constraint "
-            "rationales, briefly explain what is expressed, omitted or still unknown. "
-            "No particular axis/value is mandatory, and matching the intent is not an acceptance "
-            "gate. Preserve all existing correctness and parameterization rules.\n\n"
-            if inputs.rewrite_intent else ""
-        )
+        intent = PARAMETERIZER_INTENT_GUIDANCE if inputs.rewrite_intent else ""
         if inputs.expand_directive:
-            return intent + self._render_expand_prompt(inputs)
+            return intent + PARAMETERIZER_BODY_GUIDANCE + self._render_expand_prompt(inputs)
         feedback = (
             f"\nPrevious attempt was rejected: {inputs.prior_feedback}\n"
             if inputs.prior_feedback
             else ""
         )
-        return intent + f"""A candidate kernel is in `candidate/source.py`. Read it, plus
+        return intent + PARAMETERIZER_BODY_GUIDANCE + f"""A candidate kernel is in `candidate/source.py`. Read it, plus
 `docs/candidate_contract.md` and `docs/device.md`. If the kernel is Triton
 (`@triton.jit`), you MUST also read `docs/triton_pitfalls.md` and obey it — both in
 the rewritten body AND when choosing each knob's choices: every value you offer for a
@@ -1021,6 +1016,7 @@ class AnalystInputs:
     reasoning_mode: Literal["whole_task", "legacy_local"] = "whole_task"
     reference_source: str | None = None
     conditional_response_text: str | None = None
+    selected_params: ParamSet | None = None
 
 
 class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
@@ -1029,6 +1025,8 @@ class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
 
     def seed_sandbox(self, inputs: AnalystInputs, sb: Sandbox) -> None:
         seed_method_context(inputs.reference_source, inputs.conditional_response_text, sb)
+        if inputs.selected_params is not None:
+            sb.write_input("tuning/selected_params.json", inputs.selected_params.model_dump_json(indent=2))
         sb.write_input("candidate/source.py", inputs.candidate_source)
         sb.write_input("tuning/stats.json", inputs.stats.model_dump_json(indent=2))
         sb.write_input("tuning/trials.csv", inputs.trials_csv)
@@ -1074,15 +1072,15 @@ class BottleneckAnalystAgent(AgentModule[AnalystInputs, BottleneckReport]):
             )
         return method_guidance(
             inputs.reasoning_mode, inputs.reference_source, inputs.conditional_response_text,
-        ) + """A kernel candidate was tuned over its parameter space. These files
+        ) + selected_context_guidance(inputs.selected_params) + """A kernel candidate was tuned over its parameter space. These files
 already exist in your working directory — read them with your file tools
 before answering; do NOT assume any are missing (a stale index may hide them,
 so read by path):
 - `analysis/bottleneck.md` — the HARNESS'S OWN measured analysis: what this task
   requires, what this GPU can actually do (measured on this box, not a datasheet),
-  which resource limits this kernel, and explicitly what could NOT be measured
-  here. Read this FIRST: it is measurement, and it tells you which of your
-  hypotheses are already ruled out.
+  inferred resource limits, and explicitly what could NOT be measured here.
+  Distinguish its measurements from classification hypotheses; aggregate profiles
+  alone do not rule out a source-supported opportunity.
 - `analysis/compiled_kernel.md` — what the compiled binary actually is: occupancy
   and its limiting resource, whether tensor cores are used, spills, access widths.
   Read from the disassembly, so these are facts about the binary. (Absent when the
@@ -1104,11 +1102,9 @@ from a measured refusal, and an observation from a hypothesis about its cause.
 
 """ + ANALYST_RESOURCE_GUIDANCE + """
 
-Then propose concrete structural-change hypotheses supported by this evidence
-(e.g. "switch tl.dot to input_precision='tf32' to use tensor cores", "split K so
-each block needs less shared memory", "two-stage reduction to allow larger tiles").
-Prefer a precision/tensor-core hypothesis when the evidence points to an arithmetic
-throughput floor.
+Then propose coherent structural hypotheses under the reasoning scope above.
+Use summary and hypotheses.change/expected_effect/risk for the mechanism, intended
+opportunity, companion conditions, costs and uncertainty; a gain estimate may be null.
 
 Every hypothesis must be EXECUTABLE UNDER THE RUN MODE in
 `task/eval_semantics.md`. A fusion that is only valid in the other mode is worth
@@ -1136,7 +1132,7 @@ Answer with JSON matching:
 @dataclass
 class RewriterInputs:
     task: TaskSpec
-    best_source: str  # best materialized source of the candidate
+    best_source: str
     report: BottleneckReport
     failed_hypotheses: list[dict]
     device: DeviceLimits
@@ -1156,6 +1152,8 @@ class RewriterInputs:
     conditional_response_text: str | None = None
     reasoning_mode: Literal["whole_task", "legacy_local"] = "whole_task"
     reference_source: str | None = None
+    selected_params: ParamSet | None = None
+    source_materialized: bool = False
 
 
 class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
@@ -1164,6 +1162,8 @@ class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
 
     def seed_sandbox(self, inputs: RewriterInputs, sb: Sandbox) -> None:
         seed_method_context(inputs.reference_source, inputs.conditional_response_text, sb)
+        if inputs.selected_params is not None:
+            sb.write_input("tuning/selected_params.json", inputs.selected_params.model_dump_json(indent=2))
         sb.write_input("candidate/best.py", inputs.best_source)
         sb.write_input("analysis/bottleneck.json", inputs.report.model_dump_json(indent=2))
         if inputs.ledger_entries:
@@ -1203,8 +1203,8 @@ class StructureRewriterAgent(AgentModule[RewriterInputs, RewriteResult]):
                  if inputs.wall_text else "")
         return method_guidance(
             inputs.reasoning_mode, inputs.reference_source, inputs.conditional_response_text,
-        ) + f"""`candidate/best.py` is the current best version of a kernel (already at
-its best-known PARAMS). `analysis/bottleneck.json` gives the analyst's hypotheses
+        ) + selected_context_guidance(inputs.selected_params, inputs.source_materialized) + f"""`candidate/best.py` is the supplied parent source.
+`analysis/bottleneck.json` gives the analyst's hypotheses
 and supporting evidence, not a proof of a physical limiting resource.
 {walls}{history}; do not repeat them. Read `docs/candidate_contract.md`, `docs/device.md`, and
 `task/eval_semantics.md` (the run mode the harness evaluates in). If
@@ -1216,27 +1216,23 @@ structural action, intended opportunity and companion conditions in change_summa
 This is a structural change, not a
 parameter change — the new file may have different PARAMS keys.
 
-If the bottleneck report blames `arithmetic_throughput` (or the latency floor is
-flat across many resource profiles), the highest-value rewrite is to move the core
-matmul/conv off the IEEE-fp32 scalar path onto the tensor cores: switch
-`tl.dot(..., input_precision="ieee")` to `"tf32"`, or cast the dot inputs to
-fp16/bf16 while keeping an fp32 accumulator. Read the "Precision and the tensor-core
-path" section of the contract — the dual-precision gate accepts a tf32-matching
-result, so this is a legal rewrite and is usually the only thing that moves an
-arithmetic-throughput floor. Do NOT keep spending rewrites on register/shared-memory
-relief when the report says the limiter is arithmetic throughput.
+An `arithmetic_throughput` label or flat latency profile is a hypothesis, not a
+uniquely best rewrite. Consider the contract's permitted precision/tensor-core paths
+when source and measurements support them, keeping fp32 accumulation and the existing
+dual-precision correctness gate. Choose the mechanism from the opportunity and costs,
+not from the label alone; no precision path is guaranteed to pass or improve latency.
 
-**A rewrite may also change BACKEND, and that is sometimes the only rewrite that can
-work.** Declare it in the `backend` field. The bottleneck report tells you what limits
-the kernel; it does not tell you which backend to use, because that inference is yours
-to make. The one case measured on this hardware: when the task genuinely requires
+**A rewrite may also change BACKEND.** Declare it in the `backend` field. The report
+does not determine the backend; justify the choice with source and measurements.
+One prior measured case on this hardware: when the task genuinely requires
 **strict IEEE fp32** arithmetic, `tl.dot(..., input_precision="ieee")` has no fast path
 here — a hand-written CUDA attention kernel reached 55–74% of this card's fp32 CUDA-core
 roof where the best of 36 Triton tile configurations reached 18%, and no tile closed the
-gap. So if the report says `arithmetic_throughput` AND the correctness gate has been
-rejecting your tf32/fp16 attempts (i.e. the task really does need full fp32), a
-`cuda` rewrite via `torch.utils.cpp_extension.load_inline` is the move — retrying tiles
-inside Triton is not. The same applies if you need a warp primitive or a memory
+gap. This prior example is not a prediction for this task. If source and measurements
+support `arithmetic_throughput` and full fp32 is genuinely needed after investigating
+other causes of rejected tf32/fp16 attempts, a
+`cuda` rewrite via `torch.utils.cpp_extension.load_inline` may be worth testing, not
+an automatic conclusion. The same applies if you need a warp primitive or a memory
 instruction Triton does not expose (`__shfl_*`, a specific `cp.async` shape,
 `__launch_bounds__`).
 
