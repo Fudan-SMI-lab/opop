@@ -15,7 +15,7 @@ from kernel_optimizer.config import AppConfig
 from kernel_optimizer.control.direct_task import TaskSpace
 from kernel_optimizer.models.core import Backend, ParameterSpace, TaskSpec, sha256_text
 from kernel_optimizer.models.reports import BottleneckReport
-from kernel_optimizer.paramspace.materializer import extract_defaults
+from kernel_optimizer.paramspace.materializer import extract_defaults, find_params_span, materialize
 from kernel_optimizer.store.run_store import RunStore
 from kernel_optimizer.tuning.stats import TuningStatsAnalyzer
 from kernel_optimizer.tasks.kernelbench import parse_task_arg
@@ -35,6 +35,7 @@ class Child:
     path: Path
     space: TaskSpace
     backend: str
+    rewrite_intent: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,11 +60,30 @@ def _task(shared: Shared) -> TaskSpec:
                     ref_src_sha=sha256_text(shared.reference_source))
 
 
+def _materialized_parent(shared: Shared, inputs: TaskRewriteInputs) -> str:
+    path = inputs.candidate_path
+    if not path.is_absolute():
+        path = inputs.project_root / path
+    try:
+        source = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return materialize(shared.source, shared.parent.params)
+    selected_span = find_params_span(source)
+    raw_span = find_params_span(shared.source)
+    if selected_span.defaults != shared.parent.params.values:
+        raise InputError("staged parent PARAMS differ from selected parameters")
+    if (source[:selected_span.start] != shared.source[:raw_span.start]
+            or source[selected_span.end:] != shared.source[raw_span.end:]):
+        raise InputError("staged parent is not a materialization of this Shared source")
+    return source
+
+
 def generate_legacy_proposal(
     shared: Shared, services: Services, inputs: TaskRewriteInputs, *,
     reasoning_mode: Literal["whole_task", "legacy_local"] = "whole_task",
     failed_hypotheses: list[dict[str, JsonValue]] | None = None,
 ) -> LegacyProposal:
+    parent_source = _materialized_parent(shared, inputs)
     task = _task(shared)
     deps = build_orchestrator(services.cfg, services.store, task, services.runtime).deps
     space = ParameterSpace(space_id=shared.parent.space_id, candidate_id=shared.parent.candidate_id,
@@ -78,21 +98,23 @@ def generate_legacy_proposal(
                          trial.failure_kind, trial.failure_detail,
                          trial.latency_ms.model_dump_json() if trial.latency_ms else "",
                          trial.profile.model_dump_json() if trial.profile else ""])
-    brief = "\n".join(response.model_dump_json() for response in inputs.responses)
+    brief = "\n".join(response.model_dump_json() for response in inputs.responses
+                      if not (response.reason == "not_acquired" and response.a is None
+                              and response.b is None and response.b_params is None))
     common = "Evaluation contract:\n" + json.dumps(shared.evaluation)
     report = deps.analyst.invoke(AnalystInputs(
         task=task, candidate_source=shared.source, stats=stats, trials_csv=buffer.getvalue(),
         device=shared.device, candidate_id=shared.parent.candidate_id,
         eval_semantics=shared.semantics, profile=shared.parent.profile,
         digest_text=common, reasoning_mode=reasoning_mode, reference_source=shared.reference_source,
-        conditional_response_text=brief or None,
+        conditional_response_text=brief or None, selected_params=shared.parent.params,
     )).output
     outcome = deps.rewriter.invoke(RewriterInputs(
-        task=task, best_source=shared.source, report=report,
+        task=task, best_source=parent_source, report=report,
         failed_hypotheses=shared.failed_hypotheses if failed_hypotheses is None else failed_hypotheses,
         device=shared.device, n_candidates=1, eval_semantics=shared.semantics,
         reasoning_mode=reasoning_mode, reference_source=shared.reference_source,
-        conditional_response_text=brief or None,
+        conditional_response_text=brief or None, selected_params=shared.parent.params, source_materialized=True,
     ))
     if len(outcome.output.candidates) != 1:
         raise InputError("legacy rewriter must return exactly one child for this diagnostic")
@@ -110,15 +132,16 @@ def parameterize_legacy_proposal(
 ) -> Child:
     task = _task(shared)
     deps = build_orchestrator(services.cfg, services.store, task, services.runtime).deps
+    intent = proposal.change_summary if pass_intent else None
     parameterized = deps.parameterizer.invoke(ParameterizerInputs(
         task=task, candidate_source=proposal.source, device=shared.device, candidate_id="child",
-        rewrite_intent=proposal.change_summary if pass_intent else None,
+        rewrite_intent=intent,
     ))
     path = (parameterized.sandbox.root / parameterized.output.file).resolve()
     child_space = TaskSpace.model_validate(parameterized.output.space.model_dump())
     if set(extract_defaults(path.read_text(encoding="utf-8"))) != {d.name for d in child_space.params}:
         raise InputError("child PARAMS keys and published space disagree")
-    return Child(path, child_space, proposal.backend)
+    return Child(path, child_space, proposal.backend, rewrite_intent=intent)
 
 
 def legacy_child(shared: Shared, services: Services, inputs: TaskRewriteInputs) -> Child:
