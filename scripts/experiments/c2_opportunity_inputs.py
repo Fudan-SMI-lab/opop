@@ -45,6 +45,7 @@ class OpportunityInputs(Strict):
     shared: Path
     reference: Path
     helpers: tuple[Path, ...] = ()
+    probe_strategy: Literal["provided", "targeted"] = "provided"
 
     @model_validator(mode="after")
     def absolute_paths(self) -> Self:

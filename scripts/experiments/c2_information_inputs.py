@@ -35,12 +35,15 @@ class InformationRun:
     require_b40: bool = False
     space_expansions_per_candidate: int = 0
     promotion_policy: Literal["native", "full"] = "native"
+    probe_strategy: Literal["provided", "targeted"] = "provided"
 
     def __post_init__(self) -> None:
         if self.space_expansions_per_candidate not in (0, 1):
             raise InputError("information opportunities allow expansion cap 0 or 1")
         if self.promotion_policy not in ("native", "full"):
             raise InputError("unknown information promotion policy")
+        if self.probe_strategy not in ("provided", "targeted"):
+            raise InputError("unknown probe strategy")
 
 
 class InformationResult(Strict):

@@ -70,7 +70,7 @@ def run_opportunity(inputs: OpportunityInputs, run: CampaignRun) -> OpportunityR
         admitted = True
         with admission(deadline), worker_environment(local):
             store.append("ACQUISITION_STARTED", {"arm": cell.arm})
-            if cell.arm == "C2":
+            if cell.arm == "C2" and inputs.probe_strategy == "provided":
                 acquisition_store = RunStore.create(root, "acquisition", {"probe_budget": 12})
                 responses = acquire(shared, (local, acquisition_store), probe_budget=12)
             else:
@@ -84,7 +84,12 @@ def run_opportunity(inputs: OpportunityInputs, run: CampaignRun) -> OpportunityR
             info = run_information(shared, responses, InformationRun(local, "H" if cell.arm == "C2" else "G0",
                 root / "information", sampler_seed=cell.seed, deadline=deadline,
                 helpers=inputs.helpers, helper_root=inputs.reference.parent, require_b40=True,
-                space_expansions_per_candidate=1, promotion_policy="full"))
+                space_expansions_per_candidate=1, promotion_policy="full", probe_strategy=inputs.probe_strategy))
+            targeted_path = root / "information/acquisition/responses.json"
+            if targeted_path.is_file():
+                response_path = targeted_path
+                acquisition_calls = info.acquisition_costs.worker_attempts
+                store.append("TARGETED_ACQUISITION_FINISHED", {"probe_calls": acquisition_calls})
             status, error = outcome_status(info), info.error
             store.append("INFORMATION_FINISHED", {"status": status, "asked": info.asked, "expanded_count": info.expanded_count})
         if status != "censored":

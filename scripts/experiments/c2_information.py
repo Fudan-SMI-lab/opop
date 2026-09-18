@@ -21,7 +21,9 @@ from kernel_optimizer.store.run_store import RunStore
 from kernel_optimizer.wiring import Runtime
 from scripts.experiments.c2_information_inputs import Group, InformationResult, InformationRun, group_responses
 from scripts.experiments.c2_local_adapter import GpuAdapter
-from scripts.experiments.c2_local_agents import Services, legacy_child
+from scripts.experiments.c2_local_agents import (
+    Services, analyze_legacy_candidate, legacy_child, parameterize_legacy_proposal, rewrite_legacy_candidate,
+)
 from scripts.experiments.c2_local_costs import costs
 from scripts.experiments.c2_local_inputs import InputError, Responses, Shared, Strict, stage_inputs
 from scripts.experiments.c2_local_runner import isolated_config, worker_environment
@@ -30,11 +32,17 @@ from scripts.experiments.c2_method_files import copy_helpers
 from scripts.experiments.c2_method_gates import block_values
 from scripts.experiments.c2_retune_studies import StudyAccounting, read_studies
 from scripts.experiments.c2_information_promotion import apply_full_promotion
+from scripts.experiments.c2_targeted_acquisition import TargetedRun, acquire_targeted
 
 
 def run_information(shared: Shared, acquisition: Responses, run: InformationRun) -> InformationResult:
     started = monotonic()
     responses = group_responses(shared, acquisition, run.group)
+    targeted = run.probe_strategy == "targeted" and run.group != "G0"
+    if targeted:
+        if acquisition.probe_calls:
+            raise InputError("targeted mode requires no pre-acquired observations")
+        responses = []
     if shared.evaluation != run.cfg.evaluation.model_dump(mode="json") or shared.device != run.cfg.device:
         raise InputError("evaluation/device config differs from prepared shared inputs")
     if shared.parent.latency_ms is None:
@@ -48,9 +56,11 @@ def run_information(shared: Shared, acquisition: Responses, run: InformationRun)
         "parent_baseline_ms": parent_baseline, "sampler_seed": run.sampler_seed, "evaluation_seed": 0,
         "space_expansions_per_candidate": run.space_expansions_per_candidate,
         "promotion_policy": run.promotion_policy,
+        "probe_strategy": run.probe_strategy,
     })
     parent_store = RunStore.create(root, "parent", {"task": shared.task})
     generation_store = RunStore.create(root, "generation", {"task": shared.task})
+    acquisition_store = RunStore.create(root, "acquisition", {"probe_budget": 12}) if targeted else None
     common = root / "common"
     inputs = stage_inputs(shared, common, responses)
     imported = copy_helpers(run.helpers, run.helper_root, common / "imports")
@@ -82,7 +92,18 @@ def run_information(shared: Shared, acquisition: Responses, run: InformationRun)
                     run.deadline.check()
                 with Runtime(local, generation_store.run_dir) as runtime:
                     with chdir(common):
-                        child = legacy_child(shared, Services(local, generation_store, runtime), inputs)
+                        services = Services(local, generation_store, runtime)
+                        if acquisition_store is not None:
+                            report = analyze_legacy_candidate(shared, services, inputs, plan_probes=True)
+                            fresh = acquire_targeted(shared, TargetedRun(local, acquisition_store, report, run.deadline))
+                            fresh_inputs = inputs.model_copy(update={"responses": group_responses(shared, fresh, run.group)})
+                            if run.deadline:
+                                run.deadline.check()
+                            proposal = rewrite_legacy_candidate(shared, services, fresh_inputs,
+                                report=report, report_precedes_responses=True)
+                            child = parameterize_legacy_proposal(shared, services, proposal)
+                        else:
+                            child = legacy_child(shared, services, inputs)
                     generation_store.append("RUN_FINISHED", {"status": "generated"})
                     source = child.path.read_text(encoding="utf-8")
                     space = ParameterSpace(space_id="information-child-space", candidate_id="information-child",
@@ -102,6 +123,7 @@ def run_information(shared: Shared, acquisition: Responses, run: InformationRun)
                         "helpers": tuple(p for p in child.path.parent.rglob("*.py") if p != child.path),
                         "final_blocks": 3, "space_expansions_per_candidate": run.space_expansions_per_candidate,
                         "rewrite_intent": child.rewrite_intent,
+                        "recommended_configs": child.recommended_configs,
                     })
                     if run.deadline:
                         run.deadline.check()
@@ -139,7 +161,8 @@ def run_information(shared: Shared, acquisition: Responses, run: InformationRun)
         "group": run.group, "state": shared.state, "selected": selected, "selected_artifact": artifact,
         "parent_baseline_ms": parent_baseline, "parent_params": shared.parent.params,
         "parent_finals": parent.records, "child": child_result, "error": error,
-        "generation_costs": costs(generation_store), "acquisition_costs": acquisition.costs,
+        "generation_costs": costs(generation_store),
+        "acquisition_costs": costs(acquisition_store) if acquisition_store is not None else acquisition.costs,
         "parent_costs": costs(parent_store), "wall_s": monotonic() - started,
         "status": status, "asked": asked, "studies": accounting.studies, "expanded_count": accounting.expanded_count,
         "promotion_policy": run.promotion_policy,
