@@ -52,6 +52,27 @@ class RecordedWorker(WslGpuWorker):
         super().__init__(context.wsl, context.concurrency, context.jobs_dir,
                          worker_main_path=context.worker_main_path)
         self.record_dir = record_dir
+        self.cutoff = context.formal_cutoff_unix_s
+        self.admitted_submissions = 0
+
+    @override
+    def run_job(self, job: dict[str, JsonValue], timeout_s: float, tag: str,
+                lock_mode: str = "exclusive") -> dict[str, JsonValue]:
+        started = time.time()
+        admitted = self.cutoff is None or started < self.cutoff
+        try:
+            if not admitted:
+                return {"ok": False, "compiled": False, "correct": False,
+                        "failure_kind": "pilot_cutoff", "log_tail": "formal helper admission cutoff reached"}
+            self.admitted_submissions += 1
+            return super().run_job(job, timeout_s, tag, lock_mode)
+        finally:
+            ended = time.time()
+            record = {"tag": tag, "admitted": admitted, "started_unix_s": started, "ended_unix_s": ended,
+                "formal_cutoff_unix_s": self.cutoff,
+                "drain_s": max(0, ended - self.cutoff) if admitted and self.cutoff is not None else 0}
+            with (self.record_dir / "submissions.jsonl").open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(record) + "\n")
 
     @override
     def _build_command(self, job_path: Path, out_path: Path) -> tuple[list[str], dict[str, str]]:
@@ -65,6 +86,7 @@ class RecordedWorker(WslGpuWorker):
 def run(request: Request) -> bool:
     """Evaluate an exact fresh artifact through the existing worker and shared lock."""
     started = time.monotonic()
+    started_unix_s = time.time()
     context = SelfTestContext.model_validate_json(request.context.read_text(encoding="utf-8"))
     (request.output / "context.json").write_text(context.model_dump_json(indent=2), encoding="utf-8")
     params = (ParamSet.model_validate_json(request.params.read_text(encoding="utf-8"))
@@ -113,6 +135,11 @@ def run(request: Request) -> bool:
         "runtime_versions": "unknown; no environment probe performed",
         "warmup_contract": "owned by configured worker/KernelBench source, not an EvalConfig field",
         "source_path": context.source_path, "wall_time_s": time.monotonic() - started,
+        "formal_cutoff_unix_s": context.formal_cutoff_unix_s,
+        "started_unix_s": started_unix_s, "ended_unix_s": time.time(),
+        "admitted_submissions": worker.admitted_submissions,
+        "drain_s": max(0, time.time() - context.formal_cutoff_unix_s)
+            if worker.admitted_submissions and context.formal_cutoff_unix_s is not None else 0,
     }
     serialized = TypeAdapter(dict[str, JsonValue]).dump_json(result, indent=2).decode()
     (request.output / "result.json").write_text(serialized, encoding="utf-8")

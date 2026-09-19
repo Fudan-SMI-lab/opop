@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 import hashlib
 import json
 import os
 from pathlib import Path
 import shlex
 import re
-from typing import TYPE_CHECKING, ClassVar, Literal
+from typing import TYPE_CHECKING, ClassVar, Final, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from kernel_optimizer.agents.self_test_artifacts import copy_dependencies
 from kernel_optimizer.config import EvalConfig, GpuConcurrencyConfig, WslConfig
@@ -21,6 +23,18 @@ from kernel_optimizer.models.core import TaskSpec
 
 if TYPE_CHECKING:
     from kernel_optimizer.agents.sandbox import Sandbox
+
+
+FORMAL_HELPER_CUTOFF: Final[ContextVar[float | None]] = ContextVar("formal_helper_cutoff", default=None)
+
+
+@contextmanager
+def formal_helper_cutoff(cutoff: float | None) -> Iterator[None]:
+    token = FORMAL_HELPER_CUTOFF.set(cutoff)
+    try:
+        yield
+    finally:
+        FORMAL_HELPER_CUTOFF.reset(token)
 
 
 class SelfTestContext(BaseModel):
@@ -39,11 +53,13 @@ class SelfTestContext(BaseModel):
     reference_dependencies: Path
     input_mode: str = "reference get_init_inputs/get_inputs; shape defined by reference snapshot"
     eval_semantics: str = "unknown; use the reference and formal worker semantics"
+    formal_cutoff_unix_s: float | None = Field(default=None, gt=0, allow_inf_nan=False)
 
 
 def self_test_context_factory(task: TaskSpec, evaluator: CorrectnessEvaluator) -> Callable[[Sandbox], str]:
     """Capture the live evaluator, never an AppConfig or a tuning sampler seed."""
     configured = task.ref_path.resolve()
+    cutoff = FORMAL_HELPER_CUTOFF.get()
     expected_hash = task.ref_src_sha.lower() if re.fullmatch(r"[0-9a-fA-F]{64}", task.ref_src_sha) else None
 
     def seed_context(sb: Sandbox) -> str:
@@ -87,10 +103,12 @@ def self_test_context_factory(task: TaskSpec, evaluator: CorrectnessEvaluator) -
             configured_worker_python=f"{os.path.expanduser(worker.cfg.venv)}/bin/python",
             source_path=to_wsl_path(Path(__file__).resolve().parents[2]),
             reference_dependencies=Path(to_wsl_path(copied.parent)),
+            formal_cutoff_unix_s=cutoff,
             eval_semantics=(sb.read_output("task/eval_semantics.md")
                             if sb.exists("task/eval_semantics.md") else "unknown; see reference"),
         )
-        sb.write_input("task/self_test.json", context.model_dump_json(indent=2))
+        sb.write_input("task/self_test.json", context.model_dump_json(indent=2,
+            exclude={"formal_cutoff_unix_s"} if cutoff is None else None))
         pythonpath = ":".join(filter(None, [os.path.expanduser(wsl.kernelbench_src),
                                           wsl.extra_pythonpath, context.source_path]))
         command = (f"PYTHONPATH={shlex.quote(pythonpath)} "
