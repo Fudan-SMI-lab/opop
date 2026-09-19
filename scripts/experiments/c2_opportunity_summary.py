@@ -5,7 +5,7 @@ from typing import Literal
 
 from scripts.experiments.c2_local_inputs import InputError, Strict
 from scripts.experiments.c2_method_gates import Comparison, block_values, compare_blocks
-from scripts.experiments.c2_opportunity_inputs import CELLS, Arm, Slot, Wave
+from scripts.experiments.c2_opportunity_inputs import CELLS, Arm, PilotClock, Slot, Wave
 from scripts.experiments.c2_opportunity_records import HeldoutResult, OpportunityResult
 
 
@@ -37,6 +37,7 @@ class CampaignSummary(Strict):
     opportunities: list[OpportunityRow]
     pairs: list[PairRow]
     wins: int
+    pilot_clock: PilotClock | None = None
 
 
 def summarize(opportunities: list[OpportunityResult], heldouts: list[HeldoutResult]) -> CampaignSummary:
@@ -47,6 +48,10 @@ def summarize(opportunities: list[OpportunityResult], heldouts: list[HeldoutResu
     deadlines = {r.deadline_unix_s for r in opportunities} | {r.deadline_unix_s for r in heldouts}
     if len(deadlines) > 1:
         raise InputError("campaign deadline changed between slots, waves or heldout")
+    clocks = [r.pilot_clock for r in [*opportunities, *heldouts]]
+    pilot = clocks[0] if clocks else None
+    if any(clock != pilot for clock in clocks) or (pilot is not None and deadlines != {pilot.final_deadline_unix_s}):
+        raise InputError("pilot clock changed between opportunities and heldout")
     for task in ("level3:43", "level3:21"):
         if len({r.shared_id for r in opportunities if r.task == task}) > 1:
             raise InputError("original Shared identity changed between arms or repetitions")
@@ -89,4 +94,4 @@ def summarize(opportunities: list[OpportunityResult], heldouts: list[HeldoutResu
     complete = all(p.comparison.status != "inconclusive" for p in pairs)
     passed = len(winners) >= 3 and len({p.task for p in winners}) == 2
     return CampaignSummary(status="inconclusive" if not complete else "pass" if passed else "fail",
-                           opportunities=rows, pairs=pairs, wins=len(winners))
+                           opportunities=rows, pairs=pairs, wins=len(winners), pilot_clock=pilot)
