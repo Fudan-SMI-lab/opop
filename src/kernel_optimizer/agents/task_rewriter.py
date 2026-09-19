@@ -1,12 +1,14 @@
 """Task-owned structural rewriting through the existing bounded AgentModule loop."""
 
 import json
+from contextvars import ContextVar
+from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar, override
+from typing import ClassVar, Final, override
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from kernel_optimizer.agents.base import AgentModule
+from kernel_optimizer.agents.base import AgentModule, AgentOutcome
 from kernel_optimizer.agents.sandbox import Sandbox
 from kernel_optimizer.conditional.task_response import TaskResponse
 from kernel_optimizer.control.direct_task import TaskSpace
@@ -48,9 +50,30 @@ class BundleFiles(BaseModel):
     helpers: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class _ParentSnapshot:
+    agent_id: int
+    source: str
+    bundle_sources: tuple[tuple[str, str], ...]
+
+
+_PARENT: Final[ContextVar[_ParentSnapshot | None]] = ContextVar("task_rewriter_parent", default=None)
+
+
 class TaskRewriterAgent(AgentModule[TaskRewriteInputs, TaskRewriteResult]):
     name: str = "task_rewriter"
     output_model: type[BaseModel] = TaskRewriteResult
+
+    @override
+    def invoke(self, inputs: TaskRewriteInputs) -> AgentOutcome[TaskRewriteResult]:
+        """Keep the original parent outside the editable workspace for this call only."""
+        parent = _ParentSnapshot(id(self), inputs.candidate_path.read_text(encoding="utf-8"),
+                                 tuple(inputs.bundle_sources.items()))
+        token = _PARENT.set(parent)
+        try:
+            return super().invoke(inputs)
+        finally:
+            _PARENT.reset(token)
 
     @override
     def seed_sandbox(self, inputs: TaskRewriteInputs, sb: Sandbox) -> None:
@@ -100,10 +123,12 @@ is required. Do not execute GPU code on the host for syntax checking.
 
     @override
     def check_output(self, output: TaskRewriteResult, sb: Sandbox) -> str | None:
+        parent = _PARENT.get()
+        if parent is None or parent.agent_id != id(self):
+            return "Parent snapshot unavailable; validate through TaskRewriterAgent.invoke."
         try:
             source = sb.read_output(output.candidate_file)
             _ = compile(source, output.candidate_file, "exec")
-            parent = sb.read_output("candidate/current.py")
             if output.bundle_file is not None:
                 bundle = BundleFiles.model_validate_json(sb.read_output(output.bundle_file))
                 folder = Path(output.bundle_file).parent
@@ -112,12 +137,12 @@ is required. Do not execute GPU code on the host for syntax checking.
                 sources = {name: sb.read_output((folder / name).as_posix()) for name in (*bundle.files, *bundle.helpers)}
                 for name, text in sources.items():
                     _ = compile(text, name, "exec")
-                old = json.loads(sb.read_output("candidate/bundle-sources.json"))
-                if {n: structural_signature(s) for n, s in sources.items()} == {n: structural_signature(s) for n, s in old.items()}:
+                if {n: structural_signature(s) for n, s in sources.items()} == {
+                        n: structural_signature(s) for n, s in parent.bundle_sources}:
                     return "Bundle must change computation, not just PARAMS."
                 return None
         except (OSError, ValueError, SyntaxError) as exc:
             return f"Candidate file check failed: {exc}"
-        if structural_signature(source) == structural_signature(parent):
+        if structural_signature(source) == structural_signature(parent.source):
             return "Candidate must change structure, not just comments or PARAMS values."
         return None
