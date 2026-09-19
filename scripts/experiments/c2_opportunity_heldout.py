@@ -43,7 +43,7 @@ class HeldoutInputs(OpportunityInputs):
 
 
 def run_heldout(inputs: HeldoutInputs, run: CampaignRun) -> HeldoutResult:
-    started, deadline = run.start()
+    started, deadline = run.start(heldout=True)
     shared = inputs.load_parent(run.cfg)
     g0 = OpportunityResult.model_validate_json(inputs.g0.read_text(encoding="utf-8"))
     c2 = OpportunityResult.model_validate_json(inputs.c2.read_text(encoding="utf-8"))
@@ -51,11 +51,15 @@ def run_heldout(inputs: HeldoutInputs, run: CampaignRun) -> HeldoutResult:
         spec = CELLS.get((result.wave, result.slot))
         if (spec is None or result.wave != inputs.wave or result.slot[0] != inputs.slot[0] or result.arm != arm
                 or spec.arm != arm or result.task != shared.task or spec.task != shared.task
-                or result.shared_id != shared.identity() or result.deadline_unix_s != run.deadline_unix_s):
+                or result.shared_id != shared.identity() or result.deadline_unix_s != run.deadline_unix_s
+                or result.pilot_clock != run.pilot_clock):
             raise InputError("heldout pair identity or campaign deadline differs")
     root = run.output.resolve()
     store = RunStore.create(root.parent, root.name, {"inputs": inputs.model_dump(mode="json"),
-        "deadline_unix_s": run.deadline_unix_s, "studies": 0, "model_calls": 0})
+        "deadline_unix_s": run.deadline_unix_s, "studies": 0, "model_calls": 0,
+        "campaign_started_unix_s": run.campaign_started_unix_s,
+        "pilot_clock": run.pilot_clock.model_dump(mode="json") if run.pilot_clock else None,
+        "admission_deadline_unix_s": run.admission_deadline(heldout=True), "admission_purpose": "heldout"})
     records: dict[str, list[TrialRecord]] = {"parent": [], "G0": [], "C2": []}
     status: Literal["complete", "failed", "censored"] = "censored"
     error = None
@@ -99,7 +103,8 @@ def run_heldout(inputs: HeldoutInputs, run: CampaignRun) -> HeldoutResult:
         deadline_unix_s=run.deadline_unix_s, elapsed_s=run.clock() - deadline.started,
         transfer_wait_s=max(0, started - max(r.started_unix_s + r.elapsed_s for r in (g0, c2))),
         late_start_s=max(0, started - run.deadline_unix_s),
-        drain_s=max(0, run.now() - run.deadline_unix_s) if admitted else 0, error=error)
+        drain_s=max(0, run.now() - run.deadline_unix_s) if admitted else 0, error=error,
+        pilot_clock=run.pilot_clock, admission_deadline_unix_s=run.admission_deadline(heldout=True))
     (root / "result.json").write_text(result.model_dump_json(indent=2), encoding="utf-8")
     store.append("RUN_FINISHED", {"status": status, "error": error, "elapsed_s": result.elapsed_s, "drain_s": result.drain_s})
     return result

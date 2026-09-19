@@ -14,6 +14,7 @@ from typing import Literal
 from pydantic import Field
 
 from kernel_optimizer.agents.runtime import AgentCallError
+from kernel_optimizer.agents.self_test_context import formal_helper_cutoff
 from kernel_optimizer.config import load_config
 from kernel_optimizer.gpu.worker_client import to_wsl_path
 from kernel_optimizer.models.core import sha256_text
@@ -52,7 +53,9 @@ def run_opportunity(inputs: OpportunityInputs, run: CampaignRun) -> OpportunityR
     cell = CELLS[inputs.wave, inputs.slot]
     root = run.output.resolve()
     store = RunStore.create(root.parent, root.name, {"inputs": inputs.model_dump(mode="json"),
-        "deadline_unix_s": run.deadline_unix_s, "campaign_started_unix_s": run.deadline_unix_s - 14400,
+        "deadline_unix_s": run.deadline_unix_s, "campaign_started_unix_s": run.campaign_started_unix_s,
+        "pilot_clock": run.pilot_clock.model_dump(mode="json") if run.pilot_clock else None,
+        "admission_deadline_unix_s": run.admission_deadline(), "admission_purpose": "opportunity",
         "task": cell.task, "arm": cell.arm, "rep": cell.rep, "sampler_seed": cell.seed})
     local = isolated_config(run.cfg, root)
     local.run.seed = 0
@@ -68,7 +71,8 @@ def run_opportunity(inputs: OpportunityInputs, run: CampaignRun) -> OpportunityR
     try:
         deadline.check()
         admitted = True
-        with admission(deadline), worker_environment(local):
+        with admission(deadline), worker_environment(local), formal_helper_cutoff(
+                run.pilot_clock.work_cutoff_unix_s if run.pilot_clock else None):
             store.append("ACQUISITION_STARTED", {"arm": cell.arm})
             if cell.arm == "C2" and inputs.probe_strategy == "provided":
                 acquisition_store = RunStore.create(root, "acquisition", {"probe_budget": 12})
@@ -128,8 +132,10 @@ def run_opportunity(inputs: OpportunityInputs, run: CampaignRun) -> OpportunityR
         model_calls_started=len(starts), model_calls_finished=len(finishes), model_attempts=attempts,
         provider_cost=sum(e.payload["cost"] for e in finishes) if known_cost else None,
         started_unix_s=started, deadline_unix_s=run.deadline_unix_s,
-        elapsed_s=run.clock() - deadline.started, late_start_s=max(0, started - run.deadline_unix_s),
-        drain_s=max(0, run.now() - run.deadline_unix_s) if admitted else 0, error=error)
+        elapsed_s=run.clock() - deadline.started, late_start_s=max(0, started - run.admission_deadline()),
+        drain_s=max(0, run.now() - run.admission_deadline()) if admitted else 0, error=error,
+        pilot_clock=run.pilot_clock, admission_deadline_unix_s=run.admission_deadline(),
+        final_drain_s=max(0, run.now() - run.deadline_unix_s) if admitted else 0)
     (root / "result.json").write_text(result.model_dump_json(indent=2), encoding="utf-8")
     store.append("RUN_FINISHED", {"status": status, "error": error, "elapsed_s": result.elapsed_s, "drain_s": result.drain_s})
     return result
