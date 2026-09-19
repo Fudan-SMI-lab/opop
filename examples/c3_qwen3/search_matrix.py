@@ -1,6 +1,8 @@
 """Fresh same-runner final matrix; frozen selections never change in response to heldout."""
 
 from collections.abc import Mapping
+from dataclasses import dataclass
+import json
 from pathlib import Path
 from time import time
 from typing import Literal
@@ -8,9 +10,9 @@ from typing import Literal
 from pydantic import Field
 
 from kernel_optimizer.evaluation.task_eval import TaskEvaluation
-from kernel_optimizer.models.core import ParamSet
+from kernel_optimizer.models.core import ParamSet, sha256_text
 from .manual_data import CALIBRATION_IDS, fingerprint
-from .model_binding import Site, load_bundle
+from .model_binding import ModelBinding, Site, load_bundle
 from .model_runner import ResidentRunner
 from .runner_records import FrozenRecord, GoalId, OracleManifest, RunnerError
 from .search_bundle import export_selection
@@ -63,6 +65,42 @@ def load_selection(path: Path) -> Selection:
     return selected.model_copy(update={"bundle": relocated.resolve()})
 
 
+@dataclass(frozen=True, slots=True)
+class MatrixGroups:
+    groups: Mapping[str, tuple[str, ...]]
+    sites: Mapping[Row, tuple[Site, ...]]
+
+
+def matrix_groups(rows: Mapping[Row, Selection], binding: ModelBinding) -> MatrixGroups:
+    per_row: dict[Row, dict[str, tuple[str, str]]] = {}
+    for row, selected in rows.items():
+        document = load_bundle(selected.bundle, selected.params.values).document
+        if {s.site_id for s in document.sites} != set(selected.site_groups):
+            raise RunnerError("final row groups differ from its frozen bundle sites")
+        targets: dict[str, tuple[str, str]] = {}
+        for site in document.sites:
+            paths = selected.site_groups[site.site_id]
+            if not paths or len(set(paths)) != len(paths):
+                raise RunnerError("final row has an empty or duplicate group member")
+            for path in paths:
+                if path in targets or path not in binding.modules:
+                    raise RunnerError("final row has overlapping or unknown module assignments")
+                targets[path] = (site.site_id, site.replacement_callable)
+        per_row[row] = targets
+    order = tuple(sorted(per_row))
+    partitions: dict[tuple[tuple[tuple[str, str] | None, ...], int, int], list[str]] = {}
+    for path in sorted({p for targets in per_row.values() for p in targets}):
+        original = binding.originals[path]
+        key = (tuple(per_row[row].get(path) for row in order), id(type(binding.modules[path])),
+               id(getattr(original, "__func__", original)))
+        partitions.setdefault(key, []).append(path)
+    groups = {"final-" + sha256_text(json.dumps(paths, separators=(",", ":"))): tuple(paths)
+              for paths in partitions.values()}
+    sites = {row: tuple(Site(site_id=group, replacement_callable=per_row[row][paths[0]][1])
+                        for group, paths in groups.items() if paths[0] in per_row[row]) for row in order}
+    return MatrixGroups(groups, sites)
+
+
 def run_matrix(runner: ResidentRunner, ready: Readiness, selections: Mapping[GoalId, Path], *,
                clock: SearchClock, output: Path) -> MatrixResult:
     output = output.resolve()
@@ -92,28 +130,28 @@ def run_matrix(runner: ResidentRunner, ready: Readiness, selections: Mapping[Goa
     preparation_error = None
     execution: dict[str, Path] = {}
     with OperatorSession(runner, runner.prepared.contract.goals[0], ready.oracles["calibration"], output / "evaluation") as session:
-        paths = {p for selected in rows.values() for group in selected.site_groups.values() for p in group}
         try:
+            grouping = matrix_groups(rows, runner.binding)
+            paths = {p for members in grouping.groups.values() for p in members}
             if budget.available():
                 traced = {str(row["module_path"]) for path in ready.profiles.values()
                     for row in ProfileDocument.model_validate_json(path.read_bytes()).data.trace}
                 if not paths <= traced:
                     raise RunnerError("final instrumentation contains an untraced module")
                 runner.binding.restore()
-                for path in sorted(paths):
-                    runner.binding.register_site(path, (path,))
+                for group, members in grouping.groups.items():
+                    runner.binding.register_site(group, members)
                 runner.bind(load_bundle(session.baseline, {}))
                 if paths:
                     before = runner.backend.forward_calls
                     fixture = runner.capture_fixtures(CALIBRATION_IDS)
                     session._write("preparation.jsonl", {"kind": "final_selected_site_fixtures", "raw": str(fixture),
+                        "site_groups": {group: list(members) for group, members in grouping.groups.items()},
                         "forward_calls": runner.backend.forward_calls - before})
             for row, selected in rows.items():
                 frozen = export_selection(selected, output / "rows" / row)
                 original = load_bundle(frozen.bundle, frozen.params.values)
-                sites = tuple(Site(site_id=path, replacement_callable=site.replacement_callable)
-                    for site in original.document.sites for path in selected.site_groups[site.site_id])
-                resolved = original.document.model_copy(update={"sites": sites})
+                resolved = original.document.model_copy(update={"sites": grouping.sites[row]})
                 path = frozen.bundle.with_name("execution-bundle.json")
                 path.write_text(resolved.model_dump_json(indent=2), encoding="utf-8")
                 execution[row] = path
@@ -138,7 +176,7 @@ def run_matrix(runner: ResidentRunner, ready: Readiness, selections: Mapping[Goa
                         path = execution[row]
                         identity = load_bundle(path, selected.params.values).bundle_sha256
                         value = session._evaluate(EvaluationRequest(bundle=path, params=selected.params,
-                            site_groups={p: (p,) for p in paths}), "heldout", structural=False, budget=budget,
+                            site_groups=dict(grouping.groups)), "heldout", structural=False, budget=budget,
                             split="heldout", prompt_ids=goal.final_prompt_groups[block], oracle=oracle)
                         status = "valid" if value.valid else "invalid"
                     cells.append(MatrixCell(row=row, goal_id=goal.id, block=block, status=status, evaluation=value,
