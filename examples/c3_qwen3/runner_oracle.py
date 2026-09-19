@@ -1,5 +1,4 @@
 import hashlib
-import math
 import sys
 from array import array
 from collections.abc import Iterator
@@ -7,17 +6,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from .quality_arithmetic import nll
 from .runner_records import OracleManifest, OraclePrompt, Prompt, RunnerError
 
 if TYPE_CHECKING:
     from .model_runner import ResidentRunner
-
-
-def nll(logits: tuple[float, ...], target: int) -> float:
-    if not logits or not all(map(math.isfinite, logits)) or not 0 <= target < len(logits):
-        raise RunnerError("invalid logits/target in teacher-forced quality")
-    maximum = max(logits)
-    return maximum + math.log(math.fsum(math.exp(v - maximum) for v in logits)) - logits[target]
 
 
 def continuation(runner: "ResidentRunner", prompt: Prompt, targets: tuple[int, ...] = ()) -> Iterator[tuple[int, tuple[float, ...]]]:

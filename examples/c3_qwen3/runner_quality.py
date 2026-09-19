@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import JsonValue
 
-from .runner_oracle import continuation, nll
+from .quality_arithmetic import compare_logits
+from .runner_oracle import continuation
 from .runner_records import OracleManifest, QualityReport, RunnerError
 
 if TYPE_CHECKING:
@@ -48,13 +49,11 @@ def evaluate_quality(runner: "ResidentRunner", prompt_ids: tuple[str, ...], orac
                     for token, logits in continuation(runner, prompt, ref.tokens):
                         expected = array("f")
                         expected.fromfile(stream, ref.vocab_size)
-                        if len(logits) != len(expected):
-                            raise RunnerError("logit shape mismatch")
-                        reference = tuple(expected)
-                        candidate_nll.append(nll(logits, token))
-                        reference_nll.append(nll(reference, token))
-                        difference2 += math.fsum((a - b) ** 2 for a, b in zip(logits, reference, strict=True))
-                        norm2 += math.fsum(v * v for v in reference)
+                        compared = compare_logits(logits, expected, token)
+                        candidate_nll.append(compared.candidate_nll)
+                        reference_nll.append(compared.reference_nll)
+                        difference2 += compared.difference2
+                        norm2 += compared.norm2
                     if stream.read(1):
                         raise RunnerError("oracle has extra logit positions")
                 if any(abs(a - b) > 1e-6 for a, b in zip(reference_nll, ref.nll, strict=True)):
