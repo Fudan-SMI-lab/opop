@@ -33,6 +33,7 @@ class OptunaTPETuner:
         deweight_reject: Callable[[ParamSet], bool] | None = None,
         ordered_categoricals: bool = False,
         objective: Objective | None = None,
+        n_startup_trials: int = 10,
     ):
         self.space = space
         self.guard_ok = guard_ok
@@ -65,7 +66,7 @@ class OptunaTPETuner:
             seed=seed,
             multivariate=True,
             group=True,
-            n_startup_trials=10,
+            n_startup_trials=n_startup_trials,
             constant_liar=constant_liar,
             categorical_distance_func=distance,
         )

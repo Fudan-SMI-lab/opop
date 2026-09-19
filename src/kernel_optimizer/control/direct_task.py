@@ -1,9 +1,9 @@
 """Direct task search; evaluate_candidate also accepts Task5 rewrite children."""
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from time import monotonic
-from typing import TYPE_CHECKING, ClassVar, final
+from typing import TYPE_CHECKING, ClassVar, Protocol, final
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
@@ -11,9 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from kernel_optimizer.config import BudgetConfig
 from kernel_optimizer.control.convergence import ConvergencePolicy
 from kernel_optimizer.control.families import FamilyManager
-from kernel_optimizer.evaluation.task_eval import TaskEvaluator
+from kernel_optimizer.evaluation.task_eval import TaskEvaluation
 from kernel_optimizer.models.core import (
-    BestRecord, Constraint, DeviceLimits, Family, ParamDomain, ParameterSpace, TrialRecord,
+    BestRecord, Constraint, DeviceLimits, Family, ParamDomain, ParameterSpace, ParamSet, TrialRecord,
 )
 from kernel_optimizer.models.reports import TuningStats
 from kernel_optimizer.paramspace.guard import eval_constraint
@@ -27,15 +27,20 @@ if TYPE_CHECKING:
 
 class TaskSpace(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="forbid")
-    params: list[ParamDomain] = Field(min_length=1)
+    params: list[ParamDomain] = Field(default_factory=list)
     constraints: list[Constraint] = Field(default_factory=list)
+
+
+class SearchEvaluator(Protocol):
+    def evaluate[T](self, candidate_path: Path, params: Mapping[str, JsonValue],
+                    context: Mapping[str, T]) -> TaskEvaluation: ...
 
 
 @final
 class TaskSearch:
     """Own run history; borrow one open evaluator across candidates and trials."""
 
-    def __init__(self, evaluator: TaskEvaluator, objective: Objective,
+    def __init__(self, evaluator: SearchEvaluator, objective: Objective,
                  budgets: BudgetConfig | None = None, *, device: DeviceLimits | None = None) -> None:
         self.evaluator = evaluator
         self.objective = objective
@@ -71,6 +76,8 @@ class TaskSearch:
     def evaluate_candidate[T](
         self, candidate: Path, space: TaskSpace, context: Mapping[str, T], *,
         parent_id: str | None = None, seed: int = 0,
+        anchors: tuple[ParamSet, ...] = (), startup_trials: int = 10,
+        can_evaluate: Callable[[], bool] | None = None, stop_on_invalid: bool = False,
     ) -> TrialRecord | None:
         """Return the child's best valid trial, or None for denial/no valid trial.
 
@@ -100,12 +107,15 @@ class TaskSearch:
             parameter_space,
             lambda p: all(eval_constraint(c.expr, {**self.device.as_env(), **p.values})
                           for c in space.constraints),
-            budget=self.budgets.trials_per_space, seed=seed, objective=self.objective,
+            budget=min(self.budgets.trials_per_space, 1) if not space.params else self.budgets.trials_per_space,
+            seed=seed, objective=self.objective, anchors=anchors, n_startup_trials=startup_trials,
         )
         records: list[TrialRecord] = []
         while self.convergence.global_verdict(
             list(self.families.families.values()), (monotonic() - self.started) / 3600,
         ).verdict == "continue":
+            if can_evaluate is not None and not can_evaluate():
+                break
             asked = tuner.ask()
             if asked is None:
                 break
@@ -124,6 +134,8 @@ class TaskSearch:
                 _ = self.families.update_record(fid, BestRecord(
                     candidate_id=cid, params=params, task_evaluation=result,
                 ))
+            if stop_on_invalid and not result.valid:
+                break
         family = self.families.families[fid]
         if records and family.best is not None:
             value = objective_value(family.best, self.objective)
