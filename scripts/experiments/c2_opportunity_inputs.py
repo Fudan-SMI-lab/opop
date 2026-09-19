@@ -98,6 +98,19 @@ def validate_deadline(deadline_unix_s: float, now: float) -> None:
         raise InputError("deadline must be a finite positive Unix timestamp no more than four hours ahead")
 
 
+class PilotClock(Strict):
+    campaign_started_unix_s: float = Field(gt=0, allow_inf_nan=False)
+    work_cutoff_unix_s: float = Field(gt=0, allow_inf_nan=False)
+    final_deadline_unix_s: float = Field(gt=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def fixed_reserve(self) -> Self:
+        if (self.work_cutoff_unix_s != self.campaign_started_unix_s + 16800
+                or self.final_deadline_unix_s != self.campaign_started_unix_s + 18000):
+            raise InputError("pilot clock requires fixed S, S+16800 work cutoff and S+18000 final deadline")
+        return self
+
+
 @dataclass(frozen=True, slots=True)
 class CampaignRun:
     cfg: AppConfig
@@ -105,8 +118,19 @@ class CampaignRun:
     deadline_unix_s: float
     now: Callable[[], float] = time
     clock: Callable[[], float] = monotonic
+    pilot_clock: PilotClock | None = None
 
-    def start(self) -> tuple[float, Deadline]:
+    @property
+    def campaign_started_unix_s(self) -> float:
+        return self.pilot_clock.campaign_started_unix_s if self.pilot_clock else self.deadline_unix_s - 14400
+
+    def admission_deadline(self, *, heldout: bool = False) -> float:
+        return self.pilot_clock.work_cutoff_unix_s if self.pilot_clock and not heldout else self.deadline_unix_s
+
+    def start(self, *, heldout: bool = False) -> tuple[float, Deadline]:
         started = self.now()
-        validate_deadline(self.deadline_unix_s, started)
-        return started, Deadline(self.clock(), self.clock, max(0.0, self.deadline_unix_s - started))
+        if self.pilot_clock is None:
+            validate_deadline(self.deadline_unix_s, started)
+        elif self.deadline_unix_s != self.pilot_clock.final_deadline_unix_s or started < self.campaign_started_unix_s:
+            raise InputError("pilot final identity mismatch or launch before declared start")
+        return started, Deadline(self.clock(), self.clock, max(0.0, self.admission_deadline(heldout=heldout) - started))

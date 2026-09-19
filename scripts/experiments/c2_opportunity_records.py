@@ -8,7 +8,7 @@ from pydantic import Field
 from kernel_optimizer.models.core import Backend, ParameterSpace, ParamSet, TrialRecord
 from scripts.experiments.c2_information_inputs import InformationResult
 from scripts.experiments.c2_local_inputs import Strict
-from scripts.experiments.c2_opportunity_inputs import Arm, Slot, Wave
+from scripts.experiments.c2_opportunity_inputs import Arm, PilotClock, Slot, Wave
 
 
 class Incumbent(Strict):
@@ -51,6 +51,9 @@ class OpportunityResult(Strict):
     late_start_s: float = 0
     drain_s: float
     error: str | None = None
+    pilot_clock: PilotClock | None = None
+    admission_deadline_unix_s: float | None = None
+    final_drain_s: float = 0
 
 
 class HeldoutResult(Strict):
@@ -71,3 +74,5 @@ class HeldoutResult(Strict):
     late_start_s: float = 0
     drain_s: float
     error: str | None = None
+    pilot_clock: PilotClock | None = None
+    admission_deadline_unix_s: float | None = None
