@@ -55,7 +55,7 @@ class Assets(FrozenRecord):
 
 
 class Contract(FrozenRecord):
-    interface_version: Literal["c3-task-local-v1.0.0"]
+    interface_version: Literal["c3-task-local-v1.0.0", "c3-fast-inputs-v1.0.0"]
     assets: Assets
     goals: tuple[GoalSpec, ...]
     runtime_versions: dict[str, str]

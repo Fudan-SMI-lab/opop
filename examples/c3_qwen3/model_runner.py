@@ -165,6 +165,11 @@ class ResidentRunner:
 
 def load(asset_spec: AssetSpec, device: str, *, backend_factory: Callable[[AssetSpec, str], ModelBackend] | None = None) -> ResidentRunner:
     prepared = prepare(asset_spec.contract_path, asset_spec.assets_manifest)
+    return load_prepared(prepared, device, backend_factory=backend_factory)
+
+
+def load_prepared(prepared: PreparedTask, device: str, *, backend_factory: Callable[[AssetSpec, str], ModelBackend] | None = None) -> ResidentRunner:
+    asset_spec = prepared.asset_spec
     if backend_factory is None:
         from .torch_backend import TorchBackend
 
@@ -174,7 +179,7 @@ def load(asset_spec: AssetSpec, device: str, *, backend_factory: Callable[[Asset
 
 
 __all__ = ["AssetSpec", "BindingReceipt", "GoalSpec", "MeasurementReport", "PreparedTask",
-           "QualityReport", "ResidentRunner", "load", "prepare"]
+           "QualityReport", "ResidentRunner", "load", "load_prepared", "prepare"]
 
 
 if __name__ == "__main__":
