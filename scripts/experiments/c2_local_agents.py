@@ -50,7 +50,7 @@ class LegacyProposal:
 
 
 def direct_child(inputs: TaskRewriteInputs, services: Services) -> Child:
-    agent = build_task_rewriter(services.cfg, services.store, services.runtime)
+    agent = build_task_rewriter(services.cfg, services.store, services.runtime, execution_profile="c2_direct_compat")
     outcome = agent.invoke(inputs)
     path = (outcome.sandbox.root / outcome.output.candidate_file).resolve()
     return Child(path, outcome.output.space or inputs.space, _detect_backend(path.read_text(encoding="utf-8")))

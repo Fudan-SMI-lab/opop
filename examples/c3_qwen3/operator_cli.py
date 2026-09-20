@@ -47,6 +47,7 @@ class Options(FrozenRecord):
     usage_audit: Path | None = None
     clock_from_stdin: bool = False
     eval_file: Path | None = None
+    execution_profile: Literal["existing_generic", "model_operator"] = "existing_generic"
 
 
 def expired_search(inputs: SearchInputs) -> SearchResult:
@@ -83,6 +84,8 @@ def main(argv: list[str] | None = None) -> int:
             command.add_argument("--config", type=Path, required=True)
             command.add_argument("--clock-from-stdin", action="store_true")
             command.add_argument("--eval-file", type=Path)
+            command.add_argument("--execution-profile", choices=["existing_generic", "model_operator"],
+                                 default="existing_generic")
     analyze = sub.add_parser("analyze")
     analyze.add_argument("--inputs", type=Path, required=True)
     analyze.add_argument("--output", type=Path, required=True)
@@ -119,7 +122,10 @@ def main(argv: list[str] | None = None) -> int:
                 prepared = prepare(inputs.contract, inputs.assets_manifest)
                 goal = next(g for g in prepared.contract.goals if g.id == inputs.goal_id)
                 cfg = load_config(options.config)
-                store = RunStore.create(inputs.output.parent, inputs.output.name + "-agents", {"goal": inputs.goal})
+                store = RunStore.create(inputs.output.parent, inputs.output.name + "-agents", {
+                    "goal": inputs.goal, "execution_profile": options.execution_profile,
+                    "task_kind": {"existing_generic": "existing_generic",
+                                  "model_operator": "model_project_operator"}[options.execution_profile]})
                 cfg.opencode.launch_cwd = store.run_dir
                 resident = load(prepared.asset_spec, options.device)
                 try:
@@ -131,7 +137,8 @@ def main(argv: list[str] | None = None) -> int:
                     with OperatorSession(resident, goal, inputs.oracle_refs, inputs.output.with_name(inputs.output.name + "-evaluation"),
                                          eval_file=inputs.eval_file) as session, Runtime(cfg, store.run_dir) as runtime:
                         session.device = cfg.device
-                        result = optimize_goal(session, build_task_rewriter(cfg, store, runtime), inputs)
+                        result = optimize_goal(session, build_task_rewriter(cfg, store, runtime,
+                            execution_profile=options.execution_profile), inputs)
                         return 0 if all(o.status != "censored" for o in result.opportunities) else 1
                 finally:
                     resident.close()

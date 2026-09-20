@@ -6,7 +6,7 @@ import os
 from contextlib import closing, nullcontext
 from inspect import signature
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal, Never, assert_never
 
 import pytest
 from optuna.samplers import TPESampler
@@ -14,11 +14,13 @@ from optuna.samplers import TPESampler
 from kernel_optimizer import task_cli, wiring
 from kernel_optimizer.agents.modules import StructureRewriterAgent
 from kernel_optimizer.agents.task_rewriter import TaskRewriterAgent
+from kernel_optimizer.agents.model_operator_rewriter import ModelOperatorRewriterAgent
 from kernel_optimizer.config import AppConfig
 from kernel_optimizer.control.direct_task import TaskSearch
 from kernel_optimizer.models.core import TaskSpec, sha256_text
 from kernel_optimizer.store.run_store import RunStore
 from kernel_optimizer.tuning import tpe
+from kernel_optimizer.tuning.objective import Objective
 from scripts.experiments.c2_local_agents import Services, direct_child
 from tests.c2_contract_capture import (
     REFERENCE, Captured, RecordingProvider, RequestCapture, cpu_stack, load_anchor, request_at, structured_files,
@@ -85,12 +87,12 @@ def test_direct_c2_when_goal_wording_changes(tmp_path: Path, goal: str) -> None:
         # When: the actual C2 entry function reaches the provider, without generation.
         with pytest.raises(Captured):
             direct_child(inputs, services)
-        # Then: current direct C2 is still the five-field shared schema.
+        # Then: the explicit direct caller uses the declared CDA contract.
         actual = provider.requests[0]
-        assert actual.output_schema == load_anchor("8526a13-generic").output_schema
+        assert actual.output_schema == load_anchor("cda1130-direct").output_schema
         payload = structured_files(actual)["analysis/task_response.json"]
         assert isinstance(payload, dict) and payload["goal"] == goal
-        assert {"bundle_sources", "bundle_document"} <= payload.keys()
+        assert not {"bundle_sources", "bundle_document"} & payload.keys()
         save_evidence("current-direct", actual)
 
 
@@ -131,10 +133,16 @@ def test_generic_cli_when_provided_eval_and_rewrite_are_selected(tmp_path: Path,
         save_evidence("current-generic-cli", actual)
 
 
-def test_c3_cli_when_current_operator_entrypoint_is_selected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("execution_profile", ["existing_generic", "model_operator"])
+def test_c3_cli_when_current_operator_entrypoint_is_selected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, execution_profile: Literal["existing_generic", "model_operator"],
+) -> None:
     # Given: existing numerical CPU fake supplies the resident model boundary only.
     from examples.c3_qwen3 import operator_cli
     from tests.c3_search_fakes import search_case
+    from tests.test_task_agent_profiles import operator_inputs
+    from examples.c3_qwen3.search_session import OperatorSession
+    from examples.c3_qwen3.search_records import SearchInputs
 
     session, unused_provider, unused_agent, inputs = search_case(tmp_path)
     unused_provider.close()
@@ -143,8 +151,9 @@ def test_c3_cli_when_current_operator_entrypoint_is_selected(tmp_path: Path, mon
     cfg = AppConfig()
     built: list[TaskRewriterAgent] = []
 
-    def factory(config: AppConfig, store: RunStore, runtime: wiring.Runtime) -> TaskRewriterAgent:
-        agent = wiring.build_task_rewriter(config, store, runtime)
+    def factory(config: AppConfig, store: RunStore, runtime: wiring.Runtime, *,
+                execution_profile: wiring.ExecutionProfile = "existing_generic") -> TaskRewriterAgent:
+        agent = wiring.build_task_rewriter(config, store, runtime, execution_profile=execution_profile)
         built.append(agent)
         return agent
 
@@ -165,17 +174,37 @@ def test_c3_cli_when_current_operator_entrypoint_is_selected(tmp_path: Path, mon
         monkeypatch.setattr(operator_cli, "OperatorSession", lambda *args, **kwargs: session)
         monkeypatch.setattr(operator_cli, "Runtime", lambda *args: nullcontext(runtime))
         monkeypatch.setattr(operator_cli, "build_task_rewriter", factory)
+        match execution_profile:
+            case "existing_generic":
+                expected_schema = load_anchor("8526a13-bundle").output_schema
+                expected_class, retries = TaskRewriterAgent, (0, 0)
+                profile_args: list[str] = []
+            case "model_operator":
+                def scoped_probe(session: OperatorSession, agent: TaskRewriterAgent, spec: SearchInputs) -> Never:
+                    request = operator_inputs(request_at(tmp_path / "scoped")).model_copy(update={
+                        "goal": spec.goal, "objective": Objective(direction=session.goal.direction,
+                            label=spec.goal, unit=session.goal.unit)})
+                    agent.invoke(request)
+                    pytest.fail("recording boundary did not stop")
+
+                monkeypatch.setattr(operator_cli, "optimize_goal", scoped_probe)
+                expected_schema = ModelOperatorRewriterAgent.output_model.model_json_schema()
+                expected_class, retries = ModelOperatorRewriterAgent, (2, 2)
+                profile_args = ["--execution-profile", "model_operator"]
+            case unreachable:
+                assert_never(unreachable)
         # When: actual CLI/factory/optimize_goal/helper/invoke stop at the provider.
         with pytest.raises(Captured):
-            operator_cli.main(["optimize-goal", "--inputs", str(input_path), "--config", "fixture-unused.yaml"])
-        # Then: T1 documents shared routing, not future model_operator isolation.
+            operator_cli.main(["optimize-goal", "--inputs", str(input_path), "--config", "fixture-unused.yaml", *profile_args])
+        # Then: old CLI default remains shared; explicit opt-in reaches the dedicated schema.
         actual = provider.requests[0]
-        assert actual.output_schema == load_anchor("8526a13-bundle").output_schema
+        assert actual.output_schema == expected_schema
         payload = structured_files(actual)["analysis/task_response.json"]
         assert isinstance(payload, dict) and payload["bundle_document"] is not None
-        assert "task/operator-helper.json" in actual.files
+        assert payload["goal"] == inputs.goal
+        assert payload["objective"] == {"direction": session.goal.direction, "label": inputs.goal, "unit": session.goal.unit}
         assert actual.sequence == ("create_session", "prompt")
-        assert len(built) == 1 and type(built[0]) is TaskRewriterAgent
-        assert observed_retries == [(0, 0)]
+        assert len(built) == 1 and type(built[0]) is expected_class
+        assert observed_retries == [retries]
         assert (built[0].cfg.max_retries, built[0].cfg.max_transport_retries) == (2, 2)
         save_evidence("current-c3-cli", actual)
