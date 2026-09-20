@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, assert_never
+
+from pydantic import TypeAdapter
 
 if TYPE_CHECKING:
     from kernel_optimizer.agents.task_rewriter import TaskRewriterAgent
@@ -179,11 +181,27 @@ def build_eval_builder(cfg: AppConfig, store: RunStore, runtime: Runtime):
     )
 
 
-def build_task_rewriter(cfg: AppConfig, store: RunStore, runtime: Runtime) -> TaskRewriterAgent:
+ExecutionProfile = Literal["existing_generic", "c2_direct_compat", "model_operator"]
+
+
+def build_task_rewriter(cfg: AppConfig, store: RunStore, runtime: Runtime, *,
+                        execution_profile: ExecutionProfile = "existing_generic") -> TaskRewriterAgent:
+    from kernel_optimizer.agents.c2_direct_compat import C2DirectTaskRewriterAgent
+    from kernel_optimizer.agents.model_operator_rewriter import ModelOperatorRewriterAgent
     from kernel_optimizer.agents.task_rewriter import TaskRewriterAgent
 
+    profile = TypeAdapter(ExecutionProfile).validate_python(execution_profile)
+    match profile:
+        case "existing_generic":
+            agent_class = TaskRewriterAgent
+        case "c2_direct_compat":
+            agent_class = C2DirectTaskRewriterAgent
+        case "model_operator":
+            agent_class = ModelOperatorRewriterAgent
+        case unreachable:
+            assert_never(unreachable)
     assert runtime.client is not None
-    return TaskRewriterAgent(
+    return agent_class(
         runtime.client,
         SandboxFactory(store.run_dir / "sandboxes", extra_config=_sandbox_extra_config(cfg)),
         store, cfg.agents.module("rewriter"), agent_name=cfg.opencode.agent,
