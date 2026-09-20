@@ -1,8 +1,13 @@
 """One dedicated agent call per source version, with a scoped fixture-only helper."""
 
 import json
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass
 from pathlib import Path
+from queue import Empty, Queue
+from threading import Lock, get_ident
 
 from kernel_optimizer.agents.model_operator_rewriter import (
     ModelOperatorContext, ModelOperatorRewriterAgent, ModelOperatorRewriteResult, OperatorStageBudget, OperatorTaskFacet,
@@ -17,6 +22,7 @@ from .fast_artifacts import preserve_bundle
 from .fast_evaluation import FastEvaluator
 from .fast_prepare import FastPrepared
 from .fast_records import Artifact, CandidateResult, Framework
+from .device_records import LocalReport, LocalRequest
 from .model_binding import load_bundle
 from .runner_records import FrozenRecord, RunnerError
 from .search_helper import HelperService
@@ -42,6 +48,71 @@ class GenerationContext:
     prepared: FastPrepared
     framework: Framework
     goal_text: str
+
+
+@dataclass(frozen=True, slots=True)
+class _LocalCall:
+    request: LocalRequest
+    result: Future[LocalReport]
+
+
+class _OwnerCallbacks:
+    """Single-invocation bridge: transport waits off-thread; resident work stays on its caller."""
+
+    def __init__(self, callback: Callable[[LocalRequest], LocalReport]) -> None:
+        self.callback = callback
+        self.owner = get_ident()
+        self.queue: Queue[_LocalCall | None] = Queue()
+        self.lock = Lock()
+        self.accepting = False
+        self.used = False
+
+    def request(self, request: LocalRequest) -> LocalReport:
+        result: Future[LocalReport] = Future()
+        with self.lock:
+            if not self.accepting:
+                raise RunnerError("agent helper execution is closed")
+            self.queue.put(_LocalCall(request, result))
+        return result.result()
+
+    def _close(self) -> None:
+        with self.lock:
+            self.accepting = False
+            while True:
+                try:
+                    call = self.queue.get_nowait()
+                except Empty:
+                    return
+                if call is not None:
+                    call.result.set_exception(RunnerError("agent ended before helper execution"))
+
+    def run[T](self, operation: Callable[[], T]) -> T:
+        if get_ident() != self.owner or self.used:
+            raise RunnerError("owner callback bridge must run once on its creating thread")
+        self.used = True
+        pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="c3-agent-transport")
+        with self.lock:
+            self.accepting = True
+        try:
+            agent = pool.submit(copy_context().run, operation)
+            agent.add_done_callback(lambda _: self.queue.put(None))
+            while (call := self.queue.get()) is not None:
+                if agent.done():
+                    call.result.set_exception(RunnerError("agent ended before helper execution"))
+                    continue
+                try:
+                    result = self.callback(call.request)
+                except BaseException as exc:  # noqa: BROAD_EXCEPT_OK - transfer every callback failure to its waiting RPC
+                    call.result.set_exception(exc)
+                    if not isinstance(exc, Exception):
+                        raise
+                else:
+                    call.result.set_result(result)
+            return agent.result()
+        finally:
+            # Close/reject RPC waiters before joining transport or shutting down the helper socket.
+            self._close()
+            pool.shutdown(wait=True, cancel_futures=True)
 
 
 class DraftGenerator:
@@ -79,8 +150,9 @@ class DraftGenerator:
         old_hook = agent.self_test_context
         sandbox: Sandbox | None = None
         before = len(list(agent.store.iter_events()))
+        callbacks = _OwnerCallbacks(lambda request: engine.local(request, from_agent=True))
         try:
-            with HelperService(fixture_handler=lambda request: engine.local(request, from_agent=True)) as helper:
+            with HelperService(fixture_handler=callbacks.request) as helper:
                 def seed(sb: Sandbox) -> str:
                     nonlocal sandbox
                     sandbox = sb
@@ -96,7 +168,7 @@ class DraftGenerator:
                         "Do not run private GPU tests outside this shared allowance.\n")
                     return hint
                 agent.self_test_context = seed
-                outcome = agent.invoke(inputs)
+                outcome = callbacks.run(lambda: agent.invoke(inputs))
             output = ModelOperatorRewriteResult.model_validate(outcome.output.model_dump())
             path = (outcome.sandbox.root / output.bundle_file).resolve()
             frozen = preserve_bundle(path, engine.files.output / f"C{version}")
