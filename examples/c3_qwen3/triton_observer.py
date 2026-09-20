@@ -85,13 +85,12 @@ class TritonObserver:
             if not kwargs.get("warmup", False):
                 self.counters["launch_calls"] += 1
                 self.output_tensors.extend(outputs)
-                provenance = stored_dependencies(compiled.asm.get("ttir", ""))
-                runtime_indices = {i: sum(not p.is_constexpr for p in kernel.params[:i])
-                                   for i, p in enumerate(kernel.params) if not p.is_constexpr}
-                inputs = {runtime_indices[i] for i, a in enumerate(arguments) if i in runtime_indices
-                          and self.torch.is_tensor(a) and a.data_ptr() in self.input_ptrs | self.weight_ptrs}
+                argument_indices = {p.name: i for i, p in enumerate(kernel.params) if not p.is_constexpr}
+                provenance = stored_dependencies(compiled.asm.get("ttir", ""), argument_indices)
+                inputs = {i for i, a in enumerate(arguments) if self.torch.is_tensor(a)
+                          and a.data_ptr() in self.input_ptrs | self.weight_ptrs}
                 for index in self.declaration.output_arg_indices:
-                    reads = provenance.get(runtime_indices.get(index, -1), frozenset()) & inputs
+                    reads = provenance.get(index, frozenset()) & inputs
                     if reads:
                         self.stored_outputs.add(index)
                         self.read_inputs.update(reads)
