@@ -1,0 +1,184 @@
+{
+  "prompt": "Read candidate/current.py and analysis/task_response.json, including the\ngoal, workload context, native objective direction/unit, current parameters, declared\nspace and measured responses. Read the provided project reference sources too.\nWrite a structurally different runnable candidate, not just new values for existing\nparameters. Preserve the entire task's outputs and callable interface. The same\nunchanged evaluator will execute your child with params and check its full outputs.\nDo not modify inputs, evaluator, goal, workload, or correctness requirements.\n\nUse actual selected resource observations to guide algorithm, dataflow, allocation,\nfusion or scheduling changes. Resource names/units mean only what the task declares.\nResponses remeasure both endpoints with all other parameters fixed. delta_j and\nslopes retain native signs and units; positive gain means improvement in the declared\ndirection. Nominal axes have contrasts, not numeric slopes. These are local empirical\nresponses, not hardware causality or proof of a limiting wall. Missing/invalid data\nare unknown, not zero. With no useful response, propose an ordinary source-guided\nstructural improvement rather than inventing observations. Probes are diagnostic,\nnot incumbent trials. Your child's actual evaluation and tuning decide its value.\n\nReturn candidate_file relative to this workspace and optionally a revised space\n(params/constraints); otherwise the parent's space is reused. Write any required\nhelpers alongside the child. No ModelNew, PARAMS block, GPU backend or task registry\nis required. Do not execute GPU code on the host for syntax checking.\n",
+  "output_schema": {
+    "$defs": {
+      "Constraint": {
+        "properties": {
+          "expr": {
+            "title": "Expr",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expr"
+        ],
+        "title": "Constraint",
+        "type": "object"
+      },
+      "ParamDomain": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "int",
+              "float",
+              "str"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "choices": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "choices"
+        ],
+        "title": "ParamDomain",
+        "type": "object"
+      },
+      "ParamSet": {
+        "properties": {
+          "values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "values"
+        ],
+        "title": "ParamSet",
+        "type": "object"
+      },
+      "TaskSpace": {
+        "additionalProperties": false,
+        "properties": {
+          "params": {
+            "items": {
+              "$ref": "#/$defs/ParamDomain"
+            },
+            "title": "Params",
+            "type": "array"
+          },
+          "constraints": {
+            "items": {
+              "$ref": "#/$defs/Constraint"
+            },
+            "title": "Constraints",
+            "type": "array"
+          }
+        },
+        "title": "TaskSpace",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "candidate_file": {
+        "minLength": 1,
+        "title": "Candidate File",
+        "type": "string"
+      },
+      "space": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/TaskSpace"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "bundle_file": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Bundle File"
+      },
+      "site_groups": {
+        "additionalProperties": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": "Site Groups",
+        "type": "object"
+      },
+      "recommended_configs": {
+        "items": {
+          "$ref": "#/$defs/ParamSet"
+        },
+        "maxItems": 2,
+        "title": "Recommended Configs",
+        "type": "array"
+      }
+    },
+    "required": [
+      "candidate_file"
+    ],
+    "title": "TaskRewriteResult",
+    "type": "object"
+  },
+  "files": {
+    "analysis/task_response.json": "{\n  \"project_root\": \"<CASE>\",\n  \"source_paths\": [\n    \"reference.py\"\n  ],\n  \"candidate_id\": \"parent\",\n  \"candidate_path\": \"<CASE>\\\\parent.py\",\n  \"goal\": \"Minimize arbitrary J while preserving outputs\",\n  \"context\": {\n    \"cases\": [\n      {\n        \"shape\": [\n          2,\n          4\n        ],\n        \"dtype\": \"float32\"\n      }\n    ],\n    \"history\": [\n      {\n        \"params\": {\n          \"tile\": 2\n        },\n        \"score\": 4.0\n      }\n    ]\n  },\n  \"objective\": {\n    \"direction\": \"minimize\",\n    \"label\": \"J\",\n    \"unit\": \"ms\"\n  },\n  \"params\": {\n    \"values\": {\n      \"tile\": 2\n    }\n  },\n  \"space\": {\n    \"params\": [\n      {\n        \"name\": \"tile\",\n        \"kind\": \"int\",\n        \"choices\": [\n          1,\n          2,\n          4\n        ],\n        \"description\": \"\"\n      }\n    ],\n    \"constraints\": []\n  },\n  \"resource_metrics\": [],\n  \"resources\": {},\n  \"responses\": [],\n  \"bundle_sources\": {},\n  \"bundle_document\": null\n}",
+    "candidate/current.py": "PARAMS = {'tile': 2}\ndef run(x): return x * 2\n",
+    "opencode.json": "{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"permission\": {\n    \"edit\": \"allow\",\n    \"bash\": \"allow\",\n    \"webfetch\": \"deny\",\n    \"external_directory\": \"allow\"\n  }\n}",
+    "project/reference.py": "def reference(x): return x * 2\n"
+  },
+  "model": "openai/gpt-5.6-sol",
+  "agent": "build",
+  "sequence": [
+    "create_session",
+    "prompt"
+  ]
+}
