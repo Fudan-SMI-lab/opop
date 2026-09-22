@@ -48,8 +48,13 @@ class OperatorTaskFacet(BaseModel):
 
 class OperatorStageBudget(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="ignore")
-    local_evaluations_remaining: int = Field(ge=0)
-    model_evaluations_remaining: int = Field(ge=0)
+    # None means "no ceiling declared for this operation". The prompt tells the agent to observe
+    # the supplied remaining budgets, so a lane that is running uncapped has to say so: passing the
+    # raw `sys.maxsize` that `StageBudget.remaining` returns would hand the agent
+    # 9223372036854775807 as a literal figure to pace itself against, which is true and useless.
+    # The wall clock still binds either way, and `FastEvaluator` still admits every call.
+    local_evaluations_remaining: int | None = Field(default=None, ge=0)
+    model_evaluations_remaining: int | None = Field(default=None, ge=0)
 
 
 class ModelOperatorContext(BaseModel):

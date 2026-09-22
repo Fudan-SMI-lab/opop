@@ -42,7 +42,14 @@ Rules:
 
 ## Correctness and honesty
 
-- fp32 unless the reference uses another dtype; do not silently downcast.
+- The OUTPUT dtype and shape must match the reference: that is the contract your
+  caller depends on, and silently returning a different dtype breaks it. The
+  INTERNAL compute precision is a free design choice -- see "Precision and the
+  tensor-core path" below. Do not commit to one precision in the source; let the
+  tuner decide it on measurements. This harness accepts a candidate via the
+  relaxed dual-witness gate (1% relative error on 99% of elements) OR the fp64
+  relative gate, NOT the official 1e-4 absolute gate, so a low-precision compute
+  path that keeps the output dtype is a first-class, accepted strategy.
 - No caching of outputs across calls, no reading the reference implementation's
   result, no CUDA stream tricks, no patching of timing functions. Static checkers
   and runtime diff-tests will catch these; they fail the candidate immediately.

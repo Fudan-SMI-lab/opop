@@ -8,13 +8,19 @@ opencode:
   host: 127.0.0.1
   port: 4096
   agent: build
-  # 25 min. A timed-out agent call is HUNG, not slow: over all 982 successful calls on record
-  # none exceeded 1200 s (max 1167 s), while 14 of the 15 ReadTimeout kills finished on a
-  # retry in ~4 min (median). So this value is not a work budget, it is the price of noticing
-  # a hang -- the 18 hangs on record cost 9.00 h at 1800 s against 7.50 h at 1500 s. Kept
-  # above 1200 s because the slowest successful call, 1167 s, leaves only 2.9% headroom
-  # there. See OpencodeConfig.request_timeout_s and scripts/probe_agent_timeouts.py.
-  request_timeout_s: 1500
+  # 60 min. This is NOT a work budget -- it is the price of noticing a hang -- but it has to be large
+  # enough that finishing normally is not itself treated as a hang. Two measurements moved it from
+  # 1500 s:
+  #   * the slowest SUCCESSFUL call on record took 1447.6 s and produced the published ttft champion,
+  #     i.e. 52 s of headroom on the call that carried the result;
+  #   * on the larger composite-MLP site, four consecutive draws hit the ceiling. One of them was
+  #     reconstructed from its sandbox: `valid=True` at t+1359 s and the final file written at
+  #     t+1502 s, two seconds past the cap. The kernel was correct and complete; only the transport
+  #     was cut. A ReadTimeout costs the FULL timeout and returns nothing, so those four draws spent
+  #     100 minutes to produce zero candidates.
+  # A bigger site means a bigger brief and more generation, so the ceiling has to scale with the work
+  # rather than with the smallest site we happened to try first.
+  request_timeout_s: 3600
   permission_mode: sandbox_config   # or sse_auto_approve
 
 agents:

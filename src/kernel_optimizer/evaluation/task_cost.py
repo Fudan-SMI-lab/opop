@@ -115,8 +115,16 @@ class TaskCost(BaseModel):
             parts.append("0 FLOP (no multiply-accumulate: this task's ceiling is bandwidth, "
                          "not FLOP/s)")
         if self.compulsory_bytes > 0:
-            parts.append(f"{self.compulsory_bytes/1e6:.2f} MB unavoidable traffic "
-                         f"(inputs+params+outputs)")
+            # "at the REFERENCE dtype", NOT "unavoidable". The count comes from the reference's own
+            # tensors and therefore carries the reference's precision. Fusion cannot remove these
+            # bytes, but STORING them at lower precision scales them down proportionally -- and on
+            # a weight-bandwidth-bound task that is the largest lever available. Calling the fp32
+            # figure "unavoidable" understates a bf16/int8 weight path: a rival's int8 candidate on
+            # L2:59 moves about a quarter of this number, which is how it beats the fp32 bandwidth
+            # floor outright (4.33 GB at fp32 vs a measured 2.39 ms that fp32 cannot reach).
+            parts.append(f"{self.compulsory_bytes/1e6:.2f} MB traffic at the REFERENCE dtype "
+                         f"(inputs+params+outputs, counted once; fusion cannot remove these, but "
+                         f"lower-precision storage scales them down: ~1/2 at bf16, ~1/4 at int8)")
         if self.reference_bytes > 0 and self.compulsory_bytes > 0:
             parts.append(f"reference materializes {self.fusion_headroom:.1f}x that "
                          f"({self.reference_bytes/1e6:.2f} MB over {self.op_count} ops)")

@@ -443,9 +443,22 @@ def classify(
                    # question, which is why it stays -- and it does NOT answer "how much traffic
                    # did this candidate do", nor may it count as a dimension independent of
                    # latency in any multi-binding tally.
+                   #
+                   # The numerator also carries the REFERENCE's precision, which matters for the
+                   # action this number invites. A low-precision candidate moves fewer bytes than
+                   # the count assumes, so its true DRAM fraction is LOWER than printed -- and a
+                   # reader who takes a high `pct_of_dram_peak` at face value concludes there is no
+                   # bandwidth headroom left, exactly when cutting the weight precision would have
+                   # been the largest remaining lever. Said here because this is the line the agent
+                   # reads next to the number.
                    "dram_pressure_basis": "task-level compulsory bytes / gpu_ms; within a task "
                                           "this is 1/latency rescaled, not a per-candidate "
-                                          "traffic measurement"})
+                                          "traffic measurement. The byte count is taken at the "
+                                          "REFERENCE dtype, so for a candidate computing or "
+                                          "storing at lower precision the real DRAM traffic is "
+                                          "smaller and this percentage OVERSTATES how saturated "
+                                          "bandwidth is -- do not read a high value as 'no "
+                                          "bandwidth headroom left'"})
     frac_fl = 0.0
     if peaks and flop_count:
         achieved_fl = flop_count / (gpu_ms * 1e-3) / 1e12

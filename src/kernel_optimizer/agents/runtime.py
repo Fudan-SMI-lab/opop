@@ -137,6 +137,29 @@ def _looks_like_port_conflict(exc: Exception) -> bool:
                                   "address in use"))
 
 
+# Environment variables that only ever configure a CUDA/Triton client or a CUDA profiler, and
+# that the opencode Node server therefore has no use for. They are withheld from the server
+# subprocess (see `OpencodeServer.start`) so it cannot present itself as a second CUDA client
+# of the device, caches and profiler-injection path the orchestrator is currently using.
+#
+# Deliberately narrow. Every name here is either a device selector, a CUDA/Triton cache
+# location, or a profiler/injection hook -- nothing that affects Node, networking, proxies,
+# HOME/XDG, or the model provider. Anything a caller explicitly wants in the server
+# environment can still be set through `OpencodeConfig.server_env`, which is layered on top.
+_CUDA_ONLY_ENV = frozenset({
+    "CUDA_VISIBLE_DEVICES", "CUDA_DEVICE_ORDER", "CUDA_DEVICE_MAX_CONNECTIONS",
+    "CUDA_LAUNCH_BLOCKING", "CUDA_CACHE_PATH", "CUDA_CACHE_DISABLE", "CUDA_MODULE_LOADING",
+    # Profiler / CUPTI injection hooks: these are what let another process attach to, or
+    # collide with, an activity session the parent holds.
+    "CUDA_INJECTION64_PATH", "CUDA_INJECTION32_PATH", "NVTX_INJECTION64_PATH",
+    "KINETO_LOG_LEVEL", "KINETO_USE_DAEMON", "CUPTI_LAZY_INIT", "NSYS_PROFILING_SESSION_ID",
+    # Triton / torch extension build+cache dirs.
+    "TRITON_CACHE_DIR", "TRITON_HOME", "TRITON_PTXAS_PATH", "TRITON_LIBCUDA_PATH",
+    "TORCH_EXTENSIONS_DIR", "PYTORCH_KERNEL_CACHE_PATH", "PYTORCH_NVML_BASED_CUDA_CHECK",
+    "TORCHINDUCTOR_CACHE_DIR", "TORCHINDUCTOR_FX_GRAPH_CACHE",
+})
+
+
 class OpencodeServer:
     def __init__(self, cfg: OpencodeConfig, log_path: Path | None = None):
         self.cfg = cfg
@@ -184,7 +207,19 @@ class OpencodeServer:
         # Inherit our environment and layer `server_env` on top: a few opencode settings
         # (notably the per-turn output-token ceiling) exist only as env vars, with no
         # config-file route -- see OpencodeConfig.server_env.
-        env = {**os.environ, **{k: str(v) for k, v in self.cfg.server_env.items()}}
+        #
+        # When `strip_cuda_env_from_server` is set, drop the CUDA/profiler variables on the way
+        # out. opencode is a Node server: it never touches CUDA, so none of these do anything
+        # for it, while inheriting them makes this subprocess look like another CUDA client of
+        # the same device and cache dirs. That matters because the parent process may be holding
+        # a CUPTI activity session -- see OpencodeConfig.strip_cuda_env_from_server for the 6/6
+        # observation and for why this is opt-in rather than the default.
+        #
+        # `server_env` is layered AFTER the strip, so an explicit setting there still wins -- a
+        # caller that deliberately wants one of these keys in the server environment can say so.
+        inherited = ({k: v for k, v in os.environ.items() if k not in _CUDA_ONLY_ENV}
+                     if self.cfg.strip_cuda_env_from_server else dict(os.environ))
+        env = {**inherited, **{k: str(v) for k, v in self.cfg.server_env.items()}}
         # start_new_session (POSIX) puts the server in its own process group so `stop()` can
         # signal the whole tree instead of leaking an orphaned server per run.
         popen_kw: dict = {}

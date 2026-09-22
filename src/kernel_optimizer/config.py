@@ -70,32 +70,35 @@ class OpencodeConfig(StrictConfig):
     # to restore the old fail-fast behaviour.
     port_attempts: int = 3
     agent: str = "build"
-    # 25 min. Measured over all 997 agent-call attempts on record (1000 minus 3 in-flight),
-    # scripts/probe_agent_timeouts.py:
+    # 60 min. Measured over all 997 agent-call attempts on the C2/KernelBench record
+    # (scripts/probe_agent_timeouts.py):
     #
     #   successful calls: n=982, p50 114s, p90 252s, p99 534s, MAX 1167s
     #   calls exceeding 1200s: 0.  Calls exceeding 1800s: 0.
     #   ReadTimeout: 15 calls hung (18 hangs -- three hung twice), 14 of the 15 FINISHED on
     #   a retry, the retries taking 0.4/1.1/2.1/2.2/2.8/3.3/3.9/4.2/4.2/4.3/4.7/5.1/13.4/19.4 min.
     #
-    # So a timed-out call is HUNG, not slow: not one of the 15 was real work approaching the
-    # limit, and a fresh session completes the same prompt in ~4 min (median). The timeout's
-    # only job is to notice a hang, and its value is what each hang costs -- the 18 hangs on
-    # record cost 9.00 h at 1800s against 7.50 h at 1500s and 6.00 h at 1200s.
+    # On THAT population a timed-out call is hung rather than slow, and 1500s was the right price for
+    # noticing it. The C3 model-operator population behaves differently and the same number was wrong
+    # there in both directions:
     #
-    # This CORRECTS the reasoning that raised it from 1200 to 1800. That change was made on
-    # the belief that the 1200s kills were destroying real work ("each kill discards a
-    # candidate or a whole rewrite round"); re-measured, 7 of those 8 recovered on retry and
-    # only one call was ever truly lost (an L3:21 repair that timed out twice). Raising the
-    # ceiling did not rescue work -- it made every hang 50% more expensive.
+    #   * the slowest SUCCESSFUL C3 call took 1447.6s -- 52s of headroom -- and it is the call that
+    #     produced the published ttft champion. At 1200s the published result would not exist.
+    #   * on the composite MLP site, FOUR consecutive draws hit 1500s. One was reconstructed from its
+    #     sandbox: 811s of reasoning before the first file, `valid=True` (device proof and numerics
+    #     both passing) at t+1359s, final file at t+1502s -- two seconds past the cap. The work was
+    #     finished; only the transport was cut. Since a ReadTimeout costs the full ceiling and returns
+    #     NOTHING, those four draws spent 100 minutes producing no candidate.
     #
-    # Not lowered to 1200 either: the slowest successful call is 1167s, leaving 33s (2.9%) of
-    # headroom, so a call 3% slower than anything yet seen would be killed for being slow.
-    # 1500s keeps 333s (29%) of headroom over that maximum while returning half the loss.
-    # A hang is still only detectable by its duration; distinguishing "hung" from "thinking"
-    # needs a token-level heartbeat on the transport, which is deferred (D-4).
+    # The difference is the task, not the model: a C3 site can be an entire MLP block (3 GEMMs plus
+    # activation plus an elementwise multiply, 36 instances), and the brief scales with it. A ceiling
+    # calibrated on the smallest site silently caps how large a site may be searched at all.
+    #
+    # The cost of a genuine hang rises with this value, which is acceptable because `idle_abort_frac`
+    # below is the instrument that catches silence: a hung call is aborted at 50% of this ceiling
+    # (30 min) on producing nothing, while a call that keeps writing files is left to finish.
     # Model-agnostic: this is the transport read timeout, not a token or effort setting.
-    request_timeout_s: float = 1500.0
+    request_timeout_s: float = 3600.0
     # An in-flight agent call is aborted when the CONTAINER's memory reaches this fraction of
     # its cgroup limit. This deliberately replaced a total wall-clock deadline on a call, which
     # was the wrong instrument: an agent legitimately runs long because it compiles kernels and
@@ -147,6 +150,21 @@ class OpencodeConfig(StrictConfig):
     # reasoning-heavy model that needs more than 32000 output+reasoning tokens per turn is
     # truncated mid-thought without it.
     server_env: dict[str, str] = Field(default_factory=dict)
+    # Withhold the CUDA/Triton/profiler-only variables of OUR process from the `opencode serve`
+    # subprocess (the exact set is `agents.runtime._CUDA_ONLY_ENV`). opencode is a Node server
+    # that never touches CUDA, so none of them do anything for it -- but inheriting them makes
+    # it present itself as a second CUDA client of the device, caches and profiler-injection
+    # path this process is using. In the C3 fast probes every `prove()` that ran WITHOUT such a
+    # subprocess recovered its CUDA activity names (4/4) and both that ran WITH one came back
+    # with `cuda_names=[]` (2/2) while the kernel demonstrably compiled, launched and computed
+    # correctly. That is a 6/6 correlation, NOT a demonstrated mechanism.
+    #
+    # Hence opt-in and default False: C2's published runs inherited the full environment, and a
+    # shared default would silently change the launch environment of every existing arm. The GPU
+    # worker is unaffected either way -- it builds its own environment in
+    # `gpu/worker_client.py`, so CUDA_VISIBLE_DEVICES still reaches the process that uses it.
+    # `server_env` above is layered AFTER the strip, so an explicit setting still wins.
+    strip_cuda_env_from_server: bool = False
 
 
 class AgentModuleConfig(StrictConfig):
@@ -156,7 +174,7 @@ class AgentModuleConfig(StrictConfig):
     # effective ceiling is OpencodeConfig.request_timeout_s, which sets the httpx client timeout
     # in wiring.py. Kept in step with it so a reader who sets this per-module does not end up
     # with a value that silently contradicts the real one -- but setting it changes nothing.
-    timeout_s: float = 1500.0
+    timeout_s: float = 3600.0
     n_candidates: int = 4  # generator / rewriter / novelty batch size
     # Transport (ReadTimeout / connection) failures retried on a FRESH session. Capped
     # separately from max_retries because a hung endpoint costs a full request_timeout_s
