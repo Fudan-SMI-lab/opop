@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from .device_gate import require_device_proof
 from .device_records import FixtureResult, LocalInvocation, LocalReport, LocalRequest, LocalRuntime, PureFixture
+from .fixture_budget import budget_evidence, require_within_budget
 from .model_binding import load_bundle
 from .fast_prepare import require_feedback_inputs
 from .operator_types import OperatorCall, Value
@@ -40,8 +41,7 @@ def evaluate_local(request: LocalRequest, fixtures: tuple[PureFixture, ...], run
             raise RunnerError("unsupported backend: fixture device proof currently supports Triton only")
         if not fixtures or any(f.description.site_id != request.site_id for f in fixtures):
             raise RunnerError("selected site fixtures are missing or mismatched")
-        if sum(f.resident_bytes for f in fixtures) > 128 * 1024 * 1024:
-            raise RunnerError("unsupported fixture: 128 MiB total cap exceeded")
+        require_within_budget(sum(f.resident_bytes for f in fixtures), "selected fixtures")
         paths = runner.binding.sites.get(request.site_id, ())
         if not paths or any(f.original.module_path not in paths for f in fixtures):
             raise RunnerError("fixture paths must belong to the explicitly registered site group")
@@ -50,10 +50,12 @@ def evaluate_local(request: LocalRequest, fixtures: tuple[PureFixture, ...], run
             proposed[(f.description.site_id, f.description.phase)] = f.original
         snapshot_bytes = sum(device.tools.size(f.call) + device.tools.size(OperatorCall((f.expected, f.touched_state), {}))
                              for f in proposed.values())
+        # The snapshots stay resident for the whole evaluation; on top of them the correctness and
+        # microbenchmark loops below hold one live call plus its result at a time, which is why the
+        # largest single fixture is added rather than the sum.
         working_bytes = max(device.tools.size(f.original.call) + device.tools.size(OperatorCall((f.original.expected,), {}))
                             for f in fixtures)
-        if snapshot_bytes + working_bytes > 128 * 1024 * 1024:
-            raise RunnerError("unsupported fixture: snapshots plus working input/output exceed 128 MiB")
+        require_within_budget(snapshot_bytes + working_bytes, "snapshots plus working input/output")
         stage = "device_ready"
         device.ready()
         device_identity = device.identity()
@@ -126,6 +128,9 @@ def evaluate_local(request: LocalRequest, fixtures: tuple[PureFixture, ...], run
             valid, detail = False, "resident weights changed; runner closed"
         counts["full_model_forwards"] = runner.backend.forward_calls - before
         counts.update({f"proof_{k}": v - device_before.get(k, 0) for k, v in device.counters.items()})
+        # Recorded on success and on failure: the budget is derived from free device memory, so a
+        # reader of a refusal must be able to see which number refused it.
+        counts["fixture_budget_bytes"] = int(budget_evidence()["budget_bytes"] or 0)
         if counts["full_model_forwards"]:
             valid, detail = False, "fixture-only operation unexpectedly executed a full model"
     runner.output_dir.mkdir(parents=True, exist_ok=True)

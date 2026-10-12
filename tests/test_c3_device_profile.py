@@ -58,20 +58,22 @@ def test_short_profile_when_only_first_and_late_steps_are_collected(tmp_path) ->
     assert data["critical_path_fraction"] is None
 
 
-def test_oversized_fixture_when_cap_is_exceeded(tmp_path) -> None:
-    # Given / When: a pure call requiring more than the frozen cap cannot be cropped.
+def test_oversized_fixture_when_budget_is_exceeded(tmp_path) -> None:
+    # Given / When: a pure call requiring more than the derived budget cannot be cropped.
     from tests.c3_device_fakes import case, tensor_backend
     from examples.c3_qwen3.device_capture import capture_target_fixture
     from examples.c3_qwen3.device_records import CaptureSpec
+    from examples.c3_qwen3.fixture_budget import fixture_budget_bytes
     runtime, request, _ = case(tmp_path)
     tensor_backend(runtime)
-    runtime.device.tools.size = lambda call: 64 * 1024 * 1024 + 1
+    runtime.device.tools.size = lambda call: fixture_budget_bytes() + 1
     report = capture_target_fixture(CaptureSpec(stage=request.stage, goal="ttft", site_id="scale",
                                                module_path="scale", decode_step=0), runtime)
-    # Then: unsupported is explicit and no fixture is presented as valid.
+    # Then: unsupported is explicit, no fixture is presented as valid, and the refusal names the
+    # budget that refused it -- a reader of the receipt never has to guess which limit applied.
     assert not report.valid
     assert report.fixture is None
-    assert "cap" in report.detail
+    assert "budget" in report.detail and str(fixture_budget_bytes()) in report.detail
 
 
 def test_profile_limit_when_caller_exceeds_three_windows(tmp_path) -> None:

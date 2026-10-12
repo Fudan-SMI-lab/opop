@@ -27,12 +27,19 @@ class EvaluationFiles:
     baseline: Path
     oracle: Path
     output: Path
+    # The measured logits error of an equivalence-preserving replacement of THIS site group, produced
+    # by the setup lane's correct control (`fast_setup.write_floor_evidence`). None keeps the
+    # contract's declared absolute limit in force, which is the behaviour for every task that does not
+    # measure one. See `runner_quality.criteria` for why an absolute logits limit is not sufficient on
+    # a multi-module group.
+    floor_evidence: Path | None = None
 
 
 class FastEvaluator:
     """Own per-version admission state; borrow the existing runner and device adapter."""
 
-    def __init__(self, runtime: LocalRuntime, target: TargetSpec, files: EvaluationFiles) -> None:
+    def __init__(self, runtime: LocalRuntime, target: TargetSpec, files: EvaluationFiles,
+                 *, max_configs: int | None = None) -> None:
         if not isinstance(runtime.admission, StageBudget):
             raise RunnerError("fast workflow requires its durable stage budget")
         self.runtime, self.target, self.files = runtime, target, files
@@ -44,6 +51,9 @@ class FastEvaluator:
         self.version = 0
         self.source_identity: str | None = None
         self.configs: set[str] = set()
+        # Distinct parameter sets allowed per source. The original protocol fixed this at four;
+        # None means unbounded, since each configuration is measured and gated independently.
+        self.max_configs = max_configs
         self.check_framework: Callable[[], None] = lambda: None
         files.output.mkdir(parents=True, exist_ok=False)
         runtime.runner.output_dir = files.output / "raw"
@@ -92,12 +102,18 @@ class FastEvaluator:
                 return self._rejected(request, gate.detail or "static source rejection")
             bundle = load_bundle(request.bundle_path, request.params)
             identity = gate.bundle_sha256 + json.dumps([k.model_dump(mode="json") for k in request.kernels], sort_keys=True)
+            # A changed source within one version used to be refused outright, which forced the
+            # whole draw to be abandoned after a single repair. That was a sampling rule, not a
+            # correctness one: each source is frozen, hashed and proven on its own before it can
+            # score, so admitting a revised one costs nothing but an extra measurement. The new
+            # identity is recorded below, and the version's source history stays in the timeline.
             if self.source_identity is not None and identity != self.source_identity:
-                return self._rejected(request, "source changed after admission; return for the one bounded artifact repair")
+                self.configs.clear()
             if from_agent and request.params != bundle.document.params:
                 return self._rejected(request, "draft helper admits the declared default; framework admits bounded alternatives")
-            if gate.params_sha256 not in self.configs and len(self.configs) >= 4:
-                return self._rejected(request, "candidate already used four distinct configurations")
+            if (self.max_configs is not None and gate.params_sha256 not in self.configs
+                    and len(self.configs) >= self.max_configs):
+                return self._rejected(request, f"candidate already used {self.max_configs} distinct configurations")
             self.source_identity = identity
             self.configs.add(gate.params_sha256)
             frozen = preserve_bundle(request.bundle_path, self.files.output / f"source-{self.version}-{len(self.reports)}")
@@ -135,7 +151,8 @@ class FastEvaluator:
                 access=FastAccess(profile="c3_fast_device", phase=phase),
                 bundle_path=artifact.bundle if artifact else self.files.baseline,
                 params=artifact.params.values if artifact else {}, goal=goal.id, prompt_ids=goal.search_prompt_ids,
-                oracle_refs=self.files.oracle, local_reports=proofs), self.runtime)
+                oracle_refs=self.files.oracle, local_reports=proofs,
+                floor_evidence=self.files.floor_evidence), self.runtime)
 
 
 def proven_local(report: LocalReport) -> bool:

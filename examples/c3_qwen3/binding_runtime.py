@@ -7,6 +7,7 @@ from time import perf_counter
 from typing import TYPE_CHECKING
 
 from .bundle_import import BundleImport
+from .fixture_budget import require_within_budget
 from .operator_types import (
     FixtureCodec, Forward, NamedModel, OperatorCall, OperatorFixture, OperatorSite, Replacement, Value,
 )
@@ -37,6 +38,9 @@ class ModelBinding:
         self.trace: list[dict[str, str | int]] = []
         self.fixtures: dict[tuple[str, Phase], OperatorFixture] = {}
         self.fixture_bytes = 0
+        # Off by default and set only by `delegating()`, which framework calibration code enters. A
+        # candidate's replacement has no way to reach it: it receives only (site, call, params).
+        self.expect_delegation = False
 
     def register_site(self, site_id: str, module_paths: tuple[str, ...]) -> None:
         if self.bundle is not None or not module_paths or site_id in self.sites:
@@ -105,8 +109,11 @@ class ModelBinding:
             call = OperatorCall(args, kwargs)
             fixture_key = (site_id, self.phase)
             capture = self.capturing and fixture_key not in self.fixtures
-            if capture and self.fixture_bytes + self.codec.size(call) * 3 > 128 * 1024 * 1024:
-                raise RunnerError("selected local fixtures exceed the 128 MiB resident budget")
+            # Three times the call: the pre-image clone, the post-image state clone and the live call
+            # the operator is about to run against. Checked before the clone so the refusal happens
+            # without having allocated any of it.
+            if capture:
+                require_within_budget(self.fixture_bytes + self.codec.size(call) * 3, "resident fixtures")
             before = self.codec.clone(call) if capture else None
             replacement = self.active.get(site_id)
             started = perf_counter() if self.record_trace else 0.0
@@ -130,8 +137,7 @@ class ModelBinding:
                 if before is not None:
                     copied = self.codec.clone(OperatorCall((result, self.codec.state(call)), {}))
                     size = self.codec.size(before) + self.codec.size(copied)
-                    if self.fixture_bytes + size > 128 * 1024 * 1024:
-                        raise RunnerError("selected local fixtures exceed the 128 MiB resident budget")
+                    require_within_budget(self.fixture_bytes + size, "resident fixtures")
                     self.fixtures[fixture_key] = OperatorFixture(path, before, copied.args[0], copied.args[1])
                     self.fixture_bytes += size
                 if event is not None:
@@ -196,9 +202,36 @@ class ModelBinding:
         for site in self.active:
             for path in self.sites[site]:
                 row = self.counts.get(path, {})
-                if not row.get("replacement_calls") or row.get("old_calls"):
+                if not row.get("replacement_calls"):
                     self.restore()
                     raise RunnerError(f"replacement not executed exclusively: {path}")
+                if row.get("old_calls") and not self.expect_delegation:
+                    self.restore()
+                    raise RunnerError(f"replacement not executed exclusively: {path}")
+
+    @contextmanager
+    def delegating(self) -> Iterator[None]:
+        """Permit the bound arm to call the site's original, for the framework's OWN calibration only.
+
+        `require_coverage` refuses a replacement that invokes the original, because a candidate that
+        delegates would be claiming the original's work as its own speedup. That is load-bearing and
+        unchanged here: the flag is off by default, it is set only by framework code measuring its own
+        reference (`fast_setup.measure_equivalence_floor`, whose arm is *defined* as "the original's
+        output, moved one ULP"), and `replacement_calls > 0` is still required in every case, so an arm
+        that never ran is still rejected.
+
+        A candidate cannot reach this. A bundle's replacement is handed only `(site, call, params)` --
+        `OperatorSite` exposes `(module, weights, module_path)` and no path back to this runtime -- and
+        nothing in a bundle document can request it. The window is also the narrowest possible: one
+        measurement, with the flag cleared in a `finally`.
+        """
+        if self.expect_delegation:
+            raise RunnerError("nested delegation window")
+        self.expect_delegation = True
+        try:
+            yield
+        finally:
+            self.expect_delegation = False
 
     def validate_local(self) -> None:
         success = False

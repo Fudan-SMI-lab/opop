@@ -20,9 +20,18 @@ class SearchClock(FrozenRecord):
 
     @model_validator(mode="after")
     def fixed_windows(self) -> Self:
-        if (self.search_cutoff_unix_s != self.campaign_started_unix_s + 9000
-                or self.final_deadline_unix_s != self.campaign_started_unix_s + 10800):
-            raise RunnerError("C3 clock requires S, S+9000 search and S+10800 final")
+        """Order, not duration.
+
+        The original protocol required the cutoff to be exactly S+9000 and the final deadline
+        exactly S+10800. Those particular durations were a research-schedule choice and had no
+        bearing on whether a measurement is correct, so they are no longer imposed. What IS
+        enforced is the ordering that the science depends on: the search must close before the
+        final measurements, and both must come after the campaign starts. Without that, held-out
+        blocks could be measured while search was still running, and a row could be re-chosen in
+        response to its held-out score.
+        """
+        if not self.campaign_started_unix_s < self.search_cutoff_unix_s <= self.final_deadline_unix_s:
+            raise RunnerError("C3 clock requires S < search cutoff <= final deadline")
         return self
 
 

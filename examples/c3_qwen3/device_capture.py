@@ -8,6 +8,7 @@ from types import MappingProxyType
 from .device_records import CaptureSpec, FixtureDescription, LocalRuntime, PureFixture, PureTools
 from .device_scopes import replace_forward
 from .fast_prepare import require_feedback_inputs
+from .fixture_budget import budget_evidence, require_within_budget
 from .operator_types import ForwardModule, OperatorCall, OperatorFixture, TensorValue, Value
 from .runner_records import BindingReceipt, RunnerError
 
@@ -61,14 +62,11 @@ def capture_target_fixture(spec: CaptureSpec, runtime: LocalRuntime) -> CaptureR
                 return original(*args, **kwargs)
             call = OperatorCall(args, kwargs)
             tools.require_pure(call)
-            if tools.size(call) > 64 * 1024 * 1024:
-                raise RunnerError("unsupported fixture: 64 MiB call cap")
             initial = tools.clone(call)
             result = original(*args, **kwargs)
             saved = tools.clone(OperatorCall((result, tools.state(call)), {}))
             size = tools.size(initial) + tools.size(saved)
-            if size > 128 * 1024 * 1024:
-                raise RunnerError("unsupported fixture: 128 MiB snapshot cap")
+            require_within_budget(size, "snapshot")
             captured = (OperatorFixture(spec.module_path, initial, saved.args[0], saved.args[1]), size)
             return result
         runtime.device.ready()
@@ -105,6 +103,7 @@ def capture_target_fixture(spec: CaptureSpec, runtime: LocalRuntime) -> CaptureR
     path = runner._raw("target-fixture", {"stage": spec.stage.model_dump(mode="json"), "valid": fixture is not None,
         "detail": detail, "forward_calls": runner.backend.forward_calls - before,
         "wall_ms": (perf_counter() - started) * 1000,
+        "fixture_budget": budget_evidence(),
         "fixture": fixture.description.model_dump(mode="json") if fixture else None,
         "fixture_identity": fixture.identity if fixture else None, "resident_bytes": fixture.resident_bytes if fixture else None})
     return CaptureReport(fixture is not None, fixture, path, detail)

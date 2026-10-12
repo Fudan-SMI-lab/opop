@@ -7,6 +7,7 @@ from time import time
 import pytest
 
 from examples.c3_qwen3 import search_matrix as matrix
+from examples.c3_qwen3 import fixture_budget
 from examples.c3_qwen3.manual_data import CALIBRATION_IDS, fingerprint
 from examples.c3_qwen3.model_binding import BundleDocument, ModelBinding, Site, load_bundle
 from examples.c3_qwen3.model_runner import ResidentRunner, prepare
@@ -137,8 +138,14 @@ def test_grouped_36_module_matrix_stays_under_cap_and_checks_every_target(tmp_pa
         resident.close()
 
 
-def test_original_group_capture_passes_while_per_path_capture_exceeds_same_cap(tmp_path):
+def test_original_group_capture_passes_while_per_path_capture_exceeds_same_budget(tmp_path, monkeypatch):
     # Given: the same 36 numerical modules and codec accounting in both configurations.
+    # The capacity limit is derived from free device memory (`fixture_budget`) and cached per process,
+    # so it is pinned here rather than observed: this test's arithmetic (15 fixtures of 8 MiB fit, the
+    # 16th does not) is only meaningful against a known budget, and whether some earlier test in the
+    # session happened to initialize CUDA must not decide whether the guard fires.
+    budget = 128 * 1024 * 1024
+    monkeypatch.setattr(fixture_budget, "_cached", budget)
     observations = []
     for per_path in (True, False):
         resident = resident_at(tmp_path / str(per_path))
@@ -148,9 +155,10 @@ def test_original_group_capture_passes_while_per_path_capture_exceeds_same_cap(t
             resident.binding.register_site(name, members)
         resident.bind(load_bundle(baseline_bundle(tmp_path / f"base-{per_path}"), {}))
         try:
-            # When / Then: toggling only the capture grouping toggles the real guard failure.
+            # When / Then: toggling only the capture grouping toggles the real guard failure, and the
+            # refusal names the budget that refused it rather than a constant in the message.
             if per_path:
-                with pytest.raises(RunnerError, match="128 MiB"):
+                with pytest.raises(RunnerError, match=f"{budget}-byte device fixture budget"):
                     resident.capture_fixtures(CALIBRATION_IDS)
             else:
                 resident.capture_fixtures(CALIBRATION_IDS)

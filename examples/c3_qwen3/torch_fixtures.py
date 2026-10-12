@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from typing import assert_never
 
 from .operator_types import CacheValue, OperatorCall, TensorValue, Value
+from .fixture_budget import require_within_budget
 from .runner_records import RunnerError
 
 
@@ -55,8 +56,11 @@ class TorchFixtureCodec:
         return sum(t.numel() * t.element_size() for t in unique.values())
 
     def clone(self, call: OperatorCall) -> OperatorCall:
-        if self.size(call) > 64 * 1024 * 1024:
-            raise RunnerError("local fixture exceeds 64 MiB; choose a smaller explicit site/fixture")
+        # The deepcopy below really does allocate this many bytes, so the check is not bookkeeping.
+        # It is the same budget the callers apply to the whole fixture; since a single call is always
+        # a part of that total, this can only bind on an isolated clone, never inside a flow that
+        # already checked the total.
+        require_within_budget(self.size(call), "cloned call")
         # One deepcopy memo preserves aliases, views and shared cache identity across args/kwargs.
         args, kwargs = copy.deepcopy((call.args, dict(call.kwargs)))
         return OperatorCall(args, kwargs)

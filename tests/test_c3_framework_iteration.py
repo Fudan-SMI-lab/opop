@@ -2,6 +2,7 @@
 
 import importlib
 from pathlib import Path
+from sys import maxsize
 
 import pytest
 
@@ -20,10 +21,13 @@ def api(name):
 
 
 def test_dev_budget_resume_preserves_D_and_every_failed_admission(tmp_path):
-    # Given: a single development ledger shared across framework revisions.
+    # Given: a single development ledger shared across framework revisions, with the original
+    # protocol's allowances DECLARED. They are no longer the default -- see the uncapped test below
+    # -- so a test about them has to ask for them, which also documents what they were.
     module = api("fast_budget")
     stage = StageIdentity(profile="c3_fast_device", stage="development", framework_id="F0")
-    spec = module.BudgetSpec(lane="development", stage=stage, started_unix_s=1000, deadline_unix_s=6400)
+    spec = module.BudgetSpec(lane="development", stage=stage, started_unix_s=1000, deadline_unix_s=6400,
+                             limits=module.protocol_limits("development"))
     clock = [1001.0]
     ledger = module.StageBudget(tmp_path / "budget.json", spec, now=lambda: clock[0])
     assert ledger.admit(stage, "local") == 0
@@ -44,18 +48,50 @@ def test_dev_budget_resume_preserves_D_and_every_failed_admission(tmp_path):
         module.StageBudget(tmp_path / "budget.json", spec.model_copy(update={"deadline_unix_s": 9000}), now=lambda: clock[0])
 
 
+def test_an_undeclared_budget_is_uncapped_but_still_counted(tmp_path):
+    # Given: no `limits`, which is the default.
+    module = api("fast_budget")
+    stage = StageIdentity(profile="c3_fast_device", stage="development", framework_id="F0")
+    ledger = module.StageBudget(tmp_path / "budget.json", module.BudgetSpec(lane="development", stage=stage,
+        started_unix_s=1000, deadline_unix_s=6400), now=lambda: 1001)
+    # When: spend past every number the old protocol allowed (6 agent, 12 local, 4 model).
+    admitted = [ledger.admit(stage, "local") for _ in range(20)]
+    agents = [ledger.admit_agent(stage) for _ in range(9)]
+    # Then: nothing is refused for COUNT, and the ledger still reports what was spent -- accounting
+    # is evidence, a cap is policy, and only the latter was a research-protocol choice.
+    assert admitted == list(range(20)) and agents == list(range(9))
+    assert ledger.state.used["local"] == 20 and ledger.state.used["agent"] == 9
+    assert ledger.remaining("local") == maxsize and ledger.remaining("model") == maxsize
+    # The clock is still binding: it is a watchdog, not an allowance.
+    expired = module.StageBudget(tmp_path / "budget.json", ledger.spec, now=lambda: 6401)
+    assert expired.admit(stage, "local") is None
+
+
+def test_a_declared_cap_still_refuses_past_its_allowance(tmp_path):
+    # Given: the development lane's original allowances, declared.
+    module = api("fast_budget")
+    stage = StageIdentity(profile="c3_fast_device", stage="development", framework_id="F0")
+    ledger = module.StageBudget(tmp_path / "budget.json", module.BudgetSpec(lane="development", stage=stage,
+        started_unix_s=1000, deadline_unix_s=6400, limits=module.protocol_limits("development")),
+        now=lambda: 1001)
+    # When / Then: opting in restores exactly the old behaviour, so the relaxation is a default
+    # rather than a removal.
+    assert ledger.remaining("agent") == 6
+    assert [ledger.admit_agent(stage) for _ in range(7)] == [0, 1, 2, 3, 4, 5, None]
+
+
 def test_stage_caps_are_separate_and_preparation_cannot_be_free(tmp_path):
     # Given: setup and formal lanes have distinct declared accounting vectors.
     module = api("fast_budget")
     setup = StageIdentity(profile="c3_fast_device", stage="setup", framework_id="F0")
     ledger = module.StageBudget(tmp_path / "setup.json", module.BudgetSpec(lane="setup", stage=setup,
-        started_unix_s=1000, deadline_unix_s=2000), now=lambda: 1001)
+        started_unix_s=1000, deadline_unix_s=2000, limits=module.protocol_limits("setup")), now=lambda: 1001)
     # When / Then
     assert [ledger.admit(setup, "profile") for _ in range(4)] == [0, 1, 2, None]
     assert [ledger.admit(setup, "local") for _ in range(4)] == [0, 1, 2, None]
     formal = setup.model_copy(update={"stage": "formal_search"})
     lane = module.StageBudget(tmp_path / "formal.json", module.BudgetSpec(lane="formal_search", stage=formal,
-        started_unix_s=1000, deadline_unix_s=2000), now=lambda: 1001)
+        started_unix_s=1000, deadline_unix_s=2000, limits=module.protocol_limits("formal_search")), now=lambda: 1001)
     assert lane.admit(formal, "capture") == 0
     assert lane.remaining("local") == 7
     assert [lane.admit_agent(formal) for _ in range(3)] == [0, 1, None]
@@ -68,8 +104,11 @@ def test_fast_config_changes_actual_timeout_without_mutating_C2_config():
     original = cfg.model_dump()
     # When
     scoped = api("fast_workflow").scoped_config(cfg)
-    # Then
-    assert scoped.opencode.request_timeout_s == 480
+    # Then: the transport ceiling is INHERITED, not shortened. It used to be forced to 480s,
+    # which is below the measured rewriter call duration (median 519.2s/736.2s across the two
+    # window-2 C2 runs), so both fast probes could only ever end in a ReadTimeout. The fast
+    # lane must not invent a stricter clock than every other agent in the project.
+    assert scoped.opencode.request_timeout_s == cfg.opencode.request_timeout_s
     assert scoped.agents.rewriter.max_retries == scoped.agents.rewriter.max_transport_retries == 0
     assert cfg.model_dump() == original
 
@@ -125,14 +164,36 @@ def test_ordinary_artifact_error_gets_one_fixed_repair_not_new_framework(tmp_pat
     generator.evaluator.runtime.runner.close()
 
 
-def test_transport_failure_is_not_redrawn(tmp_path):
-    # Given / When
+def test_a_lost_transport_costs_a_draw_not_the_epoch(tmp_path):
+    # Given: a transport that drops the first call and answers the second.
+    from contextlib import closing
+    from tests.c3_framework_fakes import workflow_case
+    generator, provider, _, _ = workflow_case(tmp_path / "F0", mode="transport_then_good")
+    # When
+    with closing(provider):
+        result = api("fast_development").develop(generator, tmp_path / "dev.json", tmp_path / "F0/result")
+    # Then: the dropped call produced no artifact to judge, so it says nothing about the NEXT draw.
+    # It used to end the epoch, which reported "the framework did not succeed" for what was only a
+    # lost message; now the epoch continues and the second draw is accepted on its own merits --
+    # having passed every gate, not a weakened one.
+    assert result.status == "DEV_GO", result.model_dump_json()
+    assert len(provider.requests) == 2 and len(set(provider.sessions)) == 2
+    assert [c.status for c in result.candidates] == ["transport_failed", "valid"]
+    assert result.candidates[0].artifact is None and result.candidates[-1].artifact.author == "agent"
+    # The repair channel is NOT used for a lost call: there is no failed artifact to repair.
+    assert provider.requests[1]["context"]["repair_feedback"] is None
+    generator.evaluator.runtime.runner.close()
+
+
+def test_transport_failure_is_not_redrawn_when_a_draw_ceiling_is_declared(tmp_path):
+    # Given: the original protocol's one-draw-per-epoch ceiling, declared explicitly.
     from contextlib import closing
     from tests.c3_framework_fakes import workflow_case
     generator, provider, _, _ = workflow_case(tmp_path / "F0", mode="transport")
     with closing(provider):
-        result = api("fast_development").develop(generator, tmp_path / "dev.json", tmp_path / "F0/result")
-    # Then
+        result = api("fast_development").develop(generator, tmp_path / "dev.json", tmp_path / "F0/result",
+                                                 max_versions=1)
+    # Then: with a ceiling of one draw, a lost call ends the epoch exactly as before.
     assert result.status == "PARENT_TRIAGE" and len(provider.requests) == 1
     assert result.candidates[0].status == "transport_failed"
     generator.evaluator.runtime.runner.close()
@@ -172,7 +233,8 @@ def test_develop_cli_composes_real_runtime_config_and_stops(tmp_path, monkeypatc
     with closing(provider):
         code = api("fast_cli").main(["develop", "--inputs", str(request)])
     # Then
-    assert code == 0 and timeouts == [480]
+    # Then: the server is started with the config's own ceiling, not a shortened fast-lane one.
+    assert code == 0 and timeouts == [AppConfig().opencode.request_timeout_s]
     result = json.loads((tmp_path / "F0/result.json").read_text())
     assert result["phase"] == "development" and result["status"] == "DEV_GO"
     assert len(provider.requests) == 1 and engine.runtime.runner.closed

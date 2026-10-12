@@ -50,6 +50,34 @@ class GenerationContext:
     goal_text: str
 
 
+def _repair_feedback(previous: CandidateResult) -> str:
+    """What the previous attempt measured, not just that it failed.
+
+    `previous.error` says which gate rejected the candidate and, since the gate reports its criteria,
+    by how much. The measured metrics are included alongside it because a rewriter needs the DISTANCE
+    to the limit to choose between adjusting numerics and changing approach: a candidate 10% over a
+    tolerance and one 10x over need different responses, and "gate failed" cannot distinguish them.
+    Two independent candidates in the live F4 lane both landed just above the logits limit (0.01101
+    and 0.01181 against 0.01) having been told only that they failed.
+
+    Measurements are reported for every terminal status that produced any, including a passing
+    metric next to a failing one, so the agent sees the whole picture rather than the first breach.
+    """
+    measured: dict[str, float] = {}
+    for evaluation in (previous.model, previous.confirmation):
+        if evaluation is not None:
+            measured.update(evaluation.metrics)
+    local_failures = tuple(f"{report.failure_stage or 'local'}: {report.detail}"
+                           for report in previous.locals if not report.valid and report.detail)
+    return json.dumps({"failure": previous.error, "status": previous.status,
+                       "measured_metrics": measured or None,
+                       "local_failures": local_failures or None,
+                       "immutable_artifact": str(previous.failed_sandbox),
+                       "repair_of": previous.artifact.bundle_sha256 if previous.artifact else None,
+                       "instruction": "Repair the failed artifact under this unchanged framework; "
+                                      "do not change the goal or reference."})
+
+
 @dataclass(frozen=True, slots=True)
 class _LocalCall:
     request: LocalRequest
@@ -116,12 +144,17 @@ class _OwnerCallbacks:
 
 
 class DraftGenerator:
-    def __init__(self, agent: ModelOperatorRewriterAgent, evaluator: FastEvaluator, context: GenerationContext) -> None:
+    def __init__(self, agent: ModelOperatorRewriterAgent, evaluator: FastEvaluator, context: GenerationContext,
+                 *, max_versions: int | None = None) -> None:
         if agent.execution_profile != "model_operator" or agent.task_kind != "model_project_operator":
             raise RunnerError("fast generation requires the explicitly selected model_operator agent")
         if agent.cfg.max_retries != 0 or agent.cfg.max_transport_retries != 0:
             raise RunnerError("fast generation must not use generic or transport retry draws")
         self.agent, self.evaluator, self.context = agent, evaluator, context
+        # Only used to TELL the agent how many source versions the epoch will accept. None means the
+        # lane draws until a candidate is accepted, which is what the caller passes now; a hardcoded
+        # 2 here kept telling the agent a ceiling the framework no longer enforces.
+        self.max_versions = max_versions
 
     def invoke(self, version: int, previous: CandidateResult | None = None) -> CandidateResult:
         engine, agent = self.evaluator, self.agent
@@ -136,11 +169,10 @@ class DraftGenerator:
             parent_bundle_sha256=parent.bundle_sha256,
             task_facet=OperatorTaskFacet(contract_sha256=self.context.prepared.task.contract_sha256,
                 quality_limits=safe.shared_policy.quality.model_dump()), operator_brief=engine.target.brief,
-            stage_budget=OperatorStageBudget(local_evaluations_remaining=engine.budget.remaining("local"),
-                model_evaluations_remaining=engine.budget.remaining("model")),
-            repair_feedback=json.dumps({"failure": previous.error, "immutable_artifact": str(previous.failed_sandbox),
-                "repair_of": previous.artifact.bundle_sha256 if previous.artifact else None,
-                "instruction": "Repair the failed artifact under this unchanged framework; do not change the goal or reference."}) if previous else None)
+            stage_budget=OperatorStageBudget(
+                local_evaluations_remaining=engine.budget.declared_remaining("local"),
+                model_evaluations_remaining=engine.budget.declared_remaining("model")),
+            repair_feedback=_repair_feedback(previous) if previous else None)
         inputs = TaskRewriteInputs(project_root=engine.files.output, candidate_id=f"C{version}",
             candidate_path=parent.path.parent / parent.document.entry, goal=self.context.goal_text,
             context=context.model_dump(mode="json"), objective=Objective(direction=goal.direction, unit=goal.unit),
@@ -158,13 +190,30 @@ class DraftGenerator:
                     sandbox = sb
                     hint = helper.seed_sandbox(sb)
                     sb.write_input("task/fast-budget.json", json.dumps({"stage": engine.stage.model_dump(mode="json"),
-                        "deadline_unix_s": engine.budget.spec.deadline_unix_s, "prompt_timeout_s": 480,
-                        "source_versions_max": 2, "local_remaining": engine.budget.remaining("local"),
-                        "model_remaining": engine.budget.remaining("model"), "helper_configs": "declared default only"}))
+                        # Report the ceiling the transport will ACTUALLY enforce, read from the
+                        # client that enforces it. A hardcoded number here told the agent it had
+                        # 480s while the client used the configured value, so the agent paced
+                        # itself against a figure the framework did not honour. Same reasoning for
+                        # the three fields below: null means "no ceiling declared", which is the
+                        # truth for an uncapped lane, where a number would be a fiction.
+                        "deadline_unix_s": engine.budget.spec.deadline_unix_s,
+                        "prompt_timeout_s": agent.client.timeout_s,
+                        "source_versions_max": self.max_versions,
+                        "local_remaining": engine.budget.declared_remaining("local"),
+                        "model_remaining": engine.budget.declared_remaining("model"),
+                        "helper_configs": "declared default only"}))
+                    # What the framework actually enforces, in the agent's own words. Each clause
+                    # here corresponds to a live check: the source gate recomputes eligibility, the
+                    # helper is the only admitted GPU path, and a failed artifact comes back for
+                    # repair. The two clauses that used to state numeric caps ("at most one
+                    # alternative", "source bytes frozen after first admission") were removed: the
+                    # config cap is now opt-in and a revised source is re-gated on its own rather
+                    # than refused, so stating them would describe rules the framework no longer
+                    # applies -- and an agent pacing itself against a fiction wastes its own draw.
                     sb.write_input("task/source-admission.md", "The helper recomputes SOURCE_ELIGIBLE from the actual bundle/params/declarations. "
                         "Do not load another model. Triton-only/direct output operands. Submit the default first. "
-                        "After first GPU admission source bytes are frozen; return failures for one framework-driven artifact repair. "
-                        "Declare at most one useful alternative in recommended_configs before its measurement. "
+                        "A revised source is re-gated and re-measured on its own; failures come back for framework-driven repair. "
+                        "Declare useful alternatives in recommended_configs before their measurement. "
                         "Do not run private GPU tests outside this shared allowance.\n")
                     return hint
                 agent.self_test_context = seed

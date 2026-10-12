@@ -73,18 +73,28 @@ def score_waves(goal: GoalSpec, waves: tuple[WaveRecord, ...]) -> TaskEvaluation
         raise RunnerError("nonpositive request wall duration")
     metrics = {"completed_requests": float(count), "output_tokens": float(outputs),
                "total_wall_ms": sum(totals) * 1000}
+    # The within-evaluation spread of the SAME quantity `score` reduces (the per-request TTFTs the
+    # median is taken over, or the per-request decode throughputs). It is the honest full-model noise
+    # floor for this goal: unlike `reference_noise_us`, which is an operator-level A/A microbenchmark
+    # in microseconds, this shares the units and level of `score`, so a lane can ask "did this
+    # candidate beat the baseline by more than a repeat of the baseline moves". A single-sample goal
+    # (multi) cannot self-estimate a floor and reports None, which the acceptance gate reads as "fall
+    # back to a conservative fixed floor" rather than "no floor".
+    per_request: list[float] | None = None
     match goal.id:
         case "ttft":
             if len(scored) != 4 or any(len(w.tokens) != 1 for w in scored):
                 raise RunnerError("TTFT requires four independent requests")
-            score = median((w.token_ready_s[0] - w.accepted_s) * 1000 for w in scored)
+            per_request = [(w.token_ready_s[0] - w.accepted_s) * 1000 for w in scored]
+            score = median(per_request)
         case "single":
             if len(scored) != 2 or any(len(w.tokens) != 1 for w in scored):
                 raise RunnerError("single requires two independent requests")
             decode = [w.token_ready_s[-1] - w.token_ready_s[0] for w in scored]
             if any(t <= 0 for t in decode):
                 raise RunnerError("nonpositive decode duration")
-            score = median(127 / t for t in decode)
+            per_request = [127 / t for t in decode]
+            score = median(per_request)
             metrics.update(ttft_ms=median((w.token_ready_s[0] - w.accepted_s) * 1000 for w in scored),
                            decode_wall_ms=median(decode) * 1000)
         case "multi":
@@ -93,4 +103,9 @@ def score_waves(goal: GoalSpec, waves: tuple[WaveRecord, ...]) -> TaskEvaluation
             score = 1024 / totals[0]
         case unreachable:
             assert_never(unreachable)
+    if per_request is not None and len(per_request) > 1 and score:
+        # Half the peak-to-peak of the per-request samples, as a fraction of the score. Half-range
+        # (not full) so that "gain exceeds the spread" means the gain clears the distance from the
+        # median to the extreme, i.e. it is outside the band the repeats already occupy.
+        metrics["score_spread_frac"] = (max(per_request) - min(per_request)) / 2.0 / abs(score)
     return TaskEvaluation(score=score, metrics=metrics)

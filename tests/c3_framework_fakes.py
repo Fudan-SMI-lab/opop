@@ -52,6 +52,11 @@ class Provider(OpencodeClient):
         self.requests.append(data)
         if self.mode == "transport":
             raise AgentCallError("CPU fixture transport failure")
+        # A transport that drops the first call and answers the second. `run_probe` treats a lost
+        # call as a lost DRAW rather than the end of the epoch, so this mode is what shows the next
+        # draw actually happening -- "transport" alone can only show that one call failed.
+        if self.mode == "transport_then_good" and len(self.requests) == 1:
+            raise AgentCallError("CPU fixture transport failure")
         context = data["context"]
         wrong = self.mode == "wrong_then_repair" and context["repair_feedback"] is None
         source = ("def replace(site, call, params):\n    return call.args[0] * " + ("3" if wrong else "2") +

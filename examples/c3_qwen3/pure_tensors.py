@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from typing import assert_never
 
 from .device_records import TensorDescription
+from .fixture_budget import require_within_budget
 from .operator_types import CacheValue, OperatorCall, TensorValue, Value
 from .runner_records import RunnerError
 from .torch_fixtures import TorchFixtureCodec
@@ -40,8 +41,7 @@ class TorchPureTools(TorchFixtureCodec):
         leaves = tuple(tensor_leaves((call.args, dict(call.kwargs))))
         if not leaves:
             raise RunnerError("unsupported fixture: no tensor input")
-        if self.size(call) > 64 * 1024 * 1024:
-            raise RunnerError("unsupported fixture: 64 MiB call cap exceeded")
+        require_within_budget(self.size(call), "pure call")
 
     def describe_tensors(self, call: OperatorCall) -> tuple[TensorDescription, ...]:
         return tuple(TensorDescription(path=path, shape=tuple(t.shape), stride=tuple(getattr(t, "stride")()),

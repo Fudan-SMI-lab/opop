@@ -13,6 +13,21 @@ from kernel_optimizer.evaluation.task_eval import TaskEvaluation, TaskEvaluation
 from .manual_data import admit_files, verify_frozen
 from .manual_types import CallBudget, Context
 
+# The contract's declared limits, restated as literals ON PURPOSE.
+#
+# This file is loaded STANDALONE as a provided-eval entry (`TaskEvaluator`), copied out with only
+# `manual_data.py` and `manual_types.py` beside it -- so an import of `runner_quality` to share the
+# constants raises ModuleNotFoundError at load time and takes the whole evaluator with it.
+#
+# The sibling gate in `fast_proof` reads its limit from the quality receipt instead, because that lane
+# CAN have a measured equivalence floor that raised it. This lane cannot: it passes no floor evidence
+# to `runner.quality`, so `criteria()` returns exactly these declared numbers. If `runner_quality`'s
+# declared limits ever change, `tests/test_c3_proof_gate_reads_the_enforced_limit.py` fails on the
+# mismatch rather than letting the two drift silently.
+DECLARED_LOGITS_LIMIT = 0.01
+DECLARED_NLL_LIMIT = 0.02
+LOGITS_METRIC = "logits_relative_l2_max"
+
 
 def evaluate[T](candidate_path: Path, params: Mapping[str, JsonValue], context: Mapping[str, T]) -> TaskEvaluation:
     quality_metrics: dict[str, float] = {}
@@ -38,8 +53,12 @@ def evaluate[T](candidate_path: Path, params: Mapping[str, JsonValue], context: 
             raise TaskEvaluationError("quality evidence must be absolute and separate from frozen inputs")
         if (not quality.valid or not all(isfinite(v) for v in quality_metrics.values())
                 or quality_metrics.get("local_checks_passed") != 1.0
-                or not 0 <= quality_metrics.get("logits_relative_l2_max", float("inf")) <= .01
-                or quality_metrics.get("paired_mean_nll_delta_nat_per_token", float("inf")) > .02):
+                # Named constants rather than inline literals, so the two limits this lane enforces are
+                # stated once and are greppable from the sibling gate's test. See the module header for
+                # why they are not imported from `runner_quality`, and why this lane -- unlike
+                # `fast_proof` -- must NOT follow a measured floor.
+                or not 0 <= quality_metrics.get(LOGITS_METRIC, float("inf")) <= DECLARED_LOGITS_LIMIT
+                or quality_metrics.get("paired_mean_nll_delta_nat_per_token", float("inf")) > DECLARED_NLL_LIMIT):
             raise TaskEvaluationError("independent local/logits/NLL quality gate failed")
         verify_frozen(admitted.hashes)
         runner.reset(admitted.requests)

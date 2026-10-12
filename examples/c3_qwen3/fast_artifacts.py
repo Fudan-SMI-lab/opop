@@ -37,7 +37,10 @@ def identify_framework(revision: str, cfg: AppConfig, prepared: FastPrepared) ->
     root = Path(__file__).resolve().parents[2]
     names = ("fast_prepare", "fast_model", "local_eval", "local_device", "device_gate", "device_capture",
              "device_profile", "device_records", "device_ir", "cuda_trace", "triton_observer", "pure_tensors",
-             "model_runner", "model_binding", "binding_runtime", "runner_quality", "runner_measure", "search_helper")
+             "model_runner", "model_binding", "binding_runtime", "runner_quality", "runner_measure", "search_helper",
+             # The fixture budget decides which sites a goal can be evaluated on at all, so a change to
+             # its policy changes what the framework can accept and must invalidate frozen campaigns.
+             "fixture_budget", "torch_fixtures")
     files = {Path(__file__).with_name(name + ".py") for name in names}
     files.update(Path(__file__).parent.glob("fast_*.py"))
     files.update(root / "src/kernel_optimizer" / name for name in (

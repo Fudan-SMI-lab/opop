@@ -57,7 +57,14 @@ class Artifact(FrozenRecord):
 
 class CandidateResult(FrozenRecord):
     version: int
-    status: Literal["draft_ready", "source_rejected", "local_failed", "model_failed", "valid", "transport_failed", "censored", "framework_invalid"]
+    # `valid` means every gate passed AND the candidate beat the baseline on a confirmed repeat.
+    # `not_improved` / `not_confirmed` are the two ways a candidate can be fully CORRECT and still not
+    # win: it did not beat the baseline, or its first win did not survive the repeat measurement. They
+    # are distinct from `model_failed` on purpose -- a reader (and the paper) must be able to tell "the
+    # kernel was wrong" from "the kernel was right but not faster", and the lane keeps sampling after
+    # either rather than stopping on a correct-but-slower draw.
+    status: Literal["draft_ready", "source_rejected", "local_failed", "model_failed", "valid",
+                    "not_improved", "not_confirmed", "transport_failed", "censored", "framework_invalid"]
     artifact: Artifact | None = None
     locals: tuple[LocalReport, ...] = ()
     model: TaskEvaluation | None = None
@@ -82,6 +89,11 @@ class ProbeResult(FrozenRecord):
     selected: Artifact | None = None
     budget_path: Path
     clock: SearchClock | None = None
+    # The equivalence floor this lane calibrated on its own site group before judging anything, or the
+    # one it inherited. None means the contract's declared absolute limit was in force throughout.
+    # Recorded so a published result states which limit produced its verdicts, rather than leaving that
+    # to be reconstructed from the evaluation receipts.
+    floor_evidence: Path | None = None
 
 
 class DevelopmentState(FrozenRecord):
@@ -111,5 +123,9 @@ class FrozenFramework(FrozenRecord):
     development_result: Path
     development_result_sha256: str
     targets: dict[GoalId, TargetSpec]
-    compatibility_evidence: Path
-    compatibility_sha256: str
+    # Optional. A C2 regression receipt is recorded when one is supplied, and its hash is then
+    # re-checked at every formal lane; its ABSENCE no longer blocks a freeze, because the presence
+    # of a file was never evidence that C2 still behaves the same. C2 isolation is structural
+    # instead: every C3 relaxation is reached only through an explicit opt-in switch.
+    compatibility_evidence: Path | None = None
+    compatibility_sha256: str | None = None

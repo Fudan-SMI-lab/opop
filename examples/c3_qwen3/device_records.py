@@ -75,6 +75,35 @@ class LocalRequest(FrozenRecord):
     source_gate: SourceEligibility
 
 
+class TraceAttempt(FrozenRecord):
+    """One profiled execution of the candidate, recorded whether or not it collected CUDA activity.
+
+    The device proof reads the declared kernel's name out of a `torch.profiler` CUDA trace. That
+    collection has been observed to come back with the CPU side intact (`cuLaunchKernelEx` present,
+    so the kernel really launched) and the CUDA side empty, which fails an otherwise correct
+    kernel. Rather than trust one read, `prove` re-executes and re-collects; every attempt is kept
+    here so the record shows what each one saw instead of only the one that was believed.
+
+    `names` is bounded: enough to identify a name mismatch, not the whole trace.
+    """
+
+    index: int
+    events: int
+    cuda_events: int
+    launch_calls: int
+    kernel_seen: bool
+    # True when the trace contains a CUDA *launch API* call (`cuLaunchKernelEx`, `cudaLaunchKernel`,
+    # ...). This is the PROFILER's own CPU-side record that a launch was issued to the driver, which
+    # is independent of our patched `JITFunction.run` counter and survives the device-activity
+    # failure: across the 15 live proves on box4 every trace carried `cuLaunchKernelEx`, including
+    # the 14 whose CUDA-side records were empty. `device_gate.launch_route` requires it before it
+    # will fall back, so the fallback rests on the instrument agreeing that a launch happened rather
+    # than only on our own instrumentation.
+    launch_api_seen: bool = False
+    names: tuple[str, ...] = ()
+    cuda_names: tuple[str, ...] = ()
+
+
 class KernelEvidence(FrozenRecord):
     backend: Literal["triton", "cuda"]
     source_file: str
@@ -94,6 +123,22 @@ class KernelEvidence(FrozenRecord):
     jit_calls: int = 0
     n_regs: int | None = None
     shared_bytes: int | None = None
+    # An empty `cuda_names` has two causes that demand opposite fixes, and the tuple alone
+    # cannot tell them apart: the profiler collected NOTHING (no CUDA activity reached the
+    # trace at all), or it collected activity whose names simply do not include the declared
+    # kernel. These counters separate the two. `trace_events` is every event the profiler
+    # returned, `trace_cuda_events` only the CUDA-side ones; `trace_sample` carries a few
+    # observed names so a name mismatch is visible without reopening the chrome trace.
+    # Diagnostic only -- `require_device_proof` does not read them.
+    trace_events: int | None = None
+    trace_cuda_events: int | None = None
+    trace_sample: tuple[str, ...] = ()
+    # Every profiled execution that was attempted for this declaration, in order. The fields above
+    # report the attempt whose trace the gate judged (the first one that saw the declared kernel, or
+    # the last one if none did), so `trace_attempts` is what makes a retried proof auditable: a
+    # reader can see whether collection was flaky (some attempts empty, some not) or whether the
+    # kernel genuinely never ran (every attempt CPU-only). Diagnostic only.
+    trace_attempts: tuple[TraceAttempt, ...] = ()
 
 
 class FixtureResult(FrozenRecord):

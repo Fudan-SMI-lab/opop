@@ -41,6 +41,10 @@ class RunInputs(FrozenRecord):
     device: str = "cuda:0"
     correct_control: Path | None = None
     wrong_control: Path | None = None
+    # The setup lane's measured equivalence floor for this site group (`equivalence-floor.json`).
+    # Absent means the contract's declared absolute logits limit applies unchanged, which is the
+    # behaviour for every task that does not measure one. See `runner_quality.criteria`.
+    floor_evidence: Path | None = None
 
 
 def create_oracle(runtime: LocalRuntime, baseline: Path, ids: tuple[str, ...]) -> Path:
@@ -94,7 +98,8 @@ def open_evaluator(inputs: RunInputs, phase: AccessPhase, lane: Lane) -> Iterato
             if lane != "setup":
                 raise RunnerError("reuse the new-contract setup calibration oracle; do not create free references")
             oracle = create_oracle(runtime, baseline, ("calibration-calibration-00", "calibration-calibration-01"))
-        engine = FastEvaluator(runtime, target, EvaluationFiles(baseline, oracle, inputs.output.with_name(inputs.output.name + "-evaluation")))
+        engine = FastEvaluator(runtime, target, EvaluationFiles(baseline, oracle,
+            inputs.output.with_name(inputs.output.name + "-evaluation"), inputs.floor_evidence))
         def check() -> None:
             if identify_framework(frame.revision, cfg, prepared) != frame:
                 raise RunnerError("framework changed during a fixed epoch; stop rather than pool versions")

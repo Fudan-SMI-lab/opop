@@ -111,6 +111,22 @@ class TritonObserver:
     def set_inputs(self, call) -> None:
         self.input_ptrs = {getattr(t, "data_ptr")() for _, t in tensor_leaves((call.args, dict(call.kwargs)))}
 
+    def begin_attempt(self) -> None:
+        """Clear the per-execution observations, keeping the cumulative counters.
+
+        `prove` may execute the candidate more than once while waiting for the CUDA trace to report
+        the declared kernel. Only the attempt that is finally judged may contribute the tensors and
+        provenance below, or a discarded attempt's output pointers would still be in
+        `output_tensors` and `output_matches` would report False for a kernel that did write its
+        declared output. The counters (`jit_calls`, `launch_calls`, `compile_calls`,
+        `compile_wall_us`) are deliberately NOT reset: they are an accurate total of the device work
+        that really happened, which is what the receipt should report.
+        """
+        self.output_tensors = []
+        self.stored_outputs = set()
+        self.read_inputs = set()
+        self.input_ptrs = set()
+
     def output_matches(self, output) -> bool:
         returned = {getattr(t, "data_ptr")() for _, t in tensor_leaves(output)}
         return bool(self.output_tensors) and all(t.data_ptr() in returned for t in self.output_tensors)

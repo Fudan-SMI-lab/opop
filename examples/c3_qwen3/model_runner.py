@@ -101,11 +101,12 @@ class ResidentRunner:
                                          "evaluation": evaluation.model_dump(mode="json")})
         return MeasurementReport(evaluation, path)
 
-    def quality(self, prompt_ids: tuple[str, ...], oracle_refs: Path) -> QualityReport:
+    def quality(self, prompt_ids: tuple[str, ...], oracle_refs: Path,
+                floor_evidence: Path | None = None) -> QualityReport:
         self._open()
         from .runner_quality import evaluate_quality
 
-        report = evaluate_quality(self, prompt_ids, oracle_refs)
+        report = evaluate_quality(self, prompt_ids, oracle_refs, floor_evidence)
         self.quality_identity = (self.receipt.bundle_sha256, self.receipt.params_sha256) if report.valid else None
         return report
 

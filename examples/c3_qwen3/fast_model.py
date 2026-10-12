@@ -21,12 +21,19 @@ class FastModelRequest(FrozenRecord):
     prompt_ids: tuple[str, ...]
     oracle_refs: Path
     local_reports: tuple[LocalReport, ...] = ()
+    # Measured equivalence floor for the site group being replaced; see `runner_quality.criteria`.
+    # None leaves the contract's declared absolute logits limit in force.
+    floor_evidence: Path | None = None
 
 
 def evaluate_fast_model(request: FastModelRequest, runtime: LocalRuntime) -> TaskEvaluation:
     runner, admission = runtime.runner, runtime.admission
     started, before = perf_counter(), runner.backend.forward_calls
     detail: dict[str, JsonValue] = {}
+    # Measurements taken before the failure, so a rejection still reports what it measured. Without
+    # this, a candidate rejected by the quality gate produced `metrics: {}` and the only thing anyone
+    # -- reader or rewriter -- learned was that it failed. The numbers are the actionable part.
+    measured_metrics: dict[str, float] = {}
     result = TaskEvaluation(valid=False, detail="not admitted")
     try:
         phase = {"setup": "development", "development": "development", "formal_search": "formal_search", "final": "final"}
@@ -55,15 +62,17 @@ def evaluate_fast_model(request: FastModelRequest, runtime: LocalRuntime) -> Tas
             "calibration-calibration-00", "calibration-calibration-01")
         with runtime.device.execution():
             runner.bind(bundle)
-            quality = runner.quality(quality_ids, request.oracle_refs)
+            quality = runner.quality(quality_ids, request.oracle_refs, request.floor_evidence)
             detail["quality_raw"] = str(quality.raw_path)
+            measured_metrics.update(quality.metrics)
             if not quality.valid:
                 raise RunnerError(quality.detail or "model quality failed")
             measured = runner.measure(goal, request.prompt_ids)
         detail["measurement_raw"] = str(measured.raw_path)
+        measured_metrics.update(measured.evaluation.metrics)
         result = measured.evaluation.model_copy(update={"metrics": {**measured.evaluation.metrics, **quality.metrics}})
     except (OSError, ValueError, RuntimeError, KeyError, StopIteration) as exc:
-        result = TaskEvaluation(valid=False, detail=f"{type(exc).__name__}: {exc}")
+        result = TaskEvaluation(valid=False, detail=f"{type(exc).__name__}: {exc}", metrics=dict(measured_metrics))
     finally:
         runner.binding.restore()
         runner.backend.reset()

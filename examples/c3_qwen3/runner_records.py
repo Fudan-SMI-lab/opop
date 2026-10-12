@@ -54,11 +54,57 @@ class Assets(FrozenRecord):
     corpus_sha256: str
 
 
+class QualityPolicy(FrozenRecord):
+    """The numerical acceptance criteria, as the contract declares them.
+
+    These were previously hardcoded in `runner_quality` while the contract declared them separately,
+    so the enforced limit and the published limit could disagree without anything noticing. Reading
+    them here makes the contract's declaration load-bearing: the bytes are hash-verified in `prepare`,
+    so the gate enforces exactly what the approved artifact says.
+
+    `logits_relative_l2_floor_multiple` and the floor evidence exist because an ABSOLUTE logits limit
+    is not a property of a candidate alone -- it depends on how many modules the selected site group
+    replaces. Measured on the Qwen3 TTFT task (B12), one equivalence-preserving Triton RMSNorm bound to
+    a nested prefix of the site group produced:
+
+        1 module 0.0   4 modules 0.0   16 modules 0.004489   36 modules 0.004489   73 modules 0.010349
+
+    The kernel is identical at every point; only the count changes. And B13 measured that perturbing
+    the ORIGINAL operator output by exactly the contract's own declared per-operator tolerance
+    (rtol=0.02) yields 0.035628 at the logits -- 3.6x the 0.01 logits limit -- so the two declared
+    criteria are mutually unsatisfiable on this site group, independently of any kernel.
+
+    A floor therefore has to be MEASURED on the actual site group rather than assumed, in the same way
+    `TargetSpec.reference_noise_us` measures timing noise from an A/A pair instead of assuming it. When
+    no floor evidence is supplied the behaviour is exactly the declared absolute limit, so nothing
+    changes for a task that never measures one.
+    """
+
+    local_operator_rtol: float = Field(gt=0)
+    local_operator_atol: float = Field(ge=0)
+    logits_relative_l2_max_per_prompt: float = Field(gt=0)
+    logits_relative_l2_denominator_floor: float = Field(gt=0)
+    paired_mean_nll_delta_max_nat_per_token: float = Field(gt=0)
+    # How many times the MEASURED floor a candidate may be, when floor evidence exists. 1.0 means "no
+    # worse than an equivalence-preserving implementation of this same operator on this same group".
+    logits_relative_l2_floor_multiple: float = Field(default=1.0, ge=1.0)
+
+
 class Contract(FrozenRecord):
     interface_version: Literal["c3-task-local-v1.0.0", "c3-fast-inputs-v1.0.0"]
     assets: Assets
     goals: tuple[GoalSpec, ...]
     runtime_versions: dict[str, str]
+    # Optional so both the operator-path and fast-path contracts parse unchanged. When present, its
+    # limits are the ones enforced; when absent, `runner_quality` falls back to its declared defaults.
+    shared_policy: dict[str, JsonValue] | None = None
+
+    def quality_policy(self) -> QualityPolicy | None:
+        """The declared numerical criteria, or None when this contract does not carry them."""
+        if self.shared_policy is None:
+            return None
+        quality = self.shared_policy.get("quality")
+        return None if quality is None else QualityPolicy.model_validate(quality)
 
 
 @dataclass(frozen=True, slots=True)
