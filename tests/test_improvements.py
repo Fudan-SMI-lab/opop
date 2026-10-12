@@ -1135,37 +1135,40 @@ def test_the_final_failure_event_records_how_the_last_turn_ended(tmp_path):
 
 
 def test_the_agent_call_timeout_is_not_raised_on_an_unverified_loss_claim(tmp_path):
-    """SUPERSEDED CLAIM, kept as a guard against restoring it.
+    """SUPERSEDED CLAIM, kept as a guard against restoring it -- and superseded AGAIN, correctly.
 
     This test used to assert `request_timeout_s >= 1800`, on the reasoning that "8 agent calls
     died at exactly 1200-1201s ... each kill discards a candidate or a whole rewrite round" and
-    that the slowest successful call was 979 s.
+    that the slowest successful call was 979 s. Both halves were wrong, re-measured over every
+    run on disk (scripts/probe_agent_timeouts.py): 7 of those 8 calls FINISHED on a retry, and
+    the slowest successful call was 1167 s. On that evidence the ceiling was pinned at 1500 s.
 
-    Both halves were wrong, re-measured over every run on disk
-    (scripts/probe_agent_timeouts.py):
+    The pin itself then failed on a NEW population. C3 model-operator calls are not C2
+    KernelBench calls: the slowest successful C3 call took 1447.6 s (it produced the published
+    ttft row -- 52 s of headroom), and on the composite MLP site four consecutive draws burned
+    the full 1500 s each and returned nothing, one of them reconstructed from its sandbox as
+    COMPLETE at t+1502 s. So 1500 was cutting off finished work, which is exactly the failure
+    mode the old >=1800 claim alleged and could not demonstrate. The difference is that this
+    time each half is measured: the timings above are from the lane's own events and the
+    sandbox's file mtimes, not from a narrative.
 
-      - 7 of those 8 calls FINISHED on a retry. Only one call has ever been truly lost.
-      - The slowest successful call is 1167 s, not 979 s -- 979 was one L3:21 generator call,
-        not the maximum over the population of 982.
-
-    Since no successful call has ever exceeded 1200 s, no 1200 s timeout was cutting off work
-    in progress: a timed-out call is HUNG, and a fresh session finishes the same prompt in
-    ~4 min. Raising the ceiling rescued nothing and made every hang 50% dearer.
-
-    The live assertions moved to
-    `test_the_agent_timeout_is_priced_as_a_hang_not_a_work_budget`; what remains here is the
-    upper bound, so the >= 1800 floor cannot come back on the strength of the old story.
+    What this test still guards is the REASONING: the ceiling must be justified by measured
+    call durations on the population it governs, never by an unverified lost-work story. The
+    hang cost that motivated 1500 is now carried by `idle_abort_frac` (silence aborts at 50% of
+    the ceiling), so the ceiling itself only has to sit above real work.
     """
     for path in ("configs/default.yaml", "configs/experiments_l3.yaml",
                  "configs/experiments_l3_glm.yaml"):
         cfg = load_config(path)
-        assert cfg.opencode.request_timeout_s <= 1500.0, (
-            f"{path}: timeout raised to {cfg.opencode.request_timeout_s}s. The 1800s value was "
-            "justified by a lost-work claim that re-measurement disproved; 14 of 15 hung calls "
-            "recover on retry, so a higher ceiling only makes each hang more expensive."
+        # Above the slowest successful C3 call (1447.6 s) with real margin: a composite-site
+        # draw that was complete at t+1502 s must never again be killed by the transport.
+        assert cfg.opencode.request_timeout_s > 1502.0, (
+            f"{path}: timeout {cfg.opencode.request_timeout_s}s would have discarded work that "
+            "was measured complete at t+1502s on the composite MLP site."
         )
-        # Still above the slowest call ever observed to succeed, measured at 1167 s.
-        assert cfg.opencode.request_timeout_s > 1167.0
+        # Bounded above so a hang cannot cost more than an hour before the idle abort's
+        # backstop; anything beyond this needs new evidence of real calls running longer.
+        assert cfg.opencode.request_timeout_s <= 3600.0
 
 
 # --- the per-turn output-token ceiling has no config-file route, only an env var -----------
@@ -5189,32 +5192,40 @@ def test_the_deliverable_trials_csv_carries_the_deciding_statistic():
 
 
 def test_the_agent_timeout_is_priced_as_a_hang_not_a_work_budget():
-    """`request_timeout_s` must sit above the slowest real call and below 1800.
+    """`request_timeout_s` must sit above the slowest real call on the population it governs.
 
-    Measured over every run on disk (scripts/probe_agent_timeouts.py, n=982 successful calls):
-    the slowest successful agent call is 1167 s and NOT ONE has ever exceeded 1200 s, while 14
-    of the 15 ReadTimeout kills finished on a retry in ~4 min median. A timed-out call is hung,
-    not slow, so the value is the price of noticing a hang -- 18 hangs cost 9.00 h at 1800 s
-    against 7.50 h at 1500 s.
+    First measurement (scripts/probe_agent_timeouts.py, n=982 successful C2/KernelBench calls):
+    slowest successful call 1167 s, not one over 1200 s, 14 of 15 ReadTimeout kills recovered on
+    retry in ~4 min median. On that population 1500 s was correct: a timed-out call was hung,
+    and the value priced how long a hang goes unnoticed.
 
-    This pins the correction: 1800 was chosen on the belief that the 1200 s kills destroyed
-    real work, and 7 of those 8 calls in fact recovered on retry.
+    Second measurement, C3 model-operator population, which the same config also governs:
+      - the slowest SUCCESSFUL call took 1447.6 s and produced the published ttft row;
+      - on the composite MLP site, four consecutive draws each burned the full 1500 s and
+        returned nothing. One was reconstructed from its sandbox file mtimes: valid=True at
+        t+1359 s, final file at t+1502 s -- finished work, cut off by the transport.
+    A brief that describes an entire MLP block (3 GEMMs + activation + multiply, 36 instances)
+    is simply more work than one RMSNorm, so the ceiling scales to 3600 s. The hang cost that
+    1500 priced is carried by `idle_abort_frac`: silence for 50% of the ceiling aborts the
+    call, so a genuine hang still dies at 30 min while a call that keeps producing is left to
+    finish.
 
-    Both bounds matter, which is why they are asserted separately:
-      - above 1167 s, or a call slower than anything yet observed is killed for being slow;
-      - at or below 1500 s, or every hang costs 50% more than it needs to.
+    Both bounds still matter:
+      - above 1502 s, or work measured complete is killed for being slow;
+      - at or below 3600 s, pending evidence of real calls running longer.
     """
     from pathlib import Path
 
     from kernel_optimizer.config import AgentModuleConfig, OpencodeConfig, load_config
 
-    slowest_successful_call_s = 1167.0
+    slowest_successful_call_s = 1447.6   # the call that produced the published ttft row
+    completed_but_cut_s = 1502.0         # composite-MLP draw, complete 2 s past the old cap
 
     field_default = OpencodeConfig().request_timeout_s
-    assert field_default > slowest_successful_call_s, \
-        "the timeout must not kill the slowest call ever observed to succeed"
-    assert field_default <= 1500.0, \
-        "1800 was justified by a claim that re-measurement disproved; do not restore it"
+    assert field_default > completed_but_cut_s, \
+        "the timeout must not kill work that was measured complete at t+1502s"
+    assert field_default <= 3600.0, \
+        "raising past an hour needs new evidence of real calls running longer"
 
     # default.yaml sets it explicitly and therefore OVERRIDES the field default: a fix applied
     # only to the pydantic field would be silently inert for anyone loading that config.
@@ -5231,18 +5242,17 @@ def test_the_agent_timeout_is_priced_as_a_hang_not_a_work_budget():
     # the real ceiling (nothing consumes it -- see its comment).
     assert AgentModuleConfig().timeout_s == field_default
 
-    # The probe that produced these numbers must stay runnable, and must carry the pairing
-    # trap that made the first measurement report the exact opposite conclusion.
+    # The probe that produced the first population's numbers must stay runnable, and must
+    # carry the pairing trap that made its first run report the opposite conclusion.
     probe = Path("scripts/probe_agent_timeouts.py").read_text(encoding="utf-8")
     assert "start[key] = ts" in probe, "a failed attempt must re-arm the clock, not pop it"
     assert "PAIRING BUG" in probe
 
-    # The arithmetic behind the choice, so the numbers cannot drift from the story.
-    hangs = 18
-    assert hangs * 1800 / 3600 == 9.0
-    assert hangs * 1500 / 3600 == 7.5
-    assert 1500 / slowest_successful_call_s > 1.28   # ~29% headroom
-    assert 1200 / slowest_successful_call_s < 1.03   # only ~2.8% at 1200
+    # The arithmetic behind the choice, so the numbers cannot drift from the story: the old
+    # ceiling left 3.6% of headroom on the call that carried the published result, and the
+    # idle abort keeps a silent hang's cost at half the ceiling.
+    assert 1500 / slowest_successful_call_s < 1.04
+    assert field_default * OpencodeConfig().idle_abort_frac <= 1800.0
 
 
 def test_the_wall_clock_is_enforced_inside_a_round_not_only_between_rounds(tmp_path):
