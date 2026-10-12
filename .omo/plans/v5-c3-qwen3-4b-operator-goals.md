@@ -1,21 +1,21 @@
 # v5-c3-qwen3-4b-operator-goals - Work Plan
 
 ## TL;DR (For humans)
-**What you'll get:** 先证明C3-B：在手工定义并冻结的通用模型任务下，用户目标驱动真实算子SOURCE重写、Qwen3-4B集成与retuning，交付同卡三目标交叉矩阵、baseline和失败记录。用户已明确“好开始执行”；T1准备已通过父级核验，当前T2归档先于产品实现/GPU。
+**What you'll get:** 在手工定义并冻结的任务下交付C3-B算子SOURCE重写、同卡三目标矩阵、baseline和完整失败记录。当前T1–T8已闭合；T9审计表明仅有PARTIAL C3-B evidence，目标分化及新custom GPU kernel未证明。新增T10仅修复实际发现的父源码比较缺陷，不重开实验。
 
 **Why this approach:** 先提供可信的手工任务/evaluator，复用已有provided-eval优化路径与状态保存，只补任务数据、常驻模型测量和算子绑定三项职责；先验证优化能力，不等待自动任务构建。
 
 **What it will NOT do:** 本轮不证明自动自然语言任务构建；不建安全、权限、恢复或通用缓存平台，不把配置搜索当算子贡献，不反复生成直到获胜，不广泛升级依赖、变更模型variant或重跑旧实验；仅允许下述已批准的最小包组合及其必要依赖。
 
 **Effort:** Medium；快速关键路径为并行接缝实现＋有界实验，主实验拟三小时排程；准备/实施/分析另计，无完成时长保证。
-**Risk:** High — 两host模型资产及实际runtime组成已由T1准备回执核验并经父级接受；替换入口、模型显存/质量与性能仍待后续验证，CPU准备通过不是模型质量通过。
+**Risk:** High — T9确认三次false postprocessor rejection，限制了完整goal flow的科学解释；36块恢复有效不等于框架/目标分化成功。T10的CPU正确性修复不得被当作新模型性能证据。
 **Decisions confirmed:** 最新用户“允许”已批准此前列出的最小包和数值/58条synthetic corpus组合，记录于2026-09-19T15:05:23.292Z；这是owner确认，不是科学验证，不再重复权限仪式。
 
-Your next move: T1已获父级验收，完成T2唯一协议归档并核验远端后再放行T3/T4；T2核验前不改产品或运行GPU，主实验时钟尚未创建。
+Your next move: 完成T10最小CPU修复及回执，父级核实后更新/发布T9报告，再运行唯一F1。当前不做Git发布、新GPU/模型/provider调用、重跑、追加draw或重选；原科学合同与记录冻结。
 
 ---
 
-> TL;DR (machine): owner=Atlas parent; intent=clear; review_required=false; status=active; implementation_authorized=true; scope=C3-B manual-task-first; started_at=2026-09-19T12:58:09.432Z; current_task=2；T1已由父级核验，T2及后续checkbox仍由父级管理。
+> TL;DR (machine): owner=Atlas parent; intent=clear; review_required=false; status=active; implementation_authorized=true; scope=C3-B manual-task-first plus post-run CPU correctness fix; started_at=2026-09-19T12:58:09.432Z; current_task=9; implementation_tasks=10; final_review_tasks=1；T9/T10/F1仍未勾选，父级管理完成状态。
 
 ## Scope
 ### Must have
@@ -33,6 +33,12 @@ Your next move: T1已获父级验收，完成T2唯一协议归档并核验远端
 - 本计划唯一权威文件在`.omo/plans/`；匹配draft只保留决策状态。历史计划编写未改产品/boulder；本次仅激活执行元数据，旧记录/报告/raw不变，产品工作须T2之后另行执行。
 - 未来执行使用已授权`D:/Pyhon_projects/opop/v5`工作树与`.venv-v5`，保留继承dirty；不要求新PR/worktree/stash/清理。
 - T2先GitHub归档本协议再产品编辑/GPU；T6再发布测试过的精确source SHA，主实验只运行该revision。历史规划及本次元数据记录不运行Git；T1权重获取和此次已批准的最小环境准备可提前，其他边界不变。
+
+### 事后发现的最小正确性修复（T10；不改变原科学协议）
+- T9-source-audit.md及RAW/source-audit.json确认Single1/2与Multi1被错误判为无计算变化：agent覆盖可写parent-source mirror，TaskRewriter拿child与child比较；三份真实returned bundle均不同于immutable原parent且已有相同bundle/params的valid helper结果。
+- 保留五失败/一接受、两baseline fallback与全部原始分数；修复不追认private helper为winner，不补native/parent-alignment评价，不恢复搜索预算或改变T8数据。不能据此推断LLM未能产生目标相关改写。
+- 仅授权T10 owner在`src/kernel_optimizer/agents/task_rewriter.py`及`tests/test_c3_rewriter_parent_snapshot.py`实现/CPU回归immutable per-call parent比较；不是权限、安全、缓存或恢复平台。T9文档owner不编辑这两文件。
+- 原计划的强GPU-kernel/目标分化目标保持为未证明；实际接受的是Python decoder composition/dispatch SOURCE改写，复用现有GPU operators。T10不以修改验收定义把这次部分证据升级为成功。
 
 ### 事实入口与文件边界
 - 引用缩写E=`.omo/notepads/v5-c2-helper-pilot/c3-operator-entry-readiness.md`；O=`c3-objective-readiness.md`；R=`c3-model-reuse.md`；B=`time-bottleneck-audit.md`（后三者同目录）。
@@ -137,7 +143,7 @@ Your next move: T1已获父级验收，完成T2唯一协议归档并核验远端
 
 ## Execution strategy
 ### Parallel execution waves
-四波、9项；不为凑任务数拆细或增加review。
+原四波＋事后最小CPU正确性修复，共10项implementation tasks（T1–T10）＋1项F1；不增加review wave。
 - Wave1：T1已有资产核验及owner确认 → remote operator按授权完成最小包安装/CPU环境与接口验证（已获父级接受）→ T2归档；后续真实模型就绪及质量仍在T6验证。
 - Wave2：T3手工task/evaluator owner A独占`manual_task.py`/合同数据与tests，T4 owner B独占`model_runner.py`/`model_binding.py`与tests，按T1接口并行。
 - 共同接口以现有context＋冻结JSON和简单类型表达；manual_task调用runner的`load/bind/reset/quality/measure/close`，runner不反向import manual_task，双方用同接口fake测试，无循环依赖。
@@ -145,7 +151,8 @@ Your next move: T1已获父级验收，完成T2唯一协议归档并核验远端
 - T1冻结样例与API签名；新增typed定义如必要仅放task-local必需字段，不建`models/operator_task.py`通用schema。接口修改由owner A协调，T6才整合真实两侧。
 - Wave3：T5 rewrite/helpers/小TPE owner C依赖T3/T4；然后T6发布/三手工任务验证＋operator smoke owner B，C交接后停止修改共享文件。
 - Wave4：T7三个goal设备owner并行搜索 → T8自动同卡矩阵 → T9分析/报告；T7/T8同一有界runner自动串接，无人工阶段等待。
-- F1仅一个最终独立复核者；不五代理审计，不Momus/高精度流程。CPU和raw分析可并行于非冲突GPU工作，final同GPU严格串行。
+- 事后补项：T9已完成source audit → T10最小CPU修复/回执 → T9最终发布；T9草稿整合与T10产品实现可并行，文件互斥。此链不授权新实验。
+- F1仅一个最终独立复核者，依赖T9最终发布及T10已验证CPU修复；同时核数据与scoped fix，不另开review wave，不五代理审计或Momus流程。
 - 快速关键路径：发现现有资产→手工任务合同→evaluator与resident绑定并行→三任务baseline/一个真实绑定→48 slots→36 blocks；不等待任务自动构建。
 - 实施/准备未有4B实测保证；将每阶段起止及等待写receipt，优先复用模型，禁止凭历史C2耗时承诺数小时一定完成。
 
@@ -160,8 +167,9 @@ Your next move: T1已获父级验收，完成T2唯一协议归档并核验远端
 | 6 | 5 | 7 | 三手工任务baseline验证，GPU控制不重叠 |
 | 7 | 6全部准入/预算可行/发布 | 8 | 三goal独占A0/A1/B0 |
 | 8 | 7三条轨迹terminal | 9 | 无；全部cell仅A0 |
-| 9 | 8含失败/censored结果 | F1 | CPU分析可分工但报告单owner |
-| F1 | 9 | 交付关闭 | 单独紧凑核验 |
+| 9 | 8含原失败与恢复结果；草稿/审计先行，最终发布等待10 | F1 | 10的CPU实现；报告单owner |
+| 10 | T9已完成source audit（不依赖T9最终发布） | 9最终发布,F1 | T9文档整合，产品/测试文件互斥 |
+| F1 | 9最终发布＋10 scoped CPU fix/回执 | 交付关闭 | 唯一紧凑独立核验，数据＋修复 |
 
 ## Todos
 > Implementation + Test = ONE todo. Never separate.
@@ -176,7 +184,7 @@ Your next move: T1已获父级验收，完成T2唯一协议归档并核验远端
   Failure QA：依赖未成功安装、受保护stack将改变、访问失败或实际接口未验证时不放行模型执行，记录确切问题；`tests/test_c3_manual_task.py::test_missing_assets_block_execution`仍在T3锁定，授权/下载不等于T1完成。
   Commit：N；仅本地合同/发现receipt，T2负责唯一协议归档。
 
-- [ ] 2. T2：实现/GPU前归档本权威协议
+- [x] 2. T2：实现/GPU前归档本权威协议
   Wave1；依赖T1，阻塞T3/T4。Owner publisher；本计划已有数值确认结果作为同一文件的执行前补注，不生成docs副本。
   References：本计划Scope；B:92-96，避免多轮准备/审核开销；现有已授权v5工作树保留dirty。
   仅提交`.omo/plans/v5-c3-qwen3-4b-operator-goals.md`并核验远端；若被ignore，未来明确force-add仅此文件，不把raw/draft/凭据带入。
@@ -185,7 +193,7 @@ Your next move: T1已获父级验收，完成T2唯一协议归档并核验远端
   Failure QA：`git diff --cached --name-only`出现其他文件则停止发布并交还其owner，不reset/stash用户改动；不发布未确认合同。
   Commit：Y；仅protocol，建议`docs(c3): archive Qwen3 operator-goal protocol`，执行时匹配repo已有风格。
 
-- [ ] 3. T3：手工通用任务与provided-eval接口CPU验证
+- [x] 3. T3：手工通用任务与provided-eval接口CPU验证
   Wave2；依赖T2，与T4并行。Owner A独占`examples/c3_qwen3/manual_task.py`、三份合同数据和`tests/test_c3_manual_task.py`；不共编runner。
   References：实际`src/kernel_optimizer/task_cli.py:59–123`；O:28-33,52-56；复用`evaluation/task_eval.py`/Objective和现有context，不新写通用schema/score engine。
   提供同一手工`evaluate(candidate_path, params, context)`，三合同明确goal/direction/metric；仅组合T4接口，T1字段与CPU fake保证无需等待runner实现。
@@ -195,7 +203,7 @@ Your next move: T1已获父级验收，完成T2唯一协议归档并核验远端
   Failure QA：同文件`-k 'missing_assets_block_execution or missing_quality or wrong_metric or missing_callable'`；adjacent用`P tests/test_v5_direct_task_eval.py`，不运行模型。
   Commit：Y；仅manual task/data/tests，建议`feat(c3): define shared manual Qwen goal tasks`；若CLI确需小接线，交T5单owner处理。
 
-- [ ] 4. T4：常驻Qwen runner、trace binding与小fixture
+- [x] 4. T4：常驻Qwen runner、trace binding与小fixture
   Wave2；依赖T2，与T3并行。Owner B独占`examples/c3_qwen3/model_runner.py`、`model_binding.py`、必要包标记及tests。
   References：R:16-29,87-107,157-165；E:77-99,121-156；采用本计划三组binding控制，不扩展安全平台。
   实现单卡单常驻模型，load/bind/reset/quality/measure/close；operator fixture只用于local验证，真实TTFT仍含prefill，decode完整128，multi独立8请求。
@@ -205,7 +213,7 @@ Your next move: T1已获父级验收，完成T2唯一协议归档并核验远端
   Failure QA：同文件`-k 'wrong_operator or skipped_binding or stale_graph or short_decode or shared_kv'`；故障后baseline输出恢复。
   Commit：Y；仅model runner/binding及tests，建议`feat(c3): add resident Qwen operator evaluation`；本任务CPU验证，真实GPU统一T6。
 
-- [ ] 5. T5：真实operator bundle、推荐点与8-slot native搜索
+- [x] 5. T5：真实operator bundle、推荐点与8-slot native搜索
   Wave3；依赖T3/T4。Owner C独占`agents/task_rewriter.py`、`control/task_rewrite.py`、`control/direct_task.py`、`tuning/tpe.py`、`wiring.py`必要接线。
   References：E:32-40,91-99,164-183；O:70-81；R:141-155，现有startup10与空space限制明确处理。
   传实际trace/site/interface及helper closure；整个bundle非PARAMS计算结构比较，helper-only改写可执行/跨轮保存；默认关闭C2 response probes。
@@ -216,7 +224,7 @@ Your next move: T1已获父级验收，完成T2唯一协议归档并核验远端
   验收：实际fake evaluator调用总数断言≤48、repair/自测计数可追溯，未执行的建议不能当TRIAL_DONE；只三项新增责任，无orchestrator改写。
   Commit：Y；仅列出接缝及tests，建议`feat(c3): bound operator search and preserve helper bundles`。
 
-- [ ] 6. T6：发布tested source并验证三手工任务及单operator smoke
+- [x] 6. T6：发布tested source并验证三手工任务及单operator smoke
   Wave3；依赖T5。Owner B接管runner整合；A/C交还接口与文件后再修改，不并编。References：E:140-164、O:104-116、实际task_cli provided-eval分支及本计划quality/预算。
   跑一次focused合集/LSP，发布tested SHA并部署；加载三份人工合同与同一手工evaluator，验证三metric模型baseline/计数/quality及共享resident runner，不调用入口生成agent。
   实际baseline phase trace每goal一次供T7 agent选择source/site；本任务仅选一个trace实际执行site的确定性非PARAMS正确smoke，再wrong/skip/restore，不造三个优化策略。
@@ -227,7 +235,7 @@ Your next move: T1已获父级验收，完成T2唯一协议归档并核验远端
   验收：三手工任务真实模型执行通过、同baseline/checkpoint/quality/预算、正确binding与计时边界；manual tasks准备完、模型ready、budget-fit成立才创建main S，不等自动入口。
   Commit：Y（若有必要整合修复）；仅已测接线/fixture引用，建议`fix(c3): complete admitted model-goal integration`；main用最终tested SHA，raw不提交。
 
-- [ ] 7. T7：三goal各两次结构机会，设备间并行
+- [x] 7. T7：三goal各两次结构机会，设备间并行
   Wave4；依赖T6。Owner分别A0/A1/B0，共用冻结手工evaluator/模型revision，各轨迹仅自己的incumbent；References：R:149-155、O:74-81及本计划48slots规则。
   未来`M campaign --assets RAW/preflight.json --tasks RAW/manual-tasks --clock RAW/clock.json --output RAW/main`复用provided-eval核心自动launch/join三goal，再立即进入T8，无新controller平台。
   此入口传统一S/search/final与per-goal90min，actual source SHA落盘；baseline3目标计分先行，再6rewriter机会及bounded repairs，所有GPU动作显式归账。
@@ -236,7 +244,9 @@ Your next move: T1已获父级验收，完成T2唯一协议归档并核验远端
   验收：最多48 slots、default/建议/自测均在内，无C2 endpoints/expanded B40；三卡可并行但各卡无timing重叠，记录失败/未准入/active wall。
   Commit：N；已发布source运行，记录RAW/main，任何运行中产品修复不得偷偷替换固定SHA或覆盖旧结果。
 
-- [ ] 8. T8：同一GPU的4×3×3独立heldout矩阵
+- [x] 8. T8：同一GPU的4×3×3独立heldout矩阵
+  实际闭合补注：原af775349a778fa9c62e8fcda6f327578d05ad89d因fixture准备失败留下36 null，matrix SHA f66d72c69a9b513428fbe68bbe2ff33f88404d4fdf282bd2d761ed014ac3981a保持原样。事前T8-recovery-amendment授权grouping-only修复后，1870e8e612a1febfec3b77a63b2e091cbc7a6539在独立恢复目录得到36 valid；不是原harness成功，也未修复T9发现的search guard。
+  原S1789849886.5547094与deadline1789860686.5547094未改；恢复22:45:15.587656UTC结束、drain0，原operator/params、corpus/oracles、quality及64/128MiB caps未改。此勾选涵盖诚实原失败＋预声明恢复闭合，不授权延长预算/重新搜索；证据T8.md、T8-recovery-amendment.md、T8-recovery.md。
   Wave4；依赖T7全部terminal，runner自动继续，不等待人工review/导出。Owner final-A0；References：E:130-138,158-166；O:98-116。
   冻结三goal selected bundle/params和baseline，传`M heldout --tasks RAW/manual-tasks --selection RAW/main/selection.json --clock RAW/clock.json --device A0 --output RAW/heldout`（由campaign内部同一流程调用）。
   4rows×3columns×3blocks=36，重复winner仍测，baseline fallback标明；所有rows用各column冻结prompt/quality/repeats，final不反向改变选择。
@@ -245,7 +255,7 @@ Your next move: T1已获父级验收，完成T2唯一协议归档并核验远端
   验收：prefill真实执行、single128与multi1024计数可复算、旧targeted binding在另goal下质量仍有效；到final截止不新准入，in-flight drain单列。
   Commit：N；只新raw，final完成/截断后释放owned resident模型/进程并保存teardown，旧服务/文件不清理。
 
-- [ ] 9. T9：论文结果、失败与复现材料交付
+- [x] 9. T9：论文结果、失败与复现材料交付
   Wave4；依赖T8（包括censored闭合）。Owner analysis/publisher单报告owner；References：B:9-39,77-96与本计划科学口径。
   新`docs/result-c3-qwen3-4b-operator-goals.md`列baseline＋3winner对3goal的矩阵/3block范围、native方向增益、质量、选中site/bundle和配置。
   RAW保留manual-tasks/evaluator/oracle、operatorbundles/metricsmatrix/sourceSHAs、参数trial、6次rewrite及repair/自测/失败、setup/main/drain/turnaround与一份新输出hash索引。
@@ -253,27 +263,41 @@ Your next move: T1已获父级验收，完成T2唯一协议归档并核验远端
   Failure QA：同文件`-k 'missing_block_no_positive_claim or quality_failure_not_zero or config_only_not_operator_gain'`；报告同winner/负结果/条件不足，不事后改任务。
   验收/论文声明限定“手工定义任务下，目标驱动真实算子优化”；证明agent目标上下文、实际算子改写/绑定/quality与新数据，观察到才谈目标分化，不强求三个不同winner或对角线胜出。
   明确不证明自动自然语言任务构建；人工measurement primitives不是手工优化答案，配置变化/搜索分数也不充当SOURCE贡献或heldout结果。
-  Commit：Y；仅最终报告和必要小复现说明，建议`docs(c3): publish Qwen3 operator-goal pilot results`；public不含checkpoint/凭据/raw巨目录。
+  当前报告必须整合T9-analysis.md及T9-source-audit.md：PARTIAL C3-B evidence；GOAL DIFFERENTIATION NOT DEMONSTRATED；未证明新custom GPU kernel。三次false guard rejection不能归因于无改写的bad kernels；TTFT两次25min transport timeout另列；原5失败/1接受及fallback冻结。
+  T9草稿可先完成，但最终发布须等待T10-parent-snapshot.md和父级核验的实际fix provenance，不能虚构SHA/提前勾选。实际仅1个empty-param native trial，不声称进行了实质TPE优化；全36block与失败/恢复双source provenance必须保留。
+  Commit：Y；待T10 scoped CPU fix核验后再发布最终报告和必要小复现说明，建议`docs(c3): publish Qwen3 operator-goal pilot results`；public不含checkpoint/凭据/raw巨目录。当前文档整合lane不运行Git。
+
+- [x] 10. T10：固定每次调用的immutable parent源码比较并补CPU回归
+  事后最小正确性修复；依赖T9-source-audit.md与RAW/source-audit.json，不依赖T9最终发布；阻塞T9最终发布/F1。独立code owner独占产品/测试，报告owner仅维护计划与文档。
+  精确产品范围：`src/kernel_optimizer/agents/task_rewriter.py`；精确新增测试：`tests/test_c3_rewriter_parent_snapshot.py`。不修改其他src/tests、模型runner、evaluator、语料、阈值、原候选或raw。
+  从每次原始TaskRewriteInputs捕获immutable parent bundle sources/structural signatures及single-file原source；check_output不能再信任agent可写`candidate/bundle-sources.json`或`candidate/current.py`作为parent authority。保留真正non-PARAMS变化要求、helper-only支持及可编辑工作bundle，不创建权限/安全平台或放宽novelty guard。
+  CPU RED→GREEN覆盖：mirror被child覆盖仍与原parent比较；current.py覆盖的single-file路径；helper-only真实变化通过；comments/PARAMS-only或真正未改变计算仍拒绝；连续调用/失败后的context reset不得复用上次parent。必要的缺失context处理须明确，不能静默回退可写mirror。
+  Happy/Failure QA：现有环境运行`P tests/test_c3_rewriter_parent_snapshot.py`及owner选择的最小相邻CPU回归，保存实际测试名/结果；涉及sandbox时保留现有CPU fake边界。无candidate函数执行、模型/GPU/SSH/provider、repair draw、retry或性能实验。
+  证据：`EVID/T10-parent-snapshot.md`记录实际最小diff、失败前/修复后CPU证据、LSP结果/不可用限制和真实source/publication状态；未知SHA保持pending，由publisher在报告发布前替换。不得把CPU通过说成历史搜索已修复/新winner已接受。
+  验收：三类false-parent比较回归被锁定，真实nonchange仍拒绝，per-call context隔离；原两fallback、5失败/1接受、48slot cap、全部36block与clock/deadline/quality不变。T10/F1 checkbox仍由父级核验，当前不勾选。
+  Commit：Y；后续独立scoped fix/test提交仅上述两路径，匹配实际repo风格；产品owner/父级发布负责，当前元数据任务不运行Git。不新增review wave或实验任务。
 
 ## Final verification wave
-> 仅一次compact independent F1，T9后运行；这是未来交付验收，不是本轮高精度计划评审或安全审计波次。
-- [ ] F1. 核验手工任务下的目标驱动重写、binding、quality与36块矩阵
-  References：EVID/T1–T9、唯一RAW/evidence-index.json、最终report/tested SHA；只核新输出，不重新哈希旧C2 raw。
+> 仅一次compact independent F1，T9最终发布＋T10 scoped CPU fix/回执后运行；同时验证数据与最小修复，不新增review wave，不运行新实验。
+- [x] F1. 核验手工任务下的目标驱动重写、binding、quality与36块矩阵
+  References：EVID/T1–T9、T9-source-audit.md、T10-parent-snapshot.md、各自实际scope的main/recovery evidence indexes、最终report及T10真实tested/published SHA；不重复计数nested索引，不重新哈希旧C2 raw。
   QA：`M analyze --input RAW --output <独立临时结果路径>`复算min/max与质量；核3手工合同共享baseline/能力/quality/预算、6rewrite机会/≤48slots/36blocks应有与实际状态，无隐瞒repair/private GPU。
   focused CPU：`P tests/test_c3_manual_task.py tests/test_c3_model_runner.py tests/test_c3_model_binding.py tests/test_c3_operator_search.py tests/test_c3_goal_matrix.py`，加改动文件LSP；不再全仓大测试。
+  加验T10 `tests/test_c3_rewriter_parent_snapshot.py`：immutable per-call比较、mirror/current overwrite、helper/nonchange/context reset；确认修复无GPU/新搜索/历史reselection。核report准确区分false framework rejection、TTFT timeout、原T8失败及1870恢复，不能把新CPU fix归入旧measured harness。
   一票阻塞：实际替换未执行、wrong/skip可过、质量/metric边界错、预算/遗漏被掩盖、报告与raw不符；负收益/相同winner本身不阻塞诚实交付。
   证据EVID/F1.md含artifact/math/source/binding/cleanup与verdict；delivery APPROVE不等于C3-B普适效力或C3-A验证通过。Commit：N。
 
 ## Commit strategy
-- 历史规划/本次元数据激活NO Git；执行已获授权，依序T2协议先归档、T3/T4/T5各独占小增量提交、T6主实验前发布tested SHA、T9报告发布；不做末尾混合巨commit。
+- 历史规划/本次报告与计划元数据整合NO Git；既有T2协议、T3/T4/T5及T6/1870恢复publication按原回执保留。后续T10独立scoped CPU fix核验/发布后再完成T9报告发布；不做混合巨commit，不捏造尚未知SHA。
 - 跟随执行时仓库历史风格；只stage明确归属文件，继承dirty不stash/reset/清理，不强制PR/新worktree，不提交模型、私密路径内容或raw。
 - 每task的Commit行是范围约束而非现在已提交；必要CPU测试附同提交，数据run不产生产品修复commit。新hash索引只覆盖本次输出。
 
 ## Success criteria
-- 当前状态：既有权威计划＋draft已获执行授权；intent clear/review_required false/Atlas parent；status active，boulder选中新C3 work，T1已勾选，T2归档中，其余任务/F1未勾选，父级逐项验证。
+- 当前状态：T1–T8勾选保留，T9报告整合已进行、等待T10与最终发布；新增T10 CPU-only正确性修复及唯一F1均未勾选。共10 implementation tasks＋1 F1，父级逐项核验，禁止把文档draft完成当作T9最终完成。
 - 未来软件完成：冻结人工task/evaluator通过实际provided-eval路径，goal/context送达真实TaskRewriter；非PARAMS算子/helpers实际进模型、wrong/skip拒绝/restore通过、resident reset及native方向/预算正确。
 - 未来论文数据完成：3goal×2机会真实轨迹、baseline＋3winner的同卡三列36cell blocks（未完成就明确不足）、独立质量和完整失败/成本/calls证据。
 - 科学胜负从矩阵如实报告；负收益/相同winner/无有效child不可删除，8B旧目标与C2旧结论不被此4B pilot替代。
+- 当前科学证据仅部分C3-B：一个真实Python decoder composition/dispatch SOURCE改写的固定artifact测量；目标分化及新custom GPU kernel未证明。三次false postprocessor rejection限制完整flow解释；T10只修未来比较正确性，不补写这次科学成功。
 - 当前科学范围仅C3-B“手工定义任务下，目标驱动真实算子优化”；自动自然语言任务构建不计本轮成果、前置条件或成功标准。
 - 历史计划写作已完成；本次元数据owner在授权/ledger/状态验证后交还父级，不代替remote T1 operator或提前产品/GPU执行，不追加review。
 - T1准备前提已由实际runtime/资产/CPU接口证据及父级验收满足；设备快照不代替执行时可用性。T6模型load/binding/质量与预算可行性仍须实测，发现确切缺项即报告，不把准备验收写成C3性能证明。

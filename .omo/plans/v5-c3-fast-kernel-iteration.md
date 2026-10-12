@@ -181,14 +181,14 @@ C2兼容C命令：`P tests/test_c3_task_routing.py tests/test_c2_agent_compatibi
 EVID=`.omo/evidence/v5-c3-fast-kernel-iteration/`；RAW=`results/c3-fast-kernel-iteration/`；每task receipt记录实际source/profile/命令/证据。
 裸`search_*.py`等路径均指`examples/c3_qwen3/`；`agents/`、`wiring.py`指`src/kernel_optimizer/`，新test均在`tests/`。
 
-- [ ] 1. T1：冻结双阶段合同、C2行为基线、新heldout与协议归档
+- [x] 1. T1：冻结双阶段合同、C2行为基线、新heldout与协议归档
   最新用户执行授权已满足；parent/publisher owner负责元数据/归档，parallel CPU数据owner负责新corpus/runtime检查。引用本文当前路由、K/W及既有82daf/1870准备；只轻量核实际资产/revision，不下载或全审旧数据。
   顺序必须是只读捕获现有行为→单独归档协议→新增characterization tests→生产patch前基线GREEN；tests-first仍相对生产变化成立，但不能早于协议归档。
   未来用seed20260920在dev前冻结新42heldout，不交旧58/全部dev-search；新contract/corpus版本/hash，旧9d1e…及raw不改、不泄露给开发反馈。
   QA happy：归档后C命令在未改产品基线上GREEN，分别记录legacy/current-generic及cda1130 direct合同锚；failure：schema/seed/API解析类型差异不能当随机项忽略。证据EVID/T1.md。
   验收：协议先于新tests/产品/GPU，dev/正式预算不变；Commit：先仅协议、再单独必要characterization tests，绝不把测试写在归档前或每candidate新增归档。
 
-- [ ] 2. T2：C3专用agent/schema/profile与局部反馈最小接线
+- [x] 2. T2：C3专用agent/schema/profile与局部反馈最小接线
   依赖T1；agent/routing owner独占`agents/model_operator_rewriter.py`、小factory selector及`operator_cli.py`，并将`c2_local_agents.direct_child`显式接c2_direct_compat；helper owner独占local RPC文件。
   引用`wiring.py:122–190`、`c2_local_agents.py:52–56`、W:80–106；`operator_search.py`由一个workflow owner在公共profile/预算接口确认后接线。
   新C3 task_kind/profile显式且native goal独立；legacy C2全部不动、无selector generic保持当前默认，direct兼容profile仅声明两字段输出/无bundle输入，C3使用专用agent/schema/context。
@@ -196,14 +196,15 @@ EVID=`.omo/evidence/v5-c3-fast-kernel-iteration/`；RAW=`results/c3-fast-kernel-
   Failure：仅正文prompt相同但direct schema/seed/API类型错、generic默认被回滚或CPU被强制kernel均拒绝；保留82daf snapshot回归并披露相对旧pin的validation差异。证据EVID/T2.md。
   Commit：狭窄显式profiles/feedback/tests，记录F_0、当前generic与cda1130 direct合同对照；不全局改schema/retry、动legacy agents/method_prompts或重写C2结果。
 
-- [ ] 3. T3：真实harness控制与首个F_0 agent probe
+- [x] 3. T3：真实harness控制与首个F_0 agent probe
   依赖T2；native owner做最多3profile窗口，选定最高headroom开发goal/operator；真实人写Triton control在setup3local/3model上限内，不当研究candidate。
   引用K:74–106与W:98–106；提供完整reference计算/cast/ABI/phase证据，先A/A/错误/skip/restore控制，不构造三种预设优化器。
   Tools ready后记录D并冻结F_0，发一个真实primary；局部/整模验证计dev12/4，不能因属于smoke/probe额外免费测量。
   QA：`P tests/test_c3_device_kernel_gate.py`拒绝dummy/unreached/import-only；真实control及agent各自launch/source/output证据，失败保持独立类别，再C命令。
   验收：人写control只证明harness，F_0 probe才检验生成框架；DEV_GO需agent质量/device证据。证据EVID/T3.md；Commit：仅必要C3控制/测试，probe前tested SHA。
 
-- [ ] 4. T4：按框架原因做最多两次最小修订，不人工修kernel
+- [x] 4. T4：按框架原因做最多两次最小修订，不人工修kernel
+  执行结论：NO_DEV_GO。F0/F1各一次真实primary，均transport timeout且helper CUDA trace缺失；38e6e10的owner-thread修复只在原样诊断重放恢复trace，fresh F1仍失败。原D截止12:00:17.689003Z，不追加F2，计数agent2/local8/model0，资源已清理。见T4-native-F1.md；勾选表示有界失败闭合，不表示科学成功。
   依赖T3；parent快判F_0及后续probe，列组件/证据/一般化预期/测试；原失败candidate只读保存，framework owner只修改有证据的C3接缝。
   普通候选错误走固定一次artifact repair或stop；缺上下文/路由/反馈等系统缺陷才写RED test→patch→GREEN＋C2兼容→F_r+1 fresh probe。
   QA：`P tests/test_c3_framework_iteration.py -k 'framework_revision or ordinary_error_no_prompt_patch or new_epoch_fresh_generation or dev_budget'`，并在每次patch后跑C命令。
@@ -211,7 +212,8 @@ EVID=`.omo/evidence/v5-c3-fast-kernel-iteration/`；RAW=`results/c3-fast-kernel-
   验收：dev≤3framework revisions/6agent calls/12local/4model，人工工程时间计入D；无GO关闭开发、不发正式三goal；有GO冻结F*而非挑最好dev kernel。
   Commit：每个最小framework增量附tests和兼容receipt，EVID/T4.md；不global rollback C2，不修历史候选，不追加review wave。
 
-- [ ] 5. T5：冻结F*后全新正式三goal生成、一次同卡矩阵与清理
+- [x] 5. T5：冻结F*后全新正式三goal生成、一次同卡矩阵与清理
+  条件分支：NOT_RUN（无DEV_GO）；没有F*、正式S、三goal正式候选或36-block矩阵，不填充baseline伪结果。cleanup见T4-native-F1.md。
   依赖T4 DEV_GO；无GO仅记录NOT_RUN。固定F*/agent schema/prompt/profile及新heldout，模型ready后设S；三goal从相同原baseline新session生成。
   每goal≤2source versions（primary＋artifact repair）/8local/4model，candidate≤4configs含default/一alternative；禁止拿dev kernel作正式初始解。
   正式parent只按冻结协议triage，不给逐候选算法反馈；发现framework bug即停相关准入并标受影响epoch，不inline patch后pool或自动延预算。
@@ -219,21 +221,22 @@ EVID=`.omo/evidence/v5-c3-fast-kernel-iteration/`；RAW=`results/c3-fast-kernel-
   Goal search terminal后自动在A0测一次36blocks；新heldout不交旧58/dev/search，源/params/quality/token一致，重复winner/fallback保留且不重选。
   截止/drain/无效/未测行完整；立即停止owned模型/RPC/agent进程并记录cleanup，旧资源不清理。证据EVID/T5.md；Commit：N，固定source运行。
 
-- [ ] 6. T6：分别分析开发修订、C2兼容和正式科学结果
+- [x] 6. T6：分别分析开发修订、C2兼容和正式科学结果
   依赖T5（含NOT_RUN/invalid闭合）；analysis owner不重做全会话审计，不生成新kernel、补测或改框架。
   分开F_r probe/人工framework patch与F*新生成；列每revision的prompt/schema/profile/hash、失败原因、回归证据、作者及实际时间。
   QA：`P tests/test_c3_framework_iteration.py -k 'dev_not_pooled or matrix_counts or invalid_no_score or c2_compat_claim'`，从新raw重算native方向/预算/矩阵。
   验收：C2 prompt相同声明有effective比较，不只看文件未编辑；36cell缺失、普通失败、framework失效不混为同一结论。EVID/T6.md。
   Commit：N，raw分析；旧SOURCE收益只是历史context，不能作为新F* control或证明设备kernel成功。
 
-- [ ] 7. T7：发布固定框架验证与完整开发过程的有界报告
+- [x] 7. T7：发布固定框架验证与完整开发过程的有界报告
   依赖T6；report owner写`docs/result-c3-fast-kernel-iteration.md`，区分setup、dev、F*正式、heldout与工程周转，不混epoch或嵌套时间。
   QA happy：每结论链接framework/candidate/prompt/schema/contract source与真实launch/quality/model数据；failure：无DEV_GO或device proof标NOT_MET/NOT_RUN，不造赢家。
   引用EVID/T1–T6、C2默认兼容snapshot/diff、新raw索引；父级开发贡献如实披露，正式无逐candidate人工优化才能声明固定框架测试。
   验收：旧C2/旧C3 raw及结论不变；无新实验/修复/发布自动续作，仅剩一个compact F1。Commit：未来仅报告/必要复现说明，无模型/秘密/raw巨目录。
 
 ## 10. 唯一最终核验与停止
-- [ ] F1. 核验框架修订/C2兼容与冻结F*的真实device结果
+- [x] F1. 核验框架修订/C2兼容与冻结F*的真实device结果
+  最终verdict：APPROVE truthful bounded NO_DEV_GO delivery（见EVID/F1.md）；不是科学成功，formal/heldout NOT_RUN，efficacy NOT_ESTABLISHED。
   依赖T7；单独context读取新证据，核task_kind显式选择、C3专用agent/schema/seed、default C2/generic有效行为比较与source SHA声明。
   核dev≤3epochs/6calls/12local/4model及formal每goal≤2versions/8local/4model、setup3＋3、final36分账，原失败和所有人工工程介入不隐藏。
   核F*后fresh生成、候选非人工改写、compiled/launch/output-used、heldout先冻结/未开发使用、质量/矩阵/时钟/cleanup；不凭AST或文字自报通过。
