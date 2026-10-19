@@ -1,0 +1,269 @@
+{
+  "trial": "trial-67f5fbef40",
+  "selection": {
+    "scope": "region",
+    "groups": [
+      "a0b3a5b385a5fb9bf231",
+      "62871feaa99ea76b91e4",
+      "d2850e8cc6111fc95ac6",
+      "9441a545767f4ab8aebc",
+      "1a8f98ed15f87b07767f",
+      "72ada771d38d526d65e5",
+      "ae93b2b2bf41a25fd1e7",
+      "533e7354f46c4afb106b",
+      "52e658ed66e16ce39195",
+      "169a5de23f1662390f0d",
+      "3c264652220c728032dc",
+      "26e95c8466f4a219b076",
+      "c132471b4303f1253244"
+    ],
+    "rationale": "The frozen workload is one pipeline() call on (256, 4096) FP32 inputs, timed as CUDA-synced wall latency, on a single device with no communication (resources.json: communication not_applicable). Coverage is complete (15/15 CUDA kernels associated with the run phase, no unassociated or backward kernels), so the observed region is the entire cost. The pipeline executes 15 sequential small kernels (13 pipeline-phase groups: mul x3, add x3, sub x2, sin, cos, sigmoid, pow, rsqrt, mean x2), each only ~1-4 us diagnostic CUDA time on a 4 MB tensor. Nested diagnostic CUDA time is 53.054 us while the clean measured baseline latency is 0.1738 ms, so roughly two thirds of the project metric is kernel-launch/dispatch overhead and inter-kernel gaps rather than GPU compute; reducing the number of launched kernels directly moves the requested metric. The chain is also memory-bound and redundant: the elementwise sequence performs ~15 full-tensor read/write passes (~60+ MB of traffic for 4 MB tensors), and 'wave - mean' is computed twice (sub group ae93b2b2bf41a25fd1e7, invocations=2; calls.json count=2) \u2014 once for variance and once for normalized. All elementwise groups plus the two mean reductions form one contiguous, coherently editable region (the pipeline body in the adapter/source), and the fusion edits are interdependent (reusing the centered tensor and fusing the affine/trig epilogue only pay off as one rewrite), so they are proposed as a single region candidate rather than per-group edits. The project.invoke call 5d7d6bb13691b02f533f62b0 is additionally affected because its child execution and measured duration change, though it is not itself edited. The profiler record_function enter/exit calls (a60da373fdd5a4383277bf4e, ca1f233e0c891270f758ff58) are discovery instrumentation, not project source, and are unchanged by the proposal. No reordering across unknown dependencies is involved: the region is pure, single-stream, stateless functional code with data edges internal to the region, and semantics (FP32, TF32 off, exact pipeline math, all 1048576 outputs) are preserved.",
+    "hypothesis": "Rewriting the pipeline body as a fused implementation \u2014 computing centered = wave - mean once, fusing the affine -> sin+cos elementwise chain, and fusing the normalize/gating epilogue around the two dim=-1 mean reductions (e.g., via torch.compile/Inductor-generated kernels or an equivalent hand-fused formulation) \u2014 reduces kernel launches from 15 to roughly 4-5 and full-tensor memory passes from ~15 to ~5, eliminating one redundant 4 MB sub pass and most per-launch overhead. This is expected to lower CUDA-synced wall latency from the 0.1738 ms baseline toward ~0.08-0.12 ms while keeping every FP32 output element within atol=rtol=1e-5 (same math, same reduction dimension, TF32 disabled). This is a hypothesis to be tested by the framework's paired measurement and observe()-based correctness check, not an accepted benefit; the improvement threshold is 0.0 so any verified latency reduction with intact outputs qualifies.",
+    "affected_calls": [
+      "0c4d0f77f61fc3012589f584",
+      "15d7a082677b7f74957b61c2",
+      "1ebeaf0a974b8775828ca62a",
+      "229ffc74adff7b13c46b38d9",
+      "5d7d6bb13691b02f533f62b0",
+      "7da5b306586e791db2cd94d9",
+      "83300361802c324fb3f36903",
+      "9414a663c387c3873fa50ab6",
+      "9ac15b8ed66b8fbaeffea6e7",
+      "b704e0528af4b2617b2a4c56",
+      "cc1ef2b4880b6ab99b295d55",
+      "de4cbfc7ebae944933dbb6c5",
+      "eb0a8b606447011b614d5da8",
+      "f3efa704081caebbeb25d1fb"
+    ]
+  },
+  "proposal": {
+    "implementation": "kernel",
+    "replacement_calls": [
+      "5d7d6bb13691b02f533f62b0"
+    ],
+    "rationale": "Region rewrite of the entire pipeline body through the project.invoke call 5d7d6bb13691b02f533f62b0 (adapter.run), matching the selected region scope. Observed facts from the supplied artifacts: the frozen workload is exactly one pipeline() call on (256, 4096) FP32 CUDA tensors; the clean baseline latency is 0.173762 ms (inputs/project.json original_baseline) while nested diagnostic CUDA time for the same run phase is 53.054 us across 15 kernels (inputs/target-resources.json, call 5d7d6bb13691b02f533f62b0), so roughly two thirds of the measured latency is per-kernel launch/dispatch overhead and inter-kernel gaps rather than GPU math. The chain performs 15 kernel launches over 4 MB tensors (three muls, three adds, two subs, sin, cos, sigmoid, pow, rsqrt, two mean reductions; the mean.dim and sub.Tensor sites are each invoked twice per run), i.e. ~15 full-tensor memory passes, and 'wave - mean' is computed twice. Hypothesis (subject to the framework's paired measurement, not an accepted benefit): computing the whole body in ONE fused Triton kernel - one program per row that loads x/scale/bias, computes the affine, forms sin+cos, block-reduces the row mean, forms the centered row once, block-reduces the variance, and applies rsqrt(variance + 1e-5) plus the sigmoid-gate epilogue in registers - reduces launches from 15 to 1 and full-tensor passes to ~3 (read x, write output; scale/bias are 16 KB broadcast reads), which should move CUDA-synced wall latency well below the baseline while keeping every FP32 output element within the frozen atol=rtol=1e-5. The kernel uses the same libdevice sin/cos/sigmoid primitives and FP32 arithmetic as the ATen kernels; only reduction order differs (bounded by a few ULPs, see quality_risks). Robustness: the Triton path is gated at build time by a one-shot equivalence check against the verbatim reference math (boolean outcome only, nothing cached; the kernel still executes on every invocation); if Triton or the gate is unavailable, the candidate degrades to a CUDA-graph replay of the verbatim eager op sequence (bit-identical math to the parent, single replay launch instead of 15 dispatches), and failing that to a reduced-launch eager sequence (addcmul, fused var_mean, silu). Every replacement checks the observed signature properties per call (shape, dtype, device, contiguity, no-grad; the graph path additionally requires the exact captured input tensors) and otherwise falls back to the parent adapter.run, preserving the run/observe ABI and the 'output' result structure. eliminated_calls lists the 13 inner aten call sites: their only consumer is the pipeline body itself, which this replacement reproduces end-to-end; the sole external consumer (result['output'] -> observe()/metrics()) receives a freshly computed, correctly shaped FP32 tensor each invocation, so downstream behavior stays valid and the framework can recapture the plan. inputs/previous-feedback.txt does not exist, so there is no prior attempt feedback to incorporate.",
+    "setup_work": {
+      "one_time_build_cost": "Triton JIT compilation of exactly one kernel specialization (rows=256, WIDTH=4096, fp32, num_warps from parameter_space) plus one probe launch and one eager reference computation for the equivalence gate; results are discarded and nothing fixture-dependent is cached (typically a few seconds, CPU-bound). Fallback path only: side-stream warmup and CUDA-graph capture of the verbatim 15-op sequence.",
+      "persistent_gpu_memory": "Triton path: no persistent allocations; steady state allocates one fresh (256, 4096) FP32 output (~4.2 MB) per invocation, below the baseline's ~29.4 MB peak allocated intermediates. Graph fallback path: a graph-private pool holding the static intermediates plus the static output (~29 MB), plus a ~4.2 MB clone per invocation.",
+      "model_transformations": "None. The project has no nn.Module roots, no parameters, and no caches; the prepared input tensors are read-only and untouched."
+    },
+    "quality_risks": [
+      "Reduction-order deltas: the fused kernel's per-thread partial sums and block tree differ from ATen's mean/pow/mean two-pass reduction order, shifting mean/variance by a few ULPs (estimated ~1e-6 absolute on the final output), about 10x inside the frozen atol=rtol=1e-5.",
+      "FMA contraction: Triton/LLVM may contract x*scale + bias into a single-rounding FMA while the reference rounds the product first (<= 1 ULP of affine, <= ~4e-7 propagated through sin/cos), still well inside tolerance.",
+      "tl.sigmoid/tl.exp may lower to an exp2-based fast exponential (~2 ulp relative error), contributing at most a few 1e-6 absolute error at large |normalized|; margins remain >2x against the frozen thresholds.",
+      "Mitigation: a build-time allclose gate at atol=rtol=5e-6 (2x tighter than the frozen thresholds) runs the fused kernel and the verbatim reference math once on the prepared inputs; failure demotes the candidate to the bit-identical CUDA-graph path. The kernel is deterministic (no atomics, fixed reduction tree, same binary), so the gate outcome predicts the framework's check on the same device.",
+      "Graph fallback: replay writes a static buffer; each invocation returns static_out.clone(), preserving the reference's fresh-output alias semantics, and the path is identity-guarded to the exact captured input tensors with parent fallback otherwise.",
+      "Any signature mismatch (shape/stride/dtype/device/requires_grad) or runtime error on any path falls back to the parent adapter.run for that invocation, so external outputs and result structure are always preserved.",
+      "No autograd or state interactions: the workload is stateless inference on requires_grad=False inputs (project invariant), and no in-place rewrites touch parent-owned storage."
+    ],
+    "eliminated_calls": [
+      "0c4d0f77f61fc3012589f584",
+      "15d7a082677b7f74957b61c2",
+      "1ebeaf0a974b8775828ca62a",
+      "229ffc74adff7b13c46b38d9",
+      "7da5b306586e791db2cd94d9",
+      "83300361802c324fb3f36903",
+      "9414a663c387c3873fa50ab6",
+      "9ac15b8ed66b8fbaeffea6e7",
+      "b704e0528af4b2617b2a4c56",
+      "cc1ef2b4880b6ab99b295d55",
+      "de4cbfc7ebae944933dbb6c5",
+      "eb0a8b606447011b614d5da8",
+      "f3efa704081caebbeb25d1fb"
+    ],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {
+      "params": [
+        {
+          "name": "impl",
+          "kind": "str",
+          "choices": [
+            "triton",
+            "graph",
+            "eager"
+          ],
+          "description": "Execution path for the fused pipeline, selected at build time: 'triton' launches one fused Triton kernel per invocation; 'graph' replays the verbatim eager op sequence from a CUDA graph; 'eager' uses a reduced-launch eager op sequence. Unavailable or gate-failing choices degrade automatically (triton -> graph -> eager) without changing task semantics."
+        },
+        {
+          "name": "num_warps",
+          "kind": "int",
+          "choices": [
+            4,
+            8,
+            16
+          ],
+          "description": "Warps per program for the fused Triton kernel (only consumed when impl='triton'); changes the launch/reduction configuration only, never the math."
+        }
+      ],
+      "constraints": []
+    }
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea9a20b47ffe8pzuB3a7en5DqP",
+    "message": "msg_1565f722b001POfViqXqAvFlP4",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 12,
+      "reported_cost": 0.13563988,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 285575.0,
+        "input": 27239.0,
+        "output": 3086.0,
+        "reasoning": 4242.0,
+        "cache.read": 251008.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea9a20b47ffe8pzuB3a7en5DqP",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/p6-new-signal-a/sandboxes/selection-95b455eda259",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea9a07d95ffeQnZrVarJZqy5Zw",
+    "message": "msg_1566933b500120J0FslKnBVoCR",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 25,
+      "reported_cost": 0.64912592,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 1491706.0,
+        "input": 78056.0,
+        "output": 9094.0,
+        "reasoning": 32524.0,
+        "cache.read": 1372032.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea9a07d95ffeQnZrVarJZqy5Zw",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/p6-new-signal-a/sandboxes/candidate-2095c858b348",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0
+  },
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-67f5fbef40",
+    "parent_revision": "89785f39a991431e9500ade6eb312909cc32e9c077eb226352657f4599bdb61d",
+    "contract_ref": "sha256:a264ddb79f77e6d7aa0e6e5bbaa47e713a72024bbc81cb9395159a44f0acf298",
+    "scope": "region",
+    "implementation": "kernel",
+    "groups": [
+      "a0b3a5b385a5fb9bf231",
+      "62871feaa99ea76b91e4",
+      "d2850e8cc6111fc95ac6",
+      "9441a545767f4ab8aebc",
+      "1a8f98ed15f87b07767f",
+      "72ada771d38d526d65e5",
+      "ae93b2b2bf41a25fd1e7",
+      "533e7354f46c4afb106b",
+      "52e658ed66e16ce39195",
+      "169a5de23f1662390f0d",
+      "3c264652220c728032dc",
+      "26e95c8466f4a219b076",
+      "c132471b4303f1253244"
+    ],
+    "calls": [
+      "5d7d6bb13691b02f533f62b0"
+    ],
+    "affected_calls": [
+      "0c4d0f77f61fc3012589f584",
+      "15d7a082677b7f74957b61c2",
+      "1ebeaf0a974b8775828ca62a",
+      "229ffc74adff7b13c46b38d9",
+      "5d7d6bb13691b02f533f62b0",
+      "7da5b306586e791db2cd94d9",
+      "83300361802c324fb3f36903",
+      "9414a663c387c3873fa50ab6",
+      "9ac15b8ed66b8fbaeffea6e7",
+      "b704e0528af4b2617b2a4c56",
+      "cc1ef2b4880b6ab99b295d55",
+      "de4cbfc7ebae944933dbb6c5",
+      "eb0a8b606447011b614d5da8",
+      "f3efa704081caebbeb25d1fb"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-67f5fbef40.py",
+        "before_sha256": null,
+        "content_ref": "sha256:9108e1d7d27a8e5152e14073f8ba26c6d58900fa9debfd026c6b2da6f13bdec7"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-67f5fbef40.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:8674a7076d4d3920d932af38431b038ead3d5464b3dca7d22043c98a93eee4b2"
+      }
+    ],
+    "read_set": [
+      "call:0c4d0f77f61fc3012589f584",
+      "call:15d7a082677b7f74957b61c2",
+      "call:1ebeaf0a974b8775828ca62a",
+      "call:229ffc74adff7b13c46b38d9",
+      "call:5d7d6bb13691b02f533f62b0",
+      "call:7da5b306586e791db2cd94d9",
+      "call:83300361802c324fb3f36903",
+      "call:9414a663c387c3873fa50ab6",
+      "call:9ac15b8ed66b8fbaeffea6e7",
+      "call:b704e0528af4b2617b2a4c56",
+      "call:cc1ef2b4880b6ab99b295d55",
+      "call:de4cbfc7ebae944933dbb6c5",
+      "call:eb0a8b606447011b614d5da8",
+      "call:f3efa704081caebbeb25d1fb"
+    ],
+    "write_set": [
+      "file:opop_candidates/trial-67f5fbef40.py",
+      "file:opop_candidates/trial-67f5fbef40.targets.json",
+      "call:5d7d6bb13691b02f533f62b0"
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Workload is exactly one pipeline() invocation on the fixed inputs (rows=256, width=4096, seed=91273); the work amount must not change.",
+      "All computation in FP32 with torch.backends.cuda.matmul.allow_tf32 = False, matching the source policy.",
+      "Input construction uses a single torch.Generator on the bound device seeded with the workload seed, drawing x = randn(rows, width), scale = randn(width)*0.1+1, bias = randn(width)*0.05 in that order, so tensors are bit-identical to the source's.",
+      "pipeline semantics preserved exactly: affine = x*scale+bias; wave = sin(affine)+cos(affine); mean/variance over dim=-1 with keepdim; normalized = (wave-mean)*rsqrt(variance+1e-5); output = normalized*sigmoid(normalized).",
+      "Every output element (256*4096 = 1048576 FP32 values) is part of correctness and must be returned by observe() as a detached tensor.",
+      "Timing boundaries are CUDA-synchronized wall time surrounding run(), matching the source's perf_counter_ns + synchronize pattern; no internal profiler or partial-phase timing is substituted.",
+      "Pure functional project: no nn.Module, no optimizer, no gradients, no caches; models() returns an empty mapping and reset() performs no state restoration.",
+      "Tensors live on context['device'] (the worker-bound device), never a hard-coded physical GPU; no default process group is initialized (single-device request, distributed_backend is null).",
+      "No downloads, no external assets; the empty assets field is expected because the source explicitly declares the seeded synthetic tensors as the task data."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-67f5fbef40.py",
+    "parameters": {}
+  }
+}

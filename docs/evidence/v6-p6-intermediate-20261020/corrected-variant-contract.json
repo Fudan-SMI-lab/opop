@@ -1,0 +1,69 @@
+{
+  "schema_version": "project.v1",
+  "id": "task",
+  "goal": "minimize peak_allocated_bytes for Pretrained ResNet-18, FP32 NCHW, GPU-resident preprocessed real images; preserve the complete frozen workload and source quality checks",
+  "objective": {
+    "name": "peak_allocated_bytes",
+    "unit": "bytes",
+    "direction": "minimize",
+    "required_metrics": [
+      {
+        "name": "peak_allocated_bytes",
+        "unit": "bytes"
+      }
+    ],
+    "aggregation": {
+      "kind": "sum",
+      "case_weights": {},
+      "callable": null
+    },
+    "improvement_threshold": 0.0
+  },
+  "workload": {
+    "batch": 32,
+    "goals": [
+      {
+        "direction": "max",
+        "id": "throughput",
+        "metric": "images_per_second"
+      },
+      {
+        "constraints": {
+          "images_per_second_min_baseline_ratio": 0.95
+        },
+        "direction": "min",
+        "id": "memory",
+        "metric": "peak_allocated_bytes"
+      }
+    ],
+    "id": "offline"
+  },
+  "quality": {
+    "atol": 0.0001,
+    "exact_top1": true,
+    "rtol": 0.0001
+  },
+  "completion": "The frozen workload is one full forward pass of the pretrained ResNet-18 over the fixed batch=1 preprocessed image tensor (images[arange(1) % 3], i.e. the first fixture) under torch.inference_mode(), producing logits of shape (1, 1000). It completes when the model forward has produced those logits on the bound CUDA device; the framework measures wall time around run() with CUDA synchronization at both boundaries, matching the source's per-sample timing loop (torch.cuda.synchronize -> perf_counter -> infer -> synchronize). There is no multi-phase pipeline and no subphase objective such as TTFT.",
+  "invariants": [
+    "Model is ResNetForImageClassification loaded from the local assets directory only (local_files_only=True) in float32; no downloads.",
+    "All weights and activations remain FP32; torch.backends.cuda.matmul.allow_tf32 and torch.backends.cudnn.allow_tf32 are False and torch.set_float32_matmul_precision('highest').",
+    "torch.backends.cudnn.benchmark stays False (source policy).",
+    "Seed policy: torch.manual_seed(20261020) applied in prepare, matching common.configure().",
+    "Input is the real preprocessed image fixture tensor from assets/pixels.npy (3 images, NCHW float32, 224x224), selected as images[torch.arange(batch) % len(images)].contiguous(); for the frozen 'offline' workload batch=32, i.e. the three fixtures cycling in order (indices 0,1,2 repeated to fill 32 rows), forming a contiguous (32, 3, 224, 224) batch, unchanged every repeat.",
+    "The model is in eval() mode and the forward pass runs under torch.inference_mode(), identical to the source infer() helper calling model(pixel_values=pixels).logits.",
+    "Batch size is fixed at 32 for this workload; the workload, data, precision and output requirements are not altered to improve the score.",
+    "Correctness requires all logits of the (32, 1000) output within atol=1e-4 / rtol=1e-4 and exact top-1 argmax equality per row against the reference; observations include every logit and the 32 predicted class integers.",
+    "The objective is peak_allocated_bytes (minimize), reported per repeat as torch.cuda.max_memory_allocated on the bound CUDA device, with the peak-memory counters reset outside timing in reset() exactly as the source resets peak memory stats before each timed repeat; latency is wall time around run() with CUDA synchronization at both boundaries, per the source's per-repeat timing; throughput (images_per_second) is derived from the unchanged work amount (batch=32) and the measured elapsed time; the memory objective holds only under its constraint images_per_second >= 0.95x baseline (images_per_second_min_baseline_ratio 0.95).",
+    "The adapter does not initialize CUDA or load the model at import time and never destroys the process group in reset."
+  ],
+  "frozen_files": [],
+  "task_definition": null,
+  "state_protocol": "prepare(context, request) configures the source's numerical policies (FP32 weights via from_pretrained(..., dtype=torch.float32), torch.manual_seed(20261020), TF32 disabled for matmul and cudnn, cudnn.benchmark False, float32_matmul_precision 'highest', num_threads 4 / interop 1), loads the model and the real pixel fixtures from request['assets']['assets'] onto context['device'], selects the workload batch with images[torch.arange(batch) % len(images)].contiguous(), and keeps model/pixels/batch in state; initialization and weight loading are outside timed execution. reset(state) is effectively a no-op for this stateless inference workload: it re-asserts eval() mode and resets CUDA peak-memory counters outside timing, creating no gradients, caches or counters during run. run(state) performs the single inference_mode forward and returns {'logits': logits}; no result mutation or RNG use occurs, so repeats start from the same starting point. observe(state, result) returns detached CPU tensors: the full logits and the argmax predicted class ids. metrics(state, result, elapsed_ms) derives latency_ms (the objective) and images_per_second from the unchanged work amount and elapsed_ms, plus the measured peak_allocated_bytes; no timing values go into observations. models(state) exposes the loaded root model under 'model' for discovery/replacement.",
+  "world_size": 1,
+  "allowed_scopes": [
+    "group",
+    "joint",
+    "region",
+    "execution_plan"
+  ]
+}

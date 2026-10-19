@@ -123,6 +123,9 @@ def worker_entry(context: dict) -> dict:
     request = parameters["request"]
     adapter = load_adapter(Path(parameters["adapter"]))
     state = adapter.prepare(context, request)
+    cuda = str(context["device"]).startswith("cuda")
+    lifecycle_allocated_peak = torch.cuda.max_memory_allocated() if cuda else 0
+    lifecycle_reserved_peak = torch.cuda.max_memory_reserved() if cuda else 0
     policies = (torch.backends.cuda.matmul.allow_tf32, torch.backends.cudnn.allow_tf32, torch.get_default_dtype())
     bindings = []
     setup = []
@@ -133,6 +136,7 @@ def worker_entry(context: dict) -> dict:
             torch.cuda.synchronize(); torch.cuda.reset_peak_memory_stats()
         started = time.perf_counter_ns()
         binding = BindingSession(adapter, state, bundle["specs"], rank=context["rank"], world_size=context["world_size"])
+        binding.tracking = False
         installed = binding.install(Path(bundle["file"]), bundle.get("parameters", {}))
         expected = bundle.get("expected_calls_by_rank", {}).get(str(context["rank"]), bundle["expected_calls"])
         bundle = {**bundle, "expected_calls": expected}
@@ -145,6 +149,9 @@ def worker_entry(context: dict) -> dict:
                       "reserved_bytes": torch.cuda.memory_reserved() if cuda else None,
                       "peak_allocated_bytes": torch.cuda.max_memory_allocated() if cuda else None,
                       "scope": "installation after model prepare; separate from the declared warm-model score"})
+        if cuda:
+            lifecycle_allocated_peak = max(lifecycle_allocated_peak, torch.cuda.max_memory_allocated())
+            lifecycle_reserved_peak = max(lifecycle_reserved_peak, torch.cuda.max_memory_reserved())
         bindings.append((bundle, binding))
     quality = request["quality"]
     reference_path = Path(parameters.get("reference_dir", context["output"])) / f"reference-rank-{context['rank']}.pt"
@@ -170,24 +177,32 @@ def worker_entry(context: dict) -> dict:
         torch.distributed.all_reduce(flag, op=torch.distributed.ReduceOp.MIN)
         return bool(flag.item())
 
-    def operation():
-        with ExitStack() as stack:
+    def operation(*, track=False):
+        try:
+            with ExitStack() as stack:
+                for _, binding in bindings:
+                    binding.tracking = track
+                    if binding._mode is not None:
+                        stack.enter_context(binding._mode)
+                return adapter.run(state)
+        finally:
             for _, binding in bindings:
-                if binding._mode is not None:
-                    stack.enter_context(binding._mode)
-            return adapter.run(state)
+                binding.tracking = False
 
-    def invoke():
+    def invoke(*, track=False):
+        nonlocal lifecycle_allocated_peak, lifecycle_reserved_peak
+        if cuda:
+            lifecycle_allocated_peak = max(lifecycle_allocated_peak, torch.cuda.max_memory_allocated())
+            lifecycle_reserved_peak = max(lifecycle_reserved_peak, torch.cuda.max_memory_reserved())
         if callable(getattr(adapter, "before_run", None)):
             adapter.before_run(state)
         elif distributed:
             torch.distributed.barrier()
         synchronize()
-        cuda = str(context["device"]).startswith("cuda")
         if cuda:
             torch.cuda.reset_peak_memory_stats()
         started = time.perf_counter_ns()
-        result = operation()
+        result = operation(track=track)
         synchronize()
         elapsed = (time.perf_counter_ns()-started)/1e6
         metrics = adapter.metrics(state, result, elapsed)
@@ -195,10 +210,14 @@ def worker_entry(context: dict) -> dict:
             raise ValueError("adapter metrics must be finite numeric values")
         metrics["framework.elapsed_ms"] = elapsed
         if cuda:
+            lifecycle_allocated_peak = max(lifecycle_allocated_peak, torch.cuda.max_memory_allocated())
+            lifecycle_reserved_peak = max(lifecycle_reserved_peak, torch.cuda.max_memory_reserved())
             metrics.update({"framework.peak_allocated_bytes": float(torch.cuda.max_memory_allocated()),
                             "framework.peak_reserved_bytes": float(torch.cuda.max_memory_reserved()),
                             "framework.allocated_bytes": float(torch.cuda.memory_allocated()),
-                            "framework.reserved_bytes": float(torch.cuda.memory_reserved())})
+                            "framework.reserved_bytes": float(torch.cuda.memory_reserved()),
+                            "framework.lifecycle_peak_allocated_bytes": float(lifecycle_allocated_peak),
+                            "framework.lifecycle_peak_reserved_bytes": float(lifecycle_reserved_peak)})
         return result, metrics
 
     def summarize(samples):
@@ -261,7 +280,7 @@ def worker_entry(context: dict) -> dict:
         adapter.reset(state)
         checks = []
         for index in range(request["continuous_steps"]):
-            result, _ = invoke()
+            result, _ = invoke(track=True)
             checks.append(compare(adapter.observe(state, result), reference[index], quality))
         coverage = {bundle["id"]: {"counts": dict(binding.counts), "fallbacks": dict(binding.fallbacks),
                                   "required": bundle["expected_calls"]} for bundle, binding in bindings}

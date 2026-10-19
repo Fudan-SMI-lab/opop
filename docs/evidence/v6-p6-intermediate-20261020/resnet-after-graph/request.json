@@ -1,0 +1,47 @@
+{
+  "schema_version": "project-request.v1",
+  "source_root": "/root/autodl-tmp/dev/opop-v6/examples/v6_validation",
+  "entry": "resnet_inference.py",
+  "files": [
+    "resnet_inference.py",
+    "common.py",
+    "workloads.json"
+  ],
+  "goal": "Minimize latency of the fixed single-image ResNet inference workload while preserving all logits and exact top-1.",
+  "objective": {
+    "name": "latency_ms",
+    "unit": "ms",
+    "direction": "minimize"
+  },
+  "workload": {
+    "id": "online",
+    "batch": 1,
+    "goals": [
+      {
+        "id": "latency",
+        "metric": "latency_ms",
+        "direction": "min"
+      }
+    ]
+  },
+  "quality": {
+    "atol": 0.0001,
+    "rtol": 0.0001,
+    "exact_top1": true
+  },
+  "assets": {
+    "assets": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18"
+  },
+  "devices": [
+    "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+  ],
+  "distributed_backend": null,
+  "warmup": 2,
+  "repeats": 5,
+  "continuous_steps": 2,
+  "worker_timeout_s": 600.0,
+  "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+  "notes": [
+    "Keep all source numerical policies, including FP32, TF32 disabled and the real preprocessed image fixtures."
+  ]
+}

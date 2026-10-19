@@ -4,6 +4,8 @@ Follow inputs/proposal.schema.json exactly. In particular, implementation is one
 
 Read target-resources.json for rank-local durations, phase breakdown and observed kernel launch configurations. Missing entries are unknown, not zero. Launch registers/shared memory are not measured occupancy, hardware traffic or independent causal effects. The full inventory is available in call-resources.json for contextual queries.
 
+Memory scope matters: warm-run peak_allocated counters can fall when allocation moves into CUDA Graph capture, while retained graph pools increase reserved memory. Report setup allocation and retained pools explicitly. framework.lifecycle_peak_allocated_bytes and framework.lifecycle_peak_reserved_bytes include preparation/installation and subsequent invocations, whereas framework.peak_allocated_bytes is reset for each run. None measures non-PyTorch driver allocation. Optimize the declared metric but do not describe a counter decrease as a general physical-memory saving.
+
 parameter_space follows inputs/parameter-space.schema.json and is evaluated by the existing TaskSearch/TPE loop against the complete project. Use {} for no tunable parameters. If defining parameters, read them from context['parameters']; declare legal choices and constraints without changing frozen task semantics. The selected parameter candidate is independently revalidated with paired project measurements before publication.
 
 candidate.py must export build(context) -> dict[call_id, callable]. Context contains:
@@ -20,7 +22,7 @@ For module targets, the callable has the original forward's args/kwargs, without
 
 One physical module may have separate observed call IDs for phases such as prefill/decode. The framework composes their replacements behind phase/signature guards. Build invariant packed weights once per physical module, sharing them between phase callables where appropriate. Do not install another module.forward wrapper yourself.
 
-The framework installs the whole mapping, counts actual candidate calls during quality/coverage checks, measures the entire project without profiling, and restores the parent on failure. You may transform invariant model parameters during build when valid for the task's warm-model lifecycle; document setup work and memory in proposal.json. Do not cache fixture-dependent outputs. Avoid ad hoc GPU tests; the framework uses the bound worker and returns detailed measured feedback.
+The framework installs the whole mapping, counts actual candidate calls during quality/coverage checks, measures the entire project without profiling, and restores the parent on failure. You may transform invariant model parameters during build when valid for the task's warm-model lifecycle; document setup work and memory in proposal.json. Do not cache fixture-dependent outputs. Do not launch ad hoc GPU tests from the agent shell: they bypass device leases and contaminate other experiments. Inspect installed source/API on CPU if needed; submit the candidate and use the framework's bound worker feedback for real GPU validation.
 
 Return replacements for a coherent set of selected sites. To optimize a whole execution policy, use a project.invoke target and explicitly report affected groups, state lifecycle and synchronization in proposal.json. If a proposal eliminates inner calls, list eliminated_calls and explain why their consumers remain valid; the framework will recapture the plan. Do not claim missing measurements or unknown transport capabilities as observed facts.
 

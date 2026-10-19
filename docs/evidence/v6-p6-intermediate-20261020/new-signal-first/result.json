@@ -1,0 +1,1523 @@
+{
+  "trial": "trial-67f5fbef40",
+  "selection": {
+    "scope": "region",
+    "groups": [
+      "a0b3a5b385a5fb9bf231",
+      "62871feaa99ea76b91e4",
+      "d2850e8cc6111fc95ac6",
+      "9441a545767f4ab8aebc",
+      "1a8f98ed15f87b07767f",
+      "72ada771d38d526d65e5",
+      "ae93b2b2bf41a25fd1e7",
+      "533e7354f46c4afb106b",
+      "52e658ed66e16ce39195",
+      "169a5de23f1662390f0d",
+      "3c264652220c728032dc",
+      "26e95c8466f4a219b076",
+      "c132471b4303f1253244"
+    ],
+    "rationale": "The frozen workload is one pipeline() call on (256, 4096) FP32 inputs, timed as CUDA-synced wall latency, on a single device with no communication (resources.json: communication not_applicable). Coverage is complete (15/15 CUDA kernels associated with the run phase, no unassociated or backward kernels), so the observed region is the entire cost. The pipeline executes 15 sequential small kernels (13 pipeline-phase groups: mul x3, add x3, sub x2, sin, cos, sigmoid, pow, rsqrt, mean x2), each only ~1-4 us diagnostic CUDA time on a 4 MB tensor. Nested diagnostic CUDA time is 53.054 us while the clean measured baseline latency is 0.1738 ms, so roughly two thirds of the project metric is kernel-launch/dispatch overhead and inter-kernel gaps rather than GPU compute; reducing the number of launched kernels directly moves the requested metric. The chain is also memory-bound and redundant: the elementwise sequence performs ~15 full-tensor read/write passes (~60+ MB of traffic for 4 MB tensors), and 'wave - mean' is computed twice (sub group ae93b2b2bf41a25fd1e7, invocations=2; calls.json count=2) \u2014 once for variance and once for normalized. All elementwise groups plus the two mean reductions form one contiguous, coherently editable region (the pipeline body in the adapter/source), and the fusion edits are interdependent (reusing the centered tensor and fusing the affine/trig epilogue only pay off as one rewrite), so they are proposed as a single region candidate rather than per-group edits. The project.invoke call 5d7d6bb13691b02f533f62b0 is additionally affected because its child execution and measured duration change, though it is not itself edited. The profiler record_function enter/exit calls (a60da373fdd5a4383277bf4e, ca1f233e0c891270f758ff58) are discovery instrumentation, not project source, and are unchanged by the proposal. No reordering across unknown dependencies is involved: the region is pure, single-stream, stateless functional code with data edges internal to the region, and semantics (FP32, TF32 off, exact pipeline math, all 1048576 outputs) are preserved.",
+    "hypothesis": "Rewriting the pipeline body as a fused implementation \u2014 computing centered = wave - mean once, fusing the affine -> sin+cos elementwise chain, and fusing the normalize/gating epilogue around the two dim=-1 mean reductions (e.g., via torch.compile/Inductor-generated kernels or an equivalent hand-fused formulation) \u2014 reduces kernel launches from 15 to roughly 4-5 and full-tensor memory passes from ~15 to ~5, eliminating one redundant 4 MB sub pass and most per-launch overhead. This is expected to lower CUDA-synced wall latency from the 0.1738 ms baseline toward ~0.08-0.12 ms while keeping every FP32 output element within atol=rtol=1e-5 (same math, same reduction dimension, TF32 disabled). This is a hypothesis to be tested by the framework's paired measurement and observe()-based correctness check, not an accepted benefit; the improvement threshold is 0.0 so any verified latency reduction with intact outputs qualifies.",
+    "affected_calls": [
+      "0c4d0f77f61fc3012589f584",
+      "15d7a082677b7f74957b61c2",
+      "1ebeaf0a974b8775828ca62a",
+      "229ffc74adff7b13c46b38d9",
+      "5d7d6bb13691b02f533f62b0",
+      "7da5b306586e791db2cd94d9",
+      "83300361802c324fb3f36903",
+      "9414a663c387c3873fa50ab6",
+      "9ac15b8ed66b8fbaeffea6e7",
+      "b704e0528af4b2617b2a4c56",
+      "cc1ef2b4880b6ab99b295d55",
+      "de4cbfc7ebae944933dbb6c5",
+      "eb0a8b606447011b614d5da8",
+      "f3efa704081caebbeb25d1fb"
+    ]
+  },
+  "proposal": {
+    "implementation": "kernel",
+    "replacement_calls": [
+      "5d7d6bb13691b02f533f62b0"
+    ],
+    "rationale": "Region rewrite of the entire pipeline body through the project.invoke call 5d7d6bb13691b02f533f62b0 (adapter.run), matching the selected region scope. Observed facts from the supplied artifacts: the frozen workload is exactly one pipeline() call on (256, 4096) FP32 CUDA tensors; the clean baseline latency is 0.173762 ms (inputs/project.json original_baseline) while nested diagnostic CUDA time for the same run phase is 53.054 us across 15 kernels (inputs/target-resources.json, call 5d7d6bb13691b02f533f62b0), so roughly two thirds of the measured latency is per-kernel launch/dispatch overhead and inter-kernel gaps rather than GPU math. The chain performs 15 kernel launches over 4 MB tensors (three muls, three adds, two subs, sin, cos, sigmoid, pow, rsqrt, two mean reductions; the mean.dim and sub.Tensor sites are each invoked twice per run), i.e. ~15 full-tensor memory passes, and 'wave - mean' is computed twice. Hypothesis (subject to the framework's paired measurement, not an accepted benefit): computing the whole body in ONE fused Triton kernel - one program per row that loads x/scale/bias, computes the affine, forms sin+cos, block-reduces the row mean, forms the centered row once, block-reduces the variance, and applies rsqrt(variance + 1e-5) plus the sigmoid-gate epilogue in registers - reduces launches from 15 to 1 and full-tensor passes to ~3 (read x, write output; scale/bias are 16 KB broadcast reads), which should move CUDA-synced wall latency well below the baseline while keeping every FP32 output element within the frozen atol=rtol=1e-5. The kernel uses the same libdevice sin/cos/sigmoid primitives and FP32 arithmetic as the ATen kernels; only reduction order differs (bounded by a few ULPs, see quality_risks). Robustness: the Triton path is gated at build time by a one-shot equivalence check against the verbatim reference math (boolean outcome only, nothing cached; the kernel still executes on every invocation); if Triton or the gate is unavailable, the candidate degrades to a CUDA-graph replay of the verbatim eager op sequence (bit-identical math to the parent, single replay launch instead of 15 dispatches), and failing that to a reduced-launch eager sequence (addcmul, fused var_mean, silu). Every replacement checks the observed signature properties per call (shape, dtype, device, contiguity, no-grad; the graph path additionally requires the exact captured input tensors) and otherwise falls back to the parent adapter.run, preserving the run/observe ABI and the 'output' result structure. eliminated_calls lists the 13 inner aten call sites: their only consumer is the pipeline body itself, which this replacement reproduces end-to-end; the sole external consumer (result['output'] -> observe()/metrics()) receives a freshly computed, correctly shaped FP32 tensor each invocation, so downstream behavior stays valid and the framework can recapture the plan. inputs/previous-feedback.txt does not exist, so there is no prior attempt feedback to incorporate.",
+    "setup_work": {
+      "one_time_build_cost": "Triton JIT compilation of exactly one kernel specialization (rows=256, WIDTH=4096, fp32, num_warps from parameter_space) plus one probe launch and one eager reference computation for the equivalence gate; results are discarded and nothing fixture-dependent is cached (typically a few seconds, CPU-bound). Fallback path only: side-stream warmup and CUDA-graph capture of the verbatim 15-op sequence.",
+      "persistent_gpu_memory": "Triton path: no persistent allocations; steady state allocates one fresh (256, 4096) FP32 output (~4.2 MB) per invocation, below the baseline's ~29.4 MB peak allocated intermediates. Graph fallback path: a graph-private pool holding the static intermediates plus the static output (~29 MB), plus a ~4.2 MB clone per invocation.",
+      "model_transformations": "None. The project has no nn.Module roots, no parameters, and no caches; the prepared input tensors are read-only and untouched."
+    },
+    "quality_risks": [
+      "Reduction-order deltas: the fused kernel's per-thread partial sums and block tree differ from ATen's mean/pow/mean two-pass reduction order, shifting mean/variance by a few ULPs (estimated ~1e-6 absolute on the final output), about 10x inside the frozen atol=rtol=1e-5.",
+      "FMA contraction: Triton/LLVM may contract x*scale + bias into a single-rounding FMA while the reference rounds the product first (<= 1 ULP of affine, <= ~4e-7 propagated through sin/cos), still well inside tolerance.",
+      "tl.sigmoid/tl.exp may lower to an exp2-based fast exponential (~2 ulp relative error), contributing at most a few 1e-6 absolute error at large |normalized|; margins remain >2x against the frozen thresholds.",
+      "Mitigation: a build-time allclose gate at atol=rtol=5e-6 (2x tighter than the frozen thresholds) runs the fused kernel and the verbatim reference math once on the prepared inputs; failure demotes the candidate to the bit-identical CUDA-graph path. The kernel is deterministic (no atomics, fixed reduction tree, same binary), so the gate outcome predicts the framework's check on the same device.",
+      "Graph fallback: replay writes a static buffer; each invocation returns static_out.clone(), preserving the reference's fresh-output alias semantics, and the path is identity-guarded to the exact captured input tensors with parent fallback otherwise.",
+      "Any signature mismatch (shape/stride/dtype/device/requires_grad) or runtime error on any path falls back to the parent adapter.run for that invocation, so external outputs and result structure are always preserved.",
+      "No autograd or state interactions: the workload is stateless inference on requires_grad=False inputs (project invariant), and no in-place rewrites touch parent-owned storage."
+    ],
+    "eliminated_calls": [
+      "0c4d0f77f61fc3012589f584",
+      "15d7a082677b7f74957b61c2",
+      "1ebeaf0a974b8775828ca62a",
+      "229ffc74adff7b13c46b38d9",
+      "7da5b306586e791db2cd94d9",
+      "83300361802c324fb3f36903",
+      "9414a663c387c3873fa50ab6",
+      "9ac15b8ed66b8fbaeffea6e7",
+      "b704e0528af4b2617b2a4c56",
+      "cc1ef2b4880b6ab99b295d55",
+      "de4cbfc7ebae944933dbb6c5",
+      "eb0a8b606447011b614d5da8",
+      "f3efa704081caebbeb25d1fb"
+    ],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {
+      "params": [
+        {
+          "name": "impl",
+          "kind": "str",
+          "choices": [
+            "triton",
+            "graph",
+            "eager"
+          ],
+          "description": "Execution path for the fused pipeline, selected at build time: 'triton' launches one fused Triton kernel per invocation; 'graph' replays the verbatim eager op sequence from a CUDA graph; 'eager' uses a reduced-launch eager op sequence. Unavailable or gate-failing choices degrade automatically (triton -> graph -> eager) without changing task semantics."
+        },
+        {
+          "name": "num_warps",
+          "kind": "int",
+          "choices": [
+            4,
+            8,
+            16
+          ],
+          "description": "Warps per program for the fused Triton kernel (only consumed when impl='triton'); changes the launch/reduction configuration only, never the math."
+        }
+      ],
+      "constraints": []
+    }
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea9a20b47ffe8pzuB3a7en5DqP",
+    "message": "msg_1565f722b001POfViqXqAvFlP4",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 12,
+      "reported_cost": 0.13563988,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 285575.0,
+        "input": 27239.0,
+        "output": 3086.0,
+        "reasoning": 4242.0,
+        "cache.read": 251008.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea9a20b47ffe8pzuB3a7en5DqP",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/p6-new-signal-a/sandboxes/selection-95b455eda259",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea9a07d95ffeQnZrVarJZqy5Zw",
+    "message": "msg_1566933b500120J0FslKnBVoCR",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 25,
+      "reported_cost": 0.64912592,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 1491706.0,
+        "input": 78056.0,
+        "output": 9094.0,
+        "reasoning": 32524.0,
+        "cache.read": 1372032.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea9a07d95ffeQnZrVarJZqy5Zw",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/p6-new-signal-a/sandboxes/candidate-2095c858b348",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0
+  },
+  "parameter_search": {
+    "engine": "existing TaskSearch + OptunaTPETuner",
+    "measurement_scope": "complete project",
+    "parameter_trials": 3,
+    "space": {
+      "params": [
+        {
+          "name": "impl",
+          "kind": "str",
+          "choices": [
+            "triton",
+            "graph",
+            "eager"
+          ],
+          "description": "Execution path for the fused pipeline, selected at build time: 'triton' launches one fused Triton kernel per invocation; 'graph' replays the verbatim eager op sequence from a CUDA graph; 'eager' uses a reduced-launch eager op sequence. Unavailable or gate-failing choices degrade automatically (triton -> graph -> eager) without changing task semantics."
+        },
+        {
+          "name": "num_warps",
+          "kind": "int",
+          "choices": [
+            4,
+            8,
+            16
+          ],
+          "description": "Warps per program for the fused Triton kernel (only consumed when impl='triton'); changes the launch/reduction configuration only, never the math."
+        }
+      ],
+      "constraints": []
+    },
+    "selected": "trial-67f5fbef40-param-e0d42e69",
+    "stats": [
+      {
+        "candidate_id": "cand-ff5c7ce1",
+        "space_id": "space-cand-ff5c7ce1",
+        "n_complete": 1,
+        "n_fail": 2,
+        "best": {
+          "trial_id": "tr-358d5c79",
+          "candidate_id": "cand-ff5c7ce1",
+          "space_id": "space-cand-ff5c7ce1",
+          "params": {
+            "values": {
+              "impl": "graph",
+              "num_warps": 16
+            }
+          },
+          "status": "complete",
+          "failure_kind": null,
+          "failure_detail": "",
+          "latency_ms": null,
+          "task_evaluation": {
+            "score": 0.079418,
+            "valid": true,
+            "metrics": {
+              "latency_ms": 0.079418,
+              "output_elements": 1048576.0,
+              "rows": 256.0,
+              "width": 4096.0,
+              "throughput_elements_per_ms": 13203253.670452543,
+              "throughput_elements_per_s": 13203253670.452541,
+              "framework.elapsed_ms": 0.079418,
+              "framework.peak_allocated_bytes": 16811008.0,
+              "framework.peak_reserved_bytes": 71303168.0,
+              "framework.allocated_bytes": 16811008.0,
+              "framework.reserved_bytes": 71303168.0
+            },
+            "detail": null
+          },
+          "profile": null,
+          "fp64_rescued_trials": null,
+          "job_wall_s": null,
+          "job_timed_out": null
+        },
+        "param_stats": [
+          {
+            "name": "impl",
+            "best_value": "graph",
+            "best_trial_value": "graph",
+            "at_boundary": false,
+            "boundary_direction": null,
+            "effect_pct": 0.0,
+            "latency_by_value": {},
+            "objective_by_value": {
+              "'graph'": 0.079418
+            },
+            "effect_absolute": 0.0,
+            "failure_rate_by_value": {
+              "'graph'": 0.0,
+              "'eager'": 1.0
+            }
+          },
+          {
+            "name": "num_warps",
+            "best_value": 16,
+            "best_trial_value": 16,
+            "at_boundary": false,
+            "boundary_direction": null,
+            "effect_pct": 0.0,
+            "latency_by_value": {},
+            "objective_by_value": {
+              "16": 0.079418
+            },
+            "effect_absolute": 0.0,
+            "failure_rate_by_value": {
+              "4": 1.0,
+              "8": 1.0,
+              "16": 0.0
+            }
+          }
+        ],
+        "resource_at_best": null,
+        "failure_clusters": []
+      }
+    ],
+    "responses": [
+      {
+        "candidate_id": "trial-67f5fbef40",
+        "axis": "num_warps",
+        "a_params": {
+          "values": {
+            "impl": "eager",
+            "num_warps": 8
+          }
+        },
+        "b_params": {
+          "values": {
+            "impl": "eager",
+            "num_warps": 4
+          }
+        },
+        "a": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "b": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "delta_j": null,
+        "gain": null,
+        "parameter_slope": null,
+        "resource_deltas": {},
+        "resource_slopes": {},
+        "unknown_resources": [],
+        "resource_status": "unknown",
+        "reason": "invalid_endpoint"
+      }
+    ],
+    "observations": [
+      {
+        "bundle": {
+          "schema_version": "project.v2",
+          "id": "trial-67f5fbef40-param-e0d42e69",
+          "parent_revision": "89785f39a991431e9500ade6eb312909cc32e9c077eb226352657f4599bdb61d",
+          "contract_ref": "sha256:a264ddb79f77e6d7aa0e6e5bbaa47e713a72024bbc81cb9395159a44f0acf298",
+          "scope": "region",
+          "implementation": "kernel",
+          "groups": [
+            "a0b3a5b385a5fb9bf231",
+            "62871feaa99ea76b91e4",
+            "d2850e8cc6111fc95ac6",
+            "9441a545767f4ab8aebc",
+            "1a8f98ed15f87b07767f",
+            "72ada771d38d526d65e5",
+            "ae93b2b2bf41a25fd1e7",
+            "533e7354f46c4afb106b",
+            "52e658ed66e16ce39195",
+            "169a5de23f1662390f0d",
+            "3c264652220c728032dc",
+            "26e95c8466f4a219b076",
+            "c132471b4303f1253244"
+          ],
+          "calls": [
+            "5d7d6bb13691b02f533f62b0"
+          ],
+          "affected_calls": [
+            "0c4d0f77f61fc3012589f584",
+            "15d7a082677b7f74957b61c2",
+            "1ebeaf0a974b8775828ca62a",
+            "229ffc74adff7b13c46b38d9",
+            "5d7d6bb13691b02f533f62b0",
+            "7da5b306586e791db2cd94d9",
+            "83300361802c324fb3f36903",
+            "9414a663c387c3873fa50ab6",
+            "9ac15b8ed66b8fbaeffea6e7",
+            "b704e0528af4b2617b2a4c56",
+            "cc1ef2b4880b6ab99b295d55",
+            "de4cbfc7ebae944933dbb6c5",
+            "eb0a8b606447011b614d5da8",
+            "f3efa704081caebbeb25d1fb"
+          ],
+          "edits": [
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-67f5fbef40.py",
+              "before_sha256": null,
+              "content_ref": "sha256:9108e1d7d27a8e5152e14073f8ba26c6d58900fa9debfd026c6b2da6f13bdec7"
+            },
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-67f5fbef40.targets.json",
+              "before_sha256": null,
+              "content_ref": "sha256:8674a7076d4d3920d932af38431b038ead3d5464b3dca7d22043c98a93eee4b2"
+            }
+          ],
+          "read_set": [
+            "call:0c4d0f77f61fc3012589f584",
+            "call:15d7a082677b7f74957b61c2",
+            "call:1ebeaf0a974b8775828ca62a",
+            "call:229ffc74adff7b13c46b38d9",
+            "call:5d7d6bb13691b02f533f62b0",
+            "call:7da5b306586e791db2cd94d9",
+            "call:83300361802c324fb3f36903",
+            "call:9414a663c387c3873fa50ab6",
+            "call:9ac15b8ed66b8fbaeffea6e7",
+            "call:b704e0528af4b2617b2a4c56",
+            "call:cc1ef2b4880b6ab99b295d55",
+            "call:de4cbfc7ebae944933dbb6c5",
+            "call:eb0a8b606447011b614d5da8",
+            "call:f3efa704081caebbeb25d1fb"
+          ],
+          "write_set": [
+            "file:opop_candidates/trial-67f5fbef40.py",
+            "file:opop_candidates/trial-67f5fbef40.targets.json",
+            "call:5d7d6bb13691b02f533f62b0"
+          ],
+          "requires": [],
+          "replaces": [],
+          "external_invariants": [
+            "Workload is exactly one pipeline() invocation on the fixed inputs (rows=256, width=4096, seed=91273); the work amount must not change.",
+            "All computation in FP32 with torch.backends.cuda.matmul.allow_tf32 = False, matching the source policy.",
+            "Input construction uses a single torch.Generator on the bound device seeded with the workload seed, drawing x = randn(rows, width), scale = randn(width)*0.1+1, bias = randn(width)*0.05 in that order, so tensors are bit-identical to the source's.",
+            "pipeline semantics preserved exactly: affine = x*scale+bias; wave = sin(affine)+cos(affine); mean/variance over dim=-1 with keepdim; normalized = (wave-mean)*rsqrt(variance+1e-5); output = normalized*sigmoid(normalized).",
+            "Every output element (256*4096 = 1048576 FP32 values) is part of correctness and must be returned by observe() as a detached tensor.",
+            "Timing boundaries are CUDA-synchronized wall time surrounding run(), matching the source's perf_counter_ns + synchronize pattern; no internal profiler or partial-phase timing is substituted.",
+            "Pure functional project: no nn.Module, no optimizer, no gradients, no caches; models() returns an empty mapping and reset() performs no state restoration.",
+            "Tensors live on context['device'] (the worker-bound device), never a hard-coded physical GPU; no default process group is initialized (single-device request, distributed_backend is null).",
+            "No downloads, no external assets; the empty assets field is expected because the source explicitly declares the seeded synthetic tensors as the task data."
+          ],
+          "plan_ref": null,
+          "registry_ref": null,
+          "installer": "opop_candidates/trial-67f5fbef40.py",
+          "parameters": {
+            "impl": "graph",
+            "num_warps": 16
+          }
+        },
+        "revision": "46bf60e85695ec7ec3e195686ee939ed341cf4e50157fff63e564cc8014d6194",
+        "result": {
+          "score": 0.079418,
+          "valid": true,
+          "metrics": {
+            "latency_ms": 0.079418,
+            "output_elements": 1048576.0,
+            "rows": 256.0,
+            "width": 4096.0,
+            "throughput_elements_per_ms": 13203253.670452543,
+            "throughput_elements_per_s": 13203253670.452541,
+            "framework.elapsed_ms": 0.079418,
+            "framework.peak_allocated_bytes": 16811008.0,
+            "framework.peak_reserved_bytes": 71303168.0,
+            "framework.allocated_bytes": 16811008.0,
+            "framework.reserved_bytes": 71303168.0
+          },
+          "detail": null
+        },
+        "constraints": [],
+        "run": {
+          "schema_version": 1,
+          "status": "passed",
+          "failure": null,
+          "wall_s": 4.611306179314852,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 120202,
+              "exit_code": 0,
+              "status": "passed",
+              "binding": {
+                "pid": 120202,
+                "status": "verified",
+                "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                ],
+                "pid_query_status": "observed"
+              },
+              "result": {
+                "valid": true,
+                "checks": [
+                  {
+                    "passed": true,
+                    "compared_elements": 1048576,
+                    "max_abs_error": 0.0
+                  },
+                  {
+                    "passed": true,
+                    "compared_elements": 1048576,
+                    "max_abs_error": 0.0
+                  }
+                ],
+                "coverage": {
+                  "trial-67f5fbef40-param-e0d42e69": {
+                    "counts": {
+                      "5d7d6bb13691b02f533f62b0": 2
+                    },
+                    "fallbacks": {},
+                    "required": [
+                      "5d7d6bb13691b02f533f62b0"
+                    ]
+                  }
+                },
+                "math_policy_unchanged": true,
+                "setup": [
+                  {
+                    "bundle": "trial-67f5fbef40-param-e0d42e69",
+                    "elapsed_ms": 408.94157,
+                    "allocated_bytes": 8422400,
+                    "reserved_bytes": 71303168,
+                    "peak_allocated_bytes": 29395968,
+                    "scope": "installation after model prepare; separate from the declared warm-model score"
+                  }
+                ],
+                "samples": [
+                  {
+                    "latency_ms": 0.081283,
+                    "output_elements": 1048576,
+                    "rows": 256,
+                    "width": 4096,
+                    "throughput_elements_per_ms": 12900311.258196672,
+                    "throughput_elements_per_s": 12900311258.196672,
+                    "framework.elapsed_ms": 0.081283,
+                    "framework.peak_allocated_bytes": 16811008.0,
+                    "framework.peak_reserved_bytes": 71303168.0,
+                    "framework.allocated_bytes": 16811008.0,
+                    "framework.reserved_bytes": 71303168.0
+                  },
+                  {
+                    "latency_ms": 0.080852,
+                    "output_elements": 1048576,
+                    "rows": 256,
+                    "width": 4096,
+                    "throughput_elements_per_ms": 12969079.305397518,
+                    "throughput_elements_per_s": 12969079305.397518,
+                    "framework.elapsed_ms": 0.080852,
+                    "framework.peak_allocated_bytes": 16811008.0,
+                    "framework.peak_reserved_bytes": 71303168.0,
+                    "framework.allocated_bytes": 16811008.0,
+                    "framework.reserved_bytes": 71303168.0
+                  },
+                  {
+                    "latency_ms": 0.079418,
+                    "output_elements": 1048576,
+                    "rows": 256,
+                    "width": 4096,
+                    "throughput_elements_per_ms": 13203253.670452543,
+                    "throughput_elements_per_s": 13203253670.452541,
+                    "framework.elapsed_ms": 0.079418,
+                    "framework.peak_allocated_bytes": 16811008.0,
+                    "framework.peak_reserved_bytes": 71303168.0,
+                    "framework.allocated_bytes": 16811008.0,
+                    "framework.reserved_bytes": 71303168.0
+                  },
+                  {
+                    "latency_ms": 0.077251,
+                    "output_elements": 1048576,
+                    "rows": 256,
+                    "width": 4096,
+                    "throughput_elements_per_ms": 13573623.642412396,
+                    "throughput_elements_per_s": 13573623642.412395,
+                    "framework.elapsed_ms": 0.077251,
+                    "framework.peak_allocated_bytes": 16811008.0,
+                    "framework.peak_reserved_bytes": 71303168.0,
+                    "framework.allocated_bytes": 16811008.0,
+                    "framework.reserved_bytes": 71303168.0
+                  },
+                  {
+                    "latency_ms": 0.077708,
+                    "output_elements": 1048576,
+                    "rows": 256,
+                    "width": 4096,
+                    "throughput_elements_per_ms": 13493797.292428063,
+                    "throughput_elements_per_s": 13493797292.428064,
+                    "framework.elapsed_ms": 0.077708,
+                    "framework.peak_allocated_bytes": 16811008.0,
+                    "framework.peak_reserved_bytes": 71303168.0,
+                    "framework.allocated_bytes": 16811008.0,
+                    "framework.reserved_bytes": 71303168.0
+                  }
+                ],
+                "metrics": {
+                  "latency_ms": 0.079418,
+                  "output_elements": 1048576,
+                  "rows": 256,
+                  "width": 4096,
+                  "throughput_elements_per_ms": 13203253.670452543,
+                  "throughput_elements_per_s": 13203253670.452541,
+                  "framework.elapsed_ms": 0.079418,
+                  "framework.peak_allocated_bytes": 16811008.0,
+                  "framework.peak_reserved_bytes": 71303168.0,
+                  "framework.allocated_bytes": 16811008.0,
+                  "framework.reserved_bytes": 71303168.0
+                },
+                "metric_samples": {},
+                "diagnostics": {},
+                "bundle_hashes": {
+                  "trial-67f5fbef40-param-e0d42e69": "24e9dd46d19cbfea73b54f71a85b07b2e1d2e70bbfe5b0c6884ca22cb4fdd875"
+                }
+              }
+            }
+          ],
+          "lease_wait_s": 0.00012795254588127136,
+          "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+          "devices": [
+            "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+          ],
+          "worker_pids_reaped": true
+        }
+      },
+      {
+        "bundle": {
+          "schema_version": "project.v2",
+          "id": "trial-67f5fbef40-param-3fe5df03",
+          "parent_revision": "89785f39a991431e9500ade6eb312909cc32e9c077eb226352657f4599bdb61d",
+          "contract_ref": "sha256:a264ddb79f77e6d7aa0e6e5bbaa47e713a72024bbc81cb9395159a44f0acf298",
+          "scope": "region",
+          "implementation": "kernel",
+          "groups": [
+            "a0b3a5b385a5fb9bf231",
+            "62871feaa99ea76b91e4",
+            "d2850e8cc6111fc95ac6",
+            "9441a545767f4ab8aebc",
+            "1a8f98ed15f87b07767f",
+            "72ada771d38d526d65e5",
+            "ae93b2b2bf41a25fd1e7",
+            "533e7354f46c4afb106b",
+            "52e658ed66e16ce39195",
+            "169a5de23f1662390f0d",
+            "3c264652220c728032dc",
+            "26e95c8466f4a219b076",
+            "c132471b4303f1253244"
+          ],
+          "calls": [
+            "5d7d6bb13691b02f533f62b0"
+          ],
+          "affected_calls": [
+            "0c4d0f77f61fc3012589f584",
+            "15d7a082677b7f74957b61c2",
+            "1ebeaf0a974b8775828ca62a",
+            "229ffc74adff7b13c46b38d9",
+            "5d7d6bb13691b02f533f62b0",
+            "7da5b306586e791db2cd94d9",
+            "83300361802c324fb3f36903",
+            "9414a663c387c3873fa50ab6",
+            "9ac15b8ed66b8fbaeffea6e7",
+            "b704e0528af4b2617b2a4c56",
+            "cc1ef2b4880b6ab99b295d55",
+            "de4cbfc7ebae944933dbb6c5",
+            "eb0a8b606447011b614d5da8",
+            "f3efa704081caebbeb25d1fb"
+          ],
+          "edits": [
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-67f5fbef40.py",
+              "before_sha256": null,
+              "content_ref": "sha256:9108e1d7d27a8e5152e14073f8ba26c6d58900fa9debfd026c6b2da6f13bdec7"
+            },
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-67f5fbef40.targets.json",
+              "before_sha256": null,
+              "content_ref": "sha256:8674a7076d4d3920d932af38431b038ead3d5464b3dca7d22043c98a93eee4b2"
+            }
+          ],
+          "read_set": [
+            "call:0c4d0f77f61fc3012589f584",
+            "call:15d7a082677b7f74957b61c2",
+            "call:1ebeaf0a974b8775828ca62a",
+            "call:229ffc74adff7b13c46b38d9",
+            "call:5d7d6bb13691b02f533f62b0",
+            "call:7da5b306586e791db2cd94d9",
+            "call:83300361802c324fb3f36903",
+            "call:9414a663c387c3873fa50ab6",
+            "call:9ac15b8ed66b8fbaeffea6e7",
+            "call:b704e0528af4b2617b2a4c56",
+            "call:cc1ef2b4880b6ab99b295d55",
+            "call:de4cbfc7ebae944933dbb6c5",
+            "call:eb0a8b606447011b614d5da8",
+            "call:f3efa704081caebbeb25d1fb"
+          ],
+          "write_set": [
+            "file:opop_candidates/trial-67f5fbef40.py",
+            "file:opop_candidates/trial-67f5fbef40.targets.json",
+            "call:5d7d6bb13691b02f533f62b0"
+          ],
+          "requires": [],
+          "replaces": [],
+          "external_invariants": [
+            "Workload is exactly one pipeline() invocation on the fixed inputs (rows=256, width=4096, seed=91273); the work amount must not change.",
+            "All computation in FP32 with torch.backends.cuda.matmul.allow_tf32 = False, matching the source policy.",
+            "Input construction uses a single torch.Generator on the bound device seeded with the workload seed, drawing x = randn(rows, width), scale = randn(width)*0.1+1, bias = randn(width)*0.05 in that order, so tensors are bit-identical to the source's.",
+            "pipeline semantics preserved exactly: affine = x*scale+bias; wave = sin(affine)+cos(affine); mean/variance over dim=-1 with keepdim; normalized = (wave-mean)*rsqrt(variance+1e-5); output = normalized*sigmoid(normalized).",
+            "Every output element (256*4096 = 1048576 FP32 values) is part of correctness and must be returned by observe() as a detached tensor.",
+            "Timing boundaries are CUDA-synchronized wall time surrounding run(), matching the source's perf_counter_ns + synchronize pattern; no internal profiler or partial-phase timing is substituted.",
+            "Pure functional project: no nn.Module, no optimizer, no gradients, no caches; models() returns an empty mapping and reset() performs no state restoration.",
+            "Tensors live on context['device'] (the worker-bound device), never a hard-coded physical GPU; no default process group is initialized (single-device request, distributed_backend is null).",
+            "No downloads, no external assets; the empty assets field is expected because the source explicitly declares the seeded synthetic tensors as the task data."
+          ],
+          "plan_ref": null,
+          "registry_ref": null,
+          "installer": "opop_candidates/trial-67f5fbef40.py",
+          "parameters": {
+            "impl": "eager",
+            "num_warps": 8
+          }
+        },
+        "revision": "3827b75cbcc7a6e39c4672b828523e938823fad546c8f503030c275391cd2086",
+        "result": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "constraints": [],
+        "run": {
+          "schema_version": 1,
+          "status": "passed",
+          "failure": null,
+          "wall_s": 4.408918250352144,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 120508,
+              "exit_code": 0,
+              "status": "passed",
+              "binding": {
+                "pid": 120508,
+                "status": "verified",
+                "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                ],
+                "pid_query_status": "observed"
+              },
+              "result": {
+                "valid": false,
+                "checks": [
+                  {
+                    "passed": false,
+                    "compared_elements": 1048576,
+                    "max_abs_error": 0.05610130727291107,
+                    "error": "Tensor-likes are not close!\n\nMismatched elements: 1047027 / 1048576 (99.9%)\nGreatest absolute difference: 0.05610130727291107 at index (16, 2064) (up to 1e-05 allowed)\nGreatest relative difference: 10742.7958984375 at index (241, 2848) (up to 1e-05 allowed)"
+                  },
+                  {
+                    "passed": false,
+                    "compared_elements": 1048576,
+                    "max_abs_error": 0.05610130727291107,
+                    "error": "Tensor-likes are not close!\n\nMismatched elements: 1047027 / 1048576 (99.9%)\nGreatest absolute difference: 0.05610130727291107 at index (16, 2064) (up to 1e-05 allowed)\nGreatest relative difference: 10742.7958984375 at index (241, 2848) (up to 1e-05 allowed)"
+                  }
+                ],
+                "coverage": {
+                  "trial-67f5fbef40-param-3fe5df03": {
+                    "counts": {
+                      "5d7d6bb13691b02f533f62b0": 2
+                    },
+                    "fallbacks": {},
+                    "required": [
+                      "5d7d6bb13691b02f533f62b0"
+                    ]
+                  }
+                },
+                "math_policy_unchanged": true,
+                "setup": [
+                  {
+                    "bundle": "trial-67f5fbef40-param-3fe5df03",
+                    "elapsed_ms": 181.777,
+                    "allocated_bytes": 4227072,
+                    "reserved_bytes": 23068672,
+                    "peak_allocated_bytes": 4227072,
+                    "scope": "installation after model prepare; separate from the declared warm-model score"
+                  }
+                ],
+                "samples": [],
+                "metrics": {},
+                "bundle_hashes": {
+                  "trial-67f5fbef40-param-3fe5df03": "1f8dec2eee270d46a96ffbd32e60ea8380bf334321391f87b748398dbc41e43b"
+                }
+              }
+            }
+          ],
+          "lease_wait_s": 0.0001073293387889862,
+          "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+          "devices": [
+            "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+          ],
+          "worker_pids_reaped": true
+        }
+      },
+      {
+        "bundle": {
+          "schema_version": "project.v2",
+          "id": "trial-67f5fbef40-param-59f757b0",
+          "parent_revision": "89785f39a991431e9500ade6eb312909cc32e9c077eb226352657f4599bdb61d",
+          "contract_ref": "sha256:a264ddb79f77e6d7aa0e6e5bbaa47e713a72024bbc81cb9395159a44f0acf298",
+          "scope": "region",
+          "implementation": "kernel",
+          "groups": [
+            "a0b3a5b385a5fb9bf231",
+            "62871feaa99ea76b91e4",
+            "d2850e8cc6111fc95ac6",
+            "9441a545767f4ab8aebc",
+            "1a8f98ed15f87b07767f",
+            "72ada771d38d526d65e5",
+            "ae93b2b2bf41a25fd1e7",
+            "533e7354f46c4afb106b",
+            "52e658ed66e16ce39195",
+            "169a5de23f1662390f0d",
+            "3c264652220c728032dc",
+            "26e95c8466f4a219b076",
+            "c132471b4303f1253244"
+          ],
+          "calls": [
+            "5d7d6bb13691b02f533f62b0"
+          ],
+          "affected_calls": [
+            "0c4d0f77f61fc3012589f584",
+            "15d7a082677b7f74957b61c2",
+            "1ebeaf0a974b8775828ca62a",
+            "229ffc74adff7b13c46b38d9",
+            "5d7d6bb13691b02f533f62b0",
+            "7da5b306586e791db2cd94d9",
+            "83300361802c324fb3f36903",
+            "9414a663c387c3873fa50ab6",
+            "9ac15b8ed66b8fbaeffea6e7",
+            "b704e0528af4b2617b2a4c56",
+            "cc1ef2b4880b6ab99b295d55",
+            "de4cbfc7ebae944933dbb6c5",
+            "eb0a8b606447011b614d5da8",
+            "f3efa704081caebbeb25d1fb"
+          ],
+          "edits": [
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-67f5fbef40.py",
+              "before_sha256": null,
+              "content_ref": "sha256:9108e1d7d27a8e5152e14073f8ba26c6d58900fa9debfd026c6b2da6f13bdec7"
+            },
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-67f5fbef40.targets.json",
+              "before_sha256": null,
+              "content_ref": "sha256:8674a7076d4d3920d932af38431b038ead3d5464b3dca7d22043c98a93eee4b2"
+            }
+          ],
+          "read_set": [
+            "call:0c4d0f77f61fc3012589f584",
+            "call:15d7a082677b7f74957b61c2",
+            "call:1ebeaf0a974b8775828ca62a",
+            "call:229ffc74adff7b13c46b38d9",
+            "call:5d7d6bb13691b02f533f62b0",
+            "call:7da5b306586e791db2cd94d9",
+            "call:83300361802c324fb3f36903",
+            "call:9414a663c387c3873fa50ab6",
+            "call:9ac15b8ed66b8fbaeffea6e7",
+            "call:b704e0528af4b2617b2a4c56",
+            "call:cc1ef2b4880b6ab99b295d55",
+            "call:de4cbfc7ebae944933dbb6c5",
+            "call:eb0a8b606447011b614d5da8",
+            "call:f3efa704081caebbeb25d1fb"
+          ],
+          "write_set": [
+            "file:opop_candidates/trial-67f5fbef40.py",
+            "file:opop_candidates/trial-67f5fbef40.targets.json",
+            "call:5d7d6bb13691b02f533f62b0"
+          ],
+          "requires": [],
+          "replaces": [],
+          "external_invariants": [
+            "Workload is exactly one pipeline() invocation on the fixed inputs (rows=256, width=4096, seed=91273); the work amount must not change.",
+            "All computation in FP32 with torch.backends.cuda.matmul.allow_tf32 = False, matching the source policy.",
+            "Input construction uses a single torch.Generator on the bound device seeded with the workload seed, drawing x = randn(rows, width), scale = randn(width)*0.1+1, bias = randn(width)*0.05 in that order, so tensors are bit-identical to the source's.",
+            "pipeline semantics preserved exactly: affine = x*scale+bias; wave = sin(affine)+cos(affine); mean/variance over dim=-1 with keepdim; normalized = (wave-mean)*rsqrt(variance+1e-5); output = normalized*sigmoid(normalized).",
+            "Every output element (256*4096 = 1048576 FP32 values) is part of correctness and must be returned by observe() as a detached tensor.",
+            "Timing boundaries are CUDA-synchronized wall time surrounding run(), matching the source's perf_counter_ns + synchronize pattern; no internal profiler or partial-phase timing is substituted.",
+            "Pure functional project: no nn.Module, no optimizer, no gradients, no caches; models() returns an empty mapping and reset() performs no state restoration.",
+            "Tensors live on context['device'] (the worker-bound device), never a hard-coded physical GPU; no default process group is initialized (single-device request, distributed_backend is null).",
+            "No downloads, no external assets; the empty assets field is expected because the source explicitly declares the seeded synthetic tensors as the task data."
+          ],
+          "plan_ref": null,
+          "registry_ref": null,
+          "installer": "opop_candidates/trial-67f5fbef40.py",
+          "parameters": {
+            "impl": "eager",
+            "num_warps": 4
+          }
+        },
+        "revision": "58430ac9f7524e5db285ce015a37bae96849bf507084d4994b157b773127d46f",
+        "result": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "constraints": [],
+        "run": {
+          "schema_version": 1,
+          "status": "failed",
+          "failure": "rank_failed",
+          "wall_s": 4.312375511974096,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 120860,
+              "exit_code": 1,
+              "status": "failed",
+              "binding": {
+                "pid": 120860,
+                "status": "verified",
+                "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "interference_detected",
+                  "samples": 7,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.09836635738611221,
+                  "external_clients": [
+                    {
+                      "pid": 120718,
+                      "uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                    },
+                    {
+                      "pid": 120718,
+                      "uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                    },
+                    {
+                      "pid": 120718,
+                      "uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                    },
+                    {
+                      "pid": 120718,
+                      "uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                    },
+                    {
+                      "pid": 120718,
+                      "uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                    },
+                    {
+                      "pid": 120718,
+                      "uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                    }
+                  ],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "error_type": "RuntimeError",
+              "error": "unrelated CUDA processes overlapped this worker; measurement discarded",
+              "traceback": "Traceback (most recent call last):\n  File \"/root/autodl-tmp/dev/opop-v6/src/kernel_optimizer/runtime/worker.py\", line 78, in main\n    raise RuntimeError(\"unrelated CUDA processes overlapped this worker; measurement discarded\")\nRuntimeError: unrelated CUDA processes overlapped this worker; measurement discarded\n"
+            }
+          ],
+          "lease_wait_s": 9.990483522415161e-05,
+          "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+          "devices": [
+            "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+          ],
+          "worker_pids_reaped": true
+        }
+      }
+    ]
+  },
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-67f5fbef40-param-e0d42e69",
+    "parent_revision": "89785f39a991431e9500ade6eb312909cc32e9c077eb226352657f4599bdb61d",
+    "contract_ref": "sha256:a264ddb79f77e6d7aa0e6e5bbaa47e713a72024bbc81cb9395159a44f0acf298",
+    "scope": "region",
+    "implementation": "kernel",
+    "groups": [
+      "a0b3a5b385a5fb9bf231",
+      "62871feaa99ea76b91e4",
+      "d2850e8cc6111fc95ac6",
+      "9441a545767f4ab8aebc",
+      "1a8f98ed15f87b07767f",
+      "72ada771d38d526d65e5",
+      "ae93b2b2bf41a25fd1e7",
+      "533e7354f46c4afb106b",
+      "52e658ed66e16ce39195",
+      "169a5de23f1662390f0d",
+      "3c264652220c728032dc",
+      "26e95c8466f4a219b076",
+      "c132471b4303f1253244"
+    ],
+    "calls": [
+      "5d7d6bb13691b02f533f62b0"
+    ],
+    "affected_calls": [
+      "0c4d0f77f61fc3012589f584",
+      "15d7a082677b7f74957b61c2",
+      "1ebeaf0a974b8775828ca62a",
+      "229ffc74adff7b13c46b38d9",
+      "5d7d6bb13691b02f533f62b0",
+      "7da5b306586e791db2cd94d9",
+      "83300361802c324fb3f36903",
+      "9414a663c387c3873fa50ab6",
+      "9ac15b8ed66b8fbaeffea6e7",
+      "b704e0528af4b2617b2a4c56",
+      "cc1ef2b4880b6ab99b295d55",
+      "de4cbfc7ebae944933dbb6c5",
+      "eb0a8b606447011b614d5da8",
+      "f3efa704081caebbeb25d1fb"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-67f5fbef40.py",
+        "before_sha256": null,
+        "content_ref": "sha256:9108e1d7d27a8e5152e14073f8ba26c6d58900fa9debfd026c6b2da6f13bdec7"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-67f5fbef40.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:8674a7076d4d3920d932af38431b038ead3d5464b3dca7d22043c98a93eee4b2"
+      }
+    ],
+    "read_set": [
+      "call:0c4d0f77f61fc3012589f584",
+      "call:15d7a082677b7f74957b61c2",
+      "call:1ebeaf0a974b8775828ca62a",
+      "call:229ffc74adff7b13c46b38d9",
+      "call:5d7d6bb13691b02f533f62b0",
+      "call:7da5b306586e791db2cd94d9",
+      "call:83300361802c324fb3f36903",
+      "call:9414a663c387c3873fa50ab6",
+      "call:9ac15b8ed66b8fbaeffea6e7",
+      "call:b704e0528af4b2617b2a4c56",
+      "call:cc1ef2b4880b6ab99b295d55",
+      "call:de4cbfc7ebae944933dbb6c5",
+      "call:eb0a8b606447011b614d5da8",
+      "call:f3efa704081caebbeb25d1fb"
+    ],
+    "write_set": [
+      "file:opop_candidates/trial-67f5fbef40.py",
+      "file:opop_candidates/trial-67f5fbef40.targets.json",
+      "call:5d7d6bb13691b02f533f62b0"
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Workload is exactly one pipeline() invocation on the fixed inputs (rows=256, width=4096, seed=91273); the work amount must not change.",
+      "All computation in FP32 with torch.backends.cuda.matmul.allow_tf32 = False, matching the source policy.",
+      "Input construction uses a single torch.Generator on the bound device seeded with the workload seed, drawing x = randn(rows, width), scale = randn(width)*0.1+1, bias = randn(width)*0.05 in that order, so tensors are bit-identical to the source's.",
+      "pipeline semantics preserved exactly: affine = x*scale+bias; wave = sin(affine)+cos(affine); mean/variance over dim=-1 with keepdim; normalized = (wave-mean)*rsqrt(variance+1e-5); output = normalized*sigmoid(normalized).",
+      "Every output element (256*4096 = 1048576 FP32 values) is part of correctness and must be returned by observe() as a detached tensor.",
+      "Timing boundaries are CUDA-synchronized wall time surrounding run(), matching the source's perf_counter_ns + synchronize pattern; no internal profiler or partial-phase timing is substituted.",
+      "Pure functional project: no nn.Module, no optimizer, no gradients, no caches; models() returns an empty mapping and reset() performs no state restoration.",
+      "Tensors live on context['device'] (the worker-bound device), never a hard-coded physical GPU; no default process group is initialized (single-device request, distributed_backend is null).",
+      "No downloads, no external assets; the empty assets field is expected because the source explicitly declares the seeded synthetic tensors as the task data."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-67f5fbef40.py",
+    "parameters": {
+      "impl": "graph",
+      "num_warps": 16
+    }
+  },
+  "publication": "rejected",
+  "baseline": {
+    "schema_version": 1,
+    "status": "passed",
+    "failure": null,
+    "wall_s": 4.163224097341299,
+    "ranks": [
+      {
+        "rank": 0,
+        "pid": 121189,
+        "exit_code": 0,
+        "status": "passed",
+        "binding": {
+          "pid": 121189,
+          "status": "verified",
+          "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+          "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+          "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+          "logical_device": 0,
+          "nvidia_smi_pid_uuids": [
+            "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+          ],
+          "pid_query_status": "observed",
+          "occupancy": {
+            "status": "sampled_clear",
+            "samples": 6,
+            "unavailable_samples": 0,
+            "wait_s": 0.09047602117061615,
+            "external_clients": [],
+            "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+          }
+        },
+        "result": {
+          "valid": true,
+          "checks": [
+            {
+              "passed": true,
+              "compared_elements": 1048576,
+              "max_abs_error": 0.0
+            },
+            {
+              "passed": true,
+              "compared_elements": 1048576,
+              "max_abs_error": 0.0
+            }
+          ],
+          "coverage": {},
+          "math_policy_unchanged": true,
+          "setup": [],
+          "samples": [
+            {
+              "latency_ms": 0.169604,
+              "output_elements": 1048576,
+              "rows": 256,
+              "width": 4096,
+              "throughput_elements_per_ms": 6182495.695856229,
+              "throughput_elements_per_s": 6182495695.85623,
+              "framework.elapsed_ms": 0.169604,
+              "framework.peak_allocated_bytes": 29394944.0,
+              "framework.peak_reserved_bytes": 44040192.0,
+              "framework.allocated_bytes": 12615680.0,
+              "framework.reserved_bytes": 44040192.0
+            },
+            {
+              "latency_ms": 0.169666,
+              "output_elements": 1048576,
+              "rows": 256,
+              "width": 4096,
+              "throughput_elements_per_ms": 6180236.464583358,
+              "throughput_elements_per_s": 6180236464.583358,
+              "framework.elapsed_ms": 0.169666,
+              "framework.peak_allocated_bytes": 29394944.0,
+              "framework.peak_reserved_bytes": 44040192.0,
+              "framework.allocated_bytes": 12615680.0,
+              "framework.reserved_bytes": 44040192.0
+            },
+            {
+              "latency_ms": 0.159495,
+              "output_elements": 1048576,
+              "rows": 256,
+              "width": 4096,
+              "throughput_elements_per_ms": 6574350.293112637,
+              "throughput_elements_per_s": 6574350293.112637,
+              "framework.elapsed_ms": 0.159495,
+              "framework.peak_allocated_bytes": 29394944.0,
+              "framework.peak_reserved_bytes": 44040192.0,
+              "framework.allocated_bytes": 12615680.0,
+              "framework.reserved_bytes": 44040192.0
+            },
+            {
+              "latency_ms": 0.160677,
+              "output_elements": 1048576,
+              "rows": 256,
+              "width": 4096,
+              "throughput_elements_per_ms": 6525986.917853831,
+              "throughput_elements_per_s": 6525986917.853831,
+              "framework.elapsed_ms": 0.160677,
+              "framework.peak_allocated_bytes": 29394944.0,
+              "framework.peak_reserved_bytes": 44040192.0,
+              "framework.allocated_bytes": 12615680.0,
+              "framework.reserved_bytes": 44040192.0
+            },
+            {
+              "latency_ms": 0.157466,
+              "output_elements": 1048576,
+              "rows": 256,
+              "width": 4096,
+              "throughput_elements_per_ms": 6659062.908818412,
+              "throughput_elements_per_s": 6659062908.818412,
+              "framework.elapsed_ms": 0.157466,
+              "framework.peak_allocated_bytes": 29394944.0,
+              "framework.peak_reserved_bytes": 44040192.0,
+              "framework.allocated_bytes": 12615680.0,
+              "framework.reserved_bytes": 44040192.0
+            }
+          ],
+          "metrics": {
+            "latency_ms": 0.160677,
+            "output_elements": 1048576,
+            "rows": 256,
+            "width": 4096,
+            "throughput_elements_per_ms": 6525986.917853831,
+            "throughput_elements_per_s": 6525986917.853831,
+            "framework.elapsed_ms": 0.160677,
+            "framework.peak_allocated_bytes": 29394944.0,
+            "framework.peak_reserved_bytes": 44040192.0,
+            "framework.allocated_bytes": 12615680.0,
+            "framework.reserved_bytes": 44040192.0
+          },
+          "metric_samples": {},
+          "diagnostics": {},
+          "bundle_hashes": {}
+        }
+      }
+    ],
+    "lease_wait_s": 0.0001961253583431244,
+    "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+    "devices": [
+      "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+    ],
+    "worker_pids_reaped": true
+  },
+  "candidate": {
+    "schema_version": 1,
+    "status": "failed",
+    "failure": "rank_failed",
+    "wall_s": 4.6116735972464085,
+    "ranks": [
+      {
+        "rank": 0,
+        "pid": 121361,
+        "exit_code": 1,
+        "status": "failed",
+        "binding": {
+          "pid": 121361,
+          "status": "verified",
+          "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+          "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+          "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+          "logical_device": 0,
+          "nvidia_smi_pid_uuids": [
+            "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+          ],
+          "pid_query_status": "observed",
+          "occupancy": {
+            "status": "interference_detected",
+            "samples": 7,
+            "unavailable_samples": 0,
+            "wait_s": 0.0711347721517086,
+            "external_clients": [
+              {
+                "pid": 121373,
+                "uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              },
+              {
+                "pid": 121373,
+                "uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              },
+              {
+                "pid": 121373,
+                "uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              }
+            ],
+            "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+          }
+        },
+        "error_type": "RuntimeError",
+        "error": "unrelated CUDA processes overlapped this worker; measurement discarded",
+        "traceback": "Traceback (most recent call last):\n  File \"/root/autodl-tmp/dev/opop-v6/src/kernel_optimizer/runtime/worker.py\", line 78, in main\n    raise RuntimeError(\"unrelated CUDA processes overlapped this worker; measurement discarded\")\nRuntimeError: unrelated CUDA processes overlapped this worker; measurement discarded\n"
+      }
+    ],
+    "lease_wait_s": 0.00012373924255371094,
+    "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+    "devices": [
+      "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+    ],
+    "worker_pids_reaped": true
+  },
+  "pairs": [
+    {
+      "parent": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 4.163224097341299,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 121189,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 121189,
+              "status": "verified",
+              "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 6,
+                "unavailable_samples": 0,
+                "wait_s": 0.09047602117061615,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "passed": true,
+                  "compared_elements": 1048576,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "passed": true,
+                  "compared_elements": 1048576,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {},
+              "math_policy_unchanged": true,
+              "setup": [],
+              "samples": [
+                {
+                  "latency_ms": 0.169604,
+                  "output_elements": 1048576,
+                  "rows": 256,
+                  "width": 4096,
+                  "throughput_elements_per_ms": 6182495.695856229,
+                  "throughput_elements_per_s": 6182495695.85623,
+                  "framework.elapsed_ms": 0.169604,
+                  "framework.peak_allocated_bytes": 29394944.0,
+                  "framework.peak_reserved_bytes": 44040192.0,
+                  "framework.allocated_bytes": 12615680.0,
+                  "framework.reserved_bytes": 44040192.0
+                },
+                {
+                  "latency_ms": 0.169666,
+                  "output_elements": 1048576,
+                  "rows": 256,
+                  "width": 4096,
+                  "throughput_elements_per_ms": 6180236.464583358,
+                  "throughput_elements_per_s": 6180236464.583358,
+                  "framework.elapsed_ms": 0.169666,
+                  "framework.peak_allocated_bytes": 29394944.0,
+                  "framework.peak_reserved_bytes": 44040192.0,
+                  "framework.allocated_bytes": 12615680.0,
+                  "framework.reserved_bytes": 44040192.0
+                },
+                {
+                  "latency_ms": 0.159495,
+                  "output_elements": 1048576,
+                  "rows": 256,
+                  "width": 4096,
+                  "throughput_elements_per_ms": 6574350.293112637,
+                  "throughput_elements_per_s": 6574350293.112637,
+                  "framework.elapsed_ms": 0.159495,
+                  "framework.peak_allocated_bytes": 29394944.0,
+                  "framework.peak_reserved_bytes": 44040192.0,
+                  "framework.allocated_bytes": 12615680.0,
+                  "framework.reserved_bytes": 44040192.0
+                },
+                {
+                  "latency_ms": 0.160677,
+                  "output_elements": 1048576,
+                  "rows": 256,
+                  "width": 4096,
+                  "throughput_elements_per_ms": 6525986.917853831,
+                  "throughput_elements_per_s": 6525986917.853831,
+                  "framework.elapsed_ms": 0.160677,
+                  "framework.peak_allocated_bytes": 29394944.0,
+                  "framework.peak_reserved_bytes": 44040192.0,
+                  "framework.allocated_bytes": 12615680.0,
+                  "framework.reserved_bytes": 44040192.0
+                },
+                {
+                  "latency_ms": 0.157466,
+                  "output_elements": 1048576,
+                  "rows": 256,
+                  "width": 4096,
+                  "throughput_elements_per_ms": 6659062.908818412,
+                  "throughput_elements_per_s": 6659062908.818412,
+                  "framework.elapsed_ms": 0.157466,
+                  "framework.peak_allocated_bytes": 29394944.0,
+                  "framework.peak_reserved_bytes": 44040192.0,
+                  "framework.allocated_bytes": 12615680.0,
+                  "framework.reserved_bytes": 44040192.0
+                }
+              ],
+              "metrics": {
+                "latency_ms": 0.160677,
+                "output_elements": 1048576,
+                "rows": 256,
+                "width": 4096,
+                "throughput_elements_per_ms": 6525986.917853831,
+                "throughput_elements_per_s": 6525986917.853831,
+                "framework.elapsed_ms": 0.160677,
+                "framework.peak_allocated_bytes": 29394944.0,
+                "framework.peak_reserved_bytes": 44040192.0,
+                "framework.allocated_bytes": 12615680.0,
+                "framework.reserved_bytes": 44040192.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {}
+            }
+          }
+        ],
+        "lease_wait_s": 0.0001961253583431244,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "worker_pids_reaped": true
+      },
+      "candidate": {
+        "schema_version": 1,
+        "status": "failed",
+        "failure": "rank_failed",
+        "wall_s": 4.6116735972464085,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 121361,
+            "exit_code": 1,
+            "status": "failed",
+            "binding": {
+              "pid": 121361,
+              "status": "verified",
+              "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "interference_detected",
+                "samples": 7,
+                "unavailable_samples": 0,
+                "wait_s": 0.0711347721517086,
+                "external_clients": [
+                  {
+                    "pid": 121373,
+                    "uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                  },
+                  {
+                    "pid": 121373,
+                    "uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                  },
+                  {
+                    "pid": 121373,
+                    "uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                  }
+                ],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "error_type": "RuntimeError",
+            "error": "unrelated CUDA processes overlapped this worker; measurement discarded",
+            "traceback": "Traceback (most recent call last):\n  File \"/root/autodl-tmp/dev/opop-v6/src/kernel_optimizer/runtime/worker.py\", line 78, in main\n    raise RuntimeError(\"unrelated CUDA processes overlapped this worker; measurement discarded\")\nRuntimeError: unrelated CUDA processes overlapped this worker; measurement discarded\n"
+          }
+        ],
+        "lease_wait_s": 0.00012373924255371094,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "worker_pids_reaped": true
+      }
+    }
+  ],
+  "measurement": {
+    "valid": false,
+    "objective": null,
+    "reference": null,
+    "reasons": [
+      "paired_endpoint_failed"
+    ]
+  },
+  "evaluation": {
+    "schema_version": "project.v1",
+    "id": "trial-67f5fbef40",
+    "revision_id": "46bf60e85695ec7ec3e195686ee939ed341cf4e50157fff63e564cc8014d6194",
+    "parent_id": "89785f39a991431e9500ade6eb312909cc32e9c077eb226352657f4599bdb61d",
+    "contract_ref": "sha256:a264ddb79f77e6d7aa0e6e5bbaa47e713a72024bbc81cb9395159a44f0acf298",
+    "bundle_id": "trial-67f5fbef40-param-e0d42e69",
+    "quality": "fail",
+    "feasible": false,
+    "objective": null,
+    "reference_objective": null,
+    "metrics": {
+      "valid": false,
+      "objective": null,
+      "reference": null,
+      "reasons": [
+        "paired_endpoint_failed"
+      ]
+    },
+    "required_ranks": [
+      0
+    ],
+    "rank_bundle_hashes": {
+      "0": "missing"
+    },
+    "required_calls": [
+      "5d7d6bb13691b02f533f62b0"
+    ],
+    "executed_calls": [],
+    "rank_executed_calls": {},
+    "evidence": [
+      "/root/autodl-tmp/dev/v6-work/p6-new-signal-a/jobs/trial-67f5fbef40-pair-0-parent/run/receipt.json",
+      "/root/autodl-tmp/dev/v6-work/p6-new-signal-a/jobs/trial-67f5fbef40-pair-0-candidate/run/receipt.json"
+    ],
+    "reasons": [
+      "paired_endpoint_failed"
+    ]
+  },
+  "resources": {
+    "status": "unavailable",
+    "reason": "candidate failed quality or actual-call coverage"
+  },
+  "decision": {
+    "state": "evaluated",
+    "revision": "46bf60e85695ec7ec3e195686ee939ed341cf4e50157fff63e564cc8014d6194",
+    "parent": "89785f39a991431e9500ade6eb312909cc32e9c077eb226352657f4599bdb61d",
+    "bundle": "trial-67f5fbef40-param-e0d42e69",
+    "accepted": false,
+    "reasons": [
+      "paired_endpoint_failed",
+      "quality_or_constraint_failure",
+      "candidate_coverage_missing",
+      "rank_call_coverage_missing",
+      "rank_bundle_mismatch",
+      "objective_missing"
+    ],
+    "report_ref": "sha256:5d3a4792f41d3518098508046f7cf6f9c7e1a8914a77c7d0ef1d1a4e567fb4fd"
+  }
+}

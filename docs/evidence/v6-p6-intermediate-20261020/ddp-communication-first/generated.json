@@ -1,0 +1,194 @@
+{
+  "trial": "trial-8d996f8aa8",
+  "selection": {
+    "scope": "joint",
+    "groups": [
+      "f833b57a373d8262a384",
+      "8525af72c631b94e3dd0"
+    ],
+    "rationale": "The objective diagnostic.max_rank_nccl_kernel_sum_ms is driven entirely by one editable boundary: the DDP bucket-to-allreduce path of the final accumulated micro-step. The trace contains exactly 13 cross-rank collectives, all mapped to the two selected groups: 12 invocations of a 27MB (7,087,872-element) bucket allreduce (group f833b57a373d8262a384, 243.7ms) plus 1 invocation of the 150MB embedding/ln_f bucket (group 8525af72c631b94e3dd0, 19.3ms), totalling the observed 497,759,232 logical bytes per rank. Rank 0's communication_kernel_sum_ms is 262.9ms vs 63.1ms on rank 1 for identical collectives, and per-kernel evidence shows the recoverable cost is not bandwidth: rank 1 moves a 27MB RING_LL kernel in ~3.56ms (~7.9GB/s) while rank 0's same kernels run 13.7-16.6ms (76.4ms on the first call) because kernel duration includes peer-arrival spin; the 150MB call costs 19.2ms on both ranks (~8.2GB/s). Transport is SHM/direct/direct with peer_access.0.1 = peer_access.1.0 = 0, so per-byte transfer is already near its floor and the dominant waste is repeating fixed latency/wait windows 13 times, of which only 7.2ms overlaps compute (255.7ms is exposed critical path). The two groups must be selected jointly because a single edit (DDP bucket_cap_mb=25 / gradient_as_bucket_view bucket layout and its allreduce hook in the adapter's accumulate path) simultaneously rewrites the invocation count and per-call payload of both call sites; neither group can be reshaped without the other. For world_size=2 the reduction is elementwise (g0+g1)/2 per parameter independent of bucket boundaries (division by 2 is exact in FP32), so consolidating into fewer, larger allreduces preserves gradients and parameters within the frozen 1e-6/1e-4 tolerances, keeps real NCCL cross-rank collectives and the full 497.8MB/rank logical payload (required observations), and because the removed time is unoverlapped critical path, step_ms should improve, staying under the 1.05x baseline cap.",
+    "hypothesis": "Reshaping the final-step gradient synchronization from 13 serialized RING_LL allreduces (12x27MB + 1x150MB buckets) into a few large fused allreduces - by raising the DDP bucket cap or an equivalent coalescing comm hook at the same bucket boundary - will reduce diagnostic.max_rank_nccl_kernel_sum_ms from ~263ms toward the transfer-bound floor of roughly 62-80ms (497.8MB at ~8GB/s plus a small number of latency/skew windows), with step_ms at or below baseline. This is a hypothesis to be tested with paired repeats; the specific risks to verify are that larger buckets do not increase rank-0 arrival skew or reduce overlap enough to offset the per-call savings, that NCCL selects a protocol for the large messages that sustains the observed ~8GB/s, and that gradients/parameters remain within tolerance (expected bitwise-identical for the 2-rank SUM).",
+    "affected_calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ]
+  },
+  "proposal": {
+    "implementation": "distributed",
+    "replacement_calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "rationale": "Both selected sites are the DDP reducer's per-bucket c10d::allreduce_ calls in the final accumulated micro-step: 12 invocations of the 7,087,872-element (27MiB) transformer-block bucket (d0938de87369efd500322679) plus 1 invocation of the 39,385,344-element (150MiB) embedding bucket (b8ade439d7b8bd5fb5c1029b), i.e. the full 497,759,232 logical bytes per rank. The evidence quoted in selection.json shows per-byte transfer is already near the floor (rank 1 moves a 27MiB RING_LL kernel in ~3.56ms at ~7.9GB/s and the 150MiB call at ~8.2GB/s over SHM), while rank 0 sums 262.9ms vs 63.1ms because each of the 13 serialized kernels embeds a peer-arrival wait window (13.7-16.6ms vs ~3.56ms; 76.4ms on the first call) and only 7.2ms overlaps compute. The recoverable cost is repeating the fixed latency/skew window 13 times, not bandwidth. The replacement keeps both observed call IDs executing but consolidates their collective work: each allreduce_ invocation stages its bucket tensor (already fully accumulated and pre-divided by the reducer, exactly as the baseline sees it) into a persistent per-rank fp32 flat scratch of exactly sum(raw_model.parameters().numel()) elements; the invocation that completes the round fires ONE fused NCCL allreduce over the staged span on the caller's own process group and ReduceOp, waits, and copies the reduced span back into every staged bucket tensor in place, preserving the operator's in-place (Tensor[], Work) semantics. Non-completing invocations return a build-time completed gloo Work handle minted from a 1-element CPU allreduce on the adapter's control group (the adapter already routes control coordination over gloo so it never adds NCCL kernels), so a genuine c10d Work is returned without extra NCCL launches and without reintroducing per-call skew windows. Correctness: for world_size=2 the reduction is exactly one elementwise add per element regardless of message grouping, which is commutative and therefore bitwise identical to the per-bucket SUM; any reducer-side div_factor is applied outside the op on identical values, so gradients and SGD parameter updates are unchanged. The flat layout is bucket arrival order, which must already be identical across ranks or the baseline's own NCCL call-order matching on the same process group would corrupt the baseline itself. Guards fall back to the parent operator per call for any mismatching signature (non-fp32, non-contiguous, multi-tensor list, sparse_indices, async_op=False, other device) and any capacity anomaly drains the staged buckets through per-bucket direct allreduces, i.e. exact baseline behavior, before reducing the anomalous call directly; a re-entrancy guard routes any nested dispatch of the same op back to the parent so the fused collective can never observe itself. Expected effect per selection.json's hypothesis: one ~497.8MB allreduce at ~8GB/s plus at most one skew window (roughly a 62-80ms floor) replaces 13 windows totalling ~263ms on the max rank; step_ms should stay under the 1.05x cap because the removed time is unoverlapped critical path, at the cost of ~1GB of extra D2D copy traffic (~3-7ms) and the loss of the baseline's ~7.2ms of overlap. No observed call ID is eliminated: both sites still execute and are counted by the framework; the 12 small-bucket NCCL kernel invocations are consolidated into the fused collective while the full 497.8MB/rank payload, real NCCL cross-rank collectives, collective identity and logical payload observations are preserved. The trigger_mode parameter provides a fallback grouping (fuse the 12 small buckets, keep the 150MiB bucket as a second collective) if paired measurement shows a single mega-collective concentrates arrival skew. This is a hypothesis to be confirmed by the paired re-measurement; the per-kernel numbers cited are the observations supplied in selection.json, not new measurements made here.",
+    "setup_work": {
+      "build_time": "Allocate one persistent per-rank flat fp32 CUDA scratch of 124,439,808 elements (497,759,232 bytes), sized from sum(raw_model.parameters().numel()); mint one completed gloo Work handle via a 1-element CPU allreduce on the adapter's control group (outside timing, mirrors the adapter's use of gloo for control so no NCCL kernels are added). No model parameters, optimizer state, RNG, inputs or DDP internals are modified; no comm hook and no extra module.forward wrapper is installed.",
+      "per_step": "Inside the final micro-step only: 13 device-to-device staging copies into the scratch (~497.8MB), one fused NCCL allreduce of the staged span on the reducer's own process group and ReduceOp (full 497,759,232-byte payload per rank), 13 in-place copy-backs (~497.8MB), and one host wait at round completion. trigger_mode=split_small_large fires two fused allreduces instead (small-bucket span, then the embedding bucket). Per-invocation host work is O(1); no additional NCCL launches beyond the fused collective(s).",
+      "memory": "+~475MiB persistent CUDA allocation per rank, alive across warmup, repeats and profiling; it is included in peak_allocated_bytes for every measured step (recorded metric, not constrained).",
+      "state_lifecycle": "Staging state resets automatically when staged numel reaches the parameter total; any capacity anomaly drains staged buckets through baseline per-bucket allreduces and resets, so a polluted round self-heals to exact baseline semantics. The scratch and completed Work handle are invariant and reused across all steps of the warm-model lifecycle.",
+      "synchronization": "All generated work (staging copies, fused collective, copy-backs, host wait) happens inside the final micro-step's reducer call sites, inside the declared workload boundary. The only extra synchronization is the build-time gloo control allreduce that mints the Work handle."
+    },
+    "quality_risks": [
+      "Non-completing staged invocations return a build-time completed gloo Work, so the op contract's per-call completion guarantee holds only at round level: reduced values become visible in the bucket tensors before the round's final invocation returns, i.e. before backward/finalize/optimizer.step() consume them. No consumer in this workload reads a bucket between its allreduce_ invocation and round completion; an unobserved consumer that did would see pre-reduction local sums and fail quality loudly rather than silently.",
+      "The flat layout is bucket arrival order and must match across ranks; the baseline's NCCL matching on the same process group already requires identical per-PG call order, so a divergence would corrupt the baseline too. Gradient equality remains verified by the framework's paired project measurement and the frozen grad/parameter tolerances.",
+      "For world_size=2 the fused SUM is bitwise identical to per-bucket SUM (single commutative add per element), so gradient/parameter drift is not expected; the 1e-6/1e-4 tolerances would only matter for a hypothetical 3+-rank regrouping, which does not apply to this frozen world_size=2 workload.",
+      "The single fused kernel's duration still contains at most one arrival-skew window; if the baseline rank-0 skew is compute-driven rather than fixed per-call latency, part of it reappears once instead of 13 times. This is the main uncertainty in the 263ms -> ~62-130ms estimate and is exactly what the paired re-measurement tests.",
+      "Loss of the baseline's ~7.2ms of compute/comm overlap plus ~1GB of D2D copy traffic (~3-7ms) trades against the removed skew windows; step_ms is expected to improve but is constrained and re-measured at the 1.05x cap.",
+      "DDP bucket rebuild during the first warmup iteration may transiently change bucket sizes; completion is capacity-based (sum of all parameter numels), so the fused round degrades gracefully to fewer/larger segments and never mis-reduces.",
+      "The +~475MiB persistent scratch raises peak_allocated_bytes on both ranks; GPUs are expected to have headroom, but an OOM during build falls back to parent passthrough replacements (baseline semantics) rather than a partial install."
+    ],
+    "eliminated_calls": [],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {
+      "params": [
+        {
+          "name": "trigger_mode",
+          "kind": "str",
+          "choices": [
+            "single",
+            "split_small_large"
+          ],
+          "description": "single: consolidate all 13 buckets into one fused NCCL allreduce over the full 497,759,232-byte payload (one skew window, one launch). split_small_large: fuse the 12 x 27MiB transformer buckets into one allreduce and keep the 150MiB embedding bucket as a second allreduce (two collectives), trading one extra window for smaller mega-message and protocol risk. Both preserve elementwise SUM semantics, the full logical payload and real cross-rank NCCL collectives; read from context['parameters'] with default 'single'."
+        }
+      ],
+      "constraints": []
+    }
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea9b5bae9ffewbua5XUOCH5EbF",
+    "message": "msg_1564ddb5f001gKN0jDPpYqCP06",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 19,
+      "reported_cost": 0.36206968,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 891812.0,
+        "input": 59278.0,
+        "output": 4532.0,
+        "reasoning": 10594.0,
+        "cache.read": 817408.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea9b5bae9ffewbua5XUOCH5EbF",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/p5-ddp-communication-a/sandboxes/selection-44801f7ae086",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea9b1ec05ffe5GTAExNYbLUSp6",
+    "message": "msg_1565d2900001Zf4b6NrosdAVZ0",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 25,
+      "reported_cost": 0.7904954,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 1658422.0,
+        "input": 83177.0,
+        "output": 7781.0,
+        "reasoning": 56104.0,
+        "cache.read": 1511360.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea9b1ec05ffe5GTAExNYbLUSp6",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/p5-ddp-communication-a/sandboxes/candidate-bc23b0a76836",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0
+  },
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-8d996f8aa8",
+    "parent_revision": "3ef4223d6fff4e1cd92267e182c21b3204345c0ff7bcadd3b2dce3ec33b938f2",
+    "contract_ref": "sha256:f1c1954bac48bd432aa0110a747bfd95d35d55471a2ed7689971eab329806c08",
+    "scope": "joint",
+    "implementation": "distributed",
+    "groups": [
+      "f833b57a373d8262a384",
+      "8525af72c631b94e3dd0"
+    ],
+    "calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "affected_calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-8d996f8aa8.py",
+        "before_sha256": null,
+        "content_ref": "sha256:11ec6c3efe03e3b15ab39dcb60391f50ab425f0b7b70be634578b3d8884546a8"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-8d996f8aa8.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+      }
+    ],
+    "read_set": [
+      "call:b8ade439d7b8bd5fb5c1029b",
+      "call:d0938de87369efd500322679"
+    ],
+    "write_set": [
+      "file:opop_candidates/trial-8d996f8aa8.py",
+      "file:opop_candidates/trial-8d996f8aa8.targets.json",
+      "call:b8ade439d7b8bd5fb5c1029b",
+      "call:d0938de87369efd500322679"
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Model: GPT2LMHeadModel with n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False, attn_implementation='eager', FP32, train mode, initialized immediately after torch.manual_seed(20261020).",
+      "Data: per-rank synthetic token IDs drawn with torch.Generator().manual_seed(31000 + rank); accumulation_steps=4 tensors of shape (micro_batch=1, sequence_length=128) with values in [0, 50257); no other dataset exists (request assets are empty by design).",
+      "Numerics: FP32 end to end; torch.backends.cuda.matmul.allow_tf32=False; torch.backends.cudnn.allow_tf32=False; torch.backends.cudnn.benchmark=False; torch.set_float32_matmul_precision('highest'); no autocast, no GradScaler, no compilation.",
+      "Accumulation: optimizer.zero_grad(set_to_none=True) at step start; loss for each micro-batch is model(input_ids=tokens, labels=tokens, use_cache=False).loss / 4; first 3 micro-batches run under DDP no_sync, only the final micro-batch triggers gradient synchronization; reported loss is the sum of the 4 scaled micro losses and must be finite.",
+      "Optimizer: SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False); exactly one optimizer.step() per workload repetition; SGD keeps no momentum state so the reset only reloads the initial weights.",
+      "DDP configuration: broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True, device_ids=[bound device index]; find_unused_parameters stays False; no communication hooks are registered in the measured path (the source registers its inventory hook only in a separate diagnostic step).",
+      "Cross-rank semantics: after the final micro-batch every rank holds bitwise-identical gradients (source exact_gradient_replica_check with atol=0, rtol=0); effective global batch = world_size 2 x micro_batch 1 x accumulation_steps 4 = 8 micro-batches = 1024 tokens per step.",
+      "Reset fidelity: every repetition starts from the same initial weights (CPU state_dict snapshot), empty gradients, empty optimizer state and the prepare-time RNG states.",
+      "Timing hygiene: control coordination (barrier, peak-memory reset, synchronization) uses the separate gloo group and happens outside the timer; the only NCCL collectives in the measured workload are the DDP gradient allreduces of the final accumulation micro-batch; step_ms must stay <= 1.05x baseline.",
+      "Observations: loss, per-micro losses, every gradient tensor and every updated parameter of the ~124M-parameter model are exposed as full tensors; no elapsed times or performance counters appear in observations.",
+      "Quality scope: gradient/parameter comparisons use atol=1e-6, rtol=1e-4 (request.quality); reference fidelity only, no downstream accuracy or convergence claim.",
+      "Workload frozen: batch, sequence_length=128, accumulation_steps=4, world_size=2, architecture, FP32 precision, seeded data, completion boundary and quality checks are never altered to improve a score."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-8d996f8aa8.py",
+    "parameters": {}
+  }
+}

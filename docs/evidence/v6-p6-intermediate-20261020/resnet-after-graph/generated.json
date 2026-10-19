@@ -1,0 +1,223 @@
+{
+  "trial": "trial-47a9af5745",
+  "selection": {
+    "scope": "execution_plan",
+    "groups": [
+      "3c57c8731ec33ed76cbb",
+      "6870b4a6e1536342a2ef",
+      "687b976c828d764c1ab8",
+      "25f0b0f6ce52aabeb54e"
+    ],
+    "rationale": "Previous feedback shows the graph-capture trial (trial-c11a1129f8) was ACCEPTED: candidate medians 0.755926/0.755423 ms vs parent 1.382076/1.593735 ms, paired gains 0.626/0.838 ms above bounds 0.0132/0.0340 ms, quality max_abs_error 0.0, peak_allocated 75,444,224 B. So the eager-dispatch gap it attacked is closed; the concrete failure on record is the earlier trial-paired-repair-a rejection (paired_gain_not_above_noise: +0.1419/-0.0716 ms vs bounds 0.0331/0.0431 ms) for a kernel-time-neutral, dispatch-adding conv->BatchNorm fold (43.84 us BN savings vs +16.4 us conv regressions, net +2.9 us CUDA; 20 guard dispatches; +46.5 MB). Current discovery (groups.json, 716.247 us diagnostic CUDA in 81 kernels, 81/81 associated) against the ~0.7557 ms clean wall shows ~95% of remaining latency is GPU kernel execution, dominated by the FP32 convolutions running under the frozen deterministic cudnn heuristic (largest observed sites, nested/inclusive, not summed: 21ad5219eb55074a2b639a71 stem conv 115.966 us in 1 kernel; 6214ff32dc254755c8d920f5 118.846 us in 3 kernels; many 33-90 us conv sites), plus a residual ~40 us per-repeat non-kernel tail: the observed aten::copy_ static-input feed (479b9ac42d9a8c2ba439376a, [1,3,224,224] each repeat although state['pixels'] is the same tensor object every repeat), the aten::clone logits copy (f0f6fe4c3f694f9f0d7e9056, 4 KB), replay launch and Python dispatch. Options eliminated by measured evidence: another epilogue fold (measured CUDA-negative), benchmark/TF32/precision plays (frozen invariants), and a pure overhead shave alone (~0.04 ms ceiling straddles the 0.034 ms MAD bound - exactly the recorded rejection mode; a faster local kernel is also not automatically a project gain). The one untried, policy-clean kernel-time lever is memory format: run the identical FP32 model on channels_last (NHWC) tensors, where cudnn's heuristic (benchmark stays False, no autotuning) commonly selects faster FP32 implicit-GEMM/vectorized kernels for these conv shapes; layout is not precision, so every numerical invariant (FP32 weights/activations, TF32 off both paths, benchmark False, 'highest' matmul precision, seed, frozen fixture, inference_mode forward) is untouched. That recapture edit needs the copy_ group (static input must be allocated/captured in NHWC and the redundant per-repeat copy guarded away by a host-side source-identity check) and the clone group (double-buffered captured outputs remove the timed-path clone without letting a later replay clobber a returned result), so all four groups - complete-workload span, model forward span, static-input copy, logits clone - form one coherent editable delivery boundary and are selected jointly at execution_plan scope. Expected paired gains of roughly 0.08-0.2 ms from the layout play plus 0.01-0.03 ms from the overhead shave would clear the current 0.0132/0.0340 ms bounds with margin, but this is a hypothesis to be tested: if the heuristic picks equal-or-slower NHWC algos, or logits drift beyond atol=rtol=1e-4 / top-1 changes, the installer must atomically fall back to the accepted parent graph path (zero regression).",
+    "hypothesis": "Re-capturing the accepted whole-forward CUDA graph on a channels_last execution path - build-time, outside every timed region: convert the loaded model's conv weights to channels_last (same FP32 values, same module objects), allocate the static input as channels_last, recapture the unchanged model(pixel_values=...).logits sequence, verify replay against a fresh eager NCHW reference on the frozen fixture plus a flipped probe input at atol=rtol=5e-6 with exact argmax - makes cudnn's deterministic heuristic (benchmark off, TF32 off) select faster FP32 kernels for the conv-dominated 716.247 us kernel body, while two coupled per-repeat edits at the same boundary (skip the static-input copy_ when the source tensor identity/data_ptr is unchanged, which holds every repeat of this frozen workload since prepare creates state['pixels'] once; alternate between two captured output buffers so the timed path drops the logits clone yet no returned result is overwritten before observe() copies it to CPU) remove most of the residual ~40 us non-kernel tail. Identical kernel DAG per algo choice and identical input values imply logits should reproduce within tolerance (the accepted fold passed at 6.9e-6 max error; NHWC only reorders FP32 accumulation), so paired median latency_ms is expected to fall from ~0.756 ms to roughly 0.55-0.68 ms, i.e. paired gains ~0.08-0.2 ms in both AB and BA pairings, comfortably above the 0.0132/0.0340 ms MAD-derived noise bounds that rejected the last local edit. Risks to be tested, not assumed: the heuristic may not favor NHWC at batch=1 on these shapes (then no gain and the paired-gain gate rejects); NHWC accumulation-order drift could exceed 1e-4 or flip top-1 (then quality gate rejects); channels_last weight copies could raise peak_allocated_bytes (bounded by ~46.75 MB of conv weights vs the 86,361,088 B original baseline and the 75,444,224 B current accepted value, and the previous +46.5 MB memory bite is on record); any capture, verification, signature or memory failure must degrade atomically to the accepted parent NCHW graph replay, and changed pixel values must still flow through replay via the guarded copy.",
+    "affected_calls": [
+      "475289736cd39d81341e09c5",
+      "479b9ac42d9a8c2ba439376a",
+      "5d7d6bb13691b02f533f62b0",
+      "80ff8693d7ac3cf2433b10f2",
+      "9952fea8f63b08896dafecc5",
+      "a60da373fdd5a4383277bf4e",
+      "ca1f233e0c891270f758ff58",
+      "f0f6fe4c3f694f9f0d7e9056"
+    ]
+  },
+  "proposal": {
+    "implementation": "strategy",
+    "replacement_calls": [
+      "5d7d6bb13691b02f533f62b0",
+      "80ff8693d7ac3cf2433b10f2"
+    ],
+    "rationale": "inputs/previous-feedback.txt changes this attempt in two concrete ways. First, trial-c11a1129f8 was ACCEPTED (candidate medians 0.755926/0.755423 ms vs parent 1.382076/1.593735 ms, paired gains 0.626150/0.838312 ms above bounds 0.013246/0.034046 ms, quality max_abs_error 0.0 over 1001 compared elements, peak_allocated_bytes 75,444,224 B, math_policy_unchanged, 81/81 kernels associated), so the eager-dispatch gap it attacked is closed and there is no rejection to repair: the current parent already delivers the whole-forward NCHW CUDA graph, and the new discovery attributes 716.247 us of diagnostic CUDA in 81 kernels to it, roughly 95% of the ~0.7557 ms clean wall. Second, the same feedback re-confirms the recorded rejection mode for small local edits (trial-paired-repair-a: paired_gain_not_above_noise +0.1419/-0.0716 ms vs bounds 0.0331/0.0431 ms for a kernel-time-neutral, dispatch-adding conv->BatchNorm fold with +46.5 MB resident weights), so an overhead-only shave (~0.04 ms ceiling straddling the 0.034 ms MAD bound) or another epilogue fold (measured CUDA-negative) cannot clear the gate; only a kernel-time lever can.\n\nThis bundle attacks the one untried policy-clean kernel-time lever plus the residual non-kernel tail as one coherent execution-plan edit over the four selected groups. Because the installed bundle trial-c11a1129f8-param-6d5c47fd writes the same two span call IDs (5d7d6bb13691b02f533f62b0 project.invoke, 80ff8693d7ac3cf2433b10f2 model forward), this bundle declares it in `replaces` and preserves its graph delivery itself. At build time, outside every timed region, the unchanged model's parameter storages are converted to channels_last (identical FP32 values, same module objects, parameter_count unchanged), the static input is allocated channels_last, and the unchanged model(pixel_values=...).logits sequence is captured twice into one shared CUDA graph private pool, producing two distinct captured logits buffers; under cudnn's deterministic heuristic (benchmark stays False, TF32 off), channels_last FP32 convolutions commonly select faster implicit-GEMM/vectorized kernels on these shapes - the hypothesis this attempt tests. Per timed call the path (a) skips the static-input aten::copy_ when the source tensor identity (data_ptr plus the signature check) is unchanged, which holds for every repeat of this frozen workload because prepare creates state['pixels'] once, while any different tensor is re-fed through the copy so changed values always flow through replay; and (b) alternates strictly A,B,A,B (capture order, the order required for safe sharing of one graph pool) and returns the graph's own logits buffer, eliminating the per-call aten::clone. Eliminated-call consumers remain valid: the copy_'s consumer is the captured graph's static input, which already holds bit-identical bytes whenever identity is unchanged and is re-fed otherwise; the clone's consumer is the returned result dict read by observe(), and double-buffered graph outputs give each returned logits a two-call lifetime, so no returned result is overwritten before the next call (the accepted receipt's coverage of 2 validation calls per run matches the run-then-observe cadence). The full captured kernel DAG executes on every invocation; no fixture-dependent output is cached.\n\nNumerics are verified at build time, never assumed: replay logits are compared against fresh eager NCHW references computed before the layout change, on the frozen fixture and on a flipped probe, at atol=rtol=5e-5 (half the 1e-4 gate, 2x margin) with exact argmax, plus a bitwise reproducibility check of the A,B,A interleave to prove the shared pool never aliases a returned buffer. Layout is not precision: FP32 weights and activations, TF32 disabled on both paths, cudnn benchmark off, float32_matmul_precision 'highest', the 20261020 seed, the real preprocessed fixture and the inference_mode forward all remain exactly as frozen. Any capture, verification, signature or state anomaly aborts atomically to an in-bundle NCHW single-graph fallback that reproduces the accepted bundle's per-call copy_/replay/clone behavior (model restored to contiguous_format first), and ultimately to the parent callables; a state carrying a different module instance routes to the parent rather than replaying foreign weights. Expected outcome, to be decided by the paired gate: the layout play attacks the conv-dominated 716.247 us kernel body (the main hoped-for gain, plausibly ~0.08-0.2 ms but unproven until measured) while the tail edit removes the 602 KB static-input copy and the logits clone from the timed path; if the heuristic picks equal-or-slower channels_last algos, the paired-gain gate rejects with zero quality risk. The opop:: profiler enter/exit records in targets.json are the harness's own discovery instrumentation around these spans; this plan neither replaces nor eliminates them.",
+    "setup_work": {
+      "description": "One-time, build-phase only, executed in the worker before validation and outside every timed region; nothing runs per repeat except a tensor-identity check and a graph replay (plus an input copy only when the identity changes).",
+      "steps": [
+        "Resolve the bound module and pixels from context state/modules; verify the observed signature ([1,3,224,224] fp32 cuda NCHW-contiguous, requires_grad False); return parent passthroughs otherwise.",
+        "Compute eager NCHW reference logits for the fixture and a flipped probe with the original contiguous weights (used only for build-time verification, then released).",
+        "Convert model parameters to channels_last (identical FP32 values); allocate the static input channels_last; warm up 3 iterations on a side stream and synchronize.",
+        "Capture graph A then graph B of the unchanged model(pixel_values=static_input).logits sequence into one shared graph pool (one warmup iteration before graph B); verify each graph's replay against both references at atol=rtol=5e-5 with exact argmax, and verify bitwise reproducibility of the A,B,A interleave; restore the fixture feed.",
+        "On any channels_last failure: restore contiguous_format and capture/verify a single NCHW graph (the accepted bundle's copy_/replay/clone behavior) as the in-bundle fallback; on its failure, install parent passthroughs.",
+        "Release verification temporaries, empty_cache, synchronize; timed peak statistics are reset by adapter.reset() after build, so build transients never enter a timed sample."
+      ],
+      "estimated_cost": "About 20 forward-equivalents (roughly 30 ms of GPU work) per worker process, one-time at build.",
+      "memory": "Weights (~46.75 MB FP32) are re-stored channels_last once at build; the transient double storage happens before adapter.reset() resets peak statistics. The two graphs share one private pool holding roughly one forward's activation working set plus two 4 KB logits buffers, alongside the 602 KB channels_last static input; no second pool is created. The active timed path performs zero per-repeat allocations (the parent graph path allocates one 4 KB logits clone per call), so timed peak_allocated_bytes is expected near the accepted bundle's observed 75,444,224 B. The NCHW fallback branch adds one single-graph pool only in the already-degraded path.",
+      "state_lifecycle": "Model parameter storages are re-bound once at build (values identical); the model stays in eval mode; adapter.reset() (model.eval plus peak-stat reset) remains valid before and after every repeat; state is read, never mutated; state['pixels'] identity is tracked and any new tensor is copied into the static input; graphs, shared pool and static buffers live for the worker process lifetime and are never refreshed per repeat.",
+      "synchronization": "Warmup and both captures happen on a side stream with explicit waits and synchronize before anything timed; per repeat, the identity check, optional copy_, replay and buffer handoff are stream-ordered on the caller's current stream and complete before the harness's surrounding torch.cuda.synchronize(); no host syncs and no cross-stream dependencies are introduced at replay time.",
+      "affected_groups": [
+        "3c57c8731ec33ed76cbb",
+        "6870b4a6e1536342a2ef",
+        "687b976c828d764c1ab8",
+        "25f0b0f6ce52aabeb54e"
+      ]
+    },
+    "quality_risks": [
+      "channels_last may not be faster at batch=1 on these shapes under the deterministic heuristic; then the paired-gain gate rejects the candidate with no quality risk (verified numerics still hold).",
+      "channels_last accumulation-order drift beyond tolerance: mitigated by build-time verification against fresh eager NCHW references on the fixture and a flipped probe at atol=rtol=5e-5 (half the gate) with exact argmax; any mismatch aborts to the NCHW single-graph fallback and never publishes unverified logits.",
+      "Shared-pool double-graph aliasing: replays alternate strictly in capture order (A,B,A,B) as pool sharing requires, and a build-time bitwise reproducibility check of the A,B,A interleave proves the returned buffers are never clobbered; any mismatch falls back to the clone-per-call NCHW graph.",
+      "Result lifetime without a per-call clone: alternating buffers give each returned logits a two-call lifetime, matching the observed run-then-observe cadence (2 validation calls in the accepted receipt); if a consumer held a result longer than two calls the quality check would expose it as a large error rather than silently passing; fallback modes retain the clone.",
+      "Skipped input copy is guarded by tensor identity (data_ptr plus shape/dtype/device/contiguity): valid because prepare creates state['pixels'] once and the frozen workload never mutates it in place; any different tensor identity re-feeds through the copy. In-place mutation of the same tensor object cannot be observed by this guard, but the frozen workload performs none.",
+      "Weight layout transform changes no values (FP32 values and parameter_count identical) and is a documented build-time parameter transform valid for this warm-model lifecycle; if the channels_last plan fails the model is restored to contiguous_format before the NCHW or passthrough fallbacks run, so fallback paths use the parent layout.",
+      "A state carrying a different module instance routes to the parent callables instead of replaying build-time weights; signature mismatches on the module forward fall back to the parent bound forward.",
+      "Capture safety: the frozen forward is conv2d/batch_norm/relu/max_pool/adaptive_avg_pool/add/flatten/linear only, with no host syncs, .item() or data-dependent control flow; any capture or runtime failure inside a replacement falls back atomically to the parent callable for that call."
+    ],
+    "eliminated_calls": [
+      "479b9ac42d9a8c2ba439376a",
+      "f0f6fe4c3f694f9f0d7e9056"
+    ],
+    "requires": [],
+    "replaces": [
+      "trial-c11a1129f8-param-6d5c47fd"
+    ],
+    "parameter_space": {}
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea9ac32bcffe3LqpgtalREWXqf",
+    "message": "msg_156582219001fIX6SyVjcWicgF",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 16,
+      "reported_cost": 0.45641048,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 1080496.0,
+        "input": 87742.0,
+        "output": 3372.0,
+        "reasoning": 14854.0,
+        "cache.read": 974528.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea9ac32bcffe3LqpgtalREWXqf",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/p2-resnet-a/sandboxes/selection-7b0de9b49225",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea9a7bd8cffedlNrWGoaAAdsbC",
+    "message": "msg_156625b4b001309V4T00EigxNj",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 17,
+      "reported_cost": 0.69187272,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 1354542.0,
+        "input": 117878.0,
+        "output": 8852.0,
+        "reasoning": 40740.0,
+        "cache.read": 1187072.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea9a7bd8cffedlNrWGoaAAdsbC",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/p2-resnet-a/sandboxes/candidate-a869bf6faafc",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0
+  },
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-47a9af5745",
+    "parent_revision": "7c7dae44166789072045916c08e99a106add9815555ccb854a97cc50930efc5f",
+    "contract_ref": "sha256:087164acd80e3e5d5140e681173f17d9060975a38425ea99fed2b2f715bda768",
+    "scope": "execution_plan",
+    "implementation": "strategy",
+    "groups": [
+      "3c57c8731ec33ed76cbb",
+      "6870b4a6e1536342a2ef",
+      "687b976c828d764c1ab8",
+      "25f0b0f6ce52aabeb54e"
+    ],
+    "calls": [
+      "5d7d6bb13691b02f533f62b0",
+      "80ff8693d7ac3cf2433b10f2"
+    ],
+    "affected_calls": [
+      "475289736cd39d81341e09c5",
+      "479b9ac42d9a8c2ba439376a",
+      "5d7d6bb13691b02f533f62b0",
+      "80ff8693d7ac3cf2433b10f2",
+      "9952fea8f63b08896dafecc5",
+      "a60da373fdd5a4383277bf4e",
+      "ca1f233e0c891270f758ff58",
+      "f0f6fe4c3f694f9f0d7e9056"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-47a9af5745.py",
+        "before_sha256": null,
+        "content_ref": "sha256:deef6680656c86e572807fde7c1450f30c4ff6bdc2bf48f6c6bf985edbe34982"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-47a9af5745.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:114f9d26ae32dd4e48de211950687e8e44740efb0698f7862167b250f0500164"
+      }
+    ],
+    "read_set": [
+      "call:475289736cd39d81341e09c5",
+      "call:479b9ac42d9a8c2ba439376a",
+      "call:5d7d6bb13691b02f533f62b0",
+      "call:80ff8693d7ac3cf2433b10f2",
+      "call:9952fea8f63b08896dafecc5",
+      "call:a60da373fdd5a4383277bf4e",
+      "call:ca1f233e0c891270f758ff58",
+      "call:f0f6fe4c3f694f9f0d7e9056"
+    ],
+    "write_set": [
+      "file:opop_candidates/trial-47a9af5745.py",
+      "file:opop_candidates/trial-47a9af5745.targets.json",
+      "call:5d7d6bb13691b02f533f62b0",
+      "call:80ff8693d7ac3cf2433b10f2"
+    ],
+    "requires": [],
+    "replaces": [
+      "trial-c11a1129f8-param-6d5c47fd"
+    ],
+    "external_invariants": [
+      "Model is ResNetForImageClassification loaded from the local assets directory only (local_files_only=True) in float32; no downloads.",
+      "All weights and activations remain FP32; torch.backends.cuda.matmul.allow_tf32 and torch.backends.cudnn.allow_tf32 are False and torch.set_float32_matmul_precision('highest').",
+      "torch.backends.cudnn.benchmark stays False (source policy).",
+      "Seed policy: torch.manual_seed(20261020) applied in prepare, matching common.configure().",
+      "Input is the real preprocessed image fixture tensor from assets/pixels.npy (3 images, NCHW float32), selected as images[torch.arange(batch) % len(images)].contiguous(); for the frozen 'online' workload batch=1, i.e. the first image, unchanged every repeat.",
+      "The model is in eval() mode and the forward pass runs under torch.inference_mode(), identical to the source infer() helper calling model(pixel_values=pixels).logits.",
+      "Batch size is fixed at 1 for this workload; the workload, data, precision and output requirements are not altered to improve the score.",
+      "Correctness requires all logits within atol=1e-4 / rtol=1e-4 and exact top-1 argmax equality against the reference; observations include every logit and the predicted class integer.",
+      "Latency is wall time around run() with CUDA synchronization at both boundaries, per the source's per-repeat timing; throughput is derived from the unchanged work amount (batch=1) and the measured elapsed time.",
+      "The adapter does not initialize CUDA or load the model at import time and never destroys the process group in reset."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-47a9af5745.py",
+    "parameters": {}
+  }
+}

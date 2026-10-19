@@ -21,3 +21,37 @@ def test_negative_control_preserves_reference_and_exceeds_relative_tolerance():
     wrong = corrupt(reference)
     assert reference["state"][0][0] == 1e8
     assert not compare(wrong, reference, {"atol": 0.02, "rtol": 0.02})["passed"]
+
+
+def test_installation_calls_do_not_satisfy_inherited_runtime_coverage(tmp_path):
+    from kernel_optimizer.runtime.execution import ExecutionRequest, LocalExecutor
+    entry = tmp_path/"entry.py"
+    entry.write_text('''
+from pathlib import Path
+from kernel_optimizer.project.evaluation import worker_entry
+from kernel_optimizer.project.discovery import tensor_description
+
+def run(context):
+    import torch
+    root=Path(context["output"])
+    adapter=root/"adapter.py"
+    adapter.write_text("import torch\\ndef prepare(c,r): return {'x':torch.tensor([1.,2.]),'m':torch.nn.Identity()}\\ndef reset(s): pass\\ndef run(s): return s['m'](s['x'])+1\\ndef observe(s,r): return r\\ndef metrics(s,r,t): return {'latency_ms':t}\\ndef models(s): return {'model':s['m']}\\n")
+    request={"quality":{},"objective":{"name":"latency_ms"},"warmup":0,"repeats":3,"continuous_steps":2}
+    context["parameters"]={"adapter":str(adapter),"request":request,"action":"controls"}
+    assert worker_entry(context)["valid"]
+    signature={"args":tensor_description((torch.tensor([1.,2.]),)),"kwargs":{}}
+    first=root/"first.py";first.write_text("def build(c):\\n ref=c['references']['a']\\n return {'a':lambda x:ref(x)+0}\\n")
+    second=root/"second.py";second.write_text("def build(c):\\n c['references']['b'](c['state'])\\n return {'b':lambda s:s['x']+1}\\n")
+    context["parameters"].update(action="evaluate",bundles=[
+        {"id":"first","file":str(first),"expected_calls":["a"],"specs":[{"id":"a","kind":"module","target":"model","phase":"run","signatures":[signature]}]},
+        {"id":"second","file":str(second),"expected_calls":["b"],"specs":[{"id":"b","kind":"project","target":"project.invoke","phase":"run","signatures":[]}]}])
+    result=worker_entry(context)
+    assert all(check["passed"] for check in result["checks"])
+    assert not result["valid"]
+    assert result["coverage"]["first"]["counts"]=={}
+    assert result["coverage"]["second"]["counts"]=={"b":2}
+    return {"installation_cannot_supply_coverage":True}
+''')
+    receipt = LocalExecutor().run(ExecutionRequest(entry=entry, cwd=tmp_path, output=tmp_path/"run",
+        lease_dir=tmp_path/"leases", worker_timeout_s=30))
+    assert receipt["status"] == "passed", receipt

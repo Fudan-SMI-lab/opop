@@ -93,6 +93,14 @@ class BindingSession:
     def _create_dispatch_mode(self):
         from torch.utils._python_dispatch import TorchDispatchMode
         binding = self
+        # A generated model candidate can address thousands of shape-specific
+        # sites. Searching every site on every aten call makes binding itself
+        # dominate the project; index by operator, phase and module context.
+        indexed = {}
+        for ident, replacement in self.functionals.items():
+            spec = self.specs[ident]
+            key = (spec["target"], spec["phase"], spec.get("site_parent"))
+            indexed.setdefault(key, []).append((spec, replacement))
         if any(spec.get("site_parent") for spec in self.specs.values() if spec["id"] in self.functionals):
             seen = set()
             for root, model in self.models.items():
@@ -111,14 +119,12 @@ class BindingSession:
         class ReplacementMode(TorchDispatchMode):
             def __torch_dispatch__(self, func, types, args=(), kwargs=None):
                 signature = None
-                for ident, replacement in binding.functionals.items():
-                    spec = binding.specs[ident]
-                    if spec["target"] != str(func) or spec["phase"] != _phase.get():
-                        continue
-                    stack = binding.active_modules.get()
-                    parent = stack[-1] if stack else hashlib.sha256(b"project.invoke|run").hexdigest()[:24]
-                    if spec.get("site_parent") is not None and spec["site_parent"] != parent:
-                        continue
+                target, phase = str(func), _phase.get()
+                stack = binding.active_modules.get()
+                parent = stack[-1] if stack else hashlib.sha256(b"project.invoke|run").hexdigest()[:24]
+                variants = indexed.get((target, phase, parent), ())
+                global_variants = indexed.get((target, phase, None), ())
+                for spec, replacement in (*variants, *global_variants):
                     if signature is None:
                         signature = {"args": tensor_description(args), "kwargs": tensor_description(kwargs or {})}
                     if signature in spec["signatures"]:

@@ -22,7 +22,12 @@ def main() -> int:
     context = {"rank": rank, "world_size": len(request.devices) if request.distributed_backend else 1,
                "device": f"cuda:{rank}" if request.devices else "cpu", "output": str(request.output),
                "parameters": request.parameters, "binding": {"pid": os.getpid(), "status": "cpu"}}
+    occupancy = None
     try:
+        if request.devices and os.name != "nt":
+            from kernel_optimizer.runtime.occupancy import OccupancyMonitor
+            occupancy = OccupancyMonitor(request.devices, sys.argv[1])
+            occupancy.start()
         manifest = request.cwd / ".opop-revision.json"
         if manifest.is_file():
             revision = json.loads(manifest.read_text())
@@ -66,6 +71,11 @@ def main() -> int:
         result = getattr(module, request.function)(context)
         if request.devices:
             torch.cuda.synchronize()
+        if occupancy:
+            observation = occupancy.finish(); occupancy = None
+            context["binding"]["occupancy"] = observation
+            if observation["external_clients"]:
+                raise RuntimeError("unrelated CUDA processes overlapped this worker; measurement discarded")
         write_json(request.output / f"rank-{rank}.json", {"status": "passed", "binding": context["binding"], "result": result})
         return 0
     except BaseException as exc:
@@ -73,6 +83,8 @@ def main() -> int:
                    "error_type": type(exc).__name__, "error": str(exc), "traceback": traceback.format_exc()})
         return 1
     finally:
+        if occupancy:
+            context["binding"]["occupancy"] = occupancy.finish()
         if request.devices and "torch" in locals() and torch.distributed.is_initialized():
             torch.distributed.destroy_process_group()
 

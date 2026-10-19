@@ -15,6 +15,9 @@ def add_project_parser(parser):
     parser.add_argument("--resume", action="store_true", help="resume the identical frozen project request")
     parser.add_argument("--reuse-evaluator", type=Path, help="revalidate a frozen generated evaluator for a goal/workload variant without regenerating code")
     parser.add_argument("--resume-trial", help="resume one saved generated trial without another generation request; implies --resume")
+    parser.add_argument("--replay-from", type=Path, help="source run for frozen-candidate cross-goal/held-out evaluation")
+    parser.add_argument("--replay-bundle", help="exact stored bundle ID to replay without code/parameter changes")
+    parser.add_argument("--publish-replay", action="store_true", help="publish a replay only if its independent paired evaluation passes")
     parser.add_argument("--discover-only", action="store_true")
     parser.add_argument("--rounds", type=int, default=2, help="candidate rounds in this experiment, not an API usage quota")
     parser.add_argument("--scope", action="append", choices=["group", "joint", "region", "execution_plan"])
@@ -26,6 +29,11 @@ def cmd_optimize_project(args):
     if args.rounds < 1:
         raise ValueError("experiment rounds must be positive")
     feedback = args.feedback.read_text(encoding="utf-8") if args.feedback else None
+    replay = getattr(args, "replay_bundle", None)
+    if bool(getattr(args, "replay_from", None)) != bool(replay):
+        raise ValueError("replay-from and replay-bundle must be supplied together")
+    if replay and (args.prepare_only or args.discover_only or args.resume_trial):
+        raise ValueError("replay cannot be combined with prepare-only/discover-only/resume-trial")
     if args.resume_trial:
         if args.prepare_only or args.discover_only:
             raise ValueError("resume-trial cannot be combined with prepare-only/discover-only")
@@ -37,7 +45,7 @@ def cmd_optimize_project(args):
         result = ProjectWorkflow(config, request, args.output).prepare(feedback=feedback, resume=True)
     elif args.reuse_evaluator:
         from kernel_optimizer.project.variants import prepare_variant
-        result = prepare_variant(args.reuse_evaluator, request, args.output)
+        result = prepare_variant(args.reuse_evaluator, request, args.output, config=config)
         if result["status"] != "prepared":
             raise ValueError("frozen evaluator did not pass variant controls; see prepared.json")
     else:
@@ -48,10 +56,14 @@ def cmd_optimize_project(args):
         if args.resume:
             search.revisions.recover()
         discovery_path = args.output/"discovery.json"
-        if not discovery_path.exists() or json.loads(discovery_path.read_text())["revision"] != search.revisions.current().id:
+        if not args.resume_trial and (not discovery_path.exists() or json.loads(discovery_path.read_text())["revision"] != search.revisions.current().id):
             search.discover()
         if not args.discover_only:
-            if args.resume_trial:
+            if replay:
+                from kernel_optimizer.project.replay import transfer_bundle
+                bundle, metadata = transfer_bundle(args.replay_from, replay, search)
+                search.validate_bundle(bundle, metadata, publish=getattr(args, "publish_replay", False))
+            elif args.resume_trial:
                 search.resume_trial(args.resume_trial)
             else:
                 for _ in range(args.rounds):
