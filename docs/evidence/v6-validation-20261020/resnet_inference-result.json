@@ -1,0 +1,319 @@
+{
+  "case": "resnet_inference",
+  "created_unix": 1792437447.714967,
+  "protocol": "readiness_baseline_not_optimization",
+  "python": "3.12.4",
+  "torch": "2.13.0+cu129",
+  "cuda": "12.9",
+  "device": "NVIDIA GeForce RTX 4090",
+  "visible_devices": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+  "gpu_inventory": [
+    "0, GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2, 00000000:27:00.0, NVIDIA GeForce RTX 4090",
+    "1, GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d, 00000000:5A:00.0, NVIDIA GeForce RTX 4090"
+  ],
+  "pid": 48567,
+  "warmup": 2,
+  "repeats": 5,
+  "source_sha256": {
+    "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+    "gpt2_ddp_training.py": "37d1632436c8f927a52401b6d1fb9e63bd7b8d33d643d0f914916bb89b3364fe",
+    "prepare_resnet_assets.py": "27d2943825c829a3296a8ee3db765db8ae7a133e3247dc3e093be1ff4e7884c9",
+    "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+    "resnet_inference.py": "b98cd81b4aa6fb8211be6382d9870bbf433eb352c248a4b2aaf8f5fde2b50997",
+    "run_suite.py": "139a0535511dd15f3ae6dd11717d209b54fa7f600796be97ca08e4fb08430ab5"
+  },
+  "workloads_sha256": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba",
+  "quality_scope": "Reference fidelity; no downstream accuracy/convergence claim",
+  "asset_manifest_sha256": "0daedcfdfe3b2c32deb3b3c087a6f55f8bf94a314433f07a520efe95ffbd8414",
+  "parameter_count": 11689512,
+  "workloads": [
+    {
+      "workload": {
+        "id": "online",
+        "batch": 1,
+        "goals": [
+          {
+            "id": "latency",
+            "metric": "latency_ms",
+            "direction": "min"
+          }
+        ]
+      },
+      "correctness": {
+        "passed": true,
+        "max_abs_error": 0.0,
+        "atol": 0.0001,
+        "rtol": 0.0001,
+        "corrupted_output_rejected": true,
+        "exact_top1": true,
+        "predicted_labels": [
+          "Pembroke, Pembroke Welsh corgi"
+        ]
+      },
+      "samples": [
+        {
+          "latency_ms": 1.337399,
+          "images_per_second": 747.7200147450387,
+          "peak_allocated_bytes": 86366208
+        },
+        {
+          "latency_ms": 1.32806,
+          "images_per_second": 752.97802810114,
+          "peak_allocated_bytes": 86366208
+        },
+        {
+          "latency_ms": 1.339126,
+          "images_per_second": 746.7557197754356,
+          "peak_allocated_bytes": 86366208
+        },
+        {
+          "latency_ms": 1.299027,
+          "images_per_second": 769.8069401174879,
+          "peak_allocated_bytes": 86366208
+        },
+        {
+          "latency_ms": 1.299298,
+          "images_per_second": 769.6463782750377,
+          "peak_allocated_bytes": 86366208
+        }
+      ],
+      "summary": {
+        "latency_ms": {
+          "median": 1.32806,
+          "min": 1.299027,
+          "max": 1.339126
+        },
+        "images_per_second": {
+          "median": 752.97802810114,
+          "min": 746.7557197754356,
+          "max": 769.8069401174879
+        },
+        "peak_allocated_bytes": {
+          "median": 86366208,
+          "min": 86366208,
+          "max": 86366208
+        }
+      },
+      "diagnostic": {
+        "trace_file": "online-trace.json",
+        "trace_sha256": "f354e5de249a17cdb1c0834401d0f5477803a5e8465c5eb656da03913e820ccf",
+        "cuda_kernel_count": 81,
+        "nccl_kernel_count": 0,
+        "nccl_kernel_sum_ms": 0.0,
+        "cpu_allreduce_event_count": 0,
+        "nccl_kernel_names": [],
+        "top_cuda_kernels_by_total_us": [
+          {
+            "name": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile148n_nt_v1",
+            "total_us": 350.64799999999997,
+            "calls": 13
+          },
+          {
+            "name": "void implicit_convolve_sgemm<float, float, 128, 5, 5, 3, 3, 3, 1, false, false, true>(int, int, int, float const*, int, float*, float const*, kernel_conv_params, unsigned long long, int, float, float, int, float const*, float const*, bool, bool, int, int)",
+            "total_us": 241.042,
+            "calls": 7
+          },
+          {
+            "name": "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)",
+            "total_us": 56.129999999999995,
+            "calls": 13
+          },
+          {
+            "name": "void cudnn::bn_fw_inf_1C11_kernel_NCHW<float, float, true, 1>(float, float, cudnnTensorStruct, float const*, cudnnTensorStruct, float*, cudnnTensorStruct, float const*, float const*, float const*, float const*, float)",
+            "total_us": 43.329,
+            "calls": 20
+          },
+          {
+            "name": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+            "total_us": 21.923000000000002,
+            "calls": 17
+          },
+          {
+            "name": "void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctor_add<float>, std::array<char*, 3ul> >(int, at::native::CUDAFunctor_add<float>, std::array<char*, 3ul>)",
+            "total_us": 10.113,
+            "calls": 8
+          },
+          {
+            "name": "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, float, float, float, float, false, true, true, false, 7, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<float const>, cublasGemvTensorStridedBatched<float const>, cublasGemvTensorStridedBatched<float>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<float const>, cublasGemvTensorStridedBatched<float const>, cublasGemvTensorStridedBatched<float>, float>)",
+            "total_us": 5.377,
+            "calls": 1
+          },
+          {
+            "name": "void at::native::(anonymous namespace)::max_pool_forward_nchw<float, int>(int, float const*, long, long, long, int, int, int, int, int, int, int, int, int, int, float*, long*)",
+            "total_us": 4.289,
+            "calls": 1
+          },
+          {
+            "name": "void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::MeanOps<float, float, float, float>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::MeanOps<float, float, float, float>, unsigned int, float, 4, 4>)",
+            "total_us": 2.464,
+            "calls": 1
+          }
+        ]
+      }
+    },
+    {
+      "workload": {
+        "id": "offline",
+        "batch": 32,
+        "goals": [
+          {
+            "id": "throughput",
+            "metric": "images_per_second",
+            "direction": "max"
+          },
+          {
+            "id": "memory",
+            "metric": "peak_allocated_bytes",
+            "direction": "min",
+            "constraints": {
+              "images_per_second_min_baseline_ratio": 0.95
+            }
+          }
+        ]
+      },
+      "correctness": {
+        "passed": true,
+        "max_abs_error": 0.0,
+        "atol": 0.0001,
+        "rtol": 0.0001,
+        "corrupted_output_rejected": true,
+        "exact_top1": true,
+        "predicted_labels": [
+          "Pembroke, Pembroke Welsh corgi",
+          "German shepherd, German shepherd dog, German police dog, alsatian",
+          "reel"
+        ]
+      },
+      "samples": [
+        {
+          "latency_ms": 4.192779,
+          "images_per_second": 7632.169499036319,
+          "peak_allocated_bytes": 282264064
+        },
+        {
+          "latency_ms": 4.189226,
+          "images_per_second": 7638.642555927992,
+          "peak_allocated_bytes": 282264064
+        },
+        {
+          "latency_ms": 6.472277,
+          "images_per_second": 4944.164163554805,
+          "peak_allocated_bytes": 282264064
+        },
+        {
+          "latency_ms": 4.200357,
+          "images_per_second": 7618.40005504294,
+          "peak_allocated_bytes": 282264064
+        },
+        {
+          "latency_ms": 4.192697,
+          "images_per_second": 7632.3187676094885,
+          "peak_allocated_bytes": 282264064
+        }
+      ],
+      "summary": {
+        "latency_ms": {
+          "median": 4.192779,
+          "min": 4.189226,
+          "max": 6.472277
+        },
+        "images_per_second": {
+          "median": 7632.169499036319,
+          "min": 4944.164163554805,
+          "max": 7638.642555927992
+        },
+        "peak_allocated_bytes": {
+          "median": 282264064,
+          "min": 282264064,
+          "max": 282264064
+        }
+      },
+      "diagnostic": {
+        "trace_file": "offline-trace.json",
+        "trace_sha256": "e8ad365d6976228077956acc00fbeeaa89c6456b6eebd5af8af71e5286b8d594",
+        "cuda_kernel_count": 88,
+        "nccl_kernel_count": 0,
+        "nccl_kernel_sum_ms": 0.0,
+        "cpu_allreduce_event_count": 0,
+        "nccl_kernel_names": [],
+        "top_cuda_kernels_by_total_us": [
+          {
+            "name": "_5x_cudnn_ampere_scudnn_128x64_relu_small_nn_v1",
+            "total_us": 1043.28,
+            "calls": 5
+          },
+          {
+            "name": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile442t_nt_v1",
+            "total_us": 875.81,
+            "calls": 6
+          },
+          {
+            "name": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile148n_nt_v1",
+            "total_us": 426.496,
+            "calls": 3
+          },
+          {
+            "name": "void cudnn::bn_fw_inf_1C11_kernel_NCHW<float, float, true, 1>(float, float, cudnnTensorStruct, float const*, cudnnTensorStruct, float*, cudnnTensorStruct, float const*, float const*, float const*, float const*, float)",
+            "total_us": 421.988,
+            "calls": 20
+          },
+          {
+            "name": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+            "total_us": 337.658,
+            "calls": 17
+          },
+          {
+            "name": "_5x_cudnn_ampere_scudnn_128x64_relu_medium_nn_v1",
+            "total_us": 286.71000000000004,
+            "calls": 2
+          },
+          {
+            "name": "_5x_cudnn_ampere_scudnn_128x128_relu_small_nn_v1",
+            "total_us": 231.377,
+            "calls": 3
+          },
+          {
+            "name": "void at::native::(anonymous namespace)::max_pool_forward_nchw<float, int>(int, float const*, long, long, long, int, int, int, int, int, int, int, int, int, int, float*, long*)",
+            "total_us": 200.047,
+            "calls": 1
+          },
+          {
+            "name": "void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctor_add<float>, std::array<char*, 3ul> >(int, at::native::CUDAFunctor_add<float>, std::array<char*, 3ul>)",
+            "total_us": 121.545,
+            "calls": 8
+          },
+          {
+            "name": "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)",
+            "total_us": 65.061,
+            "calls": 9
+          },
+          {
+            "name": "void implicit_convolve_sgemm<float, float, 512, 6, 8, 3, 3, 5, 1, false, false, true>(int, int, int, float const*, int, float*, float const*, kernel_conv_params, unsigned long long, int, float, float, int, float const*, float const*, bool, bool, int, int)",
+            "total_us": 51.876,
+            "calls": 1
+          },
+          {
+            "name": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+            "total_us": 14.114,
+            "calls": 10
+          },
+          {
+            "name": "ampere_sgemm_32x32_sliced1x4_tn",
+            "total_us": 5.697,
+            "calls": 1
+          },
+          {
+            "name": "void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::MeanOps<float, float, float, float>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::MeanOps<float, float, float, float>, unsigned int, float, 4, 4>)",
+            "total_us": 5.249,
+            "calls": 1
+          },
+          {
+            "name": "void cublasLt::splitKreduce_kernel<32, 16, int, float, float, float, float, false, float, float, float, true, true, false, false>(cublasLt::cublasSplitKParams<float>, float const*, float const*, float*, float*, float const*, float const*, float const*, float const*, float*, void*, long, float*, int*, float*, float*, float const*, float const*, float const*, float const*, float const*)",
+            "total_us": 1.952,
+            "calls": 1
+          }
+        ]
+      }
+    }
+  ]
+}

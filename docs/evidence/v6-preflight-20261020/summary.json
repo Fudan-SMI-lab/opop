@@ -1,0 +1,884 @@
+{
+  "scope": "Real environment and provider preflight, not general C3 acceptance or optimization gains",
+  "preparation": {
+    "base_commit": "8de73b4f673a82f277dac539f04aa7da4ae25f70",
+    "code": "/root/autodl-tmp/dev/opop-v6",
+    "python": "/root/autodl-tmp/dev-venv/bin/python",
+    "work": "/root/autodl-tmp/dev/v6-work",
+    "evidence": "/root/autodl-tmp/dev/v6-work/preflight-20261020",
+    "config": "/root/autodl-tmp/dev/v6-work/configs/box42-v6.yaml",
+    "provider_config_path": "/root/autodl-tmp/dev/v6-work/.opencode/opencode.jsonc",
+    "provider_config_mode": "0600",
+    "provider_copy_matches": true,
+    "model": "zhipuai/glm-5.3",
+    "probe_sources": {
+      "probe.py": {
+        "source": "/root/autodl-tmp/comm-profiling-check-20261013T234000/probe.py",
+        "sha256": "0384029005f8365ebc7637484879df46daddc16741aedb12d4b4353ccea7e5b6"
+      },
+      "comm_probe.py": {
+        "source": "/root/autodl-tmp/comm-profiling-nsys-check-20261013T235800/comm_probe.py",
+        "sha256": "8338e1763a8096d14f779407f496ef896f52c521faa0a09283508ed4c03ba7aa"
+      },
+      "metrics_probe.py": {
+        "source": "/root/autodl-tmp/comm-profiling-nsys-check-20261013T235800/metrics_probe.py",
+        "sha256": "91e8c50bb6180923857cf2b0468d250485b9ba95e3278d29107f6c999465970b"
+      }
+    }
+  },
+  "runtime": {
+    "source": "/root/autodl-tmp/dev/opop-v6/src/kernel_optimizer/__init__.py",
+    "python": "3.12.4 | packaged by Anaconda, Inc. | (main, Jun 18 2024, 15:12:24) [GCC 11.2.0]",
+    "executable": "/root/autodl-tmp/dev-venv/bin/python",
+    "packages": {
+      "torch": "2.13.0+cu129",
+      "triton": "3.7.1",
+      "transformers": "5.16.1",
+      "optuna": "4.9.0",
+      "pydantic": "2.13.5"
+    }
+  },
+  "checks": [
+    {
+      "name": "gpu-before",
+      "command": [
+        "nvidia-smi",
+        "--query-gpu=index,name,uuid,pci.bus_id,driver_version,memory.total,memory.used,utilization.gpu",
+        "--format=csv"
+      ],
+      "exit_code": 0,
+      "started_unix": 1792435345.1330817,
+      "elapsed_seconds": 0.11496591567993164,
+      "timeout_seconds": 10
+    },
+    {
+      "name": "topology",
+      "command": [
+        "nvidia-smi",
+        "topo",
+        "-m"
+      ],
+      "exit_code": 0,
+      "started_unix": 1792435345.2484782,
+      "elapsed_seconds": 0.2149348258972168,
+      "timeout_seconds": 10
+    },
+    {
+      "name": "p2p-read",
+      "command": [
+        "nvidia-smi",
+        "topo",
+        "-p2p",
+        "r"
+      ],
+      "exit_code": 0,
+      "started_unix": 1792435345.4636781,
+      "elapsed_seconds": 0.0325474739074707,
+      "timeout_seconds": 10
+    },
+    {
+      "name": "p2p-write",
+      "command": [
+        "nvidia-smi",
+        "topo",
+        "-p2p",
+        "w"
+      ],
+      "exit_code": 0,
+      "started_unix": 1792435345.4964645,
+      "elapsed_seconds": 0.0646207332611084,
+      "timeout_seconds": 10
+    },
+    {
+      "name": "nsys-version",
+      "command": [
+        "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys",
+        "--version"
+      ],
+      "exit_code": 0,
+      "started_unix": 1792435345.5612967,
+      "elapsed_seconds": 0.11453866958618164,
+      "timeout_seconds": 10
+    },
+    {
+      "name": "ncu-version",
+      "command": [
+        "/usr/local/cuda/bin/ncu",
+        "--version"
+      ],
+      "exit_code": 0,
+      "started_unix": 1792435345.6760423,
+      "elapsed_seconds": 0.03235578536987305,
+      "timeout_seconds": 10
+    },
+    {
+      "name": "opencode-version",
+      "command": [
+        "/usr/local/bin/opencode",
+        "--version"
+      ],
+      "exit_code": 0,
+      "started_unix": 1792435345.7085822,
+      "elapsed_seconds": 0.8154606819152832,
+      "timeout_seconds": 15
+    },
+    {
+      "name": "nccl-latency",
+      "command": [
+        "/root/autodl-tmp/dev-venv/bin/python",
+        "-B",
+        "-m",
+        "torch.distributed.run",
+        "--standalone",
+        "--nproc-per-node=2",
+        "/root/autodl-tmp/dev/v6-work/preflight-20261020/probe.py",
+        "latency",
+        "/root/autodl-tmp/dev/v6-work/preflight-20261020"
+      ],
+      "exit_code": 0,
+      "started_unix": 1792435346.524691,
+      "elapsed_seconds": 6.074119567871094,
+      "timeout_seconds": 60
+    },
+    {
+      "name": "torch-profiler",
+      "command": [
+        "/root/autodl-tmp/dev-venv/bin/python",
+        "-B",
+        "-m",
+        "torch.distributed.run",
+        "--standalone",
+        "--nproc-per-node=2",
+        "/root/autodl-tmp/dev/v6-work/preflight-20261020/probe.py",
+        "profile",
+        "/root/autodl-tmp/dev/v6-work/preflight-20261020"
+      ],
+      "exit_code": 0,
+      "started_unix": 1792435352.6724305,
+      "elapsed_seconds": 7.476131916046143,
+      "timeout_seconds": 60
+    },
+    {
+      "name": "nsys-capture",
+      "command": [
+        "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys",
+        "profile",
+        "--sample=none",
+        "--cpuctxsw=none",
+        "--trace=cuda,nvtx",
+        "--output=/root/autodl-tmp/dev/v6-work/preflight-20261020/communication",
+        "/root/autodl-tmp/dev-venv/bin/python",
+        "-B",
+        "-m",
+        "torch.distributed.run",
+        "--standalone",
+        "--nproc-per-node=2",
+        "/root/autodl-tmp/dev/v6-work/preflight-20261020/comm_probe.py",
+        "trace",
+        "/root/autodl-tmp/dev/v6-work/preflight-20261020"
+      ],
+      "exit_code": 0,
+      "started_unix": 1792435360.2278118,
+      "elapsed_seconds": 9.328742742538452,
+      "timeout_seconds": 90
+    },
+    {
+      "name": "nsys-export",
+      "command": [
+        "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys",
+        "export",
+        "--type=sqlite",
+        "--output=/root/autodl-tmp/dev/v6-work/preflight-20261020/communication.sqlite",
+        "/root/autodl-tmp/dev/v6-work/preflight-20261020/communication.nsys-rep"
+      ],
+      "exit_code": 0,
+      "started_unix": 1792435369.5571089,
+      "elapsed_seconds": 0.032514095306396484,
+      "timeout_seconds": 45
+    },
+    {
+      "name": "gpu-metrics",
+      "command": [
+        "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys",
+        "profile",
+        "--sample=none",
+        "--cpuctxsw=none",
+        "--trace=cuda",
+        "--gpu-metrics-devices=all",
+        "--gpu-metrics-frequency=1000",
+        "--output=/root/autodl-tmp/dev/v6-work/preflight-20261020/gpu-metrics",
+        "/root/autodl-tmp/dev-venv/bin/python",
+        "-B",
+        "/root/autodl-tmp/dev/v6-work/preflight-20261020/metrics_probe.py"
+      ],
+      "exit_code": 1,
+      "started_unix": 1792435369.66234,
+      "elapsed_seconds": 0.5153210163116455,
+      "timeout_seconds": 20
+    },
+    {
+      "name": "ncu-counter",
+      "command": [
+        "/usr/local/cuda/bin/ncu",
+        "--target-processes",
+        "all",
+        "--launch-count",
+        "1",
+        "--metrics",
+        "sm__cycles_elapsed.avg",
+        "/root/autodl-tmp/dev-venv/bin/python",
+        "-B",
+        "/root/autodl-tmp/dev/v6-work/preflight-20261020/probe.py",
+        "ncu",
+        "/root/autodl-tmp/dev/v6-work/preflight-20261020"
+      ],
+      "exit_code": 1,
+      "started_unix": 1792435370.2577453,
+      "elapsed_seconds": 4.471529722213745,
+      "timeout_seconds": 30
+    },
+    {
+      "name": "pcie-idle",
+      "command": [
+        "nvidia-smi",
+        "dmon",
+        "-s",
+        "t",
+        "-d",
+        "1",
+        "-c",
+        "2"
+      ],
+      "exit_code": 0,
+      "started_unix": 1792435374.8248165,
+      "elapsed_seconds": 1.266697645187378,
+      "timeout_seconds": 6
+    },
+    {
+      "name": "pcie-traffic",
+      "command": [
+        "/root/autodl-tmp/dev-venv/bin/python",
+        "-B",
+        "-m",
+        "torch.distributed.run",
+        "--standalone",
+        "--nproc-per-node=2",
+        "/root/autodl-tmp/dev/v6-work/preflight-20261020/comm_probe.py",
+        "traffic",
+        "/root/autodl-tmp/dev/v6-work/preflight-20261020"
+      ],
+      "exit_code": 0,
+      "started_unix": 1792435376.0919237,
+      "elapsed_seconds": 15.1383695602417,
+      "timeout_seconds": 30
+    },
+    {
+      "name": "doctor",
+      "command": [
+        "/root/autodl-tmp/dev-venv/bin/python",
+        "-B",
+        "-m",
+        "kernel_optimizer.cli",
+        "--config",
+        "/root/autodl-tmp/dev/v6-work/configs/box42-v6.yaml",
+        "doctor"
+      ],
+      "exit_code": 0,
+      "started_unix": 1792435391.3012562,
+      "elapsed_seconds": 14.535786151885986,
+      "timeout_seconds": 120
+    },
+    {
+      "name": "agent-smoke",
+      "command": [
+        "/root/autodl-tmp/dev-venv/bin/python",
+        "-B",
+        "-m",
+        "kernel_optimizer.cli",
+        "--config",
+        "/root/autodl-tmp/dev/v6-work/configs/box42-v6.yaml",
+        "agent-smoke",
+        "--module",
+        "generator",
+        "--task",
+        "level1:19"
+      ],
+      "exit_code": 0,
+      "started_unix": 1792435405.837492,
+      "elapsed_seconds": 795.9102399349213,
+      "timeout_seconds": 3700
+    },
+    {
+      "name": "gpu-after",
+      "command": [
+        "nvidia-smi",
+        "--query-gpu=index,name,uuid,pci.bus_id,driver_version,memory.total,memory.used,utilization.gpu",
+        "--format=csv"
+      ],
+      "exit_code": 0,
+      "started_unix": 1792436201.8377368,
+      "elapsed_seconds": 0.11465311050415039,
+      "timeout_seconds": 10
+    }
+  ],
+  "completed": true,
+  "historical_integrity": [
+    {
+      "folder": "comm-profiling-nsys-check-20261013T235800",
+      "checked": 37,
+      "mismatch": [],
+      "missing": []
+    },
+    {
+      "folder": "ddp-comm-case-20261014T004800",
+      "checked": 39,
+      "mismatch": [],
+      "missing": []
+    },
+    {
+      "folder": "qwen3-tp-operator-case-20261014T013300",
+      "checked": 43,
+      "mismatch": [],
+      "missing": []
+    },
+    {
+      "folder": "qwen3-fused-operator-check-20261014T020500",
+      "checked": 46,
+      "mismatch": [],
+      "missing": []
+    },
+    {
+      "folder": "qwen3-greedy-comm-operator-20261014T030000",
+      "checked": 42,
+      "mismatch": [],
+      "missing": []
+    },
+    {
+      "folder": "comm-profiling-check-20261013T234000",
+      "checked": 174,
+      "mismatch": [],
+      "missing": []
+    }
+  ],
+  "latency": [
+    {
+      "bytes_per_rank": 262144,
+      "dtype": "float32",
+      "correctness": true,
+      "warmups_correctness": 2,
+      "warmups_timing": 5,
+      "measured": 20,
+      "rank_ms": [
+        [
+          0.092781,
+          0.104308,
+          0.099517,
+          0.09947,
+          0.105316,
+          0.102684,
+          0.093857,
+          0.098318,
+          0.095256,
+          0.10994,
+          0.099992,
+          0.103744,
+          0.094341,
+          0.102207,
+          0.09913,
+          0.097493,
+          0.091145,
+          0.095751,
+          0.099603,
+          0.096313
+        ],
+        [
+          0.107213,
+          0.10907,
+          0.101644,
+          0.104483,
+          0.102627,
+          0.103995,
+          0.106071,
+          0.103124,
+          0.106161,
+          0.113671,
+          0.100223,
+          0.099766,
+          0.10894,
+          0.099884,
+          0.099838,
+          0.101624,
+          0.102269,
+          0.104802,
+          0.102313,
+          0.104244
+        ]
+      ],
+      "max_rank_ms": [
+        0.107213,
+        0.10907,
+        0.101644,
+        0.104483,
+        0.105316,
+        0.103995,
+        0.106071,
+        0.103124,
+        0.106161,
+        0.113671,
+        0.100223,
+        0.103744,
+        0.10894,
+        0.102207,
+        0.099838,
+        0.101624,
+        0.102269,
+        0.104802,
+        0.102313,
+        0.104244
+      ],
+      "median_ms": 0.1041195,
+      "p90_ms_nearest_rank": 0.10894
+    },
+    {
+      "bytes_per_rank": 1048576,
+      "dtype": "float32",
+      "correctness": true,
+      "warmups_correctness": 2,
+      "warmups_timing": 5,
+      "measured": 20,
+      "rank_ms": [
+        [
+          0.179215,
+          0.183649,
+          0.180248,
+          0.177587,
+          0.185499,
+          0.167381,
+          0.17788,
+          0.180438,
+          0.170838,
+          0.171339,
+          0.171939,
+          0.17818,
+          0.181365,
+          0.181762,
+          0.175009,
+          0.185826,
+          0.178066,
+          0.540384,
+          0.165742,
+          0.177736
+        ],
+        [
+          0.196455,
+          0.199361,
+          0.19688,
+          0.197699,
+          0.200181,
+          0.198144,
+          0.195814,
+          0.196903,
+          0.197948,
+          0.1976,
+          0.195513,
+          0.198244,
+          0.197373,
+          0.201292,
+          0.195114,
+          0.203251,
+          0.197819,
+          0.198885,
+          0.196725,
+          0.200692
+        ]
+      ],
+      "max_rank_ms": [
+        0.196455,
+        0.199361,
+        0.19688,
+        0.197699,
+        0.200181,
+        0.198144,
+        0.195814,
+        0.196903,
+        0.197948,
+        0.1976,
+        0.195513,
+        0.198244,
+        0.197373,
+        0.201292,
+        0.195114,
+        0.203251,
+        0.197819,
+        0.540384,
+        0.196725,
+        0.200692
+      ],
+      "median_ms": 0.19775900000000002,
+      "p90_ms_nearest_rank": 0.201292
+    },
+    {
+      "bytes_per_rank": 16777216,
+      "dtype": "float32",
+      "correctness": true,
+      "warmups_correctness": 2,
+      "warmups_timing": 5,
+      "measured": 20,
+      "rank_ms": [
+        [
+          1.927047,
+          1.934061,
+          1.941735,
+          1.958993,
+          1.915836,
+          1.930464,
+          1.918527,
+          1.927401,
+          1.918481,
+          1.932053,
+          1.911066,
+          1.936944,
+          1.913711,
+          1.932979,
+          1.93649,
+          1.958181,
+          1.947316,
+          1.942797,
+          1.944552,
+          1.934993
+        ],
+        [
+          2.164717,
+          2.170103,
+          2.180417,
+          2.193412,
+          2.148043,
+          2.166174,
+          2.151336,
+          2.161413,
+          2.152155,
+          2.16791,
+          2.143481,
+          2.17851,
+          2.148232,
+          2.169857,
+          2.171408,
+          2.193602,
+          2.184898,
+          2.174105,
+          2.181682,
+          2.16879
+        ]
+      ],
+      "max_rank_ms": [
+        2.164717,
+        2.170103,
+        2.180417,
+        2.193412,
+        2.148043,
+        2.166174,
+        2.151336,
+        2.161413,
+        2.152155,
+        2.16791,
+        2.143481,
+        2.17851,
+        2.148232,
+        2.169857,
+        2.171408,
+        2.193602,
+        2.184898,
+        2.174105,
+        2.181682,
+        2.16879
+      ],
+      "median_ms": 2.1693235,
+      "p90_ms_nearest_rank": 2.184898
+    }
+  ],
+  "torch_profiler": [
+    {
+      "rank": 0,
+      "windows": 21,
+      "cuda_windows": 21,
+      "nccl_windows": 21,
+      "raw_windows": [
+        {
+          "window": 0,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 1,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 2,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 3,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 4,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 5,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 6,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 7,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 8,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 9,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 10,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 11,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 12,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 13,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 14,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 15,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 16,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 17,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 18,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 19,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 20,
+          "kernel_count": 3,
+          "nccl_count": 1
+        }
+      ]
+    },
+    {
+      "rank": 1,
+      "windows": 21,
+      "cuda_windows": 21,
+      "nccl_windows": 21,
+      "raw_windows": [
+        {
+          "window": 0,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 1,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 2,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 3,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 4,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 5,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 6,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 7,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 8,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 9,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 10,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 11,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 12,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 13,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 14,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 15,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 16,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 17,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 18,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 19,
+          "kernel_count": 3,
+          "nccl_count": 1
+        },
+        {
+          "window": 20,
+          "kernel_count": 3,
+          "nccl_count": 1
+        }
+      ]
+    }
+  ],
+  "nsys": {
+    "marked_windows": 6,
+    "ranks": [
+      {
+        "rank": 0,
+        "pid": 45077,
+        "correctness": true,
+        "communication_kernel_count": 3,
+        "compute_kernel_count": 48,
+        "communication_union_us": 5816.47,
+        "compute_union_us": 358.157,
+        "overlap_union_us": 307.732
+      },
+      {
+        "rank": 1,
+        "pid": 45078,
+        "correctness": true,
+        "communication_kernel_count": 3,
+        "compute_kernel_count": 48,
+        "communication_union_us": 6402.254,
+        "compute_union_us": 847.689,
+        "overlap_union_us": 796.818
+      }
+    ],
+    "scope": "PID/device and time-enclosed diagnostic windows; not general operator attribution or causal critical path"
+  },
+  "actual_channel_routes": [
+    "SHM/direct/direct"
+  ],
+  "pcie": {
+    "scope": "device-wide 1-second MB/s samples, not per-operator wire bytes",
+    "idle": "# gpu  rxpci  txpci \n# Idx   MB/s   MB/s \n    0      0      0 \n    1      0      0 \n    0      0      0 \n    1      0      0 \n",
+    "load": "# gpu  rxpci  txpci \n# Idx   MB/s   MB/s \n    0   7705   8881 \n    1   7712   8833 \n    0   7764   8768 \n    1   7869   8904 \n    0   7799   8915 \n    1   7859   8842 \n    0      0      0 \n    1      0      0 \n    0      0      0 \n    1      0      0 \n"
+  },
+  "counter_probe": {
+    "ncu-counter": {
+      "permission_denied": true,
+      "raw_log": "ncu-counter.log"
+    },
+    "gpu-metrics": {
+      "permission_denied": true,
+      "raw_log": "gpu-metrics.log"
+    }
+  },
+  "agent_smoke": {
+    "status_lines": [
+      "got 2 candidates (attempts=1, cost=$0.0256)",
+      "run dir: /root/autodl-tmp/dev/v6-work/private-runs/smoke-generator-l1-19-20261020-024326"
+    ]
+  },
+  "cgroup": {
+    "/sys/fs/cgroup/memory.max": "257698037760",
+    "/sys/fs/cgroup/memory.high": "255550554112",
+    "/sys/fs/cgroup/cpu.max": "3200000 100000"
+  },
+  "gpu_state": "index, name, memory.used [MiB], utilization.gpu [%]\n0, NVIDIA GeForce RTX 4090, 0 MiB, 0 %\n1, NVIDIA GeForce RTX 4090, 0 MiB, 0 %\n",
+  "gpu_processes": "pid, gpu_uuid\n"
+}
