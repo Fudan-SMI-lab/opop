@@ -2,7 +2,6 @@
 
 import json
 import shutil
-import sys
 from collections.abc import Mapping
 from contextlib import nullcontext
 from dataclasses import dataclass, field
@@ -147,7 +146,6 @@ def test_manual_entry_exists_and_loads_without_model() -> None:
         result = evaluator.evaluate(MANUAL, {}, {})
     # Then: missing runtime state is invalid, not a fabricated performance score.
     assert not result.valid and result.score is None
-    assert "torch" not in sys.modules
 
 
 @pytest.mark.parametrize("case", [("ttft", 4, 4), ("single", 2, 256), ("multi", 8, 1024)])

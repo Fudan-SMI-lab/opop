@@ -447,7 +447,7 @@ def _output_fingerprint(directory: Path | None) -> tuple[int, int, float] | None
 
 
 class OpencodeClient:
-    def __init__(self, base_url: str, timeout_s: float = 1200.0,
+    def __init__(self, base_url: str, timeout_s: float | None = 1200.0,
                  memory_abort_frac: float = 0.92, resource_poll_s: float = 20.0,
                  idle_abort_frac: float = 0.5):
         self.base_url = base_url.rstrip("/")
@@ -477,6 +477,8 @@ class OpencodeClient:
     @property
     def idle_abort_s(self) -> float:
         """Seconds of zero output after which a call counts as hung. Derived, never hardcoded."""
+        if self.timeout_s is None:
+            return float("inf")
         return max(60.0, self.timeout_s * self.idle_abort_frac)
 
     def _session_is_working(self, session_id: str) -> bool | None:

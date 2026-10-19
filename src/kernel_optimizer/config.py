@@ -98,7 +98,9 @@ class OpencodeConfig(StrictConfig):
     # below is the instrument that catches silence: a hung call is aborted at 50% of this ceiling
     # (30 min) on producing nothing, while a call that keeps writing files is left to finish.
     # Model-agnostic: this is the transport read timeout, not a token or effort setting.
-    request_timeout_s: float = 3600.0
+    # None disables the request deadline and its derived idle deadline. The legacy
+    # default stays unchanged; v6 development explicitly opts into no deadline.
+    request_timeout_s: float | None = 3600.0
     # An in-flight agent call is aborted when the CONTAINER's memory reaches this fraction of
     # its cgroup limit. This deliberately replaced a total wall-clock deadline on a call, which
     # was the wrong instrument: an agent legitimately runs long because it compiles kernels and

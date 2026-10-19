@@ -64,6 +64,19 @@ def test_disabling_the_check_is_possible():
     assert c.idle_abort_frac == 0.0
 
 
+def test_explicit_no_deadline_preserves_legacy_default():
+    from kernel_optimizer.config import OpencodeConfig
+
+    assert OpencodeConfig().request_timeout_s == 3600.0
+    config = OpencodeConfig.model_validate({"request_timeout_s": None})
+    client = OpencodeClient("http://127.0.0.1:1", timeout_s=config.request_timeout_s)
+    try:
+        assert client._http.timeout.read is None
+        assert client.idle_abort_s == float("inf")
+    finally:
+        client._http.close()
+
+
 def test_the_productivity_signal_changes_when_an_agent_writes(tmp_path):
     """A fingerprint that does not move while files appear would abort working agents."""
     d = tmp_path / "sandbox"

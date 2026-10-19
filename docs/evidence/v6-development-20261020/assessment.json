@@ -1,0 +1,36 @@
+{
+  "entrypoint": "resnet_inference.py (python resnet_inference.py --assets <dir> --output <dir> [--workloads workloads.json] [--warmup 2] [--repeats 5] [--profile]); timing/correctness harness shared with common.py",
+  "measured_metrics": [
+    "Observation: latency_ms per timed repeat, wall-clock via time.perf_counter_ns with torch.cuda.synchronize before and after (resnet_inference.py:42-48)",
+    "Observation: images_per_second = workload batch size / elapsed time per repeat",
+    "Observation: peak_allocated_bytes from torch.cuda.max_memory_allocated after reset_peak_memory_stats each repeat",
+    "Observation: summarize() reports median/min/max per metric across repeats (>=3 enforced by arguments())",
+    "Observation: optional --profile adds diagnostic counts via profile_once(): cuda_kernel_count, nccl_kernel_count/sum_ms/names, cpu_allreduce_event_count, top 15 CUDA kernels by total time (common.py:87-105)",
+    "Observation: metadata records env (python/torch/cuda versions, device name, nvidia-smi inventory, source and workloads sha256) tagged protocol=readiness_baseline_not_optimization"
+  ],
+  "correctness_checks": [
+    "Observation: self-consistency only \u2014 two identical infer() calls compared with torch.testing.assert_close at logits_atol/logits_rtol from workloads.json; max_abs_error recorded (common.py:74-76, resnet_inference.py:30-31)",
+    "Observation: negative control \u2014 deliberately corrupted reference (+1) must be rejected by the same tolerance, guarding against vacuous tolerances (common.py:79-84)",
+    "Observation: exact top-1 agreement via torch.equal on argmax of both runs; first 3 predicted label strings recorded (resnet_inference.py:33-35)",
+    "Observation: reference pixels+logits saved as <workload>-reference.pt per workload for offline inspection",
+    "Observation: metadata explicitly scopes quality to 'Reference fidelity; no downstream accuracy/convergence claim' \u2014 no ground-truth label validation exists",
+    "Observation: determinism-oriented config (TF32 off, matmul precision 'highest', cudnn.benchmark off, fixed seed) so checks validate like-for-like runs, not accuracy"
+  ],
+  "possible_optimization_scopes": [
+    "Hypothesis: enable TF32 and/or fp16/bf16 AMP for conv/matmul \u2014 currently forced off (common.py:39-42), likely the largest headroom on Ampere+ but trades numeric fidelity with the assert_close tolerance",
+    "Hypothesis: torch.compile on infer() for kernel fusion; cudnn.benchmark=True or CUDA graphs for the fixed input shapes implied by workloads.json",
+    "Hypothesis: channels_last memory format for the ResNet conv stack on tensor-core GPUs",
+    "Hypothesis: larger batch sizes in workloads.json to raise GPU utilization; current batches tile a small fixture set via arange % len(images)",
+    "Hypothesis: export path (TorchScript/ONNX/TensorRT) for deployment-grade latency; single-stream python eager loop measured here",
+    "Observation constraining the above: baseline is deliberately unoptimized (protocol tag readiness_baseline_not_optimization) and any optimization run must re-pass the close_check/negative_check gates"
+  ],
+  "missing_for_general_workflow": [
+    "workloads.json absent from the directory \u2014 supplies batch sizes, workload ids, and logits_atol/logits_rtol; script fails without it",
+    "assets/ absent \u2014 requires local pretrained ResNet weights, pixels.npy fixtures, and asset-manifest.json; local_files_only=True means nothing is downloaded, so assets must be provisioned separately",
+    "no requirements.txt/environment spec for the imports (torch, transformers, numpy) or pinned versions",
+    "no ground-truth labels or accuracy evaluation \u2014 only self-consistency is checked",
+    "single-GPU only; common.py's NCCL/allreduce profiling hooks are unused by this workload, suggesting a distributed sibling workload exists but is not present",
+    "no README, test suite, or lint/typecheck configuration in the directory",
+    "no cross-run regression comparison of the saved reference .pt files; summary stats stop at median/min/max (no variance/percentiles beyond repeats)"
+  ]
+}
