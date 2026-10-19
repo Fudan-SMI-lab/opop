@@ -767,7 +767,13 @@ class V4Config(StrictConfig):
     conditional_scan: V4ConditionalScanConfig = V4ConditionalScanConfig()
 
 
+class UsageConfig(StrictConfig):
+    mode: Literal["disabled", "observe_only"] = "disabled"
+    path: Path | None = None
+
+
 class AppConfig(StrictConfig):
+    usage: UsageConfig = UsageConfig()
     run: RunConfig = RunConfig()
     opencode: OpencodeConfig = OpencodeConfig()
     agents: AgentsConfig = AgentsConfig()

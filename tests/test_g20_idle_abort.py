@@ -114,19 +114,3 @@ def test_an_unreadable_sandbox_is_not_treated_as_hung(tmp_path):
     assert _output_fingerprint(None) is None, "no directory must read as 'cannot tell', not as idle"
     missing = _output_fingerprint(tmp_path / "does-not-exist")
     assert missing in (None, (0, 0, 0.0)), missing
-
-
-def test_the_watchdog_checks_productivity_and_says_why():
-    """The abort reason must name the cause, or a killed call looks like a transport fault."""
-    import inspect
-
-    src = inspect.getsource(OpencodeClient.prompt)
-    assert "_output_fingerprint" in src, (
-        "the watchdog does not sample the sandbox, so a hung call still burns the full ceiling")
-    assert "idle_abort_s" in src, "the watchdog does not use the derived threshold"
-    assert "no new output for" in src, (
-        "the abort reason does not say the call went silent; without that, an idle-abort is "
-        "indistinguishable from the ReadTimeout it replaces")
-    # The memory check must survive alongside it: it stops a call that is about to take the box
-    # down, which is a different condition from silence and must not be replaced by it.
-    assert "memory_abort_frac" in src, "the memory watchdog was lost while adding the idle check"

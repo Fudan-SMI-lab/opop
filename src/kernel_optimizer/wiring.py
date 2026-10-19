@@ -33,6 +33,7 @@ from kernel_optimizer.gpu.worker_client import WslGpuWorker
 from kernel_optimizer.models.core import TaskSpec
 from kernel_optimizer.paramspace.validation import SpaceValidator
 from kernel_optimizer.store.run_store import RunStore
+from kernel_optimizer.store.usage import UsageLedger
 from kernel_optimizer.tasks.kernelbench import KernelBenchAdapter
 from kernel_optimizer.tuning.stats import TuningStatsAnalyzer
 
@@ -42,6 +43,8 @@ class Runtime:
 
     def __init__(self, cfg: AppConfig, log_dir: Path | None = None):
         self.cfg = cfg
+        self.usage_ledger = (UsageLedger(cfg.usage.path or (log_dir or cfg.run.runs_dir) / "session-usage.sqlite")
+                             if cfg.usage.mode == "observe_only" else None)
         log_path = (log_dir / "opencode-server.log") if log_dir else None
         self.server = OpencodeServer(cfg.opencode, log_path=log_path)
         self.client: OpencodeClient | None = None
@@ -55,6 +58,7 @@ class Runtime:
             memory_abort_frac=self.cfg.opencode.memory_abort_frac,
             resource_poll_s=self.cfg.opencode.resource_poll_s,
             idle_abort_frac=self.cfg.opencode.idle_abort_frac,
+            usage_ledger=self.usage_ledger,
         )
         if self.cfg.opencode.permission_mode == "sse_auto_approve":
             self.responder = PermissionAutoResponder(base_url)
@@ -67,6 +71,12 @@ class Runtime:
         if self.client:
             self.client.close()
         self.server.stop()
+        if self.usage_ledger is not None:
+            try:
+                self.usage_ledger.path.with_suffix(".json").write_text(
+                    json.dumps(self.usage_ledger.summary(), indent=2), encoding="utf-8")
+            except OSError:
+                pass
 
 
 def _deep_merge(base: dict, overlay: dict) -> dict:

@@ -18,6 +18,7 @@ import httpx
 from pydantic import BaseModel
 
 from kernel_optimizer.config import OpencodeConfig
+from kernel_optimizer.store.usage import UsageLedger
 
 
 class AgentCallError(Exception):
@@ -449,9 +450,10 @@ def _output_fingerprint(directory: Path | None) -> tuple[int, int, float] | None
 class OpencodeClient:
     def __init__(self, base_url: str, timeout_s: float | None = 1200.0,
                  memory_abort_frac: float = 0.92, resource_poll_s: float = 20.0,
-                 idle_abort_frac: float = 0.5):
+                 idle_abort_frac: float = 0.5, usage_ledger: UsageLedger | None = None):
         self.base_url = base_url.rstrip("/")
         self.timeout_s = timeout_s
+        self.usage_ledger = usage_ledger
         # Fraction of the container's memory limit at which an in-flight agent call is aborted.
         # Deliberately NOT a time budget: an agent that runs an hour compiling and benchmarking
         # is working, and cutting it discards that work. What must be bounded is an agent
@@ -556,7 +558,37 @@ class OpencodeClient:
             raise AgentCallError(f"session create failed {resp.status_code}: {resp.text[:500]}")
         return resp.json()["id"]
 
-    def prompt(
+    def prompt(self, session_id: str, text: str, *, model: str, agent: str = "build",
+               schema: dict | None = None, directory: Path | None = None,
+               system: str | None = None) -> PromptResult:
+        try:
+            return self._prompt(session_id, text, model=model, agent=agent, schema=schema,
+                                directory=directory, system=system)
+        finally:
+            self.collect_usage(session_id, directory)
+
+    def collect_usage(self, session_id: str, directory: Path | None = None) -> dict | None:
+        ledger = self.usage_ledger
+        if ledger is None:
+            return None
+        try:
+            # This diagnostic request has its own transport; it never caps model work.
+            with httpx.Client(base_url=self.base_url, timeout=15.0) as probe:
+                response = probe.get(f"/session/{session_id}/message",
+                                     params={"directory": str(directory)} if directory else None)
+                response.raise_for_status()
+                messages = response.json()
+                if not isinstance(messages, list):
+                    raise ValueError("unexpected session message response")
+            return ledger.observe(session_id, messages)
+        except Exception as exc:  # accounting must not change generation success/failure
+            try:
+                ledger.unavailable(session_id, type(exc).__name__)
+            except Exception:
+                pass
+            return None
+
+    def _prompt(
         self,
         session_id: str,
         text: str,
