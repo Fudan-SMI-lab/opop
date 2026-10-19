@@ -32,12 +32,13 @@ def prepare_variant(parent_output: Path, request: ProjectRequest, output: Path, 
     contract = original_revisions.load(original.contract_ref, ProjectContract)
     # Prose generated for the original workload can contain literal batch/shape
     # values. Copying it into a different workload creates a contradictory task.
-    changed_workload = contract.workload != request.workload
-    if changed_workload and config is None:
-        raise ValueError("workload variants need config for a real contract-only adaptation; evaluator code stays frozen")
+    changed_contract = (contract.workload != request.workload or contract.goal != request.goal
+                        or old_request.objective != request.objective)
+    if changed_contract and config is None:
+        raise ValueError("goal/workload variants need config for a real contract-only adaptation; evaluator code stays frozen")
     store = RunStore.create(output.parent, output.name, {"kind": "project_variant", "parent_output": str(parent_output), "request": request.portable()})
     adaptation = None
-    if changed_workload:
+    if changed_contract:
         from pydantic import BaseModel, ConfigDict, Field
         from kernel_optimizer.project.agents import ProjectAgents
         from kernel_optimizer.wiring import Runtime
@@ -53,9 +54,9 @@ def prepare_variant(parent_output: Path, request: ProjectRequest, output: Path, 
         from kernel_optimizer.project.runtime_config import project_agent_config
         with Runtime(project_agent_config(config), log_dir=log_dir) as runtime:
             generated, adaptation = ProjectAgents(runtime, store).generate("variant_contract", inputs,
-                "Write invariants.json following invariants.schema.json. This is a contract-only workload variant. "
+                "Write invariants.json following invariants.schema.json. This is a contract-only goal/workload variant. "
                 "Keep every source precision, asset, numerical, seed, state, quality and measurement policy. "
-                "Update only references to old workload dimensions/amounts and goal, using request.json. "
+                "Update only references to old workload dimensions/amounts, goal, metric scope and goal constraints, using request.json. "
                 "The evaluator is frozen and will be executed unchanged; inspect adapter.py to explain its support. "
                 "Do not generate or edit adapter code, loosen accuracy, or invent measurements. "
                 "Use the new concrete workload values consistently; do not retain contradictory old batch/shape statements.",
