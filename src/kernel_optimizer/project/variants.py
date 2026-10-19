@@ -50,7 +50,8 @@ def prepare_variant(parent_output: Path, request: ProjectRequest, output: Path, 
                   "adapter.py": original_store.get_artifact(next(f.content_ref for f in original.files if f.path == "opop_adapter.py"))}
         log_dir = output / "contract-adaptation"
         log_dir.mkdir(parents=True, exist_ok=True)
-        with Runtime(config, log_dir=log_dir) as runtime:
+        from kernel_optimizer.project.runtime_config import project_agent_config
+        with Runtime(project_agent_config(config), log_dir=log_dir) as runtime:
             generated, adaptation = ProjectAgents(runtime, store).generate("variant_contract", inputs,
                 "Write invariants.json following invariants.schema.json. This is a contract-only workload variant. "
                 "Keep every source precision, asset, numerical, seed, state, quality and measurement policy. "

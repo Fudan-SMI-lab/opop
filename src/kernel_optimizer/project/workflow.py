@@ -19,6 +19,8 @@ from kernel_optimizer.wiring import Runtime
 
 class ProjectWorkflow:
     def __init__(self, config: AppConfig, request: ProjectRequest, output: Path):
+        from kernel_optimizer.project.runtime_config import project_agent_config
+        config = project_agent_config(config)
         self.config, self.request, self.output = config, request, output.resolve()
         if config.usage.mode == "disabled":
             self.config = config.model_copy(update={"usage": config.usage.model_copy(update={"mode": "observe_only"})})

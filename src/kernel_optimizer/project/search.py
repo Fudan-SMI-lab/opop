@@ -23,7 +23,8 @@ from kernel_optimizer.wiring import Runtime
 
 class ProjectSearch:
     def __init__(self, config, output: Path):
-        self.config, self.output = config, output.resolve()
+        from kernel_optimizer.project.runtime_config import project_agent_config
+        self.config, self.output = project_agent_config(config), output.resolve()
         self.request = ProjectRequest.model_validate_json((output/"request.json").read_bytes())
         self.store = RunStore.open(output)
         self.revisions = RevisionStore(self.store)
@@ -168,9 +169,11 @@ class ProjectSearch:
         from kernel_optimizer.project.collectors import collect
         return collect(self, revision, collectors)
 
-    def trial(self, *, allowed_scopes=("group", "joint", "region", "execution_plan"), feedback=None):
+    def trial(self, *, allowed_scopes=("group", "joint", "region", "execution_plan"), feedback=None,
+              leaf_groups_only=False, selection_strategy="agent", feedback_view="full"):
         try:
-            return self._trial(allowed_scopes=allowed_scopes, feedback=feedback)
+            return self._trial(allowed_scopes=allowed_scopes, feedback=feedback,
+                leaf_groups_only=leaf_groups_only, selection_strategy=selection_strategy, feedback_view=feedback_view)
         except Exception as exc:
             failure = {"status": "failed", "parent": self.revisions.current().id,
                        "error": f"{type(exc).__name__}: {exc}", "traceback": traceback.format_exc()}
@@ -178,7 +181,7 @@ class ProjectSearch:
             self.store.append("PROJECT_TRIAL_FAILED", failure)
             raise
 
-    def _trial(self, *, allowed_scopes, feedback):
+    def _trial(self, *, allowed_scopes, feedback, leaf_groups_only=False, selection_strategy="agent", feedback_view="full"):
         discovery = json.loads((self.output/"discovery.json").read_text())
         parent = self.revisions.current()
         if discovery["revision"] != parent.id:
@@ -186,6 +189,18 @@ class ProjectSearch:
         contract = self.revisions.load(parent.contract_ref, ProjectContract)
         call_lookup = {c["id"]: c for c in discovery["calls"]}
         group_lookup = {g["id"]: g for g in discovery["groups"]}
+        from kernel_optimizer.project.experiment_policy import eligible_groups, check_selection, local_time_selection
+        from kernel_optimizer.project.experiment_policy import feedback_view as view_feedback
+        leaf_groups_only = leaf_groups_only or selection_strategy == "local_time"
+        eligible = eligible_groups(discovery, leaf_only=leaf_groups_only)
+        if not eligible:
+            raise ValueError("no eligible groups for this experiment policy")
+        if selection_strategy not in {"agent", "local_time"} or feedback_view not in {"full", "project"}:
+            raise ValueError("unknown experiment selection or feedback policy")
+        if selection_strategy == "local_time" and "group" not in allowed_scopes:
+            raise ValueError("local_time comparison requires group scope")
+        policy = {"allowed_scopes": allowed_scopes, "leaf_groups_only": leaf_groups_only,
+                  "selection_strategy": selection_strategy, "feedback_view": feedback_view}
         sources = {f.path: self.store.get_artifact(f.content_ref) for f in parent.files}
         common = {"request.json": json.dumps(self.request.portable(), indent=2),
                   "project.json": json.dumps({"current_revision": parent.id, "contract": contract.model_dump(mode="json"),
@@ -200,7 +215,7 @@ class ProjectSearch:
                       "collection_plan": discovery.get("collection_plan"), "extra_collectors": discovery.get("extra_collectors")}, indent=2),
                   "groups.json": json.dumps(discovery["groups"], indent=2), "calls.json": json.dumps(discovery["calls"], indent=2),
                   "call-resources.json": json.dumps(discovery.get("call_resources", {}), indent=2),
-                  "search.json": json.dumps({"allowed_scopes": allowed_scopes, "unknown_dependencies": discovery["unknown_dependencies"],
+                  "search.json": json.dumps({**policy, "eligible_groups": [g["id"] for g in eligible], "unknown_dependencies": discovery["unknown_dependencies"],
                       "installed_bundles": [self.revisions.bundle(ident).model_dump(mode="json") for ident in parent.bundles]}),
                   "adapter.py": sources["opop_adapter.py"]}
         from kernel_optimizer.control.direct_task import TaskSpace
@@ -216,11 +231,16 @@ class ProjectSearch:
             from kernel_optimizer.project.feedback import route
             registry = self.revisions.load(parent.registry_ref, GroupRegistry)
             plan = self.revisions.load(parent.plan_ref, ExecutionPlan)
-            selected, selection_receipt = agents.generate("selection", common,
-                (prompt_root/"selection_prompt.md").read_text(), ("selection.json",),
-                route(feedback, current_revision=parent.id, registry=registry),
-                validator=lambda path: Selection.model_validate_json((path/"selection.json").read_bytes()))
-            selection = json.loads((selected/"selection.json").read_text())
+            if selection_strategy == "agent":
+                selected, selection_receipt = agents.generate("selection", common,
+                    (prompt_root/"selection_prompt.md").read_text(), ("selection.json",),
+                    view_feedback(route(feedback, current_revision=parent.id, registry=registry), feedback_view),
+                    validator=lambda path: check_selection(path, discovery, allowed_scopes, eligible))
+                selection = json.loads((selected/"selection.json").read_text())
+            else:
+                selection = local_time_selection(eligible)
+                selection_receipt = {"role": "selection", "method": "deterministic local-time experiment control", "new_generation": False}
+                write_json(trial_root/"selection.json", selection)
             if selection["scope"] not in allowed_scopes or not selection["groups"] or set(selection["groups"]) - group_lookup.keys():
                 raise ValueError("selection refers to unsupported scope or unknown groups")
             required = set().union(*(set(group_lookup[g]["calls"]) for g in selection["groups"]))
@@ -242,11 +262,11 @@ class ProjectSearch:
                                                                      for ident in affected}, indent=2)}
             generated, candidate_receipt = agents.generate("candidate", candidate_inputs,
                 (prompt_root/"candidate_prompt.md").read_text(), ("candidate.py", "proposal.json"),
-                route(feedback, current_revision=parent.id, registry=registry, selected_groups=selection["groups"], plan=plan),
+                view_feedback(route(feedback, current_revision=parent.id, registry=registry, selected_groups=selection["groups"], plan=plan), feedback_view),
                 validator=validate_proposal)
         bundle, proposal = self.bundle_from_outputs(generated, selection, parent, discovery, trial_id)
         metadata = {"trial": trial_id, "selection": selection, "proposal": proposal,
-                    "selection_agent": selection_receipt, "candidate_agent": candidate_receipt}
+                    "selection_agent": selection_receipt, "candidate_agent": candidate_receipt, "experiment_policy": policy}
         write_json(trial_root/"generated.json", {**metadata, "bundle": bundle.model_dump(mode="json")})
         return self._evaluate_generated(bundle, metadata, discovery)
 
@@ -359,7 +379,8 @@ class ProjectSearch:
         executed = set().union(*map(set, rank_executed.values()))
         report = ProjectEvaluation(id=trial_id, revision_id=candidate.id, parent_id=parent.id,
             contract_ref=parent.contract_ref, bundle_id=bundle.id, quality="pass" if valid else "fail",
-            feasible=valid and measurement["valid"], objective=measurement["objective"], reference_objective=measurement["reference"],
+            feasible=valid and measurement["valid"] and all(c["passed"] for c in measurement.get("constraints", [])),
+            objective=measurement["objective"], reference_objective=measurement["reference"],
             metrics=measurement, reasons=tuple(measurement["reasons"]),
             required_ranks=tuple(range(contract.world_size)), rank_bundle_hashes={str(r["rank"]):
                 r.get("result", {}).get("bundle_hashes", {}).get(bundle.id, "missing") for r in measured["ranks"]},
