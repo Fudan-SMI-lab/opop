@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,12 @@ def main() -> int:
                "device": f"cuda:{rank}" if request.devices else "cpu", "output": str(request.output),
                "parameters": request.parameters, "binding": {"pid": os.getpid(), "status": "cpu"}}
     try:
+        manifest = request.cwd / ".opop-revision.json"
+        if manifest.is_file():
+            revision = json.loads(manifest.read_text())
+            for name, digest in revision["files"].items():
+                assert hashlib.sha256((request.cwd / name).read_bytes()).hexdigest() == digest, name
+            context["revision"] = revision
         if request.devices:
             import torch
             assert torch.cuda.device_count() == len(request.devices)
