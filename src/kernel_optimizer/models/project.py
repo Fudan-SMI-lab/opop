@@ -105,7 +105,8 @@ class ProjectContract(ProjectModel):
     workload: dict[str, FiniteJsonValue]
     quality: dict[str, FiniteJsonValue]
     completion: Name
-    invariants: tuple[Name, ...]
+    invariants: tuple[Name, ...] = Field(min_length=1)
+    frozen_files: tuple[str, ...] = ()
     task_definition: TaskDefinition | None = None
     state_protocol: Name
     world_size: int = Field(default=1, ge=1)

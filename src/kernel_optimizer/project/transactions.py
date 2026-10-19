@@ -133,6 +133,8 @@ class RevisionStore:
         files = {file.path: file for file in parent.files}
         for edit in bundle.edits:
             name = _relative(edit.path)
+            if name in contract.frozen_files:
+                raise ValueError("candidate cannot edit the frozen evaluator or reference")
             old = files.get(name)
             if edit.before_sha256 != (old.sha256 if old else None):
                 raise ValueError("stale file edit")

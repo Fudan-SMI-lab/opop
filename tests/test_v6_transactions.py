@@ -22,7 +22,7 @@ def setup_project(tmp_path):
                               aggregation=AggregationSpec(kind="sum"))
     contract = ProjectContract(id="task", goal="minimize latency", objective=objective,
                                workload={"batch": 1}, quality={"atol": 0.0}, completion="return",
-                               invariants=("same output",), state_protocol="reset each iteration")
+                               invariants=("same output",), state_protocol="reset each iteration", frozen_files=("evaluator.py",))
     plan = ExecutionPlan(id="p", calls=(CallSite(id="a", phase="run", kind="function", target="a.py"),
                                         CallSite(id="b", phase="run", kind="function", target="b.py")))
     groups = GroupRegistry(id="g", plan_id="p", groups=(GroupSpec(id="ga", calls=("a",), semantics="a"),
@@ -96,3 +96,6 @@ def test_conflicting_edits_and_contract_drift_are_rejected(tmp_path):
         revisions.stage(bundle.model_copy(update={"contract_ref": "different"}))
     with pytest.raises(ValueError, match="stale file"):
         revisions.stage(bundle.model_copy(update={"edits": (bundle.edits[0].model_copy(update={"before_sha256": "stale"}),)}))
+    with pytest.raises(ValueError, match="frozen evaluator"):
+        revisions.stage(bundle.model_copy(update={"edits": (FileEdit(path="evaluator.py", before_sha256=None,
+            content_ref=revisions.store.put_artifact("return True")),), "write_set": ("file:evaluator.py",)}))

@@ -566,6 +566,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     from kernel_optimizer.task_cli import add_task_parser, cmd_optimize_task
     add_task_parser(sub.add_parser("optimize-task", help="optimize a task-owned native objective"))
+    from kernel_optimizer.project_cli import add_project_parser, cmd_optimize_project
+    add_project_parser(sub.add_parser("optimize-project", help="generate and optimize a project workflow"))
 
     p = sub.add_parser("doctor", help="environment health check")
     p.add_argument("--calibrate", action="store_true",
@@ -606,6 +608,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     _install_termination_handler()
     commands = {
+        "optimize-project": cmd_optimize_project,
         "optimize-task": cmd_optimize_task,
         "doctor": cmd_doctor,
         "baseline": cmd_baseline,
