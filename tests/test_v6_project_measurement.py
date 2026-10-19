@@ -33,3 +33,12 @@ def test_throughput_constraint_checks_the_slowest_participating_rank():
     checks = constraints_for_runs([candidate], {"constraints": [{"metric": "throughput", "op": "ge", "baseline_ratio": 0.95}]}, anchor)
     assert checks[0]["values"] == [90]
     assert not checks[0]["passed"]
+
+
+def test_source_changes_do_not_publish_even_when_all_timings_improve():
+    a, b = endpoint(10), endpoint(8)
+    a["ranks"][0]["framework_source"] = {"sha256": "old"}
+    b["ranks"][0]["framework_source"] = {"sha256": "new"}
+    result = paired_decision([{"parent": a, "candidate": b}, {"parent": a, "candidate": b}],
+                             {"name": "latency", "direction": "minimize"}, a)
+    assert "framework_changed_between_endpoints" in result["reasons"]

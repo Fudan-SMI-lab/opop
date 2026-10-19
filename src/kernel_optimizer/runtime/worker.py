@@ -23,6 +23,8 @@ def main() -> int:
                "device": f"cuda:{rank}" if request.devices else "cpu", "output": str(request.output),
                "parameters": request.parameters, "binding": {"pid": os.getpid(), "status": "cpu"}}
     occupancy = None
+    from kernel_optimizer.runtime.provenance import framework_source
+    source_identity = framework_source()
     try:
         if request.devices and os.name != "nt":
             from kernel_optimizer.runtime.occupancy import OccupancyMonitor
@@ -76,10 +78,12 @@ def main() -> int:
             context["binding"]["occupancy"] = observation
             if observation["external_clients"]:
                 raise RuntimeError("unrelated CUDA processes overlapped this worker; measurement discarded")
-        write_json(request.output / f"rank-{rank}.json", {"status": "passed", "binding": context["binding"], "result": result})
+        write_json(request.output / f"rank-{rank}.json", {"status": "passed", "binding": context["binding"],
+            "framework_source": source_identity, "result": result})
         return 0
     except BaseException as exc:
         write_json(request.output / f"rank-{rank}.json", {"status": "failed", "binding": context["binding"],
+                   "framework_source": source_identity,
                    "error_type": type(exc).__name__, "error": str(exc), "traceback": traceback.format_exc()})
         return 1
     finally:

@@ -22,6 +22,10 @@ def paired_decision(pairs, objective, anchor):
     reasons, gains, noise, constraints = [], [], [], []
     if not all(valid_run(run) for pair in pairs for run in pair.values()):
         return {"valid": False, "reasons": ["invalid_paired_endpoint"], "objective": None, "reference": None}
+    sources = {rank.get("framework_source", {}).get("sha256")
+               for pair in pairs for run in pair.values() for rank in run["ranks"]}
+    if len(sources) > 1:
+        reasons.append("framework_changed_between_endpoints")
     before = [metric(p["parent"], name, reducer) for p in pairs]
     after = [metric(p["candidate"], name, reducer) for p in pairs]
     for pair, a, b in zip(pairs, before, after, strict=True):
@@ -45,4 +49,5 @@ def paired_decision(pairs, objective, anchor):
     return {"valid": True, "objective": statistics.median(after), "reference": statistics.median(before),
             "parent_values": before, "candidate_values": after, "paired_gains": gains, "noise_bounds": noise,
             "constraints": constraints, "reasons": sorted(set(reasons)),
+            "framework_source": next(iter(sources)) if len(sources) == 1 else "mixed",
             "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"}
