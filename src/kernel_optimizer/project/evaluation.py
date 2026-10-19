@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+from contextlib import ExitStack
 import math
 from pathlib import Path
 import statistics
@@ -111,13 +112,29 @@ def worker_entry(context: dict) -> dict:
     request = parameters["request"]
     adapter = load_adapter(Path(parameters["adapter"]))
     state = adapter.prepare(context, request)
+    policies = (torch.backends.cuda.matmul.allow_tf32, torch.backends.cudnn.allow_tf32, torch.get_default_dtype())
+    bindings = []
+    for bundle in parameters.get("bundles", []):
+        from kernel_optimizer.project.binding import BindingSession
+        binding = BindingSession(adapter, state, bundle["specs"])
+        installed = binding.install(Path(bundle["file"]), bundle.get("parameters", {}))
+        if set(installed) != set(bundle["expected_calls"]):
+            raise ValueError("installed candidate sites differ from the declared bundle")
+        bindings.append((bundle, binding))
     quality = request["quality"]
     reference_path = Path(parameters.get("reference_dir", context["output"])) / f"reference-rank-{context['rank']}.pt"
+
+    def operation():
+        with ExitStack() as stack:
+            for _, binding in bindings:
+                if binding._mode is not None:
+                    stack.enter_context(binding._mode)
+            return adapter.run(state)
 
     def invoke():
         torch.cuda.synchronize()
         started = time.perf_counter_ns()
-        result = adapter.run(state)
+        result = operation()
         torch.cuda.synchronize()
         elapsed = (time.perf_counter_ns()-started)/1e6
         metrics = adapter.metrics(state, result, elapsed)
@@ -126,6 +143,42 @@ def worker_entry(context: dict) -> dict:
         return result, metrics
 
     action = parameters.get("action", "controls")
+    if action == "profile":
+        from kernel_optimizer.project.discovery import capture
+        from kernel_optimizer.runtime.execution import write_json
+        for _, binding in bindings:
+            binding.tracking = False
+        for _ in range(request["warmup"]):
+            adapter.reset(state); invoke()
+        observed = capture(adapter, state, Path(context["output"]), context["rank"], operation)
+        destination = Path(context["output"]) / f"discovery-rank-{context['rank']}.json"
+        write_json(destination, observed)
+        return {"valid": True, "discovery": str(destination), "coverage": observed["coverage"],
+                "call_sites": len(observed["calls"]), "groups": len(observed["groups"])}
+    if action == "evaluate":
+        reference = torch.load(reference_path, map_location="cpu", weights_only=True)
+        adapter.reset(state)
+        checks = []
+        for index in range(request["continuous_steps"]):
+            result, _ = invoke()
+            checks.append(compare(adapter.observe(state, result), reference[index], quality))
+        coverage = {bundle["id"]: {"counts": dict(binding.counts), "fallbacks": dict(binding.fallbacks),
+                                  "required": bundle["expected_calls"]} for bundle, binding in bindings}
+        covered = all(set(bundle["expected_calls"]) <= set(binding.counts) for bundle, binding in bindings)
+        unchanged = policies == (torch.backends.cuda.matmul.allow_tf32, torch.backends.cudnn.allow_tf32, torch.get_default_dtype())
+        valid = all(check["passed"] for check in checks) and covered and unchanged
+        samples = []
+        if valid:
+            for _, binding in bindings:
+                binding.tracking = False
+            for _ in range(request["warmup"]):
+                adapter.reset(state); invoke()
+            for _ in range(request["repeats"]):
+                adapter.reset(state); _, metrics = invoke(); samples.append(metrics)
+        return {"valid": valid, "checks": checks, "coverage": coverage, "math_policy_unchanged": unchanged,
+                "samples": samples, "metrics": {name: statistics.median(s[name] for s in samples)
+                                                 for name in samples[0]} if samples else {},
+                "bundle_hashes": context.get("revision", {}).get("bundle_hashes", {})}
     if action != "controls":
         raise ValueError(f"unsupported evaluator action: {action}")
     adapter.reset(state)

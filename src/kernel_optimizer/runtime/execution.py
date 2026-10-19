@@ -133,6 +133,11 @@ class LocalExecutor:
                            "CUDA_DEVICE_ORDER": "PCI_BUS_ID", "RANK": str(rank),
                            "LOCAL_RANK": str(rank), "WORLD_SIZE": str(world),
                            "PYTHONUNBUFFERED": "1"}
+                    # Workers change cwd to the immutable project snapshot. Preserve
+                    # the controller's imports even when launched with PYTHONPATH=src:.
+                    import_roots = [str(Path(__file__).resolve().parents[2])]
+                    import_roots.extend(str(Path(p or ".").resolve()) for p in env.get("PYTHONPATH", "").split(os.pathsep))
+                    env["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(import_roots))
                     log = stack.enter_context((request.output / f"rank-{rank}.log").open("wb"))
                     processes.append(subprocess.Popen(
                         [request.python, "-B", "-m", "kernel_optimizer.runtime.worker", str(spec), str(rank)],

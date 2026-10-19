@@ -20,10 +20,17 @@ T = TypeVar("T", bound=BaseModel)
 
 def canonical(value: Any) -> bytes:
     if isinstance(value, BaseModel):
-        value = value.model_dump(mode="json")
+        model = value
+        value = model.model_dump(mode="json")
+        # New defaults must not alter the content identities of historical v1 artifacts.
+        if value.get("schema_version") == "project.v1":
+            if isinstance(model, CandidateBundle):
+                value.pop("affected_calls", None)
+            if isinstance(model, ProjectContract):
+                value.pop("frozen_files", None)
     def encode(item):
         if isinstance(item, BaseModel):
-            return item.model_dump(mode="json")
+            return json.loads(canonical(item))
         raise TypeError(f"not JSON serializable: {type(item).__name__}")
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False, default=encode).encode()
 
@@ -114,6 +121,29 @@ class RevisionStore:
                    "files": {file.path: file.sha256 for file in revision.files}})
         return destination
 
+    def attach_discovery(self, parent: ProjectRevision, plan: ExecutionPlan, groups: GroupRegistry) -> ProjectRevision:
+        self._check_registry(plan, groups)
+        contract_ref = parent.contract_ref
+        contract = self.load(contract_ref, ProjectContract)
+        if contract.schema_version == "project.v1" and not parent.bundles:
+            # Explicit migration of initial P2 artifacts: task semantics and original
+            # reference anchor remain fixed; v2 records the already fixed evaluator files.
+            upgraded = contract.model_copy(update={"schema_version": "project.v2",
+                "frozen_files": tuple(f.path for f in parent.files if f.path in {"opop_adapter.py", "opop_evaluate.py"})})
+            contract_ref = self.put(upgraded)
+            self.store.append("PROJECT_CONTRACT_MIGRATED", {"from": parent.contract_ref, "to": contract_ref,
+                                                           "change": "v2 explicit fixed evaluator files"})
+        with DeviceLease(self.root / "locks", "accepted-project-version"):
+            if self.current().id != parent.id:
+                raise ValueError("discovery parent changed")
+            revision = self._save_revision(dict(parent_id=parent.id, anchor_id=parent.anchor_id,
+                contract_ref=contract_ref, plan_ref=self.put(plan), registry_ref=self.put(groups), files=parent.files,
+                bundles=parent.bundles, retired_bundles=parent.retired_bundles))
+            write_json(self.pointer, {"revision": revision.id})
+            self.store.append("PROJECT_DISCOVERED", {"parent": parent.id, "revision": revision.id,
+                                                    "registry": groups.id, "retired_groups": groups.retired})
+            return revision
+
     def stage(self, bundle: CandidateBundle) -> ProjectRevision:
         # Exploratory parents need not be the accepted current version. Publication uses CAS.
         parent = self.revision(bundle.parent_revision)
@@ -130,6 +160,10 @@ class RevisionStore:
         plan = self.load(parent.plan_ref, ExecutionPlan)
         if set(bundle.groups) - {g.id for g in registry.groups} or set(bundle.calls) - {c.id for c in plan.calls}:
             raise ValueError("candidate refers to unknown groups or calls")
+        if set(bundle.affected_calls) - {c.id for c in plan.calls}:
+            raise ValueError("candidate effect closure refers to unknown calls")
+        if bundle.affected_calls and not set(bundle.calls) <= set(bundle.affected_calls):
+            raise ValueError("replacement calls must be inside the declared effect closure")
         files = {file.path: file for file in parent.files}
         for edit in bundle.edits:
             name = _relative(edit.path)
@@ -155,10 +189,12 @@ class RevisionStore:
         for ident in existing:
             if set(self.bundle(ident).requires) & set(bundle.replaces):
                 raise ValueError("replacement would break an inherited bundle dependency")
+            if set(self.bundle(ident).write_set) & set(bundle.write_set):
+                raise ValueError("overlapping installed writes require explicit bundle replacement")
         bundle_path = self.root / "bundles" / f"{bundle.id}.json"
         if bundle_path.exists() and canonical(self.bundle(bundle.id)) != canonical(bundle):
             raise ValueError("bundle identity was reused for different content")
-        write_json(bundle_path, bundle.model_dump(mode="json"))
+        write_json(bundle_path, json.loads(canonical(bundle)))
         revision = self._save_revision(dict(parent_id=parent.id, anchor_id=parent.anchor_id,
             contract_ref=parent.contract_ref, plan_ref=plan_ref, registry_ref=registry_ref,
             files=tuple(files[name] for name in sorted(files)), bundles=existing + (bundle.id,),

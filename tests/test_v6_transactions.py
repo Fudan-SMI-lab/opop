@@ -82,8 +82,13 @@ def test_recovery_uses_pointer_and_retains_full_bundle_history(tmp_path):
     path = revisions.root / "transactions" / f"{staged.id}.json"
     state = json.loads(path.read_text()); state["state"] = "evaluated"; path.write_text(json.dumps(state))
     assert revisions.recover()[0]["state"] == "committed"
-    next_bundle = candidate(revisions, staged, "next"); next_revision = revisions.stage(next_bundle)
-    assert next_revision.bundles == ("joint", "next")
+    next_bundle = candidate(revisions, staged, "next")
+    with pytest.raises(ValueError, match="overlapping installed writes"):
+        revisions.stage(next_bundle)
+    next_bundle = next_bundle.model_copy(update={"replaces": (bundle.id,)})
+    next_revision = revisions.stage(next_bundle)
+    assert next_revision.bundles == ("next",)
+    assert next_revision.retired_bundles == ("joint",)
     assert revisions.recover()[0]["state"] == "aborted"
     assert revisions.current().id == staged.id
 
@@ -99,3 +104,13 @@ def test_conflicting_edits_and_contract_drift_are_rejected(tmp_path):
     with pytest.raises(ValueError, match="frozen evaluator"):
         revisions.stage(bundle.model_copy(update={"edits": (FileEdit(path="evaluator.py", before_sha256=None,
             content_ref=revisions.store.put_artifact("return True")),), "write_set": ("file:evaluator.py",)}))
+
+
+def test_historical_bundle_hash_survives_new_schema_defaults(tmp_path):
+    revisions, parent = setup_project(tmp_path)
+    raw = candidate(revisions, parent).model_dump(mode="json")
+    raw["schema_version"] = "project.v1"
+    raw.pop("affected_calls")
+    restored = CandidateBundle.model_validate_json(json.dumps(raw))
+    assert identity(restored) == identity(raw)
+    assert identity(restored.model_copy(update={"schema_version": "project.v2"})) != identity(raw)

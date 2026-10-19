@@ -99,6 +99,7 @@ class GroupRegistry(ProjectModel):
 
 
 class ProjectContract(ProjectModel):
+    schema_version: Literal["project.v1", "project.v2"] = "project.v2"
     id: Name
     goal: Name
     objective: ObjectiveSpec
@@ -135,6 +136,7 @@ class FileEdit(ProjectModel):
 
 
 class CandidateBundle(ProjectModel):
+    schema_version: Literal["project.v1", "project.v2"] = "project.v2"
     id: Name
     parent_revision: Name
     contract_ref: Name
@@ -142,6 +144,7 @@ class CandidateBundle(ProjectModel):
     implementation: Literal["kernel", "library", "composite", "distributed", "strategy"]
     groups: tuple[Name, ...]
     calls: tuple[Name, ...]
+    affected_calls: tuple[Name, ...] = ()
     edits: tuple[FileEdit, ...]
     read_set: tuple[Name, ...]
     write_set: tuple[Name, ...]
