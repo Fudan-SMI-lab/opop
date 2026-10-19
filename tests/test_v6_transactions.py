@@ -114,3 +114,16 @@ def test_historical_bundle_hash_survives_new_schema_defaults(tmp_path):
     restored = CandidateBundle.model_validate_json(json.dumps(raw))
     assert identity(restored) == identity(raw)
     assert identity(restored.model_copy(update={"schema_version": "project.v2"})) != identity(raw)
+
+
+def test_reference_is_not_published_before_controls(tmp_path):
+    revisions, parent = setup_project(tmp_path)
+    other = RevisionStore(RunStore.create(tmp_path, "pending", {}))
+    reference = other.initialize(tmp_path/"source", ["a.py", "b.py"],
+        revisions.load(parent.contract_ref, ProjectContract), revisions.load(parent.plan_ref, ExecutionPlan),
+        revisions.load(parent.registry_ref, GroupRegistry), publish=False)
+    assert not other.pointer.exists()
+    other.publish_initial(reference)
+    assert other.current() == reference
+    with pytest.raises(ValueError, match="unpublished"):
+        other.publish_initial(reference)

@@ -87,9 +87,14 @@ def corrupt(value: Any) -> Any:
         nonlocal changed
         if isinstance(item, torch.Tensor):
             copy = item.clone()
-            if not changed and copy.numel() and copy.is_floating_point():
+            if not changed and copy.numel():
                 copy = copy.contiguous()
-                copy.view(-1)[0] += copy.view(-1)[0].abs() * 10 + 1
+                if copy.dtype == torch.bool:
+                    copy.view(-1)[0] = ~copy.view(-1)[0]
+                elif copy.is_floating_point() or copy.is_complex():
+                    copy.view(-1)[0] += copy.view(-1)[0].abs() * 10 + 1
+                else:
+                    copy.view(-1)[0] += 1
                 changed = True
             return copy
         if isinstance(item, dict):
@@ -99,6 +104,9 @@ def corrupt(value: Any) -> Any:
         if not changed and isinstance(item, float):
             changed = True
             return item + abs(item)*10 + 1
+        if not changed and isinstance(item, (int, bool)):
+            changed = True
+            return not item if isinstance(item, bool) else item+1
         return item
     result = visit(value)
     if not changed:
@@ -114,15 +122,48 @@ def worker_entry(context: dict) -> dict:
     state = adapter.prepare(context, request)
     policies = (torch.backends.cuda.matmul.allow_tf32, torch.backends.cudnn.allow_tf32, torch.get_default_dtype())
     bindings = []
+    setup = []
     for bundle in parameters.get("bundles", []):
         from kernel_optimizer.project.binding import BindingSession
+        cuda = str(context["device"]).startswith("cuda")
+        if cuda:
+            torch.cuda.synchronize(); torch.cuda.reset_peak_memory_stats()
+        started = time.perf_counter_ns()
         binding = BindingSession(adapter, state, bundle["specs"])
         installed = binding.install(Path(bundle["file"]), bundle.get("parameters", {}))
         if set(installed) != set(bundle["expected_calls"]):
             raise ValueError("installed candidate sites differ from the declared bundle")
+        if cuda:
+            torch.cuda.synchronize()
+        setup.append({"bundle": bundle["id"], "elapsed_ms": (time.perf_counter_ns()-started)/1e6,
+                      "allocated_bytes": torch.cuda.memory_allocated() if cuda else None,
+                      "reserved_bytes": torch.cuda.memory_reserved() if cuda else None,
+                      "peak_allocated_bytes": torch.cuda.max_memory_allocated() if cuda else None,
+                      "scope": "installation after model prepare; separate from the declared warm-model score"})
         bindings.append((bundle, binding))
     quality = request["quality"]
     reference_path = Path(parameters.get("reference_dir", context["output"])) / f"reference-rank-{context['rank']}.pt"
+
+    def mode(name):
+        if callable(getattr(adapter, "set_mode", None)):
+            adapter.set_mode(state, name)
+
+    mode("quality")
+
+    distributed = torch.distributed.is_initialized()
+
+    def synchronize():
+        if str(context["device"]).startswith("cuda"):
+            devices = range(torch.cuda.device_count()) if context["world_size"] == 1 else [torch.cuda.current_device()]
+            for device in devices:
+                torch.cuda.synchronize(device)
+
+    def consensus(local):
+        if not distributed:
+            return local
+        flag = torch.tensor(int(local), device=context["device"], dtype=torch.int32)
+        torch.distributed.all_reduce(flag, op=torch.distributed.ReduceOp.MIN)
+        return bool(flag.item())
 
     def operation():
         with ExitStack() as stack:
@@ -132,25 +173,68 @@ def worker_entry(context: dict) -> dict:
             return adapter.run(state)
 
     def invoke():
-        torch.cuda.synchronize()
+        if callable(getattr(adapter, "before_run", None)):
+            adapter.before_run(state)
+        elif distributed:
+            torch.distributed.barrier()
+        synchronize()
         started = time.perf_counter_ns()
         result = operation()
-        torch.cuda.synchronize()
+        synchronize()
         elapsed = (time.perf_counter_ns()-started)/1e6
         metrics = adapter.metrics(state, result, elapsed)
         if not isinstance(metrics, dict) or any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in metrics.values()):
             raise ValueError("adapter metrics must be finite numeric values")
         return result, metrics
 
+    def summarize(samples):
+        metrics = {name: statistics.median(sample[name] for sample in samples) for name in samples[0]}
+        metric_samples, diagnostics = {}, {}
+        if request["objective"].get("source"):
+            from kernel_optimizer.project.communication import sample_metric
+            mode("profile")
+            diagnostics = sample_metric(adapter, state, operation, synchronize, context,
+                request["objective"]["source"], int(request.get("profiling", {}).get("metric_repeats", 3)))
+            metric_samples[request["objective"]["name"]] = diagnostics["values"]
+            metrics[request["objective"]["name"]] = statistics.median(diagnostics["values"])
+        if request["objective"]["name"] not in metrics:
+            raise ValueError(f"evaluator omitted objective {request['objective']['name']}")
+        return {"metrics": metrics, "metric_samples": metric_samples, "diagnostics": diagnostics}
+
     action = parameters.get("action", "controls")
+    if action == "nsys_profile":
+        from kernel_optimizer.project.nsys import capture as nsys_capture
+        mode("profile")
+        for _, binding in bindings:
+            binding.tracking = False
+        for _ in range(request["warmup"]):
+            adapter.reset(state); invoke()
+        return nsys_capture(adapter, state, operation, synchronize)
     if action == "profile":
+        mode("profile")
         from kernel_optimizer.project.discovery import capture
         from kernel_optimizer.runtime.execution import write_json
         for _, binding in bindings:
             binding.tracking = False
         for _ in range(request["warmup"]):
             adapter.reset(state); invoke()
-        observed = capture(adapter, state, Path(context["output"]), context["rank"], operation)
+        observed = capture(adapter, state, Path(context["output"]), context["rank"], operation, synchronize)
+        from kernel_optimizer.project.communication import probe, normalize, transports, available_fields
+        import json
+        policy = request.get("communication", "auto")
+        manifest = probe(context, policy, request.get("tools"))
+        observed["capabilities"] = manifest.model_dump(mode="json")
+        applicable = policy != "off" and (context["world_size"] > 1 or torch.cuda.device_count() > 1)
+        if applicable:
+            observed["communication"] = normalize(json.loads(Path(observed["trace"]).read_text()), observed, context["rank"])
+            observed["communication"]["transport"] = transports(Path(context["output"]).glob("nccl.*.log"))
+        else:
+            observed["communication"] = {"status": "not_applicable", "reason": "disabled" if policy == "off" else "single-device task"}
+        if policy == "required":
+            required = set(request.get("required_observations") or ["nccl_kernel_duration"])-{"cross_rank_collectives"}
+            available = available_fields(observed["communication"]) | {field.name for field in manifest.fields if field.status == "observed"}
+            if required-available:
+                raise ValueError(f"required communication observations unavailable: {sorted(required-available)}")
         destination = Path(context["output"]) / f"discovery-rank-{context['rank']}.json"
         write_json(destination, observed)
         return {"valid": True, "discovery": str(destination), "coverage": observed["coverage"],
@@ -166,9 +250,10 @@ def worker_entry(context: dict) -> dict:
                                   "required": bundle["expected_calls"]} for bundle, binding in bindings}
         covered = all(set(bundle["expected_calls"]) <= set(binding.counts) for bundle, binding in bindings)
         unchanged = policies == (torch.backends.cuda.matmul.allow_tf32, torch.backends.cudnn.allow_tf32, torch.get_default_dtype())
-        valid = all(check["passed"] for check in checks) and covered and unchanged
+        valid = consensus(all(check["passed"] for check in checks) and covered and unchanged)
         samples = []
         if valid:
+            mode("measure")
             for _, binding in bindings:
                 binding.tracking = False
             for _ in range(request["warmup"]):
@@ -176,8 +261,8 @@ def worker_entry(context: dict) -> dict:
             for _ in range(request["repeats"]):
                 adapter.reset(state); _, metrics = invoke(); samples.append(metrics)
         return {"valid": valid, "checks": checks, "coverage": coverage, "math_policy_unchanged": unchanged,
-                "samples": samples, "metrics": {name: statistics.median(s[name] for s in samples)
-                                                 for name in samples[0]} if samples else {},
+                "setup": setup,
+                "samples": samples, **(summarize(samples) if samples else {"metrics": {}}),
                 "bundle_hashes": context.get("revision", {}).get("bundle_hashes", {})}
     if action != "controls":
         raise ValueError(f"unsupported evaluator action: {action}")
@@ -192,7 +277,7 @@ def worker_entry(context: dict) -> dict:
     for index in range(request["continuous_steps"]):
         result, _ = invoke()
         reset_checks.append(compare(adapter.observe(state, result), reference[index], quality))
-    if not all(check["passed"] for check in reset_checks):
+    if not consensus(all(check["passed"] for check in reset_checks)):
         return {"valid": False, "failure": "state_reset_or_reference_instability", "checks": reset_checks}
     original = adapter.run
     calls = 0
@@ -213,6 +298,11 @@ def worker_entry(context: dict) -> dict:
     result, _ = invoke()
     uncovered_quality = compare(adapter.observe(state, result), reference[0], quality)
     missing_coverage_rejected = calls == 0 and uncovered_quality["passed"]
+    controls_valid = consensus(identity_check["passed"] and identity_covered and not wrong_output["passed"] and missing_coverage_rejected)
+    if not controls_valid:
+        return {"valid": False, "failure": "identity_or_negative_control_failed_on_a_rank",
+                "identity": identity_check, "wrong_output": wrong_output, "coverage": missing_coverage_rejected}
+    mode("measure")
     for _ in range(request["warmup"]):
         adapter.reset(state); invoke()
     samples = []
@@ -220,14 +310,11 @@ def worker_entry(context: dict) -> dict:
         adapter.reset(state)
         _, metrics = invoke()
         samples.append(metrics)
-    primary = request["objective"]["name"]
-    if any(primary not in sample for sample in samples):
-        raise ValueError(f"adapter omitted requested objective {primary}")
     metric_names = set(samples[0])
     if any(set(sample) != metric_names for sample in samples):
         raise ValueError("metric schema changes across repeated runs")
-    return {"valid": identity_check["passed"] and identity_covered and not wrong_output["passed"] and missing_coverage_rejected,
+    return {"valid": controls_valid,
             "controls": {"reset": reset_checks, "identity": identity_check, "identity_covered": identity_covered,
                          "wrong_output_rejected": not wrong_output["passed"], "missing_coverage_rejected": missing_coverage_rejected},
-            "samples": samples, "metrics": {name: statistics.median(s[name] for s in samples) for name in metric_names},
+            "samples": samples, **summarize(samples),
             "reference": str(reference_path), "models": list(adapter.models(state))}

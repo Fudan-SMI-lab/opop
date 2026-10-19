@@ -27,6 +27,16 @@ class Proposal(BaseModel):
     parameter_space: dict[str, Any] = Field(default_factory=dict)
 
 
+class CollectionPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    collectors: list[Literal["torch", "nsys"]]
+    requested_fields: list[str]
+    unavailable_fields: dict[str, str]
+    rationale: str
+
+
 def validate_proposal(directory: Path):
-    Proposal.model_validate_json((directory/"proposal.json").read_bytes())
+    from kernel_optimizer.control.direct_task import TaskSpace
+    proposal = Proposal.model_validate_json((directory/"proposal.json").read_bytes())
+    TaskSpace.model_validate(proposal.parameter_space)
     compile((directory/"candidate.py").read_bytes(), "candidate.py", "exec")

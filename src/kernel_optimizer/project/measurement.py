@@ -30,7 +30,9 @@ def paired_decision(pairs, objective, anchor):
         deviations = []
         for run in pair.values():
             for rank in run["ranks"]:
-                samples = [s[name] for s in rank["result"]["samples"]]
+                samples = rank["result"].get("metric_samples", {}).get(name)
+                if samples is None:
+                    samples = [s[name] for s in rank["result"]["samples"]]
                 center = statistics.median(samples)
                 deviations.append(statistics.median(abs(v-center) for v in samples))
         bound = float(objective.get("noise_factor", 2)) * max(deviations, default=0)

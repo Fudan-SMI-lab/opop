@@ -28,7 +28,7 @@ def cmd_optimize_project(args):
         previous = ProjectRequest.model_validate_json((args.output/"request.json").read_bytes())
         if previous != request:
             raise ValueError("resume cannot change the frozen project request")
-        result = json.loads((args.output/"prepared.json").read_text())
+        result = ProjectWorkflow(config, request, args.output).prepare(feedback=feedback, resume=True)
     else:
         result = ProjectWorkflow(config, request, args.output).prepare(feedback=feedback)
     if not args.prepare_only:

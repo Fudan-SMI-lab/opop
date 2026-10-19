@@ -2,6 +2,8 @@ Generate candidate.py for the selected project optimization. Read inputs/request
 
 Follow inputs/proposal.schema.json exactly. In particular, implementation is one enum string such as "composite", never a description; put descriptions in rationale.
 
+parameter_space follows inputs/parameter-space.schema.json and is evaluated by the existing TaskSearch/TPE loop against the complete project. Use {} for no tunable parameters. If defining parameters, read them from context['parameters']; declare legal choices and constraints without changing frozen task semantics. The selected parameter candidate is independently revalidated with paired project measurements before publication.
+
 candidate.py must export build(context) -> dict[call_id, callable]. Context contains:
 
 * state: the actual adapter state after prepare, before validation runs;

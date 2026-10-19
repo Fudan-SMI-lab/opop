@@ -32,6 +32,7 @@ class ExecutionRequest(BaseModel):
     worker_timeout_s: float | None = None
     collective_timeout_s: float = 120.0
     env: dict[str, str] = Field(default_factory=dict)
+    launcher: list[str] = Field(default_factory=list)
 
 
 def write_json(path: Path, data: Any) -> None:
@@ -139,8 +140,9 @@ class LocalExecutor:
                     import_roots.extend(str(Path(p or ".").resolve()) for p in env.get("PYTHONPATH", "").split(os.pathsep))
                     env["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(import_roots))
                     log = stack.enter_context((request.output / f"rank-{rank}.log").open("wb"))
+                    prefix = [part.replace("{rank}", str(rank)).replace("{output}", str(request.output)) for part in request.launcher]
                     processes.append(subprocess.Popen(
-                        [request.python, "-B", "-m", "kernel_optimizer.runtime.worker", str(spec), str(rank)],
+                        [*prefix, request.python, "-B", "-m", "kernel_optimizer.runtime.worker", str(spec), str(rank)],
                         cwd=request.cwd, env=env, stdout=log, stderr=subprocess.STDOUT,
                         start_new_session=(os.name != "nt")))
                 while True:

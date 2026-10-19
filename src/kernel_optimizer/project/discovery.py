@@ -56,58 +56,13 @@ def tensor_leaves(value):
             yield from tensor_leaves(item)
 
 
-def _associate(trace: dict, events: list[dict]) -> dict:
-    """Join kernels to launch correlation, then to nested observed call intervals."""
-    lookup = {"opop::" + str(event["sequence"]): event["call_id"] for event in events}
-    timelines = defaultdict(list)
-    kernels = []
-    for row in trace.get("traceEvents", []):
-        if row.get("ph") != "X":
-            continue
-        name, category, args = row.get("name", ""), row.get("cat", ""), row.get("args", {})
-        if name in lookup:
-            key = (row.get("pid"), row.get("tid"))
-            token = id(row)
-            timelines[key].append((row["ts"], 1, token, lookup[name]))
-            timelines[key].append((row["ts"] + row.get("dur", 0), 0, token, None))
-        if category in {"cuda_runtime", "cuda_driver"} and "correlation" in args:
-            timelines[(row.get("pid"), row.get("tid"))].append((row["ts"], 2, args["correlation"], None))
-        if category == "kernel":
-            kernels.append({"name": name, "start_us": row["ts"], "duration_us": row.get("dur", 0),
-                            "correlation": args.get("correlation"), "stream": args.get("stream"),
-                            "device": args.get("device"), "pid": row.get("pid")})
-    launches = {}
-    for timeline in timelines.values():
-        active = {}
-        for _, kind, token, call in sorted(timeline, key=lambda row: (row[0], row[1])):
-            if kind == 0:
-                active.pop(token, None)
-            elif kind == 1:
-                active[token] = call
-            else:
-                launches[token] = tuple(active.values())
-    totals = defaultdict(lambda: {"cuda_us": 0.0, "kernels": 0, "communication_us": 0.0})
-    matched = 0
-    for kernel in kernels:
-        calls = list(dict.fromkeys(launches.get(kernel["correlation"], ())))
-        kernel["calls"] = calls
-        kernel["communication"] = "nccl" in kernel["name"].lower()
-        if calls:
-            matched += 1
-        for call in calls:
-            totals[call]["cuda_us"] += kernel["duration_us"]
-            totals[call]["kernels"] += 1
-            if kernel["communication"]:
-                totals[call]["communication_us"] += kernel["duration_us"]
-    return {"kernels": kernels, "call_resources": dict(totals),
-            "coverage": {"cuda_kernels": len(kernels), "associated_kernels": matched,
-                         "unassociated_kernels": len(kernels)-matched},
-            "timing_scope": "Diagnostic CUDA kernel durations; nested call totals overlap and must not be summed"}
+from kernel_optimizer.project.trace import associate as _associate
 
 
-def capture(adapter, state, output: Path, rank: int, operation=None) -> dict:
+def capture(adapter, state, output: Path, rank: int, operation=None, synchronize=None) -> dict:
     import torch
     from torch.utils._python_dispatch import TorchDispatchMode
+    synchronize = synchronize or (torch.cuda.synchronize if torch.cuda.is_available() else lambda: None)
     calls = {}
     events = []
     edges = set()
@@ -119,13 +74,14 @@ def capture(adapter, state, output: Path, rank: int, operation=None) -> dict:
     def enter(target, kind, semantics, args, kwargs, attributes=None):
         signature = {"args": tensor_description(args), "kwargs": tensor_description(kwargs or {})}
         key = target + "|" + _phase.get()
+        site_parent = module_stack[-1] if kind == "functional" and module_stack else None
         if kind == "functional":
-            key += "|" + identity(signature)[:12]
+            key += "|" + str(site_parent) + "|" + identity(signature)[:12]
         call_id = hashlib.sha256(key.encode()).hexdigest()[:24]
         if call_id not in calls:
             calls[call_id] = {"id": call_id, "target": target, "kind": kind, "phase": _phase.get(),
                               "semantics": semantics, "attributes": attributes or {}, "signatures": [],
-                              "count": 0, "parents": []}
+                              "count": 0, "parents": [], "site_parent": site_parent}
         call = calls[call_id]
         if signature not in call["signatures"]:
             call["signatures"].append(signature)
@@ -182,16 +138,23 @@ def capture(adapter, state, output: Path, rank: int, operation=None) -> dict:
             handles.append(module.register_forward_pre_hook(before, with_kwargs=True))
             handles.append(module.register_forward_hook(after, with_kwargs=True, always_call=True))
     adapter.reset(state)
-    torch.cuda.synchronize()
+    if callable(getattr(adapter, "before_run", None)):
+        adapter.before_run(state)
+    elif torch.distributed.is_initialized():
+        torch.distributed.barrier()
+    synchronize()
     try:
-        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+        activities = [torch.profiler.ProfilerActivity.CPU]
+        if torch.cuda.is_available():
+            activities.append(torch.profiler.ProfilerActivity.CUDA)
+        with torch.profiler.profile(activities=activities,
                                     record_shapes=True, profile_memory=False) as prof:
             with CaptureMode():
                 call_id, marker = enter("project.invoke", "project", "complete workload", (), {})
                 module_stack.append(call_id)
                 try:
                     (operation or (lambda: adapter.run(state)))()
-                    torch.cuda.synchronize()
+                    synchronize()
                 finally:
                     module_stack.pop(); marker.__exit__(None, None, None)
         trace_path = output / f"trace-rank-{rank}.json"
@@ -200,13 +163,14 @@ def capture(adapter, state, output: Path, rank: int, operation=None) -> dict:
         for handle in handles:
             handle.remove()
     trace = json.loads(trace_path.read_text())
-    association = _associate(trace, events)
+    association = _associate(trace, events, calls)
     groups = defaultdict(list)
     for call in calls.values():
         signature = {"kind": call["kind"], "semantics": call["semantics"],
                      "attributes": call["attributes"], "signatures": call["signatures"]}
         groups[identity(signature)[:20]].append(call["id"])
-    return {"schema_version": 1, "rank": rank, "calls": list(calls.values()), "events": events,
+    return {"schema_version": 2, "site_identity": "functional context + phase + signature; module path + phase",
+            "rank": rank, "calls": list(calls.values()), "events": events,
             "dependencies": [{"producer": a, "consumer": b, "kind": kind} for a, b, kind in sorted(edges)],
             "groups": [{"id": ident, "calls": values} for ident, values in groups.items()],
             "trace": str(trace_path), "trace_sha256": hashlib.sha256(trace_path.read_bytes()).hexdigest(),

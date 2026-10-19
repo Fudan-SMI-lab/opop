@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from collections import Counter
+from contextvars import ContextVar
+import hashlib
 import importlib.util
 from pathlib import Path
 
@@ -19,6 +21,8 @@ class BindingSession:
         self.tracking = True
         self.restores = []
         self.functionals = {}
+        self.handles = []
+        self.active_modules = ContextVar("candidate_module_context", default=())
         self._mode = None
         for ident, spec in self.specs.items():
             if spec["kind"] == "module":
@@ -77,12 +81,31 @@ class BindingSession:
     def _create_dispatch_mode(self):
         from torch.utils._python_dispatch import TorchDispatchMode
         binding = self
+        if any(spec.get("site_parent") for spec in self.specs.values() if spec["id"] in self.functionals):
+            seen = set()
+            for root, model in self.models.items():
+                for path, module in model.named_modules():
+                    if id(module) in seen:
+                        continue
+                    seen.add(id(module))
+                    target = root + ("."+path if path else "")
+                    def before(mod, args, target=target):
+                        ident = hashlib.sha256((target+"|"+_phase.get()).encode()).hexdigest()[:24]
+                        binding.active_modules.set((*binding.active_modules.get(), ident))
+                    def after(mod, args, result):
+                        binding.active_modules.set(binding.active_modules.get()[:-1])
+                    self.handles.append(module.register_forward_pre_hook(before))
+                    self.handles.append(module.register_forward_hook(after, always_call=True))
         class ReplacementMode(TorchDispatchMode):
             def __torch_dispatch__(self, func, types, args=(), kwargs=None):
                 signature = None
                 for ident, replacement in binding.functionals.items():
                     spec = binding.specs[ident]
                     if spec["target"] != str(func) or spec["phase"] != _phase.get():
+                        continue
+                    stack = binding.active_modules.get()
+                    parent = stack[-1] if stack else hashlib.sha256(b"project.invoke|run").hexdigest()[:24]
+                    if spec.get("site_parent") is not None and spec["site_parent"] != parent:
                         continue
                     if signature is None:
                         signature = {"args": tensor_description(args), "kwargs": tensor_description(kwargs or {})}
@@ -98,6 +121,9 @@ class BindingSession:
             return self.adapter.run(self.state)
 
     def close(self):
+        for handle in self.handles:
+            handle.remove()
+        self.handles.clear()
         for owner, attr, original in reversed(self.restores):
             setattr(owner, attr, original)
         self.restores.clear()

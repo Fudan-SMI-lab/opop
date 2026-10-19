@@ -79,7 +79,7 @@ class RevisionStore:
         return revision
 
     def initialize(self, source: Path, files: list[str], contract: ProjectContract,
-                   plan: ExecutionPlan, groups: GroupRegistry) -> ProjectRevision:
+                   plan: ExecutionPlan, groups: GroupRegistry, *, publish: bool = True) -> ProjectRevision:
         if self.pointer.exists():
             raise FileExistsError("project already initialized")
         self._check_registry(plan, groups)
@@ -94,10 +94,17 @@ class RevisionStore:
         contract_ref = self.put(contract)
         revision = self._save_revision(dict(parent_id=None, anchor_id=identity({"contract": contract_ref, "files": refs}),
             contract_ref=contract_ref, plan_ref=self.put(plan), registry_ref=self.put(groups), files=tuple(refs)))
-        write_json(self.root / "anchor.json", {"revision": revision.id, "contract_ref": contract_ref})
-        write_json(self.pointer, {"revision": revision.id})
-        self.store.append("PROJECT_INITIALIZED", {"revision": revision.id})
+        if publish:
+            self.publish_initial(revision)
         return revision
+
+    def publish_initial(self, revision):
+        with DeviceLease(self.root / "locks", "accepted-project-version"):
+            if self.pointer.exists() or revision.parent_id is not None:
+                raise ValueError("initial publication requires an unpublished reference revision")
+            write_json(self.root / "anchor.json", {"revision": revision.id, "contract_ref": revision.contract_ref})
+            write_json(self.pointer, {"revision": revision.id})
+            self.store.append("PROJECT_INITIALIZED", {"revision": revision.id})
 
     @staticmethod
     def _check_registry(plan: ExecutionPlan, registry: GroupRegistry) -> None:

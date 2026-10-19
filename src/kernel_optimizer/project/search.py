@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 import traceback
 from uuid import uuid4
@@ -11,7 +12,7 @@ from kernel_optimizer.models.project import (
     ProjectContract, ProjectEvaluation,
 )
 from kernel_optimizer.project.agents import ProjectAgents
-from kernel_optimizer.project.generated import Proposal, Selection, validate_proposal
+from kernel_optimizer.project.generated import CollectionPlan, Proposal, Selection, validate_proposal
 from kernel_optimizer.project.request import ProjectRequest
 from kernel_optimizer.project.measurement import paired_decision, valid_run
 from kernel_optimizer.project.transactions import RevisionStore, identity
@@ -26,9 +27,11 @@ class ProjectSearch:
         self.request = ProjectRequest.model_validate_json((output/"request.json").read_bytes())
         self.store = RunStore.open(output)
         self.revisions = RevisionStore(self.store)
-        prepared = json.loads((output/"prepared.json").read_text())
+        prepared = self.prepared = json.loads((output/"prepared.json").read_text())
         if prepared["status"] != "prepared":
             raise ValueError("project evaluator has not passed its controls")
+        if prepared.get("request_sha256") and prepared["request_sha256"] != hashlib.sha256((output/"request.json").read_bytes()).hexdigest():
+            raise ValueError("frozen project request changed after evaluator validation")
 
     def execute(self, revision, name, action):
         job_root = self.output/"jobs"/name
@@ -42,11 +45,24 @@ class ProjectSearch:
                             "specs": json.loads((source/Path(bundle.installer).with_suffix(".targets.json")).read_text()),
                             "expected_calls": list(bundle.calls)})
         request = self.request
+        env = {}
+        launcher = []
+        if action == "nsys_profile":
+            from kernel_optimizer.project.nsys import command_prefix
+            import shutil
+            tool = request.tools.get("nsys") or shutil.which("nsys")
+            if tool is None:
+                return {"status": "unavailable", "reason": "Nsys executable unavailable", "ranks": []}
+            launcher = command_prefix(tool, counters=request.profiling.get("gpu_counters", False))
+        if action in {"profile", "nsys_profile"} and request.communication != "off" and len(request.devices) > 1:
+            env = {"NCCL_DEBUG": "INFO", "NCCL_DEBUG_SUBSYS": "INIT,GRAPH,COLL",
+                   "NCCL_DEBUG_FILE": str(job_root/"run"/"nccl.%h.%p.log")}
         return LocalExecutor().run(ExecutionRequest(entry=source/"opop_evaluate.py", cwd=source,
             devices=request.devices, distributed_backend=request.distributed_backend, output=job_root/"run",
             lease_dir=request.lease_dir, worker_timeout_s=request.worker_timeout_s,
+            env=env, launcher=launcher,
             parameters={"request": request.portable(), "adapter": str(source/"opop_adapter.py"), "action": action,
-                        "reference_dir": str(self.output/"controls"), "bundles": bundles}))
+                        "reference_dir": self.prepared.get("controls_path", str(self.output/"controls")), "bundles": bundles}))
 
     def discover(self):
         parent = self.revisions.current()
@@ -56,6 +72,11 @@ class ProjectSearch:
             raise ValueError("project profiling failed")
         ranks = [json.loads(Path(rank["result"]["discovery"]).read_text()) for rank in run["ranks"]]
         primary = ranks[0]
+        from kernel_optimizer.project.communication import match_ranks
+        communication = match_ranks([r["communication"] for r in ranks if "collectives" in r.get("communication", {})])
+        if "cross_rank_collectives" in self.request.required_observations and (
+                not communication["matched"] or communication["incomplete"]):
+            raise ValueError("required cross-rank collective matching is incomplete")
         calls = tuple(CallSite(id=c["id"], phase=c["phase"], kind=c["kind"], target=c["target"],
                                signature={"signatures": c["signatures"], "attributes": c["attributes"]},
                                evidence=(primary["trace"],)) for c in primary["calls"])
@@ -93,12 +114,57 @@ class ProjectSearch:
                   "groups": sorted(summary, key=lambda g: g["diagnostic_cuda_us"], reverse=True),
                   "calls": primary["calls"], "ranks": [r["trace"] for r in ranks],
                   "coverage": [r["coverage"] for r in ranks], "unknown_dependencies": primary["unknown_dependencies"],
+                  "communication": {"cross_rank": communication, "ranks": [r.get("communication") for r in ranks],
+                                    "capabilities": [r.get("capabilities") for r in ranks]},
                   "plan_change": {"retired_calls": sorted({c.id for c in previous_plan.calls} - call_lookup.keys()),
                       "new_calls": sorted(call_lookup.keys() - {c.id for c in previous_plan.calls}),
                       "retired_groups": list(registry.retired), "invalidated_evidence": list(registry.invalidated_evidence),
                       "lineage_basis": "Surviving call identity or containment inside an installed joint bundle; not independent causal attribution"},
                   "raw_discovery": [rank["result"]["discovery"] for rank in run["ranks"]]}
         write_json(self.output/"discovery.json", result)
+        if (self.request.communication != "off" and len(self.request.devices) > 1) or self.request.profiling.get("agent_plan", False):
+            result["collection_plan"] = self.plan_collectors(result)
+            result["extra_collectors"] = self.collect_extra(revision, result["collection_plan"]["plan"]["collectors"])
+            write_json(self.output/"discovery.json", result)
+        return result
+
+    def plan_collectors(self, discovery):
+        inputs = {"request.json": json.dumps(self.request.portable(), indent=2),
+                  "observations.json": json.dumps(discovery["communication"], indent=2),
+                  "coverage.json": json.dumps(discovery["coverage"], indent=2),
+                  "collection.schema.json": json.dumps(CollectionPlan.model_json_schema(), indent=2)}
+        prompt = ("Choose useful diagnostic collectors for the frozen task objective from actual capability and trace evidence. "
+            "Write collection.json following collection.schema.json. The torch collector already ran. Nsys is optional and runs separately; "
+            "select it when available and useful to resolve overlap, graph tracing or attribution questions. "
+            "Never invent PCIe/NVLink traffic from logical payload or memcpy sizes. List unavailable dimensions with observed reasons. "
+            "Do not request every counter indiscriminately, change the task, or run tools yourself. "
+            "The framework verifies availability and retains missing fields as unknown.")
+        directory = self.output/"collector-plans"/uuid4().hex[:10]; directory.mkdir(parents=True)
+        with Runtime(self.config, log_dir=directory) as runtime:
+            generated, receipt = ProjectAgents(runtime, self.store).generate("collection-planner", inputs, prompt,
+                ("collection.json",), validator=lambda p: CollectionPlan.model_validate_json((p/"collection.json").read_bytes()))
+        plan = CollectionPlan.model_validate_json((generated/"collection.json").read_bytes()).model_dump(mode="json")
+        result = {"plan": plan, "agent": receipt}
+        write_json(directory/"result.json", result)
+        return result
+
+    def collect_extra(self, revision, collectors):
+        result = {}
+        if "nsys" in collectors:
+            name = "nsys-"+uuid4().hex[:10]
+            try:
+                run = self.execute(revision, name, "nsys_profile")
+                if run["status"] == "passed":
+                    from kernel_optimizer.project.nsys import export
+                    import shutil
+                    tool = self.request.tools.get("nsys") or shutil.which("nsys")
+                    rows = export(tool, self.output/"jobs"/name/"run", [rank["rank"] for rank in run["ranks"]])
+                    result["nsys"] = {"status": "observed" if all(row["status"] == "observed" for row in rows) else "unavailable",
+                                      "ranks": rows, "run": run}
+                else:
+                    result["nsys"] = {"status": "unavailable", "run": run}
+            except (ValueError, OSError) as exc:
+                result["nsys"] = {"status": "unavailable", "reason": f"{type(exc).__name__}: {exc}"}
         return result
 
     def trial(self, *, allowed_scopes=("group", "joint", "region", "execution_plan"), feedback=None):
@@ -123,18 +189,25 @@ class ProjectSearch:
         common = {"request.json": json.dumps(self.request.portable(), indent=2),
                   "selection.schema.json": json.dumps(Selection.model_json_schema(), indent=2),
                   "proposal.schema.json": json.dumps(Proposal.model_json_schema(), indent=2),
+                  "resources.json": json.dumps({"communication": discovery.get("communication"), "coverage": discovery["coverage"]}, indent=2),
                   "groups.json": json.dumps(discovery["groups"], indent=2), "calls.json": json.dumps(discovery["calls"], indent=2),
                   "search.json": json.dumps({"allowed_scopes": allowed_scopes, "unknown_dependencies": discovery["unknown_dependencies"],
                       "installed_bundles": [self.revisions.bundle(ident).model_dump(mode="json") for ident in parent.bundles]}),
                   "adapter.py": sources["opop_adapter.py"]}
+        from kernel_optimizer.control.direct_task import TaskSpace
+        common["parameter-space.schema.json"] = json.dumps(TaskSpace.model_json_schema(), indent=2)
         common.update({"source/"+name: data for name, data in sources.items()})
         prompt_root = Path(__file__).parent
         trial_id = "trial-"+uuid4().hex[:10]
         trial_root = self.output/"trials"/trial_id; trial_root.mkdir(parents=True)
         with Runtime(self.config, log_dir=trial_root) as runtime:
             agents = ProjectAgents(runtime, self.store)
+            from kernel_optimizer.project.feedback import route
+            registry = self.revisions.load(parent.registry_ref, GroupRegistry)
+            plan = self.revisions.load(parent.plan_ref, ExecutionPlan)
             selected, selection_receipt = agents.generate("selection", common,
-                (prompt_root/"selection_prompt.md").read_text(), ("selection.json",), feedback,
+                (prompt_root/"selection_prompt.md").read_text(), ("selection.json",),
+                route(feedback, current_revision=parent.id, registry=registry),
                 validator=lambda path: Selection.model_validate_json((path/"selection.json").read_bytes()))
             selection = json.loads((selected/"selection.json").read_text())
             if selection["scope"] not in allowed_scopes or not selection["groups"] or set(selection["groups"]) - group_lookup.keys():
@@ -155,13 +228,25 @@ class ProjectSearch:
             candidate_inputs = {**common, "selection.json": json.dumps(selection, indent=2),
                                 "targets.json": json.dumps(targets, indent=2)}
             generated, candidate_receipt = agents.generate("candidate", candidate_inputs,
-                (prompt_root/"candidate_prompt.md").read_text(), ("candidate.py", "proposal.json"), feedback,
+                (prompt_root/"candidate_prompt.md").read_text(), ("candidate.py", "proposal.json"),
+                route(feedback, current_revision=parent.id, registry=registry, selected_groups=selection["groups"], plan=plan),
                 validator=validate_proposal)
         bundle, proposal = self.bundle_from_outputs(generated, selection, parent, discovery, trial_id)
         metadata = {"trial": trial_id, "selection": selection, "proposal": proposal,
                     "selection_agent": selection_receipt, "candidate_agent": candidate_receipt}
         write_json(trial_root/"generated.json", {**metadata, "bundle": bundle.model_dump(mode="json")})
-        return self.validate_bundle(bundle, metadata, discovery=discovery)
+        from kernel_optimizer.project.inner_loop import tune
+        selected, tuning = tune(self, bundle, generated/"candidate.py", proposal["parameter_space"],
+                                int(self.request.objective.get("parameter_trials", 3)))
+        write_json(trial_root/"parameter-search.json", tuning)
+        metadata["parameter_search"] = tuning
+        if selected is None:
+            result = {**metadata, "bundle": bundle.model_dump(mode="json"), "decision": {
+                "accepted": False, "reasons": ["no_valid_parameter_candidate"]}}
+            write_json(trial_root/"result.json", result)
+            write_json(self.output/"latest-feedback.json", result)
+            return result
+        return self.validate_bundle(selected["bundle"], metadata, discovery=discovery, candidate=selected["revision"])
 
     def bundle_from_outputs(self, generated, selection, parent, discovery, trial_id):
         """Resolve saved agent outputs against their exact parent for replay/repair."""
