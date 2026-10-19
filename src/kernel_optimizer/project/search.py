@@ -248,8 +248,30 @@ class ProjectSearch:
         metadata = {"trial": trial_id, "selection": selection, "proposal": proposal,
                     "selection_agent": selection_receipt, "candidate_agent": candidate_receipt}
         write_json(trial_root/"generated.json", {**metadata, "bundle": bundle.model_dump(mode="json")})
+        return self._evaluate_generated(bundle, metadata, discovery)
+
+    def resume_trial(self, trial_id):
+        root = self.output/"trials"/trial_id
+        if (root/"result.json").exists():
+            return json.loads((root/"result.json").read_text())
+        saved = json.loads((root/"generated.json").read_text())
+        bundle = CandidateBundle.model_validate_json(json.dumps(saved.pop("bundle")))
+        if bundle.parent_revision != self.revisions.current().id:
+            raise ValueError("saved trial parent changed; explicit rebase and re-evaluation are required")
+        discovery = json.loads((self.output/"discovery.json").read_text())
+        self.store.append("PROJECT_TRIAL_RESUMED", {"trial": trial_id, "parent": bundle.parent_revision,
+                                                   "generation_reused": True})
+        return self._evaluate_generated(bundle, saved, discovery)
+
+    def _evaluate_generated(self, bundle, metadata, discovery):
+        trial_id = metadata["trial"]
+        trial_root = self.output/"trials"/trial_id
+        proposal = metadata["proposal"]
+        code = next(edit for edit in bundle.edits if edit.path == bundle.installer)
+        candidate_path = trial_root/"submitted-candidate.py"
+        candidate_path.write_bytes(self.store.get_artifact(code.content_ref))
         from kernel_optimizer.project.inner_loop import tune
-        selected, tuning = tune(self, bundle, generated/"candidate.py", proposal["parameter_space"],
+        selected, tuning = tune(self, bundle, candidate_path, proposal["parameter_space"],
                                 int(self.request.objective.get("parameter_trials", 3)))
         write_json(trial_root/"parameter-search.json", tuning)
         metadata["parameter_search"] = tuning

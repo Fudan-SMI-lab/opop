@@ -14,6 +14,7 @@ def add_project_parser(parser):
     parser.add_argument("--feedback", type=Path, help="actual failure evidence from a previous preparation")
     parser.add_argument("--resume", action="store_true", help="resume the identical frozen project request")
     parser.add_argument("--reuse-evaluator", type=Path, help="revalidate a frozen generated evaluator for a goal/workload variant without regenerating code")
+    parser.add_argument("--resume-trial", help="resume one saved generated trial without another generation request; implies --resume")
     parser.add_argument("--discover-only", action="store_true")
     parser.add_argument("--rounds", type=int, default=2, help="candidate rounds in this experiment, not an API usage quota")
     parser.add_argument("--scope", action="append", choices=["group", "joint", "region", "execution_plan"])
@@ -25,6 +26,10 @@ def cmd_optimize_project(args):
     if args.rounds < 1:
         raise ValueError("experiment rounds must be positive")
     feedback = args.feedback.read_text(encoding="utf-8") if args.feedback else None
+    if args.resume_trial:
+        if args.prepare_only or args.discover_only:
+            raise ValueError("resume-trial cannot be combined with prepare-only/discover-only")
+        args.resume = True
     if args.resume:
         previous = ProjectRequest.model_validate_json((args.output/"request.json").read_bytes())
         if previous != request:
@@ -46,10 +51,13 @@ def cmd_optimize_project(args):
         if not discovery_path.exists() or json.loads(discovery_path.read_text())["revision"] != search.revisions.current().id:
             search.discover()
         if not args.discover_only:
-            for _ in range(args.rounds):
-                previous = args.output/"latest-feedback.json"
-                search.trial(allowed_scopes=tuple(args.scope or ("group", "joint", "region", "execution_plan")),
-                             feedback=previous.read_text() if previous.exists() else feedback)
+            if args.resume_trial:
+                search.resume_trial(args.resume_trial)
+            else:
+                for _ in range(args.rounds):
+                    previous = args.output/"latest-feedback.json"
+                    search.trial(allowed_scopes=tuple(args.scope or ("group", "joint", "region", "execution_plan")),
+                                 feedback=previous.read_text() if previous.exists() else feedback)
         result = {"status": "completed_experiment", "revision": search.revisions.current().id}
     print(json.dumps({"status": result["status"], "output": str(args.output), "revision": result["revision"]}))
     return 0

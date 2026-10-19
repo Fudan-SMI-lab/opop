@@ -8,7 +8,8 @@ from kernel_optimizer.control.direct_task import TaskSearch, TaskSpace
 from kernel_optimizer.conditional.task_response import TaskResponse, complete_response
 from kernel_optimizer.evaluation.task_eval import TaskEvaluation
 from kernel_optimizer.models.core import ParamSet
-from kernel_optimizer.project.measurement import metric, valid_run, constraints_for_runs
+from kernel_optimizer.project.measurement import metric, valid_run
+from kernel_optimizer.project.constraints import constraints_for_runs
 from kernel_optimizer.tuning.objective import Objective
 
 

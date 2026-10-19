@@ -1,8 +1,8 @@
 """Project acceptance uses paired clean samples and fixed original constraints."""
 from __future__ import annotations
 
-import operator
 import statistics
+from kernel_optimizer.project.constraints import constraints_for_runs
 
 
 def valid_run(run):
@@ -13,23 +13,6 @@ def metric(run, name, reducer="max"):
     values = [r["result"]["metrics"][name] for r in run["ranks"]]
     reducers = {"max": max, "min": min, "sum": sum, "mean": statistics.mean}
     return float(reducers[reducer](values))
-
-
-def constraints_for_runs(runs, objective, anchor):
-    operations = {"le": operator.le, "lt": operator.lt, "ge": operator.ge, "gt": operator.gt, "eq": operator.eq}
-    constraints = []
-    for constraint in objective.get("constraints", []):
-        field = constraint["metric"]
-        aggregate = constraint.get("rank_aggregation", "min" if constraint["op"] in {"ge", "gt"} else "max")
-        try:
-            reference = metric(anchor, field, aggregate)
-            limit = reference * float(constraint["baseline_ratio"]) if "baseline_ratio" in constraint else float(constraint["threshold"])
-            values = [metric(run, field, aggregate) for run in runs]
-            passed = all(operations[constraint["op"]](value, limit) for value in values)
-            constraints.append({"metric": field, "values": values, "limit": limit, "original_reference": reference, "passed": passed})
-        except (KeyError, TypeError, ValueError):
-            constraints.append({"metric": field, "passed": False, "reason": "constraint measurement or definition unavailable"})
-    return constraints
 
 
 def paired_decision(pairs, objective, anchor):
