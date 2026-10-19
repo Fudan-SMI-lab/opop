@@ -1,0 +1,61 @@
+"""Re-evaluate a frozen generated adapter under an explicit workload/goal variant."""
+import hashlib
+import json
+from pathlib import Path
+
+from kernel_optimizer.models.objective import AggregationSpec, ObjectiveSpec, RequiredMetric
+from kernel_optimizer.models.project import ExecutionPlan, GroupRegistry, ProjectContract
+from kernel_optimizer.project.measurement import valid_run
+from kernel_optimizer.project.request import ProjectRequest
+from kernel_optimizer.project.transactions import RevisionStore
+from kernel_optimizer.runtime.execution import ExecutionRequest, LocalExecutor, write_json
+from kernel_optimizer.store.run_store import RunStore
+
+
+def prepare_variant(parent_output: Path, request: ProjectRequest, output: Path):
+    """No new code generation: useful for goal contrasts and held-out workloads.
+
+    Failure stays a failure; this entry never repairs code to fit the held-out case.
+    Each variant gets its own controls, reference, contract, and measured anchor.
+    """
+    parent_output, output = parent_output.resolve(), output.resolve()
+    old_request = ProjectRequest.model_validate_json((parent_output/"request.json").read_bytes())
+    allowed = {"goal", "objective", "workload", "warmup", "repeats", "worker_timeout_s", "tools", "profiling",
+               "communication", "required_observations", "notes"}
+    if old_request.model_dump(exclude=allowed) != request.model_dump(exclude=allowed):
+        raise ValueError("variant may change goal/workload/collection protocol, not source, quality, assets or device semantics")
+    prepared = json.loads((parent_output/"prepared.json").read_text())
+    if prepared["status"] != "prepared":
+        raise ValueError("variant requires a validated original evaluator")
+    original_store = RunStore.open(parent_output); original_revisions = RevisionStore(original_store)
+    original = original_revisions.revision(prepared["revision"])
+    contract = original_revisions.load(original.contract_ref, ProjectContract)
+    objective = request.objective
+    contract = contract.model_copy(update={"goal": request.goal, "workload": request.workload,
+        "objective": ObjectiveSpec(name=objective["name"], unit=objective["unit"], direction=objective["direction"],
+            required_metrics=(RequiredMetric(name=objective["name"], unit=objective["unit"]),),
+            aggregation=AggregationSpec(kind="sum"), improvement_threshold=float(objective.get("improvement_threshold", 0)))})
+    store = RunStore.create(output.parent, output.name, {"kind": "project_variant", "parent_output": str(parent_output), "request": request.portable()})
+    write_json(output/"request.json", request.portable())
+    source = output/"preparation"/"source"
+    original_revisions.materialize(original, source)
+    revisions = RevisionStore(store)
+    revision = revisions.initialize(source, [file.path for file in original.files], contract,
+        ExecutionPlan(id="undiscovered"), GroupRegistry(id="undiscovered", plan_id="undiscovered"), publish=False)
+    materialized = revisions.materialize(revision, output/"preparation"/"reference-source")
+    controls = output/"preparation"/"controls"
+    evaluation = LocalExecutor().run(ExecutionRequest(entry=materialized/"opop_evaluate.py", cwd=materialized,
+        devices=request.devices, distributed_backend=request.distributed_backend, output=controls,
+        lease_dir=request.lease_dir, worker_timeout_s=request.worker_timeout_s, wait_for_devices=True,
+        parameters={"adapter": str(materialized/"opop_adapter.py"), "request": request.portable(), "action": "controls"}))
+    valid = valid_run(evaluation)
+    result = {"schema_version": "project-prepared.v2", "status": "prepared" if valid else "invalid_evaluator",
+        "revision": revision.id, "contract_ref": revision.contract_ref, "evaluation": evaluation,
+        "adapter_sha256": prepared["adapter_sha256"], "request_sha256": hashlib.sha256((output/"request.json").read_bytes()).hexdigest(),
+        "controls_path": str(controls), "reuse": {"parent_output": str(parent_output), "revision": original.id,
+            "origin_agent": prepared.get("agent", prepared.get("reuse")), "new_generation": False}}
+    write_json(output/"prepared.json", result)
+    store.append("PROJECT_PREPARED" if valid else "PROJECT_EVALUATOR_REJECTED", result)
+    if valid:
+        revisions.publish_initial(revision)
+    return result

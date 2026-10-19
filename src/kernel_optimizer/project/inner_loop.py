@@ -8,7 +8,7 @@ from kernel_optimizer.control.direct_task import TaskSearch, TaskSpace
 from kernel_optimizer.conditional.task_response import TaskResponse, complete_response
 from kernel_optimizer.evaluation.task_eval import TaskEvaluation
 from kernel_optimizer.models.core import ParamSet
-from kernel_optimizer.project.measurement import metric, valid_run
+from kernel_optimizer.project.measurement import metric, valid_run, constraints_for_runs
 from kernel_optimizer.tuning.objective import Objective
 
 
@@ -26,9 +26,11 @@ class ProjectTaskEvaluator:
         valid = valid_run(run)
         reducer = objective.get("rank_aggregation", "max" if objective["direction"] == "minimize" else "min")
         metrics = {name: metric(run, name, reducer) for name in run["ranks"][0]["result"]["metrics"]} if valid else {}
-        result = TaskEvaluation(valid=valid, score=metrics.get(objective["name"]), metrics=metrics,
-                                detail=None if valid else "project quality/coverage/worker failure; see raw observation")
-        self.observations.append({"bundle": bundle, "revision": revision, "run": run, "result": result})
+        constraints = constraints_for_runs([run], objective, self.coordinator.prepared["evaluation"]) if valid else []
+        feasible = valid and all(row["passed"] for row in constraints)
+        result = TaskEvaluation(valid=feasible, score=metrics.get(objective["name"]), metrics=metrics,
+                                detail=None if feasible else "project quality/coverage/worker or original-baseline constraint failure; see raw observation")
+        self.observations.append({"bundle": bundle, "revision": revision, "run": run, "result": result, "constraints": constraints})
         return result
 
 
@@ -63,5 +65,5 @@ def tune(coordinator, template, path: Path, space: dict, trials: int):
         "parameter_trials": trials, "space": space, "selected": selected["bundle"].id if selected else None,
         "stats": [s.model_dump(mode="json") for s in search.stats], "responses": responses,
         "observations": [{"bundle": x["bundle"].model_dump(mode="json"), "revision": x["revision"].id,
-                          "result": x["result"].model_dump(mode="json"), "run": x["run"]} for x in evaluator.observations]}
+                          "result": x["result"].model_dump(mode="json"), "constraints": x["constraints"], "run": x["run"]} for x in evaluator.observations]}
     return selected, receipt

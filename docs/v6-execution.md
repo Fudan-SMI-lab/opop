@@ -41,10 +41,10 @@
 |---|---|---|
 | P0，完成 | 会话用量只统计；受控 GPU helper 设备绑定、PID→UUID 与清理；必要旧行为检查 | [真实 provider、双卡执行、故障恢复证据](evidence/v6-p0-20261020/README.md)；提交 `bd9192a` |
 | P1，完成 | 版本化四种 scope、执行计划、组注册表、完整候选与事务；rank 生命周期 | [真实 Agent 联合编辑、质量负控制、提交及恢复](evidence/v6-p1-20261020/README.md)；提交 `bc7a61e`；属于基础设施控制实验 |
-| P2，ResNet 路径完成 | 实现 `optimize-project` 入口及真实项目理解／评测生成；输入、状态和测量协议 | [完整 logits 与独立原项目基线一致；identity、负控制及 reset](evidence/v6-p2-20261020/README.md)；提交 `7ff369b`；其他模型随后验证 |
+| P2，三项目适配通过 | `optimize-project` 入口及真实项目理解／评测生成；输入、状态和测量协议 | [ResNet 独立输出一致](evidence/v6-p2-20261020/README.md)；[Qwen 全 logits/token 与 DDP 两步完整梯度/参数独立校验](evidence/v6-p5-20261020/README.md)；不等于三项目优化全部完成 |
 | P3，最小通道完成 | module／functional 自动发现、依赖与包含闭包、真实选组与联合候选、schema 自动修复、AB／BA 评价及逐组反馈 | [真实联合候选](evidence/v6-p3-20261020/README.md)：20 个站点执行并通过质量；性能不稳定被拒绝；核心初始提交 `589144f` |
 | P4，进行中 | 旧 TaskSearch/TPE 已通过项目适配器接入；真实反馈驱动的执行计划候选已接受并重新分组；多 bundle 共存及后续轮次继续验证 | [整流程中间证据](evidence/v6-p4-20261020/README.md)：ResNet CUDA Graph 两对测量均改善，完整输出一致；尚不能宣称 P4 全部验收 |
-| P5 | 在公共执行路径加入通信能力发现、PyTorch/Nsys/transport/PCIe 采集和 collective 关联；跨 rank 改写、完成条件、重叠及故障回收 | GPT-2 DDP 的真实候选通过梯度／参数和项目目标验证；缺测降级、单卡跳过、rank 故障整体退出有证据 |
+| P5，采集与归属通过，优化继续 | 通信能力发现、Torch/Nsys、实际 transport；13/13 collective 的跨 rank 匹配及梯度存储/bucket/组多对多关联；硬件计数器权限不足时实测降级 | [真实中间证据](evidence/v6-p5-20261020/README.md)；DDP 自动候选仍在运行，不能以采集成功替代完整优化闭环 |
 | P6 | 冻结核心后接入其他项目／保留输入；运行目标切换、跨目标交叉评测、组合退化、联合策略及反馈对照；完善复现入口 | 三项目与整流程矩阵有结果，未预注册任务无需修改通用核心；分别报告收益、失败、无改善和尚不可测项 |
 
 P1 的分布式执行设施与 P5 的通信采集共用数据模型；可提前做真实双 rank 探针，但不能把探针成功当作自动优化闭环成功。先贯通 ResNet，再接入 Qwen；DDP 为首个通信主案例。Qwen TP2 对单卡质量不一致仍是扩展案例的待解决问题，不阻塞前述三项目主线。

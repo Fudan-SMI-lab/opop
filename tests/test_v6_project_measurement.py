@@ -1,4 +1,4 @@
-from kernel_optimizer.project.measurement import paired_decision
+from kernel_optimizer.project.measurement import paired_decision, constraints_for_runs
 
 
 def endpoint(value, throughput=100):
@@ -23,3 +23,13 @@ def test_constraint_remains_relative_to_original_not_latest_parent():
                                  {"metric": "throughput", "op": "ge", "baseline_ratio": 0.95}]}, endpoint(10, 100))
     assert result["constraints"][0]["limit"] == 95
     assert result["reasons"] == ["original_baseline_constraint_failed"]
+
+
+def test_throughput_constraint_checks_the_slowest_participating_rank():
+    candidate = endpoint(8, 110)
+    candidate["ranks"].extend(endpoint(8, 90)["ranks"])
+    anchor = endpoint(10, 100)
+    anchor["ranks"].extend(endpoint(10, 100)["ranks"])
+    checks = constraints_for_runs([candidate], {"constraints": [{"metric": "throughput", "op": "ge", "baseline_ratio": 0.95}]}, anchor)
+    assert checks[0]["values"] == [90]
+    assert not checks[0]["passed"]

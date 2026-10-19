@@ -49,6 +49,13 @@ class ProjectWorkflow:
             write_json(input_manifest, {name: store.put_artifact(content) for name, content in sources.items()})
         inputs = {"request.json": json.dumps(request.portable(), indent=2)}
         inputs.update({"source/"+name: content for name, content in sources.items()})
+        if resume:
+            generated = [event.payload for event in store.iter_events() if event.type == "PROJECT_AGENT_FINISHED"
+                         and event.payload.get("role") == "project-evaluator"]
+            if generated:
+                prior = Path(generated[-1]["sandbox"])/"adapter.py"
+                if prior.exists():
+                    inputs["prior_adapter.py"] = prior.read_bytes()
         prompt = Path(__file__).with_name("adapter_prompt.md").read_text(encoding="utf-8")
         revisions = RevisionStore(store)
 
@@ -92,6 +99,7 @@ class ProjectWorkflow:
                 evaluation = LocalExecutor().run(ExecutionRequest(entry=materialized/"opop_evaluate.py", cwd=materialized,
                     devices=request.devices, distributed_backend=request.distributed_backend, output=attempt/"controls",
                     lease_dir=request.lease_dir, worker_timeout_s=request.worker_timeout_s,
+                    wait_for_devices=True,
                     parameters={"adapter": str(materialized/"opop_adapter.py"), "request": request.portable(), "action": "controls"}))
                 valid = evaluation["status"] == "passed" and all(r["result"]["valid"] for r in evaluation["ranks"])
                 prepared = {"schema_version": "project-prepared.v2", "status": "prepared" if valid else "invalid_evaluator",

@@ -45,15 +45,16 @@ def compare(actual: Any, expected: Any, quality: dict, path: str = "output") -> 
         if isinstance(b, torch.Tensor):
             if not isinstance(a, torch.Tensor):
                 raise AssertionError(f"{name}: tensor structure changed")
+            if b.numel() and a.shape == b.shape and (b.is_floating_point() or b.is_complex()):
+                error = float((a.detach().cpu()-b).abs().max())
+                maximum = max(maximum, error) if math.isfinite(error) and maximum is not None else None
+            count += b.numel()
             if not b.is_floating_point() and not b.is_complex():
                 if a.dtype != b.dtype or not torch.equal(a.detach().cpu(), b):
                     raise AssertionError(f"{name}: integer/bool tensors must match exactly")
             else:
                 torch.testing.assert_close(a.detach().cpu(), b, atol=float(quality.get("atol", 0)),
                                            rtol=float(quality.get("rtol", 0)), equal_nan=False)
-            if b.numel() and (b.is_floating_point() or b.is_complex()):
-                maximum = max(maximum, float((a.detach().cpu()-b).abs().max()))
-            count += b.numel()
         elif isinstance(b, dict):
             if not isinstance(a, dict) or set(a) != set(b):
                 raise AssertionError(f"{name}: dictionary keys changed")
@@ -68,7 +69,9 @@ def compare(actual: Any, expected: Any, quality: dict, path: str = "output") -> 
             if not isinstance(a, (int, float)) or not math.isfinite(a) or not math.isfinite(b) or not math.isclose(
                     a, b, abs_tol=quality.get("atol", 0), rel_tol=quality.get("rtol", 0)):
                 raise AssertionError(f"{name}: scalar differs")
-            count += 1; maximum = max(maximum, abs(a-b))
+            count += 1
+            if maximum is not None:
+                maximum = max(maximum, abs(a-b))
         elif a != b or type(a) is not type(b):
             raise AssertionError(f"{name}: exact value differs")
         else:
@@ -129,9 +132,11 @@ def worker_entry(context: dict) -> dict:
         if cuda:
             torch.cuda.synchronize(); torch.cuda.reset_peak_memory_stats()
         started = time.perf_counter_ns()
-        binding = BindingSession(adapter, state, bundle["specs"])
+        binding = BindingSession(adapter, state, bundle["specs"], rank=context["rank"], world_size=context["world_size"])
         installed = binding.install(Path(bundle["file"]), bundle.get("parameters", {}))
-        if set(installed) != set(bundle["expected_calls"]):
+        expected = bundle.get("expected_calls_by_rank", {}).get(str(context["rank"]), bundle["expected_calls"])
+        bundle = {**bundle, "expected_calls": expected}
+        if set(installed) != set(expected):
             raise ValueError("installed candidate sites differ from the declared bundle")
         if cuda:
             torch.cuda.synchronize()
@@ -178,6 +183,9 @@ def worker_entry(context: dict) -> dict:
         elif distributed:
             torch.distributed.barrier()
         synchronize()
+        cuda = str(context["device"]).startswith("cuda")
+        if cuda:
+            torch.cuda.reset_peak_memory_stats()
         started = time.perf_counter_ns()
         result = operation()
         synchronize()
@@ -185,16 +193,23 @@ def worker_entry(context: dict) -> dict:
         metrics = adapter.metrics(state, result, elapsed)
         if not isinstance(metrics, dict) or any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in metrics.values()):
             raise ValueError("adapter metrics must be finite numeric values")
+        metrics["framework.elapsed_ms"] = elapsed
+        if cuda:
+            metrics.update({"framework.peak_allocated_bytes": float(torch.cuda.max_memory_allocated()),
+                            "framework.peak_reserved_bytes": float(torch.cuda.max_memory_reserved()),
+                            "framework.allocated_bytes": float(torch.cuda.memory_allocated()),
+                            "framework.reserved_bytes": float(torch.cuda.memory_reserved())})
         return result, metrics
 
     def summarize(samples):
         metrics = {name: statistics.median(sample[name] for sample in samples) for name in samples[0]}
         metric_samples, diagnostics = {}, {}
         if request["objective"].get("source"):
-            from kernel_optimizer.project.communication import sample_metric
+            from kernel_optimizer.project.collectors import configured
             mode("profile")
-            diagnostics = sample_metric(adapter, state, operation, synchronize, context,
-                request["objective"]["source"], int(request.get("profiling", {}).get("metric_repeats", 3)))
+            source = request["objective"]["source"]
+            diagnostics = configured(request.get("profiling", {})).resolve(source["collector"]).metric(
+                adapter, state, operation, synchronize, context, source, int(request.get("profiling", {}).get("metric_repeats", 3)))
             metric_samples[request["objective"]["name"]] = diagnostics["values"]
             metrics[request["objective"]["name"]] = statistics.median(diagnostics["values"])
         if request["objective"]["name"] not in metrics:
@@ -228,6 +243,8 @@ def worker_entry(context: dict) -> dict:
         if applicable:
             observed["communication"] = normalize(json.loads(Path(observed["trace"]).read_text()), observed, context["rank"])
             observed["communication"]["transport"] = transports(Path(context["output"]).glob("nccl.*.log"))
+            from kernel_optimizer.project.communication import bucket_inventory, attach_bucket_candidates
+            attach_bucket_candidates(observed["communication"], bucket_inventory(adapter, state, observed))
         else:
             observed["communication"] = {"status": "not_applicable", "reason": "disabled" if policy == "off" else "single-device task"}
         if policy == "required":

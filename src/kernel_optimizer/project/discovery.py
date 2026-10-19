@@ -11,6 +11,8 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 import hashlib
 import json
+import math
+import time
 from pathlib import Path
 import weakref
 
@@ -39,6 +41,10 @@ def tensor_description(value):
         return [tensor_description(v) for v in value]
     if isinstance(value, dict):
         return {str(k): tensor_description(v) for k, v in value.items()}
+    if isinstance(value, float) and not math.isfinite(value):
+        return {"type": "float", "value": "nan" if math.isnan(value) else "+inf" if value > 0 else "-inf"}
+    if isinstance(value, complex):
+        return {"type": "complex", "real": tensor_description(value.real), "imag": tensor_description(value.imag)}
     if isinstance(value, (bool, str, int, float)) or value is None:
         return value
     return {"type": type(value).__qualname__}
@@ -70,6 +76,31 @@ def capture(adapter, state, output: Path, rank: int, operation=None, synchronize
     producer = {}
     module_stack = []
     open_modules = defaultdict(list)
+    parameter_names = {}
+    module_call_ids = defaultdict(set)
+    for root_name, model in adapter.models(state).items():
+        for name, parameter in model.named_parameters(remove_duplicate=False):
+            parameter_names.setdefault(id(parameter), (parameter, set()))[1].add(root_name+"."+name)
+
+    def payload_ownership(args, kwargs):
+        buffers = list(tensor_leaves((args, kwargs)))
+        names = set()
+        def span(tensor):
+            start = tensor.untyped_storage().data_ptr()+tensor.storage_offset()*tensor.element_size()
+            extent = 0 if tensor.numel() == 0 else 1+sum((size-1)*stride for size, stride in zip(tensor.shape, tensor.stride()))
+            return start, start+extent*tensor.element_size()
+        spans = [(tensor.device, *span(tensor)) for tensor in buffers]
+        for parameter, labels in parameter_names.values():
+            gradient = parameter.grad
+            if gradient is None or not gradient.numel():
+                continue
+            start, end = span(gradient)
+            if any(gradient.device == device and first <= start < end <= last for device, first, last in spans):
+                names.update(labels)
+        owners = sorted({ident for name in names for ident in module_call_ids[name.rpartition(".")[0]]})
+        return {"parameters": sorted(names), "calls": owners,
+                "method": "live parameter-gradient byte ranges contained in collective input storage",
+                "status": "observed" if names else "unknown"}
 
     def enter(target, kind, semantics, args, kwargs, attributes=None):
         signature = {"args": tensor_description(args), "kwargs": tensor_description(kwargs or {})}
@@ -83,6 +114,8 @@ def capture(adapter, state, output: Path, rank: int, operation=None, synchronize
                               "semantics": semantics, "attributes": attributes or {}, "signatures": [],
                               "count": 0, "parents": [], "site_parent": site_parent}
         call = calls[call_id]
+        if kind == "module":
+            module_call_ids[target].add(call_id)
         if signature not in call["signatures"]:
             call["signatures"].append(signature)
         call["count"] += 1
@@ -106,6 +139,11 @@ def capture(adapter, state, output: Path, rank: int, operation=None, synchronize
     class CaptureMode(TorchDispatchMode):
         def __torch_dispatch__(self, func, types, args=(), kwargs=None):
             call_id, marker = enter(str(func), "functional", str(getattr(func, "_schema", func)), args, kwargs)
+            if str(func).startswith(("c10d.", "_c10d_functional.")):
+                try:
+                    events[-1]["payload_ownership"] = payload_ownership(args, kwargs)
+                except (RuntimeError, NotImplementedError) as exc:
+                    events[-1]["payload_ownership"] = {"status": "unknown", "parameters": [], "calls": [], "reason": str(exc)}
             dependency_inputs((args, kwargs), call_id)
             try:
                 result = func(*args, **(kwargs or {}))
@@ -153,8 +191,10 @@ def capture(adapter, state, output: Path, rank: int, operation=None, synchronize
                 call_id, marker = enter("project.invoke", "project", "complete workload", (), {})
                 module_stack.append(call_id)
                 try:
+                    started = time.perf_counter_ns()
                     (operation or (lambda: adapter.run(state)))()
                     synchronize()
+                    profiled_wall_ms = (time.perf_counter_ns()-started)/1e6
                 finally:
                     module_stack.pop(); marker.__exit__(None, None, None)
         trace_path = output / f"trace-rank-{rank}.json"
@@ -171,6 +211,7 @@ def capture(adapter, state, output: Path, rank: int, operation=None, synchronize
         groups[identity(signature)[:20]].append(call["id"])
     return {"schema_version": 2, "site_identity": "functional context + phase + signature; module path + phase",
             "rank": rank, "calls": list(calls.values()), "events": events,
+            "profiled_wall_ms": profiled_wall_ms,
             "dependencies": [{"producer": a, "consumer": b, "kind": kind} for a, b, kind in sorted(edges)],
             "groups": [{"id": ident, "calls": values} for ident, values in groups.items()],
             "trace": str(trace_path), "trace_sha256": hashlib.sha256(trace_path.read_bytes()).hexdigest(),

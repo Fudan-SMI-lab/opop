@@ -127,3 +127,18 @@ def test_reference_is_not_published_before_controls(tmp_path):
     assert other.current() == reference
     with pytest.raises(ValueError, match="unpublished"):
         other.publish_initial(reference)
+
+
+def test_rank_asymmetric_coverage_cannot_be_satisfied_by_the_other_rank(tmp_path):
+    revisions, parent = setup_project(tmp_path)
+    contract = revisions.load(parent.contract_ref, ProjectContract).model_copy(update={"world_size": 2})
+    plan = revisions.load(parent.plan_ref, ExecutionPlan)
+    plan = plan.model_copy(update={"calls": tuple(c.model_copy(update={"signature": {"ranks": [rank]}}) for rank, c in enumerate(plan.calls))})
+    other = RevisionStore(RunStore.create(tmp_path, "two_ranks", {}))
+    parent = other.initialize(tmp_path/"source", ["a.py", "b.py"], contract, plan, revisions.load(parent.registry_ref, GroupRegistry))
+    bundle = candidate(other, parent); staged = other.stage(bundle)
+    report = evaluation(staged, bundle, required_ranks=(0,1), rank_bundle_hashes={"0": identity(bundle), "1": identity(bundle)},
+                        rank_executed_calls={"0": ("a",), "1": ("b",)})
+    assert other.evaluate(report)["accepted"]
+    swapped = report.model_copy(update={"rank_executed_calls": {"0": ("b",), "1": ("a",)}})
+    assert "rank_call_coverage_missing" in other.evaluate(swapped)["reasons"]

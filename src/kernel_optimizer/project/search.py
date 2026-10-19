@@ -33,17 +33,20 @@ class ProjectSearch:
         if prepared.get("request_sha256") and prepared["request_sha256"] != hashlib.sha256((output/"request.json").read_bytes()).hexdigest():
             raise ValueError("frozen project request changed after evaluator validation")
 
-    def execute(self, revision, name, action):
+    def execute(self, revision, name, action, *, collector_options=None):
         job_root = self.output/"jobs"/name
         source = self.revisions.materialize(revision, job_root/"source")
         bundles = []
+        from kernel_optimizer.project.aggregation import rank_requirements
+        contract = self.revisions.load(revision.contract_ref, ProjectContract)
         for ident in revision.bundles:
             bundle = self.revisions.bundle(ident)
             if bundle.installer is None:
                 raise ValueError("candidate has no executable installer")
             bundles.append({"id": ident, "file": str(source/bundle.installer), "parameters": bundle.parameters,
                             "specs": json.loads((source/Path(bundle.installer).with_suffix(".targets.json")).read_text()),
-                            "expected_calls": list(bundle.calls)})
+                            "expected_calls": list(bundle.calls), "expected_calls_by_rank": rank_requirements(
+                                bundle, self.revisions.load(self.revisions.revision(bundle.parent_revision).plan_ref, ExecutionPlan), contract.world_size)})
         request = self.request
         env = {}
         launcher = []
@@ -53,14 +56,15 @@ class ProjectSearch:
             tool = request.tools.get("nsys") or shutil.which("nsys")
             if tool is None:
                 return {"status": "unavailable", "reason": "Nsys executable unavailable", "ranks": []}
-            launcher = command_prefix(tool, counters=request.profiling.get("gpu_counters", False))
+            options = collector_options or {}
+            launcher = command_prefix(tool, counters=options.get("gpu_counters", request.profiling.get("gpu_counters", False)))
         if action in {"profile", "nsys_profile"} and request.communication != "off" and len(request.devices) > 1:
             env = {"NCCL_DEBUG": "INFO", "NCCL_DEBUG_SUBSYS": "INIT,GRAPH,COLL",
                    "NCCL_DEBUG_FILE": str(job_root/"run"/"nccl.%h.%p.log")}
         return LocalExecutor().run(ExecutionRequest(entry=source/"opop_evaluate.py", cwd=source,
             devices=request.devices, distributed_backend=request.distributed_backend, output=job_root/"run",
             lease_dir=request.lease_dir, worker_timeout_s=request.worker_timeout_s,
-            env=env, launcher=launcher,
+            env=env, launcher=launcher, wait_for_devices=True,
             parameters={"request": request.portable(), "adapter": str(source/"opop_adapter.py"), "action": action,
                         "reference_dir": self.prepared.get("controls_path", str(self.output/"controls")), "bundles": bundles}))
 
@@ -71,15 +75,16 @@ class ProjectSearch:
             write_json(self.output/"discovery-failure.json", run)
             raise ValueError("project profiling failed")
         ranks = [json.loads(Path(rank["result"]["discovery"]).read_text()) for rank in run["ranks"]]
-        primary = ranks[0]
+        from kernel_optimizer.project.aggregation import merge_ranks
+        primary = merge_ranks(ranks)
         from kernel_optimizer.project.communication import match_ranks
         communication = match_ranks([r["communication"] for r in ranks if "collectives" in r.get("communication", {})])
         if "cross_rank_collectives" in self.request.required_observations and (
                 not communication["matched"] or communication["incomplete"]):
             raise ValueError("required cross-rank collective matching is incomplete")
         calls = tuple(CallSite(id=c["id"], phase=c["phase"], kind=c["kind"], target=c["target"],
-                               signature={"signatures": c["signatures"], "attributes": c["attributes"]},
-                               evidence=(primary["trace"],)) for c in primary["calls"])
+                               signature={"signatures": c["signatures"], "attributes": c["attributes"], "ranks": c["ranks"]},
+                               evidence=tuple(primary["traces"])) for c in primary["calls"])
         plan = ExecutionPlan(id=identity({"parent": parent.id, "trace": primary["trace_sha256"]}), calls=calls,
                              dependencies=tuple(Dependency(**edge) for edge in primary["dependencies"]),
                              unknown_dependencies=tuple(primary["unknown_dependencies"]))
@@ -96,7 +101,7 @@ class ProjectSearch:
             return tuple(sorted(related))
         groups = tuple(GroupSpec(id=g["id"], calls=tuple(g["calls"]),
                                 semantics=call_lookup[g["calls"][0]]["semantics"],
-                                resource_refs=(primary["trace"],),
+                                resource_refs=tuple(primary["traces"]),
                                 lineage=lineage(g["calls"])) for g in primary["groups"])
         registry = GroupRegistry(id=identity({"plan": plan.id, "groups": groups}), plan_id=plan.id, groups=groups,
             parent_id=previous.id, retired=tuple(g.id for g in previous.groups if g.id not in {item.id for item in groups}),
@@ -108,12 +113,15 @@ class ProjectSearch:
             members = [call_lookup[ident] for ident in group.calls]
             summary.append({"id": group.id, "calls": list(group.calls), "semantics": group.semantics,
                             "kind": members[0]["kind"], "invocations": sum(c["count"] for c in members),
-                            "diagnostic_cuda_us": sum(primary["call_resources"].get(c["id"], {}).get("cuda_us", 0) for c in members),
+                            "diagnostic_cuda_us": sum(max((value.get("cuda_us", 0) for value in primary["call_resources_by_rank"][c["id"]].values()), default=0) for c in members),
+                            "ranks": sorted({rank for c in members for rank in c["ranks"]}),
                             "targets": [c["target"] for c in members], "phases": sorted({c["phase"] for c in members})})
         result = {"revision": revision.id, "registry": registry.id, "plan": plan.id,
                   "groups": sorted(summary, key=lambda g: g["diagnostic_cuda_us"], reverse=True),
                   "calls": primary["calls"], "ranks": [r["trace"] for r in ranks],
+                  "call_resources": primary["call_resources_by_rank"],
                   "coverage": [r["coverage"] for r in ranks], "unknown_dependencies": primary["unknown_dependencies"],
+                  "profiled_wall_ms": [r.get("profiled_wall_ms") for r in ranks],
                   "communication": {"cross_rank": communication, "ranks": [r.get("communication") for r in ranks],
                                     "capabilities": [r.get("capabilities") for r in ranks]},
                   "plan_change": {"retired_calls": sorted({c.id for c in previous_plan.calls} - call_lookup.keys()),
@@ -129,43 +137,36 @@ class ProjectSearch:
         return result
 
     def plan_collectors(self, discovery):
+        from kernel_optimizer.project.collectors import diagnostic_names
+        names = diagnostic_names(self.request.profiling)
         inputs = {"request.json": json.dumps(self.request.portable(), indent=2),
+                  "available-collectors.json": json.dumps(names),
                   "observations.json": json.dumps(discovery["communication"], indent=2),
                   "coverage.json": json.dumps(discovery["coverage"], indent=2),
                   "collection.schema.json": json.dumps(CollectionPlan.model_json_schema(), indent=2)}
         prompt = ("Choose useful diagnostic collectors for the frozen task objective from actual capability and trace evidence. "
-            "Write collection.json following collection.schema.json. The torch collector already ran. Nsys is optional and runs separately; "
+            "Write collection.json following collection.schema.json and use names from available-collectors.json. The torch collector already ran. Nsys is optional and runs separately; "
             "select it when available and useful to resolve overlap, graph tracing or attribution questions. "
-            "Never invent PCIe/NVLink traffic from logical payload or memcpy sizes. List unavailable dimensions with observed reasons. "
+            "Never invent PCIe/NVLink traffic from logical payload or memcpy sizes. Nsys timelines alone do not separate NCCL waiting from wire transfer or prove bucket identity. "
+            "Exact bucket links require native correlation and observed gradient-storage membership; otherwise retain ambiguous candidates. List unavailable dimensions with observed reasons. "
             "Do not request every counter indiscriminately, change the task, or run tools yourself. "
             "The framework verifies availability and retains missing fields as unknown.")
         directory = self.output/"collector-plans"/uuid4().hex[:10]; directory.mkdir(parents=True)
+        def validate(directory):
+            plan = CollectionPlan.model_validate_json((directory/"collection.json").read_bytes())
+            if set(plan.collectors)-set(names):
+                raise ValueError("collector plan refers to an unregistered collector")
         with Runtime(self.config, log_dir=directory) as runtime:
             generated, receipt = ProjectAgents(runtime, self.store).generate("collection-planner", inputs, prompt,
-                ("collection.json",), validator=lambda p: CollectionPlan.model_validate_json((p/"collection.json").read_bytes()))
+                ("collection.json",), validator=validate)
         plan = CollectionPlan.model_validate_json((generated/"collection.json").read_bytes()).model_dump(mode="json")
         result = {"plan": plan, "agent": receipt}
         write_json(directory/"result.json", result)
         return result
 
     def collect_extra(self, revision, collectors):
-        result = {}
-        if "nsys" in collectors:
-            name = "nsys-"+uuid4().hex[:10]
-            try:
-                run = self.execute(revision, name, "nsys_profile")
-                if run["status"] == "passed":
-                    from kernel_optimizer.project.nsys import export
-                    import shutil
-                    tool = self.request.tools.get("nsys") or shutil.which("nsys")
-                    rows = export(tool, self.output/"jobs"/name/"run", [rank["rank"] for rank in run["ranks"]])
-                    result["nsys"] = {"status": "observed" if all(row["status"] == "observed" for row in rows) else "unavailable",
-                                      "ranks": rows, "run": run}
-                else:
-                    result["nsys"] = {"status": "unavailable", "run": run}
-            except (ValueError, OSError) as exc:
-                result["nsys"] = {"status": "unavailable", "reason": f"{type(exc).__name__}: {exc}"}
-        return result
+        from kernel_optimizer.project.collectors import collect
+        return collect(self, revision, collectors)
 
     def trial(self, *, allowed_scopes=("group", "joint", "region", "execution_plan"), feedback=None):
         try:
@@ -187,15 +188,25 @@ class ProjectSearch:
         group_lookup = {g["id"]: g for g in discovery["groups"]}
         sources = {f.path: self.store.get_artifact(f.content_ref) for f in parent.files}
         common = {"request.json": json.dumps(self.request.portable(), indent=2),
+                  "project.json": json.dumps({"current_revision": parent.id, "contract": contract.model_dump(mode="json"),
+                      "original_reference_revision": self.prepared["revision"],
+                      "original_baseline": [{"rank": r["rank"], "metrics": r["result"]["metrics"],
+                                             "diagnostics": r["result"].get("diagnostics")} for r in self.prepared["evaluation"]["ranks"]],
+                      "profiled_wall_ms": discovery.get("profiled_wall_ms"),
+                      "measurement_policy": "Original baseline belongs to its immutable reference. Discovery uses intrusive hooks and is separate from clean timing and plain diagnostic objective samples. Profiled rank skew and kernel time can be heavily perturbed; they are not project J or wire time."}, indent=2),
                   "selection.schema.json": json.dumps(Selection.model_json_schema(), indent=2),
                   "proposal.schema.json": json.dumps(Proposal.model_json_schema(), indent=2),
-                  "resources.json": json.dumps({"communication": discovery.get("communication"), "coverage": discovery["coverage"]}, indent=2),
+                  "resources.json": json.dumps({"communication": discovery.get("communication"), "coverage": discovery["coverage"],
+                      "collection_plan": discovery.get("collection_plan"), "extra_collectors": discovery.get("extra_collectors")}, indent=2),
                   "groups.json": json.dumps(discovery["groups"], indent=2), "calls.json": json.dumps(discovery["calls"], indent=2),
+                  "call-resources.json": json.dumps(discovery.get("call_resources", {}), indent=2),
                   "search.json": json.dumps({"allowed_scopes": allowed_scopes, "unknown_dependencies": discovery["unknown_dependencies"],
                       "installed_bundles": [self.revisions.bundle(ident).model_dump(mode="json") for ident in parent.bundles]}),
                   "adapter.py": sources["opop_adapter.py"]}
         from kernel_optimizer.control.direct_task import TaskSpace
         common["parameter-space.schema.json"] = json.dumps(TaskSpace.model_json_schema(), indent=2)
+        from kernel_optimizer.project.aggregation import index
+        common["index.json"] = json.dumps(index(discovery), indent=2)
         common.update({"source/"+name: data for name, data in sources.items()})
         prompt_root = Path(__file__).parent
         trial_id = "trial-"+uuid4().hex[:10]
@@ -226,7 +237,9 @@ class ProjectSearch:
             selection["affected_calls"] = sorted(affected)
             targets = [call_lookup[c] for c in sorted(affected)]
             candidate_inputs = {**common, "selection.json": json.dumps(selection, indent=2),
-                                "targets.json": json.dumps(targets, indent=2)}
+                                "targets.json": json.dumps(targets, indent=2),
+                                "target-resources.json": json.dumps({ident: discovery.get("call_resources", {}).get(ident)
+                                                                     for ident in affected}, indent=2)}
             generated, candidate_receipt = agents.generate("candidate", candidate_inputs,
                 (prompt_root/"candidate_prompt.md").read_text(), ("candidate.py", "proposal.json"),
                 route(feedback, current_revision=parent.id, registry=registry, selected_groups=selection["groups"], plan=plan),
@@ -286,7 +299,7 @@ class ProjectSearch:
             external_invariants=contract.invariants, installer=installer)
         return bundle, proposal
 
-    def validate_bundle(self, bundle, metadata=None, *, discovery=None, candidate=None):
+    def validate_bundle(self, bundle, metadata=None, *, discovery=None, candidate=None, publish=True):
         """Replay an immutable generated candidate without another provider request."""
         metadata = metadata or {"trial": bundle.id}
         trial_id = metadata["trial"]
@@ -319,8 +332,9 @@ class ProjectSearch:
         anchor = json.loads((self.output/"prepared.json").read_text())["evaluation"]
         measurement = paired_decision(pairs, self.request.objective, anchor) if complete else {
             "valid": False, "objective": None, "reference": None, "reasons": ["paired_endpoint_failed"]}
-        executed = set.intersection(*(set(r["result"].get("coverage", {}).get(bundle.id, {}).get("counts", {}))
-                                     for r in measured["ranks"])) if valid else set()
+        rank_executed = {str(r["rank"]): tuple(r["result"].get("coverage", {}).get(bundle.id, {}).get("counts", {}))
+                        for r in measured["ranks"]} if valid else {}
+        executed = set().union(*map(set, rank_executed.values()))
         report = ProjectEvaluation(id=trial_id, revision_id=candidate.id, parent_id=parent.id,
             contract_ref=parent.contract_ref, bundle_id=bundle.id, quality="pass" if valid else "fail",
             feasible=valid and measurement["valid"], objective=measurement["objective"], reference_objective=measurement["reference"],
@@ -328,16 +342,18 @@ class ProjectSearch:
             required_ranks=tuple(range(contract.world_size)), rank_bundle_hashes={str(r["rank"]):
                 r.get("result", {}).get("bundle_hashes", {}).get(bundle.id, "missing") for r in measured["ranks"]},
             required_calls=bundle.calls, executed_calls=tuple(sorted(executed)),
+            rank_executed_calls=rank_executed,
             evidence=tuple(str(self.output/"jobs"/f"{trial_id}-pair-{i}-{role}"/"run"/"receipt.json")
                            for i, pair in enumerate(pairs) for role in pair))
         decision = self.revisions.evaluate(report)
         resource_feedback = self.resource_feedback(candidate, bundle, discovery) if valid else {
             "status": "unavailable", "reason": "candidate failed quality or actual-call coverage"}
-        if decision["accepted"]:
+        if decision["accepted"] and publish:
             self.revisions.commit(candidate.id)
-        else:
+        elif not decision["accepted"]:
             self.revisions.abort(candidate.id, "; ".join(decision["reasons"]))
         result = {**metadata, "bundle": bundle.model_dump(mode="json"),
+                  "publication": "committed" if decision["accepted"] and publish else "exploration" if decision["accepted"] else "rejected",
                   "baseline": baseline, "candidate": measured, "pairs": pairs, "measurement": measurement,
                   "evaluation": report.model_dump(mode="json"),
                   "resources": resource_feedback, "decision": decision}
@@ -359,6 +375,10 @@ class ProjectSearch:
                         "before": b["call_resources"].get(call), "after": a["call_resources"].get(call),
                         "after_status": "observed" if call in a["call_resources"] else "absent_or_unassociated"}
                         for b, a in zip(before, after, strict=True)]} for call in group["calls"]]})
+        from kernel_optimizer.project.communication import match_ranks
         return {"status": "observed", "groups": groups, "coverage": [a["coverage"] for a in after],
+                "communication": {"before": [b.get("communication") for b in before],
+                                  "after": [a.get("communication") for a in after],
+                                  "cross_rank_after": match_ranks([a["communication"] for a in after if "collectives" in a.get("communication", {})])},
                 "evidence": [a["trace"] for a in after], "raw_discovery": [r["result"]["discovery"] for r in run["ranks"]],
                 "interpretation": "Nested diagnostic durations overlap; project gain belongs to the complete bundle. Unmeasured independent group effects are unknown."}

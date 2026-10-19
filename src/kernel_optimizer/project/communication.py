@@ -98,13 +98,17 @@ def normalize(trace, associations, rank):
             "participants": args.get("Process Group Ranks"), "dtype": args.get("dtype"),
             "input_elements": args.get("In msg nelems"), "output_elements": args.get("Out msg nelems"),
             "input_splits": args.get("In split size"), "output_splits": args.get("Out split size"),
-            "kernels": [], "calls": [], "logical_input_bytes": None, "payload_status": "unknown"})
+            "kernels": [], "calls": [], "parameter_names": [], "parameter_calls": [],
+            "logical_input_bytes": None, "payload_status": "unknown"})
         width = _DTYPE_BYTES.get(str(item["dtype"]).lower())
         if width is not None and item["input_elements"] is not None:
             item["logical_input_bytes"] = int(item["input_elements"])*width
             item["payload_status"] = "observed"
         association = joined.get(args.get("correlation"), {})
         item["calls"] = sorted(set(item["calls"])|set(association.get("calls", [])))
+        for ownership in association.get("payload_ownership", []):
+            item["parameter_names"] = sorted(set(item["parameter_names"])|set(ownership["parameters"]))
+            item["parameter_calls"] = sorted(set(item["parameter_calls"])|set(ownership["calls"]))
         item["kernels"].append({"name": row["name"], "start_us": row["ts"], "duration_us": row.get("dur", 0),
                                 "stream": args.get("stream"), "correlation": args.get("correlation")})
     comm_union, compute_union = intervals(communication), intervals(compute)
@@ -138,6 +142,7 @@ def match_ranks(observations):
                   "ranks": sorted(item["rank"] for item in items), "participants": sorted(participants),
                   "payload_by_rank": {str(item["rank"]): item["logical_input_bytes"] for item in items},
                   "calls_by_rank": {str(item["rank"]): item["calls"] for item in items}}
+        record["parameter_calls_by_rank"] = {str(item["rank"]): item.get("parameter_calls", []) for item in items}
         complete = participants and {item["rank"] for item in items} == participants and len(items) == len(participants)
         (matched if complete else incomplete).append(record)
     return {"matched": matched, "incomplete": incomplete, "clock_policy": "No subtraction of timestamps from different rank clocks"}
@@ -164,6 +169,60 @@ def available_fields(observation):
     if observation.get("transport", {}).get("status") == "observed":
         available.add("transport")
     return available
+
+
+def bucket_inventory(adapter, state, discovered):
+    """Passive post-run reducer inventory; never replace an application's comm hook."""
+    import torch
+    roots = adapter.models(state)
+    parameter_names, seen, buckets, missing = {}, set(), [], []
+    for root, model in roots.items():
+        for name, parameter in model.named_parameters(remove_duplicate=False):
+            parameter_names.setdefault(id(parameter), []).append(root+("."+name if name else ""))
+    module_calls = [call for call in discovered["calls"] if call["kind"] == "module"]
+    inventory_roots = dict(roots)
+    if isinstance(state, dict):
+        inventory_roots.update({"state:"+name: value for name, value in state.items() if isinstance(value, torch.nn.Module)})
+    for root, model in inventory_roots.items():
+        for path, module in model.named_modules():
+            if not isinstance(module, torch.nn.parallel.DistributedDataParallel) or id(module) in seen:
+                continue
+            seen.add(id(module))
+            name = root+("."+path if path else "")
+            getter = getattr(module.reducer, "_get_zeros_like_grad_buckets", None)
+            if getter is None:
+                missing.append({"module": name, "reason": "installed reducer exposes no passive bucket inventory"})
+                continue
+            try:
+                actual = getter()
+                for bucket in actual:
+                    names = sorted({n for p in bucket.parameters() for n in parameter_names.get(id(p), ())})
+                    direct_modules = {p.rpartition(".")[0] for p in names}
+                    calls = sorted(c["id"] for c in module_calls if c["target"] in direct_modules)
+                    tensor = bucket.buffer()
+                    buckets.append({"module": name, "bucket_index": bucket.index(), "is_last": bucket.is_last(),
+                        "parameters": names, "calls": calls, "elements": tensor.numel(),
+                        "dtype": str(tensor.dtype), "logical_bytes": tensor.numel()*tensor.element_size()})
+                del actual
+            except (RuntimeError, AttributeError) as exc:
+                missing.append({"module": name, "reason": f"{type(exc).__name__}: {exc}"})
+    return {"status": "observed" if buckets else "unavailable" if seen else "not_applicable", "buckets": buckets,
+        "missing": missing, "method": "installed reducer passive bucket/parameter inventory after warmed profiled run",
+        "interpretation": "Direct parameter ownership is many-to-many. No comm hook is installed or replaced. This inventory alone does not identify a timed collective or allocate its cost among member groups."}
+
+
+def attach_bucket_candidates(communication, inventory):
+    communication["bucket_inventory"] = inventory
+    for collective in communication.get("collectives", []):
+        candidates = [bucket for bucket in inventory["buckets"]
+                      if bucket["logical_bytes"] == collective["logical_input_bytes"]
+                      and collective["operation"].lower().replace("_", "") == "allreduce"]
+        collective["bucket_candidates"] = [{"module": b["module"], "bucket_index": b["bucket_index"], "calls": b["calls"]} for b in candidates]
+        owners = set(collective.get("parameter_names", []))
+        exact = [b for b in candidates if owners and owners == set(b["parameters"])]
+        collective["observed_buckets"] = [{"module": b["module"], "bucket_index": b["bucket_index"], "calls": b["calls"]} for b in exact]
+        collective["bucket_attribution"] = ("observed gradient-storage membership plus matched parameter inventory" if exact else
+            "payload-compatible candidates only; event-to-bucket identity remains unknown")
 
 
 def sample_metric(adapter, state, operation, synchronize, context, source, repeats):

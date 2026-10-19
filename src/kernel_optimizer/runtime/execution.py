@@ -33,6 +33,7 @@ class ExecutionRequest(BaseModel):
     collective_timeout_s: float = 120.0
     env: dict[str, str] = Field(default_factory=dict)
     launcher: list[str] = Field(default_factory=list)
+    wait_for_devices: bool = False
 
 
 def write_json(path: Path, data: Any) -> None:
@@ -53,9 +54,10 @@ def gpu_inventory() -> list[dict[str, str]]:
 class DeviceLease:
     """Cooperative, cross-process exclusive lease keyed by physical UUID."""
 
-    def __init__(self, directory: Path, device: str):
+    def __init__(self, directory: Path, device: str, *, wait=False):
         self.path = directory / (hashlib.sha256(device.encode()).hexdigest() + ".lock")
         self.stream = None
+        self.wait = wait
 
     def __enter__(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -66,10 +68,17 @@ class DeviceLease:
                 if self.path.stat().st_size == 0:
                     self.stream.write(b"0"); self.stream.flush()
                 self.stream.seek(0)
-                msvcrt.locking(self.stream.fileno(), msvcrt.LK_NBLCK, 1)
+                while True:
+                    try:
+                        msvcrt.locking(self.stream.fileno(), msvcrt.LK_NBLCK, 1)
+                        break
+                    except OSError:
+                        if not self.wait:
+                            raise
+                        time.sleep(0.1)
             else:
                 import fcntl
-                fcntl.flock(self.stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(self.stream.fileno(), fcntl.LOCK_EX | (0 if self.wait else fcntl.LOCK_NB))
         except OSError:
             self.stream.close()
             raise RuntimeError(f"device lease is busy: {self.path.name}") from None
@@ -127,7 +136,9 @@ class LocalExecutor:
         ranks = []
         with ExitStack() as stack:
             for device in sorted(request.devices):
-                stack.enter_context(DeviceLease(request.lease_dir, device))
+                stack.enter_context(DeviceLease(request.lease_dir, device, wait=request.wait_for_devices))
+            lease_wait_s = time.monotonic()-started
+            started = time.monotonic()
             try:
                 for rank in range(world):
                     env = {**os.environ, **request.env, "CUDA_VISIBLE_DEVICES": ",".join(request.devices),
@@ -172,6 +183,7 @@ class LocalExecutor:
                 receipt = {"schema_version": 1, "status": "failed" if failure or len(ranks) != world or
                            any(r.get("status") != "passed" for r in ranks) else "passed",
                            "failure": failure, "wall_s": time.monotonic() - started, "ranks": ranks,
+                           "lease_wait_s": lease_wait_s,
                            "entry_sha256": hashlib.sha256(request.entry.read_bytes()).hexdigest(),
                            "devices": request.devices, "worker_pids_reaped": all(p.poll() is not None for p in processes)}
                 write_json(request.output / "receipt.json", receipt)

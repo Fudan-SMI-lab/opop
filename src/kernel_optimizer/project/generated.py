@@ -29,7 +29,7 @@ class Proposal(BaseModel):
 
 class CollectionPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    collectors: list[Literal["torch", "nsys"]]
+    collectors: list[str]
     requested_fields: list[str]
     unavailable_fields: dict[str, str]
     rationale: str

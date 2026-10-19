@@ -28,6 +28,8 @@ def canonical(value: Any) -> bytes:
                 value.pop("affected_calls", None)
             if isinstance(model, ProjectContract):
                 value.pop("frozen_files", None)
+            if isinstance(model, ProjectEvaluation) and not value.get("rank_executed_calls"):
+                value.pop("rank_executed_calls", None)
     def encode(item):
         if isinstance(item, BaseModel):
             return json.loads(canonical(item))
@@ -227,6 +229,13 @@ class RevisionStore:
         if set(report.required_calls) != required or not required <= set(report.executed_calls):
             reasons.append("candidate_coverage_missing")
         expected_ranks = {str(rank) for rank in range(contract.world_size)}
+        plan = self.load(self.revision(bundle.parent_revision).plan_ref, ExecutionPlan)
+        if report.rank_executed_calls or any("ranks" in c.signature for c in plan.calls):
+            from kernel_optimizer.project.aggregation import rank_requirements
+            required_by_rank = rank_requirements(bundle, plan, contract.world_size)
+            if set(report.rank_executed_calls) != expected_ranks or any(
+                    not set(calls) <= set(report.rank_executed_calls.get(rank, ())) for rank, calls in required_by_rank.items()):
+                reasons.append("rank_call_coverage_missing")
         if set(map(str, report.required_ranks)) != expected_ranks or set(report.rank_bundle_hashes) != expected_ranks or any(
                 digest != identity(bundle) for digest in report.rank_bundle_hashes.values()):
             reasons.append("rank_bundle_mismatch")

@@ -1,10 +1,13 @@
 """Join launch correlation and autograd sequence evidence without cross-rank clocks."""
 from collections import defaultdict
+import json
 
 
 def associate(trace, events, calls=None):
     calls = calls or {}
     labels = {"opop::"+str(event["sequence"]): event["call_id"] for event in events}
+    payload_labels = {"opop::"+str(event["sequence"]): event["payload_ownership"] for event in events if "payload_ownership" in event}
+    payload_ranges = {}
     timelines = defaultdict(list)
     roots, backward, kernels = [], [], []
     for row in trace.get("traceEvents", []):
@@ -14,6 +17,8 @@ def associate(trace, events, calls=None):
         key = (row.get("pid"), row.get("tid"))
         if name in labels:
             ident = labels[name]
+            if name in payload_labels:
+                payload_ranges[id(row)] = payload_labels[name]
             timelines[key].extend(((row["ts"], 1, id(row), ((ident,), False)),
                                    (row["ts"]+row.get("dur", 0), 0, id(row), None)))
             if calls.get(ident, {}).get("kind") == "project":
@@ -73,12 +78,15 @@ def associate(trace, events, calls=None):
                     if root_pid == pid and start <= timestamp <= end and ident not in owners:
                         owners.insert(0, ident)
                 phase = "backward" if is_backward else next((calls[c]["phase"] for c in reversed(owners) if c in calls), "unknown")
-                launches[token] = (owners, phase)
+                launches[token] = (owners, phase, [payload_ranges[key] for key in active if key in payload_ranges])
     totals = defaultdict(lambda: {"cuda_us": 0.0, "kernels": 0, "communication_us": 0.0, "phase_cuda_us": {}})
+    launches_by_call = defaultdict(dict)
     matched, detailed, backward_kernels = 0, 0, 0
     for kernel in kernels:
-        owners, phase = launches.get(kernel["correlation"], ([], "unknown"))
+        owners, phase, payload = launches.get(kernel["correlation"], ([], "unknown", []))
         kernel["calls"], kernel["phase"] = owners, phase
+        if payload:
+            kernel["payload_ownership"] = payload
         matched += bool(owners)
         detailed += any(calls.get(ident, {}).get("kind") != "project" for ident in owners)
         backward_kernels += phase == "backward" and bool(owners)
@@ -89,6 +97,11 @@ def associate(trace, events, calls=None):
             total["phase_cuda_us"][phase] = total["phase_cuda_us"].get(phase, 0)+kernel["duration_us"]
             if kernel["communication"]:
                 total["communication_us"] += kernel["duration_us"]
+            key = json.dumps([kernel["name"], kernel["launch_resources"]], sort_keys=True)
+            row = launches_by_call[ident].setdefault(key, {"kernel": kernel["name"], **kernel["launch_resources"], "invocations": 0, "cuda_us": 0.0})
+            row["invocations"] += 1; row["cuda_us"] += kernel["duration_us"]
+    for ident, total in totals.items():
+        total["launch_configurations"] = list(launches_by_call[ident].values())
     return {"kernels": kernels, "call_resources": dict(totals),
         "coverage": {"cuda_kernels": len(kernels), "associated_kernels": matched,
             "unassociated_kernels": len(kernels)-matched, "associated_below_project": detailed,

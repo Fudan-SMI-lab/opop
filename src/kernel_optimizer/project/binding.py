@@ -11,9 +11,12 @@ from kernel_optimizer.project.discovery import _phase, tensor_description
 
 
 class BindingSession:
-    def __init__(self, adapter, state, specs: list[dict]):
+    def __init__(self, adapter, state, specs: list[dict], *, rank=0, world_size=1):
         self.adapter, self.state = adapter, state
-        self.specs = {spec["id"]: spec for spec in specs}
+        self.rank, self.world_size = rank, world_size
+        self.all_specs = {spec["id"]: spec for spec in specs}
+        self.specs = {spec["id"]: {**spec, **spec.get("rank_specs", {}).get(str(rank), {})}
+                      for spec in specs if rank in spec.get("ranks", range(world_size))}
         self.models = adapter.models(state)
         self.references, self.modules = {}, {}
         self.counts = Counter()
@@ -43,23 +46,18 @@ class BindingSession:
         loader = importlib.util.spec_from_file_location("opop_candidate_" + str(len(self.restores)), file)
         module = importlib.util.module_from_spec(loader); loader.loader.exec_module(module)
         replacements = module.build({"state": self.state, "models": self.models, "modules": self.modules,
-                                     "references": self.references, "targets": self.specs, "parameters": parameters})
-        if not isinstance(replacements, dict) or not replacements:
-            raise ValueError("build(context) must return a nonempty call_id -> callable mapping")
+                                     "references": self.references, "targets": self.specs, "parameters": parameters,
+                                     "rank": self.rank, "world_size": self.world_size, "all_targets": self.all_specs})
+        if not isinstance(replacements, dict):
+            raise ValueError("build(context) must return a call_id -> callable mapping")
         if set(replacements) - set(self.specs):
             raise ValueError("candidate returned an undeclared replacement site")
-        physical = set()
+        physical = {}
         for ident, function in replacements.items():
             if not callable(function):
                 raise TypeError("replacement must be callable")
             spec = self.specs[ident]
-            def wrapped(*args, _function=function, _ident=ident, _spec=spec, **kwargs):
-                if _spec["kind"] == "module":
-                    signature = {"args": tensor_description(args), "kwargs": tensor_description(kwargs)}
-                    if signature not in _spec["signatures"]:
-                        if self.tracking:
-                            self.fallbacks[_ident] += 1
-                        return self.references[_ident](*args, **kwargs)
+            def wrapped(*args, _function=function, _ident=ident, **kwargs):
                 if self.tracking:
                     self.counts[_ident] += 1
                 return _function(*args, **kwargs)
@@ -69,11 +67,25 @@ class BindingSession:
                 owner = self.modules[ident] if spec["kind"] == "module" else self.adapter
                 attr = "forward" if spec["kind"] == "module" else "run"
                 key = (id(owner), attr)
-                if key in physical:
-                    raise ValueError("multiple replacements for the same physical site require a composed guard")
-                physical.add(key)
-                self.restores.append((owner, attr, getattr(owner, attr)))
-                setattr(owner, attr, wrapped)
+                entry = physical.setdefault(key, (owner, attr, getattr(owner, attr), []))
+                if any(other["phase"] == spec["phase"] for other, _ in entry[3]):
+                    raise ValueError("ambiguous replacements for one physical site and phase")
+                entry[3].append((spec, wrapped))
+        for owner, attr, original, variants in physical.values():
+            def dispatch(*args, _variants=variants, _original=original, **kwargs):
+                for spec, replacement in _variants:
+                    if spec["phase"] != _phase.get():
+                        continue
+                    if spec["kind"] == "module":
+                        signature = {"args": tensor_description(args), "kwargs": tensor_description(kwargs)}
+                        if signature not in spec["signatures"]:
+                            if self.tracking:
+                                self.fallbacks[spec["id"]] += 1
+                            continue
+                    return replacement(*args, **kwargs)
+                return _original(*args, **kwargs)
+            self.restores.append((owner, attr, original))
+            setattr(owner, attr, dispatch)
         if self.functionals:
             self._create_dispatch_mode()
         return list(replacements)

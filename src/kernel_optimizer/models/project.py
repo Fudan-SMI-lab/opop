@@ -194,6 +194,7 @@ class ProjectEvaluation(ProjectModel):
     rank_bundle_hashes: dict[str, str]
     required_calls: tuple[str, ...]
     executed_calls: tuple[str, ...]
+    rank_executed_calls: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     evidence: tuple[str, ...] = ()
     reasons: tuple[str, ...] = ()
 

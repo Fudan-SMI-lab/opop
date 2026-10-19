@@ -15,6 +15,23 @@ def metric(run, name, reducer="max"):
     return float(reducers[reducer](values))
 
 
+def constraints_for_runs(runs, objective, anchor):
+    operations = {"le": operator.le, "lt": operator.lt, "ge": operator.ge, "gt": operator.gt, "eq": operator.eq}
+    constraints = []
+    for constraint in objective.get("constraints", []):
+        field = constraint["metric"]
+        aggregate = constraint.get("rank_aggregation", "min" if constraint["op"] in {"ge", "gt"} else "max")
+        try:
+            reference = metric(anchor, field, aggregate)
+            limit = reference * float(constraint["baseline_ratio"]) if "baseline_ratio" in constraint else float(constraint["threshold"])
+            values = [metric(run, field, aggregate) for run in runs]
+            passed = all(operations[constraint["op"]](value, limit) for value in values)
+            constraints.append({"metric": field, "values": values, "limit": limit, "original_reference": reference, "passed": passed})
+        except (KeyError, TypeError, ValueError):
+            constraints.append({"metric": field, "passed": False, "reason": "constraint measurement or definition unavailable"})
+    return constraints
+
+
 def paired_decision(pairs, objective, anchor):
     direction, name = objective["direction"], objective["name"]
     reducer = objective.get("rank_aggregation", "max" if direction == "minimize" else "min")
@@ -39,20 +56,9 @@ def paired_decision(pairs, objective, anchor):
         noise.append(bound)
         if gain <= max(threshold, bound):
             reasons.append("paired_gain_not_above_noise")
-    operations = {"le": operator.le, "lt": operator.lt, "ge": operator.ge, "gt": operator.gt, "eq": operator.eq}
-    for constraint in objective.get("constraints", []):
-        field, aggregate = constraint["metric"], constraint.get("rank_aggregation", "max")
-        try:
-            reference = metric(anchor, field, aggregate)
-            limit = reference * float(constraint["baseline_ratio"]) if "baseline_ratio" in constraint else float(constraint["threshold"])
-            values = [metric(pair["candidate"], field, aggregate) for pair in pairs]
-            passed = all(operations[constraint["op"]](value, limit) for value in values)
-            constraints.append({"metric": field, "values": values, "limit": limit, "original_reference": reference, "passed": passed})
-        except (KeyError, TypeError, ValueError):
-            passed = False
-            constraints.append({"metric": field, "passed": False, "reason": "constraint measurement or definition unavailable"})
-        if not passed:
-            reasons.append("original_baseline_constraint_failed")
+    constraints = constraints_for_runs([pair["candidate"] for pair in pairs], objective, anchor)
+    if any(not row["passed"] for row in constraints):
+        reasons.append("original_baseline_constraint_failed")
     return {"valid": True, "objective": statistics.median(after), "reference": statistics.median(before),
             "parent_values": before, "candidate_values": after, "paired_gains": gains, "noise_bounds": noise,
             "constraints": constraints, "reasons": sorted(set(reasons)),
