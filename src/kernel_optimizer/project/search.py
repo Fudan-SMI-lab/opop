@@ -11,6 +11,7 @@ from kernel_optimizer.models.project import (
     ProjectContract, ProjectEvaluation,
 )
 from kernel_optimizer.project.agents import ProjectAgents
+from kernel_optimizer.project.generated import Proposal, Selection, validate_proposal
 from kernel_optimizer.project.request import ProjectRequest
 from kernel_optimizer.project.measurement import paired_decision, valid_run
 from kernel_optimizer.project.transactions import RevisionStore, identity
@@ -62,14 +63,24 @@ class ProjectSearch:
                              dependencies=tuple(Dependency(**edge) for edge in primary["dependencies"]),
                              unknown_dependencies=tuple(primary["unknown_dependencies"]))
         previous = self.revisions.load(parent.registry_ref, GroupRegistry)
+        previous_plan = self.revisions.load(parent.plan_ref, ExecutionPlan)
         call_lookup = {c["id"]: c for c in primary["calls"]}
+        def lineage(member_ids):
+            related = {old.id for old in previous.groups if set(old.calls) & set(member_ids)}
+            boundaries = set(member_ids) | {p for ident in member_ids for p in call_lookup[ident]["parents"]}
+            for ident in parent.bundles:
+                installed = self.revisions.bundle(ident)
+                if set(installed.calls) & boundaries:
+                    related.update(set(installed.groups) & {old.id for old in previous.groups})
+            return tuple(sorted(related))
         groups = tuple(GroupSpec(id=g["id"], calls=tuple(g["calls"]),
                                 semantics=call_lookup[g["calls"][0]]["semantics"],
                                 resource_refs=(primary["trace"],),
-                                lineage=tuple(old.id for old in previous.groups if set(old.calls)&set(g["calls"]))) for g in primary["groups"])
+                                lineage=lineage(g["calls"])) for g in primary["groups"])
         registry = GroupRegistry(id=identity({"plan": plan.id, "groups": groups}), plan_id=plan.id, groups=groups,
             parent_id=previous.id, retired=tuple(g.id for g in previous.groups if g.id not in {item.id for item in groups}),
-            invalidated_evidence=tuple(sorted({ref for g in previous.groups for ref in g.resource_refs})))
+            invalidated_evidence=tuple(sorted({ref for g in previous.groups for ref in g.resource_refs} |
+                                              {ref for c in previous_plan.calls for ref in c.evidence})))
         revision = self.revisions.attach_discovery(parent, plan, registry)
         summary = []
         for group in groups:
@@ -82,6 +93,10 @@ class ProjectSearch:
                   "groups": sorted(summary, key=lambda g: g["diagnostic_cuda_us"], reverse=True),
                   "calls": primary["calls"], "ranks": [r["trace"] for r in ranks],
                   "coverage": [r["coverage"] for r in ranks], "unknown_dependencies": primary["unknown_dependencies"],
+                  "plan_change": {"retired_calls": sorted({c.id for c in previous_plan.calls} - call_lookup.keys()),
+                      "new_calls": sorted(call_lookup.keys() - {c.id for c in previous_plan.calls}),
+                      "retired_groups": list(registry.retired), "invalidated_evidence": list(registry.invalidated_evidence),
+                      "lineage_basis": "Surviving call identity or containment inside an installed joint bundle; not independent causal attribution"},
                   "raw_discovery": [rank["result"]["discovery"] for rank in run["ranks"]]}
         write_json(self.output/"discovery.json", result)
         return result
@@ -106,6 +121,8 @@ class ProjectSearch:
         group_lookup = {g["id"]: g for g in discovery["groups"]}
         sources = {f.path: self.store.get_artifact(f.content_ref) for f in parent.files}
         common = {"request.json": json.dumps(self.request.portable(), indent=2),
+                  "selection.schema.json": json.dumps(Selection.model_json_schema(), indent=2),
+                  "proposal.schema.json": json.dumps(Proposal.model_json_schema(), indent=2),
                   "groups.json": json.dumps(discovery["groups"], indent=2), "calls.json": json.dumps(discovery["calls"], indent=2),
                   "search.json": json.dumps({"allowed_scopes": allowed_scopes, "unknown_dependencies": discovery["unknown_dependencies"],
                       "installed_bundles": [self.revisions.bundle(ident).model_dump(mode="json") for ident in parent.bundles]}),
@@ -117,7 +134,8 @@ class ProjectSearch:
         with Runtime(self.config, log_dir=trial_root) as runtime:
             agents = ProjectAgents(runtime, self.store)
             selected, selection_receipt = agents.generate("selection", common,
-                (prompt_root/"selection_prompt.md").read_text(), ("selection.json",), feedback)
+                (prompt_root/"selection_prompt.md").read_text(), ("selection.json",), feedback,
+                validator=lambda path: Selection.model_validate_json((path/"selection.json").read_bytes()))
             selection = json.loads((selected/"selection.json").read_text())
             if selection["scope"] not in allowed_scopes or not selection["groups"] or set(selection["groups"]) - group_lookup.keys():
                 raise ValueError("selection refers to unsupported scope or unknown groups")
@@ -137,8 +155,34 @@ class ProjectSearch:
             candidate_inputs = {**common, "selection.json": json.dumps(selection, indent=2),
                                 "targets.json": json.dumps(targets, indent=2)}
             generated, candidate_receipt = agents.generate("candidate", candidate_inputs,
-                (prompt_root/"candidate_prompt.md").read_text(), ("candidate.py", "proposal.json"), feedback)
-        proposal = json.loads((generated/"proposal.json").read_text())
+                (prompt_root/"candidate_prompt.md").read_text(), ("candidate.py", "proposal.json"), feedback,
+                validator=validate_proposal)
+        bundle, proposal = self.bundle_from_outputs(generated, selection, parent, discovery, trial_id)
+        metadata = {"trial": trial_id, "selection": selection, "proposal": proposal,
+                    "selection_agent": selection_receipt, "candidate_agent": candidate_receipt}
+        write_json(trial_root/"generated.json", {**metadata, "bundle": bundle.model_dump(mode="json")})
+        return self.validate_bundle(bundle, metadata, discovery=discovery)
+
+    def bundle_from_outputs(self, generated, selection, parent, discovery, trial_id):
+        """Resolve saved agent outputs against their exact parent for replay/repair."""
+        if discovery["revision"] != parent.id:
+            raise ValueError("generated outputs belong to another discovery revision")
+        contract = self.revisions.load(parent.contract_ref, ProjectContract)
+        call_lookup = {c["id"]: c for c in discovery["calls"]}
+        group_lookup = {g["id"]: g for g in discovery["groups"]}
+        if set(selection["groups"]) - group_lookup.keys():
+            raise ValueError("unknown selected groups")
+        affected = set(selection["affected_calls"])
+        required = set().union(*(set(group_lookup[g]["calls"]) for g in selection["groups"]))
+        if not required <= affected or affected - call_lookup.keys():
+            raise ValueError("selected groups are not covered by the effect closure")
+        while True:
+            closure = affected | {c["id"] for c in discovery["calls"] if set(c["parents"]) & affected}
+            if closure == affected:
+                break
+            affected = closure
+        targets = [call_lookup[c] for c in sorted(affected)]
+        proposal = Proposal.model_validate_json((generated/"proposal.json").read_bytes()).model_dump(mode="json")
         replacement_calls = tuple(proposal["replacement_calls"])
         if not replacement_calls or set(replacement_calls) - affected:
             raise ValueError("candidate returned undeclared replacement sites")
@@ -155,7 +199,20 @@ class ProjectSearch:
             write_set=("file:"+installer, "file:"+target_file, *("call:"+c for c in replacement_calls)),
             requires=tuple(proposal.get("requires", ())), replaces=tuple(proposal.get("replaces", ())),
             external_invariants=contract.invariants, installer=installer)
-        candidate = self.revisions.stage(bundle)
+        return bundle, proposal
+
+    def validate_bundle(self, bundle, metadata=None, *, discovery=None, candidate=None):
+        """Replay an immutable generated candidate without another provider request."""
+        metadata = metadata or {"trial": bundle.id}
+        trial_id = metadata["trial"]
+        trial_root = self.output/"trials"/trial_id
+        trial_root.mkdir(parents=True, exist_ok=True)
+        parent = self.revisions.revision(bundle.parent_revision)
+        contract = self.revisions.load(parent.contract_ref, ProjectContract)
+        discovery = discovery or json.loads((self.output/"discovery.json").read_text())
+        if discovery["revision"] != parent.id:
+            raise ValueError("candidate validation requires its own parent's discovery evidence")
+        candidate = candidate or self.revisions.stage(bundle)
         pairs = []
         pair_count = int(self.request.objective.get("paired_repeats", 2))
         if pair_count < 2:
@@ -172,7 +229,7 @@ class ProjectSearch:
                 break
         baseline = pairs[0].get("parent", {"status": "not_run", "ranks": []})
         measured = pairs[0].get("candidate", {"status": "not_run", "ranks": []})
-        valid = valid_run(measured)
+        valid = valid_run(measured) and all(valid_run(pair.get("candidate", {"status": "not_run"})) for pair in pairs)
         complete = len(pairs) == pair_count and all(len(pair) == 2 for pair in pairs)
         anchor = json.loads((self.output/"prepared.json").read_text())["evaluation"]
         measurement = paired_decision(pairs, self.request.objective, anchor) if complete else {
@@ -195,8 +252,7 @@ class ProjectSearch:
             self.revisions.commit(candidate.id)
         else:
             self.revisions.abort(candidate.id, "; ".join(decision["reasons"]))
-        result = {"trial": trial_id, "selection": selection, "proposal": proposal, "bundle": bundle.model_dump(mode="json"),
-                  "selection_agent": selection_receipt, "candidate_agent": candidate_receipt,
+        result = {**metadata, "bundle": bundle.model_dump(mode="json"),
                   "baseline": baseline, "candidate": measured, "pairs": pairs, "measurement": measurement,
                   "evaluation": report.model_dump(mode="json"),
                   "resources": resource_feedback, "decision": decision}

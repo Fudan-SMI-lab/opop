@@ -1,5 +1,7 @@
 Generate candidate.py for the selected project optimization. Read inputs/request.json, selection.json, targets.json, adapter.py and the supplied source. The goal, workload, quality, dtype, completion boundary and state requirements are frozen. Never change batch, sequence length, generation count, effective training batch, sampling semantics, data or thresholds to manufacture improvement. Do not precompute/capture final answers for the known fixture; the workload must execute on each invocation. Do not modify framework, evaluator, reference inputs or external files.
 
+Follow inputs/proposal.schema.json exactly. In particular, implementation is one enum string such as "composite", never a description; put descriptions in rationale.
+
 candidate.py must export build(context) -> dict[call_id, callable]. Context contains:
 
 * state: the actual adapter state after prepare, before validation runs;

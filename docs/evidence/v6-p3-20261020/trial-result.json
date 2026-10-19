@@ -1,0 +1,4799 @@
+{
+  "trial": "trial-paired-repair-a",
+  "selection": {
+    "scope": "joint",
+    "groups": [
+      "0fbfdfdae2ac8b8025fe",
+      "52541520159cc1cd6701",
+      "562f325b0dad8a3051f3",
+      "004ca6b2ffacde93bf39",
+      "2b61ffd7faaf11e7f6c6",
+      "2fe5ad27c496ccfc3981",
+      "ac9392056a7ab43ec468",
+      "c77755a6c73aa81cc91b",
+      "1f0903c0dd085d4a53c2",
+      "6640ec1a4e0d352961cd",
+      "c1decbdaba7fb9d4ed6e",
+      "f6bb6f1600b73cd6de27",
+      "32b8596fa1c8f69885df",
+      "e4f651707c5e75dd1dd8",
+      "322256be8d2549f6d716",
+      "e24ae0ef6dcb09f5c2e7",
+      "6b0689ce7d3013b2fee2",
+      "81aec0211e62f54bde5b",
+      "a0ef12ddbf5fd57617c9",
+      "3765ccc3ec6710e560c6",
+      "ae682f41e7f52ca95137",
+      "ec7e918fd2166bdd8ab7",
+      "e31e209da9606bd55046",
+      "b49b6c20ba95072f634e",
+      "6cf59f17feed94b6eeed",
+      "7fb0d2de3e359d451ab3",
+      "611a86078774cea81986",
+      "fc4ee42c1ef82b000685",
+      "5621410346ca09a421d0",
+      "87f06d6665f76b0e6c76",
+      "bbece526280b143305be",
+      "0fd43bcb72c10cc74561",
+      "6f2587ef65465cc038be",
+      "d86098a0485ff7599a75",
+      "1ef0981b3d59c75926b9",
+      "27548c39e983235c29d9",
+      "228e166a4e46712da828",
+      "a83154f34f4e1d077c86",
+      "a5679e81d0b8a448c745",
+      "8dbd2cb8b65ef3b20650"
+    ],
+    "rationale": "Objective is wall-clock latency_ms of the frozen batch=1 FP32 forward (TF32 and cudnn benchmark disabled, exact top-1), so only structure-preserving rewrites of the observed execution are eligible; precision or algorithm-policy changes are not. In the observed run every one of the 20 aten.conv2d invocations is immediately followed by an eval-mode BatchNorm2d inside a ResNetConvLayer or ResNetShortCut module: 643.52us conv + 43.84us batch_norm (20 kernels + 20 module dispatches inside the timed region) out of the 731.39us diagnostic total. The chosen joint boundary is that conv-epilogue chain at all 20 sites. The edits are mutually dependent, which is why this is one joint candidate rather than two: rescaling conv weights while keeping the BN affine corrupts logits, and removing the BN without folding it into the conv corrupts logits; only the closed transform (fold per-channel scale/shift into conv weight, give the bias-less convs a folded bias, drop the BN call) preserves semantics and only together do they remove work. This is not a blanket operator-name policy: it is anchored to this workload's measured conv-BN adjacency, the 6.0% batch_norm kernel share and the launch/dispatch cost that a wall-latency metric charges. The boundary also contains the documented stage-3 hot spot (stages.3 is 350.46us inclusive, 47.9% of the run; its convs alone are 334.97us, 45.8%): the 256->512 stride-2 conv at 115.97us runs at ~1.0 TFLOP/s versus 3.2-3.7 TFLOP/s for its identical-FLOP (115.5 MF) downsample siblings at 30.85us and 36.54us, and 512x512x3x3 convs at 7x7 run at 3.4 TFLOP/s versus 12.2 TFLOP/s for the same 231 MF at 28x28, so any shape-preserving FP32 call-path variant for those specific sites belongs inside the same conv groups and must be judged by the same tolerance gate. Conv2d/batch_norm module groups and their aten call groups are included together so the editable boundary covers both sides of the fold at every site; ReLU, residual add_, pooling and classifier calls are outside the fold and untouched.",
+    "hypothesis": "Folding all 20 eval-mode BatchNorm affines into their preceding convolutions (per-channel weight rescale, folded conv bias, BN module removed) removes the 20 aten.batch_norm kernels (43.84us, 6.0% of diagnostic CUDA time) and their eager dispatches from the timed forward while logits stay within atol=rtol=1e-4 with exact top-1, because the transform is algebraically exact up to FP32 rounding of the folded weights. Expected effect on latency_ms is a hypothesis to be A/B measured, not assumed: diagnostic CUDA durations are nested/inclusive, kernel-time savings do not by themselves imply wall-latency savings, and the gain exceeds ~6% only if the removed launches/dispatches sit on the critical path. Secondary, same-gate sub-hypothesis: a shape-preserving FP32 call-path or layout variant for the stage-3 conv sites (especially the 115.97us 256->512 stride-2 call and the 3x 512@7x7 calls, 204.13us) recovers part of their efficiency gap with no numerical-policy change. Acceptance requires paired median latency_ms improvement with unchanged logits/top-1 and peak-memory regression check; any tolerance failure or no measured latency gain rejects the candidate and triggers atomic fallback to the unmodified execution.",
+    "affected_calls": [
+      "679ccfe137094282d25350c1",
+      "1a6b0ac798b8d65631087d57",
+      "e1dd538873e2f8c8c254f775",
+      "805446b6ca2f2d58cb2ac54d",
+      "cb9be0b8a2da4fa24d5f4928",
+      "6489b69b8e5ced6cfa1d2cb7",
+      "71c4859868af1ef73c2db3c3",
+      "ed8b62e8520f512f2daff0b9",
+      "331270da6b3d7705e5d811ef",
+      "4dbe179ff990714f37f0d969",
+      "cd7109c81fe339ed4d60fade",
+      "8e0945e6c447be9973407a18",
+      "07f3b14085aadf1f529bc962",
+      "6214ff32dc254755c8d920f5",
+      "04eda7f194ab41d3b5de937e",
+      "2977089a784978fef6c6a098",
+      "bc892d2d7abb686d8f8eee37",
+      "6802ebe0f043024a3ddc5fa2",
+      "6077a1d100e23c0dc29bd7f6",
+      "f7c72942f175f2356428df6b",
+      "8ef2341287e5b4afa9d0e7bf",
+      "7a355b7561c2c2dcf531bdce",
+      "07de6cca474e6ab1b094aa8a",
+      "1e8ecff82205ed365cc01f5d",
+      "85d8eab2e86e26f7c7a205e7",
+      "cb81711fdc591a89d1790d45",
+      "c807fae3aced16cb9eb0d5d9",
+      "83f7ab21e1bf5bec54d1fcdd",
+      "9549fcca6dfe2694f832e916",
+      "75b24488ca8e1517482469f0",
+      "9c21f54e1a3530fe54b3e86e",
+      "425d18ed6a9bb0b41b165c9c",
+      "e5ef2091bf0335f0c5ccd424",
+      "74705d5d905e1547ef2502c3",
+      "185fc78cf31d9e655ac86b5f",
+      "21ad5219eb55074a2b639a71",
+      "5910d332bcb175d9b11ca7c4",
+      "ce65757f5e2220d6e27f0fc4",
+      "0829ba980401aaa6b70736e4",
+      "8ff474a9810269376473d6f7",
+      "6aaa41faeffad22146fd6761",
+      "820dd67ec66704c34fdb68ec",
+      "85e362c8893edef501c6b5c8",
+      "02d936813f334fab42c607bc",
+      "adbd685b076c18d8d4f9ec07",
+      "52801fdcf001973dc9b22a3b",
+      "fd7092acaf0a171825d76990",
+      "2ee8fbf1c8409ad6a4a204cc",
+      "bcb576ff7b303e075fb61f51",
+      "c2db48d097463651f51bd75c",
+      "b892b0805dadd050499e86e1",
+      "2f3bfb9ee01d701be01d2ff3",
+      "18f2073553f3c236586d8b20",
+      "2b99391d9c511385bb3435ae",
+      "4cf6ededcbab3fd0acb52145",
+      "9c896e9fd5baf62bfb79384b",
+      "6845151cd10c7a88902ecd3b",
+      "4de02c7d00b5249b42b0803e",
+      "0443eeefd01d4eb9530a07fa",
+      "9d58a4f16bf4831bd614bf2f",
+      "e0037fe8db094e72eba2a289",
+      "6d2e0ea2888f05e79439a10d",
+      "a316f19be1b3c5e8e8aaf33b",
+      "b1cb5efe89b1519ffe2869eb",
+      "845d3a1949c35e5f275b1807",
+      "35003dbd09587db01114433d",
+      "b9bd55ef314af749cea369fe",
+      "ead661e59e575ff6c86ed05f",
+      "96178af1c76bbdd88e89f9ce",
+      "4eaff2486fa9667a11fb1a40",
+      "44a24303a1ba9c2d32eee70d",
+      "fef5c03194cef209ae92c63c",
+      "4a36b6b215bad0919258515f",
+      "c0433cb88d8a0ec4fa6b6906",
+      "751361f212184167972e2c42",
+      "cdeeab1fb99d724f2cb90168"
+    ]
+  },
+  "proposal": {
+    "implementation": "composite",
+    "replacement_calls": [
+      "04eda7f194ab41d3b5de937e",
+      "07f3b14085aadf1f529bc962",
+      "1a6b0ac798b8d65631087d57",
+      "2977089a784978fef6c6a098",
+      "331270da6b3d7705e5d811ef",
+      "4dbe179ff990714f37f0d969",
+      "6077a1d100e23c0dc29bd7f6",
+      "6214ff32dc254755c8d920f5",
+      "6489b69b8e5ced6cfa1d2cb7",
+      "679ccfe137094282d25350c1",
+      "6802ebe0f043024a3ddc5fa2",
+      "71c4859868af1ef73c2db3c3",
+      "805446b6ca2f2d58cb2ac54d",
+      "8e0945e6c447be9973407a18",
+      "bc892d2d7abb686d8f8eee37",
+      "cb9be0b8a2da4fa24d5f4928",
+      "cd7109c81fe339ed4d60fade",
+      "e1dd538873e2f8c8c254f775",
+      "ed8b62e8520f512f2daff0b9",
+      "f7c72942f175f2356428df6b"
+    ],
+    "rationale": "Implementation (composite algebraic rewrite inside PyTorch eager, torch.nn.functional.conv2d, FP32 cudnn under the workload's frozen policies: TF32 off, cudnn.benchmark off): each of the 20 selected conv->BatchNorm2d epilogue sites (17 ResNetConvLayer modules incl. the embedder, 3 ResNetShortCut modules; 9 sites with trailing nn.ReLU, 8 with nn.Identity, 3 shortcuts without a third child) is replaced at the module call site by one fused convolution: s = gamma/sqrt(running_var+eps) per output channel, W_fold = W*s, b_fold = beta - s*running_mean (+ s*conv_bias if a conv bias existed; all 20 observed convs are bias-less), then the site's original activation (ReLU or identity). Scale/shift are computed in float64 and stored as new contiguous FP32 tensors during build; the model's parameters, buffers and module tree are never mutated. Each replacement takes the original forward's args/kwargs (without self), applies the fused path only when the input matches the observed shape/stride/dtype/device signature, and otherwise falls back to the module's original bound forward captured at build time (before installation), so unobserved inputs keep exact parent semantics. Objective is wall-clock latency_ms of the frozen batch=1 FP32 ResNet-18 forward (TF32/cudnn-benchmark disabled, atol=rtol=1e-4 with exact top-1), so only structure-preserving rewrites of the observed execution are eligible; this attempt implements the joint selection's primary hypothesis: fold all 20 eval-mode BatchNorm affines into their preceding convolutions. The edits are mutually dependent and therefore installed as one mapping: rescaling conv weights while keeping the BN would corrupt logits, and removing the BN without folding would corrupt logits; only the closed transform (per-channel weight rescale, folded conv bias, BN dropped) preserves semantics, which is why all 20 sites are replaced together. Folding is placed at the ResNetConvLayer/ResNetShortCut module boundary (the parents of the conv and batch_norm call groups in the selection) rather than at the aten operator boundary: it removes, per site, the Sequential child dispatch, the Conv2d module dispatch, the BatchNorm2d module dispatch, the F.batch_norm->aten dispatch, the 20 aten.batch_norm kernels (43.84us, 6.0% of the 731.39us diagnostic CUDA total, plus launch/dispatch overhead a wall-latency metric charges), and the separate ReLU module dispatch for ConvLayer sites, while the 20 aten.conv2d invocations still execute (now from inside the fused forward, with unchanged input/weight shapes, strides and dtypes, so the same aten call paths remain observable). No aten-level replacements are returned, which also rules out any double-application of the fold through operator interception. inputs/previous-feedback.txt does not exist, so this is the first attempt with no prior measured feedback to incorporate. The transform is algebraically exact for training=False, track_running_stats=True BatchNorm; the only deviation is FP32 rounding of the folded weights/bias and cudnn's conv+bias epilogue versus a separate BN kernel. Local CPU verification on the real ResNet-18 config (all 20 sites replaced, non-trivial affine and running statistics, full-model forward) measured max relative logits deviation 2.1e-7 and identical top-1, roughly three orders of magnitude inside the quality gate; GPU accumulation will differ slightly but with large margin. Expected wall-latency effect is a hypothesis to be A/B measured by the framework, not an assumed fact: kernel-time savings and removed launches/dispatches only translate to latency_ms if they sit on the critical path. The selection's secondary sub-hypothesis (a shape-preserving FP32 call-path/layout variant for the stage-3 conv sites, especially the 115.97us 256->512 stride-2 call and the 3x 512@7x7 calls) is deliberately deferred to a later attempt: it cannot be tuned without the bound worker's measured feedback, and bundling an unmeasured layout change would risk the whole candidate against the same tolerance gate. Eliminated-call validity: the consumers of every eliminated call are the site's own activation (recomputed inside the fused forward where present) and the downstream residual add_/ReLU/pooler/classifier, which consume the fused output tensor of identical shape, dtype, device and contiguity; the residual adds, BasicLayer activations, pooling and classifier are outside the selected boundary and execute unchanged. State lifecycle: model parameters and BN running stats are invariant after prepare for this inference-only workload (adapter.reset only calls .eval() and resets memory counters), so the build-time fold remains valid for warm-model reuse; eval-mode BN performs no running-stat updates, so skipping it changes no state. No fixture-dependent outputs are cached: the full workload executes on every invocation.",
+    "setup_work": "At build time, for each of the 20 sites: read conv weight and BN gamma/beta/running_mean/running_var/eps from the live modules, compute per-channel scale/shift in float64, produce one contiguous FP32 folded weight (and one folded bias vector) per site, and capture the module's original bound forward plus the observed input signature for fallback. Total setup is ~40 small device-side elementwise kernels and a few Python-ms; no synchronization or stream changes are required, and it happens once during build, outside the timed region. Memory: the folded copies replicate the conv weights (11,171,488 FP32 elements, ~44.7 MiB) plus 3,968 bias floats (~15.5 KiB); original parameters and buffers remain resident, so steady-state GPU memory increases by about 45 MiB. Per-forward peak activation memory is unchanged or slightly reduced (each site's fused conv output is written once and consumed in place of the previous conv-output/BN-output pair, and no extra workspace beyond cudnn's usual conv workspace is introduced).",
+    "quality_risks": [
+      "FP32 rounding of the folded weights/bias and the cudnn conv+bias epilogue versus a separate batch_norm kernel make logits deviate slightly from the reference (CPU end-to-end check on the real structure: max_rel 2.1e-7, top-1 identical); the framework's atol=rtol=1e-4 plus exact-top-1 gate is the acceptance test, and any failure triggers atomic fallback to the unmodified execution.",
+      "The fold assumes eval-mode, affine, track_running_stats BatchNorm and parameter invariance between build and run (guaranteed by this inference-only workload); guards skip any site not meeting these conditions, and each site folds independently, so a skipped site simply keeps its original conv+BN path.",
+      "The fused path activates only on the observed shape/stride/dtype/device signature; any other input, or calls with extra args/kwargs, fall back to the module's original bound forward with original parameters, preserving exact parent semantics for unobserved inputs (e.g., a hypothetical different batch shape).",
+      "Peak-memory reporting: the resident folded weights add ~45 MiB to allocated memory; this workload's objective is latency_ms, but the framework's peak-memory check will observe the increase (documented, not hidden).",
+      "No in-place rewrites: the model's parameters, buffers, module tree and autograd state are untouched, and inference-mode semantics are preserved (fused tensors are plain constants read inside inference_mode)."
+    ],
+    "eliminated_calls": [
+      "07de6cca474e6ab1b094aa8a",
+      "0829ba980401aaa6b70736e4",
+      "185fc78cf31d9e655ac86b5f",
+      "1e8ecff82205ed365cc01f5d",
+      "21ad5219eb55074a2b639a71",
+      "425d18ed6a9bb0b41b165c9c",
+      "5910d332bcb175d9b11ca7c4",
+      "74705d5d905e1547ef2502c3",
+      "75b24488ca8e1517482469f0",
+      "7a355b7561c2c2dcf531bdce",
+      "83f7ab21e1bf5bec54d1fcdd",
+      "85d8eab2e86e26f7c7a205e7",
+      "8ef2341287e5b4afa9d0e7bf",
+      "8ff474a9810269376473d6f7",
+      "9549fcca6dfe2694f832e916",
+      "9c21f54e1a3530fe54b3e86e",
+      "c807fae3aced16cb9eb0d5d9",
+      "cb81711fdc591a89d1790d45",
+      "ce65757f5e2220d6e27f0fc4",
+      "e5ef2091bf0335f0c5ccd424",
+      "0443eeefd01d4eb9530a07fa",
+      "18f2073553f3c236586d8b20",
+      "2b99391d9c511385bb3435ae",
+      "2f3bfb9ee01d701be01d2ff3",
+      "35003dbd09587db01114433d",
+      "44a24303a1ba9c2d32eee70d",
+      "4cf6ededcbab3fd0acb52145",
+      "4de02c7d00b5249b42b0803e",
+      "4eaff2486fa9667a11fb1a40",
+      "6845151cd10c7a88902ecd3b",
+      "6d2e0ea2888f05e79439a10d",
+      "845d3a1949c35e5f275b1807",
+      "96178af1c76bbdd88e89f9ce",
+      "9c896e9fd5baf62bfb79384b",
+      "9d58a4f16bf4831bd614bf2f",
+      "a316f19be1b3c5e8e8aaf33b",
+      "b1cb5efe89b1519ffe2869eb",
+      "b9bd55ef314af749cea369fe",
+      "e0037fe8db094e72eba2a289",
+      "ead661e59e575ff6c86ed05f",
+      "4a36b6b215bad0919258515f",
+      "751361f212184167972e2c42",
+      "c0433cb88d8a0ec4fa6b6906",
+      "cdeeab1fb99d724f2cb90168",
+      "fef5c03194cef209ae92c63c"
+    ],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {},
+    "schema_version": "project-proposal.v1",
+    "eliminated_calls_note": "The first 20 IDs are the Conv2d module calls, the next 20 the BatchNorm2d module calls, and the last 5 the aten.batch_norm.default functional calls (20, 5, 5, 5, 5 observed invocations respectively). All are sub-calls of the 20 replaced ResNetConvLayer/ResNetShortCut forwards and no longer execute there; their consumers receive the fused output, which matches the original chain's output in shape/dtype/device/contiguity and value within FP32 rounding. The 11 aten.conv2d.default call IDs in the selection (6aaa41faeffad22146fd6761, 820dd67ec66704c34fdb68ec, 85e362c8893edef501c6b5c8, 02d936813f334fab42c607bc, adbd685b076c18d8d4f9ec07, 52801fdcf001973dc9b22a3b, fd7092acaf0a171825d76990, 2ee8fbf1c8409ad6a4a204cc, bcb576ff7b303e075fb61f51, c2db48d097463651f51bd75c, b892b0805dadd050499e86e1) are NOT eliminated: all 20 convolutions still execute per forward via F.conv2d inside the replacements, with unchanged signatures."
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea9fe5979ffeu6QrsVcWhC8Q4m",
+    "message": "msg_15606d971001W7Aoj4zK5r7jfz",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 10,
+      "reported_cost": 0.39838144,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 686513.0,
+        "input": 89722.0,
+        "output": 3736.0,
+        "reasoning": 24671.0,
+        "cache.read": 568384.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea9fe5979ffeu6QrsVcWhC8Q4m",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/p2-resnet-a/sandboxes/selection-1dda9dd9412b",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": false
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea9f906d8ffeF9UC6plXYQVa4K",
+    "message": "msg_15613e1c10011YnTQKR2J3tvLG",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 32,
+      "reported_cost": 1.09763156,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 2929147.0,
+        "input": 128559.0,
+        "output": 15240.0,
+        "reasoning": 30532.0,
+        "cache.read": 2754816.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea9f906d8ffeF9UC6plXYQVa4K",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/p2-resnet-a/sandboxes/candidate-827f589e90c2",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0
+  },
+  "initial_candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea9f906d8ffeF9UC6plXYQVa4K",
+    "message": "msg_156108413001cG8Chyxx9G1jcp",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 28,
+      "reported_cost": 0.95186704,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 2400566.0,
+        "input": 126384.0,
+        "output": 14094.0,
+        "reasoning": 30264.0,
+        "cache.read": 2229824.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea9f906d8ffeF9UC6plXYQVa4K",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/p2-resnet-a/sandboxes/candidate-827f589e90c2",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": false
+  },
+  "pre_repair_code_sha256": "8a46522841df021272196e582e211b44d127a53c691eb70781a85fcb7b1ea658",
+  "post_repair_code_sha256": "8a46522841df021272196e582e211b44d127a53c691eb70781a85fcb7b1ea658",
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-paired-repair-a",
+    "parent_revision": "60578ec695ae5e92d71ad4a997b42f0ed248cd006fa91a02244c1bfb160b078c",
+    "contract_ref": "sha256:087164acd80e3e5d5140e681173f17d9060975a38425ea99fed2b2f715bda768",
+    "scope": "joint",
+    "implementation": "composite",
+    "groups": [
+      "0fbfdfdae2ac8b8025fe",
+      "52541520159cc1cd6701",
+      "562f325b0dad8a3051f3",
+      "004ca6b2ffacde93bf39",
+      "2b61ffd7faaf11e7f6c6",
+      "2fe5ad27c496ccfc3981",
+      "ac9392056a7ab43ec468",
+      "c77755a6c73aa81cc91b",
+      "1f0903c0dd085d4a53c2",
+      "6640ec1a4e0d352961cd",
+      "c1decbdaba7fb9d4ed6e",
+      "f6bb6f1600b73cd6de27",
+      "32b8596fa1c8f69885df",
+      "e4f651707c5e75dd1dd8",
+      "322256be8d2549f6d716",
+      "e24ae0ef6dcb09f5c2e7",
+      "6b0689ce7d3013b2fee2",
+      "81aec0211e62f54bde5b",
+      "a0ef12ddbf5fd57617c9",
+      "3765ccc3ec6710e560c6",
+      "ae682f41e7f52ca95137",
+      "ec7e918fd2166bdd8ab7",
+      "e31e209da9606bd55046",
+      "b49b6c20ba95072f634e",
+      "6cf59f17feed94b6eeed",
+      "7fb0d2de3e359d451ab3",
+      "611a86078774cea81986",
+      "fc4ee42c1ef82b000685",
+      "5621410346ca09a421d0",
+      "87f06d6665f76b0e6c76",
+      "bbece526280b143305be",
+      "0fd43bcb72c10cc74561",
+      "6f2587ef65465cc038be",
+      "d86098a0485ff7599a75",
+      "1ef0981b3d59c75926b9",
+      "27548c39e983235c29d9",
+      "228e166a4e46712da828",
+      "a83154f34f4e1d077c86",
+      "a5679e81d0b8a448c745",
+      "8dbd2cb8b65ef3b20650"
+    ],
+    "calls": [
+      "04eda7f194ab41d3b5de937e",
+      "07f3b14085aadf1f529bc962",
+      "1a6b0ac798b8d65631087d57",
+      "2977089a784978fef6c6a098",
+      "331270da6b3d7705e5d811ef",
+      "4dbe179ff990714f37f0d969",
+      "6077a1d100e23c0dc29bd7f6",
+      "6214ff32dc254755c8d920f5",
+      "6489b69b8e5ced6cfa1d2cb7",
+      "679ccfe137094282d25350c1",
+      "6802ebe0f043024a3ddc5fa2",
+      "71c4859868af1ef73c2db3c3",
+      "805446b6ca2f2d58cb2ac54d",
+      "8e0945e6c447be9973407a18",
+      "bc892d2d7abb686d8f8eee37",
+      "cb9be0b8a2da4fa24d5f4928",
+      "cd7109c81fe339ed4d60fade",
+      "e1dd538873e2f8c8c254f775",
+      "ed8b62e8520f512f2daff0b9",
+      "f7c72942f175f2356428df6b"
+    ],
+    "affected_calls": [
+      "0286be4e899629be0e301b0d",
+      "02d936813f334fab42c607bc",
+      "03ba89ed7531d37932872da6",
+      "0443eeefd01d4eb9530a07fa",
+      "04eda7f194ab41d3b5de937e",
+      "065764987cb179c7ed5a8ac2",
+      "07de6cca474e6ab1b094aa8a",
+      "07f3b14085aadf1f529bc962",
+      "0829ba980401aaa6b70736e4",
+      "0991dc01b8aa6b5aa48c444a",
+      "0d5b371fe3105e4003687012",
+      "0e75e20bcb01524f7171be20",
+      "185fc78cf31d9e655ac86b5f",
+      "18f2073553f3c236586d8b20",
+      "1a3766b392e48498119d7be7",
+      "1a6b0ac798b8d65631087d57",
+      "1e8ecff82205ed365cc01f5d",
+      "1ee27fc183a9bceb0f36b75f",
+      "1f3b2c001bd64ee3fcef0b4e",
+      "20828265bd1f54c4d47adc13",
+      "21ad5219eb55074a2b639a71",
+      "2938f022e77f9f1661a828e9",
+      "2977089a784978fef6c6a098",
+      "2b99391d9c511385bb3435ae",
+      "2ee8fbf1c8409ad6a4a204cc",
+      "2f3bfb9ee01d701be01d2ff3",
+      "331270da6b3d7705e5d811ef",
+      "35003dbd09587db01114433d",
+      "35096a239aa1290aabeed5de",
+      "391b70b7e65d2dfe4cb5aeb2",
+      "39dde9895801eaaba0bc021c",
+      "3a23d85bc3e02af272b71e40",
+      "3ddc093b7899238eb0a7d8fd",
+      "3e4b15dd983c6bd37cfc50d1",
+      "425d18ed6a9bb0b41b165c9c",
+      "44a24303a1ba9c2d32eee70d",
+      "47cfbafa184f0a6095ad73f0",
+      "4a36b6b215bad0919258515f",
+      "4cf6ededcbab3fd0acb52145",
+      "4dbe179ff990714f37f0d969",
+      "4de02c7d00b5249b42b0803e",
+      "4eaff2486fa9667a11fb1a40",
+      "52801fdcf001973dc9b22a3b",
+      "53f1907fa674e8bf55e811dc",
+      "56325626bed7ef737c964c5e",
+      "56944fdf66d3e00f71dffbad",
+      "5701df9e95cd68bcf7b32bc3",
+      "5910d332bcb175d9b11ca7c4",
+      "6077a1d100e23c0dc29bd7f6",
+      "6214ff32dc254755c8d920f5",
+      "64047ea57eaca0e6979c7da6",
+      "6489b69b8e5ced6cfa1d2cb7",
+      "64b199b7c52c681492fc561e",
+      "6725980a659aef532dfe1ce8",
+      "679ccfe137094282d25350c1",
+      "6802ebe0f043024a3ddc5fa2",
+      "6845151cd10c7a88902ecd3b",
+      "6aaa41faeffad22146fd6761",
+      "6ae343b16ee5a4b721514419",
+      "6bcdec3e027a6ca9796b787c",
+      "6cb64ad57d48388915f514e7",
+      "6d2e0ea2888f05e79439a10d",
+      "6f0365e6eb6463255e063697",
+      "6f05d7329e274c7f8e67685e",
+      "71c4859868af1ef73c2db3c3",
+      "74705d5d905e1547ef2502c3",
+      "751361f212184167972e2c42",
+      "75b24488ca8e1517482469f0",
+      "7831306aeb577f6f7ca9a326",
+      "7a21fa6ccf9cf155433c1196",
+      "7a355b7561c2c2dcf531bdce",
+      "7e7c7da73f603bcf46d85542",
+      "805446b6ca2f2d58cb2ac54d",
+      "820dd67ec66704c34fdb68ec",
+      "83f7ab21e1bf5bec54d1fcdd",
+      "83fcd10f56f5e6cda314ebe9",
+      "845d3a1949c35e5f275b1807",
+      "84f4091b51c106ea8b0ff1b6",
+      "85128b1161967456d7284936",
+      "85c542c3c0be55ee5f3b7b0e",
+      "85d8eab2e86e26f7c7a205e7",
+      "85e362c8893edef501c6b5c8",
+      "868b4710cb4d90cac4d524f5",
+      "89e4cd9bd7a39ca3f7e77f7d",
+      "8ccd66a0b2d1593baa8ae741",
+      "8de7516ac5748217f849e652",
+      "8e0945e6c447be9973407a18",
+      "8ef2341287e5b4afa9d0e7bf",
+      "8ff474a9810269376473d6f7",
+      "913184b744829308037e3b5d",
+      "931cbd261ab279f762fcf9da",
+      "9549fcca6dfe2694f832e916",
+      "96178af1c76bbdd88e89f9ce",
+      "97c0f7f28707e6d2b95a44ff",
+      "9ab1140d6942237b6f7b45c8",
+      "9c21f54e1a3530fe54b3e86e",
+      "9c896e9fd5baf62bfb79384b",
+      "9d58a4f16bf4831bd614bf2f",
+      "9fcc277a13d14cfde1d850e6",
+      "a2efb8b0abdf0b54ed44942e",
+      "a316f19be1b3c5e8e8aaf33b",
+      "aa12869d6548a6a406d2b2b5",
+      "aaae9cb5f12de402f1bfa897",
+      "adbd685b076c18d8d4f9ec07",
+      "b1cb5efe89b1519ffe2869eb",
+      "b47d2af5fdcca3edc8d49629",
+      "b614c11963c4efca7c3ddddd",
+      "b6c1a5693ff0d5e3d21bad0b",
+      "b77a4b98ccd3afa23b4275d2",
+      "b87edccea112e91c11dffdff",
+      "b892b0805dadd050499e86e1",
+      "b9bd55ef314af749cea369fe",
+      "bc892d2d7abb686d8f8eee37",
+      "bcb576ff7b303e075fb61f51",
+      "bcc7c7bd35ed64478f6ebbb6",
+      "bf26789b2abad8d634ff0dcd",
+      "c0433cb88d8a0ec4fa6b6906",
+      "c1825e74b33616669f2f1888",
+      "c1d9e4ed86d6913d171e8479",
+      "c2db48d097463651f51bd75c",
+      "c631e47cb5a7181323ad14b2",
+      "c807fae3aced16cb9eb0d5d9",
+      "c8f476046b916efb5f6b66d1",
+      "ca2b206244c868ae981ef988",
+      "cb81711fdc591a89d1790d45",
+      "cb9be0b8a2da4fa24d5f4928",
+      "cd7109c81fe339ed4d60fade",
+      "cd7c13fbd24e9109e5d72d1a",
+      "cdeeab1fb99d724f2cb90168",
+      "ce65757f5e2220d6e27f0fc4",
+      "ceeb0604f4a93d9348863ec0",
+      "d234a3a959124eef4a14338f",
+      "d2daee717edd312988f15adf",
+      "d7df2303bd231b69f4db1f50",
+      "dc84b992a9b3b16320a87e90",
+      "de0ffe0e801305c76e40f471",
+      "de9e3d4a0ca1ff2a2fda80bc",
+      "e0037fe8db094e72eba2a289",
+      "e067cba0e15740eab79d5faf",
+      "e1dd538873e2f8c8c254f775",
+      "e5ef2091bf0335f0c5ccd424",
+      "e75fdfd98ebf471dfb9ccb97",
+      "e95b9608e97c6e051b6b34ea",
+      "ead661e59e575ff6c86ed05f",
+      "ed8b62e8520f512f2daff0b9",
+      "ee664774d263a660022fc996",
+      "eedaf7010a30036cac0ed15c",
+      "f02d2fcbddf96ccf0739e6fa",
+      "f398cf2356905c047e1ff141",
+      "f4eb9b93cebe93a5ea91dd49",
+      "f7c72942f175f2356428df6b",
+      "f7e4e612f7a06643605bacf4",
+      "f94c9ee5ea1dfc9e871de1b8",
+      "fc32b633623aa8dbadccad6a",
+      "fd7092acaf0a171825d76990",
+      "fef5c03194cef209ae92c63c"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-paired-repair-a.py",
+        "before_sha256": null,
+        "content_ref": "sha256:8a46522841df021272196e582e211b44d127a53c691eb70781a85fcb7b1ea658"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-paired-repair-a.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:06a70f5e1973630606477f61fb33b15c6d34d000a153c562cb29aa177e78fbdc"
+      }
+    ],
+    "read_set": [
+      "call:0286be4e899629be0e301b0d",
+      "call:02d936813f334fab42c607bc",
+      "call:03ba89ed7531d37932872da6",
+      "call:0443eeefd01d4eb9530a07fa",
+      "call:04eda7f194ab41d3b5de937e",
+      "call:065764987cb179c7ed5a8ac2",
+      "call:07de6cca474e6ab1b094aa8a",
+      "call:07f3b14085aadf1f529bc962",
+      "call:0829ba980401aaa6b70736e4",
+      "call:0991dc01b8aa6b5aa48c444a",
+      "call:0d5b371fe3105e4003687012",
+      "call:0e75e20bcb01524f7171be20",
+      "call:185fc78cf31d9e655ac86b5f",
+      "call:18f2073553f3c236586d8b20",
+      "call:1a3766b392e48498119d7be7",
+      "call:1a6b0ac798b8d65631087d57",
+      "call:1e8ecff82205ed365cc01f5d",
+      "call:1ee27fc183a9bceb0f36b75f",
+      "call:1f3b2c001bd64ee3fcef0b4e",
+      "call:20828265bd1f54c4d47adc13",
+      "call:21ad5219eb55074a2b639a71",
+      "call:2938f022e77f9f1661a828e9",
+      "call:2977089a784978fef6c6a098",
+      "call:2b99391d9c511385bb3435ae",
+      "call:2ee8fbf1c8409ad6a4a204cc",
+      "call:2f3bfb9ee01d701be01d2ff3",
+      "call:331270da6b3d7705e5d811ef",
+      "call:35003dbd09587db01114433d",
+      "call:35096a239aa1290aabeed5de",
+      "call:391b70b7e65d2dfe4cb5aeb2",
+      "call:39dde9895801eaaba0bc021c",
+      "call:3a23d85bc3e02af272b71e40",
+      "call:3ddc093b7899238eb0a7d8fd",
+      "call:3e4b15dd983c6bd37cfc50d1",
+      "call:425d18ed6a9bb0b41b165c9c",
+      "call:44a24303a1ba9c2d32eee70d",
+      "call:47cfbafa184f0a6095ad73f0",
+      "call:4a36b6b215bad0919258515f",
+      "call:4cf6ededcbab3fd0acb52145",
+      "call:4dbe179ff990714f37f0d969",
+      "call:4de02c7d00b5249b42b0803e",
+      "call:4eaff2486fa9667a11fb1a40",
+      "call:52801fdcf001973dc9b22a3b",
+      "call:53f1907fa674e8bf55e811dc",
+      "call:56325626bed7ef737c964c5e",
+      "call:56944fdf66d3e00f71dffbad",
+      "call:5701df9e95cd68bcf7b32bc3",
+      "call:5910d332bcb175d9b11ca7c4",
+      "call:6077a1d100e23c0dc29bd7f6",
+      "call:6214ff32dc254755c8d920f5",
+      "call:64047ea57eaca0e6979c7da6",
+      "call:6489b69b8e5ced6cfa1d2cb7",
+      "call:64b199b7c52c681492fc561e",
+      "call:6725980a659aef532dfe1ce8",
+      "call:679ccfe137094282d25350c1",
+      "call:6802ebe0f043024a3ddc5fa2",
+      "call:6845151cd10c7a88902ecd3b",
+      "call:6aaa41faeffad22146fd6761",
+      "call:6ae343b16ee5a4b721514419",
+      "call:6bcdec3e027a6ca9796b787c",
+      "call:6cb64ad57d48388915f514e7",
+      "call:6d2e0ea2888f05e79439a10d",
+      "call:6f0365e6eb6463255e063697",
+      "call:6f05d7329e274c7f8e67685e",
+      "call:71c4859868af1ef73c2db3c3",
+      "call:74705d5d905e1547ef2502c3",
+      "call:751361f212184167972e2c42",
+      "call:75b24488ca8e1517482469f0",
+      "call:7831306aeb577f6f7ca9a326",
+      "call:7a21fa6ccf9cf155433c1196",
+      "call:7a355b7561c2c2dcf531bdce",
+      "call:7e7c7da73f603bcf46d85542",
+      "call:805446b6ca2f2d58cb2ac54d",
+      "call:820dd67ec66704c34fdb68ec",
+      "call:83f7ab21e1bf5bec54d1fcdd",
+      "call:83fcd10f56f5e6cda314ebe9",
+      "call:845d3a1949c35e5f275b1807",
+      "call:84f4091b51c106ea8b0ff1b6",
+      "call:85128b1161967456d7284936",
+      "call:85c542c3c0be55ee5f3b7b0e",
+      "call:85d8eab2e86e26f7c7a205e7",
+      "call:85e362c8893edef501c6b5c8",
+      "call:868b4710cb4d90cac4d524f5",
+      "call:89e4cd9bd7a39ca3f7e77f7d",
+      "call:8ccd66a0b2d1593baa8ae741",
+      "call:8de7516ac5748217f849e652",
+      "call:8e0945e6c447be9973407a18",
+      "call:8ef2341287e5b4afa9d0e7bf",
+      "call:8ff474a9810269376473d6f7",
+      "call:913184b744829308037e3b5d",
+      "call:931cbd261ab279f762fcf9da",
+      "call:9549fcca6dfe2694f832e916",
+      "call:96178af1c76bbdd88e89f9ce",
+      "call:97c0f7f28707e6d2b95a44ff",
+      "call:9ab1140d6942237b6f7b45c8",
+      "call:9c21f54e1a3530fe54b3e86e",
+      "call:9c896e9fd5baf62bfb79384b",
+      "call:9d58a4f16bf4831bd614bf2f",
+      "call:9fcc277a13d14cfde1d850e6",
+      "call:a2efb8b0abdf0b54ed44942e",
+      "call:a316f19be1b3c5e8e8aaf33b",
+      "call:aa12869d6548a6a406d2b2b5",
+      "call:aaae9cb5f12de402f1bfa897",
+      "call:adbd685b076c18d8d4f9ec07",
+      "call:b1cb5efe89b1519ffe2869eb",
+      "call:b47d2af5fdcca3edc8d49629",
+      "call:b614c11963c4efca7c3ddddd",
+      "call:b6c1a5693ff0d5e3d21bad0b",
+      "call:b77a4b98ccd3afa23b4275d2",
+      "call:b87edccea112e91c11dffdff",
+      "call:b892b0805dadd050499e86e1",
+      "call:b9bd55ef314af749cea369fe",
+      "call:bc892d2d7abb686d8f8eee37",
+      "call:bcb576ff7b303e075fb61f51",
+      "call:bcc7c7bd35ed64478f6ebbb6",
+      "call:bf26789b2abad8d634ff0dcd",
+      "call:c0433cb88d8a0ec4fa6b6906",
+      "call:c1825e74b33616669f2f1888",
+      "call:c1d9e4ed86d6913d171e8479",
+      "call:c2db48d097463651f51bd75c",
+      "call:c631e47cb5a7181323ad14b2",
+      "call:c807fae3aced16cb9eb0d5d9",
+      "call:c8f476046b916efb5f6b66d1",
+      "call:ca2b206244c868ae981ef988",
+      "call:cb81711fdc591a89d1790d45",
+      "call:cb9be0b8a2da4fa24d5f4928",
+      "call:cd7109c81fe339ed4d60fade",
+      "call:cd7c13fbd24e9109e5d72d1a",
+      "call:cdeeab1fb99d724f2cb90168",
+      "call:ce65757f5e2220d6e27f0fc4",
+      "call:ceeb0604f4a93d9348863ec0",
+      "call:d234a3a959124eef4a14338f",
+      "call:d2daee717edd312988f15adf",
+      "call:d7df2303bd231b69f4db1f50",
+      "call:dc84b992a9b3b16320a87e90",
+      "call:de0ffe0e801305c76e40f471",
+      "call:de9e3d4a0ca1ff2a2fda80bc",
+      "call:e0037fe8db094e72eba2a289",
+      "call:e067cba0e15740eab79d5faf",
+      "call:e1dd538873e2f8c8c254f775",
+      "call:e5ef2091bf0335f0c5ccd424",
+      "call:e75fdfd98ebf471dfb9ccb97",
+      "call:e95b9608e97c6e051b6b34ea",
+      "call:ead661e59e575ff6c86ed05f",
+      "call:ed8b62e8520f512f2daff0b9",
+      "call:ee664774d263a660022fc996",
+      "call:eedaf7010a30036cac0ed15c",
+      "call:f02d2fcbddf96ccf0739e6fa",
+      "call:f398cf2356905c047e1ff141",
+      "call:f4eb9b93cebe93a5ea91dd49",
+      "call:f7c72942f175f2356428df6b",
+      "call:f7e4e612f7a06643605bacf4",
+      "call:f94c9ee5ea1dfc9e871de1b8",
+      "call:fc32b633623aa8dbadccad6a",
+      "call:fd7092acaf0a171825d76990",
+      "call:fef5c03194cef209ae92c63c"
+    ],
+    "write_set": [
+      "file:opop_candidates/trial-paired-repair-a.py",
+      "file:opop_candidates/trial-paired-repair-a.targets.json",
+      "call:04eda7f194ab41d3b5de937e",
+      "call:07f3b14085aadf1f529bc962",
+      "call:1a6b0ac798b8d65631087d57",
+      "call:2977089a784978fef6c6a098",
+      "call:331270da6b3d7705e5d811ef",
+      "call:4dbe179ff990714f37f0d969",
+      "call:6077a1d100e23c0dc29bd7f6",
+      "call:6214ff32dc254755c8d920f5",
+      "call:6489b69b8e5ced6cfa1d2cb7",
+      "call:679ccfe137094282d25350c1",
+      "call:6802ebe0f043024a3ddc5fa2",
+      "call:71c4859868af1ef73c2db3c3",
+      "call:805446b6ca2f2d58cb2ac54d",
+      "call:8e0945e6c447be9973407a18",
+      "call:bc892d2d7abb686d8f8eee37",
+      "call:cb9be0b8a2da4fa24d5f4928",
+      "call:cd7109c81fe339ed4d60fade",
+      "call:e1dd538873e2f8c8c254f775",
+      "call:ed8b62e8520f512f2daff0b9",
+      "call:f7c72942f175f2356428df6b"
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Model is ResNetForImageClassification loaded from the local assets directory only (local_files_only=True) in float32; no downloads.",
+      "All weights and activations remain FP32; torch.backends.cuda.matmul.allow_tf32 and torch.backends.cudnn.allow_tf32 are False and torch.set_float32_matmul_precision('highest').",
+      "torch.backends.cudnn.benchmark stays False (source policy).",
+      "Seed policy: torch.manual_seed(20261020) applied in prepare, matching common.configure().",
+      "Input is the real preprocessed image fixture tensor from assets/pixels.npy (3 images, NCHW float32), selected as images[torch.arange(batch) % len(images)].contiguous(); for the frozen 'online' workload batch=1, i.e. the first image, unchanged every repeat.",
+      "The model is in eval() mode and the forward pass runs under torch.inference_mode(), identical to the source infer() helper calling model(pixel_values=pixels).logits.",
+      "Batch size is fixed at 1 for this workload; the workload, data, precision and output requirements are not altered to improve the score.",
+      "Correctness requires all logits within atol=1e-4 / rtol=1e-4 and exact top-1 argmax equality against the reference; observations include every logit and the predicted class integer.",
+      "Latency is wall time around run() with CUDA synchronization at both boundaries, per the source's per-repeat timing; throughput is derived from the unchanged work amount (batch=1) and the measured elapsed time.",
+      "The adapter does not initialize CUDA or load the model at import time and never destroys the process group in reset."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-paired-repair-a.py",
+    "parameters": {}
+  },
+  "baseline": {
+    "schema_version": 1,
+    "status": "passed",
+    "failure": null,
+    "wall_s": 6.513221871107817,
+    "ranks": [
+      {
+        "rank": 0,
+        "pid": 62466,
+        "exit_code": 0,
+        "status": "passed",
+        "binding": {
+          "pid": 62466,
+          "status": "verified",
+          "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "logical_device": 0,
+          "nvidia_smi_pid_uuids": [
+            "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+          ],
+          "pid_query_status": "observed"
+        },
+        "result": {
+          "valid": true,
+          "checks": [
+            {
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 0.0
+            },
+            {
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 0.0
+            }
+          ],
+          "coverage": {},
+          "math_policy_unchanged": true,
+          "samples": [
+            {
+              "latency_ms": 1.34567,
+              "batch": 1.0,
+              "images_per_second": 743.1242429421776,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 86361088.0
+            },
+            {
+              "latency_ms": 1.308424,
+              "batch": 1.0,
+              "images_per_second": 764.2782461954229,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 86361088.0
+            },
+            {
+              "latency_ms": 1.360333,
+              "batch": 1.0,
+              "images_per_second": 735.1141227919928,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 86361088.0
+            },
+            {
+              "latency_ms": 1.315631,
+              "batch": 1.0,
+              "images_per_second": 760.091545425731,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 86361088.0
+            },
+            {
+              "latency_ms": 1.329141,
+              "batch": 1.0,
+              "images_per_second": 752.3656256183506,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 86361088.0
+            }
+          ],
+          "metrics": {
+            "latency_ms": 1.329141,
+            "batch": 1.0,
+            "images_per_second": 752.3656256183506,
+            "parameter_count": 11689512.0,
+            "peak_allocated_bytes": 86361088.0
+          },
+          "bundle_hashes": {}
+        }
+      }
+    ],
+    "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+    "devices": [
+      "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+    ],
+    "worker_pids_reaped": true
+  },
+  "candidate": {
+    "schema_version": 1,
+    "status": "passed",
+    "failure": null,
+    "wall_s": 6.3126294277608395,
+    "ranks": [
+      {
+        "rank": 0,
+        "pid": 62550,
+        "exit_code": 0,
+        "status": "passed",
+        "binding": {
+          "pid": 62550,
+          "status": "verified",
+          "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "logical_device": 0,
+          "nvidia_smi_pid_uuids": [
+            "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+          ],
+          "pid_query_status": "observed"
+        },
+        "result": {
+          "valid": true,
+          "checks": [
+            {
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            },
+            {
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            }
+          ],
+          "coverage": {
+            "trial-paired-repair-a": {
+              "counts": {
+                "679ccfe137094282d25350c1": 2,
+                "1a6b0ac798b8d65631087d57": 2,
+                "e1dd538873e2f8c8c254f775": 2,
+                "805446b6ca2f2d58cb2ac54d": 2,
+                "cb9be0b8a2da4fa24d5f4928": 2,
+                "6489b69b8e5ced6cfa1d2cb7": 2,
+                "71c4859868af1ef73c2db3c3": 2,
+                "6802ebe0f043024a3ddc5fa2": 2,
+                "ed8b62e8520f512f2daff0b9": 2,
+                "331270da6b3d7705e5d811ef": 2,
+                "4dbe179ff990714f37f0d969": 2,
+                "cd7109c81fe339ed4d60fade": 2,
+                "6077a1d100e23c0dc29bd7f6": 2,
+                "8e0945e6c447be9973407a18": 2,
+                "07f3b14085aadf1f529bc962": 2,
+                "6214ff32dc254755c8d920f5": 2,
+                "04eda7f194ab41d3b5de937e": 2,
+                "f7c72942f175f2356428df6b": 2,
+                "2977089a784978fef6c6a098": 2,
+                "bc892d2d7abb686d8f8eee37": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "04eda7f194ab41d3b5de937e",
+                "07f3b14085aadf1f529bc962",
+                "1a6b0ac798b8d65631087d57",
+                "2977089a784978fef6c6a098",
+                "331270da6b3d7705e5d811ef",
+                "4dbe179ff990714f37f0d969",
+                "6077a1d100e23c0dc29bd7f6",
+                "6214ff32dc254755c8d920f5",
+                "6489b69b8e5ced6cfa1d2cb7",
+                "679ccfe137094282d25350c1",
+                "6802ebe0f043024a3ddc5fa2",
+                "71c4859868af1ef73c2db3c3",
+                "805446b6ca2f2d58cb2ac54d",
+                "8e0945e6c447be9973407a18",
+                "bc892d2d7abb686d8f8eee37",
+                "cb9be0b8a2da4fa24d5f4928",
+                "cd7109c81fe339ed4d60fade",
+                "e1dd538873e2f8c8c254f775",
+                "ed8b62e8520f512f2daff0b9",
+                "f7c72942f175f2356428df6b"
+              ]
+            }
+          },
+          "math_policy_unchanged": true,
+          "samples": [
+            {
+              "latency_ms": 1.187234,
+              "batch": 1.0,
+              "images_per_second": 842.2939369997828,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0
+            },
+            {
+              "latency_ms": 1.20211,
+              "batch": 1.0,
+              "images_per_second": 831.8706274800143,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0
+            },
+            {
+              "latency_ms": 1.187384,
+              "batch": 1.0,
+              "images_per_second": 842.1875315820324,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0
+            },
+            {
+              "latency_ms": 1.17353,
+              "batch": 1.0,
+              "images_per_second": 852.1298986817551,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0
+            },
+            {
+              "latency_ms": 1.174066,
+              "batch": 1.0,
+              "images_per_second": 851.7408731706735,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0
+            }
+          ],
+          "metrics": {
+            "latency_ms": 1.187234,
+            "batch": 1.0,
+            "images_per_second": 842.2939369997828,
+            "parameter_count": 11689512.0,
+            "peak_allocated_bytes": 132884480.0
+          },
+          "bundle_hashes": {
+            "trial-paired-repair-a": "9edad028d2e87d8cd8b1773e988f9ae190e1e9b62646609edf96462d47a80c09"
+          }
+        }
+      }
+    ],
+    "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+    "devices": [
+      "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+    ],
+    "worker_pids_reaped": true
+  },
+  "pairs": [
+    {
+      "parent": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 6.513221871107817,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 62466,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 62466,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "passed": true,
+                  "compared_elements": 1001,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "passed": true,
+                  "compared_elements": 1001,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {},
+              "math_policy_unchanged": true,
+              "samples": [
+                {
+                  "latency_ms": 1.34567,
+                  "batch": 1.0,
+                  "images_per_second": 743.1242429421776,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 86361088.0
+                },
+                {
+                  "latency_ms": 1.308424,
+                  "batch": 1.0,
+                  "images_per_second": 764.2782461954229,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 86361088.0
+                },
+                {
+                  "latency_ms": 1.360333,
+                  "batch": 1.0,
+                  "images_per_second": 735.1141227919928,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 86361088.0
+                },
+                {
+                  "latency_ms": 1.315631,
+                  "batch": 1.0,
+                  "images_per_second": 760.091545425731,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 86361088.0
+                },
+                {
+                  "latency_ms": 1.329141,
+                  "batch": 1.0,
+                  "images_per_second": 752.3656256183506,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 86361088.0
+                }
+              ],
+              "metrics": {
+                "latency_ms": 1.329141,
+                "batch": 1.0,
+                "images_per_second": 752.3656256183506,
+                "parameter_count": 11689512.0,
+                "peak_allocated_bytes": 86361088.0
+              },
+              "bundle_hashes": {}
+            }
+          }
+        ],
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      },
+      "candidate": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 6.3126294277608395,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 62550,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 62550,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "passed": true,
+                  "compared_elements": 1001,
+                  "max_abs_error": 6.9141387939453125e-06
+                },
+                {
+                  "passed": true,
+                  "compared_elements": 1001,
+                  "max_abs_error": 6.9141387939453125e-06
+                }
+              ],
+              "coverage": {
+                "trial-paired-repair-a": {
+                  "counts": {
+                    "679ccfe137094282d25350c1": 2,
+                    "1a6b0ac798b8d65631087d57": 2,
+                    "e1dd538873e2f8c8c254f775": 2,
+                    "805446b6ca2f2d58cb2ac54d": 2,
+                    "cb9be0b8a2da4fa24d5f4928": 2,
+                    "6489b69b8e5ced6cfa1d2cb7": 2,
+                    "71c4859868af1ef73c2db3c3": 2,
+                    "6802ebe0f043024a3ddc5fa2": 2,
+                    "ed8b62e8520f512f2daff0b9": 2,
+                    "331270da6b3d7705e5d811ef": 2,
+                    "4dbe179ff990714f37f0d969": 2,
+                    "cd7109c81fe339ed4d60fade": 2,
+                    "6077a1d100e23c0dc29bd7f6": 2,
+                    "8e0945e6c447be9973407a18": 2,
+                    "07f3b14085aadf1f529bc962": 2,
+                    "6214ff32dc254755c8d920f5": 2,
+                    "04eda7f194ab41d3b5de937e": 2,
+                    "f7c72942f175f2356428df6b": 2,
+                    "2977089a784978fef6c6a098": 2,
+                    "bc892d2d7abb686d8f8eee37": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "04eda7f194ab41d3b5de937e",
+                    "07f3b14085aadf1f529bc962",
+                    "1a6b0ac798b8d65631087d57",
+                    "2977089a784978fef6c6a098",
+                    "331270da6b3d7705e5d811ef",
+                    "4dbe179ff990714f37f0d969",
+                    "6077a1d100e23c0dc29bd7f6",
+                    "6214ff32dc254755c8d920f5",
+                    "6489b69b8e5ced6cfa1d2cb7",
+                    "679ccfe137094282d25350c1",
+                    "6802ebe0f043024a3ddc5fa2",
+                    "71c4859868af1ef73c2db3c3",
+                    "805446b6ca2f2d58cb2ac54d",
+                    "8e0945e6c447be9973407a18",
+                    "bc892d2d7abb686d8f8eee37",
+                    "cb9be0b8a2da4fa24d5f4928",
+                    "cd7109c81fe339ed4d60fade",
+                    "e1dd538873e2f8c8c254f775",
+                    "ed8b62e8520f512f2daff0b9",
+                    "f7c72942f175f2356428df6b"
+                  ]
+                }
+              },
+              "math_policy_unchanged": true,
+              "samples": [
+                {
+                  "latency_ms": 1.187234,
+                  "batch": 1.0,
+                  "images_per_second": 842.2939369997828,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 132884480.0
+                },
+                {
+                  "latency_ms": 1.20211,
+                  "batch": 1.0,
+                  "images_per_second": 831.8706274800143,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 132884480.0
+                },
+                {
+                  "latency_ms": 1.187384,
+                  "batch": 1.0,
+                  "images_per_second": 842.1875315820324,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 132884480.0
+                },
+                {
+                  "latency_ms": 1.17353,
+                  "batch": 1.0,
+                  "images_per_second": 852.1298986817551,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 132884480.0
+                },
+                {
+                  "latency_ms": 1.174066,
+                  "batch": 1.0,
+                  "images_per_second": 851.7408731706735,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 132884480.0
+                }
+              ],
+              "metrics": {
+                "latency_ms": 1.187234,
+                "batch": 1.0,
+                "images_per_second": 842.2939369997828,
+                "parameter_count": 11689512.0,
+                "peak_allocated_bytes": 132884480.0
+              },
+              "bundle_hashes": {
+                "trial-paired-repair-a": "9edad028d2e87d8cd8b1773e988f9ae190e1e9b62646609edf96462d47a80c09"
+              }
+            }
+          }
+        ],
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      }
+    },
+    {
+      "candidate": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 6.712851047515869,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 62632,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 62632,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "passed": true,
+                  "compared_elements": 1001,
+                  "max_abs_error": 6.9141387939453125e-06
+                },
+                {
+                  "passed": true,
+                  "compared_elements": 1001,
+                  "max_abs_error": 6.9141387939453125e-06
+                }
+              ],
+              "coverage": {
+                "trial-paired-repair-a": {
+                  "counts": {
+                    "679ccfe137094282d25350c1": 2,
+                    "1a6b0ac798b8d65631087d57": 2,
+                    "e1dd538873e2f8c8c254f775": 2,
+                    "805446b6ca2f2d58cb2ac54d": 2,
+                    "cb9be0b8a2da4fa24d5f4928": 2,
+                    "6489b69b8e5ced6cfa1d2cb7": 2,
+                    "71c4859868af1ef73c2db3c3": 2,
+                    "6802ebe0f043024a3ddc5fa2": 2,
+                    "ed8b62e8520f512f2daff0b9": 2,
+                    "331270da6b3d7705e5d811ef": 2,
+                    "4dbe179ff990714f37f0d969": 2,
+                    "cd7109c81fe339ed4d60fade": 2,
+                    "6077a1d100e23c0dc29bd7f6": 2,
+                    "8e0945e6c447be9973407a18": 2,
+                    "07f3b14085aadf1f529bc962": 2,
+                    "6214ff32dc254755c8d920f5": 2,
+                    "04eda7f194ab41d3b5de937e": 2,
+                    "f7c72942f175f2356428df6b": 2,
+                    "2977089a784978fef6c6a098": 2,
+                    "bc892d2d7abb686d8f8eee37": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "04eda7f194ab41d3b5de937e",
+                    "07f3b14085aadf1f529bc962",
+                    "1a6b0ac798b8d65631087d57",
+                    "2977089a784978fef6c6a098",
+                    "331270da6b3d7705e5d811ef",
+                    "4dbe179ff990714f37f0d969",
+                    "6077a1d100e23c0dc29bd7f6",
+                    "6214ff32dc254755c8d920f5",
+                    "6489b69b8e5ced6cfa1d2cb7",
+                    "679ccfe137094282d25350c1",
+                    "6802ebe0f043024a3ddc5fa2",
+                    "71c4859868af1ef73c2db3c3",
+                    "805446b6ca2f2d58cb2ac54d",
+                    "8e0945e6c447be9973407a18",
+                    "bc892d2d7abb686d8f8eee37",
+                    "cb9be0b8a2da4fa24d5f4928",
+                    "cd7109c81fe339ed4d60fade",
+                    "e1dd538873e2f8c8c254f775",
+                    "ed8b62e8520f512f2daff0b9",
+                    "f7c72942f175f2356428df6b"
+                  ]
+                }
+              },
+              "math_policy_unchanged": true,
+              "samples": [
+                {
+                  "latency_ms": 1.425438,
+                  "batch": 1.0,
+                  "images_per_second": 701.5387551054483,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 132884480.0
+                },
+                {
+                  "latency_ms": 1.406429,
+                  "batch": 1.0,
+                  "images_per_second": 711.0206060881851,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 132884480.0
+                },
+                {
+                  "latency_ms": 1.46187,
+                  "batch": 1.0,
+                  "images_per_second": 684.0553537592263,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 132884480.0
+                },
+                {
+                  "latency_ms": 1.414494,
+                  "batch": 1.0,
+                  "images_per_second": 706.9665901728816,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 132884480.0
+                },
+                {
+                  "latency_ms": 1.385408,
+                  "batch": 1.0,
+                  "images_per_second": 721.8090266549638,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 132884480.0
+                }
+              ],
+              "metrics": {
+                "latency_ms": 1.414494,
+                "batch": 1.0,
+                "images_per_second": 706.9665901728816,
+                "parameter_count": 11689512.0,
+                "peak_allocated_bytes": 132884480.0
+              },
+              "bundle_hashes": {
+                "trial-paired-repair-a": "9edad028d2e87d8cd8b1773e988f9ae190e1e9b62646609edf96462d47a80c09"
+              }
+            }
+          }
+        ],
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      },
+      "parent": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 6.162882328033447,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 62714,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 62714,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "passed": true,
+                  "compared_elements": 1001,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "passed": true,
+                  "compared_elements": 1001,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {},
+              "math_policy_unchanged": true,
+              "samples": [
+                {
+                  "latency_ms": 1.364462,
+                  "batch": 1.0,
+                  "images_per_second": 732.8895931143556,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 86361088.0
+                },
+                {
+                  "latency_ms": 1.31576,
+                  "batch": 1.0,
+                  "images_per_second": 760.0170243813461,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 86361088.0
+                },
+                {
+                  "latency_ms": 1.345102,
+                  "batch": 1.0,
+                  "images_per_second": 743.4380441037185,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 86361088.0
+                },
+                {
+                  "latency_ms": 1.310146,
+                  "batch": 1.0,
+                  "images_per_second": 763.273711479484,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 86361088.0
+                },
+                {
+                  "latency_ms": 1.342907,
+                  "batch": 1.0,
+                  "images_per_second": 744.6532038331768,
+                  "parameter_count": 11689512.0,
+                  "peak_allocated_bytes": 86361088.0
+                }
+              ],
+              "metrics": {
+                "latency_ms": 1.342907,
+                "batch": 1.0,
+                "images_per_second": 744.6532038331768,
+                "parameter_count": 11689512.0,
+                "peak_allocated_bytes": 86361088.0
+              },
+              "bundle_hashes": {}
+            }
+          }
+        ],
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      }
+    }
+  ],
+  "measurement": {
+    "valid": true,
+    "objective": 1.3008639999999998,
+    "reference": 1.336024,
+    "parent_values": [
+      1.329141,
+      1.342907
+    ],
+    "candidate_values": [
+      1.187234,
+      1.414494
+    ],
+    "paired_gains": [
+      0.141907,
+      -0.07158699999999985
+    ],
+    "noise_bounds": [
+      0.03305800000000003,
+      0.04310999999999998
+    ],
+    "constraints": [],
+    "reasons": [
+      "paired_gain_not_above_noise"
+    ],
+    "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+  },
+  "evaluation": {
+    "schema_version": "project.v1",
+    "id": "trial-paired-repair-a",
+    "revision_id": "0a3f3cf270353f13d871deb38eba767cf0db0a95804c95b12366367efabe1bfd",
+    "parent_id": "60578ec695ae5e92d71ad4a997b42f0ed248cd006fa91a02244c1bfb160b078c",
+    "contract_ref": "sha256:087164acd80e3e5d5140e681173f17d9060975a38425ea99fed2b2f715bda768",
+    "bundle_id": "trial-paired-repair-a",
+    "quality": "pass",
+    "feasible": true,
+    "objective": 1.3008639999999998,
+    "reference_objective": 1.336024,
+    "metrics": {
+      "valid": true,
+      "objective": 1.3008639999999998,
+      "reference": 1.336024,
+      "parent_values": [
+        1.329141,
+        1.342907
+      ],
+      "candidate_values": [
+        1.187234,
+        1.414494
+      ],
+      "paired_gains": [
+        0.141907,
+        -0.07158699999999985
+      ],
+      "noise_bounds": [
+        0.03305800000000003,
+        0.04310999999999998
+      ],
+      "constraints": [],
+      "reasons": [
+        "paired_gain_not_above_noise"
+      ],
+      "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+    },
+    "required_ranks": [
+      0
+    ],
+    "rank_bundle_hashes": {
+      "0": "9edad028d2e87d8cd8b1773e988f9ae190e1e9b62646609edf96462d47a80c09"
+    },
+    "required_calls": [
+      "04eda7f194ab41d3b5de937e",
+      "07f3b14085aadf1f529bc962",
+      "1a6b0ac798b8d65631087d57",
+      "2977089a784978fef6c6a098",
+      "331270da6b3d7705e5d811ef",
+      "4dbe179ff990714f37f0d969",
+      "6077a1d100e23c0dc29bd7f6",
+      "6214ff32dc254755c8d920f5",
+      "6489b69b8e5ced6cfa1d2cb7",
+      "679ccfe137094282d25350c1",
+      "6802ebe0f043024a3ddc5fa2",
+      "71c4859868af1ef73c2db3c3",
+      "805446b6ca2f2d58cb2ac54d",
+      "8e0945e6c447be9973407a18",
+      "bc892d2d7abb686d8f8eee37",
+      "cb9be0b8a2da4fa24d5f4928",
+      "cd7109c81fe339ed4d60fade",
+      "e1dd538873e2f8c8c254f775",
+      "ed8b62e8520f512f2daff0b9",
+      "f7c72942f175f2356428df6b"
+    ],
+    "executed_calls": [
+      "04eda7f194ab41d3b5de937e",
+      "07f3b14085aadf1f529bc962",
+      "1a6b0ac798b8d65631087d57",
+      "2977089a784978fef6c6a098",
+      "331270da6b3d7705e5d811ef",
+      "4dbe179ff990714f37f0d969",
+      "6077a1d100e23c0dc29bd7f6",
+      "6214ff32dc254755c8d920f5",
+      "6489b69b8e5ced6cfa1d2cb7",
+      "679ccfe137094282d25350c1",
+      "6802ebe0f043024a3ddc5fa2",
+      "71c4859868af1ef73c2db3c3",
+      "805446b6ca2f2d58cb2ac54d",
+      "8e0945e6c447be9973407a18",
+      "bc892d2d7abb686d8f8eee37",
+      "cb9be0b8a2da4fa24d5f4928",
+      "cd7109c81fe339ed4d60fade",
+      "e1dd538873e2f8c8c254f775",
+      "ed8b62e8520f512f2daff0b9",
+      "f7c72942f175f2356428df6b"
+    ],
+    "evidence": [
+      "/root/autodl-tmp/dev/v6-work/p2-resnet-a/jobs/trial-paired-repair-a-pair-0-parent/run/receipt.json",
+      "/root/autodl-tmp/dev/v6-work/p2-resnet-a/jobs/trial-paired-repair-a-pair-0-candidate/run/receipt.json",
+      "/root/autodl-tmp/dev/v6-work/p2-resnet-a/jobs/trial-paired-repair-a-pair-1-candidate/run/receipt.json",
+      "/root/autodl-tmp/dev/v6-work/p2-resnet-a/jobs/trial-paired-repair-a-pair-1-parent/run/receipt.json"
+    ],
+    "reasons": [
+      "paired_gain_not_above_noise"
+    ]
+  },
+  "resources": {
+    "status": "observed",
+    "groups": [
+      {
+        "group": "004ca6b2ffacde93bf39",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "cd7109c81fe339ed4d60fade",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 36.671,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 35.399,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          },
+          {
+            "id": "8e0945e6c447be9973407a18",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 36.896,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 36.455,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          },
+          {
+            "id": "07f3b14085aadf1f529bc962",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 36.159000000000006,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 35.397000000000006,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          },
+          {
+            "id": "6214ff32dc254755c8d920f5",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 118.84599999999999,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 119.09400000000001,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "2b61ffd7faaf11e7f6c6",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "04eda7f194ab41d3b5de937e",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 70.01499999999999,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 69.35499999999999,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          },
+          {
+            "id": "2977089a784978fef6c6a098",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 70.78300000000002,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 70.125,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          },
+          {
+            "id": "bc892d2d7abb686d8f8eee37",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 69.663,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 69.164,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "81aec0211e62f54bde5b",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "5910d332bcb175d9b11ca7c4",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 68.28699999999999,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "ce65757f5e2220d6e27f0fc4",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 67.903,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "0829ba980401aaa6b70736e4",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 67.935,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "5621410346ca09a421d0",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "c2db48d097463651f51bd75c",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 204.125,
+                  "kernels": 6,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "6b0689ce7d3013b2fee2",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "21ad5219eb55074a2b639a71",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 115.966,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "fc4ee42c1ef82b000685",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "bcb576ff7b303e075fb61f51",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 115.966,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "562f325b0dad8a3051f3",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "71c4859868af1ef73c2db3c3",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 21.28,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 20.611000000000004,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          },
+          {
+            "id": "ed8b62e8520f512f2daff0b9",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 22.208000000000002,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 21.539000000000005,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          },
+          {
+            "id": "331270da6b3d7705e5d811ef",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 20.992000000000004,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 20.483999999999998,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          },
+          {
+            "id": "4dbe179ff990714f37f0d969",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 39.647999999999996,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 55.818,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "322256be8d2549f6d716",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "425d18ed6a9bb0b41b165c9c",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 34.623,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "e5ef2091bf0335f0c5ccd424",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 33.792,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "74705d5d905e1547ef2502c3",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 34.111000000000004,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "7fb0d2de3e359d451ab3",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "fd7092acaf0a171825d76990",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 102.52599999999998,
+                  "kernels": 6,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "52541520159cc1cd6701",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "1a6b0ac798b8d65631087d57",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 16.32,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 15.491999999999999,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          },
+          {
+            "id": "e1dd538873e2f8c8c254f775",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 14.272,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 13.826999999999998,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          },
+          {
+            "id": "805446b6ca2f2d58cb2ac54d",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 15.457,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 15.235,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          },
+          {
+            "id": "cb9be0b8a2da4fa24d5f4928",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 14.048,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 13.793999999999999,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          },
+          {
+            "id": "6489b69b8e5ced6cfa1d2cb7",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 34.048,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 32.837,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "f6bb6f1600b73cd6de27",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "c807fae3aced16cb9eb0d5d9",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 19.232,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "83f7ab21e1bf5bec54d1fcdd",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 19.008000000000003,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "9549fcca6dfe2694f832e916",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 18.816000000000003,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "e31e209da9606bd55046",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "02d936813f334fab42c607bc",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 57.056,
+                  "kernels": 6,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "6640ec1a4e0d352961cd",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "7a355b7561c2c2dcf531bdce",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 12.48,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "07de6cca474e6ab1b094aa8a",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 11.904,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "1e8ecff82205ed365cc01f5d",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 11.744,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "85d8eab2e86e26f7c7a205e7",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 11.712,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "ae682f41e7f52ca95137",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "820dd67ec66704c34fdb68ec",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 47.84,
+                  "kernels": 8,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "e4f651707c5e75dd1dd8",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "9c21f54e1a3530fe54b3e86e",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 36.544,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "6cf59f17feed94b6eeed",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "52801fdcf001973dc9b22a3b",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 36.544,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "c1decbdaba7fb9d4ed6e",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "cb81711fdc591a89d1790d45",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 30.848,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "ec7e918fd2166bdd8ab7",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "85e362c8893edef501c6b5c8",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 30.848,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "0fbfdfdae2ac8b8025fe",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "679ccfe137094282d25350c1",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 29.504,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 26.597,
+                  "kernels": 3,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "1f0903c0dd085d4a53c2",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "8ef2341287e5b4afa9d0e7bf",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 21.376,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "3765ccc3ec6710e560c6",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "6aaa41faeffad22146fd6761",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 21.376,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "c77755a6c73aa81cc91b",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "f7c72942f175f2356428df6b",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 16.64,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 15.715,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "a0ef12ddbf5fd57617c9",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "8ff474a9810269376473d6f7",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 14.88,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "87f06d6665f76b0e6c76",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "b892b0805dadd050499e86e1",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 14.88,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "6f2587ef65465cc038be",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "6845151cd10c7a88902ecd3b",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 2.048,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "4de02c7d00b5249b42b0803e",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 2.048,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "0443eeefd01d4eb9530a07fa",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.92,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "9d58a4f16bf4831bd614bf2f",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 2.016,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "e0037fe8db094e72eba2a289",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 2.176,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "a83154f34f4e1d077c86",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "c0433cb88d8a0ec4fa6b6906",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 10.208,
+                  "kernels": 5,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "ac9392056a7ab43ec468",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "6077a1d100e23c0dc29bd7f6",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 10.144,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 9.794999999999998,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "d86098a0485ff7599a75",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "6d2e0ea2888f05e79439a10d",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.984,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "a316f19be1b3c5e8e8aaf33b",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 2.048,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "b1cb5efe89b1519ffe2869eb",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.984,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "845d3a1949c35e5f275b1807",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.984,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "35003dbd09587db01114433d",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 2.048,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "a5679e81d0b8a448c745",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "751361f212184167972e2c42",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 10.048,
+                  "kernels": 5,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "0fd43bcb72c10cc74561",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "18f2073553f3c236586d8b20",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 2.464,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "2b99391d9c511385bb3435ae",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 2.368,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "4cf6ededcbab3fd0acb52145",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 2.368,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "9c896e9fd5baf62bfb79384b",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 2.336,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "228e166a4e46712da828",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "4a36b6b215bad0919258515f",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 9.536,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "1ef0981b3d59c75926b9",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "b9bd55ef314af749cea369fe",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.728,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "ead661e59e575ff6c86ed05f",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.728,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "96178af1c76bbdd88e89f9ce",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.76,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "4eaff2486fa9667a11fb1a40",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.76,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "44a24303a1ba9c2d32eee70d",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.728,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "8dbd2cb8b65ef3b20650",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "cdeeab1fb99d724f2cb90168",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 8.704,
+                  "kernels": 5,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "e24ae0ef6dcb09f5c2e7",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "185fc78cf31d9e655ac86b5f",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 8.16,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "611a86078774cea81986",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "2ee8fbf1c8409ad6a4a204cc",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 8.16,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "2fe5ad27c496ccfc3981",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "6802ebe0f043024a3ddc5fa2",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 6.112,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 5.856999999999999,
+                  "kernels": 2,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "98362c9a6c8d92e9b4fd",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "97c0f7f28707e6d2b95a44ff",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.376,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "aabc8a0d8cb078028ecba0b9",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.344,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 1.312,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          },
+          {
+            "id": "0991dc01b8aa6b5aa48c444a",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.345,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "a444c52dc2799108c9a44bc1",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.344,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 1.345,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "2fce4fd711b3e462562a",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "eedaf7010a30036cac0ed15c",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 5.409,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 5.346,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "bbece526280b143305be",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "2f3bfb9ee01d701be01d2ff3",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 5.344,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "27548c39e983235c29d9",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "fef5c03194cef209ae92c63c",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 5.344,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "711366a9d1a63933a2a8",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "aaae9cb5f12de402f1bfa897",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.152,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "40febd9c542343acac488be9",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.216,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 1.184,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          },
+          {
+            "id": "64b199b7c52c681492fc561e",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.184,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "1ba9a537e03628e878361bd5",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.184,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 1.184,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "6da81adcba5d94afa04b",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "1a3766b392e48498119d7be7",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 4.736,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 4.672,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "034ef5ede51da3f2be6f",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "391b70b7e65d2dfe4cb5aeb2",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.152,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "64a12b23a10c125d107078d4",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.152,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 1.152,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          },
+          {
+            "id": "6f05d7329e274c7f8e67685e",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.12,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "733fe080e4976ec150eefaa2",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.12,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 1.12,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "0f0f9b1170f708ce3034",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "f398cf2356905c047e1ff141",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 4.5440000000000005,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 4.5120000000000005,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "d1395c5ebe9e651d35e0",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "ca2b206244c868ae981ef988",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.12,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "22a72f7b506b85e5fcf6d74b",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.12,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 1.12,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          },
+          {
+            "id": "dc84b992a9b3b16320a87e90",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.12,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "2a41f9c93243d20e01bbf0ea",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.12,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 1.12,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "936816577567949631af",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "c8f476046b916efb5f6b66d1",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 4.48,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 4.5120000000000005,
+                  "kernels": 4,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "32b8596fa1c8f69885df",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "75b24488ca8e1517482469f0",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 4.192,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "b49b6c20ba95072f634e",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "adbd685b076c18d8d4f9ec07",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 4.192,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "8be23524e6ccffce3fbf",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "35096a239aa1290aabeed5de",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 2.784,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "9176327667f16b2aa922",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "5701df9e95cd68bcf7b32bc3",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 2.784,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after": {
+                  "cuda_us": 2.656,
+                  "kernels": 1,
+                  "communication_us": 0.0
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "a44a11e39673a3b5d656",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "6f0365e6eb6463255e063697",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "798df708d05932b17f71",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "9ab1140d6942237b6f7b45c8",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "c279d448fb108b493359",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "2938f022e77f9f1661a828e9",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "3264c69dfa51b73502af",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "c631e47cb5a7181323ad14b2",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "76cf09c7e5f396cbb331",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "56944fdf66d3e00f71dffbad",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "f2d7ce72d2ad72a00832",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "e75fdfd98ebf471dfb9ccb97",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "be488cea3fcee224c2c2",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "cd7c13fbd24e9109e5d72d1a",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "d87bddcaa786b0cc4999",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "6cb64ad57d48388915f514e7",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "d803578da524fac2c126",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "47cfbafa184f0a6095ad73f0",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "9c15858d336531110fe0",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "f02d2fcbddf96ccf0739e6fa",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "1938c397722905586198cae6",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "e067cba0e15740eab79d5faf",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "e47b18479d7a82412962bb4b",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "3fabfd224ce9d7edc4ad",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "6ae343b16ee5a4b721514419",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "51431fbfd82a704d9557",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "3a23d85bc3e02af272b71e40",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "8ae0169125ec8186ee18",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "b77a4b98ccd3afa23b4275d2",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "cc31b8e773ec923bd175",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "64047ea57eaca0e6979c7da6",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "c48b7dd54647009db99b",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "3ddc093b7899238eb0a7d8fd",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "00beb5a61aaefd204354",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "6725980a659aef532dfe1ce8",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "4fe6301d1c41498ba73a",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "913184b744829308037e3b5d",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "c3263927ac151d120e5a",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "b614c11963c4efca7c3ddddd",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "f76f14efee04a72650c7",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "f4eb9b93cebe93a5ea91dd49",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "163e2f65613871e1a525",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "de9e3d4a0ca1ff2a2fda80bc",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "e8f94354241788d94f7f",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "bcc7c7bd35ed64478f6ebbb6",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "705578744f0ea2806640",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "e95b9608e97c6e051b6b34ea",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "f5d131f471af3e850a7c",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "b87edccea112e91c11dffdff",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "85128b1161967456d7284936",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "b2962a232023a65cfca1065d",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "f134ba6bdcae5ad2ed59",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "931cbd261ab279f762fcf9da",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "7cf7239ccabe86010efa",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "b47d2af5fdcca3edc8d49629",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "c80c06752caeeef5b8fc",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "8de7516ac5748217f849e652",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "fe36020cef9bbfa51f73",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "20828265bd1f54c4d47adc13",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "dc9d2a33f43dcbc3b435",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "d7df2303bd231b69f4db1f50",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "099cd5b7ffa75901378c",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "7a21fa6ccf9cf155433c1196",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "7bec07b477fdcc4c64fe",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "b6c1a5693ff0d5e3d21bad0b",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "4254116fb6be581e3055",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "0d5b371fe3105e4003687012",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "27f22b7a6f995fc6d7d0",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "6bcdec3e027a6ca9796b787c",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "c4ac02c3cab694fc9773",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "7831306aeb577f6f7ca9a326",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "38b3e7b8251329e5406a",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "1f3b2c001bd64ee3fcef0b4e",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "3c1fd8f71ab1a1d261b9",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "8ccd66a0b2d1593baa8ae741",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "ba13f943016b11e2063e",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "c1d9e4ed86d6913d171e8479",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "37143f311fc4c2915b8e",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "0e75e20bcb01524f7171be20",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "d92569b4b068b4f293a4",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "0286be4e899629be0e301b0d",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "aa12869d6548a6a406d2b2b5",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "c60992d31245f165b502815b",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "2d47b5027177148a123e",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "56325626bed7ef737c964c5e",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "3fa7c02e62d533c591cf",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "3e4b15dd983c6bd37cfc50d1",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "eb8bd44fe190457d1f0b",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "1ee27fc183a9bceb0f36b75f",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "ccf06afd0c00e76abe54",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "d234a3a959124eef4a14338f",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "b0a3adbe3ac911fad7d6",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "de0ffe0e801305c76e40f471",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "d63c0ec38fa62edeba49",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "39dde9895801eaaba0bc021c",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "5372d0bb19145aa2d5e6",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "84f4091b51c106ea8b0ff1b6",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "bd657da106e0beed381f",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "89e4cd9bd7a39ca3f7e77f7d",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "5da3d4cd58babe9138b0",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "83fcd10f56f5e6cda314ebe9",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "1a04212d8c49f3688af7",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "03ba89ed7531d37932872da6",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "119a19d819ac70fcd268",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "d2daee717edd312988f15adf",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "b5b5e69e287d2484c055",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "f94c9ee5ea1dfc9e871de1b8",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "70cb2fadb68305156140",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "85c542c3c0be55ee5f3b7b0e",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "fbfa85d52672d8012520",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "9fcc277a13d14cfde1d850e6",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "cb33339f9ebdc9431c4a",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "f7e4e612f7a06643605bacf4",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "ceeb0604f4a93d9348863ec0",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "29f67436949e1ca851026c71",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "88dd01019f6e3915e3b2",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "bf26789b2abad8d634ff0dcd",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "2b332ce1f5e9fd2da3a9",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "065764987cb179c7ed5a8ac2",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "e62035e0f28e3d6bd08c",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "7e7c7da73f603bcf46d85542",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "25e6749187e5c97e2bcc",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "fc32b633623aa8dbadccad6a",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "bfd5e0d787b78218d4b9",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "ee664774d263a660022fc996",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "e7979f7ae88379b59e00",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "868b4710cb4d90cac4d524f5",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "245c1a630f919e3b2aa2",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "53f1907fa674e8bf55e811dc",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "c1522ef65691843c08de",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "a2efb8b0abdf0b54ed44942e",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "14b599fef9ad5ad6dbdc",
+        "bundle": "trial-paired-repair-a",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "c1825e74b33616669f2f1888",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "coverage": [
+      {
+        "cuda_kernels": 81,
+        "associated_kernels": 81,
+        "unassociated_kernels": 0
+      }
+    ],
+    "evidence": [
+      "/root/autodl-tmp/dev/v6-work/p2-resnet-a/jobs/trial-paired-repair-a-profile/run/trace-rank-0.json"
+    ],
+    "raw_discovery": [
+      "/root/autodl-tmp/dev/v6-work/p2-resnet-a/jobs/trial-paired-repair-a-profile/run/discovery-rank-0.json"
+    ],
+    "interpretation": "Nested diagnostic durations overlap; project gain belongs to the complete bundle. Unmeasured independent group effects are unknown."
+  },
+  "decision": {
+    "state": "evaluated",
+    "revision": "0a3f3cf270353f13d871deb38eba767cf0db0a95804c95b12366367efabe1bfd",
+    "parent": "60578ec695ae5e92d71ad4a997b42f0ed248cd006fa91a02244c1bfb160b078c",
+    "bundle": "trial-paired-repair-a",
+    "accepted": false,
+    "reasons": [
+      "paired_gain_not_above_noise"
+    ],
+    "report_ref": "sha256:7da3e7f95d8e8c3921e8718d916d7659d8da7cca33594a00712bedd6273e8b00"
+  }
+}
