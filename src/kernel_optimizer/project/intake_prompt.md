@@ -24,9 +24,11 @@ in source or deployment. Ready requires evidence for entry, workload, objective,
 quality and assets; evidence values are concrete source paths/symbols or user
 statements. Record assumptions separately.
 
-The objective contains name, unit and direction (minimize/maximize). Its metric
-must correspond to the requested completion boundary. Additional project metrics
-or constraints can be declared using the existing evaluator format; do not
+The objective contains name (the exact metric key, not a task title), unit and
+direction (minimize/maximize). Its metric must correspond to the requested
+completion boundary. Constraints use the supplied schema: a list of metric, op
+and either baseline_ratio or threshold. Convert a project's constraint notation
+into that generic representation while preserving its meaning. Do not
 change a source's full-request throughput into cached-only throughput. Keep
 source quality thresholds and expose generic atol/rtol for tensor comparisons.
 Describe discrete outputs that need exact comparison in notes. If task quality
@@ -40,6 +42,8 @@ backend is needed only for an actual multi-process distributed task; the worker
 handles rank/device binding and group initialization. Communication defaults to
 auto. Do not require unavailable counters. Tool paths, UUIDs and lease settings
 are supplied by deployment rather than typed into the description.
+required_observations refers only to required communication collector fields;
+ordinary evaluator metrics belong in objective and its constraints.
 
 For diagnostic objectives, declare their existing collector source only if the
 project/user actually requests that metric. The task's ordinary end-to-end time

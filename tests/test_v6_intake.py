@@ -2,7 +2,7 @@ import argparse
 
 import pytest
 
-from kernel_optimizer.project.intake import IntakeProposal, resolve_request
+from kernel_optimizer.project.intake import IntakeProposal, ObjectiveDescription, resolve_request
 from kernel_optimizer.project_cli import add_project_parser
 
 
@@ -36,3 +36,14 @@ def test_unresolved_semantics_do_not_create_an_executable_request(tmp_path):
     proposal = IntakeProposal(status="needs_input", description=None, evidence={}, assumptions=[],
                               questions=["Which dataset and completion condition define this workload?"])
     assert resolve_request(proposal, tmp_path, "optimize", {}) is None
+
+
+def test_real_intake_constraint_notation_is_rejected_before_request_is_frozen():
+    value = {"name": "memory_task", "metric": "peak_bytes", "unit": "bytes", "direction": "minimize",
+             "constraints": {"throughput_min_baseline_ratio": 0.95}}
+    with pytest.raises(ValueError):
+        ObjectiveDescription.model_validate(value)
+    value.update(name="peak_bytes", constraints=[{"metric": "throughput", "op": "ge", "baseline_ratio": 0.95}])
+    objective = ObjectiveDescription.model_validate(value)
+    serialized = objective.model_dump(exclude_none=True, exclude_unset=True)
+    assert serialized["constraints"] == [{"metric": "throughput", "op": "ge", "baseline_ratio": 0.95}]

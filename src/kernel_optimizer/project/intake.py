@@ -9,7 +9,7 @@ import shutil
 import subprocess
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from kernel_optimizer.project.agents import ProjectAgents
 from kernel_optimizer.project.request import ProjectRequest
@@ -19,11 +19,42 @@ from kernel_optimizer.store.run_store import RunStore
 from kernel_optimizer.wiring import Runtime
 
 
+class ConstraintDescription(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    metric: str
+    op: Literal["le", "lt", "ge", "gt", "eq"]
+    baseline_ratio: float | None = None
+    threshold: float | None = None
+    rank_aggregation: Literal["max", "min", "sum", "mean"] | None = None
+
+    @model_validator(mode="after")
+    def limit(self):
+        if (self.baseline_ratio is None) == (self.threshold is None):
+            raise ValueError("constraint requires exactly one of baseline_ratio and threshold")
+        return self
+
+
+class ObjectiveDescription(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    name: str = Field(description="Exact evaluator metric key, not a descriptive task title")
+    unit: str
+    direction: Literal["minimize", "maximize"]
+    constraints: list[ConstraintDescription] = Field(default_factory=list)
+    source: dict[str, Any] | None = Field(default=None, description="Optional diagnostic collector and field")
+    rank_aggregation: Literal["max", "min", "sum", "mean"] | None = None
+
+    @model_validator(mode="after")
+    def metric_name(self):
+        if self.model_extra.get("metric", self.name) != self.name:
+            raise ValueError("objective.name is the metric key; do not create a separate descriptive name")
+        return self
+
+
 class Description(BaseModel):
     model_config = ConfigDict(extra="forbid")
     entry: str
     files: list[str] = Field(min_length=1)
-    objective: dict[str, Any]
+    objective: ObjectiveDescription
     workload: dict[str, Any]
     quality: dict[str, Any]
     assets: dict[str, str] = Field(default_factory=dict)
@@ -91,15 +122,11 @@ def resolve_request(proposal, source, goal, environment):
             raise ValueError(f"selected source file is not available inside the project: {name}")
     if d.device_count > len(environment["devices"]):
         raise ValueError("declared workload needs more GPUs than the available deployment")
-    if d.distributed_backend and d.device_count < 1:
-        raise ValueError("this distributed executor requires one bound GPU per rank")
-    for name in ("name", "unit", "direction"):
-        if name not in d.objective:
-            raise ValueError(f"objective omitted {name}")
-    if d.objective["direction"] not in {"minimize", "maximize"}:
-        raise ValueError("objective direction must be minimize or maximize")
+    if d.distributed_backend and d.device_count < 2:
+        raise ValueError("this distributed executor requires at least two bound GPUs")
     return ProjectRequest(source_root=source, entry=d.entry, files=list(dict.fromkeys(d.files)), goal=goal,
-        objective=d.objective, workload=d.workload, quality=d.quality, assets=d.assets,
+        objective=d.objective.model_dump(exclude_none=True, exclude_unset=True),
+        workload=d.workload, quality=d.quality, assets=d.assets,
         devices=environment["devices"][:d.device_count], distributed_backend=d.distributed_backend,
         communication=d.communication, required_observations=d.required_observations, notes=d.notes,
         lease_dir=Path(environment["lease_dir"]), tools=environment["tools"],
