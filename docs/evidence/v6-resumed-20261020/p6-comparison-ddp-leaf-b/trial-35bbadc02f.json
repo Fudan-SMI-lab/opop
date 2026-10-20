@@ -1,0 +1,539 @@
+{
+  "trial": "trial-35bbadc02f",
+  "decision": {
+    "accepted": false,
+    "reasons": [
+      "no_valid_parameter_candidate"
+    ]
+  },
+  "measurement": null,
+  "evaluation": null,
+  "publication": null,
+  "replay": null,
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea87b9ffdffeoVM6xUku4wkns0",
+    "message": "msg_1579fa68d001j49ImEG4B3e1ka",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 19,
+      "reported_cost": 0.7855547648,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 1846715.0,
+        "input": 121849.0,
+        "output": 4853.0,
+        "reasoning": 27213.0,
+        "cache.read": 1692800.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea87b9ffdffeoVM6xUku4wkns0",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/p6-comparison-ddp-leaf-b/sandboxes/selection-e5cc62b07847",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea8602e67ffe66O9v8poung5K8",
+    "message": "msg_157aca13e001HaThBRiImuTqvI",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 40,
+      "reported_cost": 0.89330262186,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 2212780.0,
+        "input": 78861.0,
+        "output": 8655.0,
+        "reasoning": 32912.0,
+        "cache.read": 2092352.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea8602e67ffe66O9v8poung5K8",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/p6-comparison-ddp-leaf-b/sandboxes/candidate-2262eacbeb33",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0
+  },
+  "missing_coverage": null,
+  "raw_result": {
+    "path": "/root/autodl-tmp/dev/v6-work/p6-comparison-ddp-leaf-b/trials/trial-35bbadc02f/result.json",
+    "bytes": 64513,
+    "sha256": "5b41cb851bf282161f79dba86ae5d6ce823655eb7a04a5815095e47c6779326a"
+  },
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-35bbadc02f",
+    "parent_revision": "f793a54aaf600a916b6a4b12f84fc9c13a96e798eb81f545380c754842e03820",
+    "contract_ref": "sha256:93c046beb8388281cd2c0e75311456db26da3e13c84ae03716acf830b6d09fd3",
+    "scope": "group",
+    "implementation": "distributed",
+    "groups": [
+      "f833b57a373d8262a384"
+    ],
+    "calls": [
+      "d0938de87369efd500322679"
+    ],
+    "affected_calls": [
+      "d0938de87369efd500322679"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-35bbadc02f.py",
+        "before_sha256": null,
+        "content_ref": "sha256:71465258ec8a1dbe02b9182741ffd0e87765338c71725c4e20f4e67bb3255ce8"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-35bbadc02f.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:06552143537cf11eb8fb48f70806c762d1f95370c5da315106966a4cfbc6a97a"
+      }
+    ],
+    "read_set": [
+      "call:d0938de87369efd500322679"
+    ],
+    "write_set": [
+      "file:opop_candidates/trial-35bbadc02f.py",
+      "file:opop_candidates/trial-35bbadc02f.targets.json",
+      "call:d0938de87369efd500322679"
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Model: GPT2LMHeadModel with n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False, attn_implementation='eager', FP32, train mode, initialized immediately after torch.manual_seed(20261020).",
+      "Data: per-rank synthetic token IDs drawn with torch.Generator().manual_seed(31000 + rank); accumulation_steps=4 tensors of shape (micro_batch=1, sequence_length=128) with values in [0, 50257); no other dataset exists (request assets are empty by design).",
+      "Numerics: FP32 end to end; torch.backends.cuda.matmul.allow_tf32=False; torch.backends.cudnn.allow_tf32=False; torch.backends.cudnn.benchmark=False; torch.set_float32_matmul_precision('highest'); no autocast, no GradScaler, no compilation.",
+      "Accumulation: optimizer.zero_grad(set_to_none=True) at step start; loss for each micro-batch is model(input_ids=tokens, labels=tokens, use_cache=False).loss / 4; first 3 micro-batches run under DDP no_sync, only the final micro-batch triggers gradient synchronization; reported loss is the sum of the 4 scaled micro losses and must be finite.",
+      "Optimizer: SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False); exactly one optimizer.step() per workload repetition; SGD keeps no momentum state so the reset only reloads the initial weights.",
+      "DDP configuration: broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True, device_ids=[bound device index]; find_unused_parameters stays False; no communication hooks are registered in the measured path (the source registers its inventory hook only in a separate diagnostic step).",
+      "Cross-rank semantics: after the final micro-batch every rank holds bitwise-identical gradients (source exact_gradient_replica_check with atol=0, rtol=0); effective global batch = world_size 2 x micro_batch 1 x accumulation_steps 4 = 8 micro-batches = 1024 tokens per step.",
+      "Reset fidelity: every repetition starts from the same initial weights (CPU state_dict snapshot), empty gradients, empty optimizer state and the prepare-time RNG states.",
+      "Timing hygiene: control coordination (barrier, peak-memory reset, synchronization) uses the separate gloo group and happens outside the timer; the only NCCL collectives in the measured workload are the DDP gradient allreduces of the final accumulation micro-batch; step_ms must stay <= 1.05x baseline.",
+      "Observations: loss, per-micro losses, every gradient tensor and every updated parameter of the ~124M-parameter model are exposed as full tensors; no elapsed times or performance counters appear in observations.",
+      "Quality scope: gradient/parameter comparisons use atol=1e-6, rtol=1e-4 (request.quality); reference fidelity only, no downstream accuracy or convergence claim.",
+      "Workload frozen: batch, sequence_length=128, accumulation_steps=4, world_size=2, architecture, FP32 precision, seeded data, completion boundary and quality checks are never altered to improve a score."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-35bbadc02f.py",
+    "parameters": {}
+  },
+  "selection": {
+    "scope": "group",
+    "groups": [
+      "f833b57a373d8262a384"
+    ],
+    "rationale": "Repair of trial-7260b6fac1, which selected this same group but crashed on both ranks with ProcessGroupNCCL RuntimeError 'Expecting one tensor only but got multiple...' (rank_failed -> no_valid_parameter_candidate): the replacement issued one multi-tensor c10d::allreduce_([bucket1..bucket12]) list call, a form this stack rejects. The repair keeps the validated opportunity and boundary but constrains the mechanism to the only legal form: every collective the replacement issues must be a SINGLE-TENSOR c10d::allreduce_ call on one flattened contiguous FP32 staging buffer, never a tensor list. The measured step's only communication is the final accumulation micro-batch's 13 DDP gradient allreduces; this group owns twelve of them (12 invocations of d0938de87369efd500322679 per rank per step, each a flat contiguous 7,087,872-element = 28.35 MB bucket, 340.2 MB total; matched cross-rank, 0 incomplete). Diagnostic evidence: rank 0 spends 40.51 ms busy in twelve ncclDevKernel_AllReduce_Sum_f32_RING_LL kernels (grid 2x544, avg 3.376 ms = 8.40 GB/s); rank 1's twelve-kernel sum is 206.43 ms, spin-inflated by twelve per-bucket rank-meet waits under discovery skew, and the tail sibling embedding allreduce (b8ade439d7b8bd5fb5c1029b, group 8525af72c631b94e3dd0) is 19.31/19.42 ms per rank. Clean reference step_ms is 142.07/142.32 ms with exposed communication its largest addressable component. A two-point fit across the 28.35 MB and 157.5 MB calls gives ~8.1-8.4 GB/s size-flat wire rate and ~0.1 ms per-call fixed cost, so per-call overhead removal alone is small: the testable levers at this boundary are (a) giving NCCL one large contiguous message that may escape the latency-oriented 2-channel RING_LL protocol, and (b) collapsing twelve rank-meet/launch points into ceil(12/k) cohorts. The boundary is coherent and self-contained: DDP(bucket_cap_mb=25, gradient_as_bucket_view=True) configuration, bucket layout, comm hooks (none in the measured path), process groups, optimizer, workload and completion boundary all stay frozen, so the sibling embedding call keeps its exact single-tensor shape and no other observed call is affected; consolidation happens entirely inside this group's twelve invocations via gather into staging, one single-tensor allreduce whose Work is waited so the current stream is ordered, then scatter back into the bucket views (gradient_as_bucket_view aliasing sees the reduced values exactly as the baseline in-place allreduce would).",
+    "hypothesis": "Replacement installed identically on both ranks for d0938de87369efd500322679: each arriving bucket is copied immediately into its segment of a persistent contiguous staging buffer (device-local copy overlapping backward compute); when the cohort's last bucket arrives (cohort size k, k=12 for full consolidation, tunable), issue ONE single-tensor parent c10d::allreduce_ on the flattened cohort buffer, wait its genuine Work so the calling stream is ordered behind the NCCL stream, scatter the reduced segments back into the stashed bucket tensors, and return the Work; calls before the cohort boundary return already-completed genuine Work tokens seeded once outside the timed repetitions, with structural guards that fall back to the plain per-bucket parent call on any deviation from the observed twelve-call plan. Expected effects, to be confirmed by paired measurement and not assumed: (1) a single ~340 MB contiguous message may flip NCCL to a higher-bandwidth protocol/geometry than RING_LL 2-channel - explicitly uncertain, since the 157.5 MB embedding bucket still runs RING_LL at 8.16 GB/s, which suggests the protocol may be environment-pinned; if it stays LL-bound, transfer time is byte-for-byte unchanged and the candidate likely fails measurement; (2) twelve rank-meets and kernel launches collapse to ceil(12/k), removing ~0.1 ms/call fixed cost and reducing per-meet skew-stall accumulation on the fast rank, and per-step NCCL kernel count for this group drops 12 -> ceil(12/k), which the separately collected diagnostic.max_rank_nccl_kernel_sum_ms should reflect; (3) costs: cohort-tail serialization forfeits part of the ~9.6 ms of baseline compute/communication overlap, adds ~1.5 ms of device-local gather/scatter copies (680 MB round trip, gather overlapped), and up to ~340 MB of persistent staging memory. Quality is preserved by construction: for a 2-rank elementwise SUM the per-element result is invariant to flattening and chunking, so gradients remain bitwise identical across ranks (exact_gradient_replica_check atol=0/rtol=0) and within request tolerances, DDP's finalize-time Work wait and the optimizer-step ordering are unchanged, no extra collectives appear in steady-state measured runs, and step_ms must stay <= 1.05x the 142.07 ms baseline (<= 149.18 ms) while the paired repeats decide acceptance."
+  },
+  "proposal": {
+    "implementation": "distributed",
+    "rationale": "Repair of trial-7260b6fac1 (previous-feedback.txt). That attempt selected this same group f833b57a373d8262a384 and the same boundary, call d0938de87369efd500322679, but both ranks crashed in ProcessGroupNCCL with RuntimeError 'Expecting one tensor only but got multiple...' because its cohort-final step issued one multi-tensor c10d::allreduce_([bucket1..bucket12]) list call, a form this torch (2.13.0+cu129) rejects; the failure killed the only parameter screen (rank_failed -> no_valid_parameter_candidate). The repair keeps the validated opportunity, boundary, stash/token structure and fallback guards, and changes only the illegal mechanism: every collective the replacement issues is now a SINGLE-TENSOR c10d::allreduce_ call on one flattened contiguous FP32 staging buffer, never a tensor list. Mechanism, installed identically on both ranks: each arriving 7,087,872-element (28.35 MB) bucket gradient is copied immediately into its segment of a persistent contiguous staging buffer (device-local gather overlapping backward compute) and the bucket tensor is stashed; calls before the cohort boundary return an already-completed genuine c10d Work token obtained once, outside all timed repetitions, from a 4-byte single-tensor allreduce_ on the same process group (the seed path the previous trial already exercised successfully through the dispatcher and reducer). When the cohort's last bucket arrives (cohort size k, tunable; k=12 gives full consolidation), the replacement issues ONE single-tensor parent allreduce_ on the flattened k*7,087,872-element view, waits the returned genuine Work so the calling stream is ordered behind the NCCL stream, scatters the reduced segments back into the stashed bucket tensors with device-local copies, clears the stash and returns that Work. In-place alias semantics are preserved exactly: with gradient_as_bucket_view=True the stashed tensors are the same bucket buffers the baseline allreduce_ reduced in place, so gradients, parameter updates, cross-rank bitwise identity (a 2-rank elementwise SUM is one commutative float add per element regardless of flattening or chunking) and all reference observations are unchanged. NCCL collective ordering stays matched across ranks because routing, call order (deterministic bucket readiness), the seed position (first routed call of the first invocation) and the cohort boundary are all structural, never timing-based; the sibling embedding-bucket call b8ade439d7b8bd5fb5c1029b keeps its own signature, is not routed to this replacement, and flows through the parent operator unchanged. Expected effects, to be confirmed by paired measurement and not assumed: (1) twelve rank-meets and kernel-launch points for this group collapse to ceil(12/k) cohorts, removing roughly 0.1 ms per-call fixed cost and, more importantly, the per-bucket skew-stall accumulation that inflates rank 1 to 206.43 ms of NCCL kernel time while rank 0 spends 40.51 ms; per-step NCCL kernel count for this group drops 12 -> 1+ceil(12/k) (seed included once, outside timed repetitions), which diagnostic.max_rank_nccl_kernel_sum_ms should reflect; (2) whether one ~340 MB contiguous message escapes the latency-oriented 2-channel RING_LL protocol is explicitly uncertain - the 157.5 MB embedding bucket still runs RING_LL at ~8.16 GB/s, suggesting the protocol may be environment-pinned - so transfer time may stay byte-for-byte unchanged and only per-call and skew overhead is recovered; (3) costs: cohort-tail serialization forfeits part of the ~9.6 ms of baseline compute/communication overlap, ~1.5 ms of device-local gather/scatter copies are added (gather overlapped with backward), and up to k*28.35 MB of persistent staging memory is retained. The tunable cohort_size parameter ({3, 6, 12}, all divisors of the twelve observed calls per step so a cohort never straddles a workload step) lets the paired TaskSearch/TPE loop choose between maximum consolidation and partial overlap retention against the complete project under the 1.05x step_ms constraint. Nothing fixture-dependent is cached: the full workload, including all twelve bucket allreduce calls and the final micro-batch synchronization, executes on every invocation; structural guards fall back to the plain single-bucket parent call (after flushing anything already stashed through the same single-tensor flat form) on any deviation from the observed twelve-call plan.",
+    "setup_work": {
+      "build_time": "Inside build(), outside any timed or quality invocation: read the observed call spec (bucket shape 7,087,872 fp32, twelve calls per step per rank), read the tunable cohort_size from context['parameters'] (default 12, clamped to [1, 12]), resolve the parent operator reference torch.ops.c10d.allreduce_.default, and allocate one persistent flat FP32 staging buffer of k*7,087,872 elements (k=12: 340,218,048 bytes = 340.2 MB decimal / 324.4 MiB) on the bound device, zero-filled once. No parameter or model state transforms, no DDP/optimizer reconfiguration, no hooks, no streams, no CUDA graphs, no changes to bucket layout or process groups.",
+      "first_invocation": "During the first routed call of the first invocation only (a quality-phase run, before every timed measurement), the replacement lazily issues one 4-byte single-tensor allreduce_ on the incoming process group and waits it, producing the genuine completed c10d Work token returned to the reducer for pre-cohort calls. This mirrors the seed path of the previous trial, which already passed through the dispatcher and the reducer without error. The 16-byte seed tensor and its Work are retained for the process lifetime; the seed adds no collective to any measured step.",
+      "steady_state": "Every step of every invocation executes the full workload: the twelve routed bucket calls each perform a 28.35 MB device-local gather copy into the staging buffer; ceil(12/k) of them (plus none extra after the first invocation) each issue exactly one single-tensor allreduce_ on a flat contiguous view of the gathered segments, wait its genuine Work, and scatter the reduced segments back into the stashed bucket tensors; the remaining calls return the completed seed Work. Cohort boundaries are positional within each step's twelve routed calls (all parameter choices divide twelve), a step-end force-flush guards the boundary, and no fixture-dependent output is ever cached or replayed.",
+      "synchronization": "The cohort-final call waits the genuine NCCL Work before enqueueing the scatter copies, so the calling (default) stream is ordered behind the NCCL stream and every consumer on that stream - DDP finalize, the source's exact_gradient_replica_check path, optimizer.step() - observes final gradient values, exactly like the baseline reducer's own finalize-time wait. The Work is also returned so the reducer's existing wait sees the same collective. No new CPU-side blocking (non-blocking stream wait only), no barriers, no extra streams, no polling; collective order across ranks is structural and therefore matched.",
+      "memory": "Setup allocation at build time: one persistent k*28.35 MB (k=12: 340.2 MB) flat FP32 staging buffer, reported by the framework's setup allocated_bytes/peak counters, plus a 16-byte seed tensor and a few Work objects allocated at first invocation. The staging buffer is retained for the process lifetime and raises framework.peak_allocated_bytes and framework.lifecycle_peak_allocated/reserved_bytes by that amount on every run; this is an explicit, reported increase in PyTorch allocator usage, not a saving. No pinned host memory, no CUDA Graph pools, no non-PyTorch driver allocation."
+    },
+    "quality_risks": [
+      "Single-tensor legality (the repaired defect): every collective issued by the replacement - the one-time 4-element seed and each cohort's flattened reduction - is a single-tensor c10d::allreduce_ on one contiguous FP32 buffer, the only form the previous failure showed this ProcessGroupNCCL build guarantees; the multi-tensor list form is never used.",
+      "Deferred Work tokens: calls before the cohort boundary return an already-completed genuine c10d Work while their buckets are actually reduced by the cohort-final flat Work. Correctness relies on the DDP reducer waiting every returned Work before gradients are consumed; the cohort-final call additionally waits its Work and enqueues the stream-ordered scatter copies before returning, so all bucket storage holds final values before any same-stream consumer runs. The previous trial already returned such seed tokens through the dispatcher and reducer without error.",
+      "Plan alignment: cohort logic assumes the observed twelve routed calls per step per rank in identical topological order on both ranks (fixed by the frozen workload and deterministic bucket readiness). k in {3,6,12} divides twelve, so a cohort never straddles a workload step; a step-end force-flush covers the boundary, and any structurally unexpected call (wrong shape/dtype/device/stride/multi-tensor/async_op) triggers an immediate flush of the pending cohort through the same single-tensor flat form followed by the plain per-bucket parent call for the deviating call itself. Because guards depend only on call structure, both ranks take identical branches and NCCL collective order stays matched.",
+      "Numerics: gradients are expected to be bitwise identical to baseline per element - for a 2-rank elementwise SUM each element is a single commutative float addition of the same two rank values regardless of message size, protocol or chunking, and gather/scatter are exact copies - so the 1e-6/1e-4 reference tolerances and the atol=0 cross-rank replica check are preserved; this must be confirmed by the paired GPU validation.",
+      "Performance risks, not quality: if the interconnect keeps the flat message on RING_LL, wire time is byte-for-byte unchanged and only per-call fixed cost (~0.1 ms/call) and skew stalls are recovered; cohort-tail serialization forfeits part of the ~9.6 ms baseline compute/communication overlap and adds ~1.5 ms of gather/scatter copies, so step_ms must satisfy the 1.05x baseline constraint by measurement - the tunable cohort_size ({3,6,12}) lets the search trade consolidation against overlap retention. The one extra 4-byte collective exists only in the first quality invocation, outside every timed repetition and diagnostic step.",
+      "Staging memory: up to 340.2 MB (k=12) of persistent device allocation raises per-run framework.peak_allocated_bytes and lifecycle peaks; it is reported setup/retained memory, has no effect on step_ms or gradient values, and no memory counter decrease is claimed."
+    ],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {
+      "params": [
+        {
+          "name": "cohort_size",
+          "kind": "int",
+          "choices": [
+            3,
+            6,
+            12
+          ],
+          "description": "Number of the twelve 28.35 MB DDP bucket gradients consolidated per flattened single-tensor allreduce_ (12 = full consolidation into one ~340 MB message; smaller values keep more rank-meet/launch points but preserve more compute/communication overlap and shorter tail serialization). All choices divide the observed twelve calls per step, so a cohort never straddles a workload step; the frozen workload, bucket layout, numerics and boundary are unchanged for every choice."
+        }
+      ],
+      "constraints": [
+        {
+          "expr": "1 <= cohort_size <= 12",
+          "rationale": "A cohort cannot exceed the twelve observed bucket calls per step per rank and must be positive; build() additionally clamps the value defensively."
+        }
+      ]
+    }
+  },
+  "pairs": [],
+  "parameter_search": {
+    "engine": "existing TaskSearch + OptunaTPETuner",
+    "space": {
+      "params": [
+        {
+          "name": "cohort_size",
+          "kind": "int",
+          "choices": [
+            3,
+            6,
+            12
+          ],
+          "description": "Number of the twelve 28.35 MB DDP bucket gradients consolidated per flattened single-tensor allreduce_ (12 = full consolidation into one ~340 MB message; smaller values keep more rank-meet/launch points but preserve more compute/communication overlap and shorter tail serialization). All choices divide the observed twelve calls per step, so a cohort never straddles a workload step; the frozen workload, bucket layout, numerics and boundary are unchanged for every choice."
+        }
+      ],
+      "constraints": [
+        {
+          "expr": "1 <= cohort_size <= 12",
+          "rationale": "A cohort cannot exceed the twelve observed bucket calls per step per rank and must be positive; build() additionally clamps the value defensively."
+        }
+      ]
+    },
+    "selected": null,
+    "stats": [
+      {
+        "candidate_id": "cand-34c18eb8",
+        "space_id": "space-cand-34c18eb8",
+        "n_complete": 0,
+        "n_fail": 3,
+        "best": null,
+        "param_stats": [
+          {
+            "name": "cohort_size",
+            "best_value": 3,
+            "best_trial_value": null,
+            "at_boundary": false,
+            "boundary_direction": null,
+            "effect_pct": 0.0,
+            "latency_by_value": {},
+            "objective_by_value": {},
+            "effect_absolute": null,
+            "failure_rate_by_value": {
+              "3": 1.0,
+              "6": 1.0,
+              "12": 1.0
+            }
+          }
+        ],
+        "resource_at_best": null,
+        "failure_clusters": []
+      }
+    ],
+    "responses": [
+      {
+        "candidate_id": "trial-35bbadc02f",
+        "axis": "cohort_size",
+        "a_params": {
+          "values": {
+            "cohort_size": 6
+          }
+        },
+        "b_params": {
+          "values": {
+            "cohort_size": 12
+          }
+        },
+        "a": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "b": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "delta_j": null,
+        "gain": null,
+        "parameter_slope": null,
+        "resource_deltas": {},
+        "resource_slopes": {},
+        "unknown_resources": [],
+        "resource_status": "unknown",
+        "reason": "invalid_endpoint"
+      },
+      {
+        "candidate_id": "trial-35bbadc02f",
+        "axis": "cohort_size",
+        "a_params": {
+          "values": {
+            "cohort_size": 12
+          }
+        },
+        "b_params": {
+          "values": {
+            "cohort_size": 3
+          }
+        },
+        "a": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "b": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "delta_j": null,
+        "gain": null,
+        "parameter_slope": null,
+        "resource_deltas": {},
+        "resource_slopes": {},
+        "unknown_resources": [],
+        "resource_status": "unknown",
+        "reason": "invalid_endpoint"
+      }
+    ],
+    "resource_fields": null,
+    "response_interpretation": null
+  },
+  "screening": [
+    {
+      "parameters": {
+        "cohort_size": 6
+      },
+      "bundle": "trial-35bbadc02f-param-6b444f35",
+      "revision": "df5ad49a93446cd14750a419780d309ce298aa73d770923aac3730469778ee3d",
+      "result": {
+        "score": null,
+        "valid": false,
+        "metrics": {},
+        "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+      },
+      "constraints": [],
+      "run": {
+        "status": "failed",
+        "failure": "rank_failed",
+        "wall_s": 16.90191737934947,
+        "lease_wait_s": 17.773289494216442,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 454308,
+            "status": "failed",
+            "error": "<built-in method run_backward of torch._C._EngineBase object at 0x7fe43109c350> returned NULL without setting an exception",
+            "framework_source": {
+              "sha256": "cae6cc6e6591fba0d0262db4bfe03575167fed086547483768348a9e9d3ed8e4",
+              "files": 148,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "binding": {
+              "pid": 454308,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed"
+            },
+            "result": {}
+          },
+          {
+            "rank": 1,
+            "pid": 454309,
+            "status": "failed",
+            "error": "<built-in method run_backward of torch._C._EngineBase object at 0x7f06d7380350> returned NULL without setting an exception",
+            "framework_source": {
+              "sha256": "cae6cc6e6591fba0d0262db4bfe03575167fed086547483768348a9e9d3ed8e4",
+              "files": 148,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "binding": {
+              "pid": 454309,
+              "status": "verified",
+              "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "logical_device": 1,
+              "nvidia_smi_pid_uuids": [
+                "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              ],
+              "pid_query_status": "observed"
+            },
+            "result": {}
+          }
+        ]
+      }
+    },
+    {
+      "parameters": {
+        "cohort_size": 12
+      },
+      "bundle": "trial-35bbadc02f-param-efb49855",
+      "revision": "03430b8e639b53918d7998c8a94a47cd9c47f8fbcfd17bf417c2e3259ee0c855",
+      "result": {
+        "score": null,
+        "valid": false,
+        "metrics": {},
+        "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+      },
+      "constraints": [],
+      "run": {
+        "status": "failed",
+        "failure": "rank_failed",
+        "wall_s": 15.773703150451183,
+        "lease_wait_s": 22.30118402466178,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 455218,
+            "status": "failed",
+            "error": "<built-in method run_backward of torch._C._EngineBase object at 0x7f0cd2184350> returned NULL without setting an exception",
+            "framework_source": {
+              "sha256": "cae6cc6e6591fba0d0262db4bfe03575167fed086547483768348a9e9d3ed8e4",
+              "files": 148,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "binding": {
+              "pid": 455218,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed"
+            },
+            "result": {}
+          },
+          {
+            "rank": 1,
+            "pid": 455219,
+            "status": "failed",
+            "error": "<built-in method run_backward of torch._C._EngineBase object at 0x7ff9a0a88350> returned NULL without setting an exception",
+            "framework_source": {
+              "sha256": "cae6cc6e6591fba0d0262db4bfe03575167fed086547483768348a9e9d3ed8e4",
+              "files": 148,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "binding": {
+              "pid": 455219,
+              "status": "verified",
+              "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "logical_device": 1,
+              "nvidia_smi_pid_uuids": [
+                "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              ],
+              "pid_query_status": "observed"
+            },
+            "result": {}
+          }
+        ]
+      }
+    },
+    {
+      "parameters": {
+        "cohort_size": 3
+      },
+      "bundle": "trial-35bbadc02f-param-2f5312ca",
+      "revision": "7cb88e800c3a9ee93c3e65969f1281412fe7b32facc055bdd44a0b1ed4bd61f2",
+      "result": {
+        "score": null,
+        "valid": false,
+        "metrics": {},
+        "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+      },
+      "constraints": [],
+      "run": {
+        "status": "failed",
+        "failure": "rank_failed",
+        "wall_s": 15.497734971344471,
+        "lease_wait_s": 19.298188019543886,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 456172,
+            "status": "failed",
+            "error": "<built-in method run_backward of torch._C._EngineBase object at 0x7fdf26494350> returned NULL without setting an exception",
+            "framework_source": {
+              "sha256": "cae6cc6e6591fba0d0262db4bfe03575167fed086547483768348a9e9d3ed8e4",
+              "files": 148,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "binding": {
+              "pid": 456172,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed"
+            },
+            "result": {}
+          },
+          {
+            "rank": 1,
+            "pid": 456173,
+            "status": "failed",
+            "error": "<built-in method run_backward of torch._C._EngineBase object at 0x7fa13d884350> returned NULL without setting an exception",
+            "framework_source": {
+              "sha256": "cae6cc6e6591fba0d0262db4bfe03575167fed086547483768348a9e9d3ed8e4",
+              "files": 148,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "binding": {
+              "pid": 456173,
+              "status": "verified",
+              "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "logical_device": 1,
+              "nvidia_smi_pid_uuids": [
+                "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              ],
+              "pid_query_status": "observed"
+            },
+            "result": {}
+          }
+        ]
+      }
+    }
+  ],
+  "resource_evidence": []
+}

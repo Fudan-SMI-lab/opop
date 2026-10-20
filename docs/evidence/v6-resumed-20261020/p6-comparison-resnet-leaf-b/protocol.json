@@ -1,0 +1,76 @@
+{
+  "raw_result": {
+    "path": "/root/autodl-tmp/dev/v6-work/p6-comparison-resnet-leaf-b/comparison-protocol.json",
+    "bytes": 2226,
+    "sha256": "c9560cb21d852ce35cec93a673d3f6c1403a73c460a2e487ca163fb4e1399d15"
+  },
+  "arm": "leaf",
+  "policy": {
+    "allowed_scopes": [
+      "group"
+    ],
+    "leaf_groups_only": true
+  },
+  "rounds": 2,
+  "framework_source": {
+    "sha256": "cae6cc6e6591fba0d0262db4bfe03575167fed086547483768348a9e9d3ed8e4",
+    "files": 148,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "source_run": "/root/autodl-tmp/dev/v6-work/p6-comparison-resnet-base-b",
+  "parent": "9c1bb0d8292abcc3e5fc821519d9043c0fdc1e374ac353e00a4a1592cc38d946",
+  "reference_revision": "9ee6f0cbce5ff9039118b9657a772385430ab55b4d57118b5595bb4b1d8b16d5",
+  "request": {
+    "schema_version": "project-request.v1",
+    "source_root": "/root/autodl-tmp/dev/opop-v6/examples/v6_validation",
+    "entry": "resnet_inference.py",
+    "files": [
+      "resnet_inference.py",
+      "common.py",
+      "workloads.json"
+    ],
+    "goal": "Minimize latency of the fixed single-image ResNet inference workload while preserving all logits and exact top-1.",
+    "objective": {
+      "name": "latency_ms",
+      "unit": "ms",
+      "direction": "minimize"
+    },
+    "workload": {
+      "id": "online",
+      "batch": 1,
+      "goals": [
+        {
+          "id": "latency",
+          "metric": "latency_ms",
+          "direction": "min"
+        }
+      ]
+    },
+    "quality": {
+      "atol": 0.0001,
+      "rtol": 0.0001,
+      "exact_top1": true
+    },
+    "assets": {
+      "assets": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18"
+    },
+    "devices": [
+      "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+    ],
+    "distributed_backend": null,
+    "communication": "auto",
+    "required_observations": [],
+    "tools": {},
+    "profiling": {},
+    "warmup": 2,
+    "repeats": 5,
+    "continuous_steps": 2,
+    "worker_timeout_s": 600.0,
+    "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+    "notes": [
+      "Keep all source numerical policies, including FP32, TF32 disabled and the real preprocessed image fixtures."
+    ]
+  },
+  "usage": "observe only; no provider request/token/cost/duration quota",
+  "comparison_scope": "same starting version, evaluator, workload, quality, candidate rounds and maximum parameter trials; report actual setup/profile/worker costs and failures"
+}

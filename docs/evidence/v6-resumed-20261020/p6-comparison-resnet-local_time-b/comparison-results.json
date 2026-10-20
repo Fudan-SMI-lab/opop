@@ -1,0 +1,170 @@
+{
+  "raw_result": {
+    "path": "/root/autodl-tmp/dev/v6-work/p6-comparison-resnet-local_time-b/comparison-results.json",
+    "bytes": 5379,
+    "sha256": "cd190791f8728cf67b62103d26013ad21c46674e343eece19d335fc151232487"
+  },
+  "protocol": {
+    "arm": "local_time",
+    "policy": {
+      "allowed_scopes": [
+        "group"
+      ],
+      "leaf_groups_only": true,
+      "selection_strategy": "local_time"
+    },
+    "rounds": 2,
+    "framework_source": {
+      "sha256": "cae6cc6e6591fba0d0262db4bfe03575167fed086547483768348a9e9d3ed8e4",
+      "files": 148,
+      "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+    },
+    "source_run": "/root/autodl-tmp/dev/v6-work/p6-comparison-resnet-base-b",
+    "parent": "9c1bb0d8292abcc3e5fc821519d9043c0fdc1e374ac353e00a4a1592cc38d946",
+    "reference_revision": "9ee6f0cbce5ff9039118b9657a772385430ab55b4d57118b5595bb4b1d8b16d5",
+    "request": {
+      "schema_version": "project-request.v1",
+      "source_root": "/root/autodl-tmp/dev/opop-v6/examples/v6_validation",
+      "entry": "resnet_inference.py",
+      "files": [
+        "resnet_inference.py",
+        "common.py",
+        "workloads.json"
+      ],
+      "goal": "Minimize latency of the fixed single-image ResNet inference workload while preserving all logits and exact top-1.",
+      "objective": {
+        "name": "latency_ms",
+        "unit": "ms",
+        "direction": "minimize"
+      },
+      "workload": {
+        "id": "online",
+        "batch": 1,
+        "goals": [
+          {
+            "id": "latency",
+            "metric": "latency_ms",
+            "direction": "min"
+          }
+        ]
+      },
+      "quality": {
+        "atol": 0.0001,
+        "rtol": 0.0001,
+        "exact_top1": true
+      },
+      "assets": {
+        "assets": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18"
+      },
+      "devices": [
+        "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+      ],
+      "distributed_backend": null,
+      "communication": "auto",
+      "required_observations": [],
+      "tools": {},
+      "profiling": {},
+      "warmup": 2,
+      "repeats": 5,
+      "continuous_steps": 2,
+      "worker_timeout_s": 600.0,
+      "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+      "notes": [
+        "Keep all source numerical policies, including FP32, TF32 disabled and the real preprocessed image fixtures."
+      ]
+    },
+    "usage": "observe only; no provider request/token/cost/duration quota",
+    "comparison_scope": "same starting version, evaluator, workload, quality, candidate rounds and maximum parameter trials; report actual setup/profile/worker costs and failures"
+  },
+  "rounds": [
+    {
+      "round": 0,
+      "trial": "trial-b13b4205bb",
+      "decision": {
+        "state": "evaluated",
+        "revision": "8b3ddc720a099e04582c096af1c79aeff9d590e4e33bf700f75e578928cd917a",
+        "parent": "9c1bb0d8292abcc3e5fc821519d9043c0fdc1e374ac353e00a4a1592cc38d946",
+        "bundle": "trial-b13b4205bb-param-54411490",
+        "accepted": false,
+        "reasons": [
+          "paired_gain_not_above_noise",
+          "objective_not_improved"
+        ],
+        "report_ref": "sha256:c12fe5d4ac371016bd8cfe7c5ac46b221ab9327a4ece52ad9d04d39e6bc7311e"
+      },
+      "measurement": {
+        "valid": true,
+        "objective": 4.47329,
+        "reference": 1.753021,
+        "parent_values": [
+          1.785868,
+          1.720174
+        ],
+        "candidate_values": [
+          4.421027,
+          4.525553
+        ],
+        "paired_gains": [
+          -2.635159,
+          -2.8053790000000003
+        ],
+        "noise_bounds": [
+          0.17476000000000091,
+          0.21292800000000156
+        ],
+        "constraints": [],
+        "reasons": [
+          "paired_gain_not_above_noise"
+        ],
+        "framework_source": "cae6cc6e6591fba0d0262db4bfe03575167fed086547483768348a9e9d3ed8e4",
+        "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+      },
+      "revision": "9c1bb0d8292abcc3e5fc821519d9043c0fdc1e374ac353e00a4a1592cc38d946"
+    },
+    {
+      "round": 1,
+      "trial": "trial-4aa2b84d74",
+      "decision": {
+        "state": "evaluated",
+        "revision": "12ea114bf9f2f178990e26c6d21efb42dabd2764c6a029405b3ddea06f03dfab",
+        "parent": "9c1bb0d8292abcc3e5fc821519d9043c0fdc1e374ac353e00a4a1592cc38d946",
+        "bundle": "trial-4aa2b84d74-param-909ccfb9",
+        "accepted": false,
+        "reasons": [
+          "paired_gain_not_above_noise",
+          "objective_not_improved"
+        ],
+        "report_ref": "sha256:51d047b1471a22869862c202957b2040d1e6585d0787233a58b86e94c67c7205"
+      },
+      "measurement": {
+        "valid": true,
+        "objective": 3.961345,
+        "reference": 1.4275585,
+        "parent_values": [
+          1.468976,
+          1.386141
+        ],
+        "candidate_values": [
+          3.924913,
+          3.997777
+        ],
+        "paired_gains": [
+          -2.455937,
+          -2.611636
+        ],
+        "noise_bounds": [
+          0.23651800000000023,
+          0.14352199999999904
+        ],
+        "constraints": [],
+        "reasons": [
+          "paired_gain_not_above_noise"
+        ],
+        "framework_source": "cae6cc6e6591fba0d0262db4bfe03575167fed086547483768348a9e9d3ed8e4",
+        "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+      },
+      "revision": "9c1bb0d8292abcc3e5fc821519d9043c0fdc1e374ac353e00a4a1592cc38d946"
+    }
+  ],
+  "framework_unchanged": true
+}

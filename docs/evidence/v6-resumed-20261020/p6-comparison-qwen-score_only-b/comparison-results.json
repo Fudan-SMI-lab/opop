@@ -1,0 +1,116 @@
+{
+  "raw_result": {
+    "path": "/root/autodl-tmp/dev/v6-work/p6-comparison-qwen-score_only-b/comparison-results.json",
+    "bytes": 3659,
+    "sha256": "b20b9129a253b4d9ef405f4d669086cbc6012e1a69101f29d0a8c2991cc1b47a"
+  },
+  "protocol": {
+    "arm": "score_only",
+    "policy": {
+      "feedback_view": "project"
+    },
+    "rounds": 2,
+    "framework_source": {
+      "sha256": "cae6cc6e6591fba0d0262db4bfe03575167fed086547483768348a9e9d3ed8e4",
+      "files": 148,
+      "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+    },
+    "source_run": "/root/autodl-tmp/dev/v6-work/p6-comparison-qwen-base-b",
+    "parent": "107d3fd933cb70ca4b54e722c8476fb9f8747660e8e37e62462596272dac5587",
+    "reference_revision": "f6637879c2e2197558fbb8ae6939f599c7de604043d09181edbfbbd53c4e4320",
+    "request": {
+      "schema_version": "project-request.v1",
+      "source_root": "/root/autodl-tmp/dev/opop-v6/examples/v6_validation",
+      "entry": "qwen_inference.py",
+      "files": [
+        "qwen_inference.py",
+        "common.py",
+        "workloads.json"
+      ],
+      "goal": "minimize ttft_ms for Pretrained Qwen3-4B, BF16 SDPA, fixed-length greedy generation, GPU-resident token input; preserve the complete frozen workload and source quality checks",
+      "objective": {
+        "name": "ttft_ms",
+        "direction": "minimize",
+        "unit": "ms",
+        "paired_repeats": 2
+      },
+      "workload": {
+        "id": "interactive",
+        "batch": 1,
+        "prompt_tokens": 256,
+        "new_tokens": 32,
+        "goals": [
+          {
+            "id": "ttft",
+            "metric": "ttft_ms",
+            "direction": "min"
+          },
+          {
+            "id": "decode",
+            "metric": "decode_tokens_per_second",
+            "direction": "max"
+          }
+        ]
+      },
+      "quality": {
+        "logits_atol": 0.02,
+        "logits_rtol": 0.02,
+        "require_exact_greedy_tokens": true,
+        "atol": 0.02,
+        "rtol": 0.02
+      },
+      "assets": {
+        "assets": "/root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c"
+      },
+      "devices": [
+        "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+      ],
+      "distributed_backend": null,
+      "communication": "auto",
+      "required_observations": [],
+      "tools": {
+        "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys",
+        "ncu": "/usr/local/cuda/bin/ncu"
+      },
+      "profiling": {},
+      "warmup": 2,
+      "repeats": 5,
+      "continuous_steps": 2,
+      "worker_timeout_s": 900.0,
+      "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+      "notes": [
+        "Preserve source dtype, TF32 policy, seed, real data and completion boundaries.",
+        "Model loading is outside timing. Generated replacement work and synchronization stay inside the declared workload boundary."
+      ]
+    },
+    "usage": "observe only; no provider request/token/cost/duration quota",
+    "comparison_scope": "same starting version, evaluator, workload, quality, candidate rounds and maximum parameter trials; report actual setup/profile/worker costs and failures"
+  },
+  "rounds": [
+    {
+      "round": 0,
+      "trial": "trial-1951e3f08c",
+      "decision": {
+        "accepted": false,
+        "reasons": [
+          "no_valid_parameter_candidate"
+        ]
+      },
+      "measurement": null,
+      "revision": "107d3fd933cb70ca4b54e722c8476fb9f8747660e8e37e62462596272dac5587"
+    },
+    {
+      "round": 1,
+      "trial": "trial-155b123589",
+      "decision": {
+        "accepted": false,
+        "reasons": [
+          "no_valid_parameter_candidate"
+        ]
+      },
+      "measurement": null,
+      "revision": "107d3fd933cb70ca4b54e722c8476fb9f8747660e8e37e62462596272dac5587"
+    }
+  ],
+  "framework_unchanged": true
+}

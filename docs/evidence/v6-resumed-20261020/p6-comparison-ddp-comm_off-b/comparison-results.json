@@ -1,0 +1,184 @@
+{
+  "raw_result": {
+    "path": "/root/autodl-tmp/dev/v6-work/p6-comparison-ddp-comm_off-b/comparison-results.json",
+    "bytes": 6170,
+    "sha256": "8668239961b5b805862f1c16b247e4777284fdf4a04ab7c53249417253fe4423"
+  },
+  "protocol": {
+    "arm": "whole",
+    "policy": {},
+    "rounds": 2,
+    "framework_source": {
+      "sha256": "cae6cc6e6591fba0d0262db4bfe03575167fed086547483768348a9e9d3ed8e4",
+      "files": 148,
+      "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+    },
+    "source_run": "/root/autodl-tmp/dev/v6-work/p6-comparison-ddp-off-base-b",
+    "parent": "c9ef57cb9a1650a648d0098ae59c24abc22f73785165eca98053c2ae5bbb71b0",
+    "reference_revision": "a9ab559391bf76153088f21951063e55a5f122bfe9a2477d0695c07c19e3d784",
+    "request": {
+      "schema_version": "project-request.v1",
+      "source_root": "/root/autodl-tmp/dev/opop-v6/examples/v6_validation",
+      "entry": "gpt2_ddp_training.py",
+      "files": [
+        "gpt2_ddp_training.py",
+        "common.py",
+        "workloads.json"
+      ],
+      "goal": "minimize step_ms for GPT-2 124M FP32 training; deterministic random initialization and synthetic token IDs; real NCCL; SGD; competent no_sync accumulation baseline; preserve the complete frozen workload and source quality checks",
+      "objective": {
+        "name": "step_ms",
+        "direction": "minimize",
+        "unit": "ms",
+        "paired_repeats": 2
+      },
+      "workload": {
+        "id": "accumulated_step",
+        "world_size": 2,
+        "micro_batch": 1,
+        "sequence_length": 128,
+        "accumulation_steps": 4,
+        "goals": [
+          {
+            "id": "step",
+            "metric": "step_ms",
+            "direction": "min"
+          },
+          {
+            "id": "communication",
+            "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+            "direction": "min",
+            "constraints": {
+              "step_ms_max_baseline_ratio": 1.05
+            }
+          }
+        ]
+      },
+      "quality": {
+        "grad_atol": 1e-06,
+        "grad_rtol": 0.0001,
+        "parameter_atol": 1e-06,
+        "parameter_rtol": 0.0001,
+        "atol": 1e-06,
+        "rtol": 0.0001
+      },
+      "assets": {},
+      "devices": [
+        "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+      ],
+      "distributed_backend": "nccl",
+      "communication": "off",
+      "required_observations": [],
+      "tools": {
+        "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys",
+        "ncu": "/usr/local/cuda/bin/ncu"
+      },
+      "profiling": {
+        "metric_repeats": 3
+      },
+      "warmup": 2,
+      "repeats": 5,
+      "continuous_steps": 2,
+      "worker_timeout_s": 900.0,
+      "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+      "notes": [
+        "Preserve source dtype, TF32 policy, seed, real data and completion boundaries.",
+        "Model loading is outside timing. Generated replacement work and synchronization stay inside the declared workload boundary."
+      ]
+    },
+    "usage": "observe only; no provider request/token/cost/duration quota",
+    "comparison_scope": "same starting version, evaluator, workload, quality, candidate rounds and maximum parameter trials; report actual setup/profile/worker costs and failures"
+  },
+  "rounds": [
+    {
+      "round": 0,
+      "trial": "trial-60a8518413",
+      "decision": {
+        "state": "evaluated",
+        "revision": "94cee654e29bfb6f37bb81ee34a59a88ea09ea619825b9a33bc0a7c052ae263f",
+        "parent": "c9ef57cb9a1650a648d0098ae59c24abc22f73785165eca98053c2ae5bbb71b0",
+        "bundle": "trial-60a8518413-param-09474522",
+        "accepted": false,
+        "reasons": [
+          "paired_gain_not_above_noise",
+          "objective_not_improved"
+        ],
+        "report_ref": "sha256:7de2540f0531123b9f49a676f7caaacfadb13d5b85f1aa649b164f65e90a6882"
+      },
+      "measurement": {
+        "valid": true,
+        "objective": 248.34972399999998,
+        "reference": 142.6925395,
+        "parent_values": [
+          142.435675,
+          142.949404
+        ],
+        "candidate_values": [
+          251.800415,
+          244.899033
+        ],
+        "paired_gains": [
+          -109.36473999999998,
+          -101.94962900000002
+        ],
+        "noise_bounds": [
+          3.620527999999979,
+          19.199433999999997
+        ],
+        "constraints": [],
+        "reasons": [
+          "paired_gain_not_above_noise"
+        ],
+        "framework_source": "cae6cc6e6591fba0d0262db4bfe03575167fed086547483768348a9e9d3ed8e4",
+        "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+      },
+      "revision": "c9ef57cb9a1650a648d0098ae59c24abc22f73785165eca98053c2ae5bbb71b0"
+    },
+    {
+      "round": 1,
+      "trial": "trial-10ad6a291b",
+      "decision": {
+        "state": "evaluated",
+        "revision": "a5fdeddd1d0508f4bc8fac75230fe4e084807b1bede9c1269fe1e40ba5b10b28",
+        "parent": "c9ef57cb9a1650a648d0098ae59c24abc22f73785165eca98053c2ae5bbb71b0",
+        "bundle": "trial-10ad6a291b-param-d79c9be2",
+        "accepted": false,
+        "reasons": [
+          "paired_gain_not_above_noise",
+          "objective_not_improved"
+        ],
+        "report_ref": "sha256:b128b14f140c7c17a3109e5fff9029d5c7ea4408a5773e411dc693344d245a12"
+      },
+      "measurement": {
+        "valid": true,
+        "objective": 148.02191299999998,
+        "reference": 142.60127599999998,
+        "parent_values": [
+          145.027682,
+          140.17487
+        ],
+        "candidate_values": [
+          146.773979,
+          149.269847
+        ],
+        "paired_gains": [
+          -1.7462969999999984,
+          -9.094977
+        ],
+        "noise_bounds": [
+          6.0340139999999565,
+          4.510644000000013
+        ],
+        "constraints": [],
+        "reasons": [
+          "paired_gain_not_above_noise"
+        ],
+        "framework_source": "cae6cc6e6591fba0d0262db4bfe03575167fed086547483768348a9e9d3ed8e4",
+        "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+      },
+      "revision": "c9ef57cb9a1650a648d0098ae59c24abc22f73785165eca98053c2ae5bbb71b0"
+    }
+  ],
+  "framework_unchanged": true
+}
