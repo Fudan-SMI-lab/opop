@@ -1,0 +1,111 @@
+{
+  "communication": {
+    "cross_rank": {
+      "matched": [],
+      "incomplete": [],
+      "clock_policy": "No subtraction of timestamps from different rank clocks"
+    },
+    "ranks": [
+      {
+        "status": "not_applicable",
+        "reason": "disabled"
+      }
+    ],
+    "capabilities": [
+      {
+        "schema_version": "project.v1",
+        "id": "c7de350323542377e182ab329970fd3204e5fd2daa9d841d8729f03528f44894",
+        "devices": [],
+        "supported_scopes": [
+          "group",
+          "joint",
+          "region",
+          "execution_plan"
+        ],
+        "fields": [
+          {
+            "schema_version": "project.v1",
+            "name": "communication",
+            "status": "not_applicable",
+            "value": null,
+            "unit": "capability",
+            "entity": null,
+            "reason": "communication diagnostics disabled",
+            "evidence": []
+          }
+        ],
+        "tools": {}
+      }
+    ]
+  },
+  "coverage": [
+    {
+      "cuda_kernels": 88,
+      "associated_kernels": 88,
+      "unassociated_kernels": 0,
+      "associated_below_project": 88,
+      "root_only_kernels": 0,
+      "backward_associated_kernels": 0,
+      "autograd_ranges": 0,
+      "forward_linked_autograd_ranges": 0,
+      "ambiguous_forward_sequences": 0
+    }
+  ],
+  "collection_plan": {
+    "plan": {
+      "collectors": [],
+      "requested_fields": [],
+      "unavailable_fields": {
+        "nccl_algorithm_protocol_channel_decisions": "not_applicable: request.json has communication \"off\", distributed_backend null and exactly one device; observations.json ranks report status not_applicable with reason \"disabled\". nccl_tuning is gated off for communication-disabled or single-device tasks, and kernel entry names alone cannot identify the protocol anyway.",
+        "pcie_nvlink_per_collective_bytes": "not measurable: communication diagnostics are disabled and there are no collectives in the trace; device_telemetry is also gated off with communication \"off\" and only supplies device-wide NVML windows, never per-collective bytes. Traffic will not be invented from logical payload or memcpy sizes.",
+        "collective_calibration_reference_timings": "not_applicable: communication \"off\"; collective_calibration requires communication enabled and would be a synthetic full-world SUM allreduce reference, which has no bearing on a single-GPU inference forward.",
+        "communication_compute_overlap": "not_applicable: single device and communication disabled; there are no communication intervals to overlap with compute, so nsys timeline overlap and execution_timeline cross-interval analysis have no question to resolve here.",
+        "peak_allocated_bytes_attribution_by_allocation_site": "unavailable from collectors: no available collector supplies allocation-level attribution of torch.cuda.max_memory_allocated; the already-completed torch execution trace provides full kernel-to-call association (coverage.json: 88/88 associated, 0 unassociated, 0 ambiguous) and the per-repeat objective/constraint samples come from the harness protocol (resnet_inference.py:42-48), not from a diagnostic collector.",
+        "candidate_failure_sites": "not_applicable: the current discovery revision 87e7d66efba88ff766579f51392ee6f6504cb3454d3642668ab4ef2890f8b2ec has no installed candidate bundles, and candidate_diagnostics requires candidate installers; its exception/predicate sites are never timing evidence in any case.",
+        "host_dispatch_binding_costs": "declined: python_runtime runs a perturbing cProfile whose inclusive/self times are not clean performance scores or GPU compute durations; host dispatch is not a lever for peak_allocated_bytes, and the images_per_second >= 0.95*baseline constraint is already measured cleanly per repeat by the harness with warmup, so no nsys/python_runtime timing substitute is requested."
+      },
+      "rationale": "Frozen objective is peak_allocated_bytes for one complete single-GPU FP32 ResNet-18 batch-32 inference under torch.inference_mode(), with images_per_second >= 0.95*baseline and exact-logit/top-1 quality (request.json). The torch collector already ran and fully owns trace evidence: coverage.json shows 88/88 CUDA kernels associated to project calls with 0 unassociated, 0 root-only, 0 backward/autograd ranges and 0 ambiguous forward sequences, leaving no overlap, graph-tracing or attribution question that nsys or execution_timeline could resolve; both would only re-record a plain trace whose CPU-to-CUDA association is already complete, and execution_timeline never determines subsequent search actions. Every communication-oriented collector is structurally inapplicable: communication is \"off\", distributed_backend is null and there is exactly one device, so nccl_tuning, device_telemetry and collective_calibration return not_applicable (observations.json ranks: \"disabled\"), and no PCIe/NVLink traffic or NCCL protocol dimension exists to observe or may be invented from payload sizes. candidate_diagnostics has no candidate bundles on this revision to instrument. python_runtime perturbs execution and yields no clean timing or GPU durations, and host dispatch is not a memory lever; the throughput constraint is measured cleanly by the per-repeat harness protocol. Both decision-relevant quantities (peak_allocated_bytes, images_per_second) are harness-measured per repeat around one infer() call, and per-allocation memory attribution is not supplied by any available collector, so it is retained as unknown rather than approximated. Selecting zero additional collectors is the evidence-driven choice; running every collector indiscriminately would add perturbation and not_applicable records without decision value for this objective."
+    },
+    "agent": {
+      "role": "collection-planner",
+      "session": "ses_ea5c6f7b3ffeEgO9Lce1cx2do3",
+      "message": "msg_15a3c8a19001VO6l207kzDm6xH",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 25,
+        "reported_cost": 0.25885910682,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 624422.0,
+          "input": 32099.0,
+          "output": 3433.0,
+          "reasoning": 7770.0,
+          "cache.read": 581120.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea5c6f7b3ffeEgO9Lce1cx2do3",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory/sandboxes/collection-planner-a56a24b3e390",
+      "outputs": [
+        "collection.json"
+      ],
+      "feedback_provided": false,
+      "contract_repairs": 0,
+      "generation_snapshots": [
+        "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory/generation-snapshots/generation-71f845335d38.json"
+      ]
+    }
+  },
+  "extra_collectors": {},
+  "ownership_input": "communication-ownership.json"
+}

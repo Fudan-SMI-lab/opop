@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "failure": null,
+  "wall_s": 13.847523033618927,
+  "ranks": [
+    {
+      "rank": 0,
+      "pid": 978065,
+      "exit_code": 0,
+      "status": "passed",
+      "binding": {
+        "pid": 978065,
+        "status": "verified",
+        "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "logical_device": 0,
+        "nvidia_smi_pid_uuids": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "pid_query_status": "observed",
+        "occupancy": {
+          "status": "sampled_clear",
+          "samples": 21,
+          "unavailable_samples": 0,
+          "wait_s": 0.03443848341703415,
+          "external_clients": [],
+          "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+        }
+      },
+      "framework_source": {
+        "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+        "files": 160,
+        "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+      },
+      "result": {
+        "valid": true,
+        "coverage": {
+          "trial-77617c1424-param-be089603": {
+            "counts": {
+              "683c822136ed7958f3e9ba44": 2,
+              "1b54ad939831022e60edccb3": 2,
+              "e75f33574334e8fdb1ec1732": 2,
+              "a5217ba2e7b6aec29e7666ed": 2,
+              "f3100f43551c26ea1408b2c6": 2,
+              "769c13d3cea59401691724f2": 2,
+              "33a0ef109fa92d5f85fef188": 2,
+              "7157dbaaf35beb11e060b177": 2,
+              "4853d54385e5d0d5898b92f0": 2
+            },
+            "fallbacks": {},
+            "reference_invocations": {
+              "683c822136ed7958f3e9ba44": 2
+            },
+            "candidate_declared_routes": [
+              {
+                "call": "1b54ad939831022e60edccb3",
+                "route": "triton_fused_bn_add_relu",
+                "count": 2
+              },
+              {
+                "call": "33a0ef109fa92d5f85fef188",
+                "route": "triton_fused_bn_add_relu",
+                "count": 2
+              },
+              {
+                "call": "4853d54385e5d0d5898b92f0",
+                "route": "triton_fused_bn_add_relu",
+                "count": 2
+              },
+              {
+                "call": "683c822136ed7958f3e9ba44",
+                "route": "parent_fallback_guard",
+                "count": 2
+              },
+              {
+                "call": "7157dbaaf35beb11e060b177",
+                "route": "triton_fused_bn_add_relu",
+                "count": 2
+              },
+              {
+                "call": "769c13d3cea59401691724f2",
+                "route": "triton_fused_bn_add_relu",
+                "count": 2
+              },
+              {
+                "call": "a5217ba2e7b6aec29e7666ed",
+                "route": "triton_fused_bn_add_relu",
+                "count": 2
+              },
+              {
+                "call": "e75f33574334e8fdb1ec1732",
+                "route": "triton_fused_bn_add_relu",
+                "count": 2
+              },
+              {
+                "call": "f3100f43551c26ea1408b2c6",
+                "route": "triton_fused_bn_add_relu",
+                "count": 2
+              }
+            ],
+            "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+          }
+        },
+        "scope": "Diagnostic execution only; no quality or performance acceptance",
+        "candidate_diagnostics": {
+          "schema_version": "project.candidate-diagnostics.v1",
+          "events": [
+            {
+              "phase": "run",
+              "bundle": "trial-77617c1424-param-be089603",
+              "file": "/root/opop-v6-stage3/final-e2e-187617c/resnet-latency/jobs/candidate-diagnostics-5637c87455/source/opop_candidates/trial-77617c1424.py",
+              "function": "forward",
+              "line": 147,
+              "source": "raise _Fallback",
+              "recent_lines": [
+                {
+                  "line": 140,
+                  "source": "x = args[0] if args else kwargs.get(\"pixel_values\")"
+                },
+                {
+                  "line": 141,
+                  "source": "try:"
+                },
+                {
+                  "line": 143,
+                  "source": "not _eligible_tensor(x)"
+                },
+                {
+                  "line": 144,
+                  "source": "or int(x.shape[1]) != num_channels"
+                },
+                {
+                  "line": 145,
+                  "source": "or int(x.shape[1]) != channels"
+                },
+                {
+                  "line": 147,
+                  "source": "raise _Fallback"
+                }
+              ],
+              "event": "exception",
+              "type": "_Fallback",
+              "message": "",
+              "count": 2
+            }
+          ],
+          "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+        }
+      }
+    }
+  ],
+  "lease_wait_s": 4.078620593994856,
+  "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+  "devices": [
+    "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+  ],
+  "worker_pids_reaped": true
+}

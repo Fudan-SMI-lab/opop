@@ -1,0 +1,39 @@
+{
+  "implementation": "composite",
+  "replacement_calls": [
+    "683c822136ed7958f3e9ba44"
+  ],
+  "rationale": "Selected region is the contiguous ResNet-18 stem (groups 3821cceac23fa97e5a55..5d6060b158cac3430090). Measured facts (selection rationale + targets/call-resources): the process peak sits in the stem, where two coexisting full-batch (32,64,112,112) FP32 buffers of 102,760,448 B each (conv output, then out-of-place BN/ReLU output, executed as cudnn bn_fw_inf_1C11_kernel_NCHW, clamp_scalar elementwise and max_pool_forward_nchw kernels) sit on top of 67,831,968 B persistent-live tensors (params 46,758,048 + pixels 19,267,584 + images 1,806,336) plus ~8.6 MB cudnn workspace, matching the measured 281,975,808 B baseline. This candidate replaces exactly one boundary, the region root ResNetEmbeddings forward (call 683c822136ed7958f3e9ba44), with an eager chunked executor: it slices the GPU-resident input into batch chunks (default 8 images), runs the actual parent ResNetConvLayer forward (via context.references['679ccfe137094282d25350c1']) and the actual parent MaxPool2d forward (via context.references['aa9765a1830bed7ee2727282']) per chunk, and assembles results by narrow copy_ into one preallocated (32,64,56,56) output. Every stem op is per-sample (conv windows, eval-mode BN with frozen running stats, elementwise ReLU, max pooling), so chunked execution is the same computation per image; only cudnn's per-shape heuristic algorithm choice can differ at chunk batch 8 vs 32. Expected memory: chunk-sized conv/BN/ReLU transients are 2 x 25,690,112 B instead of 2 x 102,760,448 B; stem-phase live memory ~67.8 MB persistent + 25.7 MB pooled output + 51.4 MB transient + 6.4 MB pooled chunk ~ 151 MB, after which the project peak is expected to be bounded by stage 0 (~176-180 MB, ~35-38% below baseline). These are expectations to be confirmed by the independent paired measurement, not claimed results. Throughput: stem work is ~0.9 ms of ~4.15 ms diagnostic CUDA time; chunking adds ~15 extra large kernel launches (24 vs 5 in the stem) whose grids remain large at batch 8, plus 4 device-to-device copies of 6.4 MB, so expected overhead is well inside the 0.95 throughput budget (clean budget ~4.4604 ms vs ~4.2374 ms baseline median). Composition follows the binding contract: the inner conv/bn/relu/maxpool calls are NOT replaced or eliminated - they execute per chunk through the parent references handed to build(), preserving actual parent execution semantics, and the framework's module dispatch keeps its own phase/signature guard at the replaced boundary (observed (32,3,224,224) contiguous FP32 CUDA signature). Internal guards fall back to the parent reference for: unsupported signature (extra args/kwargs, non-CUDA, non-FP32, non-contiguous, wrong channel count, non-4D), grad-enabled execution (frozen workload always runs under inference_mode), runtime failure inside the chunked attempt, and a retained concise setup-failure category when the expected references/modules are absent. Fallback labels are reported via context.record_route inside the replacement (chunked_stem:ok / fallback_signature / fallback_runtime / fallback_setup), never at build time. Batch size is read from the input tensor each invocation (works for any N, including batch 1 or held-out batch 7, degrading to a single parent-equivalent chunk), nothing is cached across invocations, and no fixture outputs are precomputed. There is no previous-candidate directory and no previous-feedback.txt, so this attempt is the first implementation of the selected hypothesis.",
+  "setup_work": {
+    "description": "build() only captures the wrapped parent references (context.references for the stem, ResNetConvLayer and MaxPool2d boundaries), the ResNetEmbeddings module handle and its num_channels attribute, and reads the optional stem_chunk parameter. No CUDA kernels, no tensor allocation, no weight mutation, no packed weights and no model surgery happen at installation time; the CUDA graph-free eager path needs none.",
+    "setup_allocation_bytes": 0,
+    "retained_pools": "None created. All working buffers are per-invocation caching-allocator blocks that repeat the steady-state pattern of the parent path at chunk granularity; reserved-pool structure is unchanged in kind.",
+    "first_invocation_adaptation": "cudnn heuristic plan selection for the chunk shapes (8,3,224,224) conv etc. happens once and is cached in-process; with the frozen warmup=2 protocol this lands in warmup invocations outside the timed repeats, same lifecycle as the parent's own first-use plan selection.",
+    "parameter_handling": "stem_chunk is read from context['parameters'] when the coordinator supplies it (default 8, defensively clamped to >=1); it changes only execution granularity, never batch, shapes, dtype or sampling semantics."
+  },
+  "quality_risks": [
+    "cudnn heuristic algorithm selection at chunk batch (e.g. 8) may differ from batch 32, changing floating-point accumulation order in the stem conv; expected drift is far below the atol=rtol=1e-4 logits tolerance, but this is verified by the evaluator's paired reference comparison rather than assumed.",
+    "require_exact_top1 compares integer argmax tensors exactly; a near-tie in logits could in principle flip under tiny numerical drift. Expected argmax margins dwarf the noise; validated by the exact-top1 check in the quality run.",
+    "Quality compares against a parent-generated reference, so any fallback path is output-identical by construction (it executes the parent reference); the measured workload matches the observed signature, so the chunked path is the one exercised and counted for coverage.",
+    "Autograd/training semantics are not exercised by the frozen inference workload; the replacement deliberately falls back to the parent whenever gradients are enabled instead of claiming unverified autograd equivalence.",
+    "Numerical policies are untouched: no TF32, cudnn.benchmark stays False, FP32 weights and activations, no in-place rewrites of parent tensors (assembly writes only into the candidate-owned preallocated output)."
+  ],
+  "eliminated_calls": [],
+  "requires": [],
+  "replaces": [],
+  "parameter_space": {
+    "params": [
+      {
+        "name": "stem_chunk",
+        "kind": "int",
+        "choices": [
+          4,
+          8,
+          16
+        ],
+        "description": "Images per stem chunk. Smaller chunks lower stem transient memory (2 x chunk/32 x 102.76 MB) but add launches; 8 keeps the stem peak below the stage-0 ceiling with minimal launch overhead. Chunk never changes batch, sampling or output semantics; N <= stem_chunk degrades to one parent-equivalent chunk."
+      }
+    ],
+    "constraints": []
+  }
+}

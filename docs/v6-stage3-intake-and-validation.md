@@ -94,12 +94,27 @@ as reconstructed, never as contemporaneous snapshots.
 
 ## Progress
 
-Implementation frozen at `187617ce316403ea627c0d33392cc020bca2cb63`; 25 focused
-checks and an actual two-GPU NCCL tuning worker passed. Seven fresh complete
-pipelines are running from project/goal/launch-command inputs: Qwen TTFT and
-throughput, ResNet latency and memory, DDP step and communication, and GraphSAGE
-latency. Their final outcomes, source-fidelity audit, cross-goal and held-out
-checks are still pending.
+The seven-case raw-entry cohort is frozen at
+`187617ce316403ea627c0d33392cc020bca2cb63`. A separate graph followup uses
+`8fd2123` after an actual held-out adapter failure. Six original cases and the
+graph followup have completed both autonomous rounds; the DDP step case is
+generating its final candidate. No developer messages or candidate edits were
+injected into these complete pipelines.
+
+Source-fidelity checks passed for all seven original adapters, with timing and
+allocation-history differences explicitly retained. The original graph adapter
+failed held-out dimensions; that failure remains in its original cohort. The
+followup graph adapter passed both sizes. Frozen-candidate replay found positive
+graph held-out results and negative ResNet memory/latency transfers, while an
+independent ResNet final-version repeat confirmed the standard-workload memory
+gain. See the [complete-run evidence and limitations](evidence/v6-stage3-20261021/final/README.md)
+and [source audit](evidence/v6-stage3-20261021/source-audit/README.md).
+
+`744c93c` adds an explicit option for replaying a final replacement bundle onto
+an empty variant without pretending its source-only replacement IDs are true
+dependencies. Default checks and acceptance rules are unchanged. Twenty-eight
+focused tests passed; the option also completed actual GPU replay. An actual
+two-GPU worker verified the optional NCCL tuning collector.
 
 Completed developer experiments are archived in
 [evidence/v6-stage3-20261021/followup/README.md](evidence/v6-stage3-20261021/followup/README.md).

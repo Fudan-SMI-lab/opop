@@ -1,0 +1,13 @@
+{
+  "invariants": [
+    "Model is pretrained ResNet-18 loaded from the local assets via ResNetForImageClassification.from_pretrained(assets, local_files_only=True, dtype=torch.float32) with eval() behavior; weights and activations stay FP32.",
+    "Numerical policies preserved from common.py:34-42: torch.backends.cuda.matmul.allow_tf32=False, torch.backends.cudnn.allow_tf32=False, torch.backends.cudnn.benchmark=False, torch.set_float32_matmul_precision('highest'), torch.manual_seed(20261020), 4 CPU threads and 1 interop thread.",
+    "Input is the offline image batch of 7 for workload id unseen_batch (held_out_workloads, workloads.json:21): images = np.load(assets/pixels.npy) moved to CUDA (shape (3,3,224,224) float32), pixels = images[torch.arange(7, device='cuda') % 3].contiguous() -> (7,3,224,224) FP32 (fixture indices 0,1,2,0,1,2,0), GPU-resident before the timed boundary; no H2D transfer or preprocessing inside run().",
+    "The measured workload is exactly one model(pixel_values=pixels).logits forward under torch.inference_mode(); no reduction of the work amount, batch, image size or class dimension.",
+    "Correctness requires the full 1000-class logits compared with atol=1e-4, rtol=1e-4 (torch.testing.assert_close) and exact top-1 equality torch.equal(actual.argmax(-1), reference.argmax(-1)); the +1-corruption negative control must be rejected.",
+    "peak_allocated_bytes is the process-level PyTorch CUDA allocated peak for one forward with peak stats reset immediately before the timed call (torch.cuda.max_memory_allocated after the synchronized run), not whole-device, reserved or driver memory.",
+    "images_per_second is the source's full-request throughput for the fixed batch of 7, computed as batch * 1e3 / latency_ms (7 * 1e3 / elapsed) around one complete forward on the GPU-resident input; it must not be converted into a cached-only throughput.",
+    "Throughput constraint: images_per_second >= 0.95 * baseline; memory reduction must not be obtained by violating this ratio or the frozen workload/precision/data.",
+    "Model loading, weight transfer to GPU and input construction happen in prepare outside timed execution; the module creates no CUDA tensors and initializes no CUDA context at import time."
+  ]
+}

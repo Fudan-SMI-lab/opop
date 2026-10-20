@@ -1,0 +1,533 @@
+{
+  "trial": "trial-678b0307f5",
+  "decision": {
+    "state": "evaluated",
+    "revision": "abf61ffc7953907f1d91d130f52e576508c1815581d4cef8607f4ae11452cda3",
+    "parent": "5f9b3695a93c2856016d8d8ad62a33bc14dfd371ccd03754cd2b1efc77942cac",
+    "bundle": "trial-678b0307f5-param-9fc9967a",
+    "accepted": true,
+    "reasons": [],
+    "report_ref": "sha256:e2638ea05b5c05790f1d136f4e24be43f933d2c9c01e66f4bb88722aa9c3848a"
+  },
+  "measurement": {
+    "valid": true,
+    "objective": 0.30233,
+    "reference": 0.36452949999999995,
+    "parent_values": [
+      0.365907,
+      0.363152
+    ],
+    "candidate_values": [
+      0.330123,
+      0.274537
+    ],
+    "paired_gains": [
+      0.03578399999999998,
+      0.088615
+    ],
+    "noise_bounds": [
+      0.020549999999999957,
+      0.023313999999999946
+    ],
+    "constraints": [],
+    "reasons": [],
+    "framework_source": "0b74eefc86fcace2a00df6d245170ba8f1ae6c04874d7b93d05475903b668b06",
+    "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+  },
+  "missing_coverage": [],
+  "publication": "committed",
+  "evaluation_attempt": "trial-678b0307f5-evaluation-b137d118",
+  "experiment_policy": {
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ],
+    "leaf_groups_only": false,
+    "selection_strategy": "agent",
+    "feedback_view": "full"
+  },
+  "selection": {
+    "scope": "region",
+    "groups": [
+      "1f40997fb4a53f41b9da",
+      "f2cad7658bd2e042c326",
+      "b63063a25115d472ba96",
+      "d88a2a064d89714e4767",
+      "b95618f15b1fc7dd1ea1",
+      "ed596a74cd2dfa585107",
+      "753201460fe4b2dc1a7a",
+      "eb9cc487a716081b9897",
+      "01f5c9f78501e7c4935b",
+      "f40608d4e254c5f79624",
+      "5c99db34b94bd46a1fb2",
+      "9e0ef7801910bc69a36b",
+      "8cba5786959905e51279",
+      "e096dbe96b7f58cf696d",
+      "9f9c7497beec89998d34",
+      "fa151b16cb333184cf06",
+      "ea66e0f7bb66524b6fba",
+      "562e5d94e7b48896cb14",
+      "e19fdcbbf4cb1e560801",
+      "a4c7c5976feb97b1cacc"
+    ],
+    "affected_calls": [
+      "1028fb0daa9f0dfb49eb77a5",
+      "1e552d4b79e972e4cbaab2d8",
+      "25d962ddf1d62dc1dfe9d73c",
+      "3ac036f4c828a6d38c6de955",
+      "4304eda261665626978be0b9",
+      "475289736cd39d81341e09c5",
+      "49b6fb5fe96cf9db9b6a99ef",
+      "4d03639b402fceddc273f69f",
+      "4ddd9bee2ef04adc869eb278",
+      "63d0e414427e706edfa7c253",
+      "65e1b488db8b9f5d807e6fb4",
+      "68feabdb2ad56b933657b373",
+      "6bf0857231f7d64f563a3013",
+      "7a9b4559a88a2b7db8cab01a",
+      "80ff8693d7ac3cf2433b10f2",
+      "832071fa3dc0211b8c9c318a",
+      "8f00e4a280db2615b4661717",
+      "8f9e5bc88c094132609112e7",
+      "9496a092babc412a202f2b70",
+      "9a257a87e9f41e416189190c",
+      "ae7730ca257f79221e08a76d",
+      "b438f328cd06e86296f36e5e",
+      "b46ff1918a5d5735d6f3e591",
+      "c068b7a21f579f4eb2aa1913",
+      "cc96af6eaff2995698226a8e",
+      "d37c2564ad8d1e6a29fa2c77",
+      "d3dd3988bd821abdc87189a4",
+      "f431ca670017b5bab8ce828c",
+      "fbdedb0c9f65d63a321c21e9",
+      "fec806ac26baffddf3cb9bf6"
+    ],
+    "rationale": "The objective is the wall latency of one complete GraphEncoder forward (infer.py:53-58 sync-bracketed timing; original baseline 0.36707 ms on the immutable reference revision). Discovery on the current revision shows the whole forward is one contiguous region on the 'model' boundary: call 80ff8693 (group 1f40997fb4a53f41b9da) containing both MeanSAGE layers, both Linear projections and 15 CUDA kernels on a single stream. Measured decomposition (torch-profiler diagnostics, corroborated by the separately collected nsys run, resources.json): GPU kernel busy ~322.8 us of the 367 us clean wall, i.e. ~44 us (~12%) host-dispatch/launch slack even unprofiled, while the nsys-captured span (1291.6 us, 25% busy fraction) is only a perturbed upper bound on gaps. Within the 322.8 us busy time the scatter-based neighbor aggregation chain dominates: aten::index_add_ atomic scatter 145.2 us (99.0 us in layer 2, 46.1 us in layer 1; indexFuncLargeIndex/ReduceAdd, ~0.7 TB/s effective, ~16 duplicate destinations per node), the message-materializing index_select gathers 89.0 us, zeros_like 4.8 us, clamp_min 2.5 us, div 6.9 us, plus cat copies 12.2 us feeding the projections - together ~248 us (77%) of kernel time, and the layer-2 messages tensor (67 MB) also drives the 97 MB peak allocation. These costs are jointly determined by one algorithmic choice spanning both layers (the clamp_min and unsqueeze groups each contain one call per layer, so a single-layer boundary would split shared groups), and the dispatch slack and cat copy span the whole forward. A single-group or per-layer edit therefore cannot address the dominant cost; the coherent editable boundary is the entire encoder forward, replaced as one whole bundle at the module boundary (no inherited bundles are installed: search.json installed_bundles [], resources.json bundles [], so no inherited required calls constrain composition). Excluded: group 3c57c8731ec33ed76cbb / call 5d7d6bb13691b02f533f62b0 (project.invoke) is the frozen adapter measurement boundary, and the outer opop::0 record_function wrap (a60da373/9952fea8/ca1f233e) still fires around any replacement; the inner discovery record_function calls are listed as affected because a fused rewrite that bypasses submodules would stop them. Per binding-contract.md, any capture/replay policy must be composed inside the actual adapter invocation, and this selection explicitly declares the whole region replaced so effective composition is judged on the returned output, not per-op counters.",
+    "hypothesis": "Hypothesis to test: replacing the whole forward inside the 'model' boundary with a mathematically equivalent implementation that (1) computes neighbor mean aggregation without materializing per-edge messages and without global float atomics - e.g. a duplicate-tolerant spmm/CSR or sorted-segment reduction over (destinations, sources), or a fused gather-reduce kernel built at install time - cutting the 145.2 us atomic index_add_ plus most of the 89.0 us gather and 4.8 us zeros_like; (2) folding degree.clamp_min(1) normalization into the reduction or a reciprocal multiply, eliminating the clamp/unsqueeze/div kernels (~9.4 us plus launches); (3) replacing cat+linear with split GEMMs (x @ W[:, :in] + n @ W[:, in:]) eliminating the 12.2 us cat copies; and (4) shrinking the ~44 us clean-run dispatch/launch slack by reducing 15 kernel launches to fewer - will reduce latency_ms from the 0.367 ms original baseline toward roughly 0.22-0.28 ms (~25-35%), with peak allocated bytes falling as the 67 MB message buffer disappears. Numerical risk is low: any reorder of the same FP32 partial sums stays within atol 1e-5 / rtol 1e-4, and index_add_'s atomic accumulation order is itself non-deterministic. Known constraints and unknowns: any CSR/sort or JIT-compile setup must happen at build/install time or be amortized outside the timed boundary, since cross-invocation caching is barred (no cross-invocation state; workload must execute on current inputs each run); cuBLAS efficiency of the split GEMMs ([4096,256]@[256,256] halves) and the per-invocation cost of building sparse structures are unmeasured on this GPU (GPU counters were deliberately not collected), so the kernel-time split between atomics, memory traffic and launch overhead is inferred from durations and grid shapes, not counter evidence. The nsys gap sizes are profiler-perturbed upper bounds; only the clean harness measurement (warmup 3, repeats 15, median) can accept the candidate.",
+    "source_evidence": {
+      "clean_baseline_latency_ms": 0.36707,
+      "gpu_busy_us_diagnostics": 322.754,
+      "index_add_us": 145.185,
+      "index_select_us": 88.961,
+      "linear_us": 58.784,
+      "cat_us": 12.16,
+      "aggregation_chain_us": 248.354,
+      "nsys_evidence": "observations/current/nsys-9ed9145c.json (15 kernels, single stream, separate diagnostic run)",
+      "python_runtime_evidence": "observations/current/python_runtime-aea48e29.json (cProfile diagnostic only; host dispatch costs, not a score)"
+    }
+  },
+  "proposal": {
+    "implementation": "composite",
+    "replacement_calls": [
+      "80ff8693d7ac3cf2433b10f2"
+    ],
+    "rationale": "Single whole-region replacement of the GraphEncoder forward at the 'model' module boundary (group 1f40997fb4a53f41b9da), as selected. Measured motivation (revision 5f9b3695, nsys-9ed9145c + torch-profiler diagnostics in selection.json): clean baseline latency_ms 0.36707 with ~322.8 us GPU busy over 15 single-stream kernels; the scatter-aggregation chain dominates with aten::index_add_ atomic scatters 145.2 us (99.0 us layer 2 at [65536,256]->[4096,256], 46.1 us layer 1), message-materializing index_select gathers 89.0 us, zeros_like 4.8 us, clamp_min 2.5 us, div 6.9 us and cat copies 12.2 us; the layer-2 messages tensor (67 MB) also drives the 97 MB peak allocation, and ~44 us of the wall is host dispatch/launch slack. The clamp_min/unsqueeze/div/cat costs are jointly determined with the aggregation across both layers (shared groups), so only a whole-forward rewrite addresses them; no bundles are installed (search.json installed_bundles []), so no inherited required calls constrain composition and requires/replaces are empty. Replacement math (bit-for-bit the same formula, different evaluation order): (1) per invocation, build a CSR-like segment structure from the current inputs only: a one-program Triton scan kernel turns the passed degree tensor (defined by the frozen workload as bincount(destinations), infer.py:24 / adapter.py:74) into int32 counts/starts/ends, and a Triton scatter kernel uses int32 cursor atomics to write src_sorted[p]=sources[e] grouped by destination; duplicate directed edges each keep their own slot, nodes with no incoming edges get empty segments. (2) A Triton segment-mean kernel computes neighbors[n,:]=sum_p x[src_sorted[p],:]/max(deg,1) per node, reading source rows directly: no [E,K] message tensor is materialized, no global fp32 atomics, and the zeros/clamp_min/unsqueeze/div kernels (and their launches) disappear; division is a per-element IEEE fp32 divide by clamp(deg,1), identical to the parent's div. (3) The projection uses the cat-free split x@W[:, :K].T + neighbors@W[:, K:].T + bias via torch.addmm plus an in-place beta=1 addmm_ (cuBLAS sgemm, TF32 remains disabled), eliminating both cat kernels and their 4/8 MB buffers, and relu_ is applied in place between layers. This drops 15 kernels to 9 (4 Triton + 5 aten). Numerics: the reference itself is order-nondeterministic (fp32 atomic accumulation); any reordering of the same fp32 partial sums (avg 16, max ~60 terms per node) gives relative differences ~1e-6, far inside atol 1e-5 / rtol 1e-4, and cuBLAS split-K-into-halves changes only fp32 summation association. Expected effect on latency_ms is a hypothesis (~0.15-0.25 ms, i.e. ~30-60%), to be accepted only by the clean harness measurement (warmup 3, repeats 15, median); per-kernel memory-traffic attribution is inferred from durations and grid shapes since GPU counters were deliberately not collected. Memory scope, reported honestly: per-run framework.peak_allocated_bytes is expected to fall because the 67 MB layer-2 message buffer and 4/8 MB cat buffers are no longer allocated; per-invocation fresh allocations are ~0.3 MB of int32 CSR buffers plus nb1 2 MB, hidden 4 MB, nb2 4 MB and out 1 MB, reused from the caching allocator across repeats. Setup allocation and retained pools: build() compiles four Triton binaries and runs a tiny N=32/E=32 dummy pipeline plus two small addmm calls (<1 MB GPU total, freed; the caching allocator may retain those reserved blocks, so lifecycle_peak_reserved_bytes can stay flat or rise; nothing is moved into CUDA Graph capture and no graph pools are retained). Semantics preserved: model.eval() + @torch.inference_mode() FP32 with TF32 flags untouched, same output tensor shape [4096,64]/dtype/device/contiguity, no cross-invocation state (the CSR structure is rebuilt from the live inputs on every invocation, so the workload always executes on current inputs and nothing fixture-dependent is precomputed or cached), no extra synchronizations, single stream, no collectives (single-device task; communication-ownership.json has empty buckets), and no in-place writes to any input (in-place ops touch only freshly allocated intermediates). Fallbacks are labeled distinctly: fallback:setup (Triton import/weight-shape/GPU-device failure, or the build-time numerical self-check against the eager formula failing), fallback:signature (unsupported shapes/dtypes/strides/devices via an internal guard in addition to the framework's phase/signature guards) and fallback:runtime (any exception mid-pipeline re-runs the parent on the untouched inputs); route labels are diagnostic self-report only. The region is shape-generic (masked kernels, N<=8192 single-program scan with a torch cumsum path above), so the held-out unseen_graph workload (7168 nodes, 143360 edges) also computes correctly, with its one extra BLOCK_N=8192 compile landing outside timed repeats. eliminated_calls lists the 28 inner affected calls: the aten ops are subsumed by the mathematically equivalent fused computation whose result IS the returned encoder output, and the inner profiler._record_function_enter/exit discovery wraps (opop::4/13/19/28 and their exits) stop because model.first/model.second and the Linear submodules are no longer invoked, exactly as selection.json anticipates ('a fused rewrite that bypasses submodules would stop them'); the outer wraps (opop::0, and opop::2 whose parent is the still-executing project.invoke boundary, call 475289736cd39d81341e09c5) keep firing, and the framework recaptures the plan from the returned output. No inputs/previous-feedback.txt and no inputs/previous-candidate/ exist for this attempt; this is the first candidate, so the rationale rests on the revision's own measurements cited above rather than prior worker feedback. parameter_space exposes the two power-of-two Triton block sizes for the existing TaskSearch/TPE loop; they only change masked-vectorization widths, not task semantics, and defaults (reduce_block_p=8, scatter_block_e=512) apply when parameters are absent.",
+    "setup_work": {
+      "build_time_steps": [
+        "Read the live GraphEncoder module from context['modules'] and derive k1/k2 from the actual Linear weight shapes (128/256 for the frozen config); keep parameter references and transposed column-slice views Wa/Wb for the split GEMMs (views only, no copies, so live weights are always used).",
+        "JIT-compile four Triton binaries at installation: _scan_kernel with BLOCK_N=next_pow2(observed N)=4096, _scatter_kernel (BLOCK_E parameter), and _segmean_kernel for K=128 and K=256 (BLOCK_P parameter).",
+        "Run a tiny self-checked dummy pipeline (N=32, E=32, seeded generator, on the module's CUDA device) through the exact fast path and torch.testing.assert_close it against the eager index_select/zeros.index_add_/clamp_min/div/cat/linear formula; a failure marks the setup-failure route instead of installing a broken fast path. Also warms the cuBLAS handles via two small addmm calls.",
+        "Free all dummy tensors; no persistent GPU buffers, pools, graphs or captured fixtures remain; nothing is cached across invocations."
+      ],
+      "per_invocation_work": [
+        "Allocate and compute int32 counts/starts/ends (scan kernel or torch cumsum path for N>8192) and src_sorted (scatter kernel) from the current sources/destinations/degree tensors; ~0.3 MB.",
+        "Two segment-mean kernels (one per layer) plus addmm/addmm_/relu_ chains; ~11 MB of transient activations."
+      ],
+      "memory_note": "Setup dummy allocations are <1 MB and freed; caching-allocator reserved blocks may be retained (lifecycle_peak_reserved_bytes can stay flat or rise while framework.peak_allocated_bytes per run falls with the 67 MB message and 4/8 MB cat buffers gone). No CUDA Graph capture is used, so no graph-private pools are created and no allocation is hidden inside capture; lifecycle peaks include the setup warmup by definition."
+    },
+    "quality_risks": [
+      "Reordered fp32 partial sums (segment-sequential instead of atomic arrival order, and split-K GEMM halves) vs the reference's own nondeterministic atomic order: differences ~1e-6 relative, well inside atol 1e-5 / rtol 1e-4, but the margin is an estimate, not a measured fact on this GPU.",
+      "Triton kernels could fail to compile or launch on the worker GPU (dynamic per-node loop bounds, tl.cumsum/atomic_add usage): caught and routed to fallback:runtime/fallback:setup, which preserves correctness via the parent but yields no improvement; the build-time dummy self-check catches most such failures at installation.",
+      "Performance estimates are derived from nsys durations and grid shapes without GPU counters; cuBLAS efficiency of the two half-K GEMMs per layer and the Triton segment-mean bandwidth are unmeasured on this device, so the latency gain may be smaller than estimated; only the clean harness median can accept it.",
+      "Cursor-atomics scatter makes the within-segment summation order nondeterministic run to run; reference-vs-actual assert_close still passes by the same tolerance argument as the original atomics.",
+      "If the passed degree tensor ever disagreed with bincount(destinations), segment offsets would be wrong; the frozen workload constructs degree=bincount(destinations) (infer.py:24, adapter.py:74), and in-kernel bounds masks (p in [0,E), d in [0,N)) keep every access in-bounds regardless, degrading to wrong values rather than memory corruption, which quality checks would reject.",
+      "The framework's phase/signature guards are complemented by an internal guard; any unexpected signature (non-fp32 features, non-int64 edge tensors, non-contiguous strides, other devices) falls back to the parent with label fallback:signature, so behavior is never silently changed."
+    ],
+    "eliminated_calls": [
+      "1028fb0daa9f0dfb49eb77a5",
+      "1e552d4b79e972e4cbaab2d8",
+      "25d962ddf1d62dc1dfe9d73c",
+      "3ac036f4c828a6d38c6de955",
+      "4304eda261665626978be0b9",
+      "49b6fb5fe96cf9db9b6a99ef",
+      "4d03639b402fceddc273f69f",
+      "4ddd9bee2ef04adc869eb278",
+      "63d0e414427e706edfa7c253",
+      "65e1b488db8b9f5d807e6fb4",
+      "68feabdb2ad56b933657b373",
+      "6bf0857231f7d64f563a3013",
+      "7a9b4559a88a2b7db8cab01a",
+      "832071fa3dc0211b8c9c318a",
+      "8f00e4a280db2615b4661717",
+      "8f9e5bc88c094132609112e7",
+      "9496a092babc412a202f2b70",
+      "9a257a87e9f41e416189190c",
+      "ae7730ca257f79221e08a76d",
+      "b438f328cd06e86296f36e5e",
+      "b46ff1918a5d5735d6f3e591",
+      "c068b7a21f579f4eb2aa1913",
+      "cc96af6eaff2995698226a8e",
+      "d37c2564ad8d1e6a29fa2c77",
+      "d3dd3988bd821abdc87189a4",
+      "f431ca670017b5bab8ce828c",
+      "fbdedb0c9f65d63a321c21e9",
+      "fec806ac26baffddf3cb9bf6"
+    ],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {
+      "params": [
+        {
+          "name": "reduce_block_p",
+          "kind": "int",
+          "choices": [
+            2,
+            4,
+            8,
+            16
+          ],
+          "description": "Edges consumed per iteration in the Triton segment-mean kernel; power-of-two block width only (tl.arange requirement), affects vectorization/registers, not semantics. Default 8."
+        },
+        {
+          "name": "scatter_block_e",
+          "kind": "int",
+          "choices": [
+            256,
+            512,
+            1024,
+            2048
+          ],
+          "description": "Edges per program in the Triton CSR scatter kernel; power-of-two block width only, affects parallelism/atomics batching, not semantics. Default 512."
+        }
+      ],
+      "constraints": []
+    }
+  },
+  "bundle": {
+    "id": "trial-678b0307f5-param-9fc9967a",
+    "scope": "region",
+    "implementation": "composite",
+    "calls": [
+      "80ff8693d7ac3cf2433b10f2"
+    ],
+    "groups": [
+      "1f40997fb4a53f41b9da",
+      "f2cad7658bd2e042c326",
+      "b63063a25115d472ba96",
+      "d88a2a064d89714e4767",
+      "b95618f15b1fc7dd1ea1",
+      "ed596a74cd2dfa585107",
+      "753201460fe4b2dc1a7a",
+      "eb9cc487a716081b9897",
+      "01f5c9f78501e7c4935b",
+      "f40608d4e254c5f79624",
+      "5c99db34b94bd46a1fb2",
+      "9e0ef7801910bc69a36b",
+      "8cba5786959905e51279",
+      "e096dbe96b7f58cf696d",
+      "9f9c7497beec89998d34",
+      "fa151b16cb333184cf06",
+      "ea66e0f7bb66524b6fba",
+      "562e5d94e7b48896cb14",
+      "e19fdcbbf4cb1e560801",
+      "a4c7c5976feb97b1cacc"
+    ],
+    "requires": [],
+    "replaces": [],
+    "parameters": {
+      "reduce_block_p": 2,
+      "scatter_block_e": 512
+    },
+    "installer": "opop_candidates/trial-678b0307f5.py"
+  },
+  "paired_runs": [
+    {
+      "parent": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 3.8113343119621277,
+        "lease_wait_s": 6.928361605852842,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 262144,
+                  "max_abs_error": 1.1920928955078125e-07
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 262144,
+                  "max_abs_error": 1.1920928955078125e-07
+                }
+              ],
+              "coverage": {},
+              "math_policy_unchanged": true,
+              "metrics": {
+                "latency_ms": 0.365907,
+                "graphs_per_second": 2732.934871429079,
+                "nodes": 4096.0,
+                "edges": 65536.0,
+                "peak_allocated_bytes": 97011200.0,
+                "framework.elapsed_ms": 0.365907,
+                "framework.peak_allocated_bytes": 97011200.0,
+                "framework.peak_reserved_bytes": 146800640.0,
+                "framework.allocated_bytes": 13125120.0,
+                "framework.reserved_bytes": 146800640.0,
+                "framework.lifecycle_peak_allocated_bytes": 98059776.0,
+                "framework.lifecycle_peak_reserved_bytes": 146800640.0
+              }
+            }
+          }
+        ]
+      },
+      "candidate": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 5.512800015509129,
+        "lease_wait_s": 7.296548791229725,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 262144,
+                  "max_abs_error": 3.2782554626464844e-07
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 262144,
+                  "max_abs_error": 2.384185791015625e-07
+                }
+              ],
+              "coverage": {
+                "trial-678b0307f5-param-9fc9967a": {
+                  "counts": {
+                    "80ff8693d7ac3cf2433b10f2": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "80ff8693d7ac3cf2433b10f2"
+                  ],
+                  "reference_invocations": {},
+                  "candidate_declared_routes": [
+                    {
+                      "call": "80ff8693d7ac3cf2433b10f2",
+                      "route": "composite:triton-segment-mean-split-gemm",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "latency_ms": 0.330123,
+                "graphs_per_second": 3029.1739745488803,
+                "nodes": 4096.0,
+                "edges": 65536.0,
+                "peak_allocated_bytes": 23922176.0,
+                "framework.elapsed_ms": 0.330123,
+                "framework.peak_allocated_bytes": 23922176.0,
+                "framework.peak_reserved_bytes": 46137344.0,
+                "framework.allocated_bytes": 13125120.0,
+                "framework.reserved_bytes": 46137344.0,
+                "framework.lifecycle_peak_allocated_bytes": 24970752.0,
+                "framework.lifecycle_peak_reserved_bytes": 46137344.0
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "parent": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 4.410818807780743,
+        "lease_wait_s": 8.026686023920774,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 262144,
+                  "max_abs_error": 1.1920928955078125e-07
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 262144,
+                  "max_abs_error": 1.1920928955078125e-07
+                }
+              ],
+              "coverage": {},
+              "math_policy_unchanged": true,
+              "metrics": {
+                "latency_ms": 0.363152,
+                "graphs_per_second": 2753.667885623651,
+                "nodes": 4096.0,
+                "edges": 65536.0,
+                "peak_allocated_bytes": 97011200.0,
+                "framework.elapsed_ms": 0.363152,
+                "framework.peak_allocated_bytes": 97011200.0,
+                "framework.peak_reserved_bytes": 146800640.0,
+                "framework.allocated_bytes": 13125120.0,
+                "framework.reserved_bytes": 146800640.0,
+                "framework.lifecycle_peak_allocated_bytes": 98059776.0,
+                "framework.lifecycle_peak_reserved_bytes": 146800640.0
+              }
+            }
+          }
+        ]
+      },
+      "candidate": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 4.961589843034744,
+        "lease_wait_s": 7.045604959130287,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 262144,
+                  "max_abs_error": 3.2782554626464844e-07
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 262144,
+                  "max_abs_error": 2.384185791015625e-07
+                }
+              ],
+              "coverage": {
+                "trial-678b0307f5-param-9fc9967a": {
+                  "counts": {
+                    "80ff8693d7ac3cf2433b10f2": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "80ff8693d7ac3cf2433b10f2"
+                  ],
+                  "reference_invocations": {},
+                  "candidate_declared_routes": [
+                    {
+                      "call": "80ff8693d7ac3cf2433b10f2",
+                      "route": "composite:triton-segment-mean-split-gemm",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "latency_ms": 0.274537,
+                "graphs_per_second": 3642.4962755475585,
+                "nodes": 4096.0,
+                "edges": 65536.0,
+                "peak_allocated_bytes": 23922176.0,
+                "framework.elapsed_ms": 0.274537,
+                "framework.peak_allocated_bytes": 23922176.0,
+                "framework.peak_reserved_bytes": 46137344.0,
+                "framework.allocated_bytes": 13125120.0,
+                "framework.reserved_bytes": 46137344.0,
+                "framework.lifecycle_peak_allocated_bytes": 24970752.0,
+                "framework.lifecycle_peak_reserved_bytes": 46137344.0
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "candidate": {
+    "status": "passed",
+    "failure": null,
+    "wall_s": 5.512800015509129,
+    "lease_wait_s": 7.296548791229725,
+    "ranks": [
+      {
+        "rank": 0,
+        "status": "passed",
+        "result": {
+          "valid": true,
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 262144,
+              "max_abs_error": 3.2782554626464844e-07
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 262144,
+              "max_abs_error": 2.384185791015625e-07
+            }
+          ],
+          "coverage": {
+            "trial-678b0307f5-param-9fc9967a": {
+              "counts": {
+                "80ff8693d7ac3cf2433b10f2": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "80ff8693d7ac3cf2433b10f2"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [
+                {
+                  "call": "80ff8693d7ac3cf2433b10f2",
+                  "route": "composite:triton-segment-mean-split-gemm",
+                  "count": 2
+                }
+              ],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "math_policy_unchanged": true,
+          "metrics": {
+            "latency_ms": 0.330123,
+            "graphs_per_second": 3029.1739745488803,
+            "nodes": 4096.0,
+            "edges": 65536.0,
+            "peak_allocated_bytes": 23922176.0,
+            "framework.elapsed_ms": 0.330123,
+            "framework.peak_allocated_bytes": 23922176.0,
+            "framework.peak_reserved_bytes": 46137344.0,
+            "framework.allocated_bytes": 13125120.0,
+            "framework.reserved_bytes": 46137344.0,
+            "framework.lifecycle_peak_allocated_bytes": 24970752.0,
+            "framework.lifecycle_peak_reserved_bytes": 46137344.0
+          }
+        }
+      }
+    ]
+  }
+}

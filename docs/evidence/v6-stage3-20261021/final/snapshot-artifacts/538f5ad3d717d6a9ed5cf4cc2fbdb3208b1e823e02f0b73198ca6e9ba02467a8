@@ -1,0 +1,36 @@
+{
+  "scope": "region",
+  "groups": [
+    "3821cceac23fa97e5a55",
+    "0022893ec8c1ceea869f",
+    "95d8eead897036452c64",
+    "c97c8dfae7e5def85428",
+    "7e7c01e2bf7e30a42280",
+    "3412952b9279e41b1709",
+    "c671bb65e86ad614e3f6",
+    "8bffcf00b7bd20c935a5",
+    "c0af3909ba0a106672d5",
+    "5d6060b158cac3430090"
+  ],
+  "rationale": "The objective is peak_allocated_bytes for one batch-32 FP32 ResNet-18 forward (baseline 281,975,808 B). Measured/derived facts locate the process peak inside the stem (ResNetEmbeddings): during aten::batch_norm and aten::relu the trace shows two coexisting full-batch (32,64,112,112) buffers of 102,760,448 B each (conv output, then BN/ReLU output; the ReLU is out-of-place, executed as vectorized_elementwise_kernel per call-resources.json). Persistent-live memory during run() is params 46,758,048 B + pixels 19,267,584 B + images 1,806,336 B = 67,831,968 B; adding the two 102.76 MB stem buffers gives 273,352,864 B, and the ~8.6 MB residual to the measured 281.98 MB peak is cudnn conv workspace - so the stem is the peak site, not merely the largest indexed family. The selected region is the contiguous stem execution: ResNetEmbeddings forward -> embedder ResNetConvLayer -> Conv2d/aten::conv2d -> BatchNorm2d/aten::batch_norm -> ReLU/aten::relu -> MaxPool2d/aten::max_pool2d (transformers 5.16.1 ResNetEmbeddings.forward is exactly embedder+pooler, verified in the worker venv). Every op in this region is per-sample (conv with per-sample windows, eval-mode BN, elementwise ReLU, max pooling), so executing the stem in batch chunks (e.g. 8) and writing chunk results into a preallocated (32,64,56,56) output (or cat of chunk outputs) is mathematically the same computation; chunk-sized conv/bn buffers are 25.69 MB instead of 102.76 MB. The boundary is coherent and minimal: the region returns the same-shaped pooled tensor, so downstream encoder/stage/classifier calls keep their observed execution structure and are not additional affected calls; the 10 listed calls (all calls of the selected groups) are re-invoked once per chunk. Alternatives rejected: folding BN into the stem conv plus in-place ReLU also removes only one 102.76 MB buffer and lands on the same stage-0 ceiling (~176-180 MB) but with weight surgery and larger numerical drift; whole-model micro-batching could reach ~124 MB but multiplies kernel-launch count ~4x across the whole 4.24 ms forward, risking the hard images_per_second >= 0.95*7551.7 constraint, and would have to enumerate the entire plan as affected.",
+  "hypothesis": "Chunked (micro-batched) stem execution at the ResNetEmbeddings boundary - splitting the GPU-resident (32,3,224,224) input into batch chunks (e.g. 8 images), running self.embedder (conv->BN->ReLU) and self.pooler per chunk, and assembling the (32,64,56,56) result without a full-batch (32,64,112,112) intermediate - reduces peak_allocated_bytes from 281,975,808 B to approximately the next coexistence ceiling: 67.83 MB persistent + 4 x 25.69 MB stage-0 buffers + workspace, i.e. roughly 176-182 MB (~35-38% reduction), with the chunked stem itself peaking near 67.8 + 2x25.7 + 25.7 ~ 150 MB. Throughput should stay within the 0.95 ratio (clean budget 4.4604 ms vs 4.2374 ms median) because the stem is ~0.9 ms of the ~4.15 ms diagnostic CUDA time and chunking adds only ~3-15 extra large kernel launches (launch overhead is microseconds; conv at chunk batch 8 still launches grids of ~hundreds of blocks), so expected overhead is well under 1%. Quality is expected to hold: batch splitting is per-sample math identical to the full-batch forward; only cudnn algorithm selection per shape can change rounding order (typically ~1e-6 relative), far inside atol=rtol=1e-4, and top-1 argmax gaps are expected to dwarf that noise. Risks to test: (1) cudnn heuristic algo choice at batch 8 could differ enough to perturb logits - verify with the harness reference comparison and exact-top1 check; (2) if cat-based assembly doubles the pooled buffer momentarily, use a preallocated output with narrow views to keep the stem chunk peak below the stage-0 ceiling; (3) the resulting peak is then bounded by stage 0, which is the natural follow-up region, not part of this candidate. This is a hypothesis to be validated by the independent measurement, not a claimed benefit.",
+  "affected_calls": [
+    "021f27d2d0d73dee5fab9084",
+    "220b9d0ec76e2ccc01dcdb09",
+    "279a256c150755fd69216f5a",
+    "2f3bfb9ee01d701be01d2ff3",
+    "35096a239aa1290aabeed5de",
+    "3c3c7a3e1837d0185b1df6f0",
+    "52e7c2f32ca6695f380d240f",
+    "679ccfe137094282d25350c1",
+    "683c822136ed7958f3e9ba44",
+    "87335b95bb02e81155c4add6",
+    "8ef2341287e5b4afa9d0e7bf",
+    "aa9765a1830bed7ee2727282",
+    "cc658ee4e2f7b6628feb4ca4",
+    "d1400702f02f387d67569ac9",
+    "ddf82d5c5c82c55ac9ae09f1",
+    "ea7cd77adb03bad473412ebc",
+    "eea81d115a4403a3083c1f64"
+  ]
+}

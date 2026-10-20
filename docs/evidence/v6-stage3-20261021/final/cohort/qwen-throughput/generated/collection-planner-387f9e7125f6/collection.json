@@ -1,0 +1,26 @@
+{
+  "collectors": [
+    "nsys",
+    "execution_timeline",
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "execution_timeline.cpu_to_cuda_submit_associations",
+    "execution_timeline.synchronization_events",
+    "execution_timeline.per_device_intervals",
+    "nsys.timeline.device_kernel_intervals",
+    "nsys.timeline.cuda_runtime_api_durations",
+    "python_runtime.cprofile_host_dispatch_self_time",
+    "python_runtime.cprofile_host_binding_costs"
+  ],
+  "unavailable_fields": {
+    "communication": "not_applicable: single-device task (observations.json capabilities: communication status not_applicable, reason 'single-device task'; request.json distributed_backend=null, one leased RTX 4090)",
+    "cross_rank.clock_matched_intervals": "no peer ranks: observations.json cross_rank.matched is empty and ranks[0].status=not_applicable ('single-device task'); cross-rank clock subtraction disallowed",
+    "nccl_tuning.algorithm_protocol_channel": "no distributed backend and no collectives in the measured window; a warmed NCCL worker would have no algorithm/protocol/channel decisions to observe, and kernel entry names alone do not identify protocol",
+    "collective_calibration.reference_allreduce": "no collectives exist on this single-device inference objective; a separate synthetic full-world SUM allreduce is a correctness/reference experiment and would not inform end-to-end inference throughput",
+    "device_telemetry.per_operator_pcie_nvlink_bytes": "no collectives and GPU-resident inputs; NVML telemetry is device-wide with native sampling windows and cannot be attributed per-operator or per-collective; PCIe/NVLink traffic must not be invented from logical payload or memcpy sizes",
+    "autograd.backward_ranges": "coverage.json reports autograd_ranges=0, forward_linked_autograd_ranges=0 and backward_associated_kernels=0; workload runs under torch.inference_mode() with no training or gradient buckets, so bucket identity fields do not exist",
+    "execution_timeline.gpu_readiness_and_consumer_completion": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown, retained as unknown rather than inferred"
+  },
+  "rationale": "Objective is end-to-end generated_tokens_per_second (maximize) for one interactive request: batch=1, 256-token GPU-resident prompt, exactly 32 greedy tokens (prefill + 31 KV-cached decode steps) under torch.inference_mode() with sdpa on a single leased RTX 4090 (request.json, qwen_inference.py:14-41). The torch collector already ran and coverage.json shows 66441/66441 CUDA kernels associated with 0 unassociated, 0 ambiguous and 0 autograd ranges, so kernel-to-operator attribution and kernel hot spots are already covered and torch is not re-requested. The decisive open questions for this objective are attribution of wall-clock time between host and device across the 31 short decode steps, and the host dispatch/binding cost per step in the measured Python 3.12.4 environment (torch 2.13.0+cu129, transformers 5.16.1, worker-environment.json). execution_timeline is selected for its CPU-to-CUDA submit associations, synchronization events and per-device intervals to bound inter-step host gaps and the prefill/decode split; its known limits are recorded in unavailable_fields and it is not treated as a communication hook or a search driver. python_runtime is selected to investigate host dispatch and binding costs via its separate warmed cProfile call trace, accepting that it perturbs execution and its inclusive/self times are not clean performance scores or GPU compute durations. nsys is available (request.json tools.nsys; binary verified present) and is selected to resolve the host/device attribution question with an independent device-side timeline and CUDA runtime API rows (launch cost vs execution vs gaps); it will not be used to separate NCCL waiting from wire transfer or to prove bucket identity, which do not apply here. nccl_tuning, collective_calibration and device_telemetry are not selected because the communication capability is not_applicable for a single-device task with no collectives and no PCIe/NVLink question; device-wide NVML windows cannot be attributed to operators. candidate_diagnostics is not selected as no capability or trace evidence ties it to this objective, and counters are not requested indiscriminately."
+}

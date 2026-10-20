@@ -1,0 +1,428 @@
+{
+  "engine": "existing TaskSearch + OptunaTPETuner",
+  "space": {
+    "params": [
+      {
+        "name": "reduce_block_p",
+        "kind": "int",
+        "choices": [
+          2,
+          4,
+          8,
+          16
+        ],
+        "description": "Edges consumed per iteration in the Triton segment-mean kernel; power-of-two block width only (tl.arange requirement); configures the kernels that get captured into the CUDA graph, affecting vectorization/registers, not semantics. Default 2 (best value of the accepted parent's search)."
+      },
+      {
+        "name": "scatter_block_e",
+        "kind": "int",
+        "choices": [
+          256,
+          512,
+          1024,
+          2048
+        ],
+        "description": "Edges per program in the Triton CSR scatter kernel; power-of-two block width only; configures the kernels that get captured into the CUDA graph, affecting parallelism/atomics batching, not semantics. Default 512 (best value of the accepted parent's search)."
+      }
+    ],
+    "constraints": []
+  },
+  "selected": "trial-c671461bdd-param-412ad883",
+  "stats": [
+    {
+      "candidate_id": "cand-609bd687",
+      "space_id": "space-cand-609bd687",
+      "n_complete": 3,
+      "n_fail": 0,
+      "best": {
+        "trial_id": "tr-d9e34a06",
+        "candidate_id": "cand-609bd687",
+        "space_id": "space-cand-609bd687",
+        "params": {
+          "values": {
+            "reduce_block_p": 2,
+            "scatter_block_e": 512
+          }
+        },
+        "status": "complete",
+        "failure_kind": null,
+        "failure_detail": "",
+        "latency_ms": null,
+        "task_evaluation": {
+          "score": 0.167097,
+          "valid": true,
+          "metrics": {
+            "latency_ms": 0.167097,
+            "graphs_per_second": 5984.5478973290965,
+            "nodes": 4096.0,
+            "edges": 65536.0,
+            "peak_allocated_bytes": 31214080.0,
+            "framework.elapsed_ms": 0.167097,
+            "framework.peak_allocated_bytes": 31214080.0,
+            "framework.peak_reserved_bytes": 69206016.0,
+            "framework.allocated_bytes": 31214080.0,
+            "framework.reserved_bytes": 69206016.0,
+            "framework.lifecycle_peak_allocated_bytes": 40962560.0,
+            "framework.lifecycle_peak_reserved_bytes": 69206016.0,
+            "replacement.diagnostic_kernel_sum_us": 115.171,
+            "replacement.kernel_launches": 9.0,
+            "replacement.max_registers_per_thread": 102.0,
+            "replacement.max_shared_memory_bytes": 32768.0
+          },
+          "detail": null
+        },
+        "profile": null,
+        "fp64_rescued_trials": null,
+        "job_wall_s": null,
+        "job_timed_out": null
+      },
+      "param_stats": [
+        {
+          "name": "reduce_block_p",
+          "best_value": 2,
+          "best_trial_value": 2,
+          "at_boundary": true,
+          "boundary_direction": "min",
+          "effect_pct": 0.0,
+          "latency_by_value": {},
+          "objective_by_value": {
+            "4": 0.167379,
+            "2": 0.167097,
+            "16": 0.190987
+          },
+          "effect_absolute": 0.023889999999999995,
+          "failure_rate_by_value": {
+            "2": 0.0,
+            "4": 0.0,
+            "16": 0.0
+          }
+        },
+        {
+          "name": "scatter_block_e",
+          "best_value": 512,
+          "best_trial_value": 512,
+          "at_boundary": false,
+          "boundary_direction": null,
+          "effect_pct": 0.0,
+          "latency_by_value": {},
+          "objective_by_value": {
+            "2048": 0.167379,
+            "512": 0.167097,
+            "256": 0.190987
+          },
+          "effect_absolute": 0.023889999999999995,
+          "failure_rate_by_value": {
+            "256": 0.0,
+            "512": 0.0,
+            "2048": 0.0
+          }
+        }
+      ],
+      "resource_at_best": null,
+      "failure_clusters": []
+    }
+  ],
+  "responses": [],
+  "observations": [
+    {
+      "bundle": "trial-c671461bdd-param-ad89ddc6",
+      "parameters": {
+        "reduce_block_p": 4,
+        "scatter_block_e": 2048
+      },
+      "result": {
+        "score": 0.167379,
+        "valid": true,
+        "metrics": {
+          "latency_ms": 0.167379,
+          "graphs_per_second": 5974.465136008699,
+          "nodes": 4096.0,
+          "edges": 65536.0,
+          "peak_allocated_bytes": 31214080.0,
+          "framework.elapsed_ms": 0.167379,
+          "framework.peak_allocated_bytes": 31214080.0,
+          "framework.peak_reserved_bytes": 69206016.0,
+          "framework.allocated_bytes": 31214080.0,
+          "framework.reserved_bytes": 69206016.0,
+          "framework.lifecycle_peak_allocated_bytes": 40962560.0,
+          "framework.lifecycle_peak_reserved_bytes": 69206016.0,
+          "replacement.diagnostic_kernel_sum_us": 106.17699999999999,
+          "replacement.kernel_launches": 9.0,
+          "replacement.max_registers_per_thread": 102.0,
+          "replacement.max_shared_memory_bytes": 32768.0
+        },
+        "detail": null
+      },
+      "constraints": [],
+      "run": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 5.511415284126997,
+        "lease_wait_s": 11.575277630239725,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 262144,
+                  "max_abs_error": 2.682209014892578e-07
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 262144,
+                  "max_abs_error": 2.682209014892578e-07
+                }
+              ],
+              "coverage": {
+                "trial-c671461bdd-param-ad89ddc6": {
+                  "counts": {
+                    "80ff8693d7ac3cf2433b10f2": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "80ff8693d7ac3cf2433b10f2"
+                  ],
+                  "reference_invocations": {},
+                  "candidate_declared_routes": [
+                    {
+                      "call": "80ff8693d7ac3cf2433b10f2",
+                      "route": "graph:capture",
+                      "count": 1
+                    },
+                    {
+                      "call": "80ff8693d7ac3cf2433b10f2",
+                      "route": "graph:replay",
+                      "count": 1
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "latency_ms": 0.167379,
+                "graphs_per_second": 5974.465136008699,
+                "nodes": 4096.0,
+                "edges": 65536.0,
+                "peak_allocated_bytes": 31214080.0,
+                "framework.elapsed_ms": 0.167379,
+                "framework.peak_allocated_bytes": 31214080.0,
+                "framework.peak_reserved_bytes": 69206016.0,
+                "framework.allocated_bytes": 31214080.0,
+                "framework.reserved_bytes": 69206016.0,
+                "framework.lifecycle_peak_allocated_bytes": 40962560.0,
+                "framework.lifecycle_peak_reserved_bytes": 69206016.0
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "bundle": "trial-c671461bdd-param-412ad883",
+      "parameters": {
+        "reduce_block_p": 2,
+        "scatter_block_e": 512
+      },
+      "result": {
+        "score": 0.167097,
+        "valid": true,
+        "metrics": {
+          "latency_ms": 0.167097,
+          "graphs_per_second": 5984.5478973290965,
+          "nodes": 4096.0,
+          "edges": 65536.0,
+          "peak_allocated_bytes": 31214080.0,
+          "framework.elapsed_ms": 0.167097,
+          "framework.peak_allocated_bytes": 31214080.0,
+          "framework.peak_reserved_bytes": 69206016.0,
+          "framework.allocated_bytes": 31214080.0,
+          "framework.reserved_bytes": 69206016.0,
+          "framework.lifecycle_peak_allocated_bytes": 40962560.0,
+          "framework.lifecycle_peak_reserved_bytes": 69206016.0,
+          "replacement.diagnostic_kernel_sum_us": 115.171,
+          "replacement.kernel_launches": 9.0,
+          "replacement.max_registers_per_thread": 102.0,
+          "replacement.max_shared_memory_bytes": 32768.0
+        },
+        "detail": null
+      },
+      "constraints": [],
+      "run": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 4.761151537299156,
+        "lease_wait_s": 15.682518027722836,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 262144,
+                  "max_abs_error": 3.2782554626464844e-07
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 262144,
+                  "max_abs_error": 2.384185791015625e-07
+                }
+              ],
+              "coverage": {
+                "trial-c671461bdd-param-412ad883": {
+                  "counts": {
+                    "80ff8693d7ac3cf2433b10f2": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "80ff8693d7ac3cf2433b10f2"
+                  ],
+                  "reference_invocations": {},
+                  "candidate_declared_routes": [
+                    {
+                      "call": "80ff8693d7ac3cf2433b10f2",
+                      "route": "graph:capture",
+                      "count": 1
+                    },
+                    {
+                      "call": "80ff8693d7ac3cf2433b10f2",
+                      "route": "graph:replay",
+                      "count": 1
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "latency_ms": 0.167097,
+                "graphs_per_second": 5984.5478973290965,
+                "nodes": 4096.0,
+                "edges": 65536.0,
+                "peak_allocated_bytes": 31214080.0,
+                "framework.elapsed_ms": 0.167097,
+                "framework.peak_allocated_bytes": 31214080.0,
+                "framework.peak_reserved_bytes": 69206016.0,
+                "framework.allocated_bytes": 31214080.0,
+                "framework.reserved_bytes": 69206016.0,
+                "framework.lifecycle_peak_allocated_bytes": 40962560.0,
+                "framework.lifecycle_peak_reserved_bytes": 69206016.0
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "bundle": "trial-c671461bdd-param-6285f292",
+      "parameters": {
+        "reduce_block_p": 16,
+        "scatter_block_e": 256
+      },
+      "result": {
+        "score": 0.190987,
+        "valid": true,
+        "metrics": {
+          "latency_ms": 0.190987,
+          "graphs_per_second": 5235.958468377429,
+          "nodes": 4096.0,
+          "edges": 65536.0,
+          "peak_allocated_bytes": 31214080.0,
+          "framework.elapsed_ms": 0.190987,
+          "framework.peak_allocated_bytes": 31214080.0,
+          "framework.peak_reserved_bytes": 69206016.0,
+          "framework.allocated_bytes": 31214080.0,
+          "framework.reserved_bytes": 69206016.0,
+          "framework.lifecycle_peak_allocated_bytes": 40962560.0,
+          "framework.lifecycle_peak_reserved_bytes": 69206016.0,
+          "replacement.diagnostic_kernel_sum_us": 122.056,
+          "replacement.kernel_launches": 9.0,
+          "replacement.max_registers_per_thread": 102.0,
+          "replacement.max_shared_memory_bytes": 32768.0
+        },
+        "detail": null
+      },
+      "constraints": [],
+      "run": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 5.363311063498259,
+        "lease_wait_s": 15.720838133245707,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 262144,
+                  "max_abs_error": 2.682209014892578e-07
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 262144,
+                  "max_abs_error": 2.384185791015625e-07
+                }
+              ],
+              "coverage": {
+                "trial-c671461bdd-param-6285f292": {
+                  "counts": {
+                    "80ff8693d7ac3cf2433b10f2": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "80ff8693d7ac3cf2433b10f2"
+                  ],
+                  "reference_invocations": {},
+                  "candidate_declared_routes": [
+                    {
+                      "call": "80ff8693d7ac3cf2433b10f2",
+                      "route": "graph:capture",
+                      "count": 1
+                    },
+                    {
+                      "call": "80ff8693d7ac3cf2433b10f2",
+                      "route": "graph:replay",
+                      "count": 1
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "latency_ms": 0.190987,
+                "graphs_per_second": 5235.958468377429,
+                "nodes": 4096.0,
+                "edges": 65536.0,
+                "peak_allocated_bytes": 31214080.0,
+                "framework.elapsed_ms": 0.190987,
+                "framework.peak_allocated_bytes": 31214080.0,
+                "framework.peak_reserved_bytes": 69206016.0,
+                "framework.allocated_bytes": 31214080.0,
+                "framework.reserved_bytes": 69206016.0,
+                "framework.lifecycle_peak_allocated_bytes": 40962560.0,
+                "framework.lifecycle_peak_reserved_bytes": 69206016.0
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

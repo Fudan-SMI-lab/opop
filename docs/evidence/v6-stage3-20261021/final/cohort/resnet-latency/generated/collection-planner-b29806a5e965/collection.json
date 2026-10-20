@@ -1,0 +1,17 @@
+{
+  "collectors": [
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "host_dispatch_self_time",
+    "host_binding_overhead"
+  ],
+  "unavailable_fields": {
+    "communication": "Not applicable: single-device task per observations.json capability field; the workload runs one process on one GPU with no process group and no NCCL (request.json notes).",
+    "nccl_algorithm_or_protocol": "No NCCL collectives exist to observe; the trace contains only compute kernels (coverage.json: 88 CUDA kernels, 0 unassociated, 0 communication), and kernel entry names alone cannot identify protocol anyway.",
+    "per_collective_bytes_or_link_traffic": "No collectives and no measured-region PCIe/NVLink traffic: the batch is resident on device before timing (request.json notes), so payload-derived or memcpy-derived traffic figures would be invented; only device-wide NVML rates could exist and they are not per-call bytes.",
+    "cross_rank_or_per_rank_intervals": "Single rank only; observations.json cross_rank.matched is empty and the clock policy forbids subtracting timestamps from different rank clocks.",
+    "gradient_bucket_attribution": "Inference-only workload under torch.inference_mode; coverage.json reports 0 backward_associated_kernels and 0 autograd_ranges, so no gradient buckets, post-accumulate events, or bucket identity questions exist."
+  },
+  "rationale": "Objective is latency_ms for one complete single-GPU batch=32 offline inference bounded by torch.cuda.synchronize() after the forward. The torch collector already ran and resolved GPU-side attribution completely (coverage.json: 88/88 CUDA kernels associated, 0 unassociated, 0 ambiguous forward sequences, 0 backward/autograd ranges), so torch is not re-requested and nsys is not selected: no open overlap, graph-tracing or attribution question remains on this single timeline with no CUDA graphs. The one unmeasured latency dimension is the host-side share of the measured window, so python_runtime is selected to decompose host dispatch and binding costs (per-layer Python and transformers wrapper frames) that the kernel-associated trace cannot split; it runs in a separate warmed cProfile pass, and its inclusive/self times will be used only as diagnostic host-cost evidence, never as performance scores or GPU compute durations. All communication-oriented collectors are excluded on observed evidence: capability field communication=not_applicable (single-device task), no process group or NCCL in the workload, so nccl_tuning and collective_calibration have no collectives to observe, and execution_timeline's multi-device CPU-to-CUDA submit, per-device interval and gradient callback machinery is redundant with the already-complete association and has no buckets to correlate. device_telemetry is excluded because its device-wide NVML utilization/memory samples have native windows that cannot attribute per-call latency, duplicate the peak_allocated_bytes the harness already records per sample, and no PCIe transfer occurs inside the measured region."
+}

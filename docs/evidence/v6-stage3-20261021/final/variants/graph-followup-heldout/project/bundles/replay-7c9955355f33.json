@@ -1,0 +1,118 @@
+{
+  "affected_calls": [
+    "0805539d535cea87d02a6bde",
+    "0e43c72d74453c556e1eff38",
+    "1028fb0daa9f0dfb49eb77a5",
+    "1a04e2284ffeb97b75262bbb",
+    "1bb24ebcbddbbf0d7667ec7d",
+    "25d962ddf1d62dc1dfe9d73c",
+    "3361f3b8627096ae5e53bad9",
+    "3ac036f4c828a6d38c6de955",
+    "6144a577f18b8cf93c101e76",
+    "6ee1e7c62ed060d14b5c587e",
+    "80ff8693d7ac3cf2433b10f2",
+    "82489e091556826b33662232",
+    "832071fa3dc0211b8c9c318a",
+    "8e6516762e2c7e83d3076032",
+    "92ad3bf98552a0ae94c3400b",
+    "9496a092babc412a202f2b70",
+    "96a530c9e730cf156f5fc1a0",
+    "9a257a87e9f41e416189190c",
+    "ae7730ca257f79221e08a76d",
+    "ae86f7fc2c20dffe4b1a4a2a",
+    "b296885984782d0719d88123",
+    "b438f328cd06e86296f36e5e",
+    "b46ff1918a5d5735d6f3e591",
+    "b88c99179b4af2c28c76de8f",
+    "bb5c36e49edb62fcbf6a800d",
+    "bb61754b19f507d9e25b7645",
+    "d0f721a8a80f512b09f97197",
+    "d37c2564ad8d1e6a29fa2c77",
+    "f431ca670017b5bab8ce828c"
+  ],
+  "calls": [
+    "80ff8693d7ac3cf2433b10f2"
+  ],
+  "contract_ref": "sha256:be63cefddefc2f84b4f993a12e6aabd9e2dfb68d58a408cd3c42fe151da5b267",
+  "edits": [
+    {
+      "before_sha256": null,
+      "content_ref": "sha256:bde01530b5f70dc6cebc32ffe1608a57aa65da0b53337c1485b333c3ae261a07",
+      "path": "opop_candidates/replay-7c9955355f33.py",
+      "schema_version": "project.v1"
+    },
+    {
+      "before_sha256": null,
+      "content_ref": "sha256:080a16cc3327996654f202b9fe73cdb887f94b91eb6643e4aa329caa326709b8",
+      "path": "opop_candidates/replay-7c9955355f33.targets.json",
+      "schema_version": "project.v1"
+    }
+  ],
+  "external_invariants": [
+    "FP32 weights and features (workloads.json dtype float32); TF32 disabled via torch.backends.cuda.matmul.allow_tf32 = False and torch.backends.cudnn.allow_tf32 = False, and torch.set_float32_matmul_precision('highest') (infer.py:13-18; adapter.py:60-64).",
+    "Model architecture is fixed: two-layer mean GraphSAGE GraphEncoder with input_features=128, hidden_features=256, output_features=64, ReLU between layers, each layer projecting concat(self features, mean neighbor features) with nn.Linear (model.py; adapter.py:33-53).",
+    "model.eval() plus forward under @torch.inference_mode(); no cross-invocation state (infer.py:18,28-30; adapter.py:65,90-92).",
+    "Seeded fixtures reproduced exactly: torch.manual_seed(20261021) before model construction; a CPU torch.Generator seeded 20271021 (seed+1) produces features = randn(nodes, 128), sources = randint(nodes, (edges,)), destinations = randint(nodes, (edges,)); degree = torch.bincount(destinations, minlength=nodes).float(); for this request's workload nodes=7168 and edges=143360, i.e. features [7168, 128], sources/destinations [143360] and degree [7168] (infer.py:14-25, workloads.json seed; adapter.py:61,66-74).",
+    "Graph semantics: duplicate directed edges contribute individually via index_add_ on a zeros_like base; nodes without incoming edges keep zero neighbor features; neighbor mean divides by degree.clamp_min(1).unsqueeze(1) (model.py:11-15, README.md:17-19; adapter.py:38-42).",
+    "Quality check: the complete FP32 output tensor (shape [nodes, output_features] = [7168, 64] for the unseen_graph workload of this request) compared with torch.testing.assert_close(atol=1e-5, rtol=1e-4); output is continuous floating point with no discrete outputs (infer.py:44-45, workloads.json quality; request.json quality).",
+    "One run() equals exactly one model(features, sources, destinations, degree) forward on GPU-resident tensors (adapter.py:90-92, mirroring infer.py:28-30); the full workload must be executed even though the objective is a single latency number.",
+    "Workload dimensions (nodes=7168, edges=143360) are read from request['workload'] in prepare(), not embedded as constants (adapter.py:59,67-74); this request measures the unseen_graph workload (the workloads.json held_out_workloads entry, README.md:21-22), which the frozen adapter executes unchanged because nodes and edges are parameterized from the request.",
+    "Single-process, single-device workload: model and inputs live on context['device']; no distributed backend and no communication (request devices/communication).",
+    "Goal and metric scope (request.json): minimize latency_ms (unit ms) for one full graph encoder forward on the unseen_graph workload (7168 nodes, 143360 edges), preserving the full output checks; the objective has no constraints, and the workloads.json peak_allocated_bytes goal with its graphs_per_second >= 0.95 baseline_ratio constraint is not part of this request; graphs_per_second = 1000/latency_ms, nodes, edges and peak_allocated_bytes are recorded sample metrics only (workloads.json goals; adapter.py:99-109).",
+    "Measurement policy: latency_ms is wall-clock time around one forward with torch.cuda.synchronize on both sides of the completion boundary (infer.py:53-58); measurement_lifetime is per invocation with warmup=3 and repeats=15 and a statistics.median summary mirroring infer.py:49-63 (request.json); peak_allocated_bytes comes from torch.cuda.max_memory_allocated() queried outside the timer after the post-run synchronization (infer.py:59-60; adapter.py:107-108).",
+    "Frozen adapter state protocol (executes this request unchanged): prepare(context, request) reproduces infer.py:12-25 outside timing \u2014 torch.set_num_threads(4), seeding, TF32 disabled, float32_matmul_precision('highest'), GraphEncoder(128, 256, 64) built on CPU then moved to context['device'] and eval'd, CPU-generator fixture then moved to the device, nodes and edges from request['workload'] (adapter.py:56-83); reset(state) is a no-op because inference has no cross-invocation state (adapter.py:86-88); observe(state, result) returns the complete detached output tensor on CPU (adapter.py:95-96); models(state) exposes the loaded GraphEncoder root module for discovery/replacement (adapter.py:112-113); set_mode records the mode and execution is identical in quality/measure/profile because the full output is always produced (adapter.py:116-118)."
+  ],
+  "groups": [
+    "7302de00b8b22e545fe5"
+  ],
+  "id": "replay-7c9955355f33",
+  "implementation": "composite",
+  "installer": "opop_candidates/replay-7c9955355f33.py",
+  "parameters": {
+    "reduce_block_p": 2,
+    "scatter_block_e": 512
+  },
+  "parent_revision": "ee1ea2f5087f3a4c6c6185dc07ab0134282ac901fbdafc495e8739a38b340d7e",
+  "plan_ref": null,
+  "read_set": [
+    "call:0805539d535cea87d02a6bde",
+    "call:0e43c72d74453c556e1eff38",
+    "call:1028fb0daa9f0dfb49eb77a5",
+    "call:1a04e2284ffeb97b75262bbb",
+    "call:1bb24ebcbddbbf0d7667ec7d",
+    "call:25d962ddf1d62dc1dfe9d73c",
+    "call:3361f3b8627096ae5e53bad9",
+    "call:3ac036f4c828a6d38c6de955",
+    "call:6144a577f18b8cf93c101e76",
+    "call:6ee1e7c62ed060d14b5c587e",
+    "call:80ff8693d7ac3cf2433b10f2",
+    "call:82489e091556826b33662232",
+    "call:832071fa3dc0211b8c9c318a",
+    "call:8e6516762e2c7e83d3076032",
+    "call:92ad3bf98552a0ae94c3400b",
+    "call:9496a092babc412a202f2b70",
+    "call:96a530c9e730cf156f5fc1a0",
+    "call:9a257a87e9f41e416189190c",
+    "call:ae7730ca257f79221e08a76d",
+    "call:ae86f7fc2c20dffe4b1a4a2a",
+    "call:b296885984782d0719d88123",
+    "call:b438f328cd06e86296f36e5e",
+    "call:b46ff1918a5d5735d6f3e591",
+    "call:b88c99179b4af2c28c76de8f",
+    "call:bb5c36e49edb62fcbf6a800d",
+    "call:bb61754b19f507d9e25b7645",
+    "call:d0f721a8a80f512b09f97197",
+    "call:d37c2564ad8d1e6a29fa2c77",
+    "call:f431ca670017b5bab8ce828c"
+  ],
+  "registry_ref": null,
+  "replaces": [],
+  "requires": [],
+  "schema_version": "project.v2",
+  "scope": "region",
+  "write_set": [
+    "file:opop_candidates/replay-7c9955355f33.py",
+    "file:opop_candidates/replay-7c9955355f33.targets.json",
+    "call:80ff8693d7ac3cf2433b10f2"
+  ]
+}

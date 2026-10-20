@@ -1,0 +1,220 @@
+{
+  "trial": "trial-d17bd1eb8f",
+  "selection": {
+    "scope": "joint",
+    "groups": [
+      "f833b57a373d8262a384",
+      "8525af72c631b94e3dd0"
+    ],
+    "affected_calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "rationale": "The objective torch_communication.communication_kernel_sum_ms (baseline 94.49 ms; profiled reps 93.52/94.49/110.06) is produced exclusively by the 13 per-step NCCL AllReduce kernels dispatched through the two selected c10d::allreduce_ groups: 12 dispatches of 7,087,872 float32 elements (group f833b57a373d8262a384, call d0938de87369efd500322679) plus 1 dispatch of 39,385,344 elements (group 8525af72c631b94e3dd0, call b8ade439d7b8bd5fb5c1029b), together exactly the 497,759,232-byte FP32 gradient payload (resources.json cross_rank matched 13/13, incomplete empty; nsys shows exactly 13 NCCL kernels, all AllReduce on stream 17). Measured decomposition: isolated calibration of the identical ops (collective_calibration-1af5837f) gives 3.565/3.649 ms per small bucket and 19.49/19.64 ms for the large one, a per-rank transport floor of 62.3/63.4 ms that matches rank 1's in-step sum (63.66 ms) and the nsys rank-0 run (62.46 ms); the addressable excess is early-arrival waiting charged into kernel durations. execution_timeline-1221e205 localizes it: the FIRST collective (seq 21) ran 14.04 ms on rank 0 vs 3.62 ms on rank 1 (rank 0 launched ~10.5 ms early and both kernels ended within ~90 us), while every later kernel stayed at the transport floor on both ranks; the nsys run shows the same shape with the direction flipped (rank 1 first kernel 181.8 ms, rest at floor), so the remedy must be symmetric and per-call-independent. The previous candidate trial-92d5f02cbf on this exact joint boundary already validated the mechanism on the metric side: host-side SHM arrival alignment before dispatching the unchanged parent op measured 63.16-63.61 ms (the floor), bitwise-identical gradients (max_abs_error 0.0 over 248,879,621 compared elements) and full coverage (12+1 through context.references), but it applied the rendezvous at ALL 13 dispatches with a 100 us sleep-poll loop and 2 ms busy tail, and was rejected solely on the step_ms constraint: 240.5-251.9 ms on both ranks against the 151.86 ms limit (1.05x of the 144.63 ms baseline). The wall-time damage is explained by the rendezvous schedule, not the idea: after the first collective the NCCL stream is self-serializing at the ~3.6 ms transport cadence, so a per-dispatch host rendezvous makes every kernel's start hostage to the slower rank's HOST arrival (cadence above 3.6 ms), stretching the ~62 ms NCCL window to ~160 ms on both ranks. The two dispatch sites must remain one joint candidate because they share a single per-step arrival-state machine (whichever site fires first in the step performs the one alignment; both sites need the shared counter and parent references), and splitting them would leave the first-dispatch behavior undefined across bucket orders.",
+    "hypothesis": "Repair of trial-92d5f02cbf on the same joint boundary: keep the symmetric cross-rank arrival alignment over the /dev/shm 8-byte counter page, but perform it exactly ONCE per accumulated step, at the FIRST c10d::allreduce_ dispatch (counting dispatches across both replaced sites; the first is always a 7,087,872-element bucket since the 39,385,344-element bucket dispatches last in the reducer's reverse order), and dispatch dispatches 2..13 straight to the unchanged parent op with no host wait. Replace the 100 us sleep-poll loop and 2 ms busy tail with a tight spin on the peer counter (bounded by a single budget parameter with graceful degrade: budget expiry or unreachable page falls back to the pure parent path, preserving baseline behavior and routes). Expected effect on the objective: the first kernel's in-device spin (~10.5 ms clean; 31-48 ms under the torch_communication collector, consistent with baseline reps 93.5/94.5/110.1 = floor + wait) is moved off the NCCL kernel, whose measured duration then falls to the transport floor; later kernels are already at floor in every observation, so the max-rank sum should land at ~62.3-63.6 ms (the previous trial empirically reached 63.16-63.61 with this alignment), a ~33% reduction from 94.49 ms. Expected effect on the constrained step_ms: the first kernel ENDS when the peer joins regardless of whether the wait spins on device or on the host, so the NCCL chain completion time is unchanged; the single ~10.5 ms clean-run host stall occurs while the GPU still holds ~20 ms of queued backward compute and the ~62 ms NCCL window is just beginning, so the CPU re-enqueues remaining backward and the optimizer long before either stream drains, keeping clean step_ms near the 144.63 ms baseline well inside the 151.86 ms limit; only ONE rendezvous per step removes the repeated host-cadence serialization that cost the previous trial ~100 ms on both ranks. This wall-time reasoning and the floor-level objective are hypotheses to be tested: the previous measurements establish feasibility of the metric floor and bitwise quality (unchanged parent op, same buckets, same process group), not wall-time safety of the single rendezvous, so the budget parameter bounds worst-case wall impact by degrading to the baseline parent path."
+  },
+  "proposal": {
+    "implementation": "distributed",
+    "replacement_calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "rationale": "Joint repair of rejected trial-92d5f02cbf on the same two c10d::allreduce_ dispatch sites (group f833b57a373d8262a384, 12 buckets of 7,087,872 fp32 elements, call d0938de87369efd500322679; group 8525af72c631b94e3dd0, 1 bucket of 39,385,344 elements, call b8ade439d7b8bd5fb5c1029b), which together carry exactly the 497,759,232-byte FP32 gradient payload of the objective. How the previous feedback changes this attempt: the prior candidate already proved the mechanism on the metric side (63.16-63.61 ms objective, i.e. the transport floor; bitwise-identical gradients with max_abs_error 0.0 over 248,879,621 compared elements; coverage 12+1 through context.references with no fallbacks), and it was rejected solely by the step_ms constraint (240.5-277.9 ms clean vs the 151.86 ms limit, baseline 144.63 ms) because it applied a host-side readiness rendezvous at ALL 13 dispatches per step using a 100 us sleep-poll loop plus a 2 ms busy tail; that per-dispatch lockstep serialized the hosts' enqueue cadence and stretched the NCCL chain with inter-kernel gaps (~+96 ms wall) while each individual kernel sat at the floor. The repair keeps the symmetric cross-rank arrival alignment over a 16-byte /dev/shm counter page but performs it exactly ONCE per accumulated step, at the FIRST compatible dispatch counting across both replaced sites; the rendezvous is armed initially and re-armed by the >20,000,000-element bucket, which dispatches last in the reducer's reverse order (observed stream: 12 small then 1 large per step), so arming adapts to the actual dispatch stream rather than a hard-coded step length; dispatches 2..13 go straight to the unchanged parent op with no host wait, preserving the baseline back-to-back kernel chain. The 100 us sleep-poll and busy tail are replaced by a tight memoryview spin on the peer counter with periodic deadline checks and brief time.sleep(0) GIL yields, bounded by one budget parameter with graceful degrade (budget expiry proceeds to the parent; two consecutive armed timeouts disable waiting while arrival counting continues, so a still-waiting peer still observes arrivals). Measured basis (inputs/observations, revision 63ad2b21): the objective's excess over the ~62.3-63.5 ms per-rank transport floor (collective_calibration-1af5837f: 3.56/3.65 ms per small bucket, 19.49/19.64 ms for the large one, matching rank 1's in-step sums of 63.62-63.79 ms and the nsys rank-0 sum of 62.46 ms) is early-arrival waiting charged into kernel durations and concentrated in the FIRST collective: execution_timeline-1221e205 seq21 ran 14.04 ms on rank 0 vs 3.62 ms on rank 1 (rank 0 launched ~10.5 ms early; both kernels ended within ~90 us) while every later kernel stayed at the floor within ~90 us lockstep, and the intrusive run shows the same concentration (seq21 = 114.4 ms on rank 0) with the skew direction flipping under nsys (rank 1 sum 241 ms), so the remedy must be symmetric, which the counter-page rendezvous is (whichever rank arrives early waits on the host). Expected objective: the first kernel's in-device spin (~10.5 ms clean; 31-48 ms under the torch_communication collector, consistent with baseline reps 93.52/94.49/110.06) is moved off the NCCL kernel whose duration then falls to the transport floor, later kernels are already at floor in every observation, and the prior trial empirically reached 63.16-63.61 ms with this alignment, so the max-rank median is expected at ~62.3-64 ms (~33% below the 94.49 ms baseline). Step_ms reasoning (hypothesis corroborated by the timeline evidence, not an observed fact): the first kernel ENDS when the peer joins regardless of whether the wait spins on the device or on the host (baseline ends within ~90 us of the peer's kernel), so the NCCL chain completion time is unchanged; the single ~10.5 ms clean-run host stall occurs while the GPU still holds ~15-25 ms of queued backward compute from the final micro-batch and the ~62 ms NCCL window is just beginning, so the CPU re-enqueues dispatches 2..13 and the optimizer long before either stream drains; with only one rendezvous per step the repeated host-cadence serialization that cost the prior trial ~96 ms on both ranks is removed, keeping clean step_ms near the 144.63 ms baseline and inside the 151.86 ms limit. No op is eliminated: every dispatch, including the rendezvous one, calls the current parent (context.references) with unmodified arguments, so the reducer's async Work semantics, ReduceOp SUM over contiguous FP32 bucket views (gradient_as_bucket_view=True), bucket buffers, process group and bitwise outputs are untouched (the prior trial's bitwise-identical gradients used the same parent-passthrough structure). The candidate_diagnostics event in the feedback (return self._disabled -> False at setup) was a normal predicate on the successful installation, not a failure. No gloo collective, NCCL kernel or CUDA work is added inside timing; the gloo control group is used only during installation to name the page, exactly as in the prior accepted-mechanism trial.",
+    "setup_work": {
+      "when": "installation only (build), outside every timed or profiled region; measured ~7.8-8.3 ms in the prior trial's setup receipts",
+      "steps": [
+        "Symmetric token agreement on the adapter's existing gloo control group (state['control_group']) via all_gather_object of a rank-0 random 32-hex token; no new process group is created and the NCCL group is untouched.",
+        "Rank 0 creates a 16-byte file under /dev/shm named with the token (two zeroed int64 arrival counters, one per rank); one barrier; all ranks mmap it read-write and close the fd.",
+        "Liveness probe: each rank writes a distinct magic value to its slot and spins for the peer's magic (bounded at 5 s); outcomes are agreed symmetrically with all_gather_object so a partial failure degrades BOTH ranks to the pure parent path (setup-parent route) instead of hanging a barrier; on failure the mapping is closed and the page unlinked.",
+        "Rank 0 zeroes both counters and one barrier orders the reset before any dispatch; local sequence starts at 0 and the rendezvous is armed.",
+        "An atexit hook unlinks the page; the mapping is held for the process lifetime via a keepalive reference.",
+        "No parameter/weight transforms, no CUDA allocations, no captured graphs; every dispatch still executes the parent op on each invocation."
+      ],
+      "memory": "No CUDA allocations, no parameter transforms, no retained device pools or graphs. Retained host state is one 16-byte tmpfs mapping plus one atexit hook; the file descriptor is closed after mmap. framework.peak_allocated_bytes, framework.peak_reserved_bytes and the lifecycle peaks are unaffected; the tmpfs page is unlinked at process exit.",
+      "tunable_parameters": "sync_wait_budget_ms (default 1000, legal 250/500/1000/2000) bounds how long the armed (first-of-step) dispatch may wait for the peer's arrival before degrading to the parent path; it never changes workload, sampling, data, thresholds or the dispatch sequence."
+    },
+    "quality_risks": [
+      "Step_ms risk is the crux repaired: the single host wait relocates the existing arrival skew (which the first kernel absorbs on the device in baseline) rather than adding work, and it overlaps the queued backward compute at the first dispatch; if a pathological run exhibited skew larger than the queued-compute buffer, the early rank's device could idle briefly, but completion is still paced by the peer joining (baseline ends within ~90 us of the peer's kernel), and the observed clean skew is ~10.5 ms against 7.2 ms of constraint headroom that this mechanism does not consume by construction; dispatches 2..13 carry no host wait, so the prior trial's per-dispatch cadence serialization cannot recur.",
+      "Rendezvous placement depends on the frozen dispatch stream (12 small buckets then the 39,385,344-element bucket per step, the latter re-arming the wait). Extra symmetric dispatch sources such as the separate one-off comm-hook bucket-inventory run only add bounded host waits outside timed regions; both ranks count identical streams, so the armed predicate is evaluated identically and counters cannot skew.",
+      "If an armed wait exceeds the budget, that dispatch still calls the parent (correctness unchanged) and the repetition degrades toward the baseline objective value; after two consecutive armed timeouts the wait disables permanently (routes degraded-parent) while arrival counting continues so a still-waiting peer is never orphaned; worst-case added host latency is about 2x budget once per process.",
+      "Interception depends on dispatcher-level routing of the reducer's collectives (c10d::allreduce_ with the two observed contiguous fp32 signatures, phase run, project-level parent), exactly what discovery recorded and what the prior trial exercised with 12+1 reference invocations and zero fallbacks; the live guard re-checks the observed signatures (1-element list, 1-D contiguous float32 CUDA tensor with numel 7,087,872 or 39,385,344) and otherwise routes to signature-guard-parent pure passthrough without counting.",
+      "Numerical outputs are unchanged by construction (identical ops, operands, order and process group); the bitwise cross-rank replica check (atol=0.0, rtol=0.0), the reference global-batch gradient check and the post-step parameter check would detect any deviation, and the prior trial measured max_abs_error 0.0 on the same passthrough structure.",
+      "Installation-time gloo rendezvous relies on the control group present on both ranks (adapter.prepare creates it); every stage outcome is agreed symmetrically, and any failure falls back to setup-parent pure passthrough at baseline metric without affecting correctness or collective participation.",
+      "The tight spin holds the GIL only in ~0.5 ms slices (periodic time.sleep(0) yields) and runs on the dispatching thread for the duration of the peer skew only; no NCCL kernel, gloo collective or CUDA work is added inside timing."
+    ],
+    "eliminated_calls": [],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {
+      "params": [
+        {
+          "name": "sync_wait_budget_ms",
+          "kind": "int",
+          "choices": [
+            250,
+            500,
+            1000,
+            2000
+          ],
+          "description": "Maximum host-side wait at the single first-of-step rendezvous for the peer's arrival before degrading to the pure parent path; 250 ms already covers the largest observed in-step skew (48 ms profiled, ~180 ms under the separate nsys diagnostic) with margin."
+        }
+      ],
+      "constraints": []
+    }
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea59dd78affeQeaE7qpGDXxMf7",
+    "message": "msg_15a6e7e88001OyH0zU4yJqj7sB",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 35,
+      "reported_cost": 1.27876502748,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 3332885.0,
+        "input": 132637.0,
+        "output": 5870.0,
+        "reasoning": 36362.0,
+        "cache.read": 3158016.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea59dd78affeQeaE7qpGDXxMf7",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage3/final-e2e-187617c/ddp-communication/sandboxes/selection-21a67b590ada",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/opop-v6-stage3/final-e2e-187617c/ddp-communication/generation-snapshots/generation-5c8de88db731.json"
+    ]
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea5916957ffepjPDocGCfbkqeL",
+    "message": "msg_15a78c219001nKdSXuv06JGLSQ",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 26,
+      "reported_cost": 1.0311601448,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 2514986.0,
+        "input": 126006.0,
+        "output": 12622.0,
+        "reasoning": 30310.0,
+        "cache.read": 2346048.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea5916957ffepjPDocGCfbkqeL",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage3/final-e2e-187617c/ddp-communication/sandboxes/candidate-38ece4f5d421",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/opop-v6-stage3/final-e2e-187617c/ddp-communication/generation-snapshots/generation-15fa859f03a6.json"
+    ]
+  },
+  "experiment_policy": {
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ],
+    "leaf_groups_only": false,
+    "selection_strategy": "agent",
+    "feedback_view": "full"
+  },
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-d17bd1eb8f",
+    "parent_revision": "63ad2b215444e546c9cf07cffac43c2fe47fea7813e8f0d8e0492247318d90b9",
+    "contract_ref": "sha256:566680c6d3b30c96f1bf6fb43b357d5e732160c5284ad27d57c4b16e6f6dc940",
+    "scope": "joint",
+    "implementation": "distributed",
+    "groups": [
+      "f833b57a373d8262a384",
+      "8525af72c631b94e3dd0"
+    ],
+    "calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "affected_calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-d17bd1eb8f.py",
+        "before_sha256": null,
+        "content_ref": "sha256:1a507da360592970fcd2e6d4e0d068a4811274e0959255727943c7ed87ba37a2"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-d17bd1eb8f.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+      }
+    ],
+    "read_set": [
+      "call:b8ade439d7b8bd5fb5c1029b",
+      "call:d0938de87369efd500322679"
+    ],
+    "write_set": [
+      "file:opop_candidates/trial-d17bd1eb8f.py",
+      "file:opop_candidates/trial-d17bd1eb8f.targets.json",
+      "call:b8ade439d7b8bd5fb5c1029b",
+      "call:d0938de87369efd500322679"
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Numerical policy: FP32 weights and inputs, TF32 disabled for matmul and cudnn, cudnn.benchmark=False, float32_matmul_precision 'highest', dropout 0 (resid/attn/embd), use_cache=False, eager attention (common.py:34-42, gpt2_ddp_training.py:24-27).",
+      "Model: GPT2LMHeadModel with n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, built after torch.manual_seed(20261020), .float().to(context['device']).train(); weights are seeded synthetic fixtures, never pretrained or downloaded.",
+      "Data: per-rank inputs are torch.randint(0, 50257, (micro_batch=1, sequence_length=128)) over accumulation_steps=4 tensors from torch.Generator().manual_seed(31000+rank), moved to the rank's device; effective batch 8 = world_size 2 x micro_batch 1 x accumulation_steps 4, i.e. 1024 tokens per step.",
+      "DDP configuration: broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True over the worker-initialized NCCL process group; the baseline already wraps the first accumulation_steps-1 = 3 micro-batches in model.no_sync() so only the final backward all-reduces.",
+      "Loss semantics: each micro-batch loss is divided by accumulation_steps (4) before backward; the reported loss is torch.stack(per-micro losses).sum().",
+      "Optimizer: SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) over DDP model parameters; exactly one optimizer.step() per accumulated step.",
+      "Timed-work division: optimizer.zero_grad(set_to_none=True) happens inside the timed accumulate (gpt2_ddp_training.py:37) and must not be pre-cleared in reset; reset only reloads the initial weights snapshot taken before any step.",
+      "Completion boundary: run() ends with torch.cuda.synchronize() exactly like the source step(); step_ms is the full accumulated-step wall time (max across ranks for the constraint) and must remain <= 1.05x baseline.",
+      "Gradient exactness: every parameter gradient must be bitwise identical across ranks (source checks assert_close atol=0.0, rtol=0.0 against a rank-0 broadcast replica), so observations must carry every real gradient and updated parameter, not samples or hashes.",
+      "Workload freeze: world_size 2, micro_batch 1, sequence_length 128, accumulation_steps 4; the adapter raises if the launched world size differs, and never alters batch, lengths, architecture, precision, data or completion to improve a score.",
+      "Communication objective semantics: per-rank sum of device NCCL kernel durations, max across the 2 ranks, median over 3 separately profiled repetitions; collected by the framework's torch_communication collector, never emulated or fabricated inside run()/metrics().",
+      "Process-group discipline: reuse the worker's NCCL group, use a separate gloo group only for barriers outside timing, never destroy the process group, and never install a communication hook merely to inventory buckets.",
+      "Determinism: identical seeds (20261020 for weights, 31000+rank for tokens) let independent workers reproduce the same reference observations; no RNG is consumed inside the step itself."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-d17bd1eb8f.py",
+    "parameters": {}
+  }
+}

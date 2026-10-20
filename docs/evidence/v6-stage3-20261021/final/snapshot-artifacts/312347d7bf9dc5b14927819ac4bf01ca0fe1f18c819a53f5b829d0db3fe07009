@@ -1,0 +1,210 @@
+{
+  "communication": {
+    "cross_rank": {
+      "matched": [],
+      "incomplete": [],
+      "clock_policy": "No subtraction of timestamps from different rank clocks"
+    },
+    "ranks": [
+      {
+        "status": "not_applicable",
+        "reason": "single-device task"
+      }
+    ],
+    "capabilities": [
+      {
+        "schema_version": "project.v1",
+        "id": "ae720e6d46e8f6b7151780634fc4d9f69d488438ea5314352ebcd141f89ee3cd",
+        "devices": [],
+        "supported_scopes": [
+          "group",
+          "joint",
+          "region",
+          "execution_plan"
+        ],
+        "fields": [
+          {
+            "schema_version": "project.v1",
+            "name": "communication",
+            "status": "not_applicable",
+            "value": null,
+            "unit": "capability",
+            "entity": null,
+            "reason": "single-device task",
+            "evidence": []
+          }
+        ],
+        "tools": {}
+      }
+    ]
+  },
+  "coverage": [
+    {
+      "cuda_kernels": 9,
+      "associated_kernels": 9,
+      "unassociated_kernels": 0,
+      "associated_below_project": 9,
+      "root_only_kernels": 0,
+      "backward_associated_kernels": 0,
+      "autograd_ranges": 0,
+      "forward_linked_autograd_ranges": 0,
+      "ambiguous_forward_sequences": 0
+    }
+  ],
+  "collection_plan": {
+    "plan": {
+      "collectors": [
+        "torch",
+        "nsys",
+        "python_runtime"
+      ],
+      "requested_fields": [
+        "torch.per_operator_cuda_kernel_time_ms",
+        "nsys.cuda_kernel_intervals_us",
+        "nsys.inter_kernel_gap_us",
+        "nsys.forward_gpu_busy_us",
+        "nsys.cuda_api_durations_us",
+        "python_runtime.cprofile_self_us_by_callable",
+        "python_runtime.cprofile_inclusive_us_by_callable",
+        "python_runtime.cprofile_calls_per_forward"
+      ],
+      "unavailable_fields": {
+        "nccl_algorithm_protocol_channels": "No distributed backend and no NCCL activity: request.json has distributed_backend=null and observations.json marks communication not_applicable (single-device task); coverage.json shows all 9 CUDA kernels associated to single-device operators, so nccl_tuning has nothing to observe.",
+        "collective_algorithm_reference_latency": "The workload contains no collectives; collective_calibration's synthetic allreduce has no counterpart to calibrate and is not selected.",
+        "per_operator_pcie_nvlink_bytes": "device_telemetry exposes device-wide NVML readings in native sampling windows only and cannot attribute per-operator bytes; inputs and outputs are GPU-resident around the timed region (prepare() moves tensors once, infer.py:25 and infer.py:28-30), so link traffic is not the latency dimension. Bytes must not be invented from logical payload or memcpy sizes.",
+        "device_telemetry.per_forward_gpu_utilization": "The measured forward is a sub-millisecond sequence of 9 small kernels; native NVML sampling windows cannot resolve per-forward utilization. nsys kernel intervals and gaps cover this need instead.",
+        "candidate_diagnostic_results": "available-collectors.json lists candidate_diagnostics, but the fixed source contains no framework adapter, operator groups, or candidate implementations (README.md), so no candidate exists to diagnose yet."
+      },
+      "rationale": "Frozen objective is latency_ms of one full graph encoder forward (infer.py:28-30, 51-61): a single-process, single-device ('cuda') FP32 workload with no distributed backend, empty required_observations, and communication marked not_applicable in observations.json, so all communication-flavored collectors are excluded. The torch collector already ran and coverage.json shows 9/9 CUDA kernels associated with 0 unassociated, 0 autograd ranges, and 0 ambiguous forward sequences, so operator attribution is already resolved; torch is retained only for its per-operator kernel durations, which rank the compute contributors (index_select gather, zeros/index_add_ scatter, degree divide, cat, relu, two addmm linears) under a 9-kernel forward. The decisive open questions for latency are overlap/serialization and launch overhead, so nsys is selected (binary present at request.json tools.nsys): per-repeat kernel intervals plus inter-kernel gaps and cudaLaunchKernel/cudaStreamSynchronize API durations quantify how much of the wall-clock latency_ms is GPU-busy versus launch-bound idle on the single eager stream, and establish the eager-stream baseline needed to judge any later CUDA-graph capture (graph tracing question) against native correlation. python_runtime is selected to investigate host dispatch and binding costs, since the timed wall-clock includes host enqueue of the ~20-op dispatch chain; its warmed cProfile self/inclusive times are treated strictly as host-side dispatch evidence, never as GPU compute durations or performance scores. Excluded: nccl_tuning and collective_calibration (no collectives exist), device_telemetry (no host-device transfers inside the timed region; device-wide native windows cannot resolve sub-millisecond forwards already covered by the kernel trace), execution_timeline (the torch trace already provides complete 9/9 CPU-to-CUDA submit association; single stream, single device, no gradients or communication hooks, and its clock-alignment bounds add nothing here), and candidate_diagnostics (no candidate implementations exist in the fixed source)."
+    },
+    "agent": {
+      "role": "collection-planner",
+      "session": "ses_ea5974d36ffehkxocq61uyR76V",
+      "message": "msg_15a6abb90001LFX3zWWfoz2daL",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 8,
+        "reported_cost": 0.08881951056,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 131649.0,
+          "input": 16387.0,
+          "output": 1819.0,
+          "reasoning": 7139.0,
+          "cache.read": 106304.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea5974d36ffehkxocq61uyR76V",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/opop-v6-stage3/graph-followup-8fd2123/sandboxes/collection-planner-1d51d2851d72",
+      "outputs": [
+        "collection.json"
+      ],
+      "feedback_provided": false,
+      "contract_repairs": 0,
+      "generation_snapshots": [
+        "/root/opop-v6-stage3/graph-followup-8fd2123/generation-snapshots/generation-2b5ab44185d7.json"
+      ]
+    }
+  },
+  "extra_collectors": {
+    "nsys": {
+      "status": "observed",
+      "input": "observations/current/nsys-9ed9145c.json",
+      "sha256": "ba4a25dd760dd8fdbc64ecc1f61dbe1fabf4670dadece13e976f6e53def8e908",
+      "bytes": 11991,
+      "provenance": {
+        "revision": "0913aed2ee401d23553686f1788a247e65aaa9a05c7dafb85509faadabb5dc7d",
+        "parent_revision": "abf61ffc7953907f1d91d130f52e576508c1815581d4cef8607f4ae11452cda3",
+        "bundles": [
+          "trial-678b0307f5-param-9fc9967a"
+        ],
+        "plan": "sha256:09a6d8c05be2542a9667532111921be3748b7298e4875cdba3aac4587dcc6763",
+        "registry": "sha256:64c11406cb410784ac7e3c387bb696f6b2a04b688e4ab5a8e235387ccfba9982",
+        "request_sha256": "1a7a4d7f41b2ce14fa44b690537d6417425fcedc196bc9dd9da883fc7578e48c",
+        "objective": {
+          "name": "latency_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "standard",
+          "nodes": 4096,
+          "edges": 65536
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "0b74eefc86fcace2a00df6d245170ba8f1ae6c04874d7b93d05475903b668b06",
+          "files": 160,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "scope": "separate Nsys run; nanosecond SQLite timestamps, no cross-run or cross-rank timestamp subtraction"
+        }
+      ],
+      "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+    },
+    "python_runtime": {
+      "status": "observed",
+      "input": "observations/current/python_runtime-aea48e29.json",
+      "sha256": "c1f9f98356f151ce329a9b4bad93dae02f2bb5f7cf9649277689f1227847fc06",
+      "bytes": 50486,
+      "provenance": {
+        "revision": "0913aed2ee401d23553686f1788a247e65aaa9a05c7dafb85509faadabb5dc7d",
+        "parent_revision": "abf61ffc7953907f1d91d130f52e576508c1815581d4cef8607f4ae11452cda3",
+        "bundles": [
+          "trial-678b0307f5-param-9fc9967a"
+        ],
+        "plan": "sha256:09a6d8c05be2542a9667532111921be3748b7298e4875cdba3aac4587dcc6763",
+        "registry": "sha256:64c11406cb410784ac7e3c387bb696f6b2a04b688e4ab5a8e235387ccfba9982",
+        "request_sha256": "1a7a4d7f41b2ce14fa44b690537d6417425fcedc196bc9dd9da883fc7578e48c",
+        "objective": {
+          "name": "latency_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "standard",
+          "nodes": 4096,
+          "edges": 65536
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "0b74eefc86fcace2a00df6d245170ba8f1ae6c04874d7b93d05475903b668b06",
+          "files": 160,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "scope": "cProfile perturbs Python dispatch; self/cumulative times include host waits and cannot be added to GPU durations or used for acceptance",
+          "profiled_wall_ms": 0.7182
+        }
+      ],
+      "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+    }
+  },
+  "ownership_input": "communication-ownership.json"
+}

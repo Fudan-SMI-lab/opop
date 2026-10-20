@@ -1,0 +1,265 @@
+{
+  "trial": "trial-3c4e540078",
+  "selection": {
+    "scope": "region",
+    "groups": [
+      "3821cceac23fa97e5a55",
+      "0022893ec8c1ceea869f",
+      "95d8eead897036452c64",
+      "c97c8dfae7e5def85428",
+      "7e7c01e2bf7e30a42280",
+      "3412952b9279e41b1709",
+      "c671bb65e86ad614e3f6",
+      "8bffcf00b7bd20c935a5",
+      "c0af3909ba0a106672d5",
+      "5d6060b158cac3430090"
+    ],
+    "rationale": "The objective is peak_allocated_bytes for one batch-32 FP32 ResNet-18 forward (baseline 281,975,808 B). Measured/derived facts locate the process peak inside the stem (ResNetEmbeddings): during aten::batch_norm and aten::relu the trace shows two coexisting full-batch (32,64,112,112) buffers of 102,760,448 B each (conv output, then BN/ReLU output; the ReLU is out-of-place, executed as vectorized_elementwise_kernel per call-resources.json). Persistent-live memory during run() is params 46,758,048 B + pixels 19,267,584 B + images 1,806,336 B = 67,831,968 B; adding the two 102.76 MB stem buffers gives 273,352,864 B, and the ~8.6 MB residual to the measured 281.98 MB peak is cudnn conv workspace - so the stem is the peak site, not merely the largest indexed family. The selected region is the contiguous stem execution: ResNetEmbeddings forward -> embedder ResNetConvLayer -> Conv2d/aten::conv2d -> BatchNorm2d/aten::batch_norm -> ReLU/aten::relu -> MaxPool2d/aten::max_pool2d (transformers 5.16.1 ResNetEmbeddings.forward is exactly embedder+pooler, verified in the worker venv). Every op in this region is per-sample (conv with per-sample windows, eval-mode BN, elementwise ReLU, max pooling), so executing the stem in batch chunks (e.g. 8) and writing chunk results into a preallocated (32,64,56,56) output (or cat of chunk outputs) is mathematically the same computation; chunk-sized conv/bn buffers are 25.69 MB instead of 102.76 MB. The boundary is coherent and minimal: the region returns the same-shaped pooled tensor, so downstream encoder/stage/classifier calls keep their observed execution structure and are not additional affected calls; the 10 listed calls (all calls of the selected groups) are re-invoked once per chunk. Alternatives rejected: folding BN into the stem conv plus in-place ReLU also removes only one 102.76 MB buffer and lands on the same stage-0 ceiling (~176-180 MB) but with weight surgery and larger numerical drift; whole-model micro-batching could reach ~124 MB but multiplies kernel-launch count ~4x across the whole 4.24 ms forward, risking the hard images_per_second >= 0.95*7551.7 constraint, and would have to enumerate the entire plan as affected.",
+    "hypothesis": "Chunked (micro-batched) stem execution at the ResNetEmbeddings boundary - splitting the GPU-resident (32,3,224,224) input into batch chunks (e.g. 8 images), running self.embedder (conv->BN->ReLU) and self.pooler per chunk, and assembling the (32,64,56,56) result without a full-batch (32,64,112,112) intermediate - reduces peak_allocated_bytes from 281,975,808 B to approximately the next coexistence ceiling: 67.83 MB persistent + 4 x 25.69 MB stage-0 buffers + workspace, i.e. roughly 176-182 MB (~35-38% reduction), with the chunked stem itself peaking near 67.8 + 2x25.7 + 25.7 ~ 150 MB. Throughput should stay within the 0.95 ratio (clean budget 4.4604 ms vs 4.2374 ms median) because the stem is ~0.9 ms of the ~4.15 ms diagnostic CUDA time and chunking adds only ~3-15 extra large kernel launches (launch overhead is microseconds; conv at chunk batch 8 still launches grids of ~hundreds of blocks), so expected overhead is well under 1%. Quality is expected to hold: batch splitting is per-sample math identical to the full-batch forward; only cudnn algorithm selection per shape can change rounding order (typically ~1e-6 relative), far inside atol=rtol=1e-4, and top-1 argmax gaps are expected to dwarf that noise. Risks to test: (1) cudnn heuristic algo choice at batch 8 could differ enough to perturb logits - verify with the harness reference comparison and exact-top1 check; (2) if cat-based assembly doubles the pooled buffer momentarily, use a preallocated output with narrow views to keep the stem chunk peak below the stage-0 ceiling; (3) the resulting peak is then bounded by stage 0, which is the natural follow-up region, not part of this candidate. This is a hypothesis to be validated by the independent measurement, not a claimed benefit.",
+    "affected_calls": [
+      "021f27d2d0d73dee5fab9084",
+      "220b9d0ec76e2ccc01dcdb09",
+      "279a256c150755fd69216f5a",
+      "2f3bfb9ee01d701be01d2ff3",
+      "35096a239aa1290aabeed5de",
+      "3c3c7a3e1837d0185b1df6f0",
+      "52e7c2f32ca6695f380d240f",
+      "679ccfe137094282d25350c1",
+      "683c822136ed7958f3e9ba44",
+      "87335b95bb02e81155c4add6",
+      "8ef2341287e5b4afa9d0e7bf",
+      "aa9765a1830bed7ee2727282",
+      "cc658ee4e2f7b6628feb4ca4",
+      "d1400702f02f387d67569ac9",
+      "ddf82d5c5c82c55ac9ae09f1",
+      "ea7cd77adb03bad473412ebc",
+      "eea81d115a4403a3083c1f64"
+    ]
+  },
+  "proposal": {
+    "implementation": "composite",
+    "replacement_calls": [
+      "683c822136ed7958f3e9ba44"
+    ],
+    "rationale": "Selected region is the contiguous ResNet-18 stem (groups 3821cceac23fa97e5a55..5d6060b158cac3430090). Measured facts (selection rationale + targets/call-resources): the process peak sits in the stem, where two coexisting full-batch (32,64,112,112) FP32 buffers of 102,760,448 B each (conv output, then out-of-place BN/ReLU output, executed as cudnn bn_fw_inf_1C11_kernel_NCHW, clamp_scalar elementwise and max_pool_forward_nchw kernels) sit on top of 67,831,968 B persistent-live tensors (params 46,758,048 + pixels 19,267,584 + images 1,806,336) plus ~8.6 MB cudnn workspace, matching the measured 281,975,808 B baseline. This candidate replaces exactly one boundary, the region root ResNetEmbeddings forward (call 683c822136ed7958f3e9ba44), with an eager chunked executor: it slices the GPU-resident input into batch chunks (default 8 images), runs the actual parent ResNetConvLayer forward (via context.references['679ccfe137094282d25350c1']) and the actual parent MaxPool2d forward (via context.references['aa9765a1830bed7ee2727282']) per chunk, and assembles results by narrow copy_ into one preallocated (32,64,56,56) output. Every stem op is per-sample (conv windows, eval-mode BN with frozen running stats, elementwise ReLU, max pooling), so chunked execution is the same computation per image; only cudnn's per-shape heuristic algorithm choice can differ at chunk batch 8 vs 32. Expected memory: chunk-sized conv/BN/ReLU transients are 2 x 25,690,112 B instead of 2 x 102,760,448 B; stem-phase live memory ~67.8 MB persistent + 25.7 MB pooled output + 51.4 MB transient + 6.4 MB pooled chunk ~ 151 MB, after which the project peak is expected to be bounded by stage 0 (~176-180 MB, ~35-38% below baseline). These are expectations to be confirmed by the independent paired measurement, not claimed results. Throughput: stem work is ~0.9 ms of ~4.15 ms diagnostic CUDA time; chunking adds ~15 extra large kernel launches (24 vs 5 in the stem) whose grids remain large at batch 8, plus 4 device-to-device copies of 6.4 MB, so expected overhead is well inside the 0.95 throughput budget (clean budget ~4.4604 ms vs ~4.2374 ms baseline median). Composition follows the binding contract: the inner conv/bn/relu/maxpool calls are NOT replaced or eliminated - they execute per chunk through the parent references handed to build(), preserving actual parent execution semantics, and the framework's module dispatch keeps its own phase/signature guard at the replaced boundary (observed (32,3,224,224) contiguous FP32 CUDA signature). Internal guards fall back to the parent reference for: unsupported signature (extra args/kwargs, non-CUDA, non-FP32, non-contiguous, wrong channel count, non-4D), grad-enabled execution (frozen workload always runs under inference_mode), runtime failure inside the chunked attempt, and a retained concise setup-failure category when the expected references/modules are absent. Fallback labels are reported via context.record_route inside the replacement (chunked_stem:ok / fallback_signature / fallback_runtime / fallback_setup), never at build time. Batch size is read from the input tensor each invocation (works for any N, including batch 1 or held-out batch 7, degrading to a single parent-equivalent chunk), nothing is cached across invocations, and no fixture outputs are precomputed. There is no previous-candidate directory and no previous-feedback.txt, so this attempt is the first implementation of the selected hypothesis.",
+    "setup_work": {
+      "description": "build() only captures the wrapped parent references (context.references for the stem, ResNetConvLayer and MaxPool2d boundaries), the ResNetEmbeddings module handle and its num_channels attribute, and reads the optional stem_chunk parameter. No CUDA kernels, no tensor allocation, no weight mutation, no packed weights and no model surgery happen at installation time; the CUDA graph-free eager path needs none.",
+      "setup_allocation_bytes": 0,
+      "retained_pools": "None created. All working buffers are per-invocation caching-allocator blocks that repeat the steady-state pattern of the parent path at chunk granularity; reserved-pool structure is unchanged in kind.",
+      "first_invocation_adaptation": "cudnn heuristic plan selection for the chunk shapes (8,3,224,224) conv etc. happens once and is cached in-process; with the frozen warmup=2 protocol this lands in warmup invocations outside the timed repeats, same lifecycle as the parent's own first-use plan selection.",
+      "parameter_handling": "stem_chunk is read from context['parameters'] when the coordinator supplies it (default 8, defensively clamped to >=1); it changes only execution granularity, never batch, shapes, dtype or sampling semantics."
+    },
+    "quality_risks": [
+      "cudnn heuristic algorithm selection at chunk batch (e.g. 8) may differ from batch 32, changing floating-point accumulation order in the stem conv; expected drift is far below the atol=rtol=1e-4 logits tolerance, but this is verified by the evaluator's paired reference comparison rather than assumed.",
+      "require_exact_top1 compares integer argmax tensors exactly; a near-tie in logits could in principle flip under tiny numerical drift. Expected argmax margins dwarf the noise; validated by the exact-top1 check in the quality run.",
+      "Quality compares against a parent-generated reference, so any fallback path is output-identical by construction (it executes the parent reference); the measured workload matches the observed signature, so the chunked path is the one exercised and counted for coverage.",
+      "Autograd/training semantics are not exercised by the frozen inference workload; the replacement deliberately falls back to the parent whenever gradients are enabled instead of claiming unverified autograd equivalence.",
+      "Numerical policies are untouched: no TF32, cudnn.benchmark stays False, FP32 weights and activations, no in-place rewrites of parent tensors (assembly writes only into the candidate-owned preallocated output)."
+    ],
+    "eliminated_calls": [],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {
+      "params": [
+        {
+          "name": "stem_chunk",
+          "kind": "int",
+          "choices": [
+            4,
+            8,
+            16
+          ],
+          "description": "Images per stem chunk. Smaller chunks lower stem transient memory (2 x chunk/32 x 102.76 MB) but add launches; 8 keeps the stem peak below the stage-0 ceiling with minimal launch overhead. Chunk never changes batch, sampling or output semantics; N <= stem_chunk degrades to one parent-equivalent chunk."
+        }
+      ],
+      "constraints": []
+    }
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea5c34c82ffeuHo3kLLC85jN11",
+    "message": "msg_15a419a2a001r3sq47lWhTJuhq",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 19,
+      "reported_cost": 0.35625568312,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 746575.0,
+        "input": 58945.0,
+        "output": 4321.0,
+        "reasoning": 16365.0,
+        "cache.read": 666944.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea5c34c82ffeuHo3kLLC85jN11",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory/sandboxes/selection-e0f96edbb50e",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory/generation-snapshots/generation-a972eb5e7855.json"
+    ]
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea5be416fffeEa0T6hueuMHtZU",
+    "message": "msg_15a4a8d2e001KKrhvtlwqawY1e",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 32,
+      "reported_cost": 0.9576643781799999,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 2504262.0,
+        "input": 103475.0,
+        "output": 6431.0,
+        "reasoning": 23604.0,
+        "cache.read": 2370752.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea5be416fffeEa0T6hueuMHtZU",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory/sandboxes/candidate-ddc0cc4fc784",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory/generation-snapshots/generation-6975de853d1b.json"
+    ]
+  },
+  "experiment_policy": {
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ],
+    "leaf_groups_only": false,
+    "selection_strategy": "agent",
+    "feedback_view": "full"
+  },
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-3c4e540078",
+    "parent_revision": "87e7d66efba88ff766579f51392ee6f6504cb3454d3642668ab4ef2890f8b2ec",
+    "contract_ref": "sha256:d373dfe4d522aa602007b7efb1c09ac82033b251e736a9295526030bcb027bb8",
+    "scope": "region",
+    "implementation": "composite",
+    "groups": [
+      "3821cceac23fa97e5a55",
+      "0022893ec8c1ceea869f",
+      "95d8eead897036452c64",
+      "c97c8dfae7e5def85428",
+      "7e7c01e2bf7e30a42280",
+      "3412952b9279e41b1709",
+      "c671bb65e86ad614e3f6",
+      "8bffcf00b7bd20c935a5",
+      "c0af3909ba0a106672d5",
+      "5d6060b158cac3430090"
+    ],
+    "calls": [
+      "683c822136ed7958f3e9ba44"
+    ],
+    "affected_calls": [
+      "021f27d2d0d73dee5fab9084",
+      "220b9d0ec76e2ccc01dcdb09",
+      "279a256c150755fd69216f5a",
+      "2f3bfb9ee01d701be01d2ff3",
+      "35096a239aa1290aabeed5de",
+      "3c3c7a3e1837d0185b1df6f0",
+      "52e7c2f32ca6695f380d240f",
+      "679ccfe137094282d25350c1",
+      "683c822136ed7958f3e9ba44",
+      "87335b95bb02e81155c4add6",
+      "8ef2341287e5b4afa9d0e7bf",
+      "aa9765a1830bed7ee2727282",
+      "cc658ee4e2f7b6628feb4ca4",
+      "d1400702f02f387d67569ac9",
+      "ddf82d5c5c82c55ac9ae09f1",
+      "ea7cd77adb03bad473412ebc",
+      "eea81d115a4403a3083c1f64"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-3c4e540078.py",
+        "before_sha256": null,
+        "content_ref": "sha256:4e9225689909204689a77ad9a2a0ab07e40ce6d41d3776e01a5cee1f72c49b52"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-3c4e540078.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:231fb3096e939a127c49f1f6224917de3aa6dc0810cc5d8dc8d29fcfd6db98d4"
+      }
+    ],
+    "read_set": [
+      "call:021f27d2d0d73dee5fab9084",
+      "call:220b9d0ec76e2ccc01dcdb09",
+      "call:279a256c150755fd69216f5a",
+      "call:2f3bfb9ee01d701be01d2ff3",
+      "call:35096a239aa1290aabeed5de",
+      "call:3c3c7a3e1837d0185b1df6f0",
+      "call:52e7c2f32ca6695f380d240f",
+      "call:679ccfe137094282d25350c1",
+      "call:683c822136ed7958f3e9ba44",
+      "call:87335b95bb02e81155c4add6",
+      "call:8ef2341287e5b4afa9d0e7bf",
+      "call:aa9765a1830bed7ee2727282",
+      "call:cc658ee4e2f7b6628feb4ca4",
+      "call:d1400702f02f387d67569ac9",
+      "call:ddf82d5c5c82c55ac9ae09f1",
+      "call:ea7cd77adb03bad473412ebc",
+      "call:eea81d115a4403a3083c1f64"
+    ],
+    "write_set": [
+      "file:opop_candidates/trial-3c4e540078.py",
+      "file:opop_candidates/trial-3c4e540078.targets.json",
+      "call:683c822136ed7958f3e9ba44"
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Model is pretrained ResNet-18 loaded from the local assets via ResNetForImageClassification.from_pretrained(assets, local_files_only=True, dtype=torch.float32) with eval() behavior; weights and activations stay FP32.",
+      "Numerical policies preserved from common.py:34-42: torch.backends.cuda.matmul.allow_tf32=False, torch.backends.cudnn.allow_tf32=False, torch.backends.cudnn.benchmark=False, torch.set_float32_matmul_precision('highest'), torch.manual_seed(20261020), 4 CPU threads and 1 interop thread.",
+      "Input is the offline batch of 32: images = np.load(assets/pixels.npy) moved to CUDA (shape (3,3,224,224) float32), pixels = images[torch.arange(32, device='cuda') % 3].contiguous() -> (32,3,224,224) FP32, GPU-resident before the timed boundary; no H2D transfer or preprocessing inside run().",
+      "The measured workload is exactly one model(pixel_values=pixels).logits forward under torch.inference_mode(); no reduction of the work amount, batch, image size or class dimension.",
+      "Correctness requires the full 1000-class logits compared with atol=1e-4, rtol=1e-4 (torch.testing.assert_close) and exact top-1 equality torch.equal(actual.argmax(-1), reference.argmax(-1)); the +1-corruption negative control must be rejected.",
+      "peak_allocated_bytes is the process-level PyTorch CUDA allocated peak for one forward with peak stats reset immediately before the timed call (torch.cuda.max_memory_allocated after the synchronized run), not whole-device, reserved or driver memory.",
+      "images_per_second is the source's full-request throughput for the fixed batch of 32, computed as batch * 1e3 / latency_ms around one complete forward on the GPU-resident input; it must not be converted into a cached-only throughput.",
+      "Throughput constraint: images_per_second >= 0.95 * baseline; memory reduction must not be obtained by violating this ratio or the frozen workload/precision/data.",
+      "Model loading, weight transfer to GPU and input construction happen in prepare outside timed execution; the module creates no CUDA tensors and initializes no CUDA context at import time."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-3c4e540078.py",
+    "parameters": {}
+  }
+}

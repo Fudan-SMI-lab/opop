@@ -1,0 +1,39 @@
+{
+  "scope": "group",
+  "groups": [
+    "1f40997fb4a53f41b9da"
+  ],
+  "rationale": "Measured facts: latency_ms is the wall time of one synchronized full-graph forward (original baseline 0.372995 ms; same-revision AB/BA parent medians 0.3699/0.3614 ms; prior-trial MAD noise bounds 55.2 us and 23.4 us, so acceptance needs a paired gain well above ~55 us). The current-revision nsys trace (observations/current/nsys-9ed9145c.json) shows 15 sequential kernels on one stream summing to 321.5 us GPU busy; the per-layer gather+atomic-scatter chain costs 234.6 us (index_add_ L2 98.6/99.4 us, gather L2 54.0/54.4 us, index_add_ L1 46.0 us, gather L1 35.0/34.8 us), GEMMs 57.6 us, remainder ~29 us, leaving only ~51 us of clean wall-minus-busy margin. The previous trial (trial-81bc23a8c7) proved the kernels themselves are beatable: its Triton CSR segment-sum replacement passed quality (max_abs_error 1.19e-7, coverage executed) and cut diagnostic CUDA time from 321.8 to 110.75 us (encoder.first 128.1->58.8, encoder.second 190.2->51.9), yet wall latency REGRESSED to 0.423-0.509 ms and was rejected for paired_gain_not_above_noise/objective_not_improved. The previous-after python_runtime trace isolates the cause: per-invocation host dispatch of the fused path (triton jit.py run 99.3 us over 6 launches, cuda_utils.launch 48.6 us, torch.cumsum 37.0 us, torch.zeros 29.6 us, torch.empty 20.4 us plus launcher/specialize machinery; cProfile wall 0.686->1.017 ms). So the binding constraint is host-side launch/dispatch cost per invocation, not kernel time, and a faster local kernel alone demonstrably worsens the metric. The editable boundary that addresses both costs at once is the whole encoder forward (group 1f40997fb4a53f41b9da, target 'encoder'): it subsumes both nested MeanSAGE boundaries and the inter-layer relu, lets the destination-derived CSR structure be built once per forward and shared by both layers (they aggregate over the identical destinations tensor), and forms one capture unit whose per-invocation host cost collapses to a single replay. The environment is proven: the leased worker (torch 2.13.0+cu129, triton 3.7.1) compiled and executed exactly these Triton kernels in the prior trial. Per the binding contract this is an explicit whole-bundle replacement at the encoder module boundary (the required encoder call itself executes in Python on every invocation), lazy capture inside an actual invocation is permitted setup, replay re-executes every captured kernel against the live GPU-resident input buffers each invocation (state protocol: same tensors every run, reset no-op), and the frozen timing boundary is untouched because capture lands in the harness's own untimed warmup invocations while lifecycle allocator metrics still record the capture pool honestly.",
+  "hypothesis": "Replace GraphEncoder.forward (call 113d899004dbbe9147a54672) with a fused plus CUDA-graph-replayed implementation: (a) mean aggregation via the trial-proven Triton CSR segment-sum kernels (destination histogram, inclusive cumsum, stable-in-count edge scatter, register-resident segment sum with IEEE-correctly-rounded div.rn.f32 by max(degree,1), zero-neighbor rows for nodes without incoming edges, duplicates counted individually), rebuilding the CSR once per forward and reusing it for both layers, feeding each nn.Linear weight GEMM a directly assembled [features | neighbors] buffer with relu preserved exactly (captured aten op or folded as the exact elementwise max(0,.) at layer-2 loads); (b) on the first (warmup) invocation only, run the fused path eagerly to JIT-compile Triton and warm cuBLAS/allocator, then capture the entire two-layer forward on the live input tensors with torch.cuda.CUDAGraph; every subsequent invocation performs a single graph replay and returns a per-run clone of the static output to avoid cross-invocation aliasing, with signature/data_ptr guards and try/except routing any capture or replay failure to the original parent forward so correctness never depends on the fast path. Expected effect: per-invocation host work drops from ~15 aten dispatches plus the prior trial's ~300+ us of Triton/alloc dispatch to one cudaGraphLaunch plus one small clone, while GPU busy stays at the demonstrated ~95-115 us level (110.75 us measured for the unfused-CSR trial variant, less one shared CSR build ~14 us), giving an expected median latency_ms of roughly 0.13-0.17 ms versus the 0.361-0.373 ms parent - a paired gain of ~0.20-0.24 ms that clears the 23-55 us noise bounds with margin, with peak_allocated_bytes expected to improve (the 32/64 MB messages intermediates disappear; prior trial measured 26.0 MB vs 97.0 MB baseline) and graphs_per_second improving proportionally. Numerical risk stays in the already-measured class (summation-order/atomic variance, 1.19e-7 max abs error in the trial, far inside atol 1e-5 / rtol 1e-4). This remains a hypothesis to be tested by the framework's paired measurement, not an accepted benefit; the concrete rejection risks are CUDA-graph capture incompatibility (mitigated by the parent fallback, which would simply reproduce baseline behavior rather than regress) and any replay-time divergence, which the per-run clone and guards convert into a correct-but-slower path.",
+  "affected_calls": [
+    "113d899004dbbe9147a54672",
+    "206dbc4bff7ae767415599c9",
+    "866013201077b272e7156dd4",
+    "d2ecdf5f4e2aa52a62482a42",
+    "36d5c2e9428f64852b773d6f",
+    "305843fa84e8d7500acb4c7b",
+    "5ca29b105d93d325b41d4cbd",
+    "5e90f195f7f306db14a8148e",
+    "dfe44b1cfe55fcdce017af05",
+    "ef8be01433c0dd9f87d7d2b9",
+    "f6b685d75a61f7577e0e2b09",
+    "fe6b217d29437481be5f2ed5",
+    "9179b5cda81f9e67b997920f",
+    "a7d4e0be760f62be8bea745a",
+    "231c3b2ce0c673f40439c073",
+    "6add22479383ec2539a87b8c",
+    "6f7e6494a1d037f66dda9a07",
+    "f79db885f13afc1a0ec76f88",
+    "a1535028e5ecfcb604215494",
+    "3917cd1f557688d0fef2351c",
+    "bee00fa9c247933b1ed6c83a",
+    "c4d431b4ea7075b487781a54",
+    "71033a630785aadd19c1e999",
+    "db20c3f324d6a29eafc07312",
+    "c90a64f85907e301e280d58a",
+    "2eb170a990782fe998ac2ead",
+    "1f9fd4c4bc3963db0c9f66d7",
+    "e9cbf5739bc84264b863c3fe",
+    "12be5e599f9b66632f879389"
+  ]
+}

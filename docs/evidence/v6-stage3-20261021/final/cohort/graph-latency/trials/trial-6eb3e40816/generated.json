@@ -1,0 +1,300 @@
+{
+  "trial": "trial-6eb3e40816",
+  "selection": {
+    "scope": "group",
+    "groups": [
+      "1f40997fb4a53f41b9da"
+    ],
+    "rationale": "Measured facts: latency_ms is the wall time of one synchronized full-graph forward (original baseline 0.372995 ms; same-revision AB/BA parent medians 0.3699/0.3614 ms; prior-trial MAD noise bounds 55.2 us and 23.4 us, so acceptance needs a paired gain well above ~55 us). The current-revision nsys trace (observations/current/nsys-9ed9145c.json) shows 15 sequential kernels on one stream summing to 321.5 us GPU busy; the per-layer gather+atomic-scatter chain costs 234.6 us (index_add_ L2 98.6/99.4 us, gather L2 54.0/54.4 us, index_add_ L1 46.0 us, gather L1 35.0/34.8 us), GEMMs 57.6 us, remainder ~29 us, leaving only ~51 us of clean wall-minus-busy margin. The previous trial (trial-81bc23a8c7) proved the kernels themselves are beatable: its Triton CSR segment-sum replacement passed quality (max_abs_error 1.19e-7, coverage executed) and cut diagnostic CUDA time from 321.8 to 110.75 us (encoder.first 128.1->58.8, encoder.second 190.2->51.9), yet wall latency REGRESSED to 0.423-0.509 ms and was rejected for paired_gain_not_above_noise/objective_not_improved. The previous-after python_runtime trace isolates the cause: per-invocation host dispatch of the fused path (triton jit.py run 99.3 us over 6 launches, cuda_utils.launch 48.6 us, torch.cumsum 37.0 us, torch.zeros 29.6 us, torch.empty 20.4 us plus launcher/specialize machinery; cProfile wall 0.686->1.017 ms). So the binding constraint is host-side launch/dispatch cost per invocation, not kernel time, and a faster local kernel alone demonstrably worsens the metric. The editable boundary that addresses both costs at once is the whole encoder forward (group 1f40997fb4a53f41b9da, target 'encoder'): it subsumes both nested MeanSAGE boundaries and the inter-layer relu, lets the destination-derived CSR structure be built once per forward and shared by both layers (they aggregate over the identical destinations tensor), and forms one capture unit whose per-invocation host cost collapses to a single replay. The environment is proven: the leased worker (torch 2.13.0+cu129, triton 3.7.1) compiled and executed exactly these Triton kernels in the prior trial. Per the binding contract this is an explicit whole-bundle replacement at the encoder module boundary (the required encoder call itself executes in Python on every invocation), lazy capture inside an actual invocation is permitted setup, replay re-executes every captured kernel against the live GPU-resident input buffers each invocation (state protocol: same tensors every run, reset no-op), and the frozen timing boundary is untouched because capture lands in the harness's own untimed warmup invocations while lifecycle allocator metrics still record the capture pool honestly.",
+    "hypothesis": "Replace GraphEncoder.forward (call 113d899004dbbe9147a54672) with a fused plus CUDA-graph-replayed implementation: (a) mean aggregation via the trial-proven Triton CSR segment-sum kernels (destination histogram, inclusive cumsum, stable-in-count edge scatter, register-resident segment sum with IEEE-correctly-rounded div.rn.f32 by max(degree,1), zero-neighbor rows for nodes without incoming edges, duplicates counted individually), rebuilding the CSR once per forward and reusing it for both layers, feeding each nn.Linear weight GEMM a directly assembled [features | neighbors] buffer with relu preserved exactly (captured aten op or folded as the exact elementwise max(0,.) at layer-2 loads); (b) on the first (warmup) invocation only, run the fused path eagerly to JIT-compile Triton and warm cuBLAS/allocator, then capture the entire two-layer forward on the live input tensors with torch.cuda.CUDAGraph; every subsequent invocation performs a single graph replay and returns a per-run clone of the static output to avoid cross-invocation aliasing, with signature/data_ptr guards and try/except routing any capture or replay failure to the original parent forward so correctness never depends on the fast path. Expected effect: per-invocation host work drops from ~15 aten dispatches plus the prior trial's ~300+ us of Triton/alloc dispatch to one cudaGraphLaunch plus one small clone, while GPU busy stays at the demonstrated ~95-115 us level (110.75 us measured for the unfused-CSR trial variant, less one shared CSR build ~14 us), giving an expected median latency_ms of roughly 0.13-0.17 ms versus the 0.361-0.373 ms parent - a paired gain of ~0.20-0.24 ms that clears the 23-55 us noise bounds with margin, with peak_allocated_bytes expected to improve (the 32/64 MB messages intermediates disappear; prior trial measured 26.0 MB vs 97.0 MB baseline) and graphs_per_second improving proportionally. Numerical risk stays in the already-measured class (summation-order/atomic variance, 1.19e-7 max abs error in the trial, far inside atol 1e-5 / rtol 1e-4). This remains a hypothesis to be tested by the framework's paired measurement, not an accepted benefit; the concrete rejection risks are CUDA-graph capture incompatibility (mitigated by the parent fallback, which would simply reproduce baseline behavior rather than regress) and any replay-time divergence, which the per-run clone and guards convert into a correct-but-slower path.",
+    "affected_calls": [
+      "113d899004dbbe9147a54672",
+      "12be5e599f9b66632f879389",
+      "1f9fd4c4bc3963db0c9f66d7",
+      "206dbc4bff7ae767415599c9",
+      "231c3b2ce0c673f40439c073",
+      "2eb170a990782fe998ac2ead",
+      "305843fa84e8d7500acb4c7b",
+      "36d5c2e9428f64852b773d6f",
+      "3917cd1f557688d0fef2351c",
+      "5ca29b105d93d325b41d4cbd",
+      "5e90f195f7f306db14a8148e",
+      "6add22479383ec2539a87b8c",
+      "6f7e6494a1d037f66dda9a07",
+      "71033a630785aadd19c1e999",
+      "866013201077b272e7156dd4",
+      "9179b5cda81f9e67b997920f",
+      "a1535028e5ecfcb604215494",
+      "a7d4e0be760f62be8bea745a",
+      "bee00fa9c247933b1ed6c83a",
+      "c4d431b4ea7075b487781a54",
+      "c90a64f85907e301e280d58a",
+      "d2ecdf5f4e2aa52a62482a42",
+      "db20c3f324d6a29eafc07312",
+      "dfe44b1cfe55fcdce017af05",
+      "e9cbf5739bc84264b863c3fe",
+      "ef8be01433c0dd9f87d7d2b9",
+      "f6b685d75a61f7577e0e2b09",
+      "f79db885f13afc1a0ec76f88",
+      "fe6b217d29437481be5f2ed5"
+    ]
+  },
+  "proposal": {
+    "implementation": "composite",
+    "replacement_calls": [
+      "113d899004dbbe9147a54672"
+    ],
+    "rationale": "Single replacement of the whole encoder boundary (group 1f40997fb4a53f41b9da, module target 'encoder', call 113d899004dbbe9147a54672) with a fused CSR mean-aggregation implementation whose entire two-layer forward is captured once into a torch.cuda.CUDAGraph and thereafter executed as one replay per invocation. How the previous feedback changes this attempt: trial-81bc23a8c7 proved the kernels but lost on the metric. Measured facts from inputs/previous-feedback.txt: its Triton CSR segment-sum replacement of both MeanSAGE forwards passed quality (max_abs_error 1.1921e-7 over 262144 elements, coverage executed) and cut diagnostic CUDA time from 321.8 to 110.75 us (encoder.first 128.1->58.8 us, encoder.second 190.2->51.9 us), yet wall latency regressed (candidate medians 0.4228/0.5093 ms vs parent 0.3699/0.3614 ms; paired gains -0.0528/-0.1480 ms) and was rejected for paired_gain_not_above_noise/objective_not_improved. The previous-after python_runtime trace (observations/previous-after/python_runtime-aea48e29.json, profiled wall 0.686->1.017 ms) isolates the cause as per-invocation host dispatch of the fused path: triton jit.py run 99.3 us self over 6 launches (288.3 us cumulative), torch._C._nn.linear 63.7 us self over 2 calls, torch.cumsum 37.0 us, torch.zeros 29.6 us, torch.empty 20.4 us plus launcher/specialize machinery. The previous-after nsys trace shows the fused path's GPU side is already good: 15 kernels totalling 115.8 us busy (segsum 2x = 28.3 us, scatter 2x = 13.2 us, hist 2x = 9.3 us, GEMMs 54.0 us, cub scans 5.9 us, fills 5.2 us). So the binding constraint is host-side launch cost, and this attempt removes it instead of touching kernel time again: per-invocation host work drops to the signature/pointer guards, one cudaGraphLaunch (CUDAGraph.replay on the current stream), and one 1 MB clone, while the replayed graph re-executes the complete computation (shared CSR rebuild from the live destinations/sources buffers, both segment-sum kernels, both cuBLAS GEMMs, relu) on current buffer contents every invocation - the computation is captured, never a fixture answer. Composition: both observed MeanSAGE boundaries and the inter-layer relu are subsumed into one capture unit; the CSR structure is built once per forward and shared by both layers because they aggregate over the identical edge list (saves one hist+scan+scatter pass, ~14 us GPU, versus the per-layer trial); each nn.Linear projection consumes a directly assembled [features | neighbors] fp32 buffer; division stays IEEE-correctly-rounded div.rn.f32 by max(degree,1) with zero-neighbor rows for nodes without incoming edges and duplicate directed edges counted individually (histogram counts every edge), pointwise identical to model.py:11-15 semantics. Binding-contract compliance: capture happens lazily inside the first real replacement invocation (after computing that invocation's output eagerly on the default stream and warming the exact op sequence on the capture stream), so the captured work is the replacement's own fused path in the live parent context, not stale parent work; replay does not need Python hooks because the required observed call for this bundle is the encoder boundary itself, which is invoked on every run (coverage counts the replacement invocations); the 28 inner observed sites no longer dispatch individually and are declared in eliminated_calls - the aten::linear/relu GPU work still executes inside the replayed graph as the same cuBLAS/elementwise kernels with the observed shapes, and the record_function sites were collector instrumentation inside the replaced boundary, so the only consumer (the [4096, 64] fp32 output returned to the harness) stays valid and the framework can recapture the plan. Guards and fallbacks keep correctness independent of the fast path: grad-enabled or training-mode invocations, and any shape/stride/dtype/device deviation from the observed signature class, route to the parent bound forward with 'fallback:signature'; setup inability routes with 'fallback:setup'; a failed capture marks the state broken ('fallback:capture') and that and later invocations use the eager fused path ('fused_csr_eager'); a pointer/spec change on inputs or weights after capture also uses the eager fused path (same live values, current tensors); any runtime exception routes to the parent with 'fallback:runtime'. Expected effect (hypothesis, to be measured by the framework's paired AB/BA protocol): GPU busy stays at the demonstrated ~95-115 us level and per-invocation host cost collapses from the parent's ~15 aten dispatches plus ~51 us wall-minus-busy margin, and from the trial's ~300+ us Triton dispatch, to one replay plus one clone, giving an expected median latency_ms of roughly 0.13-0.17 ms versus the 0.361-0.373 ms parent - a paired gain of ~0.20-0.24 ms that clears the 55.2/23.4 us MAD noise bounds with margin. Secondary expectations: warm-run peak_allocated_bytes falls to the clone-plus-live-tensor level (prior trial measured 26.0 MB vs 97.0 MB parent baseline) because the per-run allocator traffic is one 1 MB clone, while lifecycle/reserved counters grow by the retained graph private pool; these are allocator-counter observations, not general physical-memory savings. No batch, sequence-length, generation-count, sampling, data or threshold changes; the graph, edges, dtype, seeds and comparison semantics are exactly the frozen ones.",
+    "setup_work": {
+      "build_time": "No GPU work, no model mutation, no weight packing and no fixture-dependent precomputation at build(): the module defines the three Triton JIT functions, resolves module.first/module.second project submodules and the parent reference from context, and returns one closure bound to the encoder call id. Installation cost is import-time only, comparable to the prior trial's ~197 ms direct binding.",
+      "first_invocation": "The first eligible invocation performs, inside the replacement: (1) the eager fused forward on the default stream, whose output is returned for that invocation; (2) two warmup iterations of the identical op sequence on a dedicated capture stream (Triton cubins are already compiled by step 1; this warms cuBLAS workspace and allocator blocks for that stream); (3) torch.cuda.CUDAGraph capture of the whole two-layer fused forward on the live input tensors (torch.cuda.graph, which itself synchronizes and calls empty_cache before capture_begin). Triton JIT compilation (hist and scatter once, segsum specialized for F=128 and F=256) happens at step 1. All of this lands in the frozen harness's 3 warmup invocations / quality step 0, outside the 15 timed samples; lifecycle memory counters include it.",
+      "per_invocation": "Eligibility guard (dtype/shape/stride/device checks on the four inputs and the four weight tensors, grad/training-mode checks), an 8-entry (shape, data_ptr) key comparison, one CUDAGraph.replay() on the current stream, and a 1 MB clone of the static output returned to the caller. Inside the replayed graph each invocation re-executes: the ibuf zero fill, destination histogram, inclusive cumsum, stable-in-count edge scatter (CSR rebuilt from current buffer contents), layer-1 segment sum with div.rn by max(degree,1), cuBLAS GEMM 4096x256x256, relu, layer-2 segment sum over the relu'd hidden features reusing the same CSR, and cuBLAS GEMM 4096x512x64. Nothing about the fixture output is cached or reused across invocations.",
+      "memory": "Setup retains a CUDA graph private memory pool holding the capture-time intermediates: int32 ibuf (48 KB), int32 sorted_src (256 KB), fp32 buf1 (4 MB), fp32 hidden + linear intermediates (~8 MB), fp32 buf2 (8 MB), fp32 static output (1 MB) plus cumsum/cuBLAS workspaces - expected on the order of ~20-30 MB additional reserved, so framework.lifecycle_peak_reserved_bytes and lifecycle_peak_allocated_bytes grow by the pool while they also include the eager first invocation. Warm-run framework.peak_allocated_bytes (reset per run) is expected to fall to roughly the clone-plus-live-tensor level versus 26.0 MB for the prior eager trial and 97.0 MB for the parent baseline, because the 32/64 MB messages intermediates are never materialized and per-run allocator traffic is one 1 MB clone; that is a PyTorch allocator counter decrease on the declared secondary metric, not a general physical-memory saving, and no non-PyTorch driver allocation is measured. The retained graph pool keeps reserved memory higher for the process lifetime; this trade is reported, not hidden.",
+      "state_lifecycle": "Inference-only under torch.inference_mode(): no parameters, buffers or optimizer state are modified; weights are read in place at their fixed captured addresses (in-place value changes would be read at replay; weight tensor replacement is detected by the pointer guard and routes to the eager fused path which reads the current tensors). Inputs are never written - all kernel writes target graph-pool buffers - and adapter reset() being a no-op is compatible because replay recomputes the full forward from the live buffers on every invocation. The returned tensor is a fresh clone per invocation, so there is no cross-invocation output aliasing, and continuous execution steps each observe a fully recomputed result."
+    },
+    "quality_risks": [
+      "Summation-order divergence from the reference: the reference reduces each node's messages in nondeterministic atomic order (index_add_) while this implementation reduces in CSR order, and the hist/scatter atomic rank ordering may differ between replays; this is the same error class the prior trial measured at max_abs_error 1.19e-7 over 262144 elements, far inside atol 1e-5 / rtol 1e-4. A CPU emulation of the shared-CSR two-layer composition matches the reference formula exactly.",
+      "Division rounding: the segment-sum kernel uses tl.math.div_rn, which emits div.rn.f32 (IEEE correctly rounded), matching aten::div on fp32; a reciprocal multiply was deliberately avoided, exactly as in the accepted-quality prior trial.",
+      "CUDA Graph specifics: capture happens once inside the first replacement invocation after eager warmup on the capture stream; if capture fails for any reason the state is marked broken ('fallback:capture'), a synchronize is attempted, and all later invocations use the eager fused path - quality stays correct in that case, and the label distinguishes it from setup ('fallback:setup'), signature ('fallback:signature') and runtime ('fallback:runtime') failures. Replay reads the live input/weight buffers each invocation; inputs or weights appearing at different addresses route to the eager fused path, and grad-enabled or training-mode invocations route to the parent.",
+      "Index bounds are trusted as in-bounds (0 <= sources[i], destinations[i] < N), as in the prior trial: the frozen fixture generates them with randint(N) and the guard restricts the fused path to the observed contiguous int64 1-D CUDA signature; out-of-range indices would corrupt memory instead of raising like index_select, accepted for the frozen workload with parent fallback for any other signature.",
+      "Coverage semantics: CUDA Graph replay does not rerun Python hooks, so the 28 eliminated inner observed sites (both MeanSAGE module boundaries, both Linear module boundaries, the aten index_select/zeros_like/index_add_/clamp_min/unsqueeze/div/cat/linear/relu functional sites and the record_function instrumentation sites) no longer dispatch individually; their GPU work either still executes inside the replayed graph with the observed shapes (GEMMs, relu, aggregation) or was collector instrumentation internal to the replaced boundary. The consumer of the replaced boundary is the harness, which receives the same [4096, 64] fp32 output tensor semantics; the framework recaptures the plan from eliminated_calls.",
+      "The two GEMMs remain the TF32-disabled 'highest'-precision cuBLAS sgemm kernels at the observed shapes (F.linear with the modules' own weights and biases); TF32 and matmul-precision policies are untouched.",
+      "Triton unavailability or unexpected module structure at build time installs a parent-passthrough replacement labeled 'fallback:setup' rather than failing installation; the measured worker environment ships triton 3.7.1 with torch 2.13.0+cu129.",
+      "Memory-metric interpretation: warm-run peak_allocated_bytes can fall simply because allocation moved into the retained graph pool, while lifecycle_peak_reserved_bytes grows by that pool; neither counter measures non-PyTorch driver memory, and no counter change is claimed as a physical-memory saving."
+    ],
+    "eliminated_calls": [
+      "206dbc4bff7ae767415599c9",
+      "866013201077b272e7156dd4",
+      "a1535028e5ecfcb604215494",
+      "e9cbf5739bc84264b863c3fe",
+      "3917cd1f557688d0fef2351c",
+      "12be5e599f9b66632f879389",
+      "fe6b217d29437481be5f2ed5",
+      "bee00fa9c247933b1ed6c83a",
+      "9179b5cda81f9e67b997920f",
+      "c4d431b4ea7075b487781a54",
+      "a7d4e0be760f62be8bea745a",
+      "71033a630785aadd19c1e999",
+      "231c3b2ce0c673f40439c073",
+      "db20c3f324d6a29eafc07312",
+      "6add22479383ec2539a87b8c",
+      "c90a64f85907e301e280d58a",
+      "6f7e6494a1d037f66dda9a07",
+      "2eb170a990782fe998ac2ead",
+      "f79db885f13afc1a0ec76f88",
+      "1f9fd4c4bc3963db0c9f66d7",
+      "d2ecdf5f4e2aa52a62482a42",
+      "305843fa84e8d7500acb4c7b",
+      "36d5c2e9428f64852b773d6f",
+      "5e90f195f7f306db14a8148e",
+      "ef8be01433c0dd9f87d7d2b9",
+      "5ca29b105d93d325b41d4cbd",
+      "dfe44b1cfe55fcdce017af05",
+      "f6b685d75a61f7577e0e2b09"
+    ],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {}
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea5b21128ffeOpZoIg3A3NPruz",
+    "message": "msg_15a541f4c001TAO9fZKFEMyq5K",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 23,
+      "reported_cost": 0.7884829068,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 1880654.0,
+        "input": 126534.0,
+        "output": 5471.0,
+        "reasoning": 23657.0,
+        "cache.read": 1724992.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea5b21128ffeOpZoIg3A3NPruz",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage3/final-e2e-187617c/graph-latency/sandboxes/selection-38338abe0493",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/opop-v6-stage3/final-e2e-187617c/graph-latency/generation-snapshots/generation-967b50ca92e3.json"
+    ]
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea5abbbf1ffe93XRypxqidrMVb",
+    "message": "msg_15a5cf56e001DrDi0PWToAEau8",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 23,
+      "reported_cost": 0.8076084547,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 1822692.0,
+        "input": 107127.0,
+        "output": 11803.0,
+        "reasoning": 31186.0,
+        "cache.read": 1672576.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea5abbbf1ffe93XRypxqidrMVb",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage3/final-e2e-187617c/graph-latency/sandboxes/candidate-695243d34c0e",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/opop-v6-stage3/final-e2e-187617c/graph-latency/generation-snapshots/generation-708ba8b989e5.json"
+    ]
+  },
+  "experiment_policy": {
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ],
+    "leaf_groups_only": false,
+    "selection_strategy": "agent",
+    "feedback_view": "full"
+  },
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-6eb3e40816",
+    "parent_revision": "879a796ad383e4afbf0395e6d82794b366e6b0f2c6cae8f331fdbdd9adbb1b28",
+    "contract_ref": "sha256:d3a0c12584113b8879bd2d395978424cb0453f28dc474755e45ff3fcbcb297fc",
+    "scope": "group",
+    "implementation": "composite",
+    "groups": [
+      "1f40997fb4a53f41b9da"
+    ],
+    "calls": [
+      "113d899004dbbe9147a54672"
+    ],
+    "affected_calls": [
+      "113d899004dbbe9147a54672",
+      "12be5e599f9b66632f879389",
+      "1f9fd4c4bc3963db0c9f66d7",
+      "206dbc4bff7ae767415599c9",
+      "231c3b2ce0c673f40439c073",
+      "2eb170a990782fe998ac2ead",
+      "305843fa84e8d7500acb4c7b",
+      "36d5c2e9428f64852b773d6f",
+      "3917cd1f557688d0fef2351c",
+      "5ca29b105d93d325b41d4cbd",
+      "5e90f195f7f306db14a8148e",
+      "6add22479383ec2539a87b8c",
+      "6f7e6494a1d037f66dda9a07",
+      "71033a630785aadd19c1e999",
+      "866013201077b272e7156dd4",
+      "9179b5cda81f9e67b997920f",
+      "a1535028e5ecfcb604215494",
+      "a7d4e0be760f62be8bea745a",
+      "bee00fa9c247933b1ed6c83a",
+      "c4d431b4ea7075b487781a54",
+      "c90a64f85907e301e280d58a",
+      "d2ecdf5f4e2aa52a62482a42",
+      "db20c3f324d6a29eafc07312",
+      "dfe44b1cfe55fcdce017af05",
+      "e9cbf5739bc84264b863c3fe",
+      "ef8be01433c0dd9f87d7d2b9",
+      "f6b685d75a61f7577e0e2b09",
+      "f79db885f13afc1a0ec76f88",
+      "fe6b217d29437481be5f2ed5"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-6eb3e40816.py",
+        "before_sha256": null,
+        "content_ref": "sha256:24df3a1eace538080752cd0ff023b94b5bbc1655cf7960e2d04b185105eebeb2"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-6eb3e40816.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:0d54e44f80d92e34719733aeebdb6c4489b6e4daf24ac57324b9424e2399c6d6"
+      }
+    ],
+    "read_set": [
+      "call:113d899004dbbe9147a54672",
+      "call:12be5e599f9b66632f879389",
+      "call:1f9fd4c4bc3963db0c9f66d7",
+      "call:206dbc4bff7ae767415599c9",
+      "call:231c3b2ce0c673f40439c073",
+      "call:2eb170a990782fe998ac2ead",
+      "call:305843fa84e8d7500acb4c7b",
+      "call:36d5c2e9428f64852b773d6f",
+      "call:3917cd1f557688d0fef2351c",
+      "call:5ca29b105d93d325b41d4cbd",
+      "call:5e90f195f7f306db14a8148e",
+      "call:6add22479383ec2539a87b8c",
+      "call:6f7e6494a1d037f66dda9a07",
+      "call:71033a630785aadd19c1e999",
+      "call:866013201077b272e7156dd4",
+      "call:9179b5cda81f9e67b997920f",
+      "call:a1535028e5ecfcb604215494",
+      "call:a7d4e0be760f62be8bea745a",
+      "call:bee00fa9c247933b1ed6c83a",
+      "call:c4d431b4ea7075b487781a54",
+      "call:c90a64f85907e301e280d58a",
+      "call:d2ecdf5f4e2aa52a62482a42",
+      "call:db20c3f324d6a29eafc07312",
+      "call:dfe44b1cfe55fcdce017af05",
+      "call:e9cbf5739bc84264b863c3fe",
+      "call:ef8be01433c0dd9f87d7d2b9",
+      "call:f6b685d75a61f7577e0e2b09",
+      "call:f79db885f13afc1a0ec76f88",
+      "call:fe6b217d29437481be5f2ed5"
+    ],
+    "write_set": [
+      "file:opop_candidates/trial-6eb3e40816.py",
+      "file:opop_candidates/trial-6eb3e40816.targets.json",
+      "call:113d899004dbbe9147a54672"
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Seeds: torch.manual_seed(20261021) before model construction; separate CPU torch.Generator seeded 20261022 for the input fixture (infer.py:14,20-23).",
+      "Numerics: float32 everywhere; torch.backends.cuda.matmul.allow_tf32=False; torch.backends.cudnn.allow_tf32=False; torch.set_float32_matmul_precision('highest') (infer.py:15-17, workloads.json dtype float32).",
+      "Architecture: two MeanSAGE layers, Linear(2*128->256) then Linear(2*256->64), with ReLU between layers; input_features=128, hidden_features=256, output_features=64 (model.py:18-26, workloads.json:2).",
+      "Aggregation semantics: messages = features.index_select(0, sources); neighbors = zeros_like(features).index_add_(0, destinations, messages); neighbors / degree.clamp_min(1).unsqueeze(1); duplicate directed edges contribute individually; nodes without incoming edges get zero neighbor features (model.py:11-15, README.md:17-19).",
+      "Workload graph: nodes=4096, edges=65536; degree = torch.bincount(destinations, minlength=4096).float(); the same edge list ordering and fixture construction path must be preserved.",
+      "Output: the complete [4096, 64] float32 output tensor, compared with torch.testing.assert_close(actual, reference, atol=1e-05, rtol=1e-4) (infer.py:45, workloads.json:9).",
+      "Timing boundary: each latency sample is the wall time of one forward between CUDA synchronizations; model/fixture construction, H2D transfer, warmup, quality checking and statistics queries are outside timing (README.md:13-15, infer.py:49-60).",
+      "No cross-invocation state: every forward is independent and uses the same GPU-resident inputs; the timed invocation contains no gradient clears or cache resets."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-6eb3e40816.py",
+    "parameters": {}
+  }
+}

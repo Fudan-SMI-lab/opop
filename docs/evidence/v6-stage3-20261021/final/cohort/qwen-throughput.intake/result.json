@@ -1,0 +1,148 @@
+{
+  "status": "ready",
+  "intake": "/root/opop-v6-stage3/final-e2e-187617c/qwen-throughput.intake",
+  "proposal": {
+    "status": "ready",
+    "description": {
+      "entry": "qwen_inference.py",
+      "files": [
+        "qwen_inference.py",
+        "common.py",
+        "workloads.json",
+        "README.md"
+      ],
+      "invocation": "One complete infer() execution in qwen_inference.py for the interactive workload: a single fixed-length greedy generation of new_tokens=32 tokens (prefill of the 256-token GPU-resident input_ids with use_cache=True and logits_to_keep=1, argmax first token, then 31 KV-cached decode steps) on batch=1 under torch.inference_mode(), bracketed by the source's CUDA-sync timing boundaries. Excludes model/tokenizer loading, chat-template tokenization, host input construction, reference generation with teacher forcing, correctness checks, statistical warmup/repeats, and profiling, which belong to the harness (qwen_inference.py:main, common.py).",
+      "objective": {
+        "name": "generated_tokens_per_second",
+        "unit": "tokens/s",
+        "direction": "maximize",
+        "constraints": [],
+        "source": null,
+        "rank_aggregation": null
+      },
+      "workload": {
+        "id": "interactive",
+        "batch": 1,
+        "prompt_tokens": 256,
+        "new_tokens": 32,
+        "goals": [
+          {
+            "id": "ttft",
+            "metric": "ttft_ms",
+            "direction": "min"
+          },
+          {
+            "id": "decode",
+            "metric": "decode_tokens_per_second",
+            "direction": "max"
+          }
+        ]
+      },
+      "quality": {
+        "atol": 0.02,
+        "rtol": 0.02,
+        "logits_atol": 0.02,
+        "logits_rtol": 0.02,
+        "require_exact_greedy_tokens": true
+      },
+      "warmup": 2,
+      "repeats": 5,
+      "assets": {
+        "qwen3_4b_weights": "/root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c"
+      },
+      "device_count": 1,
+      "distributed_backend": null,
+      "communication": "auto",
+      "required_observations": [],
+      "notes": [
+        "Command provenance (intent.json): python qwen_inference.py --assets /root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c --output /tmp/original-qwen. The command runs all rows in the qwen_inference config; the user goal selects the interactive row (workloads.json:6-7).",
+        "Objective semantics: generated_tokens_per_second = batch * new_tokens * 1e9 / (end - start) (qwen_inference.py:40), i.e. full-request throughput over the end-to-end window including prefill/first token (README: total generation throughput counts the first token). It is not cached-only decode throughput (decode_tokens_per_second) and not TTFT.",
+        "The interactive row's declared goals (ttft_ms, decode_tokens_per_second) are the source's own goal list; the user's requested metric generated_tokens_per_second on this same row supersedes them. The source declares no performance constraints for this workload, so objective.constraints is empty.",
+        "Discrete exact comparison: greedy token IDs must match the reference exactly via torch.equal (qwen_inference.py:62, assert torch.equal(actual_tokens, tokens)); workloads.json correctness requires require_exact_greedy_tokens=true. Per-step logits (captured with fixed-context teacher forcing) are compared with torch.testing.assert_close at logits_atol=logits_rtol=0.02 (workloads.json:12, qwen_inference.py:61), and the negative control must reject a +1 corruption (common.py:negative_check).",
+        "Generation-length and stopping semantics must be preserved: the explicit loop generates exactly new_tokens=32 tokens with EOS early stopping disabled; input is the chat-templated config prompt (enable_thinking=False) repeated/truncated to prompt_tokens=256, replicated to batch=1 on cuda (qwen_inference.py:53-58).",
+        "Model config preserved: Qwen3ForCausalLM.from_pretrained(assets, dtype=torch.bfloat16, attn_implementation=\"sdpa\").eval().cuda(); TF32 disabled, float32 matmul precision highest, cudnn.benchmark off, seed 20261020 (qwen_inference.py:49, common.py:configure).",
+        "Single-process single-GPU task (device_count=1, one leased RTX 4090): no distributed backend; the worker binds rank/device. required_observations is empty because no communication collector fields are requested; the objective is end-to-end request throughput, not diagnostic kernel time.",
+        "The user command passes no --profile, so the separate torch.profiler diagnostic (common.py:profile_once) is not part of this request.",
+        "warmup=2 and repeats=5 are the source defaults (common.py:arguments; README suite run uses the same) and are statistical harness fields, not part of the repeated work unit."
+      ]
+    },
+    "evidence": {
+      "entry": [
+        "intent.json command names qwen_inference.py as the entry",
+        "qwen_inference.py:44-86 main() is the executable entry; qwen_inference.py:14-41 infer() is the measured generation unit"
+      ],
+      "workload": [
+        "workloads.json:6-7 qwen_inference.workloads row {id: interactive, batch: 1, prompt_tokens: 256, new_tokens: 32}",
+        "qwen_inference.py:53-58 builds inputs from config prompt truncated/repeated to prompt_tokens and replicated to workload batch"
+      ],
+      "objective": [
+        "qwen_inference.py:40 metrics key generated_tokens_per_second = batch * new_tokens * 1e9 / (end - start)",
+        "README.md measurement section: total generation throughput counts the first token; main timing excludes model loading, tokenization and correctness checks",
+        "intent.json goal: Increase full-request generated tokens per second for the interactive workload"
+      ],
+      "quality": [
+        "workloads.json:12 qwen_inference.correctness {logits_atol: 0.02, logits_rtol: 0.02, require_exact_greedy_tokens: true}",
+        "qwen_inference.py:59-64 close_check with quality atol/rtol, assert torch.equal(actual_tokens, tokens), negative_check, exact_greedy_tokens flag"
+      ],
+      "assets": [
+        "intent.json command --assets /root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c (directory verified to contain config.json, tokenizer files and 3 safetensors shards)",
+        "qwen_inference.py:48-49 AutoTokenizer.from_pretrained(args.assets) and Qwen3ForCausalLM.from_pretrained(args.assets, dtype=bfloat16, attn_implementation=sdpa), local_files_only=True"
+      ],
+      "device_count": [
+        "qwen_inference.py:49,58 single-process .cuda() execution with no process group or launch wrapper (contrast: gpt2_ddp_training.py uses torch.distributed.run in README)",
+        "deployment.json devices lists one leased GPU (GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d, RTX 4090); inventory shows a second GPU not used by this workload"
+      ],
+      "harness_separation": [
+        "qwen_inference.py:59-68 reference generation with teacher forcing, correctness checks and reference .pt saving precede timing and are measurement infrastructure",
+        "qwen_inference.py:69-76 warmup loop and repeats sampling loop wrap infer(); qwen_inference.py:78-79 optional --profile diagnostic is separate from clean timing"
+      ]
+    },
+    "assumptions": [
+      "'Full-request generated tokens per second' maps to the source metric key generated_tokens_per_second (whole-request window including prefill), not decode_tokens_per_second, consistent with the README statement that total generation throughput counts the first token.",
+      "The user goal selects the interactive row (batch=1) and its own metric; the offline row (batch=8) and held_out long_prompt row in workloads.json are not part of this request.",
+      "The source declares no baseline_ratio/threshold constraints for Qwen goals, so no constraints are invented; correctness bounds live in quality, not in objective.constraints.",
+      "warmup=2 and repeats=5 follow the source CLI defaults and the README suite invocation; the framework may keep its own statistical policy."
+    ],
+    "questions": []
+  },
+  "agent": {
+    "role": "project-intake",
+    "session": "ses_ea5caebbcffeMkpLlHUW5p8E0C",
+    "message": "msg_15a369851001vIWB14eRjfzAvH",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 7,
+      "reported_cost": 0.08360622264,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 138775.0,
+        "input": 19705.0,
+        "output": 2865.0,
+        "reasoning": 3437.0,
+        "cache.read": 112768.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea5caebbcffeMkpLlHUW5p8E0C",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage3/final-e2e-187617c/qwen-throughput.intake/sandboxes/project-intake-b01b212602aa",
+    "outputs": [
+      "intake.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/opop-v6-stage3/final-e2e-187617c/qwen-throughput.intake/generation-snapshots/generation-6d1fd85aadfa.json"
+    ]
+  },
+  "request": "/root/opop-v6-stage3/final-e2e-187617c/qwen-throughput.intake/resolved-request.json"
+}

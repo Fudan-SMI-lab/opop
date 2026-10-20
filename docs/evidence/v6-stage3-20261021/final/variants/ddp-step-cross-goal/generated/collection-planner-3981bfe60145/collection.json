@@ -1,0 +1,31 @@
+{
+  "collectors": [
+    "torch",
+    "nccl_tuning",
+    "collective_calibration",
+    "nsys",
+    "execution_timeline",
+    "device_telemetry"
+  ],
+  "requested_fields": [
+    "torch.communication_kernel_sum_ms",
+    "torch.step_ms",
+    "nccl_tuning.warmed_algorithm_protocol_channel_decisions.at_observed_sizes_28351488B_157541376B_f32_sum",
+    "collective_calibration.allreduce_sum_f32.duration_ms.at_28351488B",
+    "collective_calibration.allreduce_sum_f32.duration_ms.at_157541376B",
+    "nsys.per_rank_nccl_kernel_intervals_and_compute_overlap",
+    "execution_timeline.cpu_to_cuda_submit_associations.clock_alignment_bounds.per_collective",
+    "execution_timeline.synchronization_and_grad_post_accumulate_ordering_per_rank",
+    "device_telemetry.pcie.tx_rx_rate_and_gpu_utilization_during_step"
+  ],
+  "unavailable_fields": {
+    "nvlink_bytes": "NVLink is not supported on the two leased GPUs: device_telemetry probe returned nvmlDeviceGetNvLinkState NVML status 3 (NOT_SUPPORTED) on both GPU-4bead555 and GPU-69c59246 with empty link lists, so no NVLink traffic counters exist.",
+    "pcie_bytes": "No per-collective PCIe byte counters: hardware byte counters require a successful collector-specific probe that has not succeeded; device_telemetry supplies only device-wide NVML rates with native ~20 ms driver sampling windows. PCIe/NVLink traffic must not be derived from the 497,759,232 logical payload bytes or memcpy sizes.",
+    "hardware_utilization": "Requires a successful collector-specific hardware-counter probe; the capability probe left it unknown and topology/logical payload cannot measure it.",
+    "in_step_nccl_protocol_decision": "Kernel entry names (all 13 observed kernels are ncclDevKernel_AllReduce_Sum_f32_RING_LL) do not identify the effective protocol; nccl_tuning reports actual NCCL algorithm/protocol/channel decisions only in its separate warmed worker, not for the measured step, and it does not join payload-size matches to operator groups or supply clean in-step timing.",
+    "nccl_wait_vs_wire_decomposition": "Nsys timelines alone cannot separate NCCL peer-waiting from wire transfer inside a kernel, and cross_rank clock_policy forbids subtracting timestamps from different rank clocks; no available counter provides this split.",
+    "gpu_side_bucket_readiness_and_consumer_completion": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness of each bucket's gradient storage and consumer completion times may remain unknown, and it never replaces a communication hook.",
+    "per_bucket_allreduce_performance_lower_bound": "collective_calibration is a separate synthetic full-world SUM allreduce reference experiment at the observed sizes/dtypes with correctness checks; it is not a performance lower bound or a model critical-path estimate, so it cannot be reported as a bound for the in-step kernels."
+  },
+  "rationale": "Frozen objective: minimize torch_communication.communication_kernel_sum_ms (per-rank sum of NCCL kernel durations, max over the 2 ranks, median of 3 profiled repetitions) subject to step_ms <= 1.05x baseline. Torch trace evidence (collector already ran): 13 cross-rank matched DDP bucket allreduces, 12x 28,351,488 B plus 1x 157,541,376 B (f32 SUM, buckets 0-12, attribution via observed gradient-storage membership plus matched parameter inventory), all executed by ncclDevKernel_AllReduce_Sum_f32_RING_LL. Rank 0 sums to ~216.6 ms while rank 1 sums to ~63.3 ms at identical payloads; the 157.5 MB bucket is symmetric (~19.3 ms on both ranks) while the 27 MB buckets take a median 3.6 ms on rank 1 versus 14.9 ms (range 14.2-21.8 ms) on rank 0, so rank 0's kernel durations are dominated by waiting for a late peer arrival on top of an ~8 GB/s effective LL wire cost; the max-rank aggregation makes rank 0's wait-inclusive durations the objective. Selections: (1) torch stays as the already-run source of communication_kernel_sum_ms and the step_ms constraint. (2) nccl_tuning captures the actual NCCL algorithm/protocol/channel decisions in a separate warmed worker at the observed sizes - kernel entry names alone do not establish the effective protocol, and RING-class LL for 27-157 MB payloads over this fabric is the prime mis-selection suspect. (3) collective_calibration provides the warmed full-world SUM allreduce reference at exactly the two observed payload sizes/dtypes (reference experiment, not a lower bound) to quantify achievable collective time on this pair. (4) Fabric is PCIe-only: peer_access is 0 in both directions and NVML NVLink is unsupported on both leased GPUs, so device_telemetry is selected for device-wide PCIe tx/rx rates and utilization sampled during the step (native windows, device-wide readings, not per-collective bytes). (5) nsys is available (/root/autodl-tmp/tools/nsys-2025.3.1) and is selected to place per-rank NCCL kernel intervals against backward compute to resolve the comm/compute-overlap question that governs the step_ms <= 1.05x baseline constraint and the rank arrival-skew pattern, accepting that timelines alone cannot separate NCCL wait from wire transfer or prove bucket identity. (6) execution_timeline records CPU-to-CUDA submit associations, synchronization placement, per-device intervals and passive gradient post-accumulate ordering to attribute host-side submission skew between ranks, with clock alignment bounds applying to CPU submissions only and no replacement of any communication hook. Excluded: python_runtime (no host-dispatch or binding-cost evidence in the traces; it perturbs execution and its cProfile inclusive/self times are not clean performance scores or GPU compute durations); candidate_diagnostics (no defined diagnostic role for this frozen objective). Ambiguous bucket candidates are retained as candidates: exact bucket links already come from native correlation plus observed gradient-storage membership, and no requested collector invents traffic from logical payload sizes."
+}

@@ -1,0 +1,743 @@
+{
+  "engine": "existing TaskSearch + OptunaTPETuner",
+  "space": {
+    "params": [
+      {
+        "name": "chunks",
+        "kind": "int",
+        "choices": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ],
+        "description": "Number of contiguous chunks per half-bucket issued per grouped isend/irecv round. Clamped in code so each chunk stays at or above 262144 elements; only transfer granularity changes, never task semantics."
+      }
+    ],
+    "constraints": []
+  },
+  "selected": "trial-b0a02885e2-param-df25c2ee",
+  "stats": [
+    {
+      "candidate_id": "cand-ee04f0ee",
+      "space_id": "space-cand-ee04f0ee",
+      "n_complete": 3,
+      "n_fail": 0,
+      "best": {
+        "trial_id": "tr-f576b073",
+        "candidate_id": "cand-ee04f0ee",
+        "space_id": "space-cand-ee04f0ee",
+        "params": {
+          "values": {
+            "chunks": 8
+          }
+        },
+        "status": "complete",
+        "failure_kind": null,
+        "failure_detail": "",
+        "latency_ms": null,
+        "task_evaluation": {
+          "score": 240.896724,
+          "valid": true,
+          "metrics": {
+            "step_ms": 240.896724,
+            "tokens_per_second": 4253.506671483985,
+            "peak_allocated_bytes": 1977712640.0,
+            "framework.elapsed_ms": 240.896724,
+            "framework.peak_allocated_bytes": 1977712640.0,
+            "framework.peak_reserved_bytes": 2082471936.0,
+            "framework.allocated_bytes": 1014018048.0,
+            "framework.reserved_bytes": 2082471936.0,
+            "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+            "framework.lifecycle_peak_reserved_bytes": 2082471936.0,
+            "replacement.max_registers_per_thread": 96.0,
+            "replacement.diagnostic_kernel_sum_us": 266528.709,
+            "replacement.kernel_launches": 13.0,
+            "replacement.max_shared_memory_bytes": 96384.0
+          },
+          "detail": null
+        },
+        "profile": null,
+        "fp64_rescued_trials": null,
+        "job_wall_s": null,
+        "job_timed_out": null
+      },
+      "param_stats": [
+        {
+          "name": "chunks",
+          "best_value": 8,
+          "best_trial_value": 8,
+          "at_boundary": true,
+          "boundary_direction": "max",
+          "effect_pct": 0.0,
+          "latency_by_value": {},
+          "objective_by_value": {
+            "2": 249.633835,
+            "4": 241.992224,
+            "8": 240.896724
+          },
+          "effect_absolute": 8.737110999999999,
+          "failure_rate_by_value": {
+            "2": 0.0,
+            "4": 0.0,
+            "8": 0.0
+          }
+        }
+      ],
+      "resource_at_best": null,
+      "failure_clusters": []
+    }
+  ],
+  "responses": [
+    {
+      "candidate_id": "trial-b0a02885e2",
+      "axis": "chunks",
+      "a_params": {
+        "values": {
+          "chunks": 2
+        }
+      },
+      "b_params": {
+        "values": {
+          "chunks": 4
+        }
+      },
+      "a": {
+        "score": 249.633835,
+        "valid": true,
+        "metrics": {
+          "step_ms": 249.633835,
+          "tokens_per_second": 4106.8260863828355,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 249.633835,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2082471936.0,
+          "framework.allocated_bytes": 1014018048.0,
+          "framework.reserved_bytes": 2082471936.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2082471936.0,
+          "replacement.max_registers_per_thread": 96.0,
+          "replacement.diagnostic_kernel_sum_us": 287613.948,
+          "replacement.kernel_launches": 13.0,
+          "replacement.max_shared_memory_bytes": 96384.0
+        },
+        "detail": null
+      },
+      "b": {
+        "score": 241.992224,
+        "valid": true,
+        "metrics": {
+          "step_ms": 241.992224,
+          "tokens_per_second": 4235.114674125586,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 241.992224,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2082471936.0,
+          "framework.allocated_bytes": 1014018048.0,
+          "framework.reserved_bytes": 2082471936.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2082471936.0,
+          "replacement.max_registers_per_thread": 96.0,
+          "replacement.diagnostic_kernel_sum_us": 339164.096,
+          "replacement.kernel_launches": 13.0,
+          "replacement.max_shared_memory_bytes": 96384.0
+        },
+        "detail": null
+      },
+      "delta_j": -7.641611000000012,
+      "gain": 7.641611000000012,
+      "parameter_slope": -3.820805500000006,
+      "resource_deltas": {
+        "framework.allocated_bytes": 0.0,
+        "framework.lifecycle_peak_allocated_bytes": 0.0,
+        "framework.lifecycle_peak_reserved_bytes": 0.0,
+        "framework.peak_allocated_bytes": 0.0,
+        "framework.peak_reserved_bytes": 0.0,
+        "framework.reserved_bytes": 0.0,
+        "replacement.diagnostic_kernel_sum_us": 51550.148000000045,
+        "replacement.kernel_launches": 0.0,
+        "replacement.max_registers_per_thread": 0.0,
+        "replacement.max_shared_memory_bytes": 0.0
+      },
+      "resource_slopes": {
+        "replacement.diagnostic_kernel_sum_us": -0.00014823645123191508
+      },
+      "unknown_resources": [],
+      "resource_status": "observed",
+      "reason": null
+    },
+    {
+      "candidate_id": "trial-b0a02885e2",
+      "axis": "chunks",
+      "a_params": {
+        "values": {
+          "chunks": 4
+        }
+      },
+      "b_params": {
+        "values": {
+          "chunks": 8
+        }
+      },
+      "a": {
+        "score": 241.992224,
+        "valid": true,
+        "metrics": {
+          "step_ms": 241.992224,
+          "tokens_per_second": 4235.114674125586,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 241.992224,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2082471936.0,
+          "framework.allocated_bytes": 1014018048.0,
+          "framework.reserved_bytes": 2082471936.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2082471936.0,
+          "replacement.max_registers_per_thread": 96.0,
+          "replacement.diagnostic_kernel_sum_us": 339164.096,
+          "replacement.kernel_launches": 13.0,
+          "replacement.max_shared_memory_bytes": 96384.0
+        },
+        "detail": null
+      },
+      "b": {
+        "score": 240.896724,
+        "valid": true,
+        "metrics": {
+          "step_ms": 240.896724,
+          "tokens_per_second": 4253.506671483985,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 240.896724,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2082471936.0,
+          "framework.allocated_bytes": 1014018048.0,
+          "framework.reserved_bytes": 2082471936.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2082471936.0,
+          "replacement.max_registers_per_thread": 96.0,
+          "replacement.diagnostic_kernel_sum_us": 266528.709,
+          "replacement.kernel_launches": 13.0,
+          "replacement.max_shared_memory_bytes": 96384.0
+        },
+        "detail": null
+      },
+      "delta_j": -1.095499999999987,
+      "gain": 1.095499999999987,
+      "parameter_slope": -0.27387499999999676,
+      "resource_deltas": {
+        "framework.allocated_bytes": 0.0,
+        "framework.lifecycle_peak_allocated_bytes": 0.0,
+        "framework.lifecycle_peak_reserved_bytes": 0.0,
+        "framework.peak_allocated_bytes": 0.0,
+        "framework.peak_reserved_bytes": 0.0,
+        "framework.reserved_bytes": 0.0,
+        "replacement.diagnostic_kernel_sum_us": -72635.38700000005,
+        "replacement.kernel_launches": 0.0,
+        "replacement.max_registers_per_thread": 0.0,
+        "replacement.max_shared_memory_bytes": 0.0
+      },
+      "resource_slopes": {
+        "replacement.diagnostic_kernel_sum_us": 1.5082180260153173e-05
+      },
+      "unknown_resources": [],
+      "resource_status": "observed",
+      "reason": null
+    }
+  ],
+  "observations": [
+    {
+      "bundle": "trial-b0a02885e2-param-e46cf176",
+      "parameters": {
+        "chunks": 2
+      },
+      "result": {
+        "score": 249.633835,
+        "valid": true,
+        "metrics": {
+          "step_ms": 249.633835,
+          "tokens_per_second": 4106.8260863828355,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 249.633835,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2082471936.0,
+          "framework.allocated_bytes": 1014018048.0,
+          "framework.reserved_bytes": 2082471936.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2082471936.0,
+          "replacement.max_registers_per_thread": 96.0,
+          "replacement.diagnostic_kernel_sum_us": 287613.948,
+          "replacement.kernel_launches": 13.0,
+          "replacement.max_shared_memory_bytes": 96384.0
+        },
+        "detail": null
+      },
+      "constraints": [],
+      "run": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 20.284116469323635,
+        "lease_wait_s": 0.00020170211791992188,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-b0a02885e2-param-e46cf176": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "d0938de87369efd500322679",
+                    "b8ade439d7b8bd5fb5c1029b"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent:guard_reduce_op",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent:guard_reduce_op",
+                      "count": 12
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "step_ms": 249.34097,
+                "tokens_per_second": 4106.8260863828355,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 249.34097,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2082471936.0,
+                "framework.allocated_bytes": 1014018048.0,
+                "framework.reserved_bytes": 2082471936.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+              }
+            }
+          },
+          {
+            "rank": 1,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-b0a02885e2-param-e46cf176": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "d0938de87369efd500322679",
+                    "b8ade439d7b8bd5fb5c1029b"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent:guard_reduce_op",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent:guard_reduce_op",
+                      "count": 12
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "step_ms": 249.633835,
+                "tokens_per_second": 4102.008047106275,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 249.633835,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2082471936.0,
+                "framework.allocated_bytes": 1014018048.0,
+                "framework.reserved_bytes": 2082471936.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "bundle": "trial-b0a02885e2-param-8b0a405f",
+      "parameters": {
+        "chunks": 4
+      },
+      "result": {
+        "score": 241.992224,
+        "valid": true,
+        "metrics": {
+          "step_ms": 241.992224,
+          "tokens_per_second": 4235.114674125586,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 241.992224,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2082471936.0,
+          "framework.allocated_bytes": 1014018048.0,
+          "framework.reserved_bytes": 2082471936.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2082471936.0,
+          "replacement.max_registers_per_thread": 96.0,
+          "replacement.diagnostic_kernel_sum_us": 339164.096,
+          "replacement.kernel_launches": 13.0,
+          "replacement.max_shared_memory_bytes": 96384.0
+        },
+        "detail": null
+      },
+      "constraints": [],
+      "run": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 19.591886464506388,
+        "lease_wait_s": 0.0001622997224330902,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-b0a02885e2-param-8b0a405f": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "d0938de87369efd500322679",
+                    "b8ade439d7b8bd5fb5c1029b"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent:guard_reduce_op",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent:guard_reduce_op",
+                      "count": 12
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "step_ms": 241.788022,
+                "tokens_per_second": 4235.114674125586,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 241.788022,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2082471936.0,
+                "framework.allocated_bytes": 1014018048.0,
+                "framework.reserved_bytes": 2082471936.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+              }
+            }
+          },
+          {
+            "rank": 1,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-b0a02885e2-param-8b0a405f": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "d0938de87369efd500322679",
+                    "b8ade439d7b8bd5fb5c1029b"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent:guard_reduce_op",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent:guard_reduce_op",
+                      "count": 12
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "step_ms": 241.992224,
+                "tokens_per_second": 4231.540927529969,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 241.992224,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2082471936.0,
+                "framework.allocated_bytes": 1014018048.0,
+                "framework.reserved_bytes": 2082471936.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "bundle": "trial-b0a02885e2-param-df25c2ee",
+      "parameters": {
+        "chunks": 8
+      },
+      "result": {
+        "score": 240.896724,
+        "valid": true,
+        "metrics": {
+          "step_ms": 240.896724,
+          "tokens_per_second": 4253.506671483985,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 240.896724,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2082471936.0,
+          "framework.allocated_bytes": 1014018048.0,
+          "framework.reserved_bytes": 2082471936.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2082471936.0,
+          "replacement.max_registers_per_thread": 96.0,
+          "replacement.diagnostic_kernel_sum_us": 266528.709,
+          "replacement.kernel_launches": 13.0,
+          "replacement.max_shared_memory_bytes": 96384.0
+        },
+        "detail": null
+      },
+      "constraints": [],
+      "run": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 21.029861770570278,
+        "lease_wait_s": 0.0001749098300933838,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-b0a02885e2-param-df25c2ee": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "d0938de87369efd500322679",
+                    "b8ade439d7b8bd5fb5c1029b"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent:guard_reduce_op",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent:guard_reduce_op",
+                      "count": 12
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "step_ms": 240.74254,
+                "tokens_per_second": 4253.506671483985,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 240.74254,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2082471936.0,
+                "framework.allocated_bytes": 1014018048.0,
+                "framework.reserved_bytes": 2082471936.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+              }
+            }
+          },
+          {
+            "rank": 1,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-b0a02885e2-param-df25c2ee": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "d0938de87369efd500322679",
+                    "b8ade439d7b8bd5fb5c1029b"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent:guard_reduce_op",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent:guard_reduce_op",
+                      "count": 12
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "step_ms": 240.896724,
+                "tokens_per_second": 4250.784248938146,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 240.896724,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2082471936.0,
+                "framework.allocated_bytes": 1014018048.0,
+                "framework.reserved_bytes": 2082471936.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

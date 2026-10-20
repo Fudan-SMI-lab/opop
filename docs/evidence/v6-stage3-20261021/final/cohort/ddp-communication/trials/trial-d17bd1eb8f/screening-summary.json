@@ -1,0 +1,857 @@
+{
+  "engine": "existing TaskSearch + OptunaTPETuner",
+  "space": {
+    "params": [
+      {
+        "name": "sync_wait_budget_ms",
+        "kind": "int",
+        "choices": [
+          250,
+          500,
+          1000,
+          2000
+        ],
+        "description": "Maximum host-side wait at the single first-of-step rendezvous for the peer's arrival before degrading to the pure parent path; 250 ms already covers the largest observed in-step skew (48 ms profiled, ~180 ms under the separate nsys diagnostic) with margin."
+      }
+    ],
+    "constraints": []
+  },
+  "selected": null,
+  "stats": [
+    {
+      "candidate_id": "cand-5cd26264",
+      "space_id": "space-cand-5cd26264",
+      "n_complete": 0,
+      "n_fail": 3,
+      "best": null,
+      "param_stats": [
+        {
+          "name": "sync_wait_budget_ms",
+          "best_value": 250,
+          "best_trial_value": null,
+          "at_boundary": false,
+          "boundary_direction": null,
+          "effect_pct": 0.0,
+          "latency_by_value": {},
+          "objective_by_value": {},
+          "effect_absolute": null,
+          "failure_rate_by_value": {
+            "250": 1.0,
+            "500": 1.0,
+            "2000": 1.0
+          }
+        }
+      ],
+      "resource_at_best": null,
+      "failure_clusters": []
+    }
+  ],
+  "responses": [
+    {
+      "candidate_id": "trial-d17bd1eb8f",
+      "axis": "sync_wait_budget_ms",
+      "a_params": {
+        "values": {
+          "sync_wait_budget_ms": 500
+        }
+      },
+      "b_params": {
+        "values": {
+          "sync_wait_budget_ms": 2000
+        }
+      },
+      "a": {
+        "score": 65.946654,
+        "valid": false,
+        "metrics": {
+          "step_ms": 231.85823,
+          "tokens_per_second": 4417.842017572536,
+          "loss": 10.976432800292969,
+          "parameter_count": 124439808.0,
+          "effective_batch": 8.0,
+          "tokens_per_step": 1024.0,
+          "world_size": 2.0,
+          "micro_batch": 1.0,
+          "sequence_length": 128.0,
+          "accumulation_steps": 4.0,
+          "rank": 1.0,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 231.85823,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2080374784.0,
+          "framework.allocated_bytes": 1014019584.0,
+          "framework.reserved_bytes": 2080374784.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+          "torch_communication.communication_kernel_sum_ms": 65.946654
+        },
+        "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+      },
+      "b": {
+        "score": 66.69197199999999,
+        "valid": false,
+        "metrics": {
+          "step_ms": 256.005284,
+          "tokens_per_second": 4001.878131430557,
+          "loss": 10.976432800292969,
+          "parameter_count": 124439808.0,
+          "effective_batch": 8.0,
+          "tokens_per_step": 1024.0,
+          "world_size": 2.0,
+          "micro_batch": 1.0,
+          "sequence_length": 128.0,
+          "accumulation_steps": 4.0,
+          "rank": 1.0,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 256.005284,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2080374784.0,
+          "framework.allocated_bytes": 1014019584.0,
+          "framework.reserved_bytes": 2080374784.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+          "torch_communication.communication_kernel_sum_ms": 66.69197199999999
+        },
+        "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+      },
+      "delta_j": null,
+      "gain": null,
+      "parameter_slope": null,
+      "resource_deltas": {},
+      "resource_slopes": {},
+      "unknown_resources": [
+        "framework.allocated_bytes",
+        "framework.lifecycle_peak_allocated_bytes",
+        "framework.lifecycle_peak_reserved_bytes",
+        "framework.peak_allocated_bytes",
+        "framework.peak_reserved_bytes",
+        "framework.reserved_bytes",
+        "replacement.diagnostic_kernel_sum_us",
+        "replacement.kernel_launches",
+        "replacement.max_registers_per_thread",
+        "replacement.max_shared_memory_bytes"
+      ],
+      "resource_status": "unknown",
+      "reason": "invalid_endpoint"
+    },
+    {
+      "candidate_id": "trial-d17bd1eb8f",
+      "axis": "sync_wait_budget_ms",
+      "a_params": {
+        "values": {
+          "sync_wait_budget_ms": 2000
+        }
+      },
+      "b_params": {
+        "values": {
+          "sync_wait_budget_ms": 250
+        }
+      },
+      "a": {
+        "score": 66.69197199999999,
+        "valid": false,
+        "metrics": {
+          "step_ms": 256.005284,
+          "tokens_per_second": 4001.878131430557,
+          "loss": 10.976432800292969,
+          "parameter_count": 124439808.0,
+          "effective_batch": 8.0,
+          "tokens_per_step": 1024.0,
+          "world_size": 2.0,
+          "micro_batch": 1.0,
+          "sequence_length": 128.0,
+          "accumulation_steps": 4.0,
+          "rank": 1.0,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 256.005284,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2080374784.0,
+          "framework.allocated_bytes": 1014019584.0,
+          "framework.reserved_bytes": 2080374784.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+          "torch_communication.communication_kernel_sum_ms": 66.69197199999999
+        },
+        "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+      },
+      "b": {
+        "score": 73.164136,
+        "valid": false,
+        "metrics": {
+          "step_ms": 242.895706,
+          "tokens_per_second": 4218.608507062175,
+          "loss": 10.976432800292969,
+          "parameter_count": 124439808.0,
+          "effective_batch": 8.0,
+          "tokens_per_step": 1024.0,
+          "world_size": 2.0,
+          "micro_batch": 1.0,
+          "sequence_length": 128.0,
+          "accumulation_steps": 4.0,
+          "rank": 1.0,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 242.895706,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2080374784.0,
+          "framework.allocated_bytes": 1014019584.0,
+          "framework.reserved_bytes": 2080374784.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+          "torch_communication.communication_kernel_sum_ms": 73.164136
+        },
+        "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+      },
+      "delta_j": null,
+      "gain": null,
+      "parameter_slope": null,
+      "resource_deltas": {},
+      "resource_slopes": {},
+      "unknown_resources": [
+        "framework.allocated_bytes",
+        "framework.lifecycle_peak_allocated_bytes",
+        "framework.lifecycle_peak_reserved_bytes",
+        "framework.peak_allocated_bytes",
+        "framework.peak_reserved_bytes",
+        "framework.reserved_bytes",
+        "replacement.diagnostic_kernel_sum_us",
+        "replacement.kernel_launches",
+        "replacement.max_registers_per_thread",
+        "replacement.max_shared_memory_bytes"
+      ],
+      "resource_status": "unknown",
+      "reason": "invalid_endpoint"
+    }
+  ],
+  "observations": [
+    {
+      "bundle": "trial-d17bd1eb8f-param-d6377309",
+      "parameters": {
+        "sync_wait_budget_ms": 500
+      },
+      "result": {
+        "score": 65.946654,
+        "valid": false,
+        "metrics": {
+          "step_ms": 231.85823,
+          "tokens_per_second": 4417.842017572536,
+          "loss": 10.976432800292969,
+          "parameter_count": 124439808.0,
+          "effective_batch": 8.0,
+          "tokens_per_step": 1024.0,
+          "world_size": 2.0,
+          "micro_batch": 1.0,
+          "sequence_length": 128.0,
+          "accumulation_steps": 4.0,
+          "rank": 1.0,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 231.85823,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2080374784.0,
+          "framework.allocated_bytes": 1014019584.0,
+          "framework.reserved_bytes": 2080374784.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+          "torch_communication.communication_kernel_sum_ms": 65.946654
+        },
+        "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+      },
+      "constraints": [
+        {
+          "metric": "step_ms",
+          "values": [
+            231.85823
+          ],
+          "limit": 151.86385935,
+          "original_reference": 144.632247,
+          "passed": false
+        }
+      ],
+      "run": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 25.732285879552364,
+        "lease_wait_s": 0.00026702880859375,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-d17bd1eb8f-param-d6377309": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "b8ade439d7b8bd5fb5c1029b",
+                    "d0938de87369efd500322679"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent-direct",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent-direct",
+                      "count": 11
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "shm-rendezvous-parent",
+                      "count": 1
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "step_ms": 231.787374,
+                "tokens_per_second": 4417.842017572536,
+                "loss": 10.976432800292969,
+                "parameter_count": 124439808.0,
+                "effective_batch": 8.0,
+                "tokens_per_step": 1024.0,
+                "world_size": 2.0,
+                "micro_batch": 1.0,
+                "sequence_length": 128.0,
+                "accumulation_steps": 4.0,
+                "rank": 0.0,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 231.787374,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2080374784.0,
+                "framework.allocated_bytes": 1014019584.0,
+                "framework.reserved_bytes": 2080374784.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+                "torch_communication.communication_kernel_sum_ms": 60.490379000000004
+              }
+            }
+          },
+          {
+            "rank": 1,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-d17bd1eb8f-param-d6377309": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "b8ade439d7b8bd5fb5c1029b",
+                    "d0938de87369efd500322679"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent-direct",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent-direct",
+                      "count": 11
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "shm-rendezvous-parent",
+                      "count": 1
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "step_ms": 231.85823,
+                "tokens_per_second": 4416.491922671885,
+                "loss": 10.959263801574707,
+                "parameter_count": 124439808.0,
+                "effective_batch": 8.0,
+                "tokens_per_step": 1024.0,
+                "world_size": 2.0,
+                "micro_batch": 1.0,
+                "sequence_length": 128.0,
+                "accumulation_steps": 4.0,
+                "rank": 1.0,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 231.85823,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2080374784.0,
+                "framework.allocated_bytes": 1014019584.0,
+                "framework.reserved_bytes": 2080374784.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+                "torch_communication.communication_kernel_sum_ms": 65.946654
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "bundle": "trial-d17bd1eb8f-param-8b27e21f",
+      "parameters": {
+        "sync_wait_budget_ms": 2000
+      },
+      "result": {
+        "score": 66.69197199999999,
+        "valid": false,
+        "metrics": {
+          "step_ms": 256.005284,
+          "tokens_per_second": 4001.878131430557,
+          "loss": 10.976432800292969,
+          "parameter_count": 124439808.0,
+          "effective_batch": 8.0,
+          "tokens_per_step": 1024.0,
+          "world_size": 2.0,
+          "micro_batch": 1.0,
+          "sequence_length": 128.0,
+          "accumulation_steps": 4.0,
+          "rank": 1.0,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 256.005284,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2080374784.0,
+          "framework.allocated_bytes": 1014019584.0,
+          "framework.reserved_bytes": 2080374784.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+          "torch_communication.communication_kernel_sum_ms": 66.69197199999999
+        },
+        "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+      },
+      "constraints": [
+        {
+          "metric": "step_ms",
+          "values": [
+            256.005284
+          ],
+          "limit": 151.86385935,
+          "original_reference": 144.632247,
+          "passed": false
+        }
+      ],
+      "run": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 25.1486400924623,
+        "lease_wait_s": 5.189220506697893,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-d17bd1eb8f-param-8b27e21f": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "b8ade439d7b8bd5fb5c1029b",
+                    "d0938de87369efd500322679"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent-direct",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent-direct",
+                      "count": 11
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "shm-rendezvous-parent",
+                      "count": 1
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "step_ms": 255.879856,
+                "tokens_per_second": 4001.878131430557,
+                "loss": 10.976432800292969,
+                "parameter_count": 124439808.0,
+                "effective_batch": 8.0,
+                "tokens_per_step": 1024.0,
+                "world_size": 2.0,
+                "micro_batch": 1.0,
+                "sequence_length": 128.0,
+                "accumulation_steps": 4.0,
+                "rank": 0.0,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 255.879856,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2080374784.0,
+                "framework.allocated_bytes": 1014019584.0,
+                "framework.reserved_bytes": 2080374784.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+                "torch_communication.communication_kernel_sum_ms": 60.076843999999994
+              }
+            }
+          },
+          {
+            "rank": 1,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-d17bd1eb8f-param-8b27e21f": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "b8ade439d7b8bd5fb5c1029b",
+                    "d0938de87369efd500322679"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent-direct",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent-direct",
+                      "count": 11
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "shm-rendezvous-parent",
+                      "count": 1
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "step_ms": 256.005284,
+                "tokens_per_second": 3999.9174392041064,
+                "loss": 10.959263801574707,
+                "parameter_count": 124439808.0,
+                "effective_batch": 8.0,
+                "tokens_per_step": 1024.0,
+                "world_size": 2.0,
+                "micro_batch": 1.0,
+                "sequence_length": 128.0,
+                "accumulation_steps": 4.0,
+                "rank": 1.0,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 256.005284,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2080374784.0,
+                "framework.allocated_bytes": 1014019584.0,
+                "framework.reserved_bytes": 2080374784.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+                "torch_communication.communication_kernel_sum_ms": 66.69197199999999
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "bundle": "trial-d17bd1eb8f-param-d245aba1",
+      "parameters": {
+        "sync_wait_budget_ms": 250
+      },
+      "result": {
+        "score": 73.164136,
+        "valid": false,
+        "metrics": {
+          "step_ms": 242.895706,
+          "tokens_per_second": 4218.608507062175,
+          "loss": 10.976432800292969,
+          "parameter_count": 124439808.0,
+          "effective_batch": 8.0,
+          "tokens_per_step": 1024.0,
+          "world_size": 2.0,
+          "micro_batch": 1.0,
+          "sequence_length": 128.0,
+          "accumulation_steps": 4.0,
+          "rank": 1.0,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 242.895706,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2080374784.0,
+          "framework.allocated_bytes": 1014019584.0,
+          "framework.reserved_bytes": 2080374784.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+          "torch_communication.communication_kernel_sum_ms": 73.164136
+        },
+        "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+      },
+      "constraints": [
+        {
+          "metric": "step_ms",
+          "values": [
+            242.895706
+          ],
+          "limit": 151.86385935,
+          "original_reference": 144.632247,
+          "passed": false
+        }
+      ],
+      "run": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 25.709054075181484,
+        "lease_wait_s": 4.428769186139107,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-d17bd1eb8f-param-d245aba1": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "b8ade439d7b8bd5fb5c1029b",
+                    "d0938de87369efd500322679"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent-direct",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent-direct",
+                      "count": 11
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "shm-rendezvous-parent",
+                      "count": 1
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "step_ms": 242.734067,
+                "tokens_per_second": 4218.608507062175,
+                "loss": 10.976432800292969,
+                "parameter_count": 124439808.0,
+                "effective_batch": 8.0,
+                "tokens_per_step": 1024.0,
+                "world_size": 2.0,
+                "micro_batch": 1.0,
+                "sequence_length": 128.0,
+                "accumulation_steps": 4.0,
+                "rank": 0.0,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 242.734067,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2080374784.0,
+                "framework.allocated_bytes": 1014019584.0,
+                "framework.reserved_bytes": 2080374784.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+                "torch_communication.communication_kernel_sum_ms": 73.164136
+              }
+            }
+          },
+          {
+            "rank": 1,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-d17bd1eb8f-param-d245aba1": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "b8ade439d7b8bd5fb5c1029b",
+                    "d0938de87369efd500322679"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent-direct",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent-direct",
+                      "count": 11
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "shm-rendezvous-parent",
+                      "count": 1
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "step_ms": 242.895706,
+                "tokens_per_second": 4215.801163648402,
+                "loss": 10.959263801574707,
+                "parameter_count": 124439808.0,
+                "effective_batch": 8.0,
+                "tokens_per_step": 1024.0,
+                "world_size": 2.0,
+                "micro_batch": 1.0,
+                "sequence_length": 128.0,
+                "accumulation_steps": 4.0,
+                "rank": 1.0,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 242.895706,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2080374784.0,
+                "framework.allocated_bytes": 1014019584.0,
+                "framework.reserved_bytes": 2080374784.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+                "torch_communication.communication_kernel_sum_ms": 64.406935
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "collectors": [
+    "execution_timeline",
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "execution_timeline.cpu_to_cuda_submit_associations",
+    "execution_timeline.synchronization_events",
+    "execution_timeline.per_device_intervals",
+    "execution_timeline.clock_alignment_bounds",
+    "python_runtime.cprofile_call_trace",
+    "python_runtime.host_dispatch_inclusive_self_times",
+    "python_runtime.binding_costs"
+  ],
+  "unavailable_fields": {
+    "communication": "Not applicable: single-device task with no distributed backend (request.json distributed_backend=null) and capability field communication=not_applicable 'single-device task' in observations.json.",
+    "nccl_algorithm_protocol_channels": "No NCCL collectives exist in this single-GPU inference workload; kernel entry names alone cannot identify protocol and there is nothing to capture.",
+    "per_collective_wire_bytes": "No collectives to measure; PCIe/NVLink traffic must not be invented from logical payload or memcpy sizes.",
+    "gradient_bucket_identity": "Inference-only workload under torch.inference_mode; no gradient buckets exist, and exact bucket links would require native correlation plus observed gradient-storage membership.",
+    "cross_rank_clock_alignment": "Single device/rank; observations.json ranks[0].status=not_applicable with reason 'single-device task' and no matched cross-rank entries.",
+    "backward_autograd_association": "coverage.json reports 0 autograd ranges, 0 forward-linked autograd ranges and 0 backward-associated kernels; the workload runs under inference_mode.",
+    "gpu_readiness_and_consumer_completion_bounds": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU-side readiness and consumer completion may remain unknown for this single-stream workload.",
+    "clean_gpu_compute_durations_from_cprofile": "python_runtime's cProfile inclusive/self times are host-side, perturb execution, and are not clean performance scores or GPU compute durations."
+  },
+  "rationale": "The torch collector already ran and resolved attribution completely: coverage.json shows 66441/66441 CUDA kernels associated with 0 unassociated, 0 ambiguous forward sequences and 0 autograd ranges, and the source uses plain eager execution with no CUDA graphs, so no overlap, graph-tracing or attribution question remains that would justify the optional nsys run. Observations mark communication not_applicable for this single-device task (no collectives, no distributed backend), which rules out nccl_tuning, collective_calibration and any bucket/protocol/wire-bytes dimension; those are listed as unavailable with reasons rather than requested. The frozen objective (generated_tokens_per_second, with ttft_ms and decode sub-goals on batch=1, 256+32 tokens) is dominated by the host-driven decode loop in qwen_inference.py: 31 sequential single-token forward calls plus argmax between two explicit torch.cuda.synchronize boundaries. The open diagnostic questions are therefore (a) how wall time splits into GPU intervals versus idle gaps across prefill and each decode step, and where synchronization lands relative to the ttft boundary, addressed by execution_timeline's CPU-to-CUDA submit associations, synchronization events and per-device intervals, and (b) whether host dispatch and framework binding costs bound per-token latency, addressed by python_runtime's warmed cProfile call trace with inclusive/self host times, accepting that it perturbs execution and is not a performance score. device_telemetry is not selected because its device-wide NVML sampling windows cannot attribute per-step decode behavior or per-op bytes, and the per-device intervals from execution_timeline answer the idle-gap question with attribution; candidate_diagnostics is not selected because no specific candidate is in evidence to probe. GPU work stays in the leased framework worker; only CPU-side library/API inspection uses /root/autodl-tmp/dev-venv/bin/python per worker-environment.json."
+}

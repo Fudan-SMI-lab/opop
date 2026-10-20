@@ -1,0 +1,156 @@
+{
+  "status": "ready",
+  "intake": "/root/opop-v6-stage3/final-e2e-187617c/resnet-latency.intake",
+  "proposal": {
+    "status": "ready",
+    "description": {
+      "entry": "resnet_inference.py",
+      "files": [
+        "resnet_inference.py",
+        "common.py",
+        "workloads.json"
+      ],
+      "invocation": "One complete offline batch=32 inference: infer(model, pixels) (resnet_inference.py:15-16), i.e. model(pixel_values=pixels).logits under torch.inference_mode() on the pretrained FP32 ResNet-18, with pixels the pre-built GPU-resident contiguous 32x3x224x224 float32 NCHW batch (images[torch.arange(32, device='cuda') % 3], resnet_inference.py:29). Completion boundary is the torch.cuda.synchronize() after the forward, matching the source timing at resnet_inference.py:42-47. Excludes model loading, host-to-device input transfer, reference construction, correctness checks, warmup/repeat statistics, result saving and optional --profile diagnostics.",
+      "objective": {
+        "name": "latency_ms",
+        "unit": "ms",
+        "direction": "minimize",
+        "constraints": [],
+        "source": null,
+        "rank_aggregation": null
+      },
+      "workload": {
+        "id": "offline",
+        "batch": 32,
+        "goals": [
+          {
+            "id": "throughput",
+            "metric": "images_per_second",
+            "direction": "max"
+          },
+          {
+            "id": "memory",
+            "metric": "peak_allocated_bytes",
+            "direction": "min",
+            "constraints": {
+              "images_per_second_min_baseline_ratio": 0.95
+            }
+          }
+        ]
+      },
+      "quality": {
+        "atol": 0.0001,
+        "rtol": 0.0001,
+        "logits_atol": 0.0001,
+        "logits_rtol": 0.0001,
+        "require_exact_top1": true
+      },
+      "warmup": 2,
+      "repeats": 5,
+      "assets": {
+        "assets_dir": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18",
+        "model_config": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/config.json",
+        "model_weights": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/model.safetensors",
+        "preprocessor_config": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/preprocessor_config.json",
+        "pixels": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/pixels.npy",
+        "asset_manifest": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/asset-manifest.json"
+      },
+      "device_count": 1,
+      "distributed_backend": null,
+      "communication": "auto",
+      "required_observations": [],
+      "notes": [
+        "Command provenance (intent.json): python resnet_inference.py --assets /root/autodl-tmp/dev/v6-work/validation-assets/resnet18 --output /tmp/original-resnet; no --warmup/--repeats/--profile flags, so common.py defaults apply.",
+        "Work vs harness: adapter.run() repeats exactly one infer() call on the fixed GPU batch. The reference/actual pair construction, close_check/negative_check, assert of exact top-1, warmup loop, 5-repeat timing loop with reset_peak_memory_stats, summarize/save of result.json and profile_once (common.py:87-105) are benchmark/quality infrastructure.",
+        "Objective metric key is the source sample field latency_ms (resnet_inference.py:48), median over 5 clean samples per summarize(); the same per-call metric the project already records for every workload row. The user's goal selects latency for the offline row; it must not be renamed to a cached-only or throughput metric.",
+        "The row's other goals (images_per_second max; peak_allocated_bytes min with constraint images_per_second_min_baseline_ratio 0.95) belong to other objectives and are not imported as latency constraints; the source attaches no constraint to latency goals. peak_allocated_bytes is still recorded per sample by the harness.",
+        "Batch semantics preserved: batch=32 formed by cycling the 3 preprocessed fixture images (dog1, dog2, astronaut; arange(32) % 3); FP32 NCHW, GPU-resident, .contiguous(); pixel transfer to device happens once before timing.",
+        "Numerical policy preserved (common.py:34-42): torch.float32, TF32 disabled for matmul and cudnn, cudnn.benchmark=False, float32_matmul_precision('highest'), 4 CPU threads / 1 interop, manual_seed 20261020, torch.inference_mode for all measured calls.",
+        "Quality semantics: full 1000-class logits compared with torch.testing.assert_close(atol=1e-4, rtol=1e-4); discrete top-1 labels compared exactly via torch.equal(actual.argmax(-1), reference.argmax(-1)) (require_exact_top1) - these argmax label outputs need exact comparison, no tolerance; negative control must reject a +1 corruption of the reference (common.py:79-84); reference tensors saved as offline-reference.pt (pixels + logits).",
+        "Single-GPU, single-process workload: .cuda() plus torch.cuda.set_device(0); no process group, no NCCL; run_suite.py exposes exactly one GPU via CUDA_VISIBLE_DEVICES for this case. No communication collector fields requested; latency is ordinary end-to-end per-call time, not a diagnostic kernel time.",
+        "Assets stay at their absolute paths and are pinned by asset-manifest.json (microsoft/resnet-18 revision 65a5785d9156231087c481e0c7dd33a5ff6f7e3e); pixels.npy verified as (3, 3, 224, 224) float32."
+      ]
+    },
+    "evidence": {
+      "entry": [
+        "inputs/intent.json command: python resnet_inference.py --assets /root/autodl-tmp/dev/v6-work/validation-assets/resnet18 --output /tmp/original-resnet",
+        "inputs/repository.json lists resnet_inference.py in the project root"
+      ],
+      "workload": [
+        "workloads.json resnet_inference.workloads row {\"id\": \"offline\", \"batch\": 32} (copied unchanged, exact field names)",
+        "resnet_inference.py:29 pixels = images[torch.arange(workload[\"batch\"], device=\"cuda\") % len(images)].contiguous()",
+        "inputs/intent.json goal: Reduce latency for one complete offline batch=32 image inference"
+      ],
+      "objective": [
+        "resnet_inference.py:44-48 sample field \"latency_ms\" = elapsed perf_counter_ns/1e6 around one full batch forward between torch.cuda.synchronize() calls",
+        "workloads.json resnet_inference goals use metric key \"latency_ms\" with direction \"min\" for the latency goal id",
+        "common.py:66-71 summarize() reports median/min/max of latency_ms across repeats"
+      ],
+      "quality": [
+        "workloads.json resnet_inference.correctness: logits_atol=0.0001, logits_rtol=0.0001, require_exact_top1=true",
+        "resnet_inference.py:31-34 close_check(actual, reference, atol, rtol), negative_check, torch.equal(actual.argmax(-1), reference.argmax(-1))",
+        "common.py:74-84 torch.testing.assert_close plus +1-corruption negative control"
+      ],
+      "assets": [
+        "resnet_inference.py:23-24 ResNetForImageClassification.from_pretrained(args.assets, local_files_only=True, dtype=torch.float32) and np.load(args.assets / \"pixels.npy\")",
+        "prepare_resnet_assets.py:47-67 builds pixels.npy (3 real images, ImageNet preprocessing, FP32 NCHW) and asset-manifest.json with pinned revision and SHA256s",
+        "verified directory listing of /root/autodl-tmp/dev/v6-work/validation-assets/resnet18 (config.json, model.safetensors, preprocessor_config.json, pixels.npy, asset-manifest.json present); pixels.npy shape (3,3,224,224) float32 checked with worker python"
+      ],
+      "device_count": [
+        "resnet_inference.py:23-24 single .cuda() model and inputs; common.py:38 torch.cuda.set_device(0); no distributed launch in the user's command",
+        "inputs/deployment.json inventory lists 2x RTX 4090, but this workload requires one GPU (run_suite.py single_gpu_visible_devices for resnet_inference)"
+      ],
+      "timing_boundary": [
+        "resnet_inference.py:38-41 warmup and repeat loops are statistical harness around the single infer() unit",
+        "resnet_inference.py:42-47 synchronize, reset_peak_memory_stats, perf_counter_ns timing of one infer() call"
+      ]
+    },
+    "assumptions": [
+      "The user's 'offline batch=32' maps to the source workload row id \"offline\" (batch 32) in workloads.json; 'reduce latency' selects the per-call latency_ms metric the harness already records for that row, not the row's throughput or memory goals.",
+      "warmup=2 and repeats=5 apply (common.py:24-25 defaults) because the intent command passes neither flag.",
+      "The throughput-floor constraint images_per_second_min_baseline_ratio=0.95 is attached to the memory goal of this row and is intentionally not applied to the latency objective; the source defines no constraint for latency goals.",
+      "Output artifacts (offline-reference.pt, result.json) are written by the harness under --output; the timed unit itself only produces logits."
+    ],
+    "questions": []
+  },
+  "agent": {
+    "role": "project-intake",
+    "session": "ses_ea5caeb9effe79189WpT60P5ZL",
+    "message": "msg_15a36ebc8001WBJP688Szm63YA",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 9,
+      "reported_cost": 0.107086336,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 185201.0,
+        "input": 23179.0,
+        "output": 3233.0,
+        "reasoning": 4741.0,
+        "cache.read": 154048.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea5caeb9effe79189WpT60P5ZL",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage3/final-e2e-187617c/resnet-latency.intake/sandboxes/project-intake-e3f243bb7c23",
+    "outputs": [
+      "intake.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/opop-v6-stage3/final-e2e-187617c/resnet-latency.intake/generation-snapshots/generation-bf827757c54d.json"
+    ]
+  },
+  "request": "/root/opop-v6-stage3/final-e2e-187617c/resnet-latency.intake/resolved-request.json"
+}

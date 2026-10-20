@@ -1,0 +1,317 @@
+{
+  "communication": {
+    "cross_rank": {
+      "matched": [],
+      "incomplete": [],
+      "clock_policy": "No subtraction of timestamps from different rank clocks"
+    },
+    "ranks": [
+      {
+        "status": "not_applicable",
+        "reason": "single-device task"
+      }
+    ],
+    "capabilities": [
+      {
+        "schema_version": "project.v1",
+        "id": "ae720e6d46e8f6b7151780634fc4d9f69d488438ea5314352ebcd141f89ee3cd",
+        "devices": [],
+        "supported_scopes": [
+          "group",
+          "joint",
+          "region",
+          "execution_plan"
+        ],
+        "fields": [
+          {
+            "schema_version": "project.v1",
+            "name": "communication",
+            "status": "not_applicable",
+            "value": null,
+            "unit": "capability",
+            "entity": null,
+            "reason": "single-device task",
+            "evidence": []
+          }
+        ],
+        "tools": {}
+      }
+    ]
+  },
+  "coverage": [
+    {
+      "cuda_kernels": 66441,
+      "associated_kernels": 66441,
+      "unassociated_kernels": 0,
+      "associated_below_project": 66441,
+      "root_only_kernels": 0,
+      "backward_associated_kernels": 0,
+      "autograd_ranges": 0,
+      "forward_linked_autograd_ranges": 0,
+      "ambiguous_forward_sequences": 0
+    }
+  ],
+  "collection_plan": {
+    "plan": {
+      "collectors": [
+        "nsys",
+        "execution_timeline",
+        "python_runtime"
+      ],
+      "requested_fields": [
+        "execution_timeline.cpu_to_cuda_submit_associations",
+        "execution_timeline.synchronization_events",
+        "execution_timeline.per_device_intervals",
+        "nsys.timeline.device_kernel_intervals",
+        "nsys.timeline.cuda_runtime_api_durations",
+        "python_runtime.cprofile_host_dispatch_self_time",
+        "python_runtime.cprofile_host_binding_costs"
+      ],
+      "unavailable_fields": {
+        "communication": "not_applicable: single-device task (observations.json capabilities: communication status not_applicable, reason 'single-device task'; request.json distributed_backend=null, one leased RTX 4090)",
+        "cross_rank.clock_matched_intervals": "no peer ranks: observations.json cross_rank.matched is empty and ranks[0].status=not_applicable ('single-device task'); cross-rank clock subtraction disallowed",
+        "nccl_tuning.algorithm_protocol_channel": "no distributed backend and no collectives in the measured window; a warmed NCCL worker would have no algorithm/protocol/channel decisions to observe, and kernel entry names alone do not identify protocol",
+        "collective_calibration.reference_allreduce": "no collectives exist on this single-device inference objective; a separate synthetic full-world SUM allreduce is a correctness/reference experiment and would not inform end-to-end inference throughput",
+        "device_telemetry.per_operator_pcie_nvlink_bytes": "no collectives and GPU-resident inputs; NVML telemetry is device-wide with native sampling windows and cannot be attributed per-operator or per-collective; PCIe/NVLink traffic must not be invented from logical payload or memcpy sizes",
+        "autograd.backward_ranges": "coverage.json reports autograd_ranges=0, forward_linked_autograd_ranges=0 and backward_associated_kernels=0; workload runs under torch.inference_mode() with no training or gradient buckets, so bucket identity fields do not exist",
+        "execution_timeline.gpu_readiness_and_consumer_completion": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown, retained as unknown rather than inferred"
+      },
+      "rationale": "Objective is end-to-end generated_tokens_per_second (maximize) for one interactive request: batch=1, 256-token GPU-resident prompt, exactly 32 greedy tokens (prefill + 31 KV-cached decode steps) under torch.inference_mode() with sdpa on a single leased RTX 4090 (request.json, qwen_inference.py:14-41). The torch collector already ran and coverage.json shows 66441/66441 CUDA kernels associated with 0 unassociated, 0 ambiguous and 0 autograd ranges, so kernel-to-operator attribution and kernel hot spots are already covered and torch is not re-requested. The decisive open questions for this objective are attribution of wall-clock time between host and device across the 31 short decode steps, and the host dispatch/binding cost per step in the measured Python 3.12.4 environment (torch 2.13.0+cu129, transformers 5.16.1, worker-environment.json). execution_timeline is selected for its CPU-to-CUDA submit associations, synchronization events and per-device intervals to bound inter-step host gaps and the prefill/decode split; its known limits are recorded in unavailable_fields and it is not treated as a communication hook or a search driver. python_runtime is selected to investigate host dispatch and binding costs via its separate warmed cProfile call trace, accepting that it perturbs execution and its inclusive/self times are not clean performance scores or GPU compute durations. nsys is available (request.json tools.nsys; binary verified present) and is selected to resolve the host/device attribution question with an independent device-side timeline and CUDA runtime API rows (launch cost vs execution vs gaps); it will not be used to separate NCCL waiting from wire transfer or to prove bucket identity, which do not apply here. nccl_tuning, collective_calibration and device_telemetry are not selected because the communication capability is not_applicable for a single-device task with no collectives and no PCIe/NVLink question; device-wide NVML windows cannot be attributed to operators. candidate_diagnostics is not selected as no capability or trace evidence ties it to this objective, and counters are not requested indiscriminately."
+    },
+    "agent": {
+      "role": "collection-planner",
+      "session": "ses_ea5c42d6dffeXFe6iX0rj6qxqH",
+      "message": "msg_15a3dc9d4001Kv7hgRrFKGs6eq",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 6,
+        "reported_cost": 0.07639044414,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 104065.0,
+          "input": 16374.0,
+          "output": 1922.0,
+          "reasoning": 5961.0,
+          "cache.read": 79808.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea5c42d6dffeXFe6iX0rj6qxqH",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/opop-v6-stage3/final-e2e-187617c/qwen-throughput/sandboxes/collection-planner-387f9e7125f6",
+      "outputs": [
+        "collection.json"
+      ],
+      "feedback_provided": false,
+      "contract_repairs": 0,
+      "generation_snapshots": [
+        "/root/opop-v6-stage3/final-e2e-187617c/qwen-throughput/generation-snapshots/generation-3f420670c8b7.json"
+      ]
+    }
+  },
+  "extra_collectors": {
+    "nsys": {
+      "status": "observed",
+      "input": "observations/current/nsys-9ed9145c.json",
+      "sha256": "eaa062d532b6090abc89c11a82fa675bf4c404a333d1f27296742a601ea96e1b",
+      "bytes": 77123448,
+      "provenance": {
+        "revision": "ef78aa2040cb8a31cd3e215ce78cae8dcd95f874dbaeb52ee5ace4596821627b",
+        "parent_revision": "976c5dc0a8ea609315788dd854f4217cfbf554338d0e63f230d5bdcee6a68007",
+        "bundles": [],
+        "plan": "sha256:fe80a4c96e45dcf825832d669e2b0995906b5419cad3b67297b7c1b7c4a6d701",
+        "registry": "sha256:cf0042abd409976b1c3eed45d02a2c71600e7939a3876c10603af33c00b9bddb",
+        "request_sha256": "ca512206baa9a06163ccc6b2d375063382ca07e039874d338e5dc265a33f2e10",
+        "objective": {
+          "name": "generated_tokens_per_second",
+          "unit": "tokens/s",
+          "direction": "maximize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "interactive",
+          "batch": 1,
+          "prompt_tokens": 256,
+          "new_tokens": 32,
+          "goals": [
+            {
+              "id": "ttft",
+              "metric": "ttft_ms",
+              "direction": "min"
+            },
+            {
+              "id": "decode",
+              "metric": "decode_tokens_per_second",
+              "direction": "max"
+            }
+          ]
+        },
+        "devices": [
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "framework_source": {
+          "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+          "files": 160,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "scope": "separate Nsys run; nanosecond SQLite timestamps, no cross-run or cross-rank timestamp subtraction"
+        }
+      ],
+      "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+    },
+    "execution_timeline": {
+      "status": "observed",
+      "input": "observations/current/execution_timeline-1221e205.json",
+      "sha256": "2e60a6b0a24a3c63235cfd2aa4f688b5e974984f7d6b6b3468baefcda1cd1fdf",
+      "bytes": 6351390,
+      "provenance": {
+        "revision": "ef78aa2040cb8a31cd3e215ce78cae8dcd95f874dbaeb52ee5ace4596821627b",
+        "parent_revision": "976c5dc0a8ea609315788dd854f4217cfbf554338d0e63f230d5bdcee6a68007",
+        "bundles": [],
+        "plan": "sha256:fe80a4c96e45dcf825832d669e2b0995906b5419cad3b67297b7c1b7c4a6d701",
+        "registry": "sha256:cf0042abd409976b1c3eed45d02a2c71600e7939a3876c10603af33c00b9bddb",
+        "request_sha256": "ca512206baa9a06163ccc6b2d375063382ca07e039874d338e5dc265a33f2e10",
+        "objective": {
+          "name": "generated_tokens_per_second",
+          "unit": "tokens/s",
+          "direction": "maximize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "interactive",
+          "batch": 1,
+          "prompt_tokens": 256,
+          "new_tokens": 32,
+          "goals": [
+            {
+              "id": "ttft",
+              "metric": "ttft_ms",
+              "direction": "min"
+            },
+            {
+              "id": "decode",
+              "metric": "decode_tokens_per_second",
+              "direction": "max"
+            }
+          ]
+        },
+        "devices": [
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "framework_source": {
+          "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+          "files": 160,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "scope": "Separate diagnostic capture, never the clean project objective",
+          "workload_window": {
+            "start_us": 1658389520341.323,
+            "end_us": 1658391067649.575,
+            "scope": "explicit workload including final completion synchronization; excludes profiler preparation"
+          },
+          "profiled_wall_ms": 1547.340434,
+          "clock": {
+            "status": "observed",
+            "offset_bounds_us": [
+              18956226440878.938,
+              18956226443656.816
+            ],
+            "anchor_bounds_us": [
+              [
+                18956226440878.938,
+                18956226443656.816
+              ],
+              [
+                18956226441366.77,
+                18956226441462.84
+              ]
+            ],
+            "domain": {
+              "host": "autodl-container-e8e84ea25b-cffd5c81",
+              "boot_id": "9890bc2b-f323-49ae-b779-8f723299b44a",
+              "clock": "CLOCK_MONOTONIC"
+            },
+            "scope": "CPU trace to host monotonic clock within this capture; excludes unknown GPU clock calibration error"
+          },
+          "gradient_hooks_enabled": false
+        }
+      ],
+      "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+    },
+    "python_runtime": {
+      "status": "observed",
+      "input": "observations/current/python_runtime-aea48e29.json",
+      "sha256": "d565e21b1ae4cd70e90e851cba96ce00a3709fafdd3c5ac2ac013e43cf2f4ef9",
+      "bytes": 52155,
+      "provenance": {
+        "revision": "ef78aa2040cb8a31cd3e215ce78cae8dcd95f874dbaeb52ee5ace4596821627b",
+        "parent_revision": "976c5dc0a8ea609315788dd854f4217cfbf554338d0e63f230d5bdcee6a68007",
+        "bundles": [],
+        "plan": "sha256:fe80a4c96e45dcf825832d669e2b0995906b5419cad3b67297b7c1b7c4a6d701",
+        "registry": "sha256:cf0042abd409976b1c3eed45d02a2c71600e7939a3876c10603af33c00b9bddb",
+        "request_sha256": "ca512206baa9a06163ccc6b2d375063382ca07e039874d338e5dc265a33f2e10",
+        "objective": {
+          "name": "generated_tokens_per_second",
+          "unit": "tokens/s",
+          "direction": "maximize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "interactive",
+          "batch": 1,
+          "prompt_tokens": 256,
+          "new_tokens": 32,
+          "goals": [
+            {
+              "id": "ttft",
+              "metric": "ttft_ms",
+              "direction": "min"
+            },
+            {
+              "id": "decode",
+              "metric": "decode_tokens_per_second",
+              "direction": "max"
+            }
+          ]
+        },
+        "devices": [
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "framework_source": {
+          "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+          "files": 160,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "scope": "cProfile perturbs Python dispatch; self/cumulative times include host waits and cannot be added to GPU durations or used for acceptance",
+          "profiled_wall_ms": 918.887151
+        }
+      ],
+      "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+    }
+  },
+  "ownership_input": "communication-ownership.json"
+}

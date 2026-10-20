@@ -1,0 +1,60 @@
+{
+  "schema_version": "project-request.v1",
+  "source_root": "/root/opop-v6-stage3/graph-followup-8fd2123.intake/source",
+  "entry": "infer.py",
+  "files": [
+    "infer.py",
+    "model.py",
+    "workloads.json",
+    "README.md"
+  ],
+  "goal": "Reduce full graph encoder inference latency for the standard workload, preserving the full output checks.",
+  "objective": {
+    "name": "latency_ms",
+    "unit": "ms",
+    "direction": "minimize",
+    "constraints": []
+  },
+  "workload": {
+    "id": "unseen_graph",
+    "nodes": 7168,
+    "edges": 143360
+  },
+  "quality": {
+    "atol": 1e-05,
+    "rtol": 0.0001
+  },
+  "assets": {},
+  "devices": [
+    "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+  ],
+  "distributed_backend": null,
+  "communication": "auto",
+  "required_observations": [],
+  "tools": {
+    "ncu": "/usr/local/cuda/bin/ncu",
+    "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+  },
+  "profiling": {
+    "agent_plan": true
+  },
+  "binding_backend": "legacy",
+  "measurement_lifetime": "invocation",
+  "warmup": 3,
+  "repeats": 15,
+  "continuous_steps": 2,
+  "worker_timeout_s": 900.0,
+  "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+  "notes": [
+    "User command (inputs/intent.json): python infer.py --workload standard --output /tmp/original-graph; --warmup and --repeats are not overridden, so infer.py defaults warmup=3 and repeats=15 apply.",
+    "adapter.run() repeats exactly one infer(model, inputs) call (infer.py:28-30). Benchmark-harness infrastructure, not project work: prepare() model/fixture construction from seeds (infer.py:12-25), reference/actual construction and torch.testing.assert_close plus torch.save (infer.py:44-47), warmup loop (infer.py:49-50), timed repeat loop with torch.cuda.synchronize, reset_peak_memory_stats and perf_counter_ns (infer.py:51-61), median summary and result.json report writing (infer.py:62-66).",
+    "latency_ms is wall-clock time around one forward with torch.cuda.synchronize on both sides (infer.py:53-58); the harness also records graphs_per_second = 1000/latency_ms and peak_allocated_bytes per sample and summarizes with statistics.median (infer.py:59-63).",
+    "Quality: the complete FP32 output tensor (shape [4096, 64]) is compared with torch.testing.assert_close(actual, reference, atol=1e-5, rtol=1e-4) (infer.py:45, workloads.json quality). Output is continuous floating-point; there are no discrete outputs needing exact comparison.",
+    "Numerical policies to preserve: FP32 weights and features (dtype float32), TF32 disabled (torch.backends.cuda.matmul.allow_tf32 = False, torch.backends.cudnn.allow_tf32 = False, torch.set_float32_matmul_precision('highest')), model.eval() plus @torch.inference_mode(), no cross-invocation state (infer.py:13-18,28-30; workloads.json dtype).",
+    "Graph semantics: duplicate directed edges contribute individually to mean aggregation via index_add_ on a zeros base; nodes without incoming edges use zero neighbor features; degree = bincount(destinations).clamp_min(1) (model.py:11-15, infer.py:22-24, README.md:17-19).",
+    "workloads.json also declares a peak_allocated_bytes goal with constraint graphs_per_second ge baseline_ratio 0.95 (workloads.json:14-15); the user's goal selects the latency_ms goal only (workloads.json:13), so that memory goal is not part of this request.",
+    "held_out_workloads entry unseen_graph (7168 nodes, 143360 edges) is a held-out graph outside this request (workloads.json:7, README.md:21-22).",
+    "Single-process, single-device ('cuda') workload: no distributed backend, no communication collectors required; required_observations is empty.",
+    "One measured invocation: One full graph encoder forward: infer(model, inputs) (infer.py:28-30), i.e. model(features, sources, destinations, degree) under torch.inference_mode() on GPU-resident FP32 tensors for the standard workload (4096 nodes, 65536 edges)."
+  ]
+}

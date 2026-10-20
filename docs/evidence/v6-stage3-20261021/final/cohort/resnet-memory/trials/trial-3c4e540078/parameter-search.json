@@ -1,0 +1,1506 @@
+{
+  "engine": "existing TaskSearch + OptunaTPETuner",
+  "measurement_scope": "complete project",
+  "resource_fields": {
+    "framework.allocated_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "framework.reserved_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "framework.peak_allocated_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "framework.peak_reserved_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "framework.lifecycle_peak_allocated_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "framework.lifecycle_peak_reserved_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "replacement.kernel_launches": {
+      "unit": "count",
+      "kind": "count",
+      "scope": "native launches inside this bundle's observed replacement ranges",
+      "rank_aggregation": "max",
+      "interpretation": "separate intrusive diagnostic run; nested work and fallback included; launch metadata is not dynamic utilization"
+    },
+    "replacement.diagnostic_kernel_sum_us": {
+      "unit": "us",
+      "kind": "duration",
+      "scope": "native launches inside this bundle's observed replacement ranges",
+      "rank_aggregation": "max",
+      "interpretation": "separate intrusive diagnostic run; nested work and fallback included; launch metadata is not dynamic utilization"
+    },
+    "replacement.max_registers_per_thread": {
+      "unit": "count",
+      "kind": "launch_metadata",
+      "scope": "native launches inside this bundle's observed replacement ranges",
+      "rank_aggregation": "max",
+      "interpretation": "separate intrusive diagnostic run; nested work and fallback included; launch metadata is not dynamic utilization"
+    },
+    "replacement.max_shared_memory_bytes": {
+      "unit": "bytes",
+      "kind": "launch_metadata",
+      "scope": "native launches inside this bundle's observed replacement ranges",
+      "rank_aggregation": "max",
+      "interpretation": "separate intrusive diagnostic run; nested work and fallback included; launch metadata is not dynamic utilization"
+    }
+  },
+  "response_interpretation": "Finite differences of observed screening endpoints, not independent causal sensitivities or acceptance evidence. Objective/throughput/workload constants are not automatically labelled resources. Zero resource change is observed, not missing. Kernel counters require separately available diagnostic evidence.",
+  "parameter_trials": 3,
+  "space": {
+    "params": [
+      {
+        "name": "stem_chunk",
+        "kind": "int",
+        "choices": [
+          4,
+          8,
+          16
+        ],
+        "description": "Images per stem chunk. Smaller chunks lower stem transient memory (2 x chunk/32 x 102.76 MB) but add launches; 8 keeps the stem peak below the stage-0 ceiling with minimal launch overhead. Chunk never changes batch, sampling or output semantics; N <= stem_chunk degrades to one parent-equivalent chunk."
+      }
+    ],
+    "constraints": []
+  },
+  "selected": "trial-3c4e540078-param-d377cbf2",
+  "stats": [
+    {
+      "candidate_id": "cand-9eada419",
+      "space_id": "space-cand-9eada419",
+      "n_complete": 3,
+      "n_fail": 0,
+      "best": {
+        "trial_id": "tr-3f8b0b58",
+        "candidate_id": "cand-9eada419",
+        "space_id": "space-cand-9eada419",
+        "params": {
+          "values": {
+            "stem_chunk": 8
+          }
+        },
+        "status": "complete",
+        "failure_kind": null,
+        "failure_detail": "",
+        "latency_ms": null,
+        "task_evaluation": {
+          "score": 204905472.0,
+          "valid": true,
+          "metrics": {
+            "peak_allocated_bytes": 204905472.0,
+            "latency_ms": 4.004555,
+            "images_per_second": 7990.900362212531,
+            "batch": 32.0,
+            "parameter_count": 11689512.0,
+            "framework.elapsed_ms": 4.004555,
+            "framework.peak_allocated_bytes": 204905472.0,
+            "framework.peak_reserved_bytes": 251658240.0,
+            "framework.allocated_bytes": 76582912.0,
+            "framework.reserved_bytes": 251658240.0,
+            "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+            "framework.lifecycle_peak_reserved_bytes": 251658240.0,
+            "replacement.max_shared_memory_bytes": 16384.0,
+            "replacement.diagnostic_kernel_sum_us": 547.492,
+            "replacement.kernel_launches": 20.0,
+            "replacement.max_registers_per_thread": 128.0
+          },
+          "detail": null
+        },
+        "profile": null,
+        "fp64_rescued_trials": null,
+        "job_wall_s": null,
+        "job_timed_out": null
+      },
+      "param_stats": [
+        {
+          "name": "stem_chunk",
+          "best_value": 4,
+          "best_trial_value": 8,
+          "at_boundary": false,
+          "boundary_direction": null,
+          "effect_pct": 0.0,
+          "latency_by_value": {},
+          "objective_by_value": {
+            "8": 204905472.0,
+            "16": 207002624.0,
+            "4": 204905472.0
+          },
+          "effect_absolute": 2097152.0,
+          "failure_rate_by_value": {
+            "4": 0.0,
+            "8": 0.0,
+            "16": 0.0
+          }
+        }
+      ],
+      "resource_at_best": null,
+      "failure_clusters": []
+    }
+  ],
+  "responses": [
+    {
+      "candidate_id": "trial-3c4e540078",
+      "axis": "stem_chunk",
+      "a_params": {
+        "values": {
+          "stem_chunk": 8
+        }
+      },
+      "b_params": {
+        "values": {
+          "stem_chunk": 16
+        }
+      },
+      "a": {
+        "score": 204905472.0,
+        "valid": true,
+        "metrics": {
+          "peak_allocated_bytes": 204905472.0,
+          "latency_ms": 4.004555,
+          "images_per_second": 7990.900362212531,
+          "batch": 32.0,
+          "parameter_count": 11689512.0,
+          "framework.elapsed_ms": 4.004555,
+          "framework.peak_allocated_bytes": 204905472.0,
+          "framework.peak_reserved_bytes": 251658240.0,
+          "framework.allocated_bytes": 76582912.0,
+          "framework.reserved_bytes": 251658240.0,
+          "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+          "framework.lifecycle_peak_reserved_bytes": 251658240.0,
+          "replacement.max_shared_memory_bytes": 16384.0,
+          "replacement.diagnostic_kernel_sum_us": 547.492,
+          "replacement.kernel_launches": 20.0,
+          "replacement.max_registers_per_thread": 128.0
+        },
+        "detail": null
+      },
+      "b": {
+        "score": 207002624.0,
+        "valid": true,
+        "metrics": {
+          "peak_allocated_bytes": 207002624.0,
+          "latency_ms": 4.172034,
+          "images_per_second": 7670.1196586605,
+          "batch": 32.0,
+          "parameter_count": 11689512.0,
+          "framework.elapsed_ms": 4.172034,
+          "framework.peak_allocated_bytes": 207002624.0,
+          "framework.peak_reserved_bytes": 245366784.0,
+          "framework.allocated_bytes": 76582912.0,
+          "framework.reserved_bytes": 245366784.0,
+          "framework.lifecycle_peak_allocated_bytes": 207130624.0,
+          "framework.lifecycle_peak_reserved_bytes": 245366784.0,
+          "replacement.max_shared_memory_bytes": 16384.0,
+          "replacement.diagnostic_kernel_sum_us": 764.0989999999999,
+          "replacement.kernel_launches": 10.0,
+          "replacement.max_registers_per_thread": 128.0
+        },
+        "detail": null
+      },
+      "delta_j": 2097152.0,
+      "gain": -2097152.0,
+      "parameter_slope": 262144.0,
+      "resource_deltas": {
+        "framework.allocated_bytes": 0.0,
+        "framework.lifecycle_peak_allocated_bytes": 2097152.0,
+        "framework.lifecycle_peak_reserved_bytes": -6291456.0,
+        "framework.peak_allocated_bytes": 2097152.0,
+        "framework.peak_reserved_bytes": -6291456.0,
+        "framework.reserved_bytes": -6291456.0,
+        "replacement.diagnostic_kernel_sum_us": 216.60699999999997,
+        "replacement.kernel_launches": -10.0,
+        "replacement.max_registers_per_thread": 0.0,
+        "replacement.max_shared_memory_bytes": 0.0
+      },
+      "resource_slopes": {
+        "framework.lifecycle_peak_allocated_bytes": 1.0,
+        "framework.lifecycle_peak_reserved_bytes": -0.3333333333333333,
+        "framework.peak_allocated_bytes": 1.0,
+        "framework.peak_reserved_bytes": -0.3333333333333333,
+        "framework.reserved_bytes": -0.3333333333333333,
+        "replacement.diagnostic_kernel_sum_us": 9681.829303762115,
+        "replacement.kernel_launches": -209715.2
+      },
+      "unknown_resources": [],
+      "resource_status": "observed",
+      "reason": null
+    },
+    {
+      "candidate_id": "trial-3c4e540078",
+      "axis": "stem_chunk",
+      "a_params": {
+        "values": {
+          "stem_chunk": 16
+        }
+      },
+      "b_params": {
+        "values": {
+          "stem_chunk": 4
+        }
+      },
+      "a": {
+        "score": 207002624.0,
+        "valid": true,
+        "metrics": {
+          "peak_allocated_bytes": 207002624.0,
+          "latency_ms": 4.172034,
+          "images_per_second": 7670.1196586605,
+          "batch": 32.0,
+          "parameter_count": 11689512.0,
+          "framework.elapsed_ms": 4.172034,
+          "framework.peak_allocated_bytes": 207002624.0,
+          "framework.peak_reserved_bytes": 245366784.0,
+          "framework.allocated_bytes": 76582912.0,
+          "framework.reserved_bytes": 245366784.0,
+          "framework.lifecycle_peak_allocated_bytes": 207130624.0,
+          "framework.lifecycle_peak_reserved_bytes": 245366784.0,
+          "replacement.max_shared_memory_bytes": 16384.0,
+          "replacement.diagnostic_kernel_sum_us": 764.0989999999999,
+          "replacement.kernel_launches": 10.0,
+          "replacement.max_registers_per_thread": 128.0
+        },
+        "detail": null
+      },
+      "b": {
+        "score": 204905472.0,
+        "valid": true,
+        "metrics": {
+          "peak_allocated_bytes": 204905472.0,
+          "latency_ms": 4.319361,
+          "images_per_second": 7408.503248512917,
+          "batch": 32.0,
+          "parameter_count": 11689512.0,
+          "framework.elapsed_ms": 4.319361,
+          "framework.peak_allocated_bytes": 204905472.0,
+          "framework.peak_reserved_bytes": 253755392.0,
+          "framework.allocated_bytes": 76582912.0,
+          "framework.reserved_bytes": 253755392.0,
+          "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+          "framework.lifecycle_peak_reserved_bytes": 253755392.0,
+          "replacement.max_shared_memory_bytes": 16384.0,
+          "replacement.diagnostic_kernel_sum_us": 579.841,
+          "replacement.kernel_launches": 40.0,
+          "replacement.max_registers_per_thread": 128.0
+        },
+        "detail": null
+      },
+      "delta_j": -2097152.0,
+      "gain": 2097152.0,
+      "parameter_slope": 174762.66666666666,
+      "resource_deltas": {
+        "framework.allocated_bytes": 0.0,
+        "framework.lifecycle_peak_allocated_bytes": -2097152.0,
+        "framework.lifecycle_peak_reserved_bytes": 8388608.0,
+        "framework.peak_allocated_bytes": -2097152.0,
+        "framework.peak_reserved_bytes": 8388608.0,
+        "framework.reserved_bytes": 8388608.0,
+        "replacement.diagnostic_kernel_sum_us": -184.25799999999992,
+        "replacement.kernel_launches": 30.0,
+        "replacement.max_registers_per_thread": 0.0,
+        "replacement.max_shared_memory_bytes": 0.0
+      },
+      "resource_slopes": {
+        "framework.lifecycle_peak_allocated_bytes": 1.0,
+        "framework.lifecycle_peak_reserved_bytes": -0.25,
+        "framework.peak_allocated_bytes": 1.0,
+        "framework.peak_reserved_bytes": -0.25,
+        "framework.reserved_bytes": -0.25,
+        "replacement.diagnostic_kernel_sum_us": 11381.606226052605,
+        "replacement.kernel_launches": -69905.06666666667
+      },
+      "unknown_resources": [],
+      "resource_status": "observed",
+      "reason": null
+    }
+  ],
+  "observations": [
+    {
+      "bundle": {
+        "schema_version": "project.v2",
+        "id": "trial-3c4e540078-param-d377cbf2",
+        "parent_revision": "87e7d66efba88ff766579f51392ee6f6504cb3454d3642668ab4ef2890f8b2ec",
+        "contract_ref": "sha256:d373dfe4d522aa602007b7efb1c09ac82033b251e736a9295526030bcb027bb8",
+        "scope": "region",
+        "implementation": "composite",
+        "groups": [
+          "3821cceac23fa97e5a55",
+          "0022893ec8c1ceea869f",
+          "95d8eead897036452c64",
+          "c97c8dfae7e5def85428",
+          "7e7c01e2bf7e30a42280",
+          "3412952b9279e41b1709",
+          "c671bb65e86ad614e3f6",
+          "8bffcf00b7bd20c935a5",
+          "c0af3909ba0a106672d5",
+          "5d6060b158cac3430090"
+        ],
+        "calls": [
+          "683c822136ed7958f3e9ba44"
+        ],
+        "affected_calls": [
+          "021f27d2d0d73dee5fab9084",
+          "220b9d0ec76e2ccc01dcdb09",
+          "279a256c150755fd69216f5a",
+          "2f3bfb9ee01d701be01d2ff3",
+          "35096a239aa1290aabeed5de",
+          "3c3c7a3e1837d0185b1df6f0",
+          "52e7c2f32ca6695f380d240f",
+          "679ccfe137094282d25350c1",
+          "683c822136ed7958f3e9ba44",
+          "87335b95bb02e81155c4add6",
+          "8ef2341287e5b4afa9d0e7bf",
+          "aa9765a1830bed7ee2727282",
+          "cc658ee4e2f7b6628feb4ca4",
+          "d1400702f02f387d67569ac9",
+          "ddf82d5c5c82c55ac9ae09f1",
+          "ea7cd77adb03bad473412ebc",
+          "eea81d115a4403a3083c1f64"
+        ],
+        "edits": [
+          {
+            "schema_version": "project.v1",
+            "path": "opop_candidates/trial-3c4e540078.py",
+            "before_sha256": null,
+            "content_ref": "sha256:4e9225689909204689a77ad9a2a0ab07e40ce6d41d3776e01a5cee1f72c49b52"
+          },
+          {
+            "schema_version": "project.v1",
+            "path": "opop_candidates/trial-3c4e540078.targets.json",
+            "before_sha256": null,
+            "content_ref": "sha256:231fb3096e939a127c49f1f6224917de3aa6dc0810cc5d8dc8d29fcfd6db98d4"
+          }
+        ],
+        "read_set": [
+          "call:021f27d2d0d73dee5fab9084",
+          "call:220b9d0ec76e2ccc01dcdb09",
+          "call:279a256c150755fd69216f5a",
+          "call:2f3bfb9ee01d701be01d2ff3",
+          "call:35096a239aa1290aabeed5de",
+          "call:3c3c7a3e1837d0185b1df6f0",
+          "call:52e7c2f32ca6695f380d240f",
+          "call:679ccfe137094282d25350c1",
+          "call:683c822136ed7958f3e9ba44",
+          "call:87335b95bb02e81155c4add6",
+          "call:8ef2341287e5b4afa9d0e7bf",
+          "call:aa9765a1830bed7ee2727282",
+          "call:cc658ee4e2f7b6628feb4ca4",
+          "call:d1400702f02f387d67569ac9",
+          "call:ddf82d5c5c82c55ac9ae09f1",
+          "call:ea7cd77adb03bad473412ebc",
+          "call:eea81d115a4403a3083c1f64"
+        ],
+        "write_set": [
+          "file:opop_candidates/trial-3c4e540078.py",
+          "file:opop_candidates/trial-3c4e540078.targets.json",
+          "call:683c822136ed7958f3e9ba44"
+        ],
+        "requires": [],
+        "replaces": [],
+        "external_invariants": [
+          "Model is pretrained ResNet-18 loaded from the local assets via ResNetForImageClassification.from_pretrained(assets, local_files_only=True, dtype=torch.float32) with eval() behavior; weights and activations stay FP32.",
+          "Numerical policies preserved from common.py:34-42: torch.backends.cuda.matmul.allow_tf32=False, torch.backends.cudnn.allow_tf32=False, torch.backends.cudnn.benchmark=False, torch.set_float32_matmul_precision('highest'), torch.manual_seed(20261020), 4 CPU threads and 1 interop thread.",
+          "Input is the offline batch of 32: images = np.load(assets/pixels.npy) moved to CUDA (shape (3,3,224,224) float32), pixels = images[torch.arange(32, device='cuda') % 3].contiguous() -> (32,3,224,224) FP32, GPU-resident before the timed boundary; no H2D transfer or preprocessing inside run().",
+          "The measured workload is exactly one model(pixel_values=pixels).logits forward under torch.inference_mode(); no reduction of the work amount, batch, image size or class dimension.",
+          "Correctness requires the full 1000-class logits compared with atol=1e-4, rtol=1e-4 (torch.testing.assert_close) and exact top-1 equality torch.equal(actual.argmax(-1), reference.argmax(-1)); the +1-corruption negative control must be rejected.",
+          "peak_allocated_bytes is the process-level PyTorch CUDA allocated peak for one forward with peak stats reset immediately before the timed call (torch.cuda.max_memory_allocated after the synchronized run), not whole-device, reserved or driver memory.",
+          "images_per_second is the source's full-request throughput for the fixed batch of 32, computed as batch * 1e3 / latency_ms around one complete forward on the GPU-resident input; it must not be converted into a cached-only throughput.",
+          "Throughput constraint: images_per_second >= 0.95 * baseline; memory reduction must not be obtained by violating this ratio or the frozen workload/precision/data.",
+          "Model loading, weight transfer to GPU and input construction happen in prepare outside timed execution; the module creates no CUDA tensors and initializes no CUDA context at import time."
+        ],
+        "plan_ref": null,
+        "registry_ref": null,
+        "installer": "opop_candidates/trial-3c4e540078.py",
+        "parameters": {
+          "stem_chunk": 8
+        }
+      },
+      "revision": "fb397770d5309db2a447bab69498b6f6ecbf298f69174c9f4574c72b8c091668",
+      "result": {
+        "score": 204905472.0,
+        "valid": true,
+        "metrics": {
+          "peak_allocated_bytes": 204905472.0,
+          "latency_ms": 4.004555,
+          "images_per_second": 7990.900362212531,
+          "batch": 32.0,
+          "parameter_count": 11689512.0,
+          "framework.elapsed_ms": 4.004555,
+          "framework.peak_allocated_bytes": 204905472.0,
+          "framework.peak_reserved_bytes": 251658240.0,
+          "framework.allocated_bytes": 76582912.0,
+          "framework.reserved_bytes": 251658240.0,
+          "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+          "framework.lifecycle_peak_reserved_bytes": 251658240.0,
+          "replacement.max_shared_memory_bytes": 16384.0,
+          "replacement.diagnostic_kernel_sum_us": 547.492,
+          "replacement.kernel_launches": 20.0,
+          "replacement.max_registers_per_thread": 128.0
+        },
+        "detail": null
+      },
+      "constraints": [
+        {
+          "metric": "images_per_second",
+          "values": [
+            7990.900362212531
+          ],
+          "limit": 7174.1462647949065,
+          "original_reference": 7551.732910310428,
+          "passed": true
+        }
+      ],
+      "run": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 8.419647488743067,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 968314,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 968314,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 13,
+                "unavailable_samples": 0,
+                "wait_s": 0.10253167897462845,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-3c4e540078-param-d377cbf2": {
+                  "counts": {
+                    "683c822136ed7958f3e9ba44": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "683c822136ed7958f3e9ba44"
+                  ],
+                  "reference_invocations": {
+                    "679ccfe137094282d25350c1": 8,
+                    "aa9765a1830bed7ee2727282": 8
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "683c822136ed7958f3e9ba44",
+                      "route": "chunked_stem:ok",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "setup": [
+                {
+                  "bundle": "trial-3c4e540078-param-d377cbf2",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "direct",
+                    "reason": "no functional replacements"
+                  },
+                  "elapsed_ms": 2.612372,
+                  "allocated_bytes": 67935232,
+                  "reserved_bytes": 88080384,
+                  "peak_allocated_bytes": 67935232,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "peak_allocated_bytes": 204905472.0,
+                  "latency_ms": 4.002881,
+                  "images_per_second": 7994.242147093555,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.002881,
+                  "framework.peak_allocated_bytes": 204905472.0,
+                  "framework.peak_reserved_bytes": 251658240.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 251658240.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+                  "framework.lifecycle_peak_reserved_bytes": 251658240.0
+                },
+                {
+                  "peak_allocated_bytes": 204905472.0,
+                  "latency_ms": 4.004555,
+                  "images_per_second": 7990.900362212531,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.004555,
+                  "framework.peak_allocated_bytes": 204905472.0,
+                  "framework.peak_reserved_bytes": 251658240.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 251658240.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+                  "framework.lifecycle_peak_reserved_bytes": 251658240.0
+                },
+                {
+                  "peak_allocated_bytes": 204905472.0,
+                  "latency_ms": 4.001393,
+                  "images_per_second": 7997.214969886737,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.001393,
+                  "framework.peak_allocated_bytes": 204905472.0,
+                  "framework.peak_reserved_bytes": 251658240.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 251658240.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+                  "framework.lifecycle_peak_reserved_bytes": 251658240.0
+                },
+                {
+                  "peak_allocated_bytes": 204905472.0,
+                  "latency_ms": 4.114541,
+                  "images_per_second": 7777.295207411957,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.114541,
+                  "framework.peak_allocated_bytes": 204905472.0,
+                  "framework.peak_reserved_bytes": 251658240.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 251658240.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+                  "framework.lifecycle_peak_reserved_bytes": 251658240.0
+                },
+                {
+                  "peak_allocated_bytes": 204905472.0,
+                  "latency_ms": 4.276022,
+                  "images_per_second": 7483.5910572957755,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.276022,
+                  "framework.peak_allocated_bytes": 204905472.0,
+                  "framework.peak_reserved_bytes": 251658240.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 251658240.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+                  "framework.lifecycle_peak_reserved_bytes": 251658240.0
+                }
+              ],
+              "metrics": {
+                "peak_allocated_bytes": 204905472.0,
+                "latency_ms": 4.004555,
+                "images_per_second": 7990.900362212531,
+                "batch": 32.0,
+                "parameter_count": 11689512.0,
+                "framework.elapsed_ms": 4.004555,
+                "framework.peak_allocated_bytes": 204905472.0,
+                "framework.peak_reserved_bytes": 251658240.0,
+                "framework.allocated_bytes": 76582912.0,
+                "framework.reserved_bytes": 251658240.0,
+                "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+                "framework.lifecycle_peak_reserved_bytes": 251658240.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {
+                "trial-3c4e540078-param-d377cbf2": "d986bac3528126f0b125d8e42314a2cacb191fe353e5d7d8a57f64d3ff8339fc"
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 0.00017371028661727905,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      },
+      "diagnostic": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 7.771317631006241,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 968650,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 968650,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 12,
+                "unavailable_samples": 0,
+                "wait_s": 0.09471717849373817,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "discovery": "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory/jobs/trial-3c4e540078-param-d377cbf2-resources/run/discovery-rank-0.json",
+              "coverage": {
+                "cuda_kernels": 103,
+                "associated_kernels": 103,
+                "unassociated_kernels": 0,
+                "associated_below_project": 103,
+                "root_only_kernels": 0,
+                "backward_associated_kernels": 0,
+                "autograd_ranges": 0,
+                "forward_linked_autograd_ranges": 0,
+                "ambiguous_forward_sequences": 0
+              },
+              "call_sites": 371,
+              "groups": 220
+            }
+          }
+        ],
+        "lease_wait_s": 0.00014061853289604187,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      },
+      "candidate_diagnostics": null
+    },
+    {
+      "bundle": {
+        "schema_version": "project.v2",
+        "id": "trial-3c4e540078-param-9cfe5813",
+        "parent_revision": "87e7d66efba88ff766579f51392ee6f6504cb3454d3642668ab4ef2890f8b2ec",
+        "contract_ref": "sha256:d373dfe4d522aa602007b7efb1c09ac82033b251e736a9295526030bcb027bb8",
+        "scope": "region",
+        "implementation": "composite",
+        "groups": [
+          "3821cceac23fa97e5a55",
+          "0022893ec8c1ceea869f",
+          "95d8eead897036452c64",
+          "c97c8dfae7e5def85428",
+          "7e7c01e2bf7e30a42280",
+          "3412952b9279e41b1709",
+          "c671bb65e86ad614e3f6",
+          "8bffcf00b7bd20c935a5",
+          "c0af3909ba0a106672d5",
+          "5d6060b158cac3430090"
+        ],
+        "calls": [
+          "683c822136ed7958f3e9ba44"
+        ],
+        "affected_calls": [
+          "021f27d2d0d73dee5fab9084",
+          "220b9d0ec76e2ccc01dcdb09",
+          "279a256c150755fd69216f5a",
+          "2f3bfb9ee01d701be01d2ff3",
+          "35096a239aa1290aabeed5de",
+          "3c3c7a3e1837d0185b1df6f0",
+          "52e7c2f32ca6695f380d240f",
+          "679ccfe137094282d25350c1",
+          "683c822136ed7958f3e9ba44",
+          "87335b95bb02e81155c4add6",
+          "8ef2341287e5b4afa9d0e7bf",
+          "aa9765a1830bed7ee2727282",
+          "cc658ee4e2f7b6628feb4ca4",
+          "d1400702f02f387d67569ac9",
+          "ddf82d5c5c82c55ac9ae09f1",
+          "ea7cd77adb03bad473412ebc",
+          "eea81d115a4403a3083c1f64"
+        ],
+        "edits": [
+          {
+            "schema_version": "project.v1",
+            "path": "opop_candidates/trial-3c4e540078.py",
+            "before_sha256": null,
+            "content_ref": "sha256:4e9225689909204689a77ad9a2a0ab07e40ce6d41d3776e01a5cee1f72c49b52"
+          },
+          {
+            "schema_version": "project.v1",
+            "path": "opop_candidates/trial-3c4e540078.targets.json",
+            "before_sha256": null,
+            "content_ref": "sha256:231fb3096e939a127c49f1f6224917de3aa6dc0810cc5d8dc8d29fcfd6db98d4"
+          }
+        ],
+        "read_set": [
+          "call:021f27d2d0d73dee5fab9084",
+          "call:220b9d0ec76e2ccc01dcdb09",
+          "call:279a256c150755fd69216f5a",
+          "call:2f3bfb9ee01d701be01d2ff3",
+          "call:35096a239aa1290aabeed5de",
+          "call:3c3c7a3e1837d0185b1df6f0",
+          "call:52e7c2f32ca6695f380d240f",
+          "call:679ccfe137094282d25350c1",
+          "call:683c822136ed7958f3e9ba44",
+          "call:87335b95bb02e81155c4add6",
+          "call:8ef2341287e5b4afa9d0e7bf",
+          "call:aa9765a1830bed7ee2727282",
+          "call:cc658ee4e2f7b6628feb4ca4",
+          "call:d1400702f02f387d67569ac9",
+          "call:ddf82d5c5c82c55ac9ae09f1",
+          "call:ea7cd77adb03bad473412ebc",
+          "call:eea81d115a4403a3083c1f64"
+        ],
+        "write_set": [
+          "file:opop_candidates/trial-3c4e540078.py",
+          "file:opop_candidates/trial-3c4e540078.targets.json",
+          "call:683c822136ed7958f3e9ba44"
+        ],
+        "requires": [],
+        "replaces": [],
+        "external_invariants": [
+          "Model is pretrained ResNet-18 loaded from the local assets via ResNetForImageClassification.from_pretrained(assets, local_files_only=True, dtype=torch.float32) with eval() behavior; weights and activations stay FP32.",
+          "Numerical policies preserved from common.py:34-42: torch.backends.cuda.matmul.allow_tf32=False, torch.backends.cudnn.allow_tf32=False, torch.backends.cudnn.benchmark=False, torch.set_float32_matmul_precision('highest'), torch.manual_seed(20261020), 4 CPU threads and 1 interop thread.",
+          "Input is the offline batch of 32: images = np.load(assets/pixels.npy) moved to CUDA (shape (3,3,224,224) float32), pixels = images[torch.arange(32, device='cuda') % 3].contiguous() -> (32,3,224,224) FP32, GPU-resident before the timed boundary; no H2D transfer or preprocessing inside run().",
+          "The measured workload is exactly one model(pixel_values=pixels).logits forward under torch.inference_mode(); no reduction of the work amount, batch, image size or class dimension.",
+          "Correctness requires the full 1000-class logits compared with atol=1e-4, rtol=1e-4 (torch.testing.assert_close) and exact top-1 equality torch.equal(actual.argmax(-1), reference.argmax(-1)); the +1-corruption negative control must be rejected.",
+          "peak_allocated_bytes is the process-level PyTorch CUDA allocated peak for one forward with peak stats reset immediately before the timed call (torch.cuda.max_memory_allocated after the synchronized run), not whole-device, reserved or driver memory.",
+          "images_per_second is the source's full-request throughput for the fixed batch of 32, computed as batch * 1e3 / latency_ms around one complete forward on the GPU-resident input; it must not be converted into a cached-only throughput.",
+          "Throughput constraint: images_per_second >= 0.95 * baseline; memory reduction must not be obtained by violating this ratio or the frozen workload/precision/data.",
+          "Model loading, weight transfer to GPU and input construction happen in prepare outside timed execution; the module creates no CUDA tensors and initializes no CUDA context at import time."
+        ],
+        "plan_ref": null,
+        "registry_ref": null,
+        "installer": "opop_candidates/trial-3c4e540078.py",
+        "parameters": {
+          "stem_chunk": 16
+        }
+      },
+      "revision": "b7644213a66cf4ae965547b00e8896036e7df8c0cf22da8bdfc1beadc073a288",
+      "result": {
+        "score": 207002624.0,
+        "valid": true,
+        "metrics": {
+          "peak_allocated_bytes": 207002624.0,
+          "latency_ms": 4.172034,
+          "images_per_second": 7670.1196586605,
+          "batch": 32.0,
+          "parameter_count": 11689512.0,
+          "framework.elapsed_ms": 4.172034,
+          "framework.peak_allocated_bytes": 207002624.0,
+          "framework.peak_reserved_bytes": 245366784.0,
+          "framework.allocated_bytes": 76582912.0,
+          "framework.reserved_bytes": 245366784.0,
+          "framework.lifecycle_peak_allocated_bytes": 207130624.0,
+          "framework.lifecycle_peak_reserved_bytes": 245366784.0,
+          "replacement.max_shared_memory_bytes": 16384.0,
+          "replacement.diagnostic_kernel_sum_us": 764.0989999999999,
+          "replacement.kernel_launches": 10.0,
+          "replacement.max_registers_per_thread": 128.0
+        },
+        "detail": null
+      },
+      "constraints": [
+        {
+          "metric": "images_per_second",
+          "values": [
+            7670.1196586605
+          ],
+          "limit": 7174.1462647949065,
+          "original_reference": 7551.732910310428,
+          "passed": true
+        }
+      ],
+      "run": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 7.8284864239394665,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 968938,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 968938,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 12,
+                "unavailable_samples": 0,
+                "wait_s": 0.09109973534941673,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-3c4e540078-param-9cfe5813": {
+                  "counts": {
+                    "683c822136ed7958f3e9ba44": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "683c822136ed7958f3e9ba44"
+                  ],
+                  "reference_invocations": {
+                    "679ccfe137094282d25350c1": 4,
+                    "aa9765a1830bed7ee2727282": 4
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "683c822136ed7958f3e9ba44",
+                      "route": "chunked_stem:ok",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "setup": [
+                {
+                  "bundle": "trial-3c4e540078-param-9cfe5813",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "direct",
+                    "reason": "no functional replacements"
+                  },
+                  "elapsed_ms": 1.945581,
+                  "allocated_bytes": 67935232,
+                  "reserved_bytes": 88080384,
+                  "peak_allocated_bytes": 67935232,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "peak_allocated_bytes": 207002624.0,
+                  "latency_ms": 4.334057,
+                  "images_per_second": 7383.382359761305,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.334057,
+                  "framework.peak_allocated_bytes": 207002624.0,
+                  "framework.peak_reserved_bytes": 245366784.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 245366784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 207130624.0,
+                  "framework.lifecycle_peak_reserved_bytes": 245366784.0
+                },
+                {
+                  "peak_allocated_bytes": 207002624.0,
+                  "latency_ms": 4.163693,
+                  "images_per_second": 7685.4849769183265,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.163693,
+                  "framework.peak_allocated_bytes": 207002624.0,
+                  "framework.peak_reserved_bytes": 245366784.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 245366784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 207130624.0,
+                  "framework.lifecycle_peak_reserved_bytes": 245366784.0
+                },
+                {
+                  "peak_allocated_bytes": 207002624.0,
+                  "latency_ms": 4.153133,
+                  "images_per_second": 7705.026542612528,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.153133,
+                  "framework.peak_allocated_bytes": 207002624.0,
+                  "framework.peak_reserved_bytes": 245366784.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 245366784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 207130624.0,
+                  "framework.lifecycle_peak_reserved_bytes": 245366784.0
+                },
+                {
+                  "peak_allocated_bytes": 207002624.0,
+                  "latency_ms": 4.172034,
+                  "images_per_second": 7670.1196586605,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.172034,
+                  "framework.peak_allocated_bytes": 207002624.0,
+                  "framework.peak_reserved_bytes": 245366784.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 245366784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 207130624.0,
+                  "framework.lifecycle_peak_reserved_bytes": 245366784.0
+                },
+                {
+                  "peak_allocated_bytes": 207002624.0,
+                  "latency_ms": 4.190241,
+                  "images_per_second": 7636.792251328741,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.190241,
+                  "framework.peak_allocated_bytes": 207002624.0,
+                  "framework.peak_reserved_bytes": 245366784.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 245366784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 207130624.0,
+                  "framework.lifecycle_peak_reserved_bytes": 245366784.0
+                }
+              ],
+              "metrics": {
+                "peak_allocated_bytes": 207002624.0,
+                "latency_ms": 4.172034,
+                "images_per_second": 7670.1196586605,
+                "batch": 32.0,
+                "parameter_count": 11689512.0,
+                "framework.elapsed_ms": 4.172034,
+                "framework.peak_allocated_bytes": 207002624.0,
+                "framework.peak_reserved_bytes": 245366784.0,
+                "framework.allocated_bytes": 76582912.0,
+                "framework.reserved_bytes": 245366784.0,
+                "framework.lifecycle_peak_allocated_bytes": 207130624.0,
+                "framework.lifecycle_peak_reserved_bytes": 245366784.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {
+                "trial-3c4e540078-param-9cfe5813": "abb6893f0030ebb1d732fddf3818c65e3753281aa944ba161ceaa78706631f62"
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 0.00013842061161994934,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      },
+      "diagnostic": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 7.255668628960848,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 969295,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 969295,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 11,
+                "unavailable_samples": 0,
+                "wait_s": 0.0958295464515686,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "discovery": "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory/jobs/trial-3c4e540078-param-9cfe5813-resources/run/discovery-rank-0.json",
+              "coverage": {
+                "cuda_kernels": 93,
+                "associated_kernels": 93,
+                "unassociated_kernels": 0,
+                "associated_below_project": 93,
+                "root_only_kernels": 0,
+                "backward_associated_kernels": 0,
+                "autograd_ranges": 0,
+                "forward_linked_autograd_ranges": 0,
+                "ambiguous_forward_sequences": 0
+              },
+              "call_sites": 361,
+              "groups": 210
+            }
+          }
+        ],
+        "lease_wait_s": 0.000132828950881958,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      },
+      "candidate_diagnostics": null
+    },
+    {
+      "bundle": {
+        "schema_version": "project.v2",
+        "id": "trial-3c4e540078-param-c6a348a4",
+        "parent_revision": "87e7d66efba88ff766579f51392ee6f6504cb3454d3642668ab4ef2890f8b2ec",
+        "contract_ref": "sha256:d373dfe4d522aa602007b7efb1c09ac82033b251e736a9295526030bcb027bb8",
+        "scope": "region",
+        "implementation": "composite",
+        "groups": [
+          "3821cceac23fa97e5a55",
+          "0022893ec8c1ceea869f",
+          "95d8eead897036452c64",
+          "c97c8dfae7e5def85428",
+          "7e7c01e2bf7e30a42280",
+          "3412952b9279e41b1709",
+          "c671bb65e86ad614e3f6",
+          "8bffcf00b7bd20c935a5",
+          "c0af3909ba0a106672d5",
+          "5d6060b158cac3430090"
+        ],
+        "calls": [
+          "683c822136ed7958f3e9ba44"
+        ],
+        "affected_calls": [
+          "021f27d2d0d73dee5fab9084",
+          "220b9d0ec76e2ccc01dcdb09",
+          "279a256c150755fd69216f5a",
+          "2f3bfb9ee01d701be01d2ff3",
+          "35096a239aa1290aabeed5de",
+          "3c3c7a3e1837d0185b1df6f0",
+          "52e7c2f32ca6695f380d240f",
+          "679ccfe137094282d25350c1",
+          "683c822136ed7958f3e9ba44",
+          "87335b95bb02e81155c4add6",
+          "8ef2341287e5b4afa9d0e7bf",
+          "aa9765a1830bed7ee2727282",
+          "cc658ee4e2f7b6628feb4ca4",
+          "d1400702f02f387d67569ac9",
+          "ddf82d5c5c82c55ac9ae09f1",
+          "ea7cd77adb03bad473412ebc",
+          "eea81d115a4403a3083c1f64"
+        ],
+        "edits": [
+          {
+            "schema_version": "project.v1",
+            "path": "opop_candidates/trial-3c4e540078.py",
+            "before_sha256": null,
+            "content_ref": "sha256:4e9225689909204689a77ad9a2a0ab07e40ce6d41d3776e01a5cee1f72c49b52"
+          },
+          {
+            "schema_version": "project.v1",
+            "path": "opop_candidates/trial-3c4e540078.targets.json",
+            "before_sha256": null,
+            "content_ref": "sha256:231fb3096e939a127c49f1f6224917de3aa6dc0810cc5d8dc8d29fcfd6db98d4"
+          }
+        ],
+        "read_set": [
+          "call:021f27d2d0d73dee5fab9084",
+          "call:220b9d0ec76e2ccc01dcdb09",
+          "call:279a256c150755fd69216f5a",
+          "call:2f3bfb9ee01d701be01d2ff3",
+          "call:35096a239aa1290aabeed5de",
+          "call:3c3c7a3e1837d0185b1df6f0",
+          "call:52e7c2f32ca6695f380d240f",
+          "call:679ccfe137094282d25350c1",
+          "call:683c822136ed7958f3e9ba44",
+          "call:87335b95bb02e81155c4add6",
+          "call:8ef2341287e5b4afa9d0e7bf",
+          "call:aa9765a1830bed7ee2727282",
+          "call:cc658ee4e2f7b6628feb4ca4",
+          "call:d1400702f02f387d67569ac9",
+          "call:ddf82d5c5c82c55ac9ae09f1",
+          "call:ea7cd77adb03bad473412ebc",
+          "call:eea81d115a4403a3083c1f64"
+        ],
+        "write_set": [
+          "file:opop_candidates/trial-3c4e540078.py",
+          "file:opop_candidates/trial-3c4e540078.targets.json",
+          "call:683c822136ed7958f3e9ba44"
+        ],
+        "requires": [],
+        "replaces": [],
+        "external_invariants": [
+          "Model is pretrained ResNet-18 loaded from the local assets via ResNetForImageClassification.from_pretrained(assets, local_files_only=True, dtype=torch.float32) with eval() behavior; weights and activations stay FP32.",
+          "Numerical policies preserved from common.py:34-42: torch.backends.cuda.matmul.allow_tf32=False, torch.backends.cudnn.allow_tf32=False, torch.backends.cudnn.benchmark=False, torch.set_float32_matmul_precision('highest'), torch.manual_seed(20261020), 4 CPU threads and 1 interop thread.",
+          "Input is the offline batch of 32: images = np.load(assets/pixels.npy) moved to CUDA (shape (3,3,224,224) float32), pixels = images[torch.arange(32, device='cuda') % 3].contiguous() -> (32,3,224,224) FP32, GPU-resident before the timed boundary; no H2D transfer or preprocessing inside run().",
+          "The measured workload is exactly one model(pixel_values=pixels).logits forward under torch.inference_mode(); no reduction of the work amount, batch, image size or class dimension.",
+          "Correctness requires the full 1000-class logits compared with atol=1e-4, rtol=1e-4 (torch.testing.assert_close) and exact top-1 equality torch.equal(actual.argmax(-1), reference.argmax(-1)); the +1-corruption negative control must be rejected.",
+          "peak_allocated_bytes is the process-level PyTorch CUDA allocated peak for one forward with peak stats reset immediately before the timed call (torch.cuda.max_memory_allocated after the synchronized run), not whole-device, reserved or driver memory.",
+          "images_per_second is the source's full-request throughput for the fixed batch of 32, computed as batch * 1e3 / latency_ms around one complete forward on the GPU-resident input; it must not be converted into a cached-only throughput.",
+          "Throughput constraint: images_per_second >= 0.95 * baseline; memory reduction must not be obtained by violating this ratio or the frozen workload/precision/data.",
+          "Model loading, weight transfer to GPU and input construction happen in prepare outside timed execution; the module creates no CUDA tensors and initializes no CUDA context at import time."
+        ],
+        "plan_ref": null,
+        "registry_ref": null,
+        "installer": "opop_candidates/trial-3c4e540078.py",
+        "parameters": {
+          "stem_chunk": 4
+        }
+      },
+      "revision": "f29149b665f524f2c2bf110ecb96219a59e61d0f7e597a5f2dee28654ec9ba90",
+      "result": {
+        "score": 204905472.0,
+        "valid": true,
+        "metrics": {
+          "peak_allocated_bytes": 204905472.0,
+          "latency_ms": 4.319361,
+          "images_per_second": 7408.503248512917,
+          "batch": 32.0,
+          "parameter_count": 11689512.0,
+          "framework.elapsed_ms": 4.319361,
+          "framework.peak_allocated_bytes": 204905472.0,
+          "framework.peak_reserved_bytes": 253755392.0,
+          "framework.allocated_bytes": 76582912.0,
+          "framework.reserved_bytes": 253755392.0,
+          "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+          "framework.lifecycle_peak_reserved_bytes": 253755392.0,
+          "replacement.max_shared_memory_bytes": 16384.0,
+          "replacement.diagnostic_kernel_sum_us": 579.841,
+          "replacement.kernel_launches": 40.0,
+          "replacement.max_registers_per_thread": 128.0
+        },
+        "detail": null
+      },
+      "constraints": [
+        {
+          "metric": "images_per_second",
+          "values": [
+            7408.503248512917
+          ],
+          "limit": 7174.1462647949065,
+          "original_reference": 7551.732910310428,
+          "passed": true
+        }
+      ],
+      "run": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 8.080822762101889,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 969671,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 969671,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 12,
+                "unavailable_samples": 0,
+                "wait_s": 0.09294595941901207,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-3c4e540078-param-c6a348a4": {
+                  "counts": {
+                    "683c822136ed7958f3e9ba44": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "683c822136ed7958f3e9ba44"
+                  ],
+                  "reference_invocations": {
+                    "679ccfe137094282d25350c1": 16,
+                    "aa9765a1830bed7ee2727282": 16
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "683c822136ed7958f3e9ba44",
+                      "route": "chunked_stem:ok",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "setup": [
+                {
+                  "bundle": "trial-3c4e540078-param-c6a348a4",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "direct",
+                    "reason": "no functional replacements"
+                  },
+                  "elapsed_ms": 1.968976,
+                  "allocated_bytes": 67935232,
+                  "reserved_bytes": 88080384,
+                  "peak_allocated_bytes": 67935232,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "peak_allocated_bytes": 204905472.0,
+                  "latency_ms": 4.317513,
+                  "images_per_second": 7411.674267107013,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.317513,
+                  "framework.peak_allocated_bytes": 204905472.0,
+                  "framework.peak_reserved_bytes": 253755392.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 253755392.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+                  "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                },
+                {
+                  "peak_allocated_bytes": 204905472.0,
+                  "latency_ms": 4.327344,
+                  "images_per_second": 7394.836185891392,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.327344,
+                  "framework.peak_allocated_bytes": 204905472.0,
+                  "framework.peak_reserved_bytes": 253755392.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 253755392.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+                  "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                },
+                {
+                  "peak_allocated_bytes": 204905472.0,
+                  "latency_ms": 4.319361,
+                  "images_per_second": 7408.503248512917,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.319361,
+                  "framework.peak_allocated_bytes": 204905472.0,
+                  "framework.peak_reserved_bytes": 253755392.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 253755392.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+                  "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                },
+                {
+                  "peak_allocated_bytes": 204905472.0,
+                  "latency_ms": 4.336897,
+                  "images_per_second": 7378.547380765557,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.336897,
+                  "framework.peak_allocated_bytes": 204905472.0,
+                  "framework.peak_reserved_bytes": 253755392.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 253755392.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+                  "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                },
+                {
+                  "peak_allocated_bytes": 204905472.0,
+                  "latency_ms": 4.294636,
+                  "images_per_second": 7451.155348206461,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.294636,
+                  "framework.peak_allocated_bytes": 204905472.0,
+                  "framework.peak_reserved_bytes": 253755392.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 253755392.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+                  "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                }
+              ],
+              "metrics": {
+                "peak_allocated_bytes": 204905472.0,
+                "latency_ms": 4.319361,
+                "images_per_second": 7408.503248512917,
+                "batch": 32.0,
+                "parameter_count": 11689512.0,
+                "framework.elapsed_ms": 4.319361,
+                "framework.peak_allocated_bytes": 204905472.0,
+                "framework.peak_reserved_bytes": 253755392.0,
+                "framework.allocated_bytes": 76582912.0,
+                "framework.reserved_bytes": 253755392.0,
+                "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+                "framework.lifecycle_peak_reserved_bytes": 253755392.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {
+                "trial-3c4e540078-param-c6a348a4": "33280a6abcb2f37eb93d8e6ee938d772609e1c394463aa10c5457e84a3ca590d"
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 0.00014192238450050354,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      },
+      "diagnostic": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 8.16038990020752,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 969892,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 969892,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 12,
+                "unavailable_samples": 0,
+                "wait_s": 0.09101796895265579,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "discovery": "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory/jobs/trial-3c4e540078-param-c6a348a4-resources/run/discovery-rank-0.json",
+              "coverage": {
+                "cuda_kernels": 123,
+                "associated_kernels": 123,
+                "unassociated_kernels": 0,
+                "associated_below_project": 123,
+                "root_only_kernels": 0,
+                "backward_associated_kernels": 0,
+                "autograd_ranges": 0,
+                "forward_linked_autograd_ranges": 0,
+                "ambiguous_forward_sequences": 0
+              },
+              "call_sites": 391,
+              "groups": 240
+            }
+          }
+        ],
+        "lease_wait_s": 0.00014647841453552246,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      },
+      "candidate_diagnostics": null
+    }
+  ]
+}

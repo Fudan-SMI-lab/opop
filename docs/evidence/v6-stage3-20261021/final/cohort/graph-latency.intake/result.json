@@ -1,0 +1,143 @@
+{
+  "status": "ready",
+  "intake": "/root/opop-v6-stage3/final-e2e-187617c/graph-latency.intake",
+  "proposal": {
+    "status": "ready",
+    "description": {
+      "entry": "infer.py",
+      "files": [
+        "README.md",
+        "infer.py",
+        "model.py",
+        "workloads.json"
+      ],
+      "invocation": "One complete graph encoder forward on GPU-resident inputs: infer(model, inputs) (infer.py:29-30) running GraphEncoder.forward(features, sources, destinations, degree) under torch.inference_mode() for the standard workload row, returning the full [4096, 64] FP32 output tensor. Model/fixture construction and H2D transfer (infer.py:12-25), reference construction and assert_close check (infer.py:44-45), reference.pt/result.json writing, warmup and the 15 timed repeat samples with peak-memory queries (infer.py:49-65) are benchmark-harness infrastructure outside the repeated work.",
+      "objective": {
+        "name": "latency_ms",
+        "unit": "ms",
+        "direction": "minimize",
+        "constraints": [],
+        "source": null,
+        "rank_aggregation": null
+      },
+      "workload": {
+        "id": "standard",
+        "nodes": 4096,
+        "edges": 65536
+      },
+      "quality": {
+        "atol": 1e-05,
+        "rtol": 0.0001
+      },
+      "warmup": 3,
+      "repeats": 15,
+      "assets": {},
+      "device_count": 1,
+      "distributed_backend": null,
+      "communication": "auto",
+      "required_observations": [],
+      "notes": [
+        "Command provenance: user command 'python infer.py --workload standard --output /tmp/original-graph' (inputs/intent.json); README.md:10 shows the same entry with a different --output directory.",
+        "Objective metric key latency_ms is the sample field recorded in infer.py:59; it is wall-clock time of one synchronized full-graph forward (full request), not cached-only throughput. Source goal declared at workloads.json:13.",
+        "Quality compares the complete output tensor with torch.testing.assert_close(actual, reference, atol=1e-05, rtol=1e-4) (infer.py:45, tolerances from workloads.json:9); output shape [4096, 64] float32. No discrete outputs require exact comparison.",
+        "Numerical policies to preserve (infer.py:13-17): torch.manual_seed(20261021) for weights, separate CPU generator seeded seed+1 for the input fixture, allow_tf32=False for matmul and cudnn, float32_matmul_precision('highest'), dtype float32 (workloads.json:11).",
+        "Architecture (model.py:18-26): two-layer mean GraphSAGE, Linear(2*in->out) per layer, input_features=128, hidden_features=256, output_features=64 (workloads.json:2), ReLU between layers. Duplicate directed edges contribute individually to mean aggregation; nodes without incoming edges use zero neighbor features (README.md:17-19, model.py:12-14).",
+        "Inference has no cross-invocation state (README.md:19); each adapter.run() is an independent forward with the same GPU-resident inputs.",
+        "Model and input construction, quality checking, statistics and report writing are outside timing (README.md:13-15).",
+        "workloads.json:14-15 also declares a secondary memory goal (peak_allocated_bytes, minimize, with constraint graphs_per_second ge baseline_ratio 0.95); the user goal selects the latency goal, so it is recorded here, not added to the objective constraints.",
+        "held_out_workloads entry unseen_graph (7168 nodes, 143360 edges, workloads.json:7) is not selected.",
+        "Single-process CUDA workload: prepare() targets device 'cuda' (infer.py:12) and there is no distributed initialization; device_count=1 from the deployment inventory."
+      ]
+    },
+    "evidence": {
+      "entry": [
+        "inputs/intent.json command: python infer.py --workload standard --output /tmp/original-graph",
+        "infer.py:33-70 main() is the CLI entry"
+      ],
+      "workload": [
+        "workloads.json:4 {\"id\": \"standard\", \"nodes\": 4096, \"edges\": 65536} selected by --workload standard (infer.py:42)",
+        "workloads.json:2 model dims input_features=128, hidden_features=256, output_features=64",
+        "workloads.json:10-11 seed 20261021, dtype float32"
+      ],
+      "objective": [
+        "inputs/intent.json goal: Reduce full graph encoder inference latency for the standard workload",
+        "workloads.json:13 goal {metric: latency_ms, direction: minimize, unit: ms}",
+        "infer.py:59 latency_ms sample field; infer.py:55-58 synchronized wall-clock timing of one forward"
+      ],
+      "quality": [
+        "workloads.json:9 quality {atol: 0.00001, rtol: 0.0001}",
+        "infer.py:45 torch.testing.assert_close(actual, reference, **config[\"quality\"]) on the full output tensor",
+        "README.md:14-16 preserve complete output tensor with workloads.json tolerances, FP32 arithmetic, disabled TF32"
+      ],
+      "invocation_boundary": [
+        "README.md:13-15 timed task is a complete graph encoder forward with GPU-resident inputs; construction, quality checking and statistics outside timing",
+        "infer.py:28-30 infer() is one model(*inputs) forward under torch.inference_mode",
+        "infer.py:49-61 warmup loop and 15-repeat measurement loop with reset_peak_memory_stats are harness statistics"
+      ],
+      "warmup_repeats": [
+        "infer.py:38-39 CLI defaults --warmup 3 --repeats 15; user command overrides neither"
+      ],
+      "assets": [
+        "README.md:6 weights, features and edges are seeded random fixtures generated in infer.py:19-23; no external weights or data files"
+      ],
+      "device": [
+        "infer.py:12 prepare(..., device=\"cuda\") single-device usage, no torch.distributed in any source file",
+        "inputs/deployment.json inventory: 2x RTX 4090; this workload requires 1"
+      ],
+      "precision": [
+        "infer.py:15-17 allow_tf32=False (matmul and cudnn), set_float32_matmul_precision(\"highest\")",
+        "workloads.json:11 dtype float32"
+      ],
+      "memory_goal_not_selected": [
+        "workloads.json:14-15 peak_allocated_bytes goal with graphs_per_second ge baseline_ratio 0.95 constraint"
+      ]
+    },
+    "assumptions": [
+      "The user goal selects the latency_ms goal; workloads.json's secondary peak_allocated_bytes goal (with its graphs_per_second ge 0.95 baseline constraint) is not the requested objective and is only recorded in notes.",
+      "warmup=3 and repeats=15 come from infer.py CLI defaults because the user command does not override them.",
+      "device_count=1: the workload is single-process CUDA even though the deployment has 2 GPUs.",
+      "The harness's reference.pt/result.json outputs are measurement artifacts; the project work being repeated is only the forward pass."
+    ],
+    "questions": []
+  },
+  "agent": {
+    "role": "project-intake",
+    "session": "ses_ea5cae050ffeQLCzvXW0XtTUdb",
+    "message": "msg_15a3677ba001Oy2zw36ZO7Ctrr",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 7,
+      "reported_cost": 0.07166059844,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 124947.0,
+        "input": 14411.0,
+        "output": 2780.0,
+        "reasoning": 2732.0,
+        "cache.read": 105024.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea5cae050ffeQLCzvXW0XtTUdb",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage3/final-e2e-187617c/graph-latency.intake/sandboxes/project-intake-71c0833e48c0",
+    "outputs": [
+      "intake.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/opop-v6-stage3/final-e2e-187617c/graph-latency.intake/generation-snapshots/generation-58f244dafb8d.json"
+    ]
+  },
+  "request": "/root/opop-v6-stage3/final-e2e-187617c/graph-latency.intake/resolved-request.json"
+}

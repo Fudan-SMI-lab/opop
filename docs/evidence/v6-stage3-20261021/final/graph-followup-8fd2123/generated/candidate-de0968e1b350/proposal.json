@@ -1,0 +1,77 @@
+{
+  "implementation": "composite",
+  "replacement_calls": [
+    "80ff8693d7ac3cf2433b10f2"
+  ],
+  "rationale": "Single whole-region replacement of the GraphEncoder forward at the 'model' module boundary (group 1f40997fb4a53f41b9da), as selected. Measured motivation (revision 5f9b3695, nsys-9ed9145c + torch-profiler diagnostics in selection.json): clean baseline latency_ms 0.36707 with ~322.8 us GPU busy over 15 single-stream kernels; the scatter-aggregation chain dominates with aten::index_add_ atomic scatters 145.2 us (99.0 us layer 2 at [65536,256]->[4096,256], 46.1 us layer 1), message-materializing index_select gathers 89.0 us, zeros_like 4.8 us, clamp_min 2.5 us, div 6.9 us and cat copies 12.2 us; the layer-2 messages tensor (67 MB) also drives the 97 MB peak allocation, and ~44 us of the wall is host dispatch/launch slack. The clamp_min/unsqueeze/div/cat costs are jointly determined with the aggregation across both layers (shared groups), so only a whole-forward rewrite addresses them; no bundles are installed (search.json installed_bundles []), so no inherited required calls constrain composition and requires/replaces are empty. Replacement math (bit-for-bit the same formula, different evaluation order): (1) per invocation, build a CSR-like segment structure from the current inputs only: a one-program Triton scan kernel turns the passed degree tensor (defined by the frozen workload as bincount(destinations), infer.py:24 / adapter.py:74) into int32 counts/starts/ends, and a Triton scatter kernel uses int32 cursor atomics to write src_sorted[p]=sources[e] grouped by destination; duplicate directed edges each keep their own slot, nodes with no incoming edges get empty segments. (2) A Triton segment-mean kernel computes neighbors[n,:]=sum_p x[src_sorted[p],:]/max(deg,1) per node, reading source rows directly: no [E,K] message tensor is materialized, no global fp32 atomics, and the zeros/clamp_min/unsqueeze/div kernels (and their launches) disappear; division is a per-element IEEE fp32 divide by clamp(deg,1), identical to the parent's div. (3) The projection uses the cat-free split x@W[:, :K].T + neighbors@W[:, K:].T + bias via torch.addmm plus an in-place beta=1 addmm_ (cuBLAS sgemm, TF32 remains disabled), eliminating both cat kernels and their 4/8 MB buffers, and relu_ is applied in place between layers. This drops 15 kernels to 9 (4 Triton + 5 aten). Numerics: the reference itself is order-nondeterministic (fp32 atomic accumulation); any reordering of the same fp32 partial sums (avg 16, max ~60 terms per node) gives relative differences ~1e-6, far inside atol 1e-5 / rtol 1e-4, and cuBLAS split-K-into-halves changes only fp32 summation association. Expected effect on latency_ms is a hypothesis (~0.15-0.25 ms, i.e. ~30-60%), to be accepted only by the clean harness measurement (warmup 3, repeats 15, median); per-kernel memory-traffic attribution is inferred from durations and grid shapes since GPU counters were deliberately not collected. Memory scope, reported honestly: per-run framework.peak_allocated_bytes is expected to fall because the 67 MB layer-2 message buffer and 4/8 MB cat buffers are no longer allocated; per-invocation fresh allocations are ~0.3 MB of int32 CSR buffers plus nb1 2 MB, hidden 4 MB, nb2 4 MB and out 1 MB, reused from the caching allocator across repeats. Setup allocation and retained pools: build() compiles four Triton binaries and runs a tiny N=32/E=32 dummy pipeline plus two small addmm calls (<1 MB GPU total, freed; the caching allocator may retain those reserved blocks, so lifecycle_peak_reserved_bytes can stay flat or rise; nothing is moved into CUDA Graph capture and no graph pools are retained). Semantics preserved: model.eval() + @torch.inference_mode() FP32 with TF32 flags untouched, same output tensor shape [4096,64]/dtype/device/contiguity, no cross-invocation state (the CSR structure is rebuilt from the live inputs on every invocation, so the workload always executes on current inputs and nothing fixture-dependent is precomputed or cached), no extra synchronizations, single stream, no collectives (single-device task; communication-ownership.json has empty buckets), and no in-place writes to any input (in-place ops touch only freshly allocated intermediates). Fallbacks are labeled distinctly: fallback:setup (Triton import/weight-shape/GPU-device failure, or the build-time numerical self-check against the eager formula failing), fallback:signature (unsupported shapes/dtypes/strides/devices via an internal guard in addition to the framework's phase/signature guards) and fallback:runtime (any exception mid-pipeline re-runs the parent on the untouched inputs); route labels are diagnostic self-report only. The region is shape-generic (masked kernels, N<=8192 single-program scan with a torch cumsum path above), so the held-out unseen_graph workload (7168 nodes, 143360 edges) also computes correctly, with its one extra BLOCK_N=8192 compile landing outside timed repeats. eliminated_calls lists the 28 inner affected calls: the aten ops are subsumed by the mathematically equivalent fused computation whose result IS the returned encoder output, and the inner profiler._record_function_enter/exit discovery wraps (opop::4/13/19/28 and their exits) stop because model.first/model.second and the Linear submodules are no longer invoked, exactly as selection.json anticipates ('a fused rewrite that bypasses submodules would stop them'); the outer wraps (opop::0, and opop::2 whose parent is the still-executing project.invoke boundary, call 475289736cd39d81341e09c5) keep firing, and the framework recaptures the plan from the returned output. No inputs/previous-feedback.txt and no inputs/previous-candidate/ exist for this attempt; this is the first candidate, so the rationale rests on the revision's own measurements cited above rather than prior worker feedback. parameter_space exposes the two power-of-two Triton block sizes for the existing TaskSearch/TPE loop; they only change masked-vectorization widths, not task semantics, and defaults (reduce_block_p=8, scatter_block_e=512) apply when parameters are absent.",
+  "setup_work": {
+    "build_time_steps": [
+      "Read the live GraphEncoder module from context['modules'] and derive k1/k2 from the actual Linear weight shapes (128/256 for the frozen config); keep parameter references and transposed column-slice views Wa/Wb for the split GEMMs (views only, no copies, so live weights are always used).",
+      "JIT-compile four Triton binaries at installation: _scan_kernel with BLOCK_N=next_pow2(observed N)=4096, _scatter_kernel (BLOCK_E parameter), and _segmean_kernel for K=128 and K=256 (BLOCK_P parameter).",
+      "Run a tiny self-checked dummy pipeline (N=32, E=32, seeded generator, on the module's CUDA device) through the exact fast path and torch.testing.assert_close it against the eager index_select/zeros.index_add_/clamp_min/div/cat/linear formula; a failure marks the setup-failure route instead of installing a broken fast path. Also warms the cuBLAS handles via two small addmm calls.",
+      "Free all dummy tensors; no persistent GPU buffers, pools, graphs or captured fixtures remain; nothing is cached across invocations."
+    ],
+    "per_invocation_work": [
+      "Allocate and compute int32 counts/starts/ends (scan kernel or torch cumsum path for N>8192) and src_sorted (scatter kernel) from the current sources/destinations/degree tensors; ~0.3 MB.",
+      "Two segment-mean kernels (one per layer) plus addmm/addmm_/relu_ chains; ~11 MB of transient activations."
+    ],
+    "memory_note": "Setup dummy allocations are <1 MB and freed; caching-allocator reserved blocks may be retained (lifecycle_peak_reserved_bytes can stay flat or rise while framework.peak_allocated_bytes per run falls with the 67 MB message and 4/8 MB cat buffers gone). No CUDA Graph capture is used, so no graph-private pools are created and no allocation is hidden inside capture; lifecycle peaks include the setup warmup by definition."
+  },
+  "quality_risks": [
+    "Reordered fp32 partial sums (segment-sequential instead of atomic arrival order, and split-K GEMM halves) vs the reference's own nondeterministic atomic order: differences ~1e-6 relative, well inside atol 1e-5 / rtol 1e-4, but the margin is an estimate, not a measured fact on this GPU.",
+    "Triton kernels could fail to compile or launch on the worker GPU (dynamic per-node loop bounds, tl.cumsum/atomic_add usage): caught and routed to fallback:runtime/fallback:setup, which preserves correctness via the parent but yields no improvement; the build-time dummy self-check catches most such failures at installation.",
+    "Performance estimates are derived from nsys durations and grid shapes without GPU counters; cuBLAS efficiency of the two half-K GEMMs per layer and the Triton segment-mean bandwidth are unmeasured on this device, so the latency gain may be smaller than estimated; only the clean harness median can accept it.",
+    "Cursor-atomics scatter makes the within-segment summation order nondeterministic run to run; reference-vs-actual assert_close still passes by the same tolerance argument as the original atomics.",
+    "If the passed degree tensor ever disagreed with bincount(destinations), segment offsets would be wrong; the frozen workload constructs degree=bincount(destinations) (infer.py:24, adapter.py:74), and in-kernel bounds masks (p in [0,E), d in [0,N)) keep every access in-bounds regardless, degrading to wrong values rather than memory corruption, which quality checks would reject.",
+    "The framework's phase/signature guards are complemented by an internal guard; any unexpected signature (non-fp32 features, non-int64 edge tensors, non-contiguous strides, other devices) falls back to the parent with label fallback:signature, so behavior is never silently changed."
+  ],
+  "eliminated_calls": [
+    "1028fb0daa9f0dfb49eb77a5",
+    "1e552d4b79e972e4cbaab2d8",
+    "25d962ddf1d62dc1dfe9d73c",
+    "3ac036f4c828a6d38c6de955",
+    "4304eda261665626978be0b9",
+    "49b6fb5fe96cf9db9b6a99ef",
+    "4d03639b402fceddc273f69f",
+    "4ddd9bee2ef04adc869eb278",
+    "63d0e414427e706edfa7c253",
+    "65e1b488db8b9f5d807e6fb4",
+    "68feabdb2ad56b933657b373",
+    "6bf0857231f7d64f563a3013",
+    "7a9b4559a88a2b7db8cab01a",
+    "832071fa3dc0211b8c9c318a",
+    "8f00e4a280db2615b4661717",
+    "8f9e5bc88c094132609112e7",
+    "9496a092babc412a202f2b70",
+    "9a257a87e9f41e416189190c",
+    "ae7730ca257f79221e08a76d",
+    "b438f328cd06e86296f36e5e",
+    "b46ff1918a5d5735d6f3e591",
+    "c068b7a21f579f4eb2aa1913",
+    "cc96af6eaff2995698226a8e",
+    "d37c2564ad8d1e6a29fa2c77",
+    "d3dd3988bd821abdc87189a4",
+    "f431ca670017b5bab8ce828c",
+    "fbdedb0c9f65d63a321c21e9",
+    "fec806ac26baffddf3cb9bf6"
+  ],
+  "requires": [],
+  "replaces": [],
+  "parameter_space": {
+    "params": [
+      {
+        "name": "reduce_block_p",
+        "kind": "int",
+        "choices": [2, 4, 8, 16],
+        "description": "Edges consumed per iteration in the Triton segment-mean kernel; power-of-two block width only (tl.arange requirement), affects vectorization/registers, not semantics. Default 8."
+      },
+      {
+        "name": "scatter_block_e",
+        "kind": "int",
+        "choices": [256, 512, 1024, 2048],
+        "description": "Edges per program in the Triton CSR scatter kernel; power-of-two block width only, affects parallelism/atomics batching, not semantics. Default 512."
+      }
+    ],
+    "constraints": []
+  }
+}

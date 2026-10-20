@@ -1,0 +1,191 @@
+{
+  "runs": [
+    {
+      "parent": "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory",
+      "output": "/root/autodl-tmp/dev/v6-work/stage3-variants/resnet-memory-heldout",
+      "mode": "heldout",
+      "workload": {
+        "id": "unseen_batch",
+        "batch": 7
+      },
+      "objective": {
+        "name": "peak_allocated_bytes",
+        "unit": "bytes",
+        "direction": "minimize",
+        "constraints": [
+          {
+            "metric": "images_per_second",
+            "op": "ge",
+            "baseline_ratio": 0.95
+          }
+        ]
+      },
+      "scope": "Developer-started frozen-evaluator variant; contract adaptation uses real Agent; no candidate code/parameter edits",
+      "prepared_status": "prepared",
+      "source_valid": true,
+      "ready_for_frozen_bundle": true
+    },
+    {
+      "parent": "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory",
+      "output": "/root/autodl-tmp/dev/v6-work/stage3-variants/resnet-memory-cross-goal",
+      "mode": "cross-goal",
+      "workload": {
+        "id": "offline",
+        "batch": 32,
+        "goals": [
+          {
+            "id": "throughput",
+            "metric": "images_per_second",
+            "direction": "max"
+          },
+          {
+            "id": "memory",
+            "metric": "peak_allocated_bytes",
+            "direction": "min",
+            "constraints": {
+              "images_per_second_min_baseline_ratio": 0.95
+            }
+          }
+        ]
+      },
+      "objective": {
+        "name": "latency_ms",
+        "unit": "ms",
+        "direction": "minimize",
+        "constraints": []
+      },
+      "scope": "Developer-started frozen-evaluator variant; contract adaptation uses real Agent; no candidate code/parameter edits",
+      "prepared_status": "prepared",
+      "source_valid": true,
+      "ready_for_frozen_bundle": true
+    },
+    {
+      "parent": "/root/opop-v6-stage3/final-e2e-187617c/qwen-ttft",
+      "output": "/root/autodl-tmp/dev/v6-work/stage3-variants/qwen-ttft-heldout",
+      "mode": "heldout",
+      "workload": {
+        "id": "long_prompt",
+        "batch": 2,
+        "prompt_tokens": 768,
+        "new_tokens": 16
+      },
+      "objective": {
+        "name": "ttft_ms",
+        "unit": "ms",
+        "direction": "minimize",
+        "constraints": []
+      },
+      "scope": "Developer-started frozen-evaluator variant; contract adaptation uses real Agent; no candidate code/parameter edits",
+      "prepared_status": "prepared",
+      "source_valid": true,
+      "ready_for_frozen_bundle": true
+    },
+    {
+      "parent": "/root/opop-v6-stage3/final-e2e-187617c/qwen-ttft",
+      "output": "/root/autodl-tmp/dev/v6-work/stage3-variants/qwen-ttft-cross-goal",
+      "mode": "cross-goal",
+      "workload": {
+        "id": "interactive",
+        "batch": 1,
+        "prompt_tokens": 256,
+        "new_tokens": 32,
+        "goals": [
+          {
+            "id": "ttft",
+            "metric": "ttft_ms",
+            "direction": "min"
+          },
+          {
+            "id": "decode",
+            "metric": "decode_tokens_per_second",
+            "direction": "max"
+          }
+        ]
+      },
+      "objective": {
+        "name": "generated_tokens_per_second",
+        "unit": "tokens/s",
+        "direction": "maximize",
+        "constraints": []
+      },
+      "scope": "Developer-started frozen-evaluator variant; contract adaptation uses real Agent; no candidate code/parameter edits",
+      "prepared_status": "prepared",
+      "source_valid": true,
+      "ready_for_frozen_bundle": true
+    },
+    {
+      "parent": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step",
+      "output": "/root/autodl-tmp/dev/v6-work/stage3-variants/ddp-step-heldout",
+      "mode": "heldout",
+      "workload": {
+        "id": "longer_sequence",
+        "world_size": 2,
+        "micro_batch": 1,
+        "sequence_length": 256,
+        "accumulation_steps": 2
+      },
+      "objective": {
+        "name": "step_ms",
+        "unit": "ms",
+        "direction": "minimize",
+        "constraints": [],
+        "rank_aggregation": "max"
+      },
+      "scope": "Developer-started frozen-evaluator variant; contract adaptation uses real Agent; no candidate code/parameter edits",
+      "prepared_status": "prepared",
+      "source_valid": true,
+      "ready_for_frozen_bundle": true
+    },
+    {
+      "parent": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step",
+      "output": "/root/autodl-tmp/dev/v6-work/stage3-variants/ddp-step-cross-goal",
+      "mode": "cross-goal",
+      "workload": {
+        "id": "accumulated_step",
+        "world_size": 2,
+        "micro_batch": 1,
+        "sequence_length": 128,
+        "accumulation_steps": 4,
+        "goals": [
+          {
+            "id": "step",
+            "metric": "step_ms",
+            "direction": "min"
+          },
+          {
+            "id": "communication",
+            "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+            "direction": "min",
+            "constraints": {
+              "step_ms_max_baseline_ratio": 1.05
+            }
+          }
+        ]
+      },
+      "objective": {
+        "name": "torch_communication.communication_kernel_sum_ms",
+        "unit": "ms",
+        "direction": "minimize",
+        "constraints": [
+          {
+            "metric": "step_ms",
+            "op": "le",
+            "baseline_ratio": 1.05,
+            "rank_aggregation": "max"
+          }
+        ],
+        "source": {
+          "collector": "torch_communication",
+          "field": "communication_kernel_sum_ms",
+          "source_metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+          "aggregation": "per-rank sum of NCCL kernel durations in separately profiled invocations, max across the 2 ranks, median over the 3 profiled repetitions (gpt2_ddp_training.py:156-157)"
+        },
+        "rank_aggregation": "max"
+      },
+      "scope": "Developer-started frozen-evaluator variant; contract adaptation uses real Agent; no candidate code/parameter edits",
+      "prepared_status": "prepared",
+      "source_valid": true,
+      "ready_for_frozen_bundle": true
+    }
+  ]
+}

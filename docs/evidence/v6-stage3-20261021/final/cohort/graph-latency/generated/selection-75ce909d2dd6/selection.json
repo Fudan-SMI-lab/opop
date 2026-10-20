@@ -1,0 +1,27 @@
+{
+  "scope": "joint",
+  "groups": [
+    "f2cad7658bd2e042c326",
+    "b63063a25115d472ba96"
+  ],
+  "rationale": "Measured facts: the objective latency_ms is the wall time of one synchronized full-graph forward on a single device (no communication; communication capability recorded not_applicable 'single-device task'), with original baseline 0.372995 ms and same-revision diagnostic CUDA busy time 321.762 us over 15 sequential kernels on one stream (nsys-9ed9145c.json, call-resources.json), so kernel execution time, not dispatch, dominates the metric (clean-run dispatch/gap share is bounded by the ~51 us wall-minus-busy margin; the much larger gaps in the nsys timeline are collector-perturbed launch overhead). Within the forward, the per-layer mean-aggregation chain aten::index_select -> aten::zeros_like -> aten::index_add_ -> aten::clamp_min -> aten::unsqueeze -> aten::div -> aten::cat costs 259.8 us of the 321.8 us diagnostic CUDA total (80.8%): layer 1 (encoder.first, group f2cad7658bd2e042c326, module 128.1 us) spends 91.1 us and layer 2 (encoder.second, group b63063a25115d472ba96, module 190.2 us) spends 168.7 us on that chain, versus only 58.5 us for both GEMM projections and 3.4 us for relu. The nsys kernel timeline shows why: each layer materializes the messages tensor features[sources] of [65536, F] fp32 (32 MB in layer 1, 64 MB in layer 2) in vectorized_gather_kernel, then re-reads it in indexFuncLargeIndex<ReduceAdd> for the atomic scatter, then runs separate fill/clamp/div/cat kernels - roughly a full DRAM write+read round trip of the largest intermediate per layer, all inside MeanSAGE.forward (model.py:11-15, adapter.py:28-32). The two GEMMs are already near their memory floors for these shapes, and dispatch elimination (e.g. CUDA-graph capture) targets at most the ~51 us non-busy margin while risking the binding contract's quality-coverage semantics for replayed hooks, so the aggregation chain is the dominant, evidence-backed opportunity. Both observed MeanSAGE instances are the same editable implementation at two boundaries (encoder.first F=128->256, encoder.second F=256->64); the replacement only coheres if installed jointly at both module boundaries, keeping GraphEncoder's relu/glue and the self.project weights untouched.",
+  "hypothesis": "Replacing the body of MeanSAGE.forward at both observed instances (encoder.first and encoder.second) with one fused implementation that (a) accumulates features[sources] directly into the per-node neighbor buffer via atomic adds without materializing the messages tensor, (b) folds zero initialization, degree.clamp_min(1) and the per-node division into the same pass or its epilogue (preserving true fp32 division, not reciprocal multiply, and the zero-neighbor semantics for nodes without incoming edges), and (c) feeds self.project a [4096, 2F] projection input assembled without a separate cat kernel, is expected to remove the ~96 MB messages write/read round trip and 8-10 of the 15 kernels and reduce median latency_ms from the 0.373 ms baseline to roughly 0.22-0.28 ms (about 25-40%), with the full [4096, 64] output staying within atol 1e-5 / rtol 1e-4 (atomic-add ordering variance is the same class as the existing index_add_ path). Secondary expectations: peak_allocated_bytes does not regress materially (the messages intermediate disappears) and graphs_per_second improves proportionally. This is a hypothesis to be tested by the framework's measurement, not an accepted benefit: a tolerance failure or a smaller-than-expected win rejects or iterates the candidate. Constraints preserved: no cross-invocation state (any derived structure is rebuilt inside run()'s forward or lazily captured under the binding contract's invocation semantics), same edge list/degree/weights, duplicate directed edges counted individually, and unchanged timing/quality boundaries.",
+  "affected_calls": [
+    "206dbc4bff7ae767415599c9",
+    "866013201077b272e7156dd4",
+    "fe6b217d29437481be5f2ed5",
+    "9179b5cda81f9e67b997920f",
+    "a7d4e0be760f62be8bea745a",
+    "231c3b2ce0c673f40439c073",
+    "6add22479383ec2539a87b8c",
+    "6f7e6494a1d037f66dda9a07",
+    "f79db885f13afc1a0ec76f88",
+    "bee00fa9c247933b1ed6c83a",
+    "c4d431b4ea7075b487781a54",
+    "71033a630785aadd19c1e999",
+    "db20c3f324d6a29eafc07312",
+    "c90a64f85907e301e280d58a",
+    "2eb170a990782fe998ac2ead",
+    "1f9fd4c4bc3963db0c9f66d7"
+  ]
+}

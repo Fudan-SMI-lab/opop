@@ -1,0 +1,106 @@
+{
+  "trial": "replay-dc5d859eb4b8",
+  "replay": {
+    "source_output": "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory",
+    "source_bundle": "trial-3c4e540078-param-d377cbf2",
+    "source_parent": "87e7d66efba88ff766579f51392ee6f6504cb3454d3642668ab4ef2890f8b2ec",
+    "target_parent": "7abc53b4facd2d2458e7035c4985ee4cecfcfc229c183d3f299da21af5ecf4a0",
+    "candidate_code_sha256": "4e9225689909204689a77ad9a2a0ab07e40ce6d41d3776e01a5cee1f72c49b52",
+    "code_changed": false,
+    "parameters_changed": false,
+    "binding": "same call identities, current observed signatures",
+    "new_generation": false
+  },
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "replay-dc5d859eb4b8",
+    "parent_revision": "7abc53b4facd2d2458e7035c4985ee4cecfcfc229c183d3f299da21af5ecf4a0",
+    "contract_ref": "sha256:97adff7ca2347f4dabd1c20b5fa638b5129fae5ef62b67c2928d4413f292f450",
+    "scope": "region",
+    "implementation": "composite",
+    "groups": [
+      "3821cceac23fa97e5a55"
+    ],
+    "calls": [
+      "683c822136ed7958f3e9ba44"
+    ],
+    "affected_calls": [
+      "021f27d2d0d73dee5fab9084",
+      "220b9d0ec76e2ccc01dcdb09",
+      "279a256c150755fd69216f5a",
+      "2f3bfb9ee01d701be01d2ff3",
+      "35096a239aa1290aabeed5de",
+      "3c3c7a3e1837d0185b1df6f0",
+      "52e7c2f32ca6695f380d240f",
+      "679ccfe137094282d25350c1",
+      "683c822136ed7958f3e9ba44",
+      "87335b95bb02e81155c4add6",
+      "8ef2341287e5b4afa9d0e7bf",
+      "aa9765a1830bed7ee2727282",
+      "cc658ee4e2f7b6628feb4ca4",
+      "d1400702f02f387d67569ac9",
+      "ddf82d5c5c82c55ac9ae09f1",
+      "ea7cd77adb03bad473412ebc",
+      "eea81d115a4403a3083c1f64"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/replay-dc5d859eb4b8.py",
+        "before_sha256": null,
+        "content_ref": "sha256:4e9225689909204689a77ad9a2a0ab07e40ce6d41d3776e01a5cee1f72c49b52"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/replay-dc5d859eb4b8.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:231fb3096e939a127c49f1f6224917de3aa6dc0810cc5d8dc8d29fcfd6db98d4"
+      }
+    ],
+    "read_set": [
+      "call:021f27d2d0d73dee5fab9084",
+      "call:220b9d0ec76e2ccc01dcdb09",
+      "call:279a256c150755fd69216f5a",
+      "call:2f3bfb9ee01d701be01d2ff3",
+      "call:35096a239aa1290aabeed5de",
+      "call:3c3c7a3e1837d0185b1df6f0",
+      "call:52e7c2f32ca6695f380d240f",
+      "call:679ccfe137094282d25350c1",
+      "call:683c822136ed7958f3e9ba44",
+      "call:87335b95bb02e81155c4add6",
+      "call:8ef2341287e5b4afa9d0e7bf",
+      "call:aa9765a1830bed7ee2727282",
+      "call:cc658ee4e2f7b6628feb4ca4",
+      "call:d1400702f02f387d67569ac9",
+      "call:ddf82d5c5c82c55ac9ae09f1",
+      "call:ea7cd77adb03bad473412ebc",
+      "call:eea81d115a4403a3083c1f64"
+    ],
+    "write_set": [
+      "file:opop_candidates/replay-dc5d859eb4b8.py",
+      "file:opop_candidates/replay-dc5d859eb4b8.targets.json",
+      "call:683c822136ed7958f3e9ba44"
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Goal and metric scope (request.json): reduce latency for one complete offline batch=32 image inference, preserving the source quality checks; the objective is latency_ms (unit ms, direction minimize) with no objective-level constraints; the workload remains offline batch=32 with goals throughput (images_per_second, max) and memory (peak_allocated_bytes, min).",
+      "Model is pretrained ResNet-18 loaded from the local assets via ResNetForImageClassification.from_pretrained(assets, local_files_only=True, dtype=torch.float32) with eval() behavior; weights and activations stay FP32.",
+      "Numerical policies preserved from common.py:34-42: torch.backends.cuda.matmul.allow_tf32=False, torch.backends.cudnn.allow_tf32=False, torch.backends.cudnn.benchmark=False, torch.set_float32_matmul_precision('highest'), torch.manual_seed(20261020), 4 CPU threads and 1 interop thread.",
+      "Input is the offline batch of 32: images = np.load(assets/pixels.npy) moved to CUDA (shape (3,3,224,224) float32), pixels = images[torch.arange(32, device='cuda') % 3].contiguous() -> (32,3,224,224) FP32, GPU-resident before the timed boundary; no H2D transfer or preprocessing inside run().",
+      "The measured workload is exactly one model(pixel_values=pixels).logits forward under torch.inference_mode(); no reduction of the work amount, batch, image size or class dimension.",
+      "Correctness requires the full 1000-class logits compared with atol=1e-4, rtol=1e-4 (torch.testing.assert_close) and exact top-1 equality torch.equal(actual.argmax(-1), reference.argmax(-1)); the +1-corruption negative control must be rejected.",
+      "latency_ms is the wall-clock latency of exactly one complete offline forward on the batch of 32 under the source's per-repeat protocol (resnet_inference.py:42-48): torch.cuda.synchronize, torch.cuda.reset_peak_memory_stats, time.perf_counter_ns around one infer(), synchronize; the framework reproduces this by synchronizing at both boundaries of run(); samples summarize to median/min/max; it must not be converted into a cached-only, partial or unsynchronized latency.",
+      "images_per_second is the source's full-request throughput for the fixed batch of 32, computed as batch * 1e3 / latency_ms around one complete forward on the GPU-resident input; it must not be converted into a cached-only throughput.",
+      "peak_allocated_bytes is the process-level PyTorch CUDA allocated peak for one forward with peak stats reset immediately before the timed call (torch.cuda.max_memory_allocated after the synchronized run), not whole-device, reserved or driver memory.",
+      "Goal constraints (request.json): the latency_ms objective carries no constraints; the memory workload goal (min peak_allocated_bytes) retains the constraint images_per_second_min_baseline_ratio = 0.95, i.e. images_per_second >= 0.95 * baseline; latency reduction must not be obtained by violating this ratio or the frozen workload/precision/data.",
+      "Model loading, weight transfer to GPU and input construction happen in prepare outside timed execution; the module creates no CUDA tensors and initializes no CUDA context at import time."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/replay-dc5d859eb4b8.py",
+    "parameters": {
+      "stem_chunk": 8
+    }
+  }
+}

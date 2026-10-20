@@ -1,0 +1,84 @@
+{
+  "current_revision": "5f9b3695a93c2856016d8d8ad62a33bc14dfd371ccd03754cd2b1efc77942cac",
+  "contract": {
+    "schema_version": "project.v2",
+    "id": "task",
+    "goal": "Reduce full graph encoder inference latency for the standard workload, preserving the full output checks.",
+    "objective": {
+      "name": "latency_ms",
+      "unit": "ms",
+      "direction": "minimize",
+      "required_metrics": [
+        {
+          "name": "latency_ms",
+          "unit": "ms"
+        }
+      ],
+      "aggregation": {
+        "kind": "sum",
+        "case_weights": {},
+        "callable": null
+      },
+      "improvement_threshold": 0.0
+    },
+    "workload": {
+      "edges": 65536,
+      "id": "standard",
+      "nodes": 4096
+    },
+    "quality": {
+      "atol": 1e-05,
+      "rtol": 0.0001
+    },
+    "completion": "One measured invocation is exactly one complete graph encoder forward: infer(model, inputs) (infer.py:28-30), i.e. model(features, sources, destinations, degree) under @torch.inference_mode(). The framework's completion boundary is CUDA synchronization on both sides of run(state) with wall-clock timing (mirroring infer.py:53-58); run() returns the full FP32 output tensor of shape [nodes, output_features] = [4096, 64]. Model/fixture construction, warmup, quality checking and statistics queries are outside the timed boundary.",
+    "invariants": [
+      "FP32 weights and features (workloads.json dtype float32); TF32 disabled via torch.backends.cuda.matmul.allow_tf32 = False and torch.backends.cudnn.allow_tf32 = False, and torch.set_float32_matmul_precision('highest') (infer.py:13-18).",
+      "Model architecture is fixed: two-layer mean GraphSAGE GraphEncoder with input_features=128, hidden_features=256, output_features=64, ReLU between layers, each layer projecting concat(self features, mean neighbor features) with nn.Linear (model.py).",
+      "model.eval() plus forward under @torch.inference_mode(); no cross-invocation state (infer.py:18,28-30).",
+      "Seeded fixtures reproduced exactly: torch.manual_seed(20261021) before model construction; a CPU torch.Generator seeded 20271021 (seed+1) produces features = randn(nodes, 128), sources = randint(nodes, (edges,)), destinations = randint(nodes, (edges,)); degree = torch.bincount(destinations, minlength=nodes).float() (infer.py:14-25, workloads.json seed).",
+      "Graph semantics: duplicate directed edges contribute individually via index_add_ on a zeros_like base; nodes without incoming edges keep zero neighbor features; neighbor mean divides by degree.clamp_min(1).unsqueeze(1) (model.py:11-15, README.md:17-19).",
+      "Quality check: the complete FP32 output tensor (shape [4096, 64] for the standard workload) compared with torch.testing.assert_close(atol=1e-5, rtol=1e-4); output is continuous floating point with no discrete outputs (infer.py:44-45, workloads.json quality).",
+      "One run() equals exactly one infer(model, inputs) forward on GPU-resident tensors; the full workload must be executed even though the objective is a single latency number.",
+      "Workload dimensions (nodes=4096, edges=65536) are read from request['workload'] in prepare(), not embedded as constants; the held-out unseen_graph workload (7168 nodes, 143360 edges) is not part of this request.",
+      "Single-process, single-device workload: model and inputs live on context['device']; no distributed backend and no communication (request devices/communication)."
+    ],
+    "frozen_files": [
+      "opop_adapter.py",
+      "opop_evaluate.py"
+    ],
+    "task_definition": null,
+    "state_protocol": "prepare(context, request) reproduces infer.py:12-25 outside timing: torch.set_num_threads(4), torch.manual_seed(20261021), TF32 disabled (cuda.matmul and cudnn), torch.set_float32_matmul_precision('highest'), GraphEncoder(128, 256, 64) built on CPU then moved to context['device'] and set to eval(); the input fixture is built with a CPU generator seeded seed+1 (features randn, sources/destinations randint over nodes, degree = bincount(destinations, minlength=nodes).float()), then moved to the device; nodes and edges are read from request['workload']. Model and inputs are kept in the returned state dict. Inference has no cross-invocation state (README.md:17-18), so reset(state) is a no-op: run() creates its own request-local state via the inference_mode context and mutates nothing. run(state) executes the single forward and returns its output tensor. observe(state, result) returns the complete detached output tensor on CPU. metrics(state, result, elapsed_ms) returns latency_ms = elapsed_ms, graphs_per_second = 1000/elapsed_ms and (mirroring the source sample fields) peak_allocated_bytes from torch.cuda.max_memory_allocated() queried outside the timer after the framework's post-run synchronization. models(state) exposes the loaded GraphEncoder root module for discovery/replacement. set_mode records the mode; execution is identical in quality/measure/profile because the full output is always produced.",
+    "world_size": 1,
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ]
+  },
+  "original_reference_revision": "d3eadad488e6b61cfa3d1fb5c8dfdccd4c2f74439b90645a6581e1e50783655f",
+  "original_baseline": [
+    {
+      "rank": 0,
+      "metrics": {
+        "latency_ms": 0.36707,
+        "graphs_per_second": 2724.2760236467157,
+        "nodes": 4096.0,
+        "edges": 65536.0,
+        "peak_allocated_bytes": 97011200.0,
+        "framework.elapsed_ms": 0.36707,
+        "framework.peak_allocated_bytes": 97011200.0,
+        "framework.peak_reserved_bytes": 146800640.0,
+        "framework.allocated_bytes": 13125120.0,
+        "framework.reserved_bytes": 146800640.0,
+        "framework.lifecycle_peak_allocated_bytes": 98059776.0,
+        "framework.lifecycle_peak_reserved_bytes": 146800640.0
+      },
+      "diagnostics": {}
+    }
+  ],
+  "profiled_wall_ms": [
+    10.386304
+  ],
+  "measurement_policy": "Original baseline belongs to its immutable reference. Discovery uses intrusive hooks and is separate from clean timing and plain diagnostic objective samples. Profiled rank skew and kernel time can be heavily perturbed; they are not project J or wire time."
+}

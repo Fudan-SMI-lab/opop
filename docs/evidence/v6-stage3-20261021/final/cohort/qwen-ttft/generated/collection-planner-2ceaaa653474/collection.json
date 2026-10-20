@@ -1,0 +1,28 @@
+{
+  "collectors": [
+    "execution_timeline",
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "execution_timeline.cpu_submit_intervals",
+    "execution_timeline.cpu_to_cuda_submit_associations",
+    "execution_timeline.per_device_gpu_intervals",
+    "execution_timeline.inter_kernel_gaps",
+    "execution_timeline.synchronization_events",
+    "execution_timeline.clock_alignment_bounds",
+    "execution_timeline.region_intervals",
+    "python_runtime.host_self_us_by_frame",
+    "python_runtime.host_inclusive_us_by_frame",
+    "python_runtime.host_call_counts_by_frame"
+  ],
+  "unavailable_fields": {
+    "communication.nccl_algorithm_protocol_channels": "nccl_tuning not applicable: single-process single-GPU task (request.json lists one device, distributed_backend null; observations.json marks communication not_applicable 'single-device task'); no NCCL communicator or collective exists, and kernel entry names alone would not identify protocol.",
+    "communication.per_collective_bytes_or_wire_time": "No collectives in the workload; device_telemetry NVML PCIe/utilization readings are device-wide with native sampling windows, not per-collective bytes, and logical payload or memcpy sizes will not be converted into PCIe/NVLink traffic estimates.",
+    "communication.collective_reference_latency": "collective_calibration not applicable: the inference step has no allreduce counterpart; a synthetic full-world SUM allreduce is a reference experiment, not a compute critical-path or lower-bound estimate for ttft_ms.",
+    "attribution.unassociated_or_ambiguous_kernels": "Nothing to resolve: the already-run torch trace shows 66441/66441 CUDA kernels associated, 0 unassociated, 0 root-only, 0 ambiguous forward sequences (coverage.json); the eager source contains no CUDA graphs, so nsys adds no attribution or overlap value.",
+    "timing.gpu_readiness_and_consumer_completion": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion beyond the explicit torch.cuda.synchronize at the ttft boundary (qwen_inference.py:23) may remain unknown.",
+    "timing.clean_gpu_durations_from_host_profile": "python_runtime perturbs execution; its inclusive/self times are host dispatch and binding diagnostics, not clean performance scores or GPU compute durations.",
+    "device.in_invocation_pcie_traffic": "Inputs and weights are GPU-resident before the measured invocation (request.json notes); no in-invocation transfers exist to attribute, and device-wide NVML rates cannot be assigned to the prefill region."
+  },
+  "rationale": "Frozen objective is ttft_ms for the interactive row (batch=1, 256 prompt tokens) of a single-GPU eager Qwen3-4B BF16 SDPA inference step, bounded by prefill + argmax + explicit synchronize. The torch collector already ran with complete attribution (66441/66441 kernels associated, 0 unassociated, 0 ambiguous sequences, 0 autograd ranges), so it is not re-requested and no overlap, graph-tracing or attribution question remains for nsys. Communication is not_applicable (single-device task), ruling out nccl_tuning and collective_calibration; device_telemetry offers only device-wide native-window readings that cannot be attributed to the prefill region. The open TTFT questions are (a) how the start-to-synchronize wall time splits into CPU submit spans, launch/queue gaps and GPU execution intervals, and (b) host dispatch and legacy-binding cost of the 36-layer eager Python forward loop (transformers 5.16.1, no torch.compile, per-layer Python dispatch verified in the measured environment). execution_timeline supplies submit associations, synchronization events, per-device/region intervals and clock-alignment bounds for the prefill region; python_runtime supplies a warmed cProfile host call trace (self/inclusive/counts) for dispatch and binding hot spots, used diagnostically only since it perturbs execution. Neither collector replaces a measurement path nor alters the workload, correctness checks or the frozen ttft boundary."
+}

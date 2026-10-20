@@ -1,0 +1,26 @@
+{
+  "collectors": [
+    "nsys",
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "gpu_kernel_intervals",
+    "gpu_idle_gaps_between_kernels",
+    "cuda_launch_api_durations",
+    "cpu_submit_gpu_execute_overlap",
+    "timed_region_synchronization_cost",
+    "host_dispatch_inclusive_times",
+    "host_self_time_hotspots",
+    "host_call_counts_per_operator"
+  ],
+  "unavailable_fields": {
+    "communication.nccl_algorithm_protocol_channels": "Not applicable: single-device task with no distributed initialization; the communication capability is recorded not_applicable with reason 'single-device task' (observations.json). No NCCL collectives execute, so nccl_tuning would capture decisions for operations that never run; kernel entry names alone cannot identify protocol anyway.",
+    "communication.allreduce_reference_latency": "Not applicable: the measured forward contains no collectives; collective_calibration's synthetic full-world SUM allreduce is a reference experiment with no counterpart in this single-GPU inference workload and would say nothing about latency_ms.",
+    "communication.per_collective_pcie_nvlink_bytes": "Unavailable: no collectives run, device_telemetry only reports device-wide NVML rates over native sampling windows (not per-collective bytes), and PCIe/NVLink traffic must not be invented from logical payload or memcpy sizes.",
+    "device.pcie_bytes_in_timed_region": "Unavailable for the objective: H2D input transfer occurs in prepare() outside timing and the timed forward runs on GPU-resident inputs (request.json notes; infer.py:12-25), so no per-invocation PCIe bytes are attributable to latency_ms.",
+    "device.utilization_attribution_in_timed_region": "Unavailable at required resolution: device_telemetry samples device-wide utilization with native windows; the synchronized full-graph forward is a short single-stream region, so readings cannot be attributed per-kernel or per-interval, and memory utilization is already captured by the harness peak_allocated_bytes sample.",
+    "gradient.bucket_identity_and_bucket_links": "Not applicable: inference-only workload under torch.inference_mode(); coverage.json shows backward_associated_kernels=0 and autograd_ranges=0, so there are no gradient buckets to correlate; execution_timeline's passive CPU gradient post-accumulate callbacks have no work to observe, and exact bucket links would require native correlation plus observed gradient-storage membership.",
+    "cross_rank.clock_alignment_and_skew": "Not applicable: single rank; observations.json records ranks[0].status=not_applicable ('single-device task') and no cross-rank matches, and timestamps from different rank clocks are never subtracted."
+  },
+  "rationale": "Frozen objective is wall-clock latency_ms of one synchronized full-graph forward (two-layer GraphSAGE mean encoder, 4096 nodes / 65536 edges, FP32, single CUDA device, inference-only). The torch collector already ran: coverage.json shows 15 CUDA kernels, all associated to CPU ops (0 unassociated, 0 root-only, 0 ambiguous forward sequences), 0 backward kernels and 0 autograd ranges, so op-to-kernel attribution and graph-tracing questions are already resolved and torch is not re-requested. The remaining open diagnostic questions for latency are (1) how the 15 sequential kernels plus host dispatch compose into the synchronized wall-clock time (CPU submission vs GPU execution overlap, inter-kernel GPU idle gaps, launch API overhead, and the final synchronization), and (2) which host-side dispatch/binding calls dominate if the region is launch-bound. nsys is available (request.json tools.nsys) and is selected to resolve exactly that overlap/gap/sync attribution at timeline resolution; python_runtime is selected as a separate warmed cProfile call trace to quantify host dispatch and binding costs per operator, acknowledging it perturbs execution and its inclusive/self times are not performance scores or GPU durations. Rejected as unsupported by capability and trace evidence: nccl_tuning and collective_calibration (no distributed init, communication not_applicable for a single-device task, no collectives in the forward), device_telemetry (timed region is GPU-resident with the H2D transfer outside timing; device-wide native-window utilization cannot attribute a short single-stream region, and traffic must not be derived from payload sizes), execution_timeline (duplicates the already-captured torch op-kernel association; its clock-alignment bounds cover CPU submissions only, and its gradient post-accumulate callbacks target backward passes absent here), and candidate_diagnostics (no candidate change is under test at baseline collection; the task and workload are frozen)."
+}

@@ -1,0 +1,168 @@
+{
+  "status": "ready",
+  "intake": "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory.intake",
+  "proposal": {
+    "status": "ready",
+    "description": {
+      "entry": "resnet_inference.py",
+      "files": [
+        "resnet_inference.py",
+        "common.py",
+        "workloads.json"
+      ],
+      "invocation": "One complete offline image batch inference: infer(model, pixels) = model(pixel_values=pixels).logits under torch.inference_mode() (resnet_inference.py:14-16), executing the full ResNet-18 FP32 forward on a contiguous CUDA batch of 32 preprocessed NCHW images (the 3 fixture images from pixels.npy cycled via torch.arange(32) % 3, resnet_inference.py:29). Model (FP32, eval, CUDA) and pixels are preloaded before the measured boundary; the call is pure and stateless across repeats.",
+      "objective": {
+        "name": "peak_allocated_bytes",
+        "unit": "bytes",
+        "direction": "minimize",
+        "constraints": [
+          {
+            "metric": "images_per_second",
+            "op": "ge",
+            "baseline_ratio": 0.95,
+            "threshold": null,
+            "rank_aggregation": null
+          }
+        ],
+        "source": null,
+        "rank_aggregation": null
+      },
+      "workload": {
+        "id": "offline",
+        "batch": 32,
+        "goals": [
+          {
+            "id": "throughput",
+            "metric": "images_per_second",
+            "direction": "max"
+          },
+          {
+            "id": "memory",
+            "metric": "peak_allocated_bytes",
+            "direction": "min",
+            "constraints": {
+              "images_per_second_min_baseline_ratio": 0.95
+            }
+          }
+        ]
+      },
+      "quality": {
+        "atol": 0.0001,
+        "rtol": 0.0001,
+        "require_exact_top1": true
+      },
+      "warmup": 2,
+      "repeats": 5,
+      "assets": {
+        "model_safetensors": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/model.safetensors",
+        "model_config": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/config.json",
+        "preprocessor_config": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/preprocessor_config.json",
+        "pixels": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/pixels.npy",
+        "asset_manifest": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/asset-manifest.json"
+      },
+      "device_count": 1,
+      "distributed_backend": null,
+      "communication": "off",
+      "required_observations": [],
+      "notes": [
+        "Measured invocation (user command): python resnet_inference.py --assets /root/autodl-tmp/dev/v6-work/validation-assets/resnet18 --output /tmp/original-resnet, with source defaults --workloads <repo>/workloads.json (common.py:23), --warmup 2, --repeats 5 (common.py:24-25); no --profile.",
+        "The repeated unit of work is exactly one infer() call on the offline batch. Statistical warmup/repeats, reference construction and identity replay, negative control, reference tensor saving, profiling and result.json serialization are benchmark-harness infrastructure and must not be inside adapter.run().",
+        "Per-repeat measurement protocol (resnet_inference.py:42-48): torch.cuda.synchronize, torch.cuda.reset_peak_memory_stats, time.perf_counter_ns around one infer(), synchronize; samples record latency_ms, images_per_second = batch*1e9/elapsed and peak_allocated_bytes = torch.cuda.max_memory_allocated(); summarize reports median/min/max.",
+        "peak_allocated_bytes is the process-level PyTorch CUDA allocated peak for one forward (reset before each repeat), not whole-device memory, reserved memory or NCCL/driver allocations (README.md).",
+        "images_per_second is the source's full-request throughput for the fixed batch of 32 (batch * 1e9 / elapsed around one complete forward on GPU-resident input); it is not a cached-only throughput and must not be converted into one.",
+        "Discrete outputs requiring exact comparison: top-1 labels via torch.equal(actual.argmax(-1), reference.argmax(-1)) (resnet_inference.py:33); full 1000-class logits compared with torch.testing.assert_close(atol=1e-4, rtol=1e-4) (common.py:74-76); the +1-corruption negative control must be rejected (common.py:79-84).",
+        "Precision and numerical policies preserved (common.py:34-42): FP32 weights and activations, TF32 disabled for matmul and cudnn, cudnn.benchmark False, set_float32_matmul_precision('highest'), torch.manual_seed(20261020), 4 CPU threads.",
+        "Input construction: images = np.load(assets/pixels.npy) to CUDA (verified shape (3,3,224,224) float32); offline batch is images[torch.arange(32, device='cuda') % 3].contiguous() -> (32,3,224,224) FP32, GPU-resident before timing; no H2D transfer or preprocessing inside the measured work.",
+        "Model loading is setup outside the measured boundary: ResNetForImageClassification.from_pretrained(args.assets, local_files_only=True, dtype=torch.float32).cuda().eval() (resnet_inference.py:23)."
+      ]
+    },
+    "evidence": {
+      "goal": [
+        "intent.json goal: reduce peak GPU allocated memory for one complete offline image batch inference while preserving the source quality checks and throughput constraint",
+        "intent.json command: python resnet_inference.py --assets /root/autodl-tmp/dev/v6-work/validation-assets/resnet18 --output /tmp/original-resnet"
+      ],
+      "entry": [
+        "resnet_inference.py is the entry named by the command; it imports common (common.py) and reads the workload table defaulting to ROOT/workloads.json (common.py:23)",
+        "resnet_inference.py:23-24 ResNetForImageClassification.from_pretrained(args.assets, local_files_only=True, dtype=torch.float32).cuda().eval(); torch.from_numpy(np.load(assets/pixels.npy)).cuda()",
+        "resnet_inference.py:14-16 infer() under @torch.inference_mode() runs model(pixel_values=pixels).logits; the repeated unit in the timing loop"
+      ],
+      "workload": [
+        "workloads.json resnet_inference.workloads[1] (id=offline, batch=32) is the row matching the goal's offline batch inference",
+        "resnet_inference.py:29 offline batch construction images[torch.arange(workload['batch'], device='cuda') % len(images)].contiguous()",
+        "common.py:24-25 defaults --warmup 2 --repeats 5; the user command overrides neither"
+      ],
+      "objective": [
+        "workloads.json offline goal memory: metric peak_allocated_bytes, direction min, constraint images_per_second_min_baseline_ratio 0.95",
+        "resnet_inference.py:41-48 per-repeat torch.cuda.synchronize, reset_peak_memory_stats, perf_counter_ns timing; sample key peak_allocated_bytes = torch.cuda.max_memory_allocated()",
+        "resnet_inference.py:48 images_per_second = workload['batch'] * 1e9 / elapsed for the fixed batch of 32",
+        "common.py:66-71 summarize() reports median/min/max per sample key"
+      ],
+      "quality": [
+        "workloads.json resnet_inference.correctness: logits_atol 0.0001, logits_rtol 0.0001, require_exact_top1 true",
+        "resnet_inference.py:31-32 close_check(actual, reference, atol=logits_atol, rtol=logits_rtol) and negative_check on the reference",
+        "resnet_inference.py:33 exact top-1 via torch.equal(actual.argmax(-1), reference.argmax(-1))",
+        "common.py:74-84 torch.testing.assert_close comparator and +1-corruption negative control"
+      ],
+      "numerical_policy": [
+        "common.py:34-42 configure(): set_device(0), allow_tf32 False for matmul and cudnn, cudnn.benchmark False, set_float32_matmul_precision('highest'), manual_seed(20261020)"
+      ],
+      "assets": [
+        "verified present at /root/autodl-tmp/dev/v6-work/validation-assets/resnet18: model.safetensors, config.json, preprocessor_config.json, pixels.npy, asset-manifest.json",
+        "pixels.npy loaded with worker python: shape (3, 3, 224, 224), dtype float32"
+      ],
+      "environment": [
+        "worker-environment.json: measured worker uses /root/autodl-tmp/dev-venv/bin/python (torch 2.13.0+cu129, transformers 5.16.1); ResNetForImageClassification import verified",
+        "deployment.json inventory lists two RTX 4090 GPUs; the workload itself uses a single process/device (configure(device=0), .cuda())"
+      ]
+    },
+    "assumptions": [
+      "The offline workload row (id=offline, batch=32) is selected per the goal's 'offline image batch inference'; the online batch=1 latency workload executed by the same script run is outside this request.",
+      "Reference construction, identity replay, negative control, reference .pt saving, warmup/repeats statistics and optional --profile tracing are measurement infrastructure; the work repeated by adapter.run() is one infer() call on the offline batch.",
+      "device_count=1 reflects the workload's single-process CUDA usage (configure(device=0), .cuda()); the second RTX 4090 in the deployment inventory is not required for this workload.",
+      "images_per_second keeps the source definition (batch*1e9/elapsed around one complete forward for the fixed batch of 32); the 0.95 baseline ratio from images_per_second_min_baseline_ratio is expressed as a generic ge constraint.",
+      "peak_allocated_bytes is the process-level PyTorch CUDA allocated peak measured per repeat after reset_peak_memory_stats; no invented whole-GPU or reserved-memory metric.",
+      "The objective is an ordinary evaluator metric; the installed torch_communication collector (NCCL kernel fields) does not apply to this single-GPU task, so no collector source or required_observations are declared."
+    ],
+    "questions": []
+  },
+  "agent": {
+    "role": "project-intake",
+    "session": "ses_ea5caeccafferbfD41Zpz0WhUl",
+    "message": "msg_15a373fbc0019JMjhIQdQAFrJ4",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 10,
+      "reported_cost": 0.13286414446,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 236074.0,
+        "input": 25537.0,
+        "output": 4645.0,
+        "reasoning": 5508.0,
+        "cache.read": 200384.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea5caeccafferbfD41Zpz0WhUl",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory.intake/sandboxes/project-intake-e648c4dc146b",
+    "outputs": [
+      "intake.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory.intake/generation-snapshots/generation-438497b2b94a.json"
+    ]
+  },
+  "request": "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory.intake/resolved-request.json"
+}

@@ -1,0 +1,65 @@
+{
+  "implementation": "composite",
+  "replacement_calls": [
+    "80ff8693d7ac3cf2433b10f2"
+  ],
+  "rationale": "Whole-forward replacement at the 'model' module boundary (group 1f40997fb4a53f41b9da), executing the accepted composite pipeline via CUDA Graph capture+replay. inputs/previous-feedback.txt records no rejected attempt to repair: the parent trial-678b0307f5-param-9fc9967a was accepted (decision.accepted true, missing_coverage empty, project measurement 0.30233 ms vs 0.36453 reference, quality pass max_abs_error 3.3e-7; best parameter trial tr-0af3323b 0.281618 ms). What it does establish is the concrete deficiency this attempt targets: the measured per-invocation host-dispatch slack of the 9-launch chain. Clean parameter-search wall 281.6 us against replacement.diagnostic_kernel_sum_us 117.28 over 9 launches (~164 us, ~58% of wall, outside GPU kernel time); the current-revision nsys run (0913aed2, bundles [trial-678b0307f5-param-9fc9967a]) shows the identical single-stream 9-kernel sequence (scan 2.3us, scatter 6.0us, segmean 26.0us K=128, sgemm 26.3/13.5us, relu 3.2us, segmean 16.9us K=256, sgemm 14.8/8.6us; 117.7 us busy in a 584.2 us span, 466.5 us inter-kernel gaps as a perturbed upper bound); python_runtime cProfile (host evidence only) confirms the dispatch chain: triton jit run 195.1 us cumulative over 4 launches, torch.addmm 32.5 us, addmm_ 25.2 us, torch.empty 21.6 us, relu_ 12.1 us, cuda_utils.launch 31.4 us. The kernels are near-roofline, so the remaining lever is launch/dispatch elimination: the first real adapter invocation runs the pipeline eagerly twice on a side stream (warms Triton binaries and cuBLAS workspace for the real shapes outside capture), captures the identical pipeline with torch.cuda.graph, replays once and returns a clone of the replay output; every later invocation with the same input identity issues one cudaGraphLaunch that re-executes the same 9-kernel chain from the live input/weight buffers plus a 1 MB output clone. Binding-contract compliance: capture is lazy inside an actual adapter invocation, never at build(); the captured pipeline is this candidate's own build-time-verified reimplementation (kernels copied verbatim from the parent implementation and assert_close-checked against the eager index_select/index_add_/clamp/div/cat/linear formula on seeded dummy data), so the graph cannot accidentally record the original module work; guards on device/dtype/shape/stride plus a data_ptr identity key over the four inputs and four weight tensors trigger bounded recapture (3 attempts) or eager/parent fallback, so the workload executes on current inputs on every invocation and no fixture answer is precomputed - only execution structure is captured, values are re-read from the live buffers at each replay; reset() is unaffected (the graph holds no data state); the returned tensor is cloned per invocation so alias semantics match the parent (adapter.observe copies to CPU; infer.py's reference/actual pair stays independent). Bundle overlap: this bundle writes the same call 80ff8693d7ac3cf2433b10f2 as installed trial-678b0307f5-param-9fc9967a, so it explicitly replaces that whole bundle and preserves its needed behavior itself (same Triton scan/scatter/segment-mean kernels and split addmm chain, same parameters reduce_block_p=2 / scatter_block_e=512 defaults, and the parent reference remains the terminal fallback). The nested aten/profiler dispatch entries (11 affected calls) disappear as per-invocation dispatches while their GPU work still executes inside the graph on every replay; native evidence after installation is the same 9 kernels under non-zero CUDA graph ids in the framework's traces. Expected effect: replace ~164 us of host dispatch with one graph launch plus clone, moving latency_ms from the current ~0.28-0.30 ms toward ~0.13-0.17 ms, with numerics unchanged (identical kernels, order and addresses; parent's measured margin 3.3e-7 vs atol 1e-5).",
+  "setup_work": {
+    "build_time_steps": [
+      "Read the live GraphEncoder module from context['modules']; derive k1/k2 from the Linear weight shapes (128/256/64 for the frozen config); keep parameter references and transposed column-slice views Wa/Wb for the split GEMMs (views only, no copies, live weights always used).",
+      "JIT-compile the four Triton binaries at installation with the same sources as the accepted parent: _scan_kernel with BLOCK_N=next_pow2(observed signature nodes)=4096, _scatter_kernel (BLOCK_E parameter), _segmean_kernel for K=128 and K=256 (BLOCK_P parameter).",
+      "Run the seeded dummy pipeline (N=32, E=32) through the exact fast path and torch.testing.assert_close it against the eager formula on the module's CUDA device; failure records the setup-failure route (every later call uses the parent with label fallback:setup) instead of installing a broken fast path; this also warms the cuBLAS handles; all dummy tensors are freed.",
+      "No CUDA graph is captured at build() time: graph state starts empty (graph=None, attempts=0); nothing fixture-dependent is cached across invocations."
+    ],
+    "per_invocation_work": [
+      "Host-only guards first: argument binding, signature compatibility (cuda, fp32 features with contiguous strides, int64 edge tensors, fp32 degree of length N) and an identity key of device, shapes and data_ptrs of features/sources/destinations/degree plus the four weight/bias pointers.",
+      "First invocation per input identity: two eager warmup runs of the composite pipeline on a side stream (ordered by wait_stream), one torch.cuda.graph capture (its __enter__ performs torch.cuda.synchronize and empty_cache), one replay, then return a clone of the replay output; capture attempts are bounded to 3 per worker.",
+      "Subsequent invocations with identical identity: one cudaGraphLaunch replay executing the 9-kernel chain (scan, scatter, segmean K=128, addmm, addmm_, relu_, segmean K=256, addmm, addmm_) from the live buffers, plus a 1 MB output clone.",
+      "Changed input identity: recapture within the attempt budget, else the eager composite pipeline runs per invocation (label fallback:capture); eager-pipeline exceptions fall back to the parent reference (fallback:runtime); incompatible signatures fall back to the parent (fallback:signature). Every route executes the full workload on the current inputs."
+    ],
+    "memory_note": "Setup dummy allocations are <1 MB and freed (may nudge lifecycle_peak_allocated_bytes). After the first capture the process retains a graph-private pool for the worker lifetime holding the pipeline intermediates (~0.3 MB int32 segment structures, 2 MB nb1, 4 MB hidden, 4 MB nb2, 1 MB output, plus allocator rounding: about 11-12 MB), so framework.reserved_bytes / peak_reserved_bytes / lifecycle_peak_reserved_bytes rise versus the parent's measured 46.1 MB reserved while per-run framework.peak_allocated_bytes stays roughly flat (the parent's per-invocation transients move into the retained pool; +1 MB clone per run; parent baseline 23.9 MB). The capture invocation briefly allocates eager warmup transients on top; it lands in the warmup/quality phase (warmup=3 precedes the 15 timed repeats) and is included in lifecycle counters by definition. These directions are expectations derived from the parent's measured counters, to be confirmed by the framework; warm-run allocated counters falling while retained pools grow is a scope artifact, not a general physical-memory saving, and no PyTorch counter measures non-PyTorch driver memory. The declared metric is latency_ms only (the workloads.json peak_allocated_bytes goal is not part of this request)."
+  },
+  "quality_risks": [
+    "Graph replay reads fixed input/weight addresses: guarded by the data_ptr/shape/dtype/stride identity key with bounded recapture and eager-composite/parent fallbacks, so an unexpected input never silently reuses a stale graph; replay exceptions release the graph and reroute.",
+    "Output aliasing: replay writes the graph-pool output buffer; every invocation returns a clone, preserving the parent's fresh-tensor semantics - adapter.observe() copies the full [4096,64] FP32 tensor to CPU per invocation and infer.py's reference/actual construction stays independent.",
+    "CUDA graph capture can fail on driver/profiler interference (e.g. CUPTI activity in the framework's separate intrusive diagnostic run): caught and routed fallback:capture, with the workload still fully executed through the eager composite pipeline (parent-equivalent ~0.28 ms, quality unchanged, only the graph gain is lost); the clean measurement and quality runs are separate workers that capture independently.",
+    "Numerics: replay executes the identical kernel sequence reading the identical live buffers; the only nondeterminism remains the within-segment atomic arrival order of the cursor scatter, exactly as in the accepted parent (measured max_abs_error 2.4-3.3e-7 against atol 1e-5 / rtol 1e-4).",
+    "The capture invocation carries one-time cost (two warmup runs + capture + replay) inside a real invocation; warmup=3 precedes the timed repeats and the median of 15 is robust; measurement boundaries, sync semantics and thresholds are untouched.",
+        "If the passed degree tensor ever disagreed with bincount(destinations), segment offsets would be wrong - the same exposure as the accepted parent (the frozen workload constructs degree = bincount(destinations), infer.py:24 / adapter.py:74); in-kernel bounds masks keep every access in-bounds and the quality checks would reject wrong values.",
+    "Retained graph pool increases reserved/lifecycle-reserved counters while per-run allocated stays approximately flat; documented in setup_work.memory_note and not part of the declared latency_ms objective."
+  ],
+  "eliminated_calls": [
+    "082954dfb7897b23be544855",
+    "216cc438ab119abe43785340",
+    "3ac036f4c828a6d38c6de955",
+    "6e9d6b583aadf65e4b1eb44d",
+    "76ffa2b5e33044ba6db7c860",
+    "990cea7c86061e796cd2a5d7",
+    "a0b5ffd5bf021ca4ff461953",
+    "c32e164325026aa5527db4ed",
+    "dd76570a9bbdb0b333acb618",
+    "f0f4117235b31295be4311e6",
+    "fcb52401b04cde5fb368ea0f"
+  ],
+  "requires": [],
+  "replaces": [
+    "trial-678b0307f5-param-9fc9967a"
+  ],
+  "parameter_space": {
+    "params": [
+      {
+        "name": "reduce_block_p",
+        "kind": "int",
+        "choices": [2, 4, 8, 16],
+        "description": "Edges consumed per iteration in the Triton segment-mean kernel; power-of-two block width only (tl.arange requirement); configures the kernels that get captured into the CUDA graph, affecting vectorization/registers, not semantics. Default 2 (best value of the accepted parent's search)."
+      },
+      {
+        "name": "scatter_block_e",
+        "kind": "int",
+        "choices": [256, 512, 1024, 2048],
+        "description": "Edges per program in the Triton CSR scatter kernel; power-of-two block width only; configures the kernels that get captured into the CUDA graph, affecting parallelism/atomics batching, not semantics. Default 512 (best value of the accepted parent's search)."
+      }
+    ],
+    "constraints": []
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "kind": "project_variant",
+  "parent_output": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step",
+  "request": {
+    "schema_version": "project-request.v1",
+    "source_root": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step.intake/source",
+    "entry": "gpt2_ddp_training.py",
+    "files": [
+      "gpt2_ddp_training.py",
+      "common.py",
+      "workloads.json"
+    ],
+    "goal": "Reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks.",
+    "objective": {
+      "name": "torch_communication.communication_kernel_sum_ms",
+      "unit": "ms",
+      "direction": "minimize",
+      "constraints": [
+        {
+          "metric": "step_ms",
+          "op": "le",
+          "baseline_ratio": 1.05,
+          "rank_aggregation": "max"
+        }
+      ],
+      "source": {
+        "collector": "torch_communication",
+        "field": "communication_kernel_sum_ms",
+        "source_metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+        "aggregation": "per-rank sum of NCCL kernel durations in separately profiled invocations, max across the 2 ranks, median over the 3 profiled repetitions (gpt2_ddp_training.py:156-157)"
+      },
+      "rank_aggregation": "max"
+    },
+    "workload": {
+      "id": "accumulated_step",
+      "world_size": 2,
+      "micro_batch": 1,
+      "sequence_length": 128,
+      "accumulation_steps": 4,
+      "goals": [
+        {
+          "id": "step",
+          "metric": "step_ms",
+          "direction": "min"
+        },
+        {
+          "id": "communication",
+          "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+          "direction": "min",
+          "constraints": {
+            "step_ms_max_baseline_ratio": 1.05
+          }
+        }
+      ]
+    },
+    "quality": {
+      "atol": 1e-06,
+      "rtol": 0.0001,
+      "grad_atol": 1e-06,
+      "grad_rtol": 0.0001,
+      "parameter_atol": 1e-06,
+      "parameter_rtol": 0.0001,
+      "exact_gradient_replica_check": {
+        "atol": 0.0,
+        "rtol": 0.0
+      },
+      "finite_loss_required": true,
+      "negative_control_required": true
+    },
+    "assets": {},
+    "devices": [
+      "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+      "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+    ],
+    "distributed_backend": "nccl",
+    "communication": "auto",
+    "required_observations": [],
+    "tools": {
+      "ncu": "/usr/local/cuda/bin/ncu",
+      "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+    },
+    "profiling": {
+      "agent_plan": true
+    },
+    "binding_backend": "legacy",
+    "measurement_lifetime": "invocation",
+    "warmup": 2,
+    "repeats": 5,
+    "continuous_steps": 2,
+    "worker_timeout_s": 900.0,
+    "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+    "notes": [
+      "Command provenance: intent.json command 'torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp'; equivalent launcher documented in README.md ('python -m torch.distributed.run --standalone --nproc-per-node=2 .../gpt2_ddp_training.py'). Warmup=2 and repeats=5 are the source defaults (common.py arguments(); command does not override).",
+      "Metric key step_ms is produced per repeat as max across ranks of local step time (gpt2_ddp_training.py:148-152; README: '\u4e3b\u5206\u6570\u53d6\u540c\u4e00\u6b65\u5404 rank \u672c\u5730\u8017\u65f6\u7684\u6700\u5927\u503c\uff0c\u4e0d\u76f8\u52a0\u4e0d\u540c rank \u65f6\u95f4'), summarized to median/min/max by common.summarize. Gloo control barrier is outside the timed boundary; torch.cuda.synchronize() ends each timed step.",
+      "Selected workload row is gpt2_ddp_training.workloads[0] 'accumulated_step' copied verbatim from workloads.json, including its goals list; the user-requested objective is the 'step' goal only. Effective batch = world_size*micro_batch*accumulation_steps = 8; tokens per step = 1024.",
+      "Quality semantics (all preserved from source): full-global-batch single-GPU reference gradient comparison per parameter with grad_atol=1e-6/grad_rtol=1e-4 (gpt2_ddp_training.py:67-78 via common.close_check), exact cross-rank gradient equality with atol=0.0/rtol=0.0 via torch.testing.assert_close after dist.broadcast from rank 0 (gpt2_ddp_training.py:80-86, discrete exact comparison), post-step parameter comparison with parameter_atol=1e-6/parameter_rtol=1e-4 (gpt2_ddp_training.py:88-91), finite accumulated loss assert (line 65), and the +1-corruption negative control (common.negative_check, line 78).",
+      "Precision/state policies preserved: FP32 weights (.float(), gpt2_ddp_training.py:27), TF32 disabled and float32 matmul precision 'highest' (common.configure), dropout disabled (resid_pdrop/embd_pdrop/attn_pdrop=0.0, use_cache=False, attn_implementation='eager'), deterministic seeds (model 20261020, inputs 31000+rank), DDP with broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True, and the baseline's existing no_sync accumulation for the first 3 micro-batches.",
+      "The source also defines a diagnostic communication goal (diagnostic.max_rank_nccl_kernel_sum_ms with a step_ms<=1.05x baseline constraint, workloads.json gpt2_ddp_training.goals[1]) measured in 3 separate profiled invocations with its own caveat string; it is not requested by the user's goal, so no diagnostic collector source or required_observations are declared here. The torch_communication collector fields in deployment.json are unrelated to this step_ms objective.",
+      "No external model weights or datasets: GPT-2 124M is constructed from GPT2Config with seeded synthetic initialization and synthetic token IDs; assets stays empty. Output artifacts (rank-N.json, result.json) are written by the harness's save() into the --output directory, not part of the measured step.",
+      "One measured invocation: One complete accumulated training step as defined by step() in gpt2_ddp_training.py:102-105, executed per rank from reset initial weights: accumulate(model, optimizer, inputs) running 4 micro-batches of shape (micro_batch=1, sequence_length=128) where the first accumulation_steps-1=3 micro-batches run under DDP.no_sync() and the final micro-batch performs the DDP gradient allreduce, followed by optimizer.step() (SGD lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) and torch.cuda.synchronize(). Excludes benchmark harness: weight reset (reset/load_state_dict), Gloo control-group barriers, warmup loop, 5 timed repeats, peak-memory sampling, single-GPU reference construction, all correctness checks, --profile traces and the separate bucket-inventory comm hook."
+    ]
+  }
+}

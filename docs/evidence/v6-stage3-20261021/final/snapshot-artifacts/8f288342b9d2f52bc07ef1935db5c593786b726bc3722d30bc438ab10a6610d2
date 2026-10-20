@@ -1,0 +1,3017 @@
+{
+  "current_revision": "879a796ad383e4afbf0395e6d82794b366e6b0f2c6cae8f331fdbdd9adbb1b28",
+  "previous_trial": "trial-81bc23a8c7",
+  "previous_bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-81bc23a8c7-param-859c0671",
+    "parent_revision": "879a796ad383e4afbf0395e6d82794b366e6b0f2c6cae8f331fdbdd9adbb1b28",
+    "contract_ref": "sha256:d3a0c12584113b8879bd2d395978424cb0453f28dc474755e45ff3fcbcb297fc",
+    "scope": "joint",
+    "implementation": "kernel",
+    "groups": [
+      "f2cad7658bd2e042c326",
+      "b63063a25115d472ba96"
+    ],
+    "calls": [
+      "206dbc4bff7ae767415599c9",
+      "866013201077b272e7156dd4"
+    ],
+    "affected_calls": [
+      "12be5e599f9b66632f879389",
+      "1f9fd4c4bc3963db0c9f66d7",
+      "206dbc4bff7ae767415599c9",
+      "231c3b2ce0c673f40439c073",
+      "2eb170a990782fe998ac2ead",
+      "3917cd1f557688d0fef2351c",
+      "5e90f195f7f306db14a8148e",
+      "6add22479383ec2539a87b8c",
+      "6f7e6494a1d037f66dda9a07",
+      "71033a630785aadd19c1e999",
+      "866013201077b272e7156dd4",
+      "9179b5cda81f9e67b997920f",
+      "a1535028e5ecfcb604215494",
+      "a7d4e0be760f62be8bea745a",
+      "bee00fa9c247933b1ed6c83a",
+      "c4d431b4ea7075b487781a54",
+      "c90a64f85907e301e280d58a",
+      "db20c3f324d6a29eafc07312",
+      "dfe44b1cfe55fcdce017af05",
+      "e9cbf5739bc84264b863c3fe",
+      "ef8be01433c0dd9f87d7d2b9",
+      "f6b685d75a61f7577e0e2b09",
+      "f79db885f13afc1a0ec76f88",
+      "fe6b217d29437481be5f2ed5"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-81bc23a8c7.py",
+        "before_sha256": null,
+        "content_ref": "sha256:253b8556fb19397766cedc283769c2a6a4cf5e451badfe43b39d81089c927ae9"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-81bc23a8c7.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:6dd284568b6dd59f5318ebd46c8be9fdb7e541dbb3c39af73f8d19c053da858a"
+      }
+    ],
+    "read_set": [
+      "call:12be5e599f9b66632f879389",
+      "call:1f9fd4c4bc3963db0c9f66d7",
+      "call:206dbc4bff7ae767415599c9",
+      "call:231c3b2ce0c673f40439c073",
+      "call:2eb170a990782fe998ac2ead",
+      "call:3917cd1f557688d0fef2351c",
+      "call:5e90f195f7f306db14a8148e",
+      "call:6add22479383ec2539a87b8c",
+      "call:6f7e6494a1d037f66dda9a07",
+      "call:71033a630785aadd19c1e999",
+      "call:866013201077b272e7156dd4",
+      "call:9179b5cda81f9e67b997920f",
+      "call:a1535028e5ecfcb604215494",
+      "call:a7d4e0be760f62be8bea745a",
+      "call:bee00fa9c247933b1ed6c83a",
+      "call:c4d431b4ea7075b487781a54",
+      "call:c90a64f85907e301e280d58a",
+      "call:db20c3f324d6a29eafc07312",
+      "call:dfe44b1cfe55fcdce017af05",
+      "call:e9cbf5739bc84264b863c3fe",
+      "call:ef8be01433c0dd9f87d7d2b9",
+      "call:f6b685d75a61f7577e0e2b09",
+      "call:f79db885f13afc1a0ec76f88",
+      "call:fe6b217d29437481be5f2ed5"
+    ],
+    "write_set": [
+      "file:opop_candidates/trial-81bc23a8c7.py",
+      "file:opop_candidates/trial-81bc23a8c7.targets.json",
+      "call:206dbc4bff7ae767415599c9",
+      "call:866013201077b272e7156dd4"
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Seeds: torch.manual_seed(20261021) before model construction; separate CPU torch.Generator seeded 20261022 for the input fixture (infer.py:14,20-23).",
+      "Numerics: float32 everywhere; torch.backends.cuda.matmul.allow_tf32=False; torch.backends.cudnn.allow_tf32=False; torch.set_float32_matmul_precision('highest') (infer.py:15-17, workloads.json dtype float32).",
+      "Architecture: two MeanSAGE layers, Linear(2*128->256) then Linear(2*256->64), with ReLU between layers; input_features=128, hidden_features=256, output_features=64 (model.py:18-26, workloads.json:2).",
+      "Aggregation semantics: messages = features.index_select(0, sources); neighbors = zeros_like(features).index_add_(0, destinations, messages); neighbors / degree.clamp_min(1).unsqueeze(1); duplicate directed edges contribute individually; nodes without incoming edges get zero neighbor features (model.py:11-15, README.md:17-19).",
+      "Workload graph: nodes=4096, edges=65536; degree = torch.bincount(destinations, minlength=4096).float(); the same edge list ordering and fixture construction path must be preserved.",
+      "Output: the complete [4096, 64] float32 output tensor, compared with torch.testing.assert_close(actual, reference, atol=1e-05, rtol=1e-4) (infer.py:45, workloads.json:9).",
+      "Timing boundary: each latency sample is the wall time of one forward between CUDA synchronizations; model/fixture construction, H2D transfer, warmup, quality checking and statistics queries are outside timing (README.md:13-15, infer.py:49-60).",
+      "No cross-invocation state: every forward is independent and uses the same GPU-resident inputs; the timed invocation contains no gradient clears or cache resets."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-81bc23a8c7.py",
+    "parameters": {}
+  },
+  "previous_selection": {
+    "scope": "joint",
+    "groups": [
+      "f2cad7658bd2e042c326",
+      "b63063a25115d472ba96"
+    ],
+    "rationale": "Measured facts: the objective latency_ms is the wall time of one synchronized full-graph forward on a single device (no communication; communication capability recorded not_applicable 'single-device task'), with original baseline 0.372995 ms and same-revision diagnostic CUDA busy time 321.762 us over 15 sequential kernels on one stream (nsys-9ed9145c.json, call-resources.json), so kernel execution time, not dispatch, dominates the metric (clean-run dispatch/gap share is bounded by the ~51 us wall-minus-busy margin; the much larger gaps in the nsys timeline are collector-perturbed launch overhead). Within the forward, the per-layer mean-aggregation chain aten::index_select -> aten::zeros_like -> aten::index_add_ -> aten::clamp_min -> aten::unsqueeze -> aten::div -> aten::cat costs 259.8 us of the 321.8 us diagnostic CUDA total (80.8%): layer 1 (encoder.first, group f2cad7658bd2e042c326, module 128.1 us) spends 91.1 us and layer 2 (encoder.second, group b63063a25115d472ba96, module 190.2 us) spends 168.7 us on that chain, versus only 58.5 us for both GEMM projections and 3.4 us for relu. The nsys kernel timeline shows why: each layer materializes the messages tensor features[sources] of [65536, F] fp32 (32 MB in layer 1, 64 MB in layer 2) in vectorized_gather_kernel, then re-reads it in indexFuncLargeIndex<ReduceAdd> for the atomic scatter, then runs separate fill/clamp/div/cat kernels - roughly a full DRAM write+read round trip of the largest intermediate per layer, all inside MeanSAGE.forward (model.py:11-15, adapter.py:28-32). The two GEMMs are already near their memory floors for these shapes, and dispatch elimination (e.g. CUDA-graph capture) targets at most the ~51 us non-busy margin while risking the binding contract's quality-coverage semantics for replayed hooks, so the aggregation chain is the dominant, evidence-backed opportunity. Both observed MeanSAGE instances are the same editable implementation at two boundaries (encoder.first F=128->256, encoder.second F=256->64); the replacement only coheres if installed jointly at both module boundaries, keeping GraphEncoder's relu/glue and the self.project weights untouched.",
+    "hypothesis": "Replacing the body of MeanSAGE.forward at both observed instances (encoder.first and encoder.second) with one fused implementation that (a) accumulates features[sources] directly into the per-node neighbor buffer via atomic adds without materializing the messages tensor, (b) folds zero initialization, degree.clamp_min(1) and the per-node division into the same pass or its epilogue (preserving true fp32 division, not reciprocal multiply, and the zero-neighbor semantics for nodes without incoming edges), and (c) feeds self.project a [4096, 2F] projection input assembled without a separate cat kernel, is expected to remove the ~96 MB messages write/read round trip and 8-10 of the 15 kernels and reduce median latency_ms from the 0.373 ms baseline to roughly 0.22-0.28 ms (about 25-40%), with the full [4096, 64] output staying within atol 1e-5 / rtol 1e-4 (atomic-add ordering variance is the same class as the existing index_add_ path). Secondary expectations: peak_allocated_bytes does not regress materially (the messages intermediate disappears) and graphs_per_second improves proportionally. This is a hypothesis to be tested by the framework's measurement, not an accepted benefit: a tolerance failure or a smaller-than-expected win rejects or iterates the candidate. Constraints preserved: no cross-invocation state (any derived structure is rebuilt inside run()'s forward or lazily captured under the binding contract's invocation semantics), same edge list/degree/weights, duplicate directed edges counted individually, and unchanged timing/quality boundaries.",
+    "affected_calls": [
+      "12be5e599f9b66632f879389",
+      "1f9fd4c4bc3963db0c9f66d7",
+      "206dbc4bff7ae767415599c9",
+      "231c3b2ce0c673f40439c073",
+      "2eb170a990782fe998ac2ead",
+      "3917cd1f557688d0fef2351c",
+      "5e90f195f7f306db14a8148e",
+      "6add22479383ec2539a87b8c",
+      "6f7e6494a1d037f66dda9a07",
+      "71033a630785aadd19c1e999",
+      "866013201077b272e7156dd4",
+      "9179b5cda81f9e67b997920f",
+      "a1535028e5ecfcb604215494",
+      "a7d4e0be760f62be8bea745a",
+      "bee00fa9c247933b1ed6c83a",
+      "c4d431b4ea7075b487781a54",
+      "c90a64f85907e301e280d58a",
+      "db20c3f324d6a29eafc07312",
+      "dfe44b1cfe55fcdce017af05",
+      "e9cbf5739bc84264b863c3fe",
+      "ef8be01433c0dd9f87d7d2b9",
+      "f6b685d75a61f7577e0e2b09",
+      "f79db885f13afc1a0ec76f88",
+      "fe6b217d29437481be5f2ed5"
+    ]
+  },
+  "previous_proposal": {
+    "implementation": "kernel",
+    "replacement_calls": [
+      "206dbc4bff7ae767415599c9",
+      "866013201077b272e7156dd4"
+    ],
+    "rationale": "Joint replacement of both observed MeanSAGE module forwards (encoder.first = 206dbc4bff7ae767415599c9, group f2cad7658bd2e042c326; encoder.second = 866013201077b272e7156dd4, group b63063a25115d472ba96) with a CSR segment-sum Triton composite implementing the selected hypothesis. Measured basis (selection.json, target-resources.json, nsys-9ed9145c): the per-layer chain index_select -> zeros_like -> index_add_ -> clamp_min -> unsqueeze -> div -> cat costs 259.8 us of the 321.8 us diagnostic CUDA total; layer 1 gathers a 32 MB messages tensor (vectorized_gather_kernel 34.98 us) then re-reads it in indexFuncLargeIndex ReduceAdd (45.95 us), layer 2 repeats with 64 MB (54.05 us + 98.63 us); both GEMMs (36.99/21.50 us) are near their fp32 compute floor and are left untouched. The replacement, executed inside the replacement on every invocation, rebuilds per layer: one int32 zero-fill (3*4096) + one Triton histogram of destinations (65,536 relaxed int32 atomics), one torch.cumsum(int32) inclusive scan into the same buffer, one Triton scatter that stably ranks edges per destination (65,536 relaxed int32 atomics) producing a destination-sorted int32 source array, then one Triton segsum kernel whose programs accumulate source rows in registers per (node, 128-column) segment and write buf[:, :F] = features and buf[:, F:] = acc / max(degree, 1) directly into the [features | neighbors] projection input (the features copy replaces aten::cat's read of a separate neighbors tensor). The original fp32 semantics are preserved pointwise: every directed edge (including duplicates) contributes individually because the histogram counts every edge; nodes without incoming edges get cnt = 0, acc = 0, denominator max(0, 1) = 1, i.e. zero neighbor features exactly as zeros_like/index_add_/clamp_min(1); the division lowers to div.rn.f32 (verified in generated PTX), the same IEEE correctly-rounded fp32 division aten::div uses, not a reciprocal multiply; column order [features | neighbors] matches aten::cat dim=1; the project module is invoked normally (module.project(buf)) so the Linear module boundaries (a1535028e5ecfcb604215494, e9cbf5739bc84264b863c3fe) and their aten::linear functional sites (3917cd1f557688d0fef2351c, 12be5e599f9b66632f879389) execute with exactly the observed [4096, 512]/[4096, 256] fp32 contiguous signatures, and the returned tensor is the same fresh Linear output with no aliasing of inputs. Remaining numeric difference vs the reference is the summation order of the ~16 fp32 terms per (node, column): the reference's index_add_ reduces in nondeterministic atomic order while this implementation reduces in CSR order; both are correct fp32 summations whose divergence is ~1e-7 relative, far inside atol 1e-5 / rtol 1e-4 (the original harness already compares two atomic-order runs under these tolerances). Expected effect (hypothesis, to be measured by the framework): the 96 MB messages write+read round trip and the 8.4M/16.8M fp32 L2 atomic adds are replaced by ~25 M request-local int32 atomics and coalesced row reads (features working set 2/4 MB is L2-resident), cutting per-layer aggregation cost from 91.1/168.7 us toward roughly 35-60 us and reducing median latency_ms from the 0.373 ms baseline toward ~0.20-0.25 ms; per-layer kernel count drops from 7 to 6 (zero-fill+histogram, cumsum, scatter, segsum, GEMM) and the 32/64 MB messages intermediates disappear from the allocator. Dispatch-only tricks (CUDA Graph capture) were deliberately not used: the binding contract notes replay does not rerun Python hooks and cannot prove inherited native execution, while this path executes real kernels through the normal stream on every invocation. The four profiler record_function sites (5e90f195f7f306db14a8148e, dfe44b1cfe55fcdce017af05, ef8be01433c0dd9f87d7d2b9, f6b685d75a61f7577e0e2b09) are 0.0 us instrumentation ranges around the module boundaries, not computational work; they are emitted by the framework's boundary machinery rather than model.py and are neither claimed as eliminated nor relied upon. No inputs/previous-feedback.txt exists, so there is no prior feedback to incorporate; this is the first candidate on this selection. Route labels are self-reported via context['record_route'] inside the replacement: 'triton_csr_segsum' on the fused path, 'fallback:signature' for non-matching signatures, 'fallback:runtime' for a caught runtime failure, 'fallback:setup' when Triton or the project attribute is unavailable at build; every fallback calls the parent bound forward from context['references'], so quality and coverage degrade to parent behavior rather than failing.",
+    "setup_work": {
+      "build_time": "No GPU work, no model mutation, no weight packing and no fixture-dependent precomputation at build(): the module only defines the three Triton JIT functions and returns bound closures over context['modules'][call_id].project and context['references'][call_id]. The workload executes fully on every invocation.",
+      "first_invocation": "Triton JIT compilation of the three kernels (hist and scatter once, segsum specialized for F=128 and F=256) happens on the first forward that takes the fused path; the frozen harness performs 3 warmup invocations before the 15 timed samples, so compilation and cubin caching land in warmup. This cost appears in lifecycle counters (framework.lifecycle_peak_allocated_bytes / lifecycle_peak_reserved_bytes include preparation and the compilation allocations) but not in the per-run framework.peak_allocated_bytes of warm repeats.",
+      "per_invocation": "Each layer forward rebuilds the derived CSR structure from the live destinations tensor: one torch.zeros(3*4096, int32) (48 KB), one histogram kernel, one torch.cumsum into a view of the same buffer, one scatter kernel producing a 65,536-entry int32 sorted-source array (256 KB), then the segsum kernel writing a [4096, 2F] fp32 buffer (4 MB layer 1, 8 MB layer 2) that feeds project. Nothing persists across invocations (adapter reset is a no-op and every buffer is freshly allocated inside the forward), satisfying the no-cross-invocation-state constraint.",
+      "memory": "Warm-run framework.peak_allocated_bytes is expected to fall substantially because the messages intermediates (32 MB layer 1, 64 MB layer 2) are no longer materialized; that is a per-run PyTorch allocator counter decrease, not a general physical-memory saving, and no non-PyTorch driver memory is measured. No CUDA Graphs are captured, so no graph pools are retained and reserved memory does not grow on that account.",
+      "state_lifecycle": "Inference-only under torch.inference_mode(); no parameters, buffers or optimizer state are modified, no gradients exist, and inputs are never written (all kernel writes target freshly allocated buffers)."
+    },
+    "quality_risks": [
+      "Summation-order divergence from the reference: the reference reduces each node's messages in nondeterministic atomic order (index_add_) while this implementation reduces in CSR order. Bounded by fp32 summation error of ~16-45 terms (~1e-7 relative), orders of magnitude inside atol 1e-5 / rtol 1e-4; verified exactly equal to the reference formula in a CPU emulation of the kernel math on seeded fixtures.",
+      "Division rounding: segsum uses tl.math.div_rn, confirmed to emit div.rn.f32 (IEEE correctly rounded), matching aten::div on fp32; using x * (1/den) was deliberately avoided.",
+      "Index bounds are trusted as in-bounds (0 <= sources[i], destinations[i] < N): the frozen fixture generates them with randint(N), and the signature guard restricts the fused path to int64 1-D contiguous CUDA index tensors. Out-of-range indices would corrupt memory instead of raising like index_select; this is accepted for the frozen workload and mitigated by the fallback guard for any other shape/dtype/stride combination.",
+      "Any signature deviation (dtype, dims, strides, F not a multiple of 128, N > 65535 grid-y bound, CPU tensors) routes to the parent bound forward with a 'fallback:signature' label, and any runtime exception inside the fused path routes to the parent with 'fallback:runtime', so output correctness never depends on the fused path succeeding.",
+      "Triton unavailability at build time installs parent-passthrough replacements labeled 'fallback:setup' rather than failing installation; the measured worker environment ships triton 3.7.1 with torch 2.13.0+cu129.",
+      "The two GEMMs, ReLU and all encoder-level orchestration are unchanged; the aten::linear calls see byte-identical shapes/dtypes/strides to the observed signatures."
+    ],
+    "eliminated_calls": [
+      "fe6b217d29437481be5f2ed5",
+      "9179b5cda81f9e67b997920f",
+      "a7d4e0be760f62be8bea745a",
+      "231c3b2ce0c673f40439c073",
+      "6add22479383ec2539a87b8c",
+      "6f7e6494a1d037f66dda9a07",
+      "f79db885f13afc1a0ec76f88",
+      "bee00fa9c247933b1ed6c83a",
+      "c4d431b4ea7075b487781a54",
+      "71033a630785aadd19c1e999",
+      "db20c3f324d6a29eafc07312",
+      "c90a64f85907e301e280d58a",
+      "2eb170a990782fe998ac2ead",
+      "1f9fd4c4bc3963db0c9f66d7"
+    ],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {}
+  },
+  "decision": {
+    "state": "evaluated",
+    "revision": "11ca1f80cfe678585450a9f7165718bd41a10d6e30fcdc4fcc7dbbc99eb5750c",
+    "parent": "879a796ad383e4afbf0395e6d82794b366e6b0f2c6cae8f331fdbdd9adbb1b28",
+    "bundle": "trial-81bc23a8c7-param-859c0671",
+    "accepted": false,
+    "reasons": [
+      "paired_gain_not_above_noise",
+      "objective_not_improved"
+    ],
+    "report_ref": "sha256:2761d31f18174aff1296a110d19c99f6eb4521196b2097059509453be6f111ea"
+  },
+  "supplemental_evidence": null,
+  "project_measurement": {
+    "valid": true,
+    "objective": 0.4660455,
+    "reference": 0.3656295,
+    "parent_values": [
+      0.369904,
+      0.361355
+    ],
+    "candidate_values": [
+      0.422751,
+      0.50934
+    ],
+    "paired_gains": [
+      -0.05284699999999998,
+      -0.14798500000000003
+    ],
+    "noise_bounds": [
+      0.05518599999999996,
+      0.02337800000000001
+    ],
+    "constraints": [],
+    "reasons": [
+      "paired_gain_not_above_noise"
+    ],
+    "framework_source": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+    "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+  },
+  "evaluation": {
+    "schema_version": "project.v1",
+    "id": "trial-81bc23a8c7",
+    "revision_id": "11ca1f80cfe678585450a9f7165718bd41a10d6e30fcdc4fcc7dbbc99eb5750c",
+    "parent_id": "879a796ad383e4afbf0395e6d82794b366e6b0f2c6cae8f331fdbdd9adbb1b28",
+    "contract_ref": "sha256:d3a0c12584113b8879bd2d395978424cb0453f28dc474755e45ff3fcbcb297fc",
+    "bundle_id": "trial-81bc23a8c7-param-859c0671",
+    "quality": "pass",
+    "feasible": true,
+    "objective": 0.4660455,
+    "reference_objective": 0.3656295,
+    "metrics": {
+      "valid": true,
+      "objective": 0.4660455,
+      "reference": 0.3656295,
+      "parent_values": [
+        0.369904,
+        0.361355
+      ],
+      "candidate_values": [
+        0.422751,
+        0.50934
+      ],
+      "paired_gains": [
+        -0.05284699999999998,
+        -0.14798500000000003
+      ],
+      "noise_bounds": [
+        0.05518599999999996,
+        0.02337800000000001
+      ],
+      "constraints": [],
+      "reasons": [
+        "paired_gain_not_above_noise"
+      ],
+      "framework_source": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+      "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+    },
+    "required_ranks": [
+      0
+    ],
+    "rank_bundle_hashes": {
+      "0": "fd7309572ad608afff602bb20776297a96b0cb816aa6bcfcb1c60b7a391ad706"
+    },
+    "required_calls": [
+      "206dbc4bff7ae767415599c9",
+      "866013201077b272e7156dd4"
+    ],
+    "executed_calls": [
+      "206dbc4bff7ae767415599c9",
+      "866013201077b272e7156dd4"
+    ],
+    "rank_executed_calls": {
+      "0": [
+        "206dbc4bff7ae767415599c9",
+        "866013201077b272e7156dd4"
+      ]
+    },
+    "evidence": [
+      "/root/opop-v6-stage3/final-e2e-187617c/graph-latency/jobs/trial-81bc23a8c7-evaluation-19695be3-pair-0-parent/run/receipt.json",
+      "/root/opop-v6-stage3/final-e2e-187617c/graph-latency/jobs/trial-81bc23a8c7-evaluation-19695be3-pair-0-candidate/run/receipt.json",
+      "/root/opop-v6-stage3/final-e2e-187617c/graph-latency/jobs/trial-81bc23a8c7-evaluation-19695be3-pair-1-candidate/run/receipt.json",
+      "/root/opop-v6-stage3/final-e2e-187617c/graph-latency/jobs/trial-81bc23a8c7-evaluation-19695be3-pair-1-parent/run/receipt.json"
+    ],
+    "reasons": [
+      "paired_gain_not_above_noise"
+    ]
+  },
+  "parameter_search": {
+    "engine": "existing TaskSearch + OptunaTPETuner",
+    "measurement_scope": "complete project",
+    "resource_fields": {
+      "framework.allocated_bytes": {
+        "unit": "bytes",
+        "kind": "gauge",
+        "scope": "project allocator"
+      },
+      "framework.reserved_bytes": {
+        "unit": "bytes",
+        "kind": "gauge",
+        "scope": "project allocator"
+      },
+      "framework.peak_allocated_bytes": {
+        "unit": "bytes",
+        "kind": "gauge",
+        "scope": "project allocator"
+      },
+      "framework.peak_reserved_bytes": {
+        "unit": "bytes",
+        "kind": "gauge",
+        "scope": "project allocator"
+      },
+      "framework.lifecycle_peak_allocated_bytes": {
+        "unit": "bytes",
+        "kind": "gauge",
+        "scope": "project allocator"
+      },
+      "framework.lifecycle_peak_reserved_bytes": {
+        "unit": "bytes",
+        "kind": "gauge",
+        "scope": "project allocator"
+      }
+    },
+    "response_interpretation": "Finite differences of observed screening endpoints, not independent causal sensitivities or acceptance evidence. Objective/throughput/workload constants are not automatically labelled resources. Zero resource change is observed, not missing. Kernel counters require separately available diagnostic evidence.",
+    "parameter_trials": 3,
+    "space": {},
+    "selected": "trial-81bc23a8c7-param-859c0671",
+    "stats": [
+      {
+        "candidate_id": "cand-0746641e",
+        "space_id": "space-cand-0746641e",
+        "n_complete": 1,
+        "n_fail": 0,
+        "best": {
+          "trial_id": "tr-28b39bbb",
+          "candidate_id": "cand-0746641e",
+          "space_id": "space-cand-0746641e",
+          "params": {
+            "values": {}
+          },
+          "status": "complete",
+          "failure_kind": null,
+          "failure_detail": "",
+          "latency_ms": null,
+          "task_evaluation": {
+            "score": 0.547609,
+            "valid": true,
+            "metrics": {
+              "latency_ms": 0.547609,
+              "graphs_per_second": 1826.1204618623872,
+              "peak_allocated_bytes": 26019328.0,
+              "framework.elapsed_ms": 0.547609,
+              "framework.peak_allocated_bytes": 26019328.0,
+              "framework.peak_reserved_bytes": 46137344.0,
+              "framework.allocated_bytes": 13125120.0,
+              "framework.reserved_bytes": 46137344.0,
+              "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+              "framework.lifecycle_peak_reserved_bytes": 46137344.0
+            },
+            "detail": null
+          },
+          "profile": null,
+          "fp64_rescued_trials": null,
+          "job_wall_s": null,
+          "job_timed_out": null
+        },
+        "param_stats": [],
+        "resource_at_best": null,
+        "failure_clusters": []
+      }
+    ],
+    "responses": [],
+    "observations": [
+      {
+        "bundle": {
+          "schema_version": "project.v2",
+          "id": "trial-81bc23a8c7-param-859c0671",
+          "parent_revision": "879a796ad383e4afbf0395e6d82794b366e6b0f2c6cae8f331fdbdd9adbb1b28",
+          "contract_ref": "sha256:d3a0c12584113b8879bd2d395978424cb0453f28dc474755e45ff3fcbcb297fc",
+          "scope": "joint",
+          "implementation": "kernel",
+          "groups": [
+            "f2cad7658bd2e042c326",
+            "b63063a25115d472ba96"
+          ],
+          "calls": [
+            "206dbc4bff7ae767415599c9",
+            "866013201077b272e7156dd4"
+          ],
+          "affected_calls": [
+            "12be5e599f9b66632f879389",
+            "1f9fd4c4bc3963db0c9f66d7",
+            "206dbc4bff7ae767415599c9",
+            "231c3b2ce0c673f40439c073",
+            "2eb170a990782fe998ac2ead",
+            "3917cd1f557688d0fef2351c",
+            "5e90f195f7f306db14a8148e",
+            "6add22479383ec2539a87b8c",
+            "6f7e6494a1d037f66dda9a07",
+            "71033a630785aadd19c1e999",
+            "866013201077b272e7156dd4",
+            "9179b5cda81f9e67b997920f",
+            "a1535028e5ecfcb604215494",
+            "a7d4e0be760f62be8bea745a",
+            "bee00fa9c247933b1ed6c83a",
+            "c4d431b4ea7075b487781a54",
+            "c90a64f85907e301e280d58a",
+            "db20c3f324d6a29eafc07312",
+            "dfe44b1cfe55fcdce017af05",
+            "e9cbf5739bc84264b863c3fe",
+            "ef8be01433c0dd9f87d7d2b9",
+            "f6b685d75a61f7577e0e2b09",
+            "f79db885f13afc1a0ec76f88",
+            "fe6b217d29437481be5f2ed5"
+          ],
+          "edits": [
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-81bc23a8c7.py",
+              "before_sha256": null,
+              "content_ref": "sha256:253b8556fb19397766cedc283769c2a6a4cf5e451badfe43b39d81089c927ae9"
+            },
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-81bc23a8c7.targets.json",
+              "before_sha256": null,
+              "content_ref": "sha256:6dd284568b6dd59f5318ebd46c8be9fdb7e541dbb3c39af73f8d19c053da858a"
+            }
+          ],
+          "read_set": [
+            "call:12be5e599f9b66632f879389",
+            "call:1f9fd4c4bc3963db0c9f66d7",
+            "call:206dbc4bff7ae767415599c9",
+            "call:231c3b2ce0c673f40439c073",
+            "call:2eb170a990782fe998ac2ead",
+            "call:3917cd1f557688d0fef2351c",
+            "call:5e90f195f7f306db14a8148e",
+            "call:6add22479383ec2539a87b8c",
+            "call:6f7e6494a1d037f66dda9a07",
+            "call:71033a630785aadd19c1e999",
+            "call:866013201077b272e7156dd4",
+            "call:9179b5cda81f9e67b997920f",
+            "call:a1535028e5ecfcb604215494",
+            "call:a7d4e0be760f62be8bea745a",
+            "call:bee00fa9c247933b1ed6c83a",
+            "call:c4d431b4ea7075b487781a54",
+            "call:c90a64f85907e301e280d58a",
+            "call:db20c3f324d6a29eafc07312",
+            "call:dfe44b1cfe55fcdce017af05",
+            "call:e9cbf5739bc84264b863c3fe",
+            "call:ef8be01433c0dd9f87d7d2b9",
+            "call:f6b685d75a61f7577e0e2b09",
+            "call:f79db885f13afc1a0ec76f88",
+            "call:fe6b217d29437481be5f2ed5"
+          ],
+          "write_set": [
+            "file:opop_candidates/trial-81bc23a8c7.py",
+            "file:opop_candidates/trial-81bc23a8c7.targets.json",
+            "call:206dbc4bff7ae767415599c9",
+            "call:866013201077b272e7156dd4"
+          ],
+          "requires": [],
+          "replaces": [],
+          "external_invariants": [
+            "Seeds: torch.manual_seed(20261021) before model construction; separate CPU torch.Generator seeded 20261022 for the input fixture (infer.py:14,20-23).",
+            "Numerics: float32 everywhere; torch.backends.cuda.matmul.allow_tf32=False; torch.backends.cudnn.allow_tf32=False; torch.set_float32_matmul_precision('highest') (infer.py:15-17, workloads.json dtype float32).",
+            "Architecture: two MeanSAGE layers, Linear(2*128->256) then Linear(2*256->64), with ReLU between layers; input_features=128, hidden_features=256, output_features=64 (model.py:18-26, workloads.json:2).",
+            "Aggregation semantics: messages = features.index_select(0, sources); neighbors = zeros_like(features).index_add_(0, destinations, messages); neighbors / degree.clamp_min(1).unsqueeze(1); duplicate directed edges contribute individually; nodes without incoming edges get zero neighbor features (model.py:11-15, README.md:17-19).",
+            "Workload graph: nodes=4096, edges=65536; degree = torch.bincount(destinations, minlength=4096).float(); the same edge list ordering and fixture construction path must be preserved.",
+            "Output: the complete [4096, 64] float32 output tensor, compared with torch.testing.assert_close(actual, reference, atol=1e-05, rtol=1e-4) (infer.py:45, workloads.json:9).",
+            "Timing boundary: each latency sample is the wall time of one forward between CUDA synchronizations; model/fixture construction, H2D transfer, warmup, quality checking and statistics queries are outside timing (README.md:13-15, infer.py:49-60).",
+            "No cross-invocation state: every forward is independent and uses the same GPU-resident inputs; the timed invocation contains no gradient clears or cache resets."
+          ],
+          "plan_ref": null,
+          "registry_ref": null,
+          "installer": "opop_candidates/trial-81bc23a8c7.py",
+          "parameters": {}
+        },
+        "revision": "11ca1f80cfe678585450a9f7165718bd41a10d6e30fcdc4fcc7dbbc99eb5750c",
+        "result": {
+          "score": 0.547609,
+          "valid": true,
+          "metrics": {
+            "latency_ms": 0.547609,
+            "graphs_per_second": 1826.1204618623872,
+            "peak_allocated_bytes": 26019328.0,
+            "framework.elapsed_ms": 0.547609,
+            "framework.peak_allocated_bytes": 26019328.0,
+            "framework.peak_reserved_bytes": 46137344.0,
+            "framework.allocated_bytes": 13125120.0,
+            "framework.reserved_bytes": 46137344.0,
+            "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+            "framework.lifecycle_peak_reserved_bytes": 46137344.0
+          },
+          "detail": null
+        },
+        "constraints": [],
+        "run": {
+          "schema_version": 1,
+          "status": "passed",
+          "failure": null,
+          "wall_s": 5.915743317455053,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 977270,
+              "exit_code": 0,
+              "status": "passed",
+              "binding": {
+                "pid": 977270,
+                "status": "verified",
+                "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 9,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.08874713256955147,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "framework_source": {
+                "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+                "files": 160,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": true,
+                "checks": [
+                  {
+                    "continuous_step": 0,
+                    "passed": true,
+                    "compared_elements": 262144,
+                    "max_abs_error": 1.1920928955078125e-07
+                  },
+                  {
+                    "continuous_step": 1,
+                    "passed": true,
+                    "compared_elements": 262144,
+                    "max_abs_error": 1.1920928955078125e-07
+                  }
+                ],
+                "coverage": {
+                  "trial-81bc23a8c7-param-859c0671": {
+                    "counts": {
+                      "206dbc4bff7ae767415599c9": 2,
+                      "866013201077b272e7156dd4": 2
+                    },
+                    "fallbacks": {},
+                    "required": [
+                      "206dbc4bff7ae767415599c9",
+                      "866013201077b272e7156dd4"
+                    ],
+                    "reference_invocations": {},
+                    "candidate_declared_routes": [
+                      {
+                        "call": "206dbc4bff7ae767415599c9",
+                        "route": "triton_csr_segsum",
+                        "count": 2
+                      },
+                      {
+                        "call": "866013201077b272e7156dd4",
+                        "route": "triton_csr_segsum",
+                        "count": 2
+                      }
+                    ],
+                    "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                  }
+                },
+                "math_policy_unchanged": true,
+                "setup": [
+                  {
+                    "bundle": "trial-81bc23a8c7-param-859c0671",
+                    "binding": {
+                      "requested": "legacy",
+                      "effective": "direct",
+                      "reason": "no functional replacements"
+                    },
+                    "elapsed_ms": 197.496512,
+                    "allocated_bytes": 3556864,
+                    "reserved_bytes": 23068672,
+                    "peak_allocated_bytes": 3556864,
+                    "scope": "installation after model prepare; separate from the declared warm-model score"
+                  }
+                ],
+                "samples": [
+                  {
+                    "latency_ms": 0.547609,
+                    "graphs_per_second": 1826.1204618623872,
+                    "peak_allocated_bytes": 26019328.0,
+                    "framework.elapsed_ms": 0.547609,
+                    "framework.peak_allocated_bytes": 26019328.0,
+                    "framework.peak_reserved_bytes": 46137344.0,
+                    "framework.allocated_bytes": 13125120.0,
+                    "framework.reserved_bytes": 46137344.0,
+                    "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+                    "framework.lifecycle_peak_reserved_bytes": 46137344.0
+                  },
+                  {
+                    "latency_ms": 0.516123,
+                    "graphs_per_second": 1937.522644795911,
+                    "peak_allocated_bytes": 26019328.0,
+                    "framework.elapsed_ms": 0.516123,
+                    "framework.peak_allocated_bytes": 26019328.0,
+                    "framework.peak_reserved_bytes": 46137344.0,
+                    "framework.allocated_bytes": 13125120.0,
+                    "framework.reserved_bytes": 46137344.0,
+                    "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+                    "framework.lifecycle_peak_reserved_bytes": 46137344.0
+                  },
+                  {
+                    "latency_ms": 0.562159,
+                    "graphs_per_second": 1778.8561599120535,
+                    "peak_allocated_bytes": 26019328.0,
+                    "framework.elapsed_ms": 0.562159,
+                    "framework.peak_allocated_bytes": 26019328.0,
+                    "framework.peak_reserved_bytes": 46137344.0,
+                    "framework.allocated_bytes": 13125120.0,
+                    "framework.reserved_bytes": 46137344.0,
+                    "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+                    "framework.lifecycle_peak_reserved_bytes": 46137344.0
+                  },
+                  {
+                    "latency_ms": 0.601832,
+                    "graphs_per_second": 1661.5932685533503,
+                    "peak_allocated_bytes": 26019328.0,
+                    "framework.elapsed_ms": 0.601832,
+                    "framework.peak_allocated_bytes": 26019328.0,
+                    "framework.peak_reserved_bytes": 46137344.0,
+                    "framework.allocated_bytes": 13125120.0,
+                    "framework.reserved_bytes": 46137344.0,
+                    "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+                    "framework.lifecycle_peak_reserved_bytes": 46137344.0
+                  },
+                  {
+                    "latency_ms": 0.567779,
+                    "graphs_per_second": 1761.2486548463398,
+                    "peak_allocated_bytes": 26019328.0,
+                    "framework.elapsed_ms": 0.567779,
+                    "framework.peak_allocated_bytes": 26019328.0,
+                    "framework.peak_reserved_bytes": 46137344.0,
+                    "framework.allocated_bytes": 13125120.0,
+                    "framework.reserved_bytes": 46137344.0,
+                    "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+                    "framework.lifecycle_peak_reserved_bytes": 46137344.0
+                  },
+                  {
+                    "latency_ms": 0.561214,
+                    "graphs_per_second": 1781.8514862423247,
+                    "peak_allocated_bytes": 26019328.0,
+                    "framework.elapsed_ms": 0.561214,
+                    "framework.peak_allocated_bytes": 26019328.0,
+                    "framework.peak_reserved_bytes": 46137344.0,
+                    "framework.allocated_bytes": 13125120.0,
+                    "framework.reserved_bytes": 46137344.0,
+                    "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+                    "framework.lifecycle_peak_reserved_bytes": 46137344.0
+                  },
+                  {
+                    "latency_ms": 0.648787,
+                    "graphs_per_second": 1541.337912134491,
+                    "peak_allocated_bytes": 26019328.0,
+                    "framework.elapsed_ms": 0.648787,
+                    "framework.peak_allocated_bytes": 26019328.0,
+                    "framework.peak_reserved_bytes": 46137344.0,
+                    "framework.allocated_bytes": 13125120.0,
+                    "framework.reserved_bytes": 46137344.0,
+                    "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+                    "framework.lifecycle_peak_reserved_bytes": 46137344.0
+                  },
+                  {
+                    "latency_ms": 0.543285,
+                    "graphs_per_second": 1840.6545367532694,
+                    "peak_allocated_bytes": 26019328.0,
+                    "framework.elapsed_ms": 0.543285,
+                    "framework.peak_allocated_bytes": 26019328.0,
+                    "framework.peak_reserved_bytes": 46137344.0,
+                    "framework.allocated_bytes": 13125120.0,
+                    "framework.reserved_bytes": 46137344.0,
+                    "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+                    "framework.lifecycle_peak_reserved_bytes": 46137344.0
+                  },
+                  {
+                    "latency_ms": 0.497803,
+                    "graphs_per_second": 2008.826784892819,
+                    "peak_allocated_bytes": 26019328.0,
+                    "framework.elapsed_ms": 0.497803,
+                    "framework.peak_allocated_bytes": 26019328.0,
+                    "framework.peak_reserved_bytes": 46137344.0,
+                    "framework.allocated_bytes": 13125120.0,
+                    "framework.reserved_bytes": 46137344.0,
+                    "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+                    "framework.lifecycle_peak_reserved_bytes": 46137344.0
+                  },
+                  {
+                    "latency_ms": 0.543528,
+                    "graphs_per_second": 1839.8316186102647,
+                    "peak_allocated_bytes": 26019328.0,
+                    "framework.elapsed_ms": 0.543528,
+                    "framework.peak_allocated_bytes": 26019328.0,
+                    "framework.peak_reserved_bytes": 46137344.0,
+                    "framework.allocated_bytes": 13125120.0,
+                    "framework.reserved_bytes": 46137344.0,
+                    "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+                    "framework.lifecycle_peak_reserved_bytes": 46137344.0
+                  },
+                  {
+                    "latency_ms": 0.53484,
+                    "graphs_per_second": 1869.718046518585,
+                    "peak_allocated_bytes": 26019328.0,
+                    "framework.elapsed_ms": 0.53484,
+                    "framework.peak_allocated_bytes": 26019328.0,
+                    "framework.peak_reserved_bytes": 46137344.0,
+                    "framework.allocated_bytes": 13125120.0,
+                    "framework.reserved_bytes": 46137344.0,
+                    "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+                    "framework.lifecycle_peak_reserved_bytes": 46137344.0
+                  },
+                  {
+                    "latency_ms": 0.606282,
+                    "graphs_per_second": 1649.3974751023452,
+                    "peak_allocated_bytes": 26019328.0,
+                    "framework.elapsed_ms": 0.606282,
+                    "framework.peak_allocated_bytes": 26019328.0,
+                    "framework.peak_reserved_bytes": 46137344.0,
+                    "framework.allocated_bytes": 13125120.0,
+                    "framework.reserved_bytes": 46137344.0,
+                    "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+                    "framework.lifecycle_peak_reserved_bytes": 46137344.0
+                  },
+                  {
+                    "latency_ms": 0.49944,
+                    "graphs_per_second": 2002.2425116130066,
+                    "peak_allocated_bytes": 26019328.0,
+                    "framework.elapsed_ms": 0.49944,
+                    "framework.peak_allocated_bytes": 26019328.0,
+                    "framework.peak_reserved_bytes": 46137344.0,
+                    "framework.allocated_bytes": 13125120.0,
+                    "framework.reserved_bytes": 46137344.0,
+                    "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+                    "framework.lifecycle_peak_reserved_bytes": 46137344.0
+                  },
+                  {
+                    "latency_ms": 0.553917,
+                    "graphs_per_second": 1805.324624447345,
+                    "peak_allocated_bytes": 26019328.0,
+                    "framework.elapsed_ms": 0.553917,
+                    "framework.peak_allocated_bytes": 26019328.0,
+                    "framework.peak_reserved_bytes": 46137344.0,
+                    "framework.allocated_bytes": 13125120.0,
+                    "framework.reserved_bytes": 46137344.0,
+                    "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+                    "framework.lifecycle_peak_reserved_bytes": 46137344.0
+                  },
+                  {
+                    "latency_ms": 0.518276,
+                    "graphs_per_second": 1929.4738710648382,
+                    "peak_allocated_bytes": 26019328.0,
+                    "framework.elapsed_ms": 0.518276,
+                    "framework.peak_allocated_bytes": 26019328.0,
+                    "framework.peak_reserved_bytes": 46137344.0,
+                    "framework.allocated_bytes": 13125120.0,
+                    "framework.reserved_bytes": 46137344.0,
+                    "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+                    "framework.lifecycle_peak_reserved_bytes": 46137344.0
+                  }
+                ],
+                "metrics": {
+                  "latency_ms": 0.547609,
+                  "graphs_per_second": 1826.1204618623872,
+                  "peak_allocated_bytes": 26019328.0,
+                  "framework.elapsed_ms": 0.547609,
+                  "framework.peak_allocated_bytes": 26019328.0,
+                  "framework.peak_reserved_bytes": 46137344.0,
+                  "framework.allocated_bytes": 13125120.0,
+                  "framework.reserved_bytes": 46137344.0,
+                  "framework.lifecycle_peak_allocated_bytes": 27067904.0,
+                  "framework.lifecycle_peak_reserved_bytes": 46137344.0
+                },
+                "metric_samples": {},
+                "diagnostics": {},
+                "bundle_hashes": {
+                  "trial-81bc23a8c7-param-859c0671": "fd7309572ad608afff602bb20776297a96b0cb816aa6bcfcb1c60b7a391ad706"
+                }
+              }
+            }
+          ],
+          "lease_wait_s": 3.032062739133835,
+          "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+          "devices": [
+            "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+          ],
+          "worker_pids_reaped": true
+        },
+        "diagnostic": null,
+        "candidate_diagnostics": null
+      }
+    ]
+  },
+  "binding_execution": {
+    "baseline": [
+      {
+        "rank": 0,
+        "setup": [],
+        "framework_source": {
+          "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+          "files": 160,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        }
+      }
+    ],
+    "candidate": [
+      {
+        "rank": 0,
+        "setup": [
+          {
+            "bundle": "trial-81bc23a8c7-param-859c0671",
+            "binding": {
+              "requested": "legacy",
+              "effective": "direct",
+              "reason": "no functional replacements"
+            },
+            "elapsed_ms": 197.770903,
+            "allocated_bytes": 3556864,
+            "reserved_bytes": 23068672,
+            "peak_allocated_bytes": 3556864,
+            "scope": "installation after model prepare; separate from the declared warm-model score"
+          }
+        ],
+        "framework_source": {
+          "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+          "files": 160,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        }
+      }
+    ]
+  },
+  "missing_coverage": [],
+  "complete_version": null,
+  "quality_and_coverage": [
+    {
+      "rank": 0,
+      "status": "passed",
+      "error": null,
+      "checks": [
+        {
+          "continuous_step": 0,
+          "passed": true,
+          "compared_elements": 262144,
+          "max_abs_error": 1.1920928955078125e-07
+        },
+        {
+          "continuous_step": 1,
+          "passed": true,
+          "compared_elements": 262144,
+          "max_abs_error": 1.1920928955078125e-07
+        }
+      ],
+      "coverage": {
+        "trial-81bc23a8c7-param-859c0671": {
+          "counts": {
+            "206dbc4bff7ae767415599c9": 2,
+            "866013201077b272e7156dd4": 2
+          },
+          "fallbacks": {},
+          "required": [
+            "206dbc4bff7ae767415599c9",
+            "866013201077b272e7156dd4"
+          ],
+          "reference_invocations": {},
+          "candidate_declared_routes": [
+            {
+              "call": "206dbc4bff7ae767415599c9",
+              "route": "triton_csr_segsum",
+              "count": 2
+            },
+            {
+              "call": "866013201077b272e7156dd4",
+              "route": "triton_csr_segsum",
+              "count": 2
+            }
+          ],
+          "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+        }
+      }
+    }
+  ],
+  "resources": {
+    "status": "observed",
+    "coverage": [
+      {
+        "cuda_kernels": 15,
+        "associated_kernels": 15,
+        "unassociated_kernels": 0,
+        "associated_below_project": 15,
+        "root_only_kernels": 0,
+        "backward_associated_kernels": 0,
+        "autograd_ranges": 0,
+        "forward_linked_autograd_ranges": 0,
+        "ambiguous_forward_sequences": 0
+      }
+    ],
+    "extra_collectors": {
+      "before": {
+        "nsys": {
+          "status": "observed",
+          "input": "observations/previous-before/nsys-9ed9145c.json",
+          "sha256": "3d44daeb613e1d58e18cac864ed3d698b09ef865e3043d599503cd1a86c00cb7",
+          "bytes": 20077,
+          "provenance": {
+            "revision": "879a796ad383e4afbf0395e6d82794b366e6b0f2c6cae8f331fdbdd9adbb1b28",
+            "parent_revision": "161cad79a71918dc07d114f7fdea30fca7541758008da98b5e3471c6043ea72f",
+            "bundles": [],
+            "plan": "sha256:2aee6072d9ce231361e8e7b0435a1db73bc416aea6a3524cb169d797ce22a346",
+            "registry": "sha256:654746feaabf7ec62a7f4ae8d824dbd29668ebceb5e25fa653702be1ca482f08",
+            "request_sha256": "50c4ce64a9e61bf30f86c842857d13d935c385ef93b43a374ff803a8b7d7123a",
+            "objective": {
+              "name": "latency_ms",
+              "unit": "ms",
+              "direction": "minimize",
+              "constraints": []
+            },
+            "workload": {
+              "id": "standard",
+              "nodes": 4096,
+              "edges": 65536
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "ranks": [
+            {
+              "rank": 0,
+              "scope": "separate Nsys run; nanosecond SQLite timestamps, no cross-run or cross-rank timestamp subtraction"
+            }
+          ],
+          "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+        },
+        "python_runtime": {
+          "status": "observed",
+          "input": "observations/previous-before/python_runtime-aea48e29.json",
+          "sha256": "dbd125755833b84721eb4fc369e10e23b4ed568de1fe633af4cfe2b62bf4e17f",
+          "bytes": 30736,
+          "provenance": {
+            "revision": "879a796ad383e4afbf0395e6d82794b366e6b0f2c6cae8f331fdbdd9adbb1b28",
+            "parent_revision": "161cad79a71918dc07d114f7fdea30fca7541758008da98b5e3471c6043ea72f",
+            "bundles": [],
+            "plan": "sha256:2aee6072d9ce231361e8e7b0435a1db73bc416aea6a3524cb169d797ce22a346",
+            "registry": "sha256:654746feaabf7ec62a7f4ae8d824dbd29668ebceb5e25fa653702be1ca482f08",
+            "request_sha256": "50c4ce64a9e61bf30f86c842857d13d935c385ef93b43a374ff803a8b7d7123a",
+            "objective": {
+              "name": "latency_ms",
+              "unit": "ms",
+              "direction": "minimize",
+              "constraints": []
+            },
+            "workload": {
+              "id": "standard",
+              "nodes": 4096,
+              "edges": 65536
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "ranks": [
+            {
+              "rank": 0,
+              "scope": "cProfile perturbs Python dispatch; self/cumulative times include host waits and cannot be added to GPU durations or used for acceptance",
+              "profiled_wall_ms": 0.686137
+            }
+          ],
+          "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+        }
+      },
+      "after": {
+        "nsys": {
+          "status": "observed",
+          "input": "observations/previous-after/nsys-9ed9145c.json",
+          "sha256": "110547dd98d78af81c1c0de97d8725dab30d52274151541b6141682ee72bacc6",
+          "bytes": 18390,
+          "provenance": {
+            "revision": "11ca1f80cfe678585450a9f7165718bd41a10d6e30fcdc4fcc7dbbc99eb5750c",
+            "parent_revision": "879a796ad383e4afbf0395e6d82794b366e6b0f2c6cae8f331fdbdd9adbb1b28",
+            "bundles": [
+              "trial-81bc23a8c7-param-859c0671"
+            ],
+            "plan": "sha256:2aee6072d9ce231361e8e7b0435a1db73bc416aea6a3524cb169d797ce22a346",
+            "registry": "sha256:654746feaabf7ec62a7f4ae8d824dbd29668ebceb5e25fa653702be1ca482f08",
+            "request_sha256": "50c4ce64a9e61bf30f86c842857d13d935c385ef93b43a374ff803a8b7d7123a",
+            "objective": {
+              "name": "latency_ms",
+              "unit": "ms",
+              "direction": "minimize",
+              "constraints": []
+            },
+            "workload": {
+              "id": "standard",
+              "nodes": 4096,
+              "edges": 65536
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "ranks": [
+            {
+              "rank": 0,
+              "scope": "separate Nsys run; nanosecond SQLite timestamps, no cross-run or cross-rank timestamp subtraction"
+            }
+          ],
+          "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+        },
+        "python_runtime": {
+          "status": "observed",
+          "input": "observations/previous-after/python_runtime-aea48e29.json",
+          "sha256": "4c4336229007168238aa315629050284e5f0f5ad053dafc4c1bdd264da543079",
+          "bytes": 49977,
+          "provenance": {
+            "revision": "11ca1f80cfe678585450a9f7165718bd41a10d6e30fcdc4fcc7dbbc99eb5750c",
+            "parent_revision": "879a796ad383e4afbf0395e6d82794b366e6b0f2c6cae8f331fdbdd9adbb1b28",
+            "bundles": [
+              "trial-81bc23a8c7-param-859c0671"
+            ],
+            "plan": "sha256:2aee6072d9ce231361e8e7b0435a1db73bc416aea6a3524cb169d797ce22a346",
+            "registry": "sha256:654746feaabf7ec62a7f4ae8d824dbd29668ebceb5e25fa653702be1ca482f08",
+            "request_sha256": "50c4ce64a9e61bf30f86c842857d13d935c385ef93b43a374ff803a8b7d7123a",
+            "objective": {
+              "name": "latency_ms",
+              "unit": "ms",
+              "direction": "minimize",
+              "constraints": []
+            },
+            "workload": {
+              "id": "standard",
+              "nodes": 4096,
+              "edges": 65536
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "ranks": [
+            {
+              "rank": 0,
+              "scope": "cProfile perturbs Python dispatch; self/cumulative times include host waits and cannot be added to GPU durations or used for acceptance",
+              "profiled_wall_ms": 1.016941
+            }
+          ],
+          "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+        }
+      }
+    },
+    "communication": {
+      "before": [
+        {
+          "status": "not_applicable",
+          "reason": "single-device task"
+        }
+      ],
+      "after": [
+        {
+          "status": "not_applicable",
+          "reason": "single-device task"
+        }
+      ],
+      "cross_rank_after": {
+        "matched": [],
+        "incomplete": [],
+        "clock_policy": "No subtraction of timestamps from different rank clocks"
+      }
+    },
+    "evidence": [
+      "/root/opop-v6-stage3/final-e2e-187617c/graph-latency/jobs/trial-81bc23a8c7-evaluation-19695be3-profile/run/trace-rank-0.json"
+    ],
+    "raw_discovery": [
+      "/root/opop-v6-stage3/final-e2e-187617c/graph-latency/jobs/trial-81bc23a8c7-evaluation-19695be3-profile/run/discovery-rank-0.json"
+    ],
+    "interpretation": "Nested diagnostic durations overlap; project gain belongs to the complete bundle. Unmeasured independent group effects are unknown.",
+    "groups": [
+      {
+        "group": "b63063a25115d472ba96",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "866013201077b272e7156dd4",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 190.241,
+                  "kernels": 7,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 190.241
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::vectorized_gather_kernel<16, long>(char*, char*, long*, int, long, long, long, long, bool)",
+                      "registers per thread": 32,
+                      "shared memory": 0,
+                      "grid": [
+                        65536,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 54.048
+                    },
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        1024,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 2.944
+                    },
+                    {
+                      "kernel": "void at::native::indexFuncLargeIndex<float, long, unsigned int, 2, 2, -2, true, at::native::(anonymous namespace)::ReduceAdd>(at::cuda::detail::TensorInfo<float, unsigned int>, at::cuda::detail::TensorInfo<float const, unsigned int>, at::cuda::detail::TensorInfo<long const, unsigned int>, int, int, unsigned int, unsigned int, long, long, at::native::(anonymous namespace)::ReduceAdd const&, float)",
+                      "registers per thread": 32,
+                      "shared memory": 0,
+                      "grid": [
+                        1024,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 98.625
+                    },
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+                      "registers per thread": 24,
+                      "shared memory": 0,
+                      "grid": [
+                        4,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 1.312
+                    },
+                    {
+                      "kernel": "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::DivFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::DivFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::DivFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::DivFunctor<float> > const&)::{lambda(int)#1})",
+                      "registers per thread": 19,
+                      "shared memory": 0,
+                      "grid": [
+                        4096,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 4.064
+                    },
+                    {
+                      "kernel": "void at::native::(anonymous namespace)::CatArrayBatchedCopy_vectorized<at::native::(anonymous namespace)::OpaqueType<4u>, unsigned int, 2, 128, 1, 16, 4>(char*, at::native::(anonymous namespace)::CatArrInputTensorMetadata<at::native::(anonymous namespace)::OpaqueType<4u>, unsigned int, 128, 1>, at::native::(anonymous namespace)::TensorSizeStride<unsigned int, 4u>, int, unsigned int)",
+                      "registers per thread": 19,
+                      "shared memory": 0,
+                      "grid": [
+                        2048,
+                        2,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 7.744
+                    },
+                    {
+                      "kernel": "ampere_sgemm_32x32_sliced1x4_tn",
+                      "registers per thread": 86,
+                      "shared memory": 32768,
+                      "grid": [
+                        2,
+                        128,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 21.504
+                    }
+                  ]
+                },
+                "after": {
+                  "cuda_us": 51.903999999999996,
+                  "kernels": 7,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 51.903999999999996
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<int>, std::array<char*, 1ul> >(int, at::native::FillFunctor<int>, std::array<char*, 1ul>)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        12,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 0.895
+                    },
+                    {
+                      "kernel": "_opop_hist_kernel",
+                      "registers per thread": 32,
+                      "shared memory": 4096,
+                      "grid": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 3.392
+                    },
+                    {
+                      "kernel": "void at_cuda_detail::cub::DeviceScanInitKernel<at_cuda_detail::cub::ScanTileState<int, true> >(at_cuda_detail::cub::ScanTileState<int, true>, int)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        1,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 0.896
+                    },
+                    {
+                      "kernel": "void at_cuda_detail::cub::DeviceScanKernel<at_cuda_detail::cub::detail::scan::policy_hub<int, int, int, unsigned int, std::plus<int> >::Policy1000, int const*, int*, at_cuda_detail::cub::ScanTileState<int, true>, std::plus<int>, at_cuda_detail::cub::NullType, unsigned int, int, false>(int const*, int*, at_cuda_detail::cub::ScanTileState<int, true>, int, std::plus<int>, at_cuda_detail::cub::NullType, unsigned int)",
+                      "registers per thread": 48,
+                      "shared memory": 7696,
+                      "grid": [
+                        3,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 2.049
+                    },
+                    {
+                      "kernel": "_opop_scatter_kernel",
+                      "registers per thread": 58,
+                      "shared memory": 4096,
+                      "grid": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 6.528
+                    },
+                    {
+                      "kernel": "_opop_segsum_kernel",
+                      "registers per thread": 32,
+                      "shared memory": 0,
+                      "grid": [
+                        4,
+                        4096,
+                        1
+                      ],
+                      "block": [
+                        32,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 18.016
+                    },
+                    {
+                      "kernel": "ampere_sgemm_32x32_sliced1x4_tn",
+                      "registers per thread": 86,
+                      "shared memory": 32768,
+                      "grid": [
+                        2,
+                        128,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 20.128
+                    }
+                  ]
+                },
+                "replacement_range": {
+                  "cuda_us": 51.903999999999996,
+                  "kernels": 7,
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<int>, std::array<char*, 1ul> >(int, at::native::FillFunctor<int>, std::array<char*, 1ul>)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        12,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    },
+                    {
+                      "kernel": "_opop_hist_kernel",
+                      "registers per thread": 32,
+                      "shared memory": 4096,
+                      "grid": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    },
+                    {
+                      "kernel": "void at_cuda_detail::cub::DeviceScanInitKernel<at_cuda_detail::cub::ScanTileState<int, true> >(at_cuda_detail::cub::ScanTileState<int, true>, int)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        1,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    },
+                    {
+                      "kernel": "void at_cuda_detail::cub::DeviceScanKernel<at_cuda_detail::cub::detail::scan::policy_hub<int, int, int, unsigned int, std::plus<int> >::Policy1000, int const*, int*, at_cuda_detail::cub::ScanTileState<int, true>, std::plus<int>, at_cuda_detail::cub::NullType, unsigned int, int, false>(int const*, int*, at_cuda_detail::cub::ScanTileState<int, true>, int, std::plus<int>, at_cuda_detail::cub::NullType, unsigned int)",
+                      "registers per thread": 48,
+                      "shared memory": 7696,
+                      "grid": [
+                        3,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    },
+                    {
+                      "kernel": "_opop_scatter_kernel",
+                      "registers per thread": 58,
+                      "shared memory": 4096,
+                      "grid": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    },
+                    {
+                      "kernel": "_opop_segsum_kernel",
+                      "registers per thread": 32,
+                      "shared memory": 0,
+                      "grid": [
+                        4,
+                        4096,
+                        1
+                      ],
+                      "block": [
+                        32,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    },
+                    {
+                      "kernel": "ampere_sgemm_32x32_sliced1x4_tn",
+                      "registers per thread": 86,
+                      "shared memory": 32768,
+                      "grid": [
+                        2,
+                        128,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    }
+                  ]
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "f2cad7658bd2e042c326",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "206dbc4bff7ae767415599c9",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 128.097,
+                  "kernels": 7,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 128.097
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::vectorized_gather_kernel<16, long>(char*, char*, long*, int, long, long, long, long, bool)",
+                      "registers per thread": 32,
+                      "shared memory": 0,
+                      "grid": [
+                        65536,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        32,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 34.976
+                    },
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        512,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 1.888
+                    },
+                    {
+                      "kernel": "void at::native::indexFuncLargeIndex<float, long, unsigned int, 2, 2, -2, true, at::native::(anonymous namespace)::ReduceAdd>(at::cuda::detail::TensorInfo<float, unsigned int>, at::cuda::detail::TensorInfo<float const, unsigned int>, at::cuda::detail::TensorInfo<long const, unsigned int>, int, int, unsigned int, unsigned int, long, long, at::native::(anonymous namespace)::ReduceAdd const&, float)",
+                      "registers per thread": 32,
+                      "shared memory": 0,
+                      "grid": [
+                        1024,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 45.952
+                    },
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+                      "registers per thread": 24,
+                      "shared memory": 0,
+                      "grid": [
+                        4,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 1.185
+                    },
+                    {
+                      "kernel": "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::DivFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::DivFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::DivFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::DivFunctor<float> > const&)::{lambda(int)#1})",
+                      "registers per thread": 19,
+                      "shared memory": 0,
+                      "grid": [
+                        2048,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 2.88
+                    },
+                    {
+                      "kernel": "void at::native::(anonymous namespace)::CatArrayBatchedCopy_vectorized<at::native::(anonymous namespace)::OpaqueType<4u>, unsigned int, 2, 128, 1, 16, 4>(char*, at::native::(anonymous namespace)::CatArrInputTensorMetadata<at::native::(anonymous namespace)::OpaqueType<4u>, unsigned int, 128, 1>, at::native::(anonymous namespace)::TensorSizeStride<unsigned int, 4u>, int, unsigned int)",
+                      "registers per thread": 19,
+                      "shared memory": 0,
+                      "grid": [
+                        1024,
+                        2,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 4.224
+                    },
+                    {
+                      "kernel": "ampere_sgemm_64x64_tn",
+                      "registers per thread": 126,
+                      "shared memory": 8704,
+                      "grid": [
+                        4,
+                        64,
+                        2
+                      ],
+                      "block": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 36.992
+                    }
+                  ]
+                },
+                "after": {
+                  "cuda_us": 58.849000000000004,
+                  "kernels": 7,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 58.849000000000004
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<int>, std::array<char*, 1ul> >(int, at::native::FillFunctor<int>, std::array<char*, 1ul>)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        12,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 1.088
+                    },
+                    {
+                      "kernel": "_opop_hist_kernel",
+                      "registers per thread": 32,
+                      "shared memory": 4096,
+                      "grid": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 3.52
+                    },
+                    {
+                      "kernel": "void at_cuda_detail::cub::DeviceScanInitKernel<at_cuda_detail::cub::ScanTileState<int, true> >(at_cuda_detail::cub::ScanTileState<int, true>, int)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        1,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 0.897
+                    },
+                    {
+                      "kernel": "void at_cuda_detail::cub::DeviceScanKernel<at_cuda_detail::cub::detail::scan::policy_hub<int, int, int, unsigned int, std::plus<int> >::Policy1000, int const*, int*, at_cuda_detail::cub::ScanTileState<int, true>, std::plus<int>, at_cuda_detail::cub::NullType, unsigned int, int, false>(int const*, int*, at_cuda_detail::cub::ScanTileState<int, true>, int, std::plus<int>, at_cuda_detail::cub::NullType, unsigned int)",
+                      "registers per thread": 48,
+                      "shared memory": 7696,
+                      "grid": [
+                        3,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 2.144
+                    },
+                    {
+                      "kernel": "_opop_scatter_kernel",
+                      "registers per thread": 58,
+                      "shared memory": 4096,
+                      "grid": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 6.496
+                    },
+                    {
+                      "kernel": "_opop_segsum_kernel",
+                      "registers per thread": 32,
+                      "shared memory": 0,
+                      "grid": [
+                        2,
+                        4096,
+                        1
+                      ],
+                      "block": [
+                        32,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 10.208
+                    },
+                    {
+                      "kernel": "ampere_sgemm_64x64_tn",
+                      "registers per thread": 126,
+                      "shared memory": 8704,
+                      "grid": [
+                        4,
+                        64,
+                        2
+                      ],
+                      "block": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 34.496
+                    }
+                  ]
+                },
+                "replacement_range": {
+                  "cuda_us": 58.849000000000004,
+                  "kernels": 7,
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<int>, std::array<char*, 1ul> >(int, at::native::FillFunctor<int>, std::array<char*, 1ul>)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        12,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    },
+                    {
+                      "kernel": "_opop_hist_kernel",
+                      "registers per thread": 32,
+                      "shared memory": 4096,
+                      "grid": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    },
+                    {
+                      "kernel": "void at_cuda_detail::cub::DeviceScanInitKernel<at_cuda_detail::cub::ScanTileState<int, true> >(at_cuda_detail::cub::ScanTileState<int, true>, int)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        1,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    },
+                    {
+                      "kernel": "void at_cuda_detail::cub::DeviceScanKernel<at_cuda_detail::cub::detail::scan::policy_hub<int, int, int, unsigned int, std::plus<int> >::Policy1000, int const*, int*, at_cuda_detail::cub::ScanTileState<int, true>, std::plus<int>, at_cuda_detail::cub::NullType, unsigned int, int, false>(int const*, int*, at_cuda_detail::cub::ScanTileState<int, true>, int, std::plus<int>, at_cuda_detail::cub::NullType, unsigned int)",
+                      "registers per thread": 48,
+                      "shared memory": 7696,
+                      "grid": [
+                        3,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    },
+                    {
+                      "kernel": "_opop_scatter_kernel",
+                      "registers per thread": 58,
+                      "shared memory": 4096,
+                      "grid": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    },
+                    {
+                      "kernel": "_opop_segsum_kernel",
+                      "registers per thread": 32,
+                      "shared memory": 0,
+                      "grid": [
+                        2,
+                        4096,
+                        1
+                      ],
+                      "block": [
+                        32,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    },
+                    {
+                      "kernel": "ampere_sgemm_64x64_tn",
+                      "registers per thread": 126,
+                      "shared memory": 8704,
+                      "grid": [
+                        4,
+                        64,
+                        2
+                      ],
+                      "block": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    }
+                  ]
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "5c99db34b94bd46a1fb2",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "71033a630785aadd19c1e999",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 98.625,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 98.625
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::indexFuncLargeIndex<float, long, unsigned int, 2, 2, -2, true, at::native::(anonymous namespace)::ReduceAdd>(at::cuda::detail::TensorInfo<float, unsigned int>, at::cuda::detail::TensorInfo<float const, unsigned int>, at::cuda::detail::TensorInfo<long const, unsigned int>, int, int, unsigned int, unsigned int, long, long, at::native::(anonymous namespace)::ReduceAdd const&, float)",
+                      "registers per thread": 32,
+                      "shared memory": 0,
+                      "grid": [
+                        1024,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 98.625
+                    }
+                  ]
+                },
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "eb9cc487a716081b9897",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "bee00fa9c247933b1ed6c83a",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 54.048,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 54.048
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::vectorized_gather_kernel<16, long>(char*, char*, long*, int, long, long, long, long, bool)",
+                      "registers per thread": 32,
+                      "shared memory": 0,
+                      "grid": [
+                        65536,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 54.048
+                    }
+                  ]
+                },
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "f40608d4e254c5f79624",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "a7d4e0be760f62be8bea745a",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 45.952,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 45.952
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::indexFuncLargeIndex<float, long, unsigned int, 2, 2, -2, true, at::native::(anonymous namespace)::ReduceAdd>(at::cuda::detail::TensorInfo<float, unsigned int>, at::cuda::detail::TensorInfo<float const, unsigned int>, at::cuda::detail::TensorInfo<long const, unsigned int>, int, int, unsigned int, unsigned int, long, long, at::native::(anonymous namespace)::ReduceAdd const&, float)",
+                      "registers per thread": 32,
+                      "shared memory": 0,
+                      "grid": [
+                        1024,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 45.952
+                    }
+                  ]
+                },
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "d88a2a064d89714e4767",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "a1535028e5ecfcb604215494",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 36.992,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 36.992
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "ampere_sgemm_64x64_tn",
+                      "registers per thread": 126,
+                      "shared memory": 8704,
+                      "grid": [
+                        4,
+                        64,
+                        2
+                      ],
+                      "block": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 36.992
+                    }
+                  ]
+                },
+                "after": {
+                  "cuda_us": 34.496,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 34.496
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "ampere_sgemm_64x64_tn",
+                      "registers per thread": 126,
+                      "shared memory": 8704,
+                      "grid": [
+                        4,
+                        64,
+                        2
+                      ],
+                      "block": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 34.496
+                    }
+                  ]
+                },
+                "replacement_range": null,
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "ed596a74cd2dfa585107",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "3917cd1f557688d0fef2351c",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 36.992,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 36.992
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "ampere_sgemm_64x64_tn",
+                      "registers per thread": 126,
+                      "shared memory": 8704,
+                      "grid": [
+                        4,
+                        64,
+                        2
+                      ],
+                      "block": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 36.992
+                    }
+                  ]
+                },
+                "after": {
+                  "cuda_us": 34.496,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 34.496
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "ampere_sgemm_64x64_tn",
+                      "registers per thread": 126,
+                      "shared memory": 8704,
+                      "grid": [
+                        4,
+                        64,
+                        2
+                      ],
+                      "block": [
+                        64,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 34.496
+                    }
+                  ]
+                },
+                "replacement_range": null,
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "01f5c9f78501e7c4935b",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "fe6b217d29437481be5f2ed5",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 34.976,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 34.976
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::vectorized_gather_kernel<16, long>(char*, char*, long*, int, long, long, long, long, bool)",
+                      "registers per thread": 32,
+                      "shared memory": 0,
+                      "grid": [
+                        65536,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        32,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 34.976
+                    }
+                  ]
+                },
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "b95618f15b1fc7dd1ea1",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "e9cbf5739bc84264b863c3fe",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 21.504,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 21.504
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "ampere_sgemm_32x32_sliced1x4_tn",
+                      "registers per thread": 86,
+                      "shared memory": 32768,
+                      "grid": [
+                        2,
+                        128,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 21.504
+                    }
+                  ]
+                },
+                "after": {
+                  "cuda_us": 20.128,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 20.128
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "ampere_sgemm_32x32_sliced1x4_tn",
+                      "registers per thread": 86,
+                      "shared memory": 32768,
+                      "grid": [
+                        2,
+                        128,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 20.128
+                    }
+                  ]
+                },
+                "replacement_range": null,
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "753201460fe4b2dc1a7a",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "12be5e599f9b66632f879389",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 21.504,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 21.504
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "ampere_sgemm_32x32_sliced1x4_tn",
+                      "registers per thread": 86,
+                      "shared memory": 32768,
+                      "grid": [
+                        2,
+                        128,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 21.504
+                    }
+                  ]
+                },
+                "after": {
+                  "cuda_us": 20.128,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 20.128
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "ampere_sgemm_32x32_sliced1x4_tn",
+                      "registers per thread": 86,
+                      "shared memory": 32768,
+                      "grid": [
+                        2,
+                        128,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 20.128
+                    }
+                  ]
+                },
+                "replacement_range": null,
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "e19fdcbbf4cb1e560801",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "1f9fd4c4bc3963db0c9f66d7",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 7.744,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 7.744
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::(anonymous namespace)::CatArrayBatchedCopy_vectorized<at::native::(anonymous namespace)::OpaqueType<4u>, unsigned int, 2, 128, 1, 16, 4>(char*, at::native::(anonymous namespace)::CatArrInputTensorMetadata<at::native::(anonymous namespace)::OpaqueType<4u>, unsigned int, 128, 1>, at::native::(anonymous namespace)::TensorSizeStride<unsigned int, 4u>, int, unsigned int)",
+                      "registers per thread": 19,
+                      "shared memory": 0,
+                      "grid": [
+                        2048,
+                        2,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 7.744
+                    }
+                  ]
+                },
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "562e5d94e7b48896cb14",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "f79db885f13afc1a0ec76f88",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 4.224,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 4.224
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::(anonymous namespace)::CatArrayBatchedCopy_vectorized<at::native::(anonymous namespace)::OpaqueType<4u>, unsigned int, 2, 128, 1, 16, 4>(char*, at::native::(anonymous namespace)::CatArrInputTensorMetadata<at::native::(anonymous namespace)::OpaqueType<4u>, unsigned int, 128, 1>, at::native::(anonymous namespace)::TensorSizeStride<unsigned int, 4u>, int, unsigned int)",
+                      "registers per thread": 19,
+                      "shared memory": 0,
+                      "grid": [
+                        1024,
+                        2,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 4.224
+                    }
+                  ]
+                },
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "ea66e0f7bb66524b6fba",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "2eb170a990782fe998ac2ead",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 4.064,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 4.064
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::DivFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::DivFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::DivFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::DivFunctor<float> > const&)::{lambda(int)#1})",
+                      "registers per thread": 19,
+                      "shared memory": 0,
+                      "grid": [
+                        4096,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 4.064
+                    }
+                  ]
+                },
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "8cba5786959905e51279",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "c4d431b4ea7075b487781a54",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 2.944,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 2.944
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        1024,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 2.944
+                    }
+                  ]
+                },
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "fa151b16cb333184cf06",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "6f7e6494a1d037f66dda9a07",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 2.88,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 2.88
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::DivFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::DivFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::DivFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::DivFunctor<float> > const&)::{lambda(int)#1})",
+                      "registers per thread": 19,
+                      "shared memory": 0,
+                      "grid": [
+                        2048,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 2.88
+                    }
+                  ]
+                },
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "e096dbe96b7f58cf696d",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "231c3b2ce0c673f40439c073",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.185,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 1.185
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+                      "registers per thread": 24,
+                      "shared memory": 0,
+                      "grid": [
+                        4,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 1.185
+                    }
+                  ]
+                },
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "db20c3f324d6a29eafc07312",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.312,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 1.312
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+                      "registers per thread": 24,
+                      "shared memory": 0,
+                      "grid": [
+                        4,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 1.312
+                    }
+                  ]
+                },
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "9e0ef7801910bc69a36b",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "9179b5cda81f9e67b997920f",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 1.888,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 1.888
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        512,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 1.888
+                    }
+                  ]
+                },
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "9f9c7497beec89998d34",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "6add22479383ec2539a87b8c",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "c90a64f85907e301e280d58a",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "ed4f19e205bd13dd86cf",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "5e90f195f7f306db14a8148e",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "798df708d05932b17f71",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "5ca29b105d93d325b41d4cbd",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "9952fea8f63b08896dafecc5",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "ca1f233e0c891270f758ff58",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "dfe44b1cfe55fcdce017af05",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "f6b685d75a61f7577e0e2b09",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "88475b4259a5c7ede930",
+        "bundle": "trial-81bc23a8c7-param-859c0671",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "ef8be01433c0dd9f87d7d2b9",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "routing": {
+    "selected_groups": [],
+    "neighbor_calls": [],
+    "lineage_group_ids": [
+      "01f5c9f78501e7c4935b",
+      "17655b6082e452b327f3",
+      "1f40997fb4a53f41b9da",
+      "3c57c8731ec33ed76cbb",
+      "562e5d94e7b48896cb14",
+      "5c99db34b94bd46a1fb2",
+      "753201460fe4b2dc1a7a",
+      "798df708d05932b17f71",
+      "88475b4259a5c7ede930",
+      "8cba5786959905e51279",
+      "9251a36a286fe46dfd34",
+      "94b536a4a71bd5cca127",
+      "9e0ef7801910bc69a36b",
+      "9f9c7497beec89998d34",
+      "a4c7c5976feb97b1cacc",
+      "b63063a25115d472ba96",
+      "b95618f15b1fc7dd1ea1",
+      "d88a2a064d89714e4767",
+      "d9e5d004d6d24251774f",
+      "e096dbe96b7f58cf696d",
+      "e19fdcbbf4cb1e560801",
+      "ea66e0f7bb66524b6fba",
+      "eb9cc487a716081b9897",
+      "ed4f19e205bd13dd86cf",
+      "ed596a74cd2dfa585107",
+      "f2cad7658bd2e042c326",
+      "f40608d4e254c5f79624",
+      "fa151b16cb333184cf06"
+    ],
+    "omitted_group_records": 0
+  },
+  "version_policy": "All previous measurements retain their original parent/candidate identities. Current grouping and evidence come from the new discovery; historical group timings are not silently reused.",
+  "attribution_policy": "The project gain belongs to the complete bundle. Missing independent group effects remain unknown."
+}

@@ -1,0 +1,104 @@
+{
+  "affected_calls": [
+    "12be5e599f9b66632f879389",
+    "1f9fd4c4bc3963db0c9f66d7",
+    "206dbc4bff7ae767415599c9",
+    "231c3b2ce0c673f40439c073",
+    "2eb170a990782fe998ac2ead",
+    "3917cd1f557688d0fef2351c",
+    "5e90f195f7f306db14a8148e",
+    "6add22479383ec2539a87b8c",
+    "6f7e6494a1d037f66dda9a07",
+    "71033a630785aadd19c1e999",
+    "866013201077b272e7156dd4",
+    "9179b5cda81f9e67b997920f",
+    "a1535028e5ecfcb604215494",
+    "a7d4e0be760f62be8bea745a",
+    "bee00fa9c247933b1ed6c83a",
+    "c4d431b4ea7075b487781a54",
+    "c90a64f85907e301e280d58a",
+    "db20c3f324d6a29eafc07312",
+    "dfe44b1cfe55fcdce017af05",
+    "e9cbf5739bc84264b863c3fe",
+    "ef8be01433c0dd9f87d7d2b9",
+    "f6b685d75a61f7577e0e2b09",
+    "f79db885f13afc1a0ec76f88",
+    "fe6b217d29437481be5f2ed5"
+  ],
+  "calls": [
+    "206dbc4bff7ae767415599c9",
+    "866013201077b272e7156dd4"
+  ],
+  "contract_ref": "sha256:d3a0c12584113b8879bd2d395978424cb0453f28dc474755e45ff3fcbcb297fc",
+  "edits": [
+    {
+      "before_sha256": null,
+      "content_ref": "sha256:253b8556fb19397766cedc283769c2a6a4cf5e451badfe43b39d81089c927ae9",
+      "path": "opop_candidates/trial-81bc23a8c7.py",
+      "schema_version": "project.v1"
+    },
+    {
+      "before_sha256": null,
+      "content_ref": "sha256:6dd284568b6dd59f5318ebd46c8be9fdb7e541dbb3c39af73f8d19c053da858a",
+      "path": "opop_candidates/trial-81bc23a8c7.targets.json",
+      "schema_version": "project.v1"
+    }
+  ],
+  "external_invariants": [
+    "Seeds: torch.manual_seed(20261021) before model construction; separate CPU torch.Generator seeded 20261022 for the input fixture (infer.py:14,20-23).",
+    "Numerics: float32 everywhere; torch.backends.cuda.matmul.allow_tf32=False; torch.backends.cudnn.allow_tf32=False; torch.set_float32_matmul_precision('highest') (infer.py:15-17, workloads.json dtype float32).",
+    "Architecture: two MeanSAGE layers, Linear(2*128->256) then Linear(2*256->64), with ReLU between layers; input_features=128, hidden_features=256, output_features=64 (model.py:18-26, workloads.json:2).",
+    "Aggregation semantics: messages = features.index_select(0, sources); neighbors = zeros_like(features).index_add_(0, destinations, messages); neighbors / degree.clamp_min(1).unsqueeze(1); duplicate directed edges contribute individually; nodes without incoming edges get zero neighbor features (model.py:11-15, README.md:17-19).",
+    "Workload graph: nodes=4096, edges=65536; degree = torch.bincount(destinations, minlength=4096).float(); the same edge list ordering and fixture construction path must be preserved.",
+    "Output: the complete [4096, 64] float32 output tensor, compared with torch.testing.assert_close(actual, reference, atol=1e-05, rtol=1e-4) (infer.py:45, workloads.json:9).",
+    "Timing boundary: each latency sample is the wall time of one forward between CUDA synchronizations; model/fixture construction, H2D transfer, warmup, quality checking and statistics queries are outside timing (README.md:13-15, infer.py:49-60).",
+    "No cross-invocation state: every forward is independent and uses the same GPU-resident inputs; the timed invocation contains no gradient clears or cache resets."
+  ],
+  "groups": [
+    "f2cad7658bd2e042c326",
+    "b63063a25115d472ba96"
+  ],
+  "id": "trial-81bc23a8c7-param-859c0671",
+  "implementation": "kernel",
+  "installer": "opop_candidates/trial-81bc23a8c7.py",
+  "parameters": {},
+  "parent_revision": "879a796ad383e4afbf0395e6d82794b366e6b0f2c6cae8f331fdbdd9adbb1b28",
+  "plan_ref": null,
+  "read_set": [
+    "call:12be5e599f9b66632f879389",
+    "call:1f9fd4c4bc3963db0c9f66d7",
+    "call:206dbc4bff7ae767415599c9",
+    "call:231c3b2ce0c673f40439c073",
+    "call:2eb170a990782fe998ac2ead",
+    "call:3917cd1f557688d0fef2351c",
+    "call:5e90f195f7f306db14a8148e",
+    "call:6add22479383ec2539a87b8c",
+    "call:6f7e6494a1d037f66dda9a07",
+    "call:71033a630785aadd19c1e999",
+    "call:866013201077b272e7156dd4",
+    "call:9179b5cda81f9e67b997920f",
+    "call:a1535028e5ecfcb604215494",
+    "call:a7d4e0be760f62be8bea745a",
+    "call:bee00fa9c247933b1ed6c83a",
+    "call:c4d431b4ea7075b487781a54",
+    "call:c90a64f85907e301e280d58a",
+    "call:db20c3f324d6a29eafc07312",
+    "call:dfe44b1cfe55fcdce017af05",
+    "call:e9cbf5739bc84264b863c3fe",
+    "call:ef8be01433c0dd9f87d7d2b9",
+    "call:f6b685d75a61f7577e0e2b09",
+    "call:f79db885f13afc1a0ec76f88",
+    "call:fe6b217d29437481be5f2ed5"
+  ],
+  "registry_ref": null,
+  "replaces": [],
+  "requires": [],
+  "schema_version": "project.v2",
+  "scope": "joint",
+  "write_set": [
+    "file:opop_candidates/trial-81bc23a8c7.py",
+    "file:opop_candidates/trial-81bc23a8c7.targets.json",
+    "call:206dbc4bff7ae767415599c9",
+    "call:866013201077b272e7156dd4"
+  ]
+}

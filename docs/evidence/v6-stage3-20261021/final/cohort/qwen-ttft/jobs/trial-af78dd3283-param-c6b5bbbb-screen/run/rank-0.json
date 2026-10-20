@@ -1,0 +1,103 @@
+{
+  "status": "passed",
+  "binding": {
+    "pid": 69962,
+    "status": "verified",
+    "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "logical_device": 0,
+    "nvidia_smi_pid_uuids": [
+      "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+    ],
+    "pid_query_status": "observed",
+    "occupancy": {
+      "status": "sampled_clear",
+      "samples": 20,
+      "unavailable_samples": 0,
+      "wait_s": 0.08836060389876366,
+      "external_clients": [],
+      "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+    }
+  },
+  "framework_source": {
+    "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+    "files": 160,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "result": {
+    "valid": false,
+    "checks": [
+      {
+        "continuous_step": 0,
+        "passed": false,
+        "compared_elements": 4861984,
+        "max_abs_error": 5.0625,
+        "observation_path": "output.logits",
+        "atol": 0.02,
+        "rtol": 0.02,
+        "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+        "error": "Tensor-likes are not close!\n\nMismatched elements: 2017208 / 4861952 (41.5%)\nGreatest absolute difference: 5.0625 at index (0, 21, 137522) (up to 0.02 allowed)\nGreatest relative difference: 27648.0 at index (0, 23, 82333) (up to 0.02 allowed)"
+      },
+      {
+        "continuous_step": 1,
+        "passed": false,
+        "compared_elements": 4861984,
+        "max_abs_error": 5.0625,
+        "observation_path": "output.logits",
+        "atol": 0.02,
+        "rtol": 0.02,
+        "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+        "error": "Tensor-likes are not close!\n\nMismatched elements: 2017208 / 4861952 (41.5%)\nGreatest absolute difference: 5.0625 at index (0, 21, 137522) (up to 0.02 allowed)\nGreatest relative difference: 27648.0 at index (0, 23, 82333) (up to 0.02 allowed)"
+      }
+    ],
+    "coverage": {
+      "trial-af78dd3283-param-c6b5bbbb": {
+        "counts": {
+          "900c23e99c808d2c9bda215a": 2
+        },
+        "fallbacks": {},
+        "required": [
+          "900c23e99c808d2c9bda215a"
+        ],
+        "reference_invocations": {
+          "900c23e99c808d2c9bda215a": 4
+        },
+        "candidate_declared_routes": [
+          {
+            "call": "900c23e99c808d2c9bda215a",
+            "route": "prefill_cuda_graph_capture_and_replay",
+            "count": 1
+          },
+          {
+            "call": "900c23e99c808d2c9bda215a",
+            "route": "prefill_cuda_graph_replay",
+            "count": 1
+          }
+        ],
+        "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+      }
+    },
+    "math_policy_unchanged": true,
+    "setup": [
+      {
+        "bundle": "trial-af78dd3283-param-c6b5bbbb",
+        "binding": {
+          "requested": "legacy",
+          "effective": "direct",
+          "reason": "no functional replacements"
+        },
+        "elapsed_ms": 28.330004,
+        "allocated_bytes": 8101711872,
+        "reserved_bytes": 8103395328,
+        "peak_allocated_bytes": 8101711872,
+        "scope": "installation after model prepare; separate from the declared warm-model score"
+      }
+    ],
+    "samples": [],
+    "metrics": {},
+    "bundle_hashes": {
+      "trial-af78dd3283-param-c6b5bbbb": "694a65cd8bf8adbd9c7c3ec5b27b1587399743902dbe046284aa1d31445187ea"
+    }
+  }
+}

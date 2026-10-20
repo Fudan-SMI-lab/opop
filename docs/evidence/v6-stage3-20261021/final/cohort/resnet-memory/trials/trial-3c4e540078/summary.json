@@ -1,0 +1,460 @@
+{
+  "trial": "trial-3c4e540078",
+  "decision": {
+    "state": "evaluated",
+    "revision": "fb397770d5309db2a447bab69498b6f6ecbf298f69174c9f4574c72b8c091668",
+    "parent": "87e7d66efba88ff766579f51392ee6f6504cb3454d3642668ab4ef2890f8b2ec",
+    "bundle": "trial-3c4e540078-param-d377cbf2",
+    "accepted": true,
+    "reasons": [],
+    "report_ref": "sha256:75340b0bae1b655498989fe227b310418d2862b7018f43ed6b2933e0f421605f"
+  },
+  "measurement": {
+    "valid": true,
+    "objective": 204905472.0,
+    "reference": 281975808.0,
+    "parent_values": [
+      281975808.0,
+      281975808.0
+    ],
+    "candidate_values": [
+      204905472.0,
+      204905472.0
+    ],
+    "paired_gains": [
+      77070336.0,
+      77070336.0
+    ],
+    "noise_bounds": [
+      0.0,
+      0.0
+    ],
+    "constraints": [
+      {
+        "metric": "images_per_second",
+        "values": [
+          8117.276379816493,
+          8000.0140000245
+        ],
+        "limit": 7174.1462647949065,
+        "original_reference": 7551.732910310428,
+        "passed": true
+      }
+    ],
+    "reasons": [],
+    "framework_source": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+    "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+  },
+  "missing_coverage": [],
+  "publication": "committed",
+  "evaluation_attempt": "trial-3c4e540078-evaluation-fcf85c11",
+  "experiment_policy": {
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ],
+    "leaf_groups_only": false,
+    "selection_strategy": "agent",
+    "feedback_view": "full"
+  },
+  "selection": {
+    "scope": "region",
+    "groups": [
+      "3821cceac23fa97e5a55",
+      "0022893ec8c1ceea869f",
+      "95d8eead897036452c64",
+      "c97c8dfae7e5def85428",
+      "7e7c01e2bf7e30a42280",
+      "3412952b9279e41b1709",
+      "c671bb65e86ad614e3f6",
+      "8bffcf00b7bd20c935a5",
+      "c0af3909ba0a106672d5",
+      "5d6060b158cac3430090"
+    ],
+    "rationale": "The objective is peak_allocated_bytes for one batch-32 FP32 ResNet-18 forward (baseline 281,975,808 B). Measured/derived facts locate the process peak inside the stem (ResNetEmbeddings): during aten::batch_norm and aten::relu the trace shows two coexisting full-batch (32,64,112,112) buffers of 102,760,448 B each (conv output, then BN/ReLU output; the ReLU is out-of-place, executed as vectorized_elementwise_kernel per call-resources.json). Persistent-live memory during run() is params 46,758,048 B + pixels 19,267,584 B + images 1,806,336 B = 67,831,968 B; adding the two 102.76 MB stem buffers gives 273,352,864 B, and the ~8.6 MB residual to the measured 281.98 MB peak is cudnn conv workspace - so the stem is the peak site, not merely the largest indexed family. The selected region is the contiguous stem execution: ResNetEmbeddings forward -> embedder ResNetConvLayer -> Conv2d/aten::conv2d -> BatchNorm2d/aten::batch_norm -> ReLU/aten::relu -> MaxPool2d/aten::max_pool2d (transformers 5.16.1 ResNetEmbeddings.forward is exactly embedder+pooler, verified in the worker venv). Every op in this region is per-sample (conv with per-sample windows, eval-mode BN, elementwise ReLU, max pooling), so executing the stem in batch chunks (e.g. 8) and writing chunk results into a preallocated (32,64,56,56) output (or cat of chunk outputs) is mathematically the same computation; chunk-sized conv/bn buffers are 25.69 MB instead of 102.76 MB. The boundary is coherent and minimal: the region returns the same-shaped pooled tensor, so downstream encoder/stage/classifier calls keep their observed execution structure and are not additional affected calls; the 10 listed calls (all calls of the selected groups) are re-invoked once per chunk. Alternatives rejected: folding BN into the stem conv plus in-place ReLU also removes only one 102.76 MB buffer and lands on the same stage-0 ceiling (~176-180 MB) but with weight surgery and larger numerical drift; whole-model micro-batching could reach ~124 MB but multiplies kernel-launch count ~4x across the whole 4.24 ms forward, risking the hard images_per_second >= 0.95*7551.7 constraint, and would have to enumerate the entire plan as affected.",
+    "hypothesis": "Chunked (micro-batched) stem execution at the ResNetEmbeddings boundary - splitting the GPU-resident (32,3,224,224) input into batch chunks (e.g. 8 images), running self.embedder (conv->BN->ReLU) and self.pooler per chunk, and assembling the (32,64,56,56) result without a full-batch (32,64,112,112) intermediate - reduces peak_allocated_bytes from 281,975,808 B to approximately the next coexistence ceiling: 67.83 MB persistent + 4 x 25.69 MB stage-0 buffers + workspace, i.e. roughly 176-182 MB (~35-38% reduction), with the chunked stem itself peaking near 67.8 + 2x25.7 + 25.7 ~ 150 MB. Throughput should stay within the 0.95 ratio (clean budget 4.4604 ms vs 4.2374 ms median) because the stem is ~0.9 ms of the ~4.15 ms diagnostic CUDA time and chunking adds only ~3-15 extra large kernel launches (launch overhead is microseconds; conv at chunk batch 8 still launches grids of ~hundreds of blocks), so expected overhead is well under 1%. Quality is expected to hold: batch splitting is per-sample math identical to the full-batch forward; only cudnn algorithm selection per shape can change rounding order (typically ~1e-6 relative), far inside atol=rtol=1e-4, and top-1 argmax gaps are expected to dwarf that noise. Risks to test: (1) cudnn heuristic algo choice at batch 8 could differ enough to perturb logits - verify with the harness reference comparison and exact-top1 check; (2) if cat-based assembly doubles the pooled buffer momentarily, use a preallocated output with narrow views to keep the stem chunk peak below the stage-0 ceiling; (3) the resulting peak is then bounded by stage 0, which is the natural follow-up region, not part of this candidate. This is a hypothesis to be validated by the independent measurement, not a claimed benefit.",
+    "affected_calls": [
+      "021f27d2d0d73dee5fab9084",
+      "220b9d0ec76e2ccc01dcdb09",
+      "279a256c150755fd69216f5a",
+      "2f3bfb9ee01d701be01d2ff3",
+      "35096a239aa1290aabeed5de",
+      "3c3c7a3e1837d0185b1df6f0",
+      "52e7c2f32ca6695f380d240f",
+      "679ccfe137094282d25350c1",
+      "683c822136ed7958f3e9ba44",
+      "87335b95bb02e81155c4add6",
+      "8ef2341287e5b4afa9d0e7bf",
+      "aa9765a1830bed7ee2727282",
+      "cc658ee4e2f7b6628feb4ca4",
+      "d1400702f02f387d67569ac9",
+      "ddf82d5c5c82c55ac9ae09f1",
+      "ea7cd77adb03bad473412ebc",
+      "eea81d115a4403a3083c1f64"
+    ]
+  },
+  "proposal": {
+    "implementation": "composite",
+    "replacement_calls": [
+      "683c822136ed7958f3e9ba44"
+    ],
+    "rationale": "Selected region is the contiguous ResNet-18 stem (groups 3821cceac23fa97e5a55..5d6060b158cac3430090). Measured facts (selection rationale + targets/call-resources): the process peak sits in the stem, where two coexisting full-batch (32,64,112,112) FP32 buffers of 102,760,448 B each (conv output, then out-of-place BN/ReLU output, executed as cudnn bn_fw_inf_1C11_kernel_NCHW, clamp_scalar elementwise and max_pool_forward_nchw kernels) sit on top of 67,831,968 B persistent-live tensors (params 46,758,048 + pixels 19,267,584 + images 1,806,336) plus ~8.6 MB cudnn workspace, matching the measured 281,975,808 B baseline. This candidate replaces exactly one boundary, the region root ResNetEmbeddings forward (call 683c822136ed7958f3e9ba44), with an eager chunked executor: it slices the GPU-resident input into batch chunks (default 8 images), runs the actual parent ResNetConvLayer forward (via context.references['679ccfe137094282d25350c1']) and the actual parent MaxPool2d forward (via context.references['aa9765a1830bed7ee2727282']) per chunk, and assembles results by narrow copy_ into one preallocated (32,64,56,56) output. Every stem op is per-sample (conv windows, eval-mode BN with frozen running stats, elementwise ReLU, max pooling), so chunked execution is the same computation per image; only cudnn's per-shape heuristic algorithm choice can differ at chunk batch 8 vs 32. Expected memory: chunk-sized conv/BN/ReLU transients are 2 x 25,690,112 B instead of 2 x 102,760,448 B; stem-phase live memory ~67.8 MB persistent + 25.7 MB pooled output + 51.4 MB transient + 6.4 MB pooled chunk ~ 151 MB, after which the project peak is expected to be bounded by stage 0 (~176-180 MB, ~35-38% below baseline). These are expectations to be confirmed by the independent paired measurement, not claimed results. Throughput: stem work is ~0.9 ms of ~4.15 ms diagnostic CUDA time; chunking adds ~15 extra large kernel launches (24 vs 5 in the stem) whose grids remain large at batch 8, plus 4 device-to-device copies of 6.4 MB, so expected overhead is well inside the 0.95 throughput budget (clean budget ~4.4604 ms vs ~4.2374 ms baseline median). Composition follows the binding contract: the inner conv/bn/relu/maxpool calls are NOT replaced or eliminated - they execute per chunk through the parent references handed to build(), preserving actual parent execution semantics, and the framework's module dispatch keeps its own phase/signature guard at the replaced boundary (observed (32,3,224,224) contiguous FP32 CUDA signature). Internal guards fall back to the parent reference for: unsupported signature (extra args/kwargs, non-CUDA, non-FP32, non-contiguous, wrong channel count, non-4D), grad-enabled execution (frozen workload always runs under inference_mode), runtime failure inside the chunked attempt, and a retained concise setup-failure category when the expected references/modules are absent. Fallback labels are reported via context.record_route inside the replacement (chunked_stem:ok / fallback_signature / fallback_runtime / fallback_setup), never at build time. Batch size is read from the input tensor each invocation (works for any N, including batch 1 or held-out batch 7, degrading to a single parent-equivalent chunk), nothing is cached across invocations, and no fixture outputs are precomputed. There is no previous-candidate directory and no previous-feedback.txt, so this attempt is the first implementation of the selected hypothesis.",
+    "setup_work": {
+      "description": "build() only captures the wrapped parent references (context.references for the stem, ResNetConvLayer and MaxPool2d boundaries), the ResNetEmbeddings module handle and its num_channels attribute, and reads the optional stem_chunk parameter. No CUDA kernels, no tensor allocation, no weight mutation, no packed weights and no model surgery happen at installation time; the CUDA graph-free eager path needs none.",
+      "setup_allocation_bytes": 0,
+      "retained_pools": "None created. All working buffers are per-invocation caching-allocator blocks that repeat the steady-state pattern of the parent path at chunk granularity; reserved-pool structure is unchanged in kind.",
+      "first_invocation_adaptation": "cudnn heuristic plan selection for the chunk shapes (8,3,224,224) conv etc. happens once and is cached in-process; with the frozen warmup=2 protocol this lands in warmup invocations outside the timed repeats, same lifecycle as the parent's own first-use plan selection.",
+      "parameter_handling": "stem_chunk is read from context['parameters'] when the coordinator supplies it (default 8, defensively clamped to >=1); it changes only execution granularity, never batch, shapes, dtype or sampling semantics."
+    },
+    "quality_risks": [
+      "cudnn heuristic algorithm selection at chunk batch (e.g. 8) may differ from batch 32, changing floating-point accumulation order in the stem conv; expected drift is far below the atol=rtol=1e-4 logits tolerance, but this is verified by the evaluator's paired reference comparison rather than assumed.",
+      "require_exact_top1 compares integer argmax tensors exactly; a near-tie in logits could in principle flip under tiny numerical drift. Expected argmax margins dwarf the noise; validated by the exact-top1 check in the quality run.",
+      "Quality compares against a parent-generated reference, so any fallback path is output-identical by construction (it executes the parent reference); the measured workload matches the observed signature, so the chunked path is the one exercised and counted for coverage.",
+      "Autograd/training semantics are not exercised by the frozen inference workload; the replacement deliberately falls back to the parent whenever gradients are enabled instead of claiming unverified autograd equivalence.",
+      "Numerical policies are untouched: no TF32, cudnn.benchmark stays False, FP32 weights and activations, no in-place rewrites of parent tensors (assembly writes only into the candidate-owned preallocated output)."
+    ],
+    "eliminated_calls": [],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {
+      "params": [
+        {
+          "name": "stem_chunk",
+          "kind": "int",
+          "choices": [
+            4,
+            8,
+            16
+          ],
+          "description": "Images per stem chunk. Smaller chunks lower stem transient memory (2 x chunk/32 x 102.76 MB) but add launches; 8 keeps the stem peak below the stage-0 ceiling with minimal launch overhead. Chunk never changes batch, sampling or output semantics; N <= stem_chunk degrades to one parent-equivalent chunk."
+        }
+      ],
+      "constraints": []
+    }
+  },
+  "bundle": {
+    "id": "trial-3c4e540078-param-d377cbf2",
+    "scope": "region",
+    "implementation": "composite",
+    "calls": [
+      "683c822136ed7958f3e9ba44"
+    ],
+    "groups": [
+      "3821cceac23fa97e5a55",
+      "0022893ec8c1ceea869f",
+      "95d8eead897036452c64",
+      "c97c8dfae7e5def85428",
+      "7e7c01e2bf7e30a42280",
+      "3412952b9279e41b1709",
+      "c671bb65e86ad614e3f6",
+      "8bffcf00b7bd20c935a5",
+      "c0af3909ba0a106672d5",
+      "5d6060b158cac3430090"
+    ],
+    "requires": [],
+    "replaces": [],
+    "parameters": {
+      "stem_chunk": 8
+    },
+    "installer": "opop_candidates/trial-3c4e540078.py"
+  },
+  "paired_runs": [
+    {
+      "parent": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 8.01909539103508,
+        "lease_wait_s": 0.0001672022044658661,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {},
+              "math_policy_unchanged": true,
+              "metrics": {
+                "peak_allocated_bytes": 281975808.0,
+                "latency_ms": 4.22139,
+                "images_per_second": 7580.441513340392,
+                "batch": 32.0,
+                "parameter_count": 11689512.0,
+                "framework.elapsed_ms": 4.22139,
+                "framework.peak_allocated_bytes": 281975808.0,
+                "framework.peak_reserved_bytes": 396361728.0,
+                "framework.allocated_bytes": 76582912.0,
+                "framework.reserved_bytes": 396361728.0,
+                "framework.lifecycle_peak_allocated_bytes": 282103808.0,
+                "framework.lifecycle_peak_reserved_bytes": 396361728.0
+              }
+            }
+          }
+        ]
+      },
+      "candidate": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 7.754737231880426,
+        "lease_wait_s": 0.0001241341233253479,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-3c4e540078-param-d377cbf2": {
+                  "counts": {
+                    "683c822136ed7958f3e9ba44": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "683c822136ed7958f3e9ba44"
+                  ],
+                  "reference_invocations": {
+                    "679ccfe137094282d25350c1": 8,
+                    "aa9765a1830bed7ee2727282": 8
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "683c822136ed7958f3e9ba44",
+                      "route": "chunked_stem:ok",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "peak_allocated_bytes": 204905472.0,
+                "latency_ms": 3.942209,
+                "images_per_second": 8117.276379816493,
+                "batch": 32.0,
+                "parameter_count": 11689512.0,
+                "framework.elapsed_ms": 3.942209,
+                "framework.peak_allocated_bytes": 204905472.0,
+                "framework.peak_reserved_bytes": 251658240.0,
+                "framework.allocated_bytes": 76582912.0,
+                "framework.reserved_bytes": 251658240.0,
+                "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+                "framework.lifecycle_peak_reserved_bytes": 251658240.0
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "parent": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 7.834973905235529,
+        "lease_wait_s": 0.00025180354714393616,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {},
+              "math_policy_unchanged": true,
+              "metrics": {
+                "peak_allocated_bytes": 281975808.0,
+                "latency_ms": 4.215292,
+                "images_per_second": 7591.4076652341055,
+                "batch": 32.0,
+                "parameter_count": 11689512.0,
+                "framework.elapsed_ms": 4.215292,
+                "framework.peak_allocated_bytes": 281975808.0,
+                "framework.peak_reserved_bytes": 396361728.0,
+                "framework.allocated_bytes": 76582912.0,
+                "framework.reserved_bytes": 396361728.0,
+                "framework.lifecycle_peak_allocated_bytes": 282103808.0,
+                "framework.lifecycle_peak_reserved_bytes": 396361728.0
+              }
+            }
+          }
+        ]
+      },
+      "candidate": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 8.068351797759533,
+        "lease_wait_s": 0.00014732033014297485,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-3c4e540078-param-d377cbf2": {
+                  "counts": {
+                    "683c822136ed7958f3e9ba44": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "683c822136ed7958f3e9ba44"
+                  ],
+                  "reference_invocations": {
+                    "679ccfe137094282d25350c1": 8,
+                    "aa9765a1830bed7ee2727282": 8
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "683c822136ed7958f3e9ba44",
+                      "route": "chunked_stem:ok",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {
+                "peak_allocated_bytes": 204905472.0,
+                "latency_ms": 3.999993,
+                "images_per_second": 8000.0140000245,
+                "batch": 32.0,
+                "parameter_count": 11689512.0,
+                "framework.elapsed_ms": 3.999993,
+                "framework.peak_allocated_bytes": 204905472.0,
+                "framework.peak_reserved_bytes": 251658240.0,
+                "framework.allocated_bytes": 76582912.0,
+                "framework.reserved_bytes": 251658240.0,
+                "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+                "framework.lifecycle_peak_reserved_bytes": 251658240.0
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "candidate": {
+    "status": "passed",
+    "failure": null,
+    "wall_s": 7.754737231880426,
+    "lease_wait_s": 0.0001241341233253479,
+    "ranks": [
+      {
+        "rank": 0,
+        "status": "passed",
+        "result": {
+          "valid": true,
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 32032,
+              "max_abs_error": 0.0
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 32032,
+              "max_abs_error": 0.0
+            }
+          ],
+          "coverage": {
+            "trial-3c4e540078-param-d377cbf2": {
+              "counts": {
+                "683c822136ed7958f3e9ba44": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "683c822136ed7958f3e9ba44"
+              ],
+              "reference_invocations": {
+                "679ccfe137094282d25350c1": 8,
+                "aa9765a1830bed7ee2727282": 8
+              },
+              "candidate_declared_routes": [
+                {
+                  "call": "683c822136ed7958f3e9ba44",
+                  "route": "chunked_stem:ok",
+                  "count": 2
+                }
+              ],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "math_policy_unchanged": true,
+          "metrics": {
+            "peak_allocated_bytes": 204905472.0,
+            "latency_ms": 3.942209,
+            "images_per_second": 8117.276379816493,
+            "batch": 32.0,
+            "parameter_count": 11689512.0,
+            "framework.elapsed_ms": 3.942209,
+            "framework.peak_allocated_bytes": 204905472.0,
+            "framework.peak_reserved_bytes": 251658240.0,
+            "framework.allocated_bytes": 76582912.0,
+            "framework.reserved_bytes": 251658240.0,
+            "framework.lifecycle_peak_allocated_bytes": 205033472.0,
+            "framework.lifecycle_peak_reserved_bytes": 251658240.0
+          }
+        }
+      }
+    ]
+  }
+}

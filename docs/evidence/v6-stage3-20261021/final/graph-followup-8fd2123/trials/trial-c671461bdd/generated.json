@@ -1,0 +1,288 @@
+{
+  "trial": "trial-c671461bdd",
+  "selection": {
+    "scope": "region",
+    "groups": [
+      "1f40997fb4a53f41b9da",
+      "66fcde2159b1ab1f75f5",
+      "edc0a58ff71b8c7595f0",
+      "dde5131754ef3500c172",
+      "034c4a994dfe3e4c9bd1",
+      "e20f34533907df483e7c",
+      "0e77f480386500df0134",
+      "fc6048eb2ac9303f23f9",
+      "992609a8fac1ec0686d7",
+      "fa9131051011b2a25a20"
+    ],
+    "affected_calls": [
+      "082954dfb7897b23be544855",
+      "216cc438ab119abe43785340",
+      "3ac036f4c828a6d38c6de955",
+      "6e9d6b583aadf65e4b1eb44d",
+      "76ffa2b5e33044ba6db7c860",
+      "80ff8693d7ac3cf2433b10f2",
+      "990cea7c86061e796cd2a5d7",
+      "a0b5ffd5bf021ca4ff461953",
+      "c32e164325026aa5527db4ed",
+      "dd76570a9bbdb0b333acb618",
+      "f0f4117235b31295be4311e6",
+      "fcb52401b04cde5fb368ea0f"
+    ],
+    "rationale": "Objective is latency_ms of one complete GraphEncoder forward (sync-bracketed wall time). Current parent is the accepted region composite trial-678b0307f5-param-9fc9967a (previous evaluation 0.30233 ms vs 0.36453 reference, quality pass max_abs_error 3.3e-7; best parameter trial 0.281618 ms). Discovery on the current revision 0913aed2 shows the whole forward is one contiguous region at the 'model' boundary (call 80ff8693, group 1f40997fb4a53f41b9da) executing 9 CUDA kernels on a single stream: 4 Triton kernels (_scan 2.30us, _scatter 6.05us, _segmean 25.98us K=128, _segmean 16.96us K=256) plus 5 aten kernels (addmm 26.34/14.79us, addmm_ 13.47/8.61us, relu_ 3.20us), diagnostic CUDA sum 118.2us. Measured bottleneck is no longer GPU work but per-invocation host dispatch of this 9-launch chain: the clean parameter-search trial tr-0af3323b measured 281.6us wall against replacement.diagnostic_kernel_sum_us 117.28 over 9 launches (~164us, ~58% of wall, outside GPU kernel time); the separately collected nsys run on this exact revision shows 117.7us busy in a 584.2us span with 466.5us of inter-kernel gaps across 8 boundaries (perturbed upper bound); python_runtime cProfile (perturbed, host evidence only) confirms the dispatch chain itself: triton jit run 4 calls 68.9us self/195.1us cumulative, torch.addmm 32.5us, addmm_ 25.2us, torch.empty 21.6us, relu_ 12.1us, cuda_utils.launch 31.4us. The GPU kernels are near-roofline for this workload (segmean ~1.3 TB/s effective gather bandwidth; sgemm ~10 TFLOP/s FP32 with TF32 disabled), so the largest remaining lever is eliminating per-kernel launch/dispatch overhead by capturing the identical 9-kernel pipeline into a CUDA graph and replaying it per invocation; the resources.json collection plan explicitly retained the eager baseline 'to judge any later CUDA-graph capture (graph tracing question)'. The editable boundary is the whole forward region: replacing only a sub-group cannot remove launches across the chain, and the graph capture must own the entire kernel sequence including the aten addmm/addmm_/relu_ dispatch and the six per-invocation allocations (aten::empty for counts/starts/ends, src_sorted, nb1, nb2), so those nested groups' calls are affected and included. This is a coherent single-region edit that explicitly replaces the whole installed bundle at the same boundary (its only required call 80ff8693 remains satisfied by the new replacement invocation); no partial composition with the previous bundle is proposed. The outer project.invoke boundary and the profiler record_function instrumentation are unchanged and excluded.",
+    "hypothesis": "Replacing the installed composite forward at the model-call boundary with a CUDA-graph-capturing version reduces latency_ms from the current ~0.28-0.30 ms toward ~0.13-0.17 ms, because the clean-wall evidence shows ~164us of the 281.6us best measured wall is host dispatch/launch slack over a fixed 117.7us 9-kernel single-stream sequence, and a graph replay replaces that chain with one cudaGraphLaunch (~10-30us expected overhead). Numerics are unchanged: replay executes the identical kernels, in the identical order, on identical addresses, so outputs should be bitwise equal to the accepted composite (quality margin is large, max_abs_error 3.3e-7 vs atol 1e-5). Testable prediction: measured latency_ms drops by roughly the non-kernel slack (>=100us, well outside the previous MAD-derived noise bounds of ~0.02-0.023 ms) with quality and coverage still passing. Binding-contract constraints the implementation must satisfy: (1) capture must happen lazily during an actual adapter invocation on current inputs (warmup=3 covers it; cuBLAS workspaces warmed by one eager pre-capture pass), never at build() time, so the captured graph is the accepted parent's work under the live dispatch context; (2) guards on input identity (device, dtype, shape, strides, data_ptr of features/sources/destinations/degree) with recapture or eager fallback to the existing pipeline when they change, so the workload always executes on current inputs and incompatible signatures fall back; (3) replay output aliases the graph-private pool, which is safe because observe() copies the full [4096,64] FP32 tensor to CPU per invocation, and reset() semantics are unaffected since the graph holds no data state, only execution structure; (4) the Python replacement is still invoked every run (record_route coverage), and the nested aten addmm/addmm_/relu_/empty calls then execute only during capture warm-up rather than per invocation - exactly the calls listed in affected_calls; (5) the bundle explicitly replaces trial-678b0307f5-param-9fc9967a at the same boundary rather than composing partial edits. Risks: allocator behavior under capture (mitigated by pre-captured buffer reuse inside the pool), graph-replay measurement boundary staying inside the framework's sync-bracketed run(), and the possibility that measured replay overhead exceeds the estimate - acceptance is decided by the paired AB/BA measurement, not this prediction."
+  },
+  "proposal": {
+    "implementation": "composite",
+    "replacement_calls": [
+      "80ff8693d7ac3cf2433b10f2"
+    ],
+    "rationale": "Whole-forward replacement at the 'model' module boundary (group 1f40997fb4a53f41b9da), executing the accepted composite pipeline via CUDA Graph capture+replay. inputs/previous-feedback.txt records no rejected attempt to repair: the parent trial-678b0307f5-param-9fc9967a was accepted (decision.accepted true, missing_coverage empty, project measurement 0.30233 ms vs 0.36453 reference, quality pass max_abs_error 3.3e-7; best parameter trial tr-0af3323b 0.281618 ms). What it does establish is the concrete deficiency this attempt targets: the measured per-invocation host-dispatch slack of the 9-launch chain. Clean parameter-search wall 281.6 us against replacement.diagnostic_kernel_sum_us 117.28 over 9 launches (~164 us, ~58% of wall, outside GPU kernel time); the current-revision nsys run (0913aed2, bundles [trial-678b0307f5-param-9fc9967a]) shows the identical single-stream 9-kernel sequence (scan 2.3us, scatter 6.0us, segmean 26.0us K=128, sgemm 26.3/13.5us, relu 3.2us, segmean 16.9us K=256, sgemm 14.8/8.6us; 117.7 us busy in a 584.2 us span, 466.5 us inter-kernel gaps as a perturbed upper bound); python_runtime cProfile (host evidence only) confirms the dispatch chain: triton jit run 195.1 us cumulative over 4 launches, torch.addmm 32.5 us, addmm_ 25.2 us, torch.empty 21.6 us, relu_ 12.1 us, cuda_utils.launch 31.4 us. The kernels are near-roofline, so the remaining lever is launch/dispatch elimination: the first real adapter invocation runs the pipeline eagerly twice on a side stream (warms Triton binaries and cuBLAS workspace for the real shapes outside capture), captures the identical pipeline with torch.cuda.graph, replays once and returns a clone of the replay output; every later invocation with the same input identity issues one cudaGraphLaunch that re-executes the same 9-kernel chain from the live input/weight buffers plus a 1 MB output clone. Binding-contract compliance: capture is lazy inside an actual adapter invocation, never at build(); the captured pipeline is this candidate's own build-time-verified reimplementation (kernels copied verbatim from the parent implementation and assert_close-checked against the eager index_select/index_add_/clamp/div/cat/linear formula on seeded dummy data), so the graph cannot accidentally record the original module work; guards on device/dtype/shape/stride plus a data_ptr identity key over the four inputs and four weight tensors trigger bounded recapture (3 attempts) or eager/parent fallback, so the workload executes on current inputs on every invocation and no fixture answer is precomputed - only execution structure is captured, values are re-read from the live buffers at each replay; reset() is unaffected (the graph holds no data state); the returned tensor is cloned per invocation so alias semantics match the parent (adapter.observe copies to CPU; infer.py's reference/actual pair stays independent). Bundle overlap: this bundle writes the same call 80ff8693d7ac3cf2433b10f2 as installed trial-678b0307f5-param-9fc9967a, so it explicitly replaces that whole bundle and preserves its needed behavior itself (same Triton scan/scatter/segment-mean kernels and split addmm chain, same parameters reduce_block_p=2 / scatter_block_e=512 defaults, and the parent reference remains the terminal fallback). The nested aten/profiler dispatch entries (11 affected calls) disappear as per-invocation dispatches while their GPU work still executes inside the graph on every replay; native evidence after installation is the same 9 kernels under non-zero CUDA graph ids in the framework's traces. Expected effect: replace ~164 us of host dispatch with one graph launch plus clone, moving latency_ms from the current ~0.28-0.30 ms toward ~0.13-0.17 ms, with numerics unchanged (identical kernels, order and addresses; parent's measured margin 3.3e-7 vs atol 1e-5).",
+    "setup_work": {
+      "build_time_steps": [
+        "Read the live GraphEncoder module from context['modules']; derive k1/k2 from the Linear weight shapes (128/256/64 for the frozen config); keep parameter references and transposed column-slice views Wa/Wb for the split GEMMs (views only, no copies, live weights always used).",
+        "JIT-compile the four Triton binaries at installation with the same sources as the accepted parent: _scan_kernel with BLOCK_N=next_pow2(observed signature nodes)=4096, _scatter_kernel (BLOCK_E parameter), _segmean_kernel for K=128 and K=256 (BLOCK_P parameter).",
+        "Run the seeded dummy pipeline (N=32, E=32) through the exact fast path and torch.testing.assert_close it against the eager formula on the module's CUDA device; failure records the setup-failure route (every later call uses the parent with label fallback:setup) instead of installing a broken fast path; this also warms the cuBLAS handles; all dummy tensors are freed.",
+        "No CUDA graph is captured at build() time: graph state starts empty (graph=None, attempts=0); nothing fixture-dependent is cached across invocations."
+      ],
+      "per_invocation_work": [
+        "Host-only guards first: argument binding, signature compatibility (cuda, fp32 features with contiguous strides, int64 edge tensors, fp32 degree of length N) and an identity key of device, shapes and data_ptrs of features/sources/destinations/degree plus the four weight/bias pointers.",
+        "First invocation per input identity: two eager warmup runs of the composite pipeline on a side stream (ordered by wait_stream), one torch.cuda.graph capture (its __enter__ performs torch.cuda.synchronize and empty_cache), one replay, then return a clone of the replay output; capture attempts are bounded to 3 per worker.",
+        "Subsequent invocations with identical identity: one cudaGraphLaunch replay executing the 9-kernel chain (scan, scatter, segmean K=128, addmm, addmm_, relu_, segmean K=256, addmm, addmm_) from the live buffers, plus a 1 MB output clone.",
+        "Changed input identity: recapture within the attempt budget, else the eager composite pipeline runs per invocation (label fallback:capture); eager-pipeline exceptions fall back to the parent reference (fallback:runtime); incompatible signatures fall back to the parent (fallback:signature). Every route executes the full workload on the current inputs."
+      ],
+      "memory_note": "Setup dummy allocations are <1 MB and freed (may nudge lifecycle_peak_allocated_bytes). After the first capture the process retains a graph-private pool for the worker lifetime holding the pipeline intermediates (~0.3 MB int32 segment structures, 2 MB nb1, 4 MB hidden, 4 MB nb2, 1 MB output, plus allocator rounding: about 11-12 MB), so framework.reserved_bytes / peak_reserved_bytes / lifecycle_peak_reserved_bytes rise versus the parent's measured 46.1 MB reserved while per-run framework.peak_allocated_bytes stays roughly flat (the parent's per-invocation transients move into the retained pool; +1 MB clone per run; parent baseline 23.9 MB). The capture invocation briefly allocates eager warmup transients on top; it lands in the warmup/quality phase (warmup=3 precedes the 15 timed repeats) and is included in lifecycle counters by definition. These directions are expectations derived from the parent's measured counters, to be confirmed by the framework; warm-run allocated counters falling while retained pools grow is a scope artifact, not a general physical-memory saving, and no PyTorch counter measures non-PyTorch driver memory. The declared metric is latency_ms only (the workloads.json peak_allocated_bytes goal is not part of this request)."
+    },
+    "quality_risks": [
+      "Graph replay reads fixed input/weight addresses: guarded by the data_ptr/shape/dtype/stride identity key with bounded recapture and eager-composite/parent fallbacks, so an unexpected input never silently reuses a stale graph; replay exceptions release the graph and reroute.",
+      "Output aliasing: replay writes the graph-pool output buffer; every invocation returns a clone, preserving the parent's fresh-tensor semantics - adapter.observe() copies the full [4096,64] FP32 tensor to CPU per invocation and infer.py's reference/actual construction stays independent.",
+      "CUDA graph capture can fail on driver/profiler interference (e.g. CUPTI activity in the framework's separate intrusive diagnostic run): caught and routed fallback:capture, with the workload still fully executed through the eager composite pipeline (parent-equivalent ~0.28 ms, quality unchanged, only the graph gain is lost); the clean measurement and quality runs are separate workers that capture independently.",
+      "Numerics: replay executes the identical kernel sequence reading the identical live buffers; the only nondeterminism remains the within-segment atomic arrival order of the cursor scatter, exactly as in the accepted parent (measured max_abs_error 2.4-3.3e-7 against atol 1e-5 / rtol 1e-4).",
+      "The capture invocation carries one-time cost (two warmup runs + capture + replay) inside a real invocation; warmup=3 precedes the timed repeats and the median of 15 is robust; measurement boundaries, sync semantics and thresholds are untouched.",
+      "If the passed degree tensor ever disagreed with bincount(destinations), segment offsets would be wrong - the same exposure as the accepted parent (the frozen workload constructs degree = bincount(destinations), infer.py:24 / adapter.py:74); in-kernel bounds masks keep every access in-bounds and the quality checks would reject wrong values.",
+      "Retained graph pool increases reserved/lifecycle-reserved counters while per-run allocated stays approximately flat; documented in setup_work.memory_note and not part of the declared latency_ms objective."
+    ],
+    "eliminated_calls": [
+      "082954dfb7897b23be544855",
+      "216cc438ab119abe43785340",
+      "3ac036f4c828a6d38c6de955",
+      "6e9d6b583aadf65e4b1eb44d",
+      "76ffa2b5e33044ba6db7c860",
+      "990cea7c86061e796cd2a5d7",
+      "a0b5ffd5bf021ca4ff461953",
+      "c32e164325026aa5527db4ed",
+      "dd76570a9bbdb0b333acb618",
+      "f0f4117235b31295be4311e6",
+      "fcb52401b04cde5fb368ea0f"
+    ],
+    "requires": [],
+    "replaces": [
+      "trial-678b0307f5-param-9fc9967a"
+    ],
+    "parameter_space": {
+      "params": [
+        {
+          "name": "reduce_block_p",
+          "kind": "int",
+          "choices": [
+            2,
+            4,
+            8,
+            16
+          ],
+          "description": "Edges consumed per iteration in the Triton segment-mean kernel; power-of-two block width only (tl.arange requirement); configures the kernels that get captured into the CUDA graph, affecting vectorization/registers, not semantics. Default 2 (best value of the accepted parent's search)."
+        },
+        {
+          "name": "scatter_block_e",
+          "kind": "int",
+          "choices": [
+            256,
+            512,
+            1024,
+            2048
+          ],
+          "description": "Edges per program in the Triton CSR scatter kernel; power-of-two block width only; configures the kernels that get captured into the CUDA graph, affecting parallelism/atomics batching, not semantics. Default 512 (best value of the accepted parent's search)."
+        }
+      ],
+      "constraints": []
+    }
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea594710effe7zA520PnWpY7o8",
+    "message": "msg_15a6f8f2c001xehM0Urn81xDqK",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 23,
+      "reported_cost": 0.43289830602,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 1055474.0,
+        "input": 64895.0,
+        "output": 4401.0,
+        "reasoning": 10882.0,
+        "cache.read": 975296.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea594710effe7zA520PnWpY7o8",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage3/graph-followup-8fd2123/sandboxes/selection-6eaa277d198d",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/opop-v6-stage3/graph-followup-8fd2123/generation-snapshots/generation-a4ff50d0b1a6.json"
+    ]
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea5905d20ffeOXEzmI0N11DYBp",
+    "message": "msg_15a7924ea001cFSrWUr8pVWviv",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 27,
+      "reported_cost": 0.9357385704,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 2230474.0,
+        "input": 138102.0,
+        "output": 9421.0,
+        "reasoning": 28039.0,
+        "cache.read": 2054912.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea5905d20ffeOXEzmI0N11DYBp",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage3/graph-followup-8fd2123/sandboxes/candidate-43d6ac2a2e39",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/opop-v6-stage3/graph-followup-8fd2123/generation-snapshots/generation-f3520406678b.json"
+    ]
+  },
+  "experiment_policy": {
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ],
+    "leaf_groups_only": false,
+    "selection_strategy": "agent",
+    "feedback_view": "full"
+  },
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-c671461bdd",
+    "parent_revision": "0913aed2ee401d23553686f1788a247e65aaa9a05c7dafb85509faadabb5dc7d",
+    "contract_ref": "sha256:8b86dd31f2c138cdc951c3f3b0d8982bac4bfda7e3432d3620110582aa4bef49",
+    "scope": "region",
+    "implementation": "composite",
+    "groups": [
+      "1f40997fb4a53f41b9da",
+      "66fcde2159b1ab1f75f5",
+      "edc0a58ff71b8c7595f0",
+      "dde5131754ef3500c172",
+      "034c4a994dfe3e4c9bd1",
+      "e20f34533907df483e7c",
+      "0e77f480386500df0134",
+      "fc6048eb2ac9303f23f9",
+      "992609a8fac1ec0686d7",
+      "fa9131051011b2a25a20"
+    ],
+    "calls": [
+      "80ff8693d7ac3cf2433b10f2"
+    ],
+    "affected_calls": [
+      "082954dfb7897b23be544855",
+      "216cc438ab119abe43785340",
+      "3ac036f4c828a6d38c6de955",
+      "6e9d6b583aadf65e4b1eb44d",
+      "76ffa2b5e33044ba6db7c860",
+      "80ff8693d7ac3cf2433b10f2",
+      "990cea7c86061e796cd2a5d7",
+      "a0b5ffd5bf021ca4ff461953",
+      "c32e164325026aa5527db4ed",
+      "dd76570a9bbdb0b333acb618",
+      "f0f4117235b31295be4311e6",
+      "fcb52401b04cde5fb368ea0f"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-c671461bdd.py",
+        "before_sha256": null,
+        "content_ref": "sha256:664089420017cb2cfae18f7552e06d7c0cd58ac2dc2e0027fcf939de9ddbbc5b"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-c671461bdd.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:7aa1eca9e6e34051f41c738a5de28fd8e9df33e967f49d27a01971a452e419bd"
+      }
+    ],
+    "read_set": [
+      "call:082954dfb7897b23be544855",
+      "call:216cc438ab119abe43785340",
+      "call:3ac036f4c828a6d38c6de955",
+      "call:6e9d6b583aadf65e4b1eb44d",
+      "call:76ffa2b5e33044ba6db7c860",
+      "call:80ff8693d7ac3cf2433b10f2",
+      "call:990cea7c86061e796cd2a5d7",
+      "call:a0b5ffd5bf021ca4ff461953",
+      "call:c32e164325026aa5527db4ed",
+      "call:dd76570a9bbdb0b333acb618",
+      "call:f0f4117235b31295be4311e6",
+      "call:fcb52401b04cde5fb368ea0f"
+    ],
+    "write_set": [
+      "file:opop_candidates/trial-c671461bdd.py",
+      "file:opop_candidates/trial-c671461bdd.targets.json",
+      "call:80ff8693d7ac3cf2433b10f2"
+    ],
+    "requires": [],
+    "replaces": [
+      "trial-678b0307f5-param-9fc9967a"
+    ],
+    "external_invariants": [
+      "FP32 weights and features (workloads.json dtype float32); TF32 disabled via torch.backends.cuda.matmul.allow_tf32 = False and torch.backends.cudnn.allow_tf32 = False, and torch.set_float32_matmul_precision('highest') (infer.py:13-18).",
+      "Model architecture is fixed: two-layer mean GraphSAGE GraphEncoder with input_features=128, hidden_features=256, output_features=64, ReLU between layers, each layer projecting concat(self features, mean neighbor features) with nn.Linear (model.py).",
+      "model.eval() plus forward under @torch.inference_mode(); no cross-invocation state (infer.py:18,28-30).",
+      "Seeded fixtures reproduced exactly: torch.manual_seed(20261021) before model construction; a CPU torch.Generator seeded 20271021 (seed+1) produces features = randn(nodes, 128), sources = randint(nodes, (edges,)), destinations = randint(nodes, (edges,)); degree = torch.bincount(destinations, minlength=nodes).float() (infer.py:14-25, workloads.json seed).",
+      "Graph semantics: duplicate directed edges contribute individually via index_add_ on a zeros_like base; nodes without incoming edges keep zero neighbor features; neighbor mean divides by degree.clamp_min(1).unsqueeze(1) (model.py:11-15, README.md:17-19).",
+      "Quality check: the complete FP32 output tensor (shape [4096, 64] for the standard workload) compared with torch.testing.assert_close(atol=1e-5, rtol=1e-4); output is continuous floating point with no discrete outputs (infer.py:44-45, workloads.json quality).",
+      "One run() equals exactly one infer(model, inputs) forward on GPU-resident tensors; the full workload must be executed even though the objective is a single latency number.",
+      "Workload dimensions (nodes=4096, edges=65536) are read from request['workload'] in prepare(), not embedded as constants; the held-out unseen_graph workload (7168 nodes, 143360 edges) is not part of this request.",
+      "Single-process, single-device workload: model and inputs live on context['device']; no distributed backend and no communication (request devices/communication)."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-c671461bdd.py",
+    "parameters": {}
+  }
+}

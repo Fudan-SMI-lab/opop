@@ -1,0 +1,29 @@
+{
+  "scope": "region",
+  "groups": [
+    "1f40997fb4a53f41b9da",
+    "66fcde2159b1ab1f75f5",
+    "edc0a58ff71b8c7595f0",
+    "dde5131754ef3500c172",
+    "034c4a994dfe3e4c9bd1",
+    "e20f34533907df483e7c",
+    "0e77f480386500df0134",
+    "fc6048eb2ac9303f23f9",
+    "992609a8fac1ec0686d7",
+    "fa9131051011b2a25a20"
+  ],
+  "affected_calls": [
+    "80ff8693d7ac3cf2433b10f2",
+    "216cc438ab119abe43785340",
+    "c32e164325026aa5527db4ed",
+    "dd76570a9bbdb0b333acb618",
+    "fcb52401b04cde5fb368ea0f",
+    "76ffa2b5e33044ba6db7c860",
+    "a0b5ffd5bf021ca4ff461953",
+    "082954dfb7897b23be544855",
+    "f0f4117235b31295be4311e6",
+    "6e9d6b583aadf65e4b1eb44d"
+  ],
+  "rationale": "Objective is latency_ms of one complete GraphEncoder forward (sync-bracketed wall time). Current parent is the accepted region composite trial-678b0307f5-param-9fc9967a (previous evaluation 0.30233 ms vs 0.36453 reference, quality pass max_abs_error 3.3e-7; best parameter trial 0.281618 ms). Discovery on the current revision 0913aed2 shows the whole forward is one contiguous region at the 'model' boundary (call 80ff8693, group 1f40997fb4a53f41b9da) executing 9 CUDA kernels on a single stream: 4 Triton kernels (_scan 2.30us, _scatter 6.05us, _segmean 25.98us K=128, _segmean 16.96us K=256) plus 5 aten kernels (addmm 26.34/14.79us, addmm_ 13.47/8.61us, relu_ 3.20us), diagnostic CUDA sum 118.2us. Measured bottleneck is no longer GPU work but per-invocation host dispatch of this 9-launch chain: the clean parameter-search trial tr-0af3323b measured 281.6us wall against replacement.diagnostic_kernel_sum_us 117.28 over 9 launches (~164us, ~58% of wall, outside GPU kernel time); the separately collected nsys run on this exact revision shows 117.7us busy in a 584.2us span with 466.5us of inter-kernel gaps across 8 boundaries (perturbed upper bound); python_runtime cProfile (perturbed, host evidence only) confirms the dispatch chain itself: triton jit run 4 calls 68.9us self/195.1us cumulative, torch.addmm 32.5us, addmm_ 25.2us, torch.empty 21.6us, relu_ 12.1us, cuda_utils.launch 31.4us. The GPU kernels are near-roofline for this workload (segmean ~1.3 TB/s effective gather bandwidth; sgemm ~10 TFLOP/s FP32 with TF32 disabled), so the largest remaining lever is eliminating per-kernel launch/dispatch overhead by capturing the identical 9-kernel pipeline into a CUDA graph and replaying it per invocation; the resources.json collection plan explicitly retained the eager baseline 'to judge any later CUDA-graph capture (graph tracing question)'. The editable boundary is the whole forward region: replacing only a sub-group cannot remove launches across the chain, and the graph capture must own the entire kernel sequence including the aten addmm/addmm_/relu_ dispatch and the six per-invocation allocations (aten::empty for counts/starts/ends, src_sorted, nb1, nb2), so those nested groups' calls are affected and included. This is a coherent single-region edit that explicitly replaces the whole installed bundle at the same boundary (its only required call 80ff8693 remains satisfied by the new replacement invocation); no partial composition with the previous bundle is proposed. The outer project.invoke boundary and the profiler record_function instrumentation are unchanged and excluded.",
+  "hypothesis": "Replacing the installed composite forward at the model-call boundary with a CUDA-graph-capturing version reduces latency_ms from the current ~0.28-0.30 ms toward ~0.13-0.17 ms, because the clean-wall evidence shows ~164us of the 281.6us best measured wall is host dispatch/launch slack over a fixed 117.7us 9-kernel single-stream sequence, and a graph replay replaces that chain with one cudaGraphLaunch (~10-30us expected overhead). Numerics are unchanged: replay executes the identical kernels, in the identical order, on identical addresses, so outputs should be bitwise equal to the accepted composite (quality margin is large, max_abs_error 3.3e-7 vs atol 1e-5). Testable prediction: measured latency_ms drops by roughly the non-kernel slack (>=100us, well outside the previous MAD-derived noise bounds of ~0.02-0.023 ms) with quality and coverage still passing. Binding-contract constraints the implementation must satisfy: (1) capture must happen lazily during an actual adapter invocation on current inputs (warmup=3 covers it; cuBLAS workspaces warmed by one eager pre-capture pass), never at build() time, so the captured graph is the accepted parent's work under the live dispatch context; (2) guards on input identity (device, dtype, shape, strides, data_ptr of features/sources/destinations/degree) with recapture or eager fallback to the existing pipeline when they change, so the workload always executes on current inputs and incompatible signatures fall back; (3) replay output aliases the graph-private pool, which is safe because observe() copies the full [4096,64] FP32 tensor to CPU per invocation, and reset() semantics are unaffected since the graph holds no data state, only execution structure; (4) the Python replacement is still invoked every run (record_route coverage), and the nested aten addmm/addmm_/relu_/empty calls then execute only during capture warm-up rather than per invocation - exactly the calls listed in affected_calls; (5) the bundle explicitly replaces trial-678b0307f5-param-9fc9967a at the same boundary rather than composing partial edits. Risks: allocator behavior under capture (mitigated by pre-captured buffer reuse inside the pool), graph-replay measurement boundary staying inside the framework's sync-bracketed run(), and the possibility that measured replay overhead exceeds the estimate - acceptance is decided by the paired AB/BA measurement, not this prediction."
+}

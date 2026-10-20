@@ -1,0 +1,102 @@
+{
+  "trial": "trial-92d5f02cbf",
+  "decision": {
+    "accepted": false,
+    "reasons": [
+      "no_valid_parameter_candidate"
+    ]
+  },
+  "measurement": null,
+  "missing_coverage": null,
+  "publication": null,
+  "evaluation_attempt": null,
+  "experiment_policy": {
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ],
+    "leaf_groups_only": false,
+    "selection_strategy": "agent",
+    "feedback_view": "full"
+  },
+  "selection": {
+    "scope": "joint",
+    "groups": [
+      "f833b57a373d8262a384",
+      "8525af72c631b94e3dd0"
+    ],
+    "affected_calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "rationale": "The project objective torch_communication.communication_kernel_sum_ms (baseline 94.49 ms, max-rank median of 93.52/94.49/110.06) is produced entirely by the 13 per-step NCCL AllReduce kernels dispatched through the two selected c10d::allreduce_ groups: 12 calls of 7,087,872 float32 elements (group f833b57a373d8262a384, call d0938de87369efd500322679) plus 1 call of 39,385,344 elements (group 8525af72c631b94e3dd0, call b8ade439d7b8bd5fb5c1029b), together exactly the 497,759,232-byte FP32 gradient payload (resources.json communication payload_coverage 13/13, unmatched kernels empty). Measured decomposition: the clean isolated calibration of the identical ops (collective_calibration-1af5837f) gives 3.565/3.649 ms per small bucket and 19.49/19.64 ms for the large one, a per-rank transport floor of about 62.3-63.5 ms that matches rank 1's in-step kernel sums (63.62-63.79 ms) and the nsys rank-0 sum (62.46 ms); rank 0's excess of ~31 ms is early-arrival waiting inside the first kernel (execution_timeline: seq21 duration 14.04 ms on rank 0 vs 3.62 ms on rank 1, all later kernels within ~90 us lockstep, union == sum so kernels are back-to-back on one stream), and both ranks finish the step at equal wall time (144.63/144.54 ms), proving the excess is idle spin rather than work. Because peer_access is 0 in both directions and NCCL runs over SHM/direct channels (resources.json transport/capabilities), the ~8 GB/s logical payload rate is a transport property and the dominant addressable term in the metric is the inter-rank arrival skew charged into kernel durations, plus per-op launch/protocol overheads (13 kernels). The skew direction flips between runs (nsys run: rank 1 sum 241 ms), so the fix must be symmetric. Both allreduce shapes belong to one logical gradient sync issued by the same DDP reducer, and any batching or launch-synchronization replacement must own every allreduce of the step to sequence its readiness exchange and group flushes; a single-group scope would interleave replaced and unreplaceable default allreduces on the same comm stream. The two groups are therefore one coherent joint boundary, and the affected calls are exactly the calls of both groups.",
+    "hypothesis": "Replacing both allreduce dispatch sites jointly with a launch-synchronized, batched gradient allreduce will reduce the diagnostic max-rank NCCL kernel sum from ~94.5 ms toward the observed transport floor of ~63-66 ms (roughly 30%) while keeping step_ms within the 1.05x budget (<=151.86 ms vs baseline 144.6 ms). Mechanism: (1) each bucket request is queued and a lazy Work object is returned so the DDP reducer's async_op/wait semantics, ReduceOp SUM over contiguous FP32 bucket views (gradient_as_bucket_view=True) and the final-backward overlap structure are preserved, with flushes early enough that the currently small compute/comm overlap (8.8-21.1 ms) and the +7.2 ms step-time headroom are not consumed; (2) before the first NCCL launch of the step, the ranks exchange peer readiness through a mechanism that is not an NCCL kernel (for example the host-side shared-memory flag path NCCL itself uses, or an equivalent CPU-side handshake), so the early-arriving rank waits outside NCCL kernel durations instead of inside the first kernel - this is the hypothesized source of the ~31 ms rank-0 excess and, being symmetric, also covers the flipped-skew case observed under nsys; (3) the 13 requests are coalesced into fewer NCCL group launches (13 -> 1..few), removing per-op ring protocol startup/drain and launch overheads measured at roughly 0.1-0.4 ms per op. The per-byte transfer time is expected to stay ~8 GB/s (SHM/direct transport, no P2P), so no wire-time reduction is claimed. Test conditions and risks: gradient values must remain bitwise identical across ranks (ring element-wise summation order is expected to be preserved under grouped launches, but this must be validated against the atol=0.0/rtol=0.0 replica check and the reference gradient check), the readiness exchange must not itself launch NCCL kernels nor move gloo control-group barriers inside timing, and the benefit is a hypothesis to be confirmed by the framework's separately profiled objective samples, not by the perturbed discovery traces."
+  },
+  "proposal": {
+    "implementation": "distributed",
+    "replacement_calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "rationale": "Joint replacement of both c10d::allreduce_ dispatch sites of the DDP gradient sync (group f833b57a373d8262a384, 12 buckets of 7,087,872 fp32 elements; group 8525af72c631b94e3dd0, 1 bucket of 39,385,344 elements) with a symmetric per-call host-side readiness rendezvous followed by the unchanged parent op. Measured decomposition (inputs/observations, revision 63ad2b21): the objective (per-rank sum of NCCL kernel durations, max over ranks, median of 3 profiled reps) has a transport floor of ~62.3-63.5 ms - rank 1's baseline sums are 63.62/63.79/63.66 ms, matching the clean isolated calibration of the identical ops (3.56/3.65 ms per small bucket, 19.49/19.64 ms for the large one), and the nsys run put rank 0 at 62.46 ms - while rank 0's baseline objective (93.52/94.49/110.06 ms) carries ~31 ms of excess that execution_timeline-1221e205 localizes entirely to early-arrival spin charged into kernel durations: the first collective (seq21) ran 14.04 ms on rank 0 vs 3.62 ms on rank 1 (rank 0 launched ~10.5 ms early), and every later kernel stayed within ~90 us lockstep at the floor; resources.json shows the same concentration in the intrusive run (seq21 = 114.4 ms on rank 0) and the skew direction flips between runs (nsys run: rank 1 sum 241 ms), so the remedy must be symmetric. Mechanism: before dispatching each parent allreduce_, both ranks publish a monotonic arrival counter on an 8-byte /dev/shm page and the earlier rank waits on the CPU until the peer arrives, then both call the parent (torch 2.13 routes ProcessGroup::allreduce through the dispatcher op c10d::allreduce_, ProcessGroup.hpp:246, so the reducer's calls are intercepted exactly as discovery recorded them and the parent's (Tensor[], Work) return is passed through unmodified - the same pattern discovery's CaptureMode already exercised). The peer wait therefore moves out of NCCL kernel durations into host time; no NCCL kernel, no gloo collective and no CUDA work is added inside timing, the op sequence, bucket views (gradient_as_bucket_view=True), payloads, process group and completion boundary are untouched, so gradients stay bitwise identical (2-rank fp32 addition is commutative and the summed operands are unchanged) and the exact cross-rank replica check, global-batch gradient check, +1 negative control and parameter checks are unaffected. Step-time neutrality: the baseline already ends with both ranks equal (144.63/144.54 ms vs the 151.86 ms budget); the early rank merely pauses on the host until the pacer rank reaches the same call, after which both execute identical remaining work, so step_ms is expected to stay at ~144-146 ms; the compute/communication overlap lost during the relocated wait is bounded by the same pacer argument because the late rank was never overlapping ahead of that point. Expected objective ~63-65 ms (median of 3 reps, both ranks at the transport floor), i.e. roughly a 30-33% reduction from 94.49 ms; no per-byte wire-time reduction is claimed - the ~8 GB/s logical rate over the SHM/direct transport (peer_access 0 in both directions) is a transport property and all 497,759,232 bytes still cross the same NCCL ring ops. Robustness: the rendezvous is bounded by a configurable budget (default 1000 ms, far above the largest observed 48 ms in-step skew and the ~180 ms nsys-inflated case), after which the call still dispatches the parent; two consecutive timeouts permanently disable the rendezvous (bounded added latency, correctness unchanged); installation failure (no /dev/shm, no gloo control group, unreachable peer page) falls back to pure parent passthrough reported as the setup-parent route. The readiness exchange never touches the NCCL group and never creates a process group: the existing gloo control group is used only during installation (outside timing) to agree on the page name, matching its sanctioned out-of-timer role; per-step counters are monotonic per process, so warmup, clean repeats, the 3 profiled diagnostic reps, quality runs and continuous steps all work without reset logic, and reset()/state semantics are not touched. Both call IDs receive the shared handler, preserving collective participation on both ranks; coverage sees 12 and 1 replacement invocations per step plus the corresponding parent invocations through context.references.",
+    "setup_work": {
+      "when": "installation only (build), outside every timed or profiled region",
+      "steps": [
+        "One gloo all_gather_object plus one gloo barrier on the adapter's existing control group (state['control_group']) to agree on a random 32-hex-char token; no new process group is created and the NCCL group is untouched.",
+        "Rank 0 creates an 8-byte file under /dev/shm named with the token (two int32 arrival counters zero-initialized); all ranks mmap it read-write after the barrier.",
+        "One liveness probe handshake (bounded at 5 s) verifies cross-process visibility; on failure the channel is dropped and every call uses the parent path (setup-parent route).",
+        "An atexit hook unlinks the page; the mapping is held for the process lifetime."
+      ],
+      "memory": "No CUDA allocations, no parameter transforms, no retained device pools; retained host state is one 8-byte tmpfs mapping plus one file descriptor. framework.peak_allocated_bytes / lifecycle peaks are unaffected.",
+      "tunable_parameters": "sync_wait_budget_ms (default 1000, legal 250/500/1000/2000) only bounds how long a rank may wait for a late peer before degrading to the parent path; it never changes workload, sampling, data or thresholds."
+    },
+    "quality_risks": [
+      "Interception depends on dispatcher-level routing of the reducer's collectives (c10d::allreduce_ with the two observed contiguous fp32 signatures, phase run, project-level parent), which is exactly what the discovery artifacts recorded; if a live signature ever failed to match, the framework's mode falls back to the parent for that call, keeping outputs correct at baseline metric.",
+      "The host-side wait runs on the reducer's calling thread; it is bounded by the budget and disabled after two consecutive timeouts, so worst-case added latency is about 2x budget once per process; under normal operation the wait equals the peer arrival skew that previously inflated kernel durations.",
+      "If a profiled repetition exhibits arrival skew larger than the budget, that repetition degrades toward the baseline value while remaining correct; the objective uses the median of 3 repetitions.",
+      "Step_ms has 7.2 ms of headroom (144.63 -> 151.86 ms); the relocated wait is wall-time neutral by the pacer-rank argument, but a pathological run that loses more overlap than the skew it removes could consume part of it; no mechanism is known by which the change increases total work.",
+      "Numerical outputs are unchanged by construction (identical ops, operands and order); the bitwise cross-rank replica check (atol=0.0, rtol=0.0) and the reference gradient check would detect any deviation, and no fallback route alters values.",
+      "Installation-time gloo rendezvous relies on the control group being present on both ranks (adapter.prepare creates it); asymmetric installation would stall until the group timeout inside setup and then fall back to parent passthrough without affecting correctness."
+    ],
+    "eliminated_calls": [],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {
+      "params": [
+        {
+          "name": "sync_wait_budget_ms",
+          "kind": "int",
+          "choices": [
+            250,
+            500,
+            1000,
+            2000
+          ],
+          "description": "Maximum host-side wait per allreduce dispatch for the peer's arrival before degrading to the parent path; 1000 ms covers the largest observed in-step skew (48 ms profiled, ~180 ms under nsys) with margin."
+        }
+      ],
+      "constraints": []
+    }
+  },
+  "bundle": {
+    "id": "trial-92d5f02cbf",
+    "scope": "joint",
+    "implementation": "distributed",
+    "calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "groups": [
+      "f833b57a373d8262a384",
+      "8525af72c631b94e3dd0"
+    ],
+    "requires": [],
+    "replaces": [],
+    "parameters": {},
+    "installer": "opop_candidates/trial-92d5f02cbf.py"
+  },
+  "paired_runs": [],
+  "candidate": null
+}

@@ -1,0 +1,212 @@
+{
+  "trial": "trial-b0a02885e2",
+  "selection": {
+    "scope": "joint",
+    "groups": [
+      "f833b57a373d8262a384",
+      "8525af72c631b94e3dd0"
+    ],
+    "affected_calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "rationale": "The requested objective is step_ms (max across ranks; original baseline 136.86/137.05 ms). Composition of one accumulated step, from measured evidence: non-NCCL compute kernels total ~34.0 ms for all 4 micro-batches (nsys rank-0 trace spans the complete accumulate: 8 embedding gathers, 13 NCCL kernels, ends at the loss stack), while the 13 DDP bucket allreduces cost ~61.8 ms when measured cleanly (collective_calibration: 28,351,488 B -> 3.52 ms median, 157,541,376 B -> 19.50 ms; 12x3.52+19.5). Exposure: after the first collective kernel starts, only 8.49 ms of compute remains in the final backward and 1.73 ms after the last starts, so communication is essentially fully serialized at the step tail; overlap with compute cannot be increased further inside the frozen no_sync schedule. The wire path is NCCL RING_LL over SHM/direct (peer_access 0 in both directions, NVLink unsupported, 2 channels) at a logical 8.05 GB/s for both payload sizes, while device telemetry during the comm window shows pcie.tx ~7.3 GB/s and pcie.rx ~8.5 GB/s, i.e. the LL-protocol path, not the link, appears to set the ~62 ms floor (PCIe/SHM saturation estimate for the 497,759,232 B per-rank gradient payload is ~40 ms). These 13 collectives are the only collectives in the step (payload coverage 13/13 observed) and are jointly owned by exactly two eligible call groups at the shared c10d.allreduce_.default dispatch boundary: f833b57a373d8262a384 (call d0938de87369efd500322679, 12 invocations of the 7,087,872-element bucket shape) and 8525af72c631b94e3dd0 (call b8ade439d7b8bd5fb5c1029b, the single 39,385,344-element embedding bucket). Bucket membership spreads across all layer groups, so no per-layer group independently owns communication cost; conversely, faster local compute kernels (mm 10.5 ms, addmm 4.8 ms inclusive) cannot move step_ms materially while ~45% of the step is exposed communication. A replacement must cover both payload shapes at this one boundary, so the two groups are selected as a joint candidate. Constraints preserved: same worker-initialized process group, async_op=True Work semantics, in-place float32 SUM into the gradient_as_bucket_view bucket tensors, no DDP configuration/bucketing change and no comm hook; DDP's own world-size division and the frozen step boundary stay untouched. Per-element the reduction remains a single two-addend sum (commutative), so results are bitwise identical to NCCL's ring sum, keeping the exact cross-rank replica check (atol=0/rtol=0), the full-global-batch gradient reference check and the parameter check unchanged, and the diagnostic communication goal only improves.",
+    "hypothesis": "Replacing the bucket allreduce dispatch at both selected call groups with a bandwidth-optimized two-rank reduction on the existing NCCL process group - e.g. a chunked one-shot exchange that splits each bucket into large contiguous halves, exchanges them with point-to-point sends/receceptions so both directions move SIMPLE-protocol bulk transfers, adds each half locally, and swaps the reduced halves back into the bucket view; or any equivalent path that lifts effective throughput above the observed 8.05 GB/s RING_LL ceiling - will shorten the ~62 ms serialized tail communication toward the ~40 ms link-saturation estimate and reduce step_ms by roughly 10-20 ms (~8-15%), because communication is measured to be almost fully exposed (only 8.49 ms of overlap available) and is the largest single block of the 137 ms step. Bitwise-identical gradient values (two-addend commutative sum, DDP still divides by world size) preserve every quality check including exact cross-rank equality. This is a hypothesis to be tested: if the 8 GB/s LL result already reflects the SHM/PCIe hard ceiling for this pair, or if chunking adds launch overhead comparable to the bandwidth gain, measured step_ms will not improve and the candidate must be rejected on measurement; expected benefit is not acceptance."
+  },
+  "proposal": {
+    "implementation": "distributed",
+    "replacement_calls": [
+      "d0938de87369efd500322679",
+      "b8ade439d7b8bd5fb5c1029b"
+    ],
+    "rationale": "Implements the joint selection (groups f833b57a373d8262a384 and 8525af72c631b94e3dd0) at the single shared c10d.allreduce_.default boundary that jointly owns all 13 bucket collectives of the step. Measured basis: non-NCCL compute kernels total ~34.0 ms for all 4 micro-batches while the 13 bucket allreduces cost ~61.8 ms cleanly (collective_calibration medians 3.52 ms x 12 + 19.50 ms, ~8.05 GB/s logical), communication is essentially exposed at the step tail (only 8.49 ms of compute remains after the first collective kernel starts), and the wire path is NCCL ring over SHM (peer_access 0 both directions, no NVLink, 2 channels) with telemetry pcie.tx ~7.3 GB/s / pcie.rx ~8.5 GB/s during the comm window. The replacement swaps the dispatch at both call IDs for a chunked one-shot two-rank exchange on the same worker-initialized NCCL process group: each flat contiguous float32 bucket view is split into halves; grouped isend/irecv (ncclGroup, both directions concurrently, unique monotonic tags per invocation/round) exchanges the halves; one local elementwise add reduces the kept half; a second grouped exchange swaps the reduced halves back into the gradient_as_bucket_view buffer; the callable returns (tensors, Work) with the final irecv handle boxed via Work.boxed, preserving async_op=True semantics at this op's exact ABI. Wire volume per rank is unchanged (S bytes per direction, the information-theoretic minimum for an exact allreduce); the hypothesized gain is transport efficiency of grouped bulk P2P transfers versus the observed ring schedule and remains a measurement question exactly as the selection states: if ~8 GB/s is this GPU pair's link ceiling, step_ms will not improve and the candidate must be rejected on paired measurement; expected benefit is not acceptance. Numerics: DDP's world-size division happens before this boundary and is untouched; every output element is a single commutative two-addend fp32 sum computed on exactly one rank and then copied to the peer, so cross-rank gradients are bitwise identical by construction (exact_gradient_replica_check atol=0.0/rtol=0.0 holds structurally) and equal the ring SUM of the same addends, keeping the full-global-batch gradient reference check and the post-step parameter check unchanged; losses are unaffected. Guards are rank-symmetric (single 1-D contiguous float32 CUDA tensor >= 2M elements, NCCL process group with exactly ranks [0,1], ReduceOp.SUM positively identified via the ScriptObject's op() accessor, sparse_indices None); any other case falls back to the parent op before anything is enqueued, with distinct route labels (guard_*/setup_*/error_* for predicate, setup and pre-enqueue exception categories). After the first enqueue no parent fallback is taken (that would double-reduce the bucket); failures propagate loudly instead. Per-direction P2P op order is identical on both ranks and unique tags make matching explicit even if bucket issue order skews. No inputs/previous-feedback.txt and no inputs/previous-candidate/ exist for this attempt, so there is no prior attempt feedback to incorporate. The diagnostic communication goal in workloads.json (max_rank_nccl_kernel_sum_ms with the 1.05x step_ms constraint) is not part of the user-requested objective; replacing AllReduce kernels with Send/Recv kernels changes what that diagnostic counts without touching step timing semantics.",
+    "setup_work": {
+      "build_time": "No model/parameter transforms, no CUDA Graph capture, no new process groups, no environment changes, no comm hooks. build() only reads context['parameters']['chunks'] (default 8, clamped to [1,64]) and creates two replacement closures over context['references'] plus a per-device scratch cache shared by both call IDs.",
+      "runtime_lazy": "The first supported invocation allocates one persistent float32 scratch of numel/2 elements sized for the largest observed bucket (19,692,672 elements = 75.0 MiB for the 39,385,344-element embedding bucket; the 7,087,872-element buckets reuse a prefix slice). The allocation happens once per worker during the first (warmup) invocation and the buffer is retained for the process lifetime; it is never freed, so the caching allocator cannot race multi-stream reuse. First-use NCCL P2P path warmup also lands in warmup invocations.",
+      "per_call_work": "Two grouped batch_isend_irecv calls (sends plus recvs in one ncclGroup each), one elementwise add over half the bucket, and Work.wait() event syncs. The CPU never blocks: NCCL wait() performs event-based stream synchronization, and round-2 sends are ordered after the adds by ProcessGroupNCCL's enqueue-time current-stream sync.",
+      "memory_impact": "Steady state retains +75.0 MiB allocated scratch, visible in framework.peak_allocated_bytes and lifecycle counters; no per-invocation growth; no graphs or retained graph pools. This is a documented setup/retained allocation, not a general physical-memory saving. Per-call transient Python objects are O(chunks)."
+    },
+    "quality_risks": [
+      "Exactness rests on the two-addend commutative sum argument: each output element is computed exactly once on one rank and copied to the peer, so the atol=0/rtol=0 cross-rank replica check holds structurally, and values are bitwise equal to a ring SUM of the same addends, so the reference-gradient (1e-6/1e-4) and parameter checks are unaffected.",
+      "If grouped NCCL P2P over this SHM/PCIe pair achieves the same ~8.05 GB/s as the ring (wire volume per rank is already at the exact-allreduce minimum of S bytes per direction), step_ms will not improve; the exchange also adds one serial local add per bucket (about 0.03 ms per 28 MB bucket, 0.16 ms for the 157 MB bucket, ~0.5 ms per step in total) plus grouped-launch overhead. Acceptance is decided by paired project measurement.",
+      "The returned Work is the final round-2 irecv handle boxed with Work.boxed (the same mechanism torch's own _local_tensor overrides use at this op's return position). Its completion covers the entire exchange because all P2P ops on one process group serialize on the group's NCCL stream and round-2 sends are ordered after the local adds via ProcessGroupNCCL's enqueue-time stream synchronization; DDP-side wait/getFuture on a genuine WorkNCCL handle is preserved.",
+      "Divergent rank routing would hang rather than corrupt: every guard is a pure function of rank-identical inputs (bucket shape/dtype/layout, backend, world membership, reduce op, chunk parameter), fallbacks happen strictly before any enqueue, and post-enqueue exceptions propagate instead of triggering a parent fallback (a parent call after partial sends would double-reduce the bucket). Unique per-invocation monotonic P2P tags additionally prevent cross-bucket op mismatch under issue-order skew.",
+      "Retained +75 MiB scratch raises warm-run peak_allocated_bytes and lifecycle counters; reported explicitly rather than described as a saving.",
+      "The workload's second, non-requested diagnostic goal (max_rank_nccl_kernel_sum_ms, measured in separate profiled invocations with a step_ms<=1.05x baseline constraint) counts NCCL AllReduce kernel time; this replacement substitutes Send/Recv kernels, so that diagnostic becomes non-comparable while the requested step_ms objective is unaffected.",
+      "The op's timeout argument is not forwarded (P2POp exposes no timeout); the process group's default timeout governs the P2P ops, matching the parent's timeout=-1 default behavior.",
+      "Tunable 'chunks' is read from context['parameters']; domain {1,2,4,8,16,32} with each chunk kept >= 262144 elements (262,144-element floor enforced in code), so every legal choice preserves semantics and only changes transfer granularity."
+    ],
+    "eliminated_calls": [],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {
+      "params": [
+        {
+          "name": "chunks",
+          "kind": "int",
+          "choices": [
+            1,
+            2,
+            4,
+            8,
+            16,
+            32
+          ],
+          "description": "Number of contiguous chunks per half-bucket issued per grouped isend/irecv round. Clamped in code so each chunk stays at or above 262144 elements; only transfer granularity changes, never task semantics."
+        }
+      ],
+      "constraints": []
+    }
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea5bded76ffez38yXGgtz0HF3x",
+    "message": "msg_15a489d05001fC4cKSYJEDOLf0",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 28,
+      "reported_cost": 0.76791958142,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 1971751.0,
+        "input": 87480.0,
+        "output": 7905.0,
+        "reasoning": 17934.0,
+        "cache.read": 1858432.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea5bded76ffez38yXGgtz0HF3x",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/sandboxes/selection-b236c5ec0455",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/generation-snapshots/generation-3b8f184a9bb1.json"
+    ]
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea5b74c24ffeitkvXTLzPETbf6",
+    "message": "msg_15a6a8c95001oNFmAXyJkcfmhr",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 61,
+      "reported_cost": 2.3759661284,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 6262307.0,
+        "input": 148821.0,
+        "output": 17459.0,
+        "reasoning": 78171.0,
+        "cache.read": 6017856.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea5b74c24ffeitkvXTLzPETbf6",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/sandboxes/candidate-7f0a48d31b1e",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/generation-snapshots/generation-2b80d03accf6.json"
+    ]
+  },
+  "experiment_policy": {
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ],
+    "leaf_groups_only": false,
+    "selection_strategy": "agent",
+    "feedback_view": "full"
+  },
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-b0a02885e2",
+    "parent_revision": "c63bc8c5a27187a3b4f6a7fdfb954cd4e0d72d1fd90274f4bbb39d12559a8866",
+    "contract_ref": "sha256:86da60adc15b0f15a2942dcd11214684e525aa0cd92d8a7dfb171f9b4b0e7e15",
+    "scope": "joint",
+    "implementation": "distributed",
+    "groups": [
+      "f833b57a373d8262a384",
+      "8525af72c631b94e3dd0"
+    ],
+    "calls": [
+      "d0938de87369efd500322679",
+      "b8ade439d7b8bd5fb5c1029b"
+    ],
+    "affected_calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-b0a02885e2.py",
+        "before_sha256": null,
+        "content_ref": "sha256:e94d114d391b3e81efa048a6ef8e51e101ba612f20a86c8dcb7038fd5d0226fa"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-b0a02885e2.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+      }
+    ],
+    "read_set": [
+      "call:b8ade439d7b8bd5fb5c1029b",
+      "call:d0938de87369efd500322679"
+    ],
+    "write_set": [
+      "file:opop_candidates/trial-b0a02885e2.py",
+      "file:opop_candidates/trial-b0a02885e2.targets.json",
+      "call:d0938de87369efd500322679",
+      "call:b8ade439d7b8bd5fb5c1029b"
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Model architecture is frozen: GPT2Config(n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024) with resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False, attn_implementation='eager', FP32 weights via .float(), .train() mode, initialized under torch.manual_seed(20261020); no pretrained weights are downloaded (assets is empty by design, seeded synthetic fixtures are the task data).",
+      "Inputs are frozen: per-rank synthetic token IDs from torch.randint(0, 50257, (micro_batch=1, sequence_length=128)) repeated accumulation_steps=4 times using torch.Generator().manual_seed(31000 + rank).",
+      "Workload dimensions are frozen: world_size=2, micro_batch=1, sequence_length=128, accumulation_steps=4; effective batch 8 and 1024 tokens per step; the first 3 micro-batch backwards run under DDP.no_sync() and only the final micro-batch backward triggers the gradient all-reduce.",
+      "Numerical policies are frozen: TF32 disabled for cuBLAS matmul and cudnn, float32_matmul_precision 'highest', cudnn.benchmark False, torch num_threads=4 and num_interop_threads=1, seed 20261020.",
+      "DDP configuration is frozen: broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True; no communication hook and no profiler on the measured path (the source's bucket-inventory hook belongs to a separate diagnostic and is never installed).",
+      "Optimizer semantics are frozen: torch.optim.SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False); optimizer.zero_grad(set_to_none=True) executes inside the timed step (never pre-cleared in reset); each micro-batch loss is model(input_ids=tokens, labels=tokens, use_cache=False).loss / accumulation_steps and the accumulated loss is the sum over micro-batches.",
+      "Quality contract preserved from the source: finite accumulated loss; full per-parameter gradient comparison against the single-GPU full-global-batch reference with grad_atol=1e-6/grad_rtol=1e-4; exact cross-rank gradient equality with atol=0.0/rtol=0.0; post-step parameter comparison with parameter_atol=1e-6/parameter_rtol=1e-4; the +1-corruption negative control. The adapter exposes loss, every gradient and every updated parameter and leaves the comparisons to the framework; no accuracy or convergence is claimed beyond these reference-fidelity checks.",
+      "Objective semantics are frozen: step_ms is each rank's wall time of the complete accumulated step with the source's final torch.cuda.synchronize() as the completion boundary, aggregated as max across ranks; work is never moved out of the timed step to improve the score and no fabricated sub-metrics or sub-phase objectives are introduced.",
+      "The adapter uses context['device'] and the worker-initialized process group exclusively; it never picks a physical GPU, never initializes another default process group, never destroys a process group, and performs no CUDA work at import time."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-b0a02885e2.py",
+    "parameters": {}
+  }
+}

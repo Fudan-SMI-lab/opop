@@ -1,0 +1,3527 @@
+{
+  "engine": "existing TaskSearch + OptunaTPETuner",
+  "measurement_scope": "complete project",
+  "resource_fields": {
+    "framework.allocated_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "framework.reserved_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "framework.peak_allocated_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "framework.peak_reserved_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "framework.lifecycle_peak_allocated_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "framework.lifecycle_peak_reserved_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "replacement.kernel_launches": {
+      "unit": "count",
+      "kind": "count",
+      "scope": "native launches inside this bundle's observed replacement ranges",
+      "rank_aggregation": "max",
+      "interpretation": "separate intrusive diagnostic run; nested work and fallback included; launch metadata is not dynamic utilization"
+    },
+    "replacement.diagnostic_kernel_sum_us": {
+      "unit": "us",
+      "kind": "duration",
+      "scope": "native launches inside this bundle's observed replacement ranges",
+      "rank_aggregation": "max",
+      "interpretation": "separate intrusive diagnostic run; nested work and fallback included; launch metadata is not dynamic utilization"
+    },
+    "replacement.max_registers_per_thread": {
+      "unit": "count",
+      "kind": "launch_metadata",
+      "scope": "native launches inside this bundle's observed replacement ranges",
+      "rank_aggregation": "max",
+      "interpretation": "separate intrusive diagnostic run; nested work and fallback included; launch metadata is not dynamic utilization"
+    },
+    "replacement.max_shared_memory_bytes": {
+      "unit": "bytes",
+      "kind": "launch_metadata",
+      "scope": "native launches inside this bundle's observed replacement ranges",
+      "rank_aggregation": "max",
+      "interpretation": "separate intrusive diagnostic run; nested work and fallback included; launch metadata is not dynamic utilization"
+    }
+  },
+  "response_interpretation": "Finite differences of observed screening endpoints, not independent causal sensitivities or acceptance evidence. Objective/throughput/workload constants are not automatically labelled resources. Zero resource change is observed, not missing. Kernel counters require separately available diagnostic evidence.",
+  "parameter_trials": 3,
+  "space": {
+    "params": [
+      {
+        "name": "chunks",
+        "kind": "int",
+        "choices": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ],
+        "description": "Number of contiguous chunks per half-bucket issued per grouped isend/irecv round. Clamped in code so each chunk stays at or above 262144 elements; only transfer granularity changes, never task semantics."
+      }
+    ],
+    "constraints": []
+  },
+  "selected": "trial-b0a02885e2-param-df25c2ee",
+  "stats": [
+    {
+      "candidate_id": "cand-ee04f0ee",
+      "space_id": "space-cand-ee04f0ee",
+      "n_complete": 3,
+      "n_fail": 0,
+      "best": {
+        "trial_id": "tr-f576b073",
+        "candidate_id": "cand-ee04f0ee",
+        "space_id": "space-cand-ee04f0ee",
+        "params": {
+          "values": {
+            "chunks": 8
+          }
+        },
+        "status": "complete",
+        "failure_kind": null,
+        "failure_detail": "",
+        "latency_ms": null,
+        "task_evaluation": {
+          "score": 240.896724,
+          "valid": true,
+          "metrics": {
+            "step_ms": 240.896724,
+            "tokens_per_second": 4253.506671483985,
+            "peak_allocated_bytes": 1977712640.0,
+            "framework.elapsed_ms": 240.896724,
+            "framework.peak_allocated_bytes": 1977712640.0,
+            "framework.peak_reserved_bytes": 2082471936.0,
+            "framework.allocated_bytes": 1014018048.0,
+            "framework.reserved_bytes": 2082471936.0,
+            "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+            "framework.lifecycle_peak_reserved_bytes": 2082471936.0,
+            "replacement.max_registers_per_thread": 96.0,
+            "replacement.diagnostic_kernel_sum_us": 266528.709,
+            "replacement.kernel_launches": 13.0,
+            "replacement.max_shared_memory_bytes": 96384.0
+          },
+          "detail": null
+        },
+        "profile": null,
+        "fp64_rescued_trials": null,
+        "job_wall_s": null,
+        "job_timed_out": null
+      },
+      "param_stats": [
+        {
+          "name": "chunks",
+          "best_value": 8,
+          "best_trial_value": 8,
+          "at_boundary": true,
+          "boundary_direction": "max",
+          "effect_pct": 0.0,
+          "latency_by_value": {},
+          "objective_by_value": {
+            "2": 249.633835,
+            "4": 241.992224,
+            "8": 240.896724
+          },
+          "effect_absolute": 8.737110999999999,
+          "failure_rate_by_value": {
+            "2": 0.0,
+            "4": 0.0,
+            "8": 0.0
+          }
+        }
+      ],
+      "resource_at_best": null,
+      "failure_clusters": []
+    }
+  ],
+  "responses": [
+    {
+      "candidate_id": "trial-b0a02885e2",
+      "axis": "chunks",
+      "a_params": {
+        "values": {
+          "chunks": 2
+        }
+      },
+      "b_params": {
+        "values": {
+          "chunks": 4
+        }
+      },
+      "a": {
+        "score": 249.633835,
+        "valid": true,
+        "metrics": {
+          "step_ms": 249.633835,
+          "tokens_per_second": 4106.8260863828355,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 249.633835,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2082471936.0,
+          "framework.allocated_bytes": 1014018048.0,
+          "framework.reserved_bytes": 2082471936.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2082471936.0,
+          "replacement.max_registers_per_thread": 96.0,
+          "replacement.diagnostic_kernel_sum_us": 287613.948,
+          "replacement.kernel_launches": 13.0,
+          "replacement.max_shared_memory_bytes": 96384.0
+        },
+        "detail": null
+      },
+      "b": {
+        "score": 241.992224,
+        "valid": true,
+        "metrics": {
+          "step_ms": 241.992224,
+          "tokens_per_second": 4235.114674125586,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 241.992224,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2082471936.0,
+          "framework.allocated_bytes": 1014018048.0,
+          "framework.reserved_bytes": 2082471936.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2082471936.0,
+          "replacement.max_registers_per_thread": 96.0,
+          "replacement.diagnostic_kernel_sum_us": 339164.096,
+          "replacement.kernel_launches": 13.0,
+          "replacement.max_shared_memory_bytes": 96384.0
+        },
+        "detail": null
+      },
+      "delta_j": -7.641611000000012,
+      "gain": 7.641611000000012,
+      "parameter_slope": -3.820805500000006,
+      "resource_deltas": {
+        "framework.allocated_bytes": 0.0,
+        "framework.lifecycle_peak_allocated_bytes": 0.0,
+        "framework.lifecycle_peak_reserved_bytes": 0.0,
+        "framework.peak_allocated_bytes": 0.0,
+        "framework.peak_reserved_bytes": 0.0,
+        "framework.reserved_bytes": 0.0,
+        "replacement.diagnostic_kernel_sum_us": 51550.148000000045,
+        "replacement.kernel_launches": 0.0,
+        "replacement.max_registers_per_thread": 0.0,
+        "replacement.max_shared_memory_bytes": 0.0
+      },
+      "resource_slopes": {
+        "replacement.diagnostic_kernel_sum_us": -0.00014823645123191508
+      },
+      "unknown_resources": [],
+      "resource_status": "observed",
+      "reason": null
+    },
+    {
+      "candidate_id": "trial-b0a02885e2",
+      "axis": "chunks",
+      "a_params": {
+        "values": {
+          "chunks": 4
+        }
+      },
+      "b_params": {
+        "values": {
+          "chunks": 8
+        }
+      },
+      "a": {
+        "score": 241.992224,
+        "valid": true,
+        "metrics": {
+          "step_ms": 241.992224,
+          "tokens_per_second": 4235.114674125586,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 241.992224,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2082471936.0,
+          "framework.allocated_bytes": 1014018048.0,
+          "framework.reserved_bytes": 2082471936.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2082471936.0,
+          "replacement.max_registers_per_thread": 96.0,
+          "replacement.diagnostic_kernel_sum_us": 339164.096,
+          "replacement.kernel_launches": 13.0,
+          "replacement.max_shared_memory_bytes": 96384.0
+        },
+        "detail": null
+      },
+      "b": {
+        "score": 240.896724,
+        "valid": true,
+        "metrics": {
+          "step_ms": 240.896724,
+          "tokens_per_second": 4253.506671483985,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 240.896724,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2082471936.0,
+          "framework.allocated_bytes": 1014018048.0,
+          "framework.reserved_bytes": 2082471936.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2082471936.0,
+          "replacement.max_registers_per_thread": 96.0,
+          "replacement.diagnostic_kernel_sum_us": 266528.709,
+          "replacement.kernel_launches": 13.0,
+          "replacement.max_shared_memory_bytes": 96384.0
+        },
+        "detail": null
+      },
+      "delta_j": -1.095499999999987,
+      "gain": 1.095499999999987,
+      "parameter_slope": -0.27387499999999676,
+      "resource_deltas": {
+        "framework.allocated_bytes": 0.0,
+        "framework.lifecycle_peak_allocated_bytes": 0.0,
+        "framework.lifecycle_peak_reserved_bytes": 0.0,
+        "framework.peak_allocated_bytes": 0.0,
+        "framework.peak_reserved_bytes": 0.0,
+        "framework.reserved_bytes": 0.0,
+        "replacement.diagnostic_kernel_sum_us": -72635.38700000005,
+        "replacement.kernel_launches": 0.0,
+        "replacement.max_registers_per_thread": 0.0,
+        "replacement.max_shared_memory_bytes": 0.0
+      },
+      "resource_slopes": {
+        "replacement.diagnostic_kernel_sum_us": 1.5082180260153173e-05
+      },
+      "unknown_resources": [],
+      "resource_status": "observed",
+      "reason": null
+    }
+  ],
+  "observations": [
+    {
+      "bundle": {
+        "schema_version": "project.v2",
+        "id": "trial-b0a02885e2-param-e46cf176",
+        "parent_revision": "c63bc8c5a27187a3b4f6a7fdfb954cd4e0d72d1fd90274f4bbb39d12559a8866",
+        "contract_ref": "sha256:86da60adc15b0f15a2942dcd11214684e525aa0cd92d8a7dfb171f9b4b0e7e15",
+        "scope": "joint",
+        "implementation": "distributed",
+        "groups": [
+          "f833b57a373d8262a384",
+          "8525af72c631b94e3dd0"
+        ],
+        "calls": [
+          "d0938de87369efd500322679",
+          "b8ade439d7b8bd5fb5c1029b"
+        ],
+        "affected_calls": [
+          "b8ade439d7b8bd5fb5c1029b",
+          "d0938de87369efd500322679"
+        ],
+        "edits": [
+          {
+            "schema_version": "project.v1",
+            "path": "opop_candidates/trial-b0a02885e2.py",
+            "before_sha256": null,
+            "content_ref": "sha256:e94d114d391b3e81efa048a6ef8e51e101ba612f20a86c8dcb7038fd5d0226fa"
+          },
+          {
+            "schema_version": "project.v1",
+            "path": "opop_candidates/trial-b0a02885e2.targets.json",
+            "before_sha256": null,
+            "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+          }
+        ],
+        "read_set": [
+          "call:b8ade439d7b8bd5fb5c1029b",
+          "call:d0938de87369efd500322679"
+        ],
+        "write_set": [
+          "file:opop_candidates/trial-b0a02885e2.py",
+          "file:opop_candidates/trial-b0a02885e2.targets.json",
+          "call:d0938de87369efd500322679",
+          "call:b8ade439d7b8bd5fb5c1029b"
+        ],
+        "requires": [],
+        "replaces": [],
+        "external_invariants": [
+          "Model architecture is frozen: GPT2Config(n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024) with resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False, attn_implementation='eager', FP32 weights via .float(), .train() mode, initialized under torch.manual_seed(20261020); no pretrained weights are downloaded (assets is empty by design, seeded synthetic fixtures are the task data).",
+          "Inputs are frozen: per-rank synthetic token IDs from torch.randint(0, 50257, (micro_batch=1, sequence_length=128)) repeated accumulation_steps=4 times using torch.Generator().manual_seed(31000 + rank).",
+          "Workload dimensions are frozen: world_size=2, micro_batch=1, sequence_length=128, accumulation_steps=4; effective batch 8 and 1024 tokens per step; the first 3 micro-batch backwards run under DDP.no_sync() and only the final micro-batch backward triggers the gradient all-reduce.",
+          "Numerical policies are frozen: TF32 disabled for cuBLAS matmul and cudnn, float32_matmul_precision 'highest', cudnn.benchmark False, torch num_threads=4 and num_interop_threads=1, seed 20261020.",
+          "DDP configuration is frozen: broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True; no communication hook and no profiler on the measured path (the source's bucket-inventory hook belongs to a separate diagnostic and is never installed).",
+          "Optimizer semantics are frozen: torch.optim.SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False); optimizer.zero_grad(set_to_none=True) executes inside the timed step (never pre-cleared in reset); each micro-batch loss is model(input_ids=tokens, labels=tokens, use_cache=False).loss / accumulation_steps and the accumulated loss is the sum over micro-batches.",
+          "Quality contract preserved from the source: finite accumulated loss; full per-parameter gradient comparison against the single-GPU full-global-batch reference with grad_atol=1e-6/grad_rtol=1e-4; exact cross-rank gradient equality with atol=0.0/rtol=0.0; post-step parameter comparison with parameter_atol=1e-6/parameter_rtol=1e-4; the +1-corruption negative control. The adapter exposes loss, every gradient and every updated parameter and leaves the comparisons to the framework; no accuracy or convergence is claimed beyond these reference-fidelity checks.",
+          "Objective semantics are frozen: step_ms is each rank's wall time of the complete accumulated step with the source's final torch.cuda.synchronize() as the completion boundary, aggregated as max across ranks; work is never moved out of the timed step to improve the score and no fabricated sub-metrics or sub-phase objectives are introduced.",
+          "The adapter uses context['device'] and the worker-initialized process group exclusively; it never picks a physical GPU, never initializes another default process group, never destroys a process group, and performs no CUDA work at import time."
+        ],
+        "plan_ref": null,
+        "registry_ref": null,
+        "installer": "opop_candidates/trial-b0a02885e2.py",
+        "parameters": {
+          "chunks": 2
+        }
+      },
+      "revision": "b39a73a1f0f8d900701e439d5dce69bdbf0cfaff957f3248c05a2ef5bca97a0b",
+      "result": {
+        "score": 249.633835,
+        "valid": true,
+        "metrics": {
+          "step_ms": 249.633835,
+          "tokens_per_second": 4106.8260863828355,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 249.633835,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2082471936.0,
+          "framework.allocated_bytes": 1014018048.0,
+          "framework.reserved_bytes": 2082471936.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2082471936.0,
+          "replacement.max_registers_per_thread": 96.0,
+          "replacement.diagnostic_kernel_sum_us": 287613.948,
+          "replacement.kernel_launches": 13.0,
+          "replacement.max_shared_memory_bytes": 96384.0
+        },
+        "detail": null
+      },
+      "constraints": [],
+      "run": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 20.284116469323635,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 65976,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 65976,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 33,
+                "unavailable_samples": 0,
+                "wait_s": 0.09070399403572083,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-b0a02885e2-param-e46cf176": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "d0938de87369efd500322679",
+                    "b8ade439d7b8bd5fb5c1029b"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent:guard_reduce_op",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent:guard_reduce_op",
+                      "count": 12
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "setup": [
+                {
+                  "bundle": "trial-b0a02885e2-param-e46cf176",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "legacy",
+                    "reason": "legacy requested",
+                    "functional_sites": 2,
+                    "scope_ids": [
+                      "5d7d6bb13691b02f533f62b0"
+                    ]
+                  },
+                  "elapsed_ms": 6.777042,
+                  "allocated_bytes": 996322304,
+                  "reserved_bytes": 1556086784,
+                  "peak_allocated_bytes": 996322304,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "step_ms": 256.390806,
+                  "tokens_per_second": 3993.902963899571,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 256.390806,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 249.34097,
+                  "tokens_per_second": 4106.8260863828355,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 249.34097,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 247.215379,
+                  "tokens_per_second": 4142.137128127453,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 247.215379,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 245.077006,
+                  "tokens_per_second": 4178.278561147429,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 245.077006,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 250.686904,
+                  "tokens_per_second": 4084.776602450681,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 250.686904,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                }
+              ],
+              "metrics": {
+                "step_ms": 249.34097,
+                "tokens_per_second": 4106.8260863828355,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 249.34097,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2082471936.0,
+                "framework.allocated_bytes": 1014018048.0,
+                "framework.reserved_bytes": 2082471936.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {
+                "trial-b0a02885e2-param-e46cf176": "4189bf3c11e0d512c80ae561c33397c68b78a353595f14b9a8feb96a6a2a7b02"
+              }
+            }
+          },
+          {
+            "rank": 1,
+            "pid": 65977,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 65977,
+              "status": "verified",
+              "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "logical_device": 1,
+              "nvidia_smi_pid_uuids": [
+                "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 34,
+                "unavailable_samples": 0,
+                "wait_s": 0.05715465173125267,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-b0a02885e2-param-e46cf176": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "d0938de87369efd500322679",
+                    "b8ade439d7b8bd5fb5c1029b"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent:guard_reduce_op",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent:guard_reduce_op",
+                      "count": 12
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "setup": [
+                {
+                  "bundle": "trial-b0a02885e2-param-e46cf176",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "legacy",
+                    "reason": "legacy requested",
+                    "functional_sites": 2,
+                    "scope_ids": [
+                      "5d7d6bb13691b02f533f62b0"
+                    ]
+                  },
+                  "elapsed_ms": 5.150048,
+                  "allocated_bytes": 996322304,
+                  "reserved_bytes": 1556086784,
+                  "peak_allocated_bytes": 996322304,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "step_ms": 256.588738,
+                  "tokens_per_second": 3990.82207575299,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 256.588738,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 249.633835,
+                  "tokens_per_second": 4102.008047106275,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 249.633835,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 247.410808,
+                  "tokens_per_second": 4138.865267357277,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 247.410808,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 245.254966,
+                  "tokens_per_second": 4175.24675117078,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 245.254966,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 250.857161,
+                  "tokens_per_second": 4082.0042605839744,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 250.857161,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                }
+              ],
+              "metrics": {
+                "step_ms": 249.633835,
+                "tokens_per_second": 4102.008047106275,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 249.633835,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2082471936.0,
+                "framework.allocated_bytes": 1014018048.0,
+                "framework.reserved_bytes": 2082471936.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {
+                "trial-b0a02885e2-param-e46cf176": "4189bf3c11e0d512c80ae561c33397c68b78a353595f14b9a8feb96a6a2a7b02"
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 0.00020170211791992188,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "worker_pids_reaped": true
+      },
+      "diagnostic": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 16.30405930802226,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 67315,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 67315,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 22,
+                "unavailable_samples": 0,
+                "wait_s": 0.07055037841200829,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "discovery": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/trial-b0a02885e2-param-e46cf176-resources/run/discovery-rank-0.json",
+              "coverage": {
+                "cuda_kernels": 4000,
+                "associated_kernels": 4000,
+                "unassociated_kernels": 0,
+                "associated_below_project": 4000,
+                "root_only_kernels": 0,
+                "backward_associated_kernels": 2677,
+                "autograd_ranges": 3048,
+                "forward_linked_autograd_ranges": 2456,
+                "ambiguous_forward_sequences": 108
+              },
+              "call_sites": 1527,
+              "groups": 859
+            }
+          },
+          {
+            "rank": 1,
+            "pid": 67316,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 67316,
+              "status": "verified",
+              "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "logical_device": 1,
+              "nvidia_smi_pid_uuids": [
+                "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 22,
+                "unavailable_samples": 0,
+                "wait_s": 0.05182778462767601,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "discovery": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/trial-b0a02885e2-param-e46cf176-resources/run/discovery-rank-1.json",
+              "coverage": {
+                "cuda_kernels": 4000,
+                "associated_kernels": 4000,
+                "unassociated_kernels": 0,
+                "associated_below_project": 4000,
+                "root_only_kernels": 0,
+                "backward_associated_kernels": 2677,
+                "autograd_ranges": 3048,
+                "forward_linked_autograd_ranges": 2456,
+                "ambiguous_forward_sequences": 108
+              },
+              "call_sites": 1527,
+              "groups": 859
+            }
+          }
+        ],
+        "lease_wait_s": 4.758956037461758,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "worker_pids_reaped": true
+      },
+      "candidate_diagnostics": {
+        "status": "observed",
+        "run": {
+          "schema_version": 1,
+          "status": "passed",
+          "failure": null,
+          "wall_s": 14.429763671010733,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 66898,
+              "exit_code": 0,
+              "status": "passed",
+              "binding": {
+                "pid": 66898,
+                "status": "verified",
+                "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 23,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.06963692978024483,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "framework_source": {
+                "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+                "files": 160,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": true,
+                "coverage": {
+                  "trial-b0a02885e2-param-e46cf176": {
+                    "counts": {
+                      "d0938de87369efd500322679": 12,
+                      "b8ade439d7b8bd5fb5c1029b": 1
+                    },
+                    "fallbacks": {},
+                    "reference_invocations": {
+                      "d0938de87369efd500322679": 12,
+                      "b8ade439d7b8bd5fb5c1029b": 1
+                    },
+                    "candidate_declared_routes": [
+                      {
+                        "call": "b8ade439d7b8bd5fb5c1029b",
+                        "route": "parent:guard_reduce_op",
+                        "count": 1
+                      },
+                      {
+                        "call": "d0938de87369efd500322679",
+                        "route": "parent:guard_reduce_op",
+                        "count": 12
+                      }
+                    ],
+                    "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                  }
+                },
+                "scope": "Diagnostic execution only; no quality or performance acceptance",
+                "candidate_diagnostics": {
+                  "schema_version": "project.candidate-diagnostics.v1",
+                  "events": [
+                    {
+                      "phase": "setup",
+                      "bundle": "trial-b0a02885e2-param-e46cf176",
+                      "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-0c7e04765f/source/opop_candidates/trial-b0a02885e2.py",
+                      "function": "<module>",
+                      "line": 57,
+                      "source": "from torch._C._distributed_c10d import RedOpType",
+                      "recent_lines": [
+                        {
+                          "line": 37,
+                          "source": "from torch.distributed.distributed_c10d import ProcessGroup, ReduceOp, Work"
+                        },
+                        {
+                          "line": 39,
+                          "source": "CALL_IDS = ("
+                        },
+                        {
+                          "line": 46,
+                          "source": "_P2P_DEVICES = (\"cuda\",)"
+                        },
+                        {
+                          "line": 47,
+                          "source": "_P2P_BACKENDS = (\"nccl\",)"
+                        },
+                        {
+                          "line": 49,
+                          "source": "_MIN_ELEMENTS = 2 * 1024 * 1024"
+                        },
+                        {
+                          "line": 50,
+                          "source": "_MIN_CHUNK_ELEMENTS = 262144"
+                        },
+                        {
+                          "line": 51,
+                          "source": "_DEFAULT_CHUNKS = 8"
+                        },
+                        {
+                          "line": 52,
+                          "source": "_MAX_CHUNKS = 64"
+                        },
+                        {
+                          "line": 53,
+                          "source": "_TAG_STRIDE = 2"
+                        },
+                        {
+                          "line": 54,
+                          "source": "_TAG_SPACE = 1 << 30"
+                        },
+                        {
+                          "line": 56,
+                          "source": "try:"
+                        },
+                        {
+                          "line": 57,
+                          "source": "from torch._C._distributed_c10d import RedOpType"
+                        }
+                      ],
+                      "event": "exception",
+                      "type": "ImportError",
+                      "message": "cannot import name 'RedOpType' from 'torch._C._distributed_c10d' (/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/_C.cpython-312-x86_64-linux-gnu.so)",
+                      "count": 1
+                    }
+                  ],
+                  "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+                }
+              }
+            },
+            {
+              "rank": 1,
+              "pid": 66899,
+              "exit_code": 0,
+              "status": "passed",
+              "binding": {
+                "pid": 66899,
+                "status": "verified",
+                "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "logical_device": 1,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 23,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.07017636299133301,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "framework_source": {
+                "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+                "files": 160,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": true,
+                "coverage": {
+                  "trial-b0a02885e2-param-e46cf176": {
+                    "counts": {
+                      "d0938de87369efd500322679": 12,
+                      "b8ade439d7b8bd5fb5c1029b": 1
+                    },
+                    "fallbacks": {},
+                    "reference_invocations": {
+                      "d0938de87369efd500322679": 12,
+                      "b8ade439d7b8bd5fb5c1029b": 1
+                    },
+                    "candidate_declared_routes": [
+                      {
+                        "call": "b8ade439d7b8bd5fb5c1029b",
+                        "route": "parent:guard_reduce_op",
+                        "count": 1
+                      },
+                      {
+                        "call": "d0938de87369efd500322679",
+                        "route": "parent:guard_reduce_op",
+                        "count": 12
+                      }
+                    ],
+                    "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                  }
+                },
+                "scope": "Diagnostic execution only; no quality or performance acceptance",
+                "candidate_diagnostics": {
+                  "schema_version": "project.candidate-diagnostics.v1",
+                  "events": [
+                    {
+                      "phase": "setup",
+                      "bundle": "trial-b0a02885e2-param-e46cf176",
+                      "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-0c7e04765f/source/opop_candidates/trial-b0a02885e2.py",
+                      "function": "<module>",
+                      "line": 57,
+                      "source": "from torch._C._distributed_c10d import RedOpType",
+                      "recent_lines": [
+                        {
+                          "line": 37,
+                          "source": "from torch.distributed.distributed_c10d import ProcessGroup, ReduceOp, Work"
+                        },
+                        {
+                          "line": 39,
+                          "source": "CALL_IDS = ("
+                        },
+                        {
+                          "line": 46,
+                          "source": "_P2P_DEVICES = (\"cuda\",)"
+                        },
+                        {
+                          "line": 47,
+                          "source": "_P2P_BACKENDS = (\"nccl\",)"
+                        },
+                        {
+                          "line": 49,
+                          "source": "_MIN_ELEMENTS = 2 * 1024 * 1024"
+                        },
+                        {
+                          "line": 50,
+                          "source": "_MIN_CHUNK_ELEMENTS = 262144"
+                        },
+                        {
+                          "line": 51,
+                          "source": "_DEFAULT_CHUNKS = 8"
+                        },
+                        {
+                          "line": 52,
+                          "source": "_MAX_CHUNKS = 64"
+                        },
+                        {
+                          "line": 53,
+                          "source": "_TAG_STRIDE = 2"
+                        },
+                        {
+                          "line": 54,
+                          "source": "_TAG_SPACE = 1 << 30"
+                        },
+                        {
+                          "line": 56,
+                          "source": "try:"
+                        },
+                        {
+                          "line": 57,
+                          "source": "from torch._C._distributed_c10d import RedOpType"
+                        }
+                      ],
+                      "event": "exception",
+                      "type": "ImportError",
+                      "message": "cannot import name 'RedOpType' from 'torch._C._distributed_c10d' (/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/_C.cpython-312-x86_64-linux-gnu.so)",
+                      "count": 1
+                    }
+                  ],
+                  "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+                }
+              }
+            }
+          ],
+          "lease_wait_s": 10.560658980160952,
+          "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+          "devices": [
+            "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+            "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+          ],
+          "worker_pids_reaped": true
+        },
+        "evidence": [
+          "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-0c7e04765f/run/candidate-diagnostics-rank-0.json",
+          "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-0c7e04765f/run/candidate-diagnostics-rank-1.json"
+        ],
+        "ranks": [
+          {
+            "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-0c7e04765f/run/candidate-diagnostics-rank-0.json",
+            "schema_version": "project.candidate-diagnostics.v1",
+            "events": [
+              {
+                "phase": "setup",
+                "bundle": "trial-b0a02885e2-param-e46cf176",
+                "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-0c7e04765f/source/opop_candidates/trial-b0a02885e2.py",
+                "function": "<module>",
+                "line": 57,
+                "source": "from torch._C._distributed_c10d import RedOpType",
+                "recent_lines": [
+                  {
+                    "line": 37,
+                    "source": "from torch.distributed.distributed_c10d import ProcessGroup, ReduceOp, Work"
+                  },
+                  {
+                    "line": 39,
+                    "source": "CALL_IDS = ("
+                  },
+                  {
+                    "line": 46,
+                    "source": "_P2P_DEVICES = (\"cuda\",)"
+                  },
+                  {
+                    "line": 47,
+                    "source": "_P2P_BACKENDS = (\"nccl\",)"
+                  },
+                  {
+                    "line": 49,
+                    "source": "_MIN_ELEMENTS = 2 * 1024 * 1024"
+                  },
+                  {
+                    "line": 50,
+                    "source": "_MIN_CHUNK_ELEMENTS = 262144"
+                  },
+                  {
+                    "line": 51,
+                    "source": "_DEFAULT_CHUNKS = 8"
+                  },
+                  {
+                    "line": 52,
+                    "source": "_MAX_CHUNKS = 64"
+                  },
+                  {
+                    "line": 53,
+                    "source": "_TAG_STRIDE = 2"
+                  },
+                  {
+                    "line": 54,
+                    "source": "_TAG_SPACE = 1 << 30"
+                  },
+                  {
+                    "line": 56,
+                    "source": "try:"
+                  },
+                  {
+                    "line": 57,
+                    "source": "from torch._C._distributed_c10d import RedOpType"
+                  }
+                ],
+                "event": "exception",
+                "type": "ImportError",
+                "message": "cannot import name 'RedOpType' from 'torch._C._distributed_c10d' (/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/_C.cpython-312-x86_64-linux-gnu.so)",
+                "count": 1
+              }
+            ],
+            "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+          },
+          {
+            "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-0c7e04765f/run/candidate-diagnostics-rank-1.json",
+            "schema_version": "project.candidate-diagnostics.v1",
+            "events": [
+              {
+                "phase": "setup",
+                "bundle": "trial-b0a02885e2-param-e46cf176",
+                "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-0c7e04765f/source/opop_candidates/trial-b0a02885e2.py",
+                "function": "<module>",
+                "line": 57,
+                "source": "from torch._C._distributed_c10d import RedOpType",
+                "recent_lines": [
+                  {
+                    "line": 37,
+                    "source": "from torch.distributed.distributed_c10d import ProcessGroup, ReduceOp, Work"
+                  },
+                  {
+                    "line": 39,
+                    "source": "CALL_IDS = ("
+                  },
+                  {
+                    "line": 46,
+                    "source": "_P2P_DEVICES = (\"cuda\",)"
+                  },
+                  {
+                    "line": 47,
+                    "source": "_P2P_BACKENDS = (\"nccl\",)"
+                  },
+                  {
+                    "line": 49,
+                    "source": "_MIN_ELEMENTS = 2 * 1024 * 1024"
+                  },
+                  {
+                    "line": 50,
+                    "source": "_MIN_CHUNK_ELEMENTS = 262144"
+                  },
+                  {
+                    "line": 51,
+                    "source": "_DEFAULT_CHUNKS = 8"
+                  },
+                  {
+                    "line": 52,
+                    "source": "_MAX_CHUNKS = 64"
+                  },
+                  {
+                    "line": 53,
+                    "source": "_TAG_STRIDE = 2"
+                  },
+                  {
+                    "line": 54,
+                    "source": "_TAG_SPACE = 1 << 30"
+                  },
+                  {
+                    "line": 56,
+                    "source": "try:"
+                  },
+                  {
+                    "line": 57,
+                    "source": "from torch._C._distributed_c10d import RedOpType"
+                  }
+                ],
+                "event": "exception",
+                "type": "ImportError",
+                "message": "cannot import name 'RedOpType' from 'torch._C._distributed_c10d' (/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/_C.cpython-312-x86_64-linux-gnu.so)",
+                "count": 1
+              }
+            ],
+            "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+          }
+        ],
+        "provenance": {
+          "revision": "b39a73a1f0f8d900701e439d5dce69bdbf0cfaff957f3248c05a2ef5bca97a0b",
+          "parent_revision": "c63bc8c5a27187a3b4f6a7fdfb954cd4e0d72d1fd90274f4bbb39d12559a8866",
+          "bundles": [
+            "trial-b0a02885e2-param-e46cf176"
+          ],
+          "plan": "sha256:9fd6f595eecf98aa9ccca25ce9a3b5b230ef3398b4d04aa888376965eb4811d6",
+          "registry": "sha256:90825e31814be9e2e979ef90b506f8f5c93dc4012d8a4ef301a2dff53e73f044",
+          "request_sha256": "bc907f93faef310c8f9bc3b8e0b94cacadeba1d62c9eec4ac809c45de78691b1",
+          "objective": {
+            "name": "step_ms",
+            "unit": "ms",
+            "direction": "minimize",
+            "constraints": [],
+            "rank_aggregation": "max"
+          },
+          "workload": {
+            "id": "accumulated_step",
+            "world_size": 2,
+            "micro_batch": 1,
+            "sequence_length": 128,
+            "accumulation_steps": 4,
+            "goals": [
+              {
+                "id": "step",
+                "metric": "step_ms",
+                "direction": "min"
+              },
+              {
+                "id": "communication",
+                "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+                "direction": "min",
+                "constraints": {
+                  "step_ms_max_baseline_ratio": 1.05
+                }
+              }
+            ]
+          },
+          "devices": [
+            "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+            "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+          ],
+          "framework_source": {
+            "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+            "files": 160,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+        },
+        "trigger": {
+          "policy": "on_reference",
+          "reference_sites": [
+            {
+              "rank": 0,
+              "bundle": "trial-b0a02885e2-param-e46cf176",
+              "call": "d0938de87369efd500322679",
+              "invocations": 12,
+              "reference_invocations": 12
+            },
+            {
+              "rank": 0,
+              "bundle": "trial-b0a02885e2-param-e46cf176",
+              "call": "b8ade439d7b8bd5fb5c1029b",
+              "invocations": 1,
+              "reference_invocations": 1
+            },
+            {
+              "rank": 1,
+              "bundle": "trial-b0a02885e2-param-e46cf176",
+              "call": "d0938de87369efd500322679",
+              "invocations": 12,
+              "reference_invocations": 12
+            },
+            {
+              "rank": 1,
+              "bundle": "trial-b0a02885e2-param-e46cf176",
+              "call": "b8ade439d7b8bd5fb5c1029b",
+              "invocations": 1,
+              "reference_invocations": 1
+            }
+          ],
+          "interpretation": "Any fully referenced site can expose a hidden fallback in a joint bundle. References can also implement legitimate composition or verification; this trigger does not change quality, feasibility or acceptance."
+        }
+      }
+    },
+    {
+      "bundle": {
+        "schema_version": "project.v2",
+        "id": "trial-b0a02885e2-param-8b0a405f",
+        "parent_revision": "c63bc8c5a27187a3b4f6a7fdfb954cd4e0d72d1fd90274f4bbb39d12559a8866",
+        "contract_ref": "sha256:86da60adc15b0f15a2942dcd11214684e525aa0cd92d8a7dfb171f9b4b0e7e15",
+        "scope": "joint",
+        "implementation": "distributed",
+        "groups": [
+          "f833b57a373d8262a384",
+          "8525af72c631b94e3dd0"
+        ],
+        "calls": [
+          "d0938de87369efd500322679",
+          "b8ade439d7b8bd5fb5c1029b"
+        ],
+        "affected_calls": [
+          "b8ade439d7b8bd5fb5c1029b",
+          "d0938de87369efd500322679"
+        ],
+        "edits": [
+          {
+            "schema_version": "project.v1",
+            "path": "opop_candidates/trial-b0a02885e2.py",
+            "before_sha256": null,
+            "content_ref": "sha256:e94d114d391b3e81efa048a6ef8e51e101ba612f20a86c8dcb7038fd5d0226fa"
+          },
+          {
+            "schema_version": "project.v1",
+            "path": "opop_candidates/trial-b0a02885e2.targets.json",
+            "before_sha256": null,
+            "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+          }
+        ],
+        "read_set": [
+          "call:b8ade439d7b8bd5fb5c1029b",
+          "call:d0938de87369efd500322679"
+        ],
+        "write_set": [
+          "file:opop_candidates/trial-b0a02885e2.py",
+          "file:opop_candidates/trial-b0a02885e2.targets.json",
+          "call:d0938de87369efd500322679",
+          "call:b8ade439d7b8bd5fb5c1029b"
+        ],
+        "requires": [],
+        "replaces": [],
+        "external_invariants": [
+          "Model architecture is frozen: GPT2Config(n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024) with resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False, attn_implementation='eager', FP32 weights via .float(), .train() mode, initialized under torch.manual_seed(20261020); no pretrained weights are downloaded (assets is empty by design, seeded synthetic fixtures are the task data).",
+          "Inputs are frozen: per-rank synthetic token IDs from torch.randint(0, 50257, (micro_batch=1, sequence_length=128)) repeated accumulation_steps=4 times using torch.Generator().manual_seed(31000 + rank).",
+          "Workload dimensions are frozen: world_size=2, micro_batch=1, sequence_length=128, accumulation_steps=4; effective batch 8 and 1024 tokens per step; the first 3 micro-batch backwards run under DDP.no_sync() and only the final micro-batch backward triggers the gradient all-reduce.",
+          "Numerical policies are frozen: TF32 disabled for cuBLAS matmul and cudnn, float32_matmul_precision 'highest', cudnn.benchmark False, torch num_threads=4 and num_interop_threads=1, seed 20261020.",
+          "DDP configuration is frozen: broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True; no communication hook and no profiler on the measured path (the source's bucket-inventory hook belongs to a separate diagnostic and is never installed).",
+          "Optimizer semantics are frozen: torch.optim.SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False); optimizer.zero_grad(set_to_none=True) executes inside the timed step (never pre-cleared in reset); each micro-batch loss is model(input_ids=tokens, labels=tokens, use_cache=False).loss / accumulation_steps and the accumulated loss is the sum over micro-batches.",
+          "Quality contract preserved from the source: finite accumulated loss; full per-parameter gradient comparison against the single-GPU full-global-batch reference with grad_atol=1e-6/grad_rtol=1e-4; exact cross-rank gradient equality with atol=0.0/rtol=0.0; post-step parameter comparison with parameter_atol=1e-6/parameter_rtol=1e-4; the +1-corruption negative control. The adapter exposes loss, every gradient and every updated parameter and leaves the comparisons to the framework; no accuracy or convergence is claimed beyond these reference-fidelity checks.",
+          "Objective semantics are frozen: step_ms is each rank's wall time of the complete accumulated step with the source's final torch.cuda.synchronize() as the completion boundary, aggregated as max across ranks; work is never moved out of the timed step to improve the score and no fabricated sub-metrics or sub-phase objectives are introduced.",
+          "The adapter uses context['device'] and the worker-initialized process group exclusively; it never picks a physical GPU, never initializes another default process group, never destroys a process group, and performs no CUDA work at import time."
+        ],
+        "plan_ref": null,
+        "registry_ref": null,
+        "installer": "opop_candidates/trial-b0a02885e2.py",
+        "parameters": {
+          "chunks": 4
+        }
+      },
+      "revision": "c64677ec74dd02593d77322303eeb7407f45aef1b7909cd761f3e52a1a54944d",
+      "result": {
+        "score": 241.992224,
+        "valid": true,
+        "metrics": {
+          "step_ms": 241.992224,
+          "tokens_per_second": 4235.114674125586,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 241.992224,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2082471936.0,
+          "framework.allocated_bytes": 1014018048.0,
+          "framework.reserved_bytes": 2082471936.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2082471936.0,
+          "replacement.max_registers_per_thread": 96.0,
+          "replacement.diagnostic_kernel_sum_us": 339164.096,
+          "replacement.kernel_launches": 13.0,
+          "replacement.max_shared_memory_bytes": 96384.0
+        },
+        "detail": null
+      },
+      "constraints": [],
+      "run": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 19.591886464506388,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 67907,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 67907,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 32,
+                "unavailable_samples": 0,
+                "wait_s": 0.06929810717701912,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-b0a02885e2-param-8b0a405f": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "d0938de87369efd500322679",
+                    "b8ade439d7b8bd5fb5c1029b"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent:guard_reduce_op",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent:guard_reduce_op",
+                      "count": 12
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "setup": [
+                {
+                  "bundle": "trial-b0a02885e2-param-8b0a405f",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "legacy",
+                    "reason": "legacy requested",
+                    "functional_sites": 2,
+                    "scope_ids": [
+                      "5d7d6bb13691b02f533f62b0"
+                    ]
+                  },
+                  "elapsed_ms": 4.165276,
+                  "allocated_bytes": 996322304,
+                  "reserved_bytes": 1556086784,
+                  "peak_allocated_bytes": 996322304,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "step_ms": 241.788022,
+                  "tokens_per_second": 4235.114674125586,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 241.788022,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 249.121298,
+                  "tokens_per_second": 4110.447433522926,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 249.121298,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 253.732083,
+                  "tokens_per_second": 4035.7529402381488,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 253.732083,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 237.447521,
+                  "tokens_per_second": 4312.531862566802,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 237.447521,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 239.802259,
+                  "tokens_per_second": 4270.184961018236,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 239.802259,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                }
+              ],
+              "metrics": {
+                "step_ms": 241.788022,
+                "tokens_per_second": 4235.114674125586,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 241.788022,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2082471936.0,
+                "framework.allocated_bytes": 1014018048.0,
+                "framework.reserved_bytes": 2082471936.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {
+                "trial-b0a02885e2-param-8b0a405f": "64b4ca102709f393f7c2baa90c589beef9f0e6b1e7295eb58b8a166e07d6d0b0"
+              }
+            }
+          },
+          {
+            "rank": 1,
+            "pid": 67908,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 67908,
+              "status": "verified",
+              "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "logical_device": 1,
+              "nvidia_smi_pid_uuids": [
+                "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 32,
+                "unavailable_samples": 0,
+                "wait_s": 0.05076637119054794,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-b0a02885e2-param-8b0a405f": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "d0938de87369efd500322679",
+                    "b8ade439d7b8bd5fb5c1029b"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent:guard_reduce_op",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent:guard_reduce_op",
+                      "count": 12
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "setup": [
+                {
+                  "bundle": "trial-b0a02885e2-param-8b0a405f",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "legacy",
+                    "reason": "legacy requested",
+                    "functional_sites": 2,
+                    "scope_ids": [
+                      "5d7d6bb13691b02f533f62b0"
+                    ]
+                  },
+                  "elapsed_ms": 4.168892,
+                  "allocated_bytes": 996322304,
+                  "reserved_bytes": 1556086784,
+                  "peak_allocated_bytes": 996322304,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "step_ms": 241.992224,
+                  "tokens_per_second": 4231.540927529969,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 241.992224,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 249.34484,
+                  "tokens_per_second": 4106.7623456735655,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 249.34484,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 253.916305,
+                  "tokens_per_second": 4032.8249105546806,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 253.916305,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 237.561162,
+                  "tokens_per_second": 4310.468897268654,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 237.561162,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 239.976411,
+                  "tokens_per_second": 4267.086067888564,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 239.976411,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                }
+              ],
+              "metrics": {
+                "step_ms": 241.992224,
+                "tokens_per_second": 4231.540927529969,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 241.992224,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2082471936.0,
+                "framework.allocated_bytes": 1014018048.0,
+                "framework.reserved_bytes": 2082471936.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {
+                "trial-b0a02885e2-param-8b0a405f": "64b4ca102709f393f7c2baa90c589beef9f0e6b1e7295eb58b8a166e07d6d0b0"
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 0.0001622997224330902,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "worker_pids_reaped": true
+      },
+      "diagnostic": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 16.864629797637463,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 68898,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 68898,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 23,
+                "unavailable_samples": 0,
+                "wait_s": 0.08599436655640602,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "discovery": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/trial-b0a02885e2-param-8b0a405f-resources/run/discovery-rank-0.json",
+              "coverage": {
+                "cuda_kernels": 4000,
+                "associated_kernels": 4000,
+                "unassociated_kernels": 0,
+                "associated_below_project": 4000,
+                "root_only_kernels": 0,
+                "backward_associated_kernels": 2677,
+                "autograd_ranges": 3048,
+                "forward_linked_autograd_ranges": 2456,
+                "ambiguous_forward_sequences": 108
+              },
+              "call_sites": 1527,
+              "groups": 859
+            }
+          },
+          {
+            "rank": 1,
+            "pid": 68899,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 68899,
+              "status": "verified",
+              "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "logical_device": 1,
+              "nvidia_smi_pid_uuids": [
+                "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 23,
+                "unavailable_samples": 0,
+                "wait_s": 0.06751621887087822,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "discovery": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/trial-b0a02885e2-param-8b0a405f-resources/run/discovery-rank-1.json",
+              "coverage": {
+                "cuda_kernels": 4000,
+                "associated_kernels": 4000,
+                "unassociated_kernels": 0,
+                "associated_below_project": 4000,
+                "root_only_kernels": 0,
+                "backward_associated_kernels": 2677,
+                "autograd_ranges": 3048,
+                "forward_linked_autograd_ranges": 2456,
+                "ambiguous_forward_sequences": 108
+              },
+              "call_sites": 1527,
+              "groups": 859
+            }
+          }
+        ],
+        "lease_wait_s": 0.0002047605812549591,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "worker_pids_reaped": true
+      },
+      "candidate_diagnostics": {
+        "status": "observed",
+        "run": {
+          "schema_version": 1,
+          "status": "passed",
+          "failure": null,
+          "wall_s": 15.236922528594732,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 68472,
+              "exit_code": 0,
+              "status": "passed",
+              "binding": {
+                "pid": 68472,
+                "status": "verified",
+                "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 24,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.050394535064697266,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "framework_source": {
+                "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+                "files": 160,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": true,
+                "coverage": {
+                  "trial-b0a02885e2-param-8b0a405f": {
+                    "counts": {
+                      "d0938de87369efd500322679": 12,
+                      "b8ade439d7b8bd5fb5c1029b": 1
+                    },
+                    "fallbacks": {},
+                    "reference_invocations": {
+                      "d0938de87369efd500322679": 12,
+                      "b8ade439d7b8bd5fb5c1029b": 1
+                    },
+                    "candidate_declared_routes": [
+                      {
+                        "call": "b8ade439d7b8bd5fb5c1029b",
+                        "route": "parent:guard_reduce_op",
+                        "count": 1
+                      },
+                      {
+                        "call": "d0938de87369efd500322679",
+                        "route": "parent:guard_reduce_op",
+                        "count": 12
+                      }
+                    ],
+                    "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                  }
+                },
+                "scope": "Diagnostic execution only; no quality or performance acceptance",
+                "candidate_diagnostics": {
+                  "schema_version": "project.candidate-diagnostics.v1",
+                  "events": [
+                    {
+                      "phase": "setup",
+                      "bundle": "trial-b0a02885e2-param-8b0a405f",
+                      "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-8c39a241b2/source/opop_candidates/trial-b0a02885e2.py",
+                      "function": "<module>",
+                      "line": 57,
+                      "source": "from torch._C._distributed_c10d import RedOpType",
+                      "recent_lines": [
+                        {
+                          "line": 37,
+                          "source": "from torch.distributed.distributed_c10d import ProcessGroup, ReduceOp, Work"
+                        },
+                        {
+                          "line": 39,
+                          "source": "CALL_IDS = ("
+                        },
+                        {
+                          "line": 46,
+                          "source": "_P2P_DEVICES = (\"cuda\",)"
+                        },
+                        {
+                          "line": 47,
+                          "source": "_P2P_BACKENDS = (\"nccl\",)"
+                        },
+                        {
+                          "line": 49,
+                          "source": "_MIN_ELEMENTS = 2 * 1024 * 1024"
+                        },
+                        {
+                          "line": 50,
+                          "source": "_MIN_CHUNK_ELEMENTS = 262144"
+                        },
+                        {
+                          "line": 51,
+                          "source": "_DEFAULT_CHUNKS = 8"
+                        },
+                        {
+                          "line": 52,
+                          "source": "_MAX_CHUNKS = 64"
+                        },
+                        {
+                          "line": 53,
+                          "source": "_TAG_STRIDE = 2"
+                        },
+                        {
+                          "line": 54,
+                          "source": "_TAG_SPACE = 1 << 30"
+                        },
+                        {
+                          "line": 56,
+                          "source": "try:"
+                        },
+                        {
+                          "line": 57,
+                          "source": "from torch._C._distributed_c10d import RedOpType"
+                        }
+                      ],
+                      "event": "exception",
+                      "type": "ImportError",
+                      "message": "cannot import name 'RedOpType' from 'torch._C._distributed_c10d' (/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/_C.cpython-312-x86_64-linux-gnu.so)",
+                      "count": 1
+                    }
+                  ],
+                  "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+                }
+              }
+            },
+            {
+              "rank": 1,
+              "pid": 68473,
+              "exit_code": 0,
+              "status": "passed",
+              "binding": {
+                "pid": 68473,
+                "status": "verified",
+                "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "logical_device": 1,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 24,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.09345292672514915,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "framework_source": {
+                "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+                "files": 160,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": true,
+                "coverage": {
+                  "trial-b0a02885e2-param-8b0a405f": {
+                    "counts": {
+                      "d0938de87369efd500322679": 12,
+                      "b8ade439d7b8bd5fb5c1029b": 1
+                    },
+                    "fallbacks": {},
+                    "reference_invocations": {
+                      "d0938de87369efd500322679": 12,
+                      "b8ade439d7b8bd5fb5c1029b": 1
+                    },
+                    "candidate_declared_routes": [
+                      {
+                        "call": "b8ade439d7b8bd5fb5c1029b",
+                        "route": "parent:guard_reduce_op",
+                        "count": 1
+                      },
+                      {
+                        "call": "d0938de87369efd500322679",
+                        "route": "parent:guard_reduce_op",
+                        "count": 12
+                      }
+                    ],
+                    "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                  }
+                },
+                "scope": "Diagnostic execution only; no quality or performance acceptance",
+                "candidate_diagnostics": {
+                  "schema_version": "project.candidate-diagnostics.v1",
+                  "events": [
+                    {
+                      "phase": "setup",
+                      "bundle": "trial-b0a02885e2-param-8b0a405f",
+                      "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-8c39a241b2/source/opop_candidates/trial-b0a02885e2.py",
+                      "function": "<module>",
+                      "line": 57,
+                      "source": "from torch._C._distributed_c10d import RedOpType",
+                      "recent_lines": [
+                        {
+                          "line": 37,
+                          "source": "from torch.distributed.distributed_c10d import ProcessGroup, ReduceOp, Work"
+                        },
+                        {
+                          "line": 39,
+                          "source": "CALL_IDS = ("
+                        },
+                        {
+                          "line": 46,
+                          "source": "_P2P_DEVICES = (\"cuda\",)"
+                        },
+                        {
+                          "line": 47,
+                          "source": "_P2P_BACKENDS = (\"nccl\",)"
+                        },
+                        {
+                          "line": 49,
+                          "source": "_MIN_ELEMENTS = 2 * 1024 * 1024"
+                        },
+                        {
+                          "line": 50,
+                          "source": "_MIN_CHUNK_ELEMENTS = 262144"
+                        },
+                        {
+                          "line": 51,
+                          "source": "_DEFAULT_CHUNKS = 8"
+                        },
+                        {
+                          "line": 52,
+                          "source": "_MAX_CHUNKS = 64"
+                        },
+                        {
+                          "line": 53,
+                          "source": "_TAG_STRIDE = 2"
+                        },
+                        {
+                          "line": 54,
+                          "source": "_TAG_SPACE = 1 << 30"
+                        },
+                        {
+                          "line": 56,
+                          "source": "try:"
+                        },
+                        {
+                          "line": 57,
+                          "source": "from torch._C._distributed_c10d import RedOpType"
+                        }
+                      ],
+                      "event": "exception",
+                      "type": "ImportError",
+                      "message": "cannot import name 'RedOpType' from 'torch._C._distributed_c10d' (/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/_C.cpython-312-x86_64-linux-gnu.so)",
+                      "count": 1
+                    }
+                  ],
+                  "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+                }
+              }
+            }
+          ],
+          "lease_wait_s": 0.00020224601030349731,
+          "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+          "devices": [
+            "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+            "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+          ],
+          "worker_pids_reaped": true
+        },
+        "evidence": [
+          "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-8c39a241b2/run/candidate-diagnostics-rank-0.json",
+          "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-8c39a241b2/run/candidate-diagnostics-rank-1.json"
+        ],
+        "ranks": [
+          {
+            "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-8c39a241b2/run/candidate-diagnostics-rank-0.json",
+            "schema_version": "project.candidate-diagnostics.v1",
+            "events": [
+              {
+                "phase": "setup",
+                "bundle": "trial-b0a02885e2-param-8b0a405f",
+                "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-8c39a241b2/source/opop_candidates/trial-b0a02885e2.py",
+                "function": "<module>",
+                "line": 57,
+                "source": "from torch._C._distributed_c10d import RedOpType",
+                "recent_lines": [
+                  {
+                    "line": 37,
+                    "source": "from torch.distributed.distributed_c10d import ProcessGroup, ReduceOp, Work"
+                  },
+                  {
+                    "line": 39,
+                    "source": "CALL_IDS = ("
+                  },
+                  {
+                    "line": 46,
+                    "source": "_P2P_DEVICES = (\"cuda\",)"
+                  },
+                  {
+                    "line": 47,
+                    "source": "_P2P_BACKENDS = (\"nccl\",)"
+                  },
+                  {
+                    "line": 49,
+                    "source": "_MIN_ELEMENTS = 2 * 1024 * 1024"
+                  },
+                  {
+                    "line": 50,
+                    "source": "_MIN_CHUNK_ELEMENTS = 262144"
+                  },
+                  {
+                    "line": 51,
+                    "source": "_DEFAULT_CHUNKS = 8"
+                  },
+                  {
+                    "line": 52,
+                    "source": "_MAX_CHUNKS = 64"
+                  },
+                  {
+                    "line": 53,
+                    "source": "_TAG_STRIDE = 2"
+                  },
+                  {
+                    "line": 54,
+                    "source": "_TAG_SPACE = 1 << 30"
+                  },
+                  {
+                    "line": 56,
+                    "source": "try:"
+                  },
+                  {
+                    "line": 57,
+                    "source": "from torch._C._distributed_c10d import RedOpType"
+                  }
+                ],
+                "event": "exception",
+                "type": "ImportError",
+                "message": "cannot import name 'RedOpType' from 'torch._C._distributed_c10d' (/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/_C.cpython-312-x86_64-linux-gnu.so)",
+                "count": 1
+              }
+            ],
+            "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+          },
+          {
+            "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-8c39a241b2/run/candidate-diagnostics-rank-1.json",
+            "schema_version": "project.candidate-diagnostics.v1",
+            "events": [
+              {
+                "phase": "setup",
+                "bundle": "trial-b0a02885e2-param-8b0a405f",
+                "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-8c39a241b2/source/opop_candidates/trial-b0a02885e2.py",
+                "function": "<module>",
+                "line": 57,
+                "source": "from torch._C._distributed_c10d import RedOpType",
+                "recent_lines": [
+                  {
+                    "line": 37,
+                    "source": "from torch.distributed.distributed_c10d import ProcessGroup, ReduceOp, Work"
+                  },
+                  {
+                    "line": 39,
+                    "source": "CALL_IDS = ("
+                  },
+                  {
+                    "line": 46,
+                    "source": "_P2P_DEVICES = (\"cuda\",)"
+                  },
+                  {
+                    "line": 47,
+                    "source": "_P2P_BACKENDS = (\"nccl\",)"
+                  },
+                  {
+                    "line": 49,
+                    "source": "_MIN_ELEMENTS = 2 * 1024 * 1024"
+                  },
+                  {
+                    "line": 50,
+                    "source": "_MIN_CHUNK_ELEMENTS = 262144"
+                  },
+                  {
+                    "line": 51,
+                    "source": "_DEFAULT_CHUNKS = 8"
+                  },
+                  {
+                    "line": 52,
+                    "source": "_MAX_CHUNKS = 64"
+                  },
+                  {
+                    "line": 53,
+                    "source": "_TAG_STRIDE = 2"
+                  },
+                  {
+                    "line": 54,
+                    "source": "_TAG_SPACE = 1 << 30"
+                  },
+                  {
+                    "line": 56,
+                    "source": "try:"
+                  },
+                  {
+                    "line": 57,
+                    "source": "from torch._C._distributed_c10d import RedOpType"
+                  }
+                ],
+                "event": "exception",
+                "type": "ImportError",
+                "message": "cannot import name 'RedOpType' from 'torch._C._distributed_c10d' (/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/_C.cpython-312-x86_64-linux-gnu.so)",
+                "count": 1
+              }
+            ],
+            "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+          }
+        ],
+        "provenance": {
+          "revision": "c64677ec74dd02593d77322303eeb7407f45aef1b7909cd761f3e52a1a54944d",
+          "parent_revision": "c63bc8c5a27187a3b4f6a7fdfb954cd4e0d72d1fd90274f4bbb39d12559a8866",
+          "bundles": [
+            "trial-b0a02885e2-param-8b0a405f"
+          ],
+          "plan": "sha256:9fd6f595eecf98aa9ccca25ce9a3b5b230ef3398b4d04aa888376965eb4811d6",
+          "registry": "sha256:90825e31814be9e2e979ef90b506f8f5c93dc4012d8a4ef301a2dff53e73f044",
+          "request_sha256": "bc907f93faef310c8f9bc3b8e0b94cacadeba1d62c9eec4ac809c45de78691b1",
+          "objective": {
+            "name": "step_ms",
+            "unit": "ms",
+            "direction": "minimize",
+            "constraints": [],
+            "rank_aggregation": "max"
+          },
+          "workload": {
+            "id": "accumulated_step",
+            "world_size": 2,
+            "micro_batch": 1,
+            "sequence_length": 128,
+            "accumulation_steps": 4,
+            "goals": [
+              {
+                "id": "step",
+                "metric": "step_ms",
+                "direction": "min"
+              },
+              {
+                "id": "communication",
+                "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+                "direction": "min",
+                "constraints": {
+                  "step_ms_max_baseline_ratio": 1.05
+                }
+              }
+            ]
+          },
+          "devices": [
+            "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+            "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+          ],
+          "framework_source": {
+            "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+            "files": 160,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+        },
+        "trigger": {
+          "policy": "on_reference",
+          "reference_sites": [
+            {
+              "rank": 0,
+              "bundle": "trial-b0a02885e2-param-8b0a405f",
+              "call": "d0938de87369efd500322679",
+              "invocations": 12,
+              "reference_invocations": 12
+            },
+            {
+              "rank": 0,
+              "bundle": "trial-b0a02885e2-param-8b0a405f",
+              "call": "b8ade439d7b8bd5fb5c1029b",
+              "invocations": 1,
+              "reference_invocations": 1
+            },
+            {
+              "rank": 1,
+              "bundle": "trial-b0a02885e2-param-8b0a405f",
+              "call": "d0938de87369efd500322679",
+              "invocations": 12,
+              "reference_invocations": 12
+            },
+            {
+              "rank": 1,
+              "bundle": "trial-b0a02885e2-param-8b0a405f",
+              "call": "b8ade439d7b8bd5fb5c1029b",
+              "invocations": 1,
+              "reference_invocations": 1
+            }
+          ],
+          "interpretation": "Any fully referenced site can expose a hidden fallback in a joint bundle. References can also implement legitimate composition or verification; this trigger does not change quality, feasibility or acceptance."
+        }
+      }
+    },
+    {
+      "bundle": {
+        "schema_version": "project.v2",
+        "id": "trial-b0a02885e2-param-df25c2ee",
+        "parent_revision": "c63bc8c5a27187a3b4f6a7fdfb954cd4e0d72d1fd90274f4bbb39d12559a8866",
+        "contract_ref": "sha256:86da60adc15b0f15a2942dcd11214684e525aa0cd92d8a7dfb171f9b4b0e7e15",
+        "scope": "joint",
+        "implementation": "distributed",
+        "groups": [
+          "f833b57a373d8262a384",
+          "8525af72c631b94e3dd0"
+        ],
+        "calls": [
+          "d0938de87369efd500322679",
+          "b8ade439d7b8bd5fb5c1029b"
+        ],
+        "affected_calls": [
+          "b8ade439d7b8bd5fb5c1029b",
+          "d0938de87369efd500322679"
+        ],
+        "edits": [
+          {
+            "schema_version": "project.v1",
+            "path": "opop_candidates/trial-b0a02885e2.py",
+            "before_sha256": null,
+            "content_ref": "sha256:e94d114d391b3e81efa048a6ef8e51e101ba612f20a86c8dcb7038fd5d0226fa"
+          },
+          {
+            "schema_version": "project.v1",
+            "path": "opop_candidates/trial-b0a02885e2.targets.json",
+            "before_sha256": null,
+            "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+          }
+        ],
+        "read_set": [
+          "call:b8ade439d7b8bd5fb5c1029b",
+          "call:d0938de87369efd500322679"
+        ],
+        "write_set": [
+          "file:opop_candidates/trial-b0a02885e2.py",
+          "file:opop_candidates/trial-b0a02885e2.targets.json",
+          "call:d0938de87369efd500322679",
+          "call:b8ade439d7b8bd5fb5c1029b"
+        ],
+        "requires": [],
+        "replaces": [],
+        "external_invariants": [
+          "Model architecture is frozen: GPT2Config(n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024) with resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False, attn_implementation='eager', FP32 weights via .float(), .train() mode, initialized under torch.manual_seed(20261020); no pretrained weights are downloaded (assets is empty by design, seeded synthetic fixtures are the task data).",
+          "Inputs are frozen: per-rank synthetic token IDs from torch.randint(0, 50257, (micro_batch=1, sequence_length=128)) repeated accumulation_steps=4 times using torch.Generator().manual_seed(31000 + rank).",
+          "Workload dimensions are frozen: world_size=2, micro_batch=1, sequence_length=128, accumulation_steps=4; effective batch 8 and 1024 tokens per step; the first 3 micro-batch backwards run under DDP.no_sync() and only the final micro-batch backward triggers the gradient all-reduce.",
+          "Numerical policies are frozen: TF32 disabled for cuBLAS matmul and cudnn, float32_matmul_precision 'highest', cudnn.benchmark False, torch num_threads=4 and num_interop_threads=1, seed 20261020.",
+          "DDP configuration is frozen: broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True; no communication hook and no profiler on the measured path (the source's bucket-inventory hook belongs to a separate diagnostic and is never installed).",
+          "Optimizer semantics are frozen: torch.optim.SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False); optimizer.zero_grad(set_to_none=True) executes inside the timed step (never pre-cleared in reset); each micro-batch loss is model(input_ids=tokens, labels=tokens, use_cache=False).loss / accumulation_steps and the accumulated loss is the sum over micro-batches.",
+          "Quality contract preserved from the source: finite accumulated loss; full per-parameter gradient comparison against the single-GPU full-global-batch reference with grad_atol=1e-6/grad_rtol=1e-4; exact cross-rank gradient equality with atol=0.0/rtol=0.0; post-step parameter comparison with parameter_atol=1e-6/parameter_rtol=1e-4; the +1-corruption negative control. The adapter exposes loss, every gradient and every updated parameter and leaves the comparisons to the framework; no accuracy or convergence is claimed beyond these reference-fidelity checks.",
+          "Objective semantics are frozen: step_ms is each rank's wall time of the complete accumulated step with the source's final torch.cuda.synchronize() as the completion boundary, aggregated as max across ranks; work is never moved out of the timed step to improve the score and no fabricated sub-metrics or sub-phase objectives are introduced.",
+          "The adapter uses context['device'] and the worker-initialized process group exclusively; it never picks a physical GPU, never initializes another default process group, never destroys a process group, and performs no CUDA work at import time."
+        ],
+        "plan_ref": null,
+        "registry_ref": null,
+        "installer": "opop_candidates/trial-b0a02885e2.py",
+        "parameters": {
+          "chunks": 8
+        }
+      },
+      "revision": "3b0aed3ada2f19bb18e88e58eb0d852265245914fb1306583d4fa27c810ededb",
+      "result": {
+        "score": 240.896724,
+        "valid": true,
+        "metrics": {
+          "step_ms": 240.896724,
+          "tokens_per_second": 4253.506671483985,
+          "peak_allocated_bytes": 1977712640.0,
+          "framework.elapsed_ms": 240.896724,
+          "framework.peak_allocated_bytes": 1977712640.0,
+          "framework.peak_reserved_bytes": 2082471936.0,
+          "framework.allocated_bytes": 1014018048.0,
+          "framework.reserved_bytes": 2082471936.0,
+          "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+          "framework.lifecycle_peak_reserved_bytes": 2082471936.0,
+          "replacement.max_registers_per_thread": 96.0,
+          "replacement.diagnostic_kernel_sum_us": 266528.709,
+          "replacement.kernel_launches": 13.0,
+          "replacement.max_shared_memory_bytes": 96384.0
+        },
+        "detail": null
+      },
+      "constraints": [],
+      "run": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 21.029861770570278,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 69492,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 69492,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 34,
+                "unavailable_samples": 0,
+                "wait_s": 0.05177975445985794,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-b0a02885e2-param-df25c2ee": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "d0938de87369efd500322679",
+                    "b8ade439d7b8bd5fb5c1029b"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent:guard_reduce_op",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent:guard_reduce_op",
+                      "count": 12
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "setup": [
+                {
+                  "bundle": "trial-b0a02885e2-param-df25c2ee",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "legacy",
+                    "reason": "legacy requested",
+                    "functional_sites": 2,
+                    "scope_ids": [
+                      "5d7d6bb13691b02f533f62b0"
+                    ]
+                  },
+                  "elapsed_ms": 5.004073,
+                  "allocated_bytes": 996322304,
+                  "reserved_bytes": 1556086784,
+                  "peak_allocated_bytes": 996322304,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "step_ms": 330.495775,
+                  "tokens_per_second": 3098.3754633474514,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 330.495775,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 265.461474,
+                  "tokens_per_second": 3857.4335649172203,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 265.461474,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 240.74254,
+                  "tokens_per_second": 4253.506671483985,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 240.74254,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 238.582213,
+                  "tokens_per_second": 4292.021551497638,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 238.582213,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 236.82602,
+                  "tokens_per_second": 4323.849212176939,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 236.82602,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                }
+              ],
+              "metrics": {
+                "step_ms": 240.74254,
+                "tokens_per_second": 4253.506671483985,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 240.74254,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2082471936.0,
+                "framework.allocated_bytes": 1014018048.0,
+                "framework.reserved_bytes": 2082471936.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {
+                "trial-b0a02885e2-param-df25c2ee": "7062554d00a2bb05ec28ef3cbff6673581fc472227b05f2b19c0b62758c36f75"
+              }
+            }
+          },
+          {
+            "rank": 1,
+            "pid": 69493,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 69493,
+              "status": "verified",
+              "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "logical_device": 1,
+              "nvidia_smi_pid_uuids": [
+                "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 34,
+                "unavailable_samples": 0,
+                "wait_s": 0.09242914989590645,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-b0a02885e2-param-df25c2ee": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "d0938de87369efd500322679",
+                    "b8ade439d7b8bd5fb5c1029b"
+                  ],
+                  "reference_invocations": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "parent:guard_reduce_op",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "parent:guard_reduce_op",
+                      "count": 12
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "setup": [
+                {
+                  "bundle": "trial-b0a02885e2-param-df25c2ee",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "legacy",
+                    "reason": "legacy requested",
+                    "functional_sites": 2,
+                    "scope_ids": [
+                      "5d7d6bb13691b02f533f62b0"
+                    ]
+                  },
+                  "elapsed_ms": 4.355293,
+                  "allocated_bytes": 996322304,
+                  "reserved_bytes": 1556086784,
+                  "peak_allocated_bytes": 996322304,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "step_ms": 330.591636,
+                  "tokens_per_second": 3097.4770335689923,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 330.591636,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 265.65405,
+                  "tokens_per_second": 3854.637262258942,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 265.65405,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 240.896724,
+                  "tokens_per_second": 4250.784248938146,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 240.896724,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 238.87465,
+                  "tokens_per_second": 4286.767139166923,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 238.87465,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                },
+                {
+                  "step_ms": 237.035083,
+                  "tokens_per_second": 4320.035612618576,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 237.035083,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2082471936.0,
+                  "framework.allocated_bytes": 1014018048.0,
+                  "framework.reserved_bytes": 2082471936.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+                }
+              ],
+              "metrics": {
+                "step_ms": 240.896724,
+                "tokens_per_second": 4250.784248938146,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 240.896724,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2082471936.0,
+                "framework.allocated_bytes": 1014018048.0,
+                "framework.reserved_bytes": 2082471936.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2082471936.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {
+                "trial-b0a02885e2-param-df25c2ee": "7062554d00a2bb05ec28ef3cbff6673581fc472227b05f2b19c0b62758c36f75"
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 0.0001749098300933838,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "worker_pids_reaped": true
+      },
+      "diagnostic": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 16.39350862056017,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 70833,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 70833,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 22,
+                "unavailable_samples": 0,
+                "wait_s": 0.09903664886951447,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "discovery": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/trial-b0a02885e2-param-df25c2ee-resources/run/discovery-rank-0.json",
+              "coverage": {
+                "cuda_kernels": 4000,
+                "associated_kernels": 4000,
+                "unassociated_kernels": 0,
+                "associated_below_project": 4000,
+                "root_only_kernels": 0,
+                "backward_associated_kernels": 2677,
+                "autograd_ranges": 3048,
+                "forward_linked_autograd_ranges": 2456,
+                "ambiguous_forward_sequences": 108
+              },
+              "call_sites": 1527,
+              "groups": 859
+            }
+          },
+          {
+            "rank": 1,
+            "pid": 70834,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 70834,
+              "status": "verified",
+              "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "logical_device": 1,
+              "nvidia_smi_pid_uuids": [
+                "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 21,
+                "unavailable_samples": 0,
+                "wait_s": 0.09737251326441765,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "discovery": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/trial-b0a02885e2-param-df25c2ee-resources/run/discovery-rank-1.json",
+              "coverage": {
+                "cuda_kernels": 4000,
+                "associated_kernels": 4000,
+                "unassociated_kernels": 0,
+                "associated_below_project": 4000,
+                "root_only_kernels": 0,
+                "backward_associated_kernels": 2677,
+                "autograd_ranges": 3048,
+                "forward_linked_autograd_ranges": 2456,
+                "ambiguous_forward_sequences": 108
+              },
+              "call_sites": 1527,
+              "groups": 859
+            }
+          }
+        ],
+        "lease_wait_s": 19.11674913391471,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "worker_pids_reaped": true
+      },
+      "candidate_diagnostics": {
+        "status": "observed",
+        "run": {
+          "schema_version": 1,
+          "status": "passed",
+          "failure": null,
+          "wall_s": 15.857856966555119,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 70194,
+              "exit_code": 0,
+              "status": "passed",
+              "binding": {
+                "pid": 70194,
+                "status": "verified",
+                "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 25,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.09125832468271255,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "framework_source": {
+                "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+                "files": 160,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": true,
+                "coverage": {
+                  "trial-b0a02885e2-param-df25c2ee": {
+                    "counts": {
+                      "d0938de87369efd500322679": 12,
+                      "b8ade439d7b8bd5fb5c1029b": 1
+                    },
+                    "fallbacks": {},
+                    "reference_invocations": {
+                      "d0938de87369efd500322679": 12,
+                      "b8ade439d7b8bd5fb5c1029b": 1
+                    },
+                    "candidate_declared_routes": [
+                      {
+                        "call": "b8ade439d7b8bd5fb5c1029b",
+                        "route": "parent:guard_reduce_op",
+                        "count": 1
+                      },
+                      {
+                        "call": "d0938de87369efd500322679",
+                        "route": "parent:guard_reduce_op",
+                        "count": 12
+                      }
+                    ],
+                    "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                  }
+                },
+                "scope": "Diagnostic execution only; no quality or performance acceptance",
+                "candidate_diagnostics": {
+                  "schema_version": "project.candidate-diagnostics.v1",
+                  "events": [
+                    {
+                      "phase": "setup",
+                      "bundle": "trial-b0a02885e2-param-df25c2ee",
+                      "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-2c54c80dde/source/opop_candidates/trial-b0a02885e2.py",
+                      "function": "<module>",
+                      "line": 57,
+                      "source": "from torch._C._distributed_c10d import RedOpType",
+                      "recent_lines": [
+                        {
+                          "line": 37,
+                          "source": "from torch.distributed.distributed_c10d import ProcessGroup, ReduceOp, Work"
+                        },
+                        {
+                          "line": 39,
+                          "source": "CALL_IDS = ("
+                        },
+                        {
+                          "line": 46,
+                          "source": "_P2P_DEVICES = (\"cuda\",)"
+                        },
+                        {
+                          "line": 47,
+                          "source": "_P2P_BACKENDS = (\"nccl\",)"
+                        },
+                        {
+                          "line": 49,
+                          "source": "_MIN_ELEMENTS = 2 * 1024 * 1024"
+                        },
+                        {
+                          "line": 50,
+                          "source": "_MIN_CHUNK_ELEMENTS = 262144"
+                        },
+                        {
+                          "line": 51,
+                          "source": "_DEFAULT_CHUNKS = 8"
+                        },
+                        {
+                          "line": 52,
+                          "source": "_MAX_CHUNKS = 64"
+                        },
+                        {
+                          "line": 53,
+                          "source": "_TAG_STRIDE = 2"
+                        },
+                        {
+                          "line": 54,
+                          "source": "_TAG_SPACE = 1 << 30"
+                        },
+                        {
+                          "line": 56,
+                          "source": "try:"
+                        },
+                        {
+                          "line": 57,
+                          "source": "from torch._C._distributed_c10d import RedOpType"
+                        }
+                      ],
+                      "event": "exception",
+                      "type": "ImportError",
+                      "message": "cannot import name 'RedOpType' from 'torch._C._distributed_c10d' (/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/_C.cpython-312-x86_64-linux-gnu.so)",
+                      "count": 1
+                    }
+                  ],
+                  "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+                }
+              }
+            },
+            {
+              "rank": 1,
+              "pid": 70195,
+              "exit_code": 0,
+              "status": "passed",
+              "binding": {
+                "pid": 70195,
+                "status": "verified",
+                "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "logical_device": 1,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 25,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.0898769237101078,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "framework_source": {
+                "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+                "files": 160,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": true,
+                "coverage": {
+                  "trial-b0a02885e2-param-df25c2ee": {
+                    "counts": {
+                      "d0938de87369efd500322679": 12,
+                      "b8ade439d7b8bd5fb5c1029b": 1
+                    },
+                    "fallbacks": {},
+                    "reference_invocations": {
+                      "d0938de87369efd500322679": 12,
+                      "b8ade439d7b8bd5fb5c1029b": 1
+                    },
+                    "candidate_declared_routes": [
+                      {
+                        "call": "b8ade439d7b8bd5fb5c1029b",
+                        "route": "parent:guard_reduce_op",
+                        "count": 1
+                      },
+                      {
+                        "call": "d0938de87369efd500322679",
+                        "route": "parent:guard_reduce_op",
+                        "count": 12
+                      }
+                    ],
+                    "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                  }
+                },
+                "scope": "Diagnostic execution only; no quality or performance acceptance",
+                "candidate_diagnostics": {
+                  "schema_version": "project.candidate-diagnostics.v1",
+                  "events": [
+                    {
+                      "phase": "setup",
+                      "bundle": "trial-b0a02885e2-param-df25c2ee",
+                      "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-2c54c80dde/source/opop_candidates/trial-b0a02885e2.py",
+                      "function": "<module>",
+                      "line": 57,
+                      "source": "from torch._C._distributed_c10d import RedOpType",
+                      "recent_lines": [
+                        {
+                          "line": 37,
+                          "source": "from torch.distributed.distributed_c10d import ProcessGroup, ReduceOp, Work"
+                        },
+                        {
+                          "line": 39,
+                          "source": "CALL_IDS = ("
+                        },
+                        {
+                          "line": 46,
+                          "source": "_P2P_DEVICES = (\"cuda\",)"
+                        },
+                        {
+                          "line": 47,
+                          "source": "_P2P_BACKENDS = (\"nccl\",)"
+                        },
+                        {
+                          "line": 49,
+                          "source": "_MIN_ELEMENTS = 2 * 1024 * 1024"
+                        },
+                        {
+                          "line": 50,
+                          "source": "_MIN_CHUNK_ELEMENTS = 262144"
+                        },
+                        {
+                          "line": 51,
+                          "source": "_DEFAULT_CHUNKS = 8"
+                        },
+                        {
+                          "line": 52,
+                          "source": "_MAX_CHUNKS = 64"
+                        },
+                        {
+                          "line": 53,
+                          "source": "_TAG_STRIDE = 2"
+                        },
+                        {
+                          "line": 54,
+                          "source": "_TAG_SPACE = 1 << 30"
+                        },
+                        {
+                          "line": 56,
+                          "source": "try:"
+                        },
+                        {
+                          "line": 57,
+                          "source": "from torch._C._distributed_c10d import RedOpType"
+                        }
+                      ],
+                      "event": "exception",
+                      "type": "ImportError",
+                      "message": "cannot import name 'RedOpType' from 'torch._C._distributed_c10d' (/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/_C.cpython-312-x86_64-linux-gnu.so)",
+                      "count": 1
+                    }
+                  ],
+                  "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+                }
+              }
+            }
+          ],
+          "lease_wait_s": 13.162248749285936,
+          "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+          "devices": [
+            "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+            "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+          ],
+          "worker_pids_reaped": true
+        },
+        "evidence": [
+          "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-2c54c80dde/run/candidate-diagnostics-rank-0.json",
+          "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-2c54c80dde/run/candidate-diagnostics-rank-1.json"
+        ],
+        "ranks": [
+          {
+            "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-2c54c80dde/run/candidate-diagnostics-rank-0.json",
+            "schema_version": "project.candidate-diagnostics.v1",
+            "events": [
+              {
+                "phase": "setup",
+                "bundle": "trial-b0a02885e2-param-df25c2ee",
+                "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-2c54c80dde/source/opop_candidates/trial-b0a02885e2.py",
+                "function": "<module>",
+                "line": 57,
+                "source": "from torch._C._distributed_c10d import RedOpType",
+                "recent_lines": [
+                  {
+                    "line": 37,
+                    "source": "from torch.distributed.distributed_c10d import ProcessGroup, ReduceOp, Work"
+                  },
+                  {
+                    "line": 39,
+                    "source": "CALL_IDS = ("
+                  },
+                  {
+                    "line": 46,
+                    "source": "_P2P_DEVICES = (\"cuda\",)"
+                  },
+                  {
+                    "line": 47,
+                    "source": "_P2P_BACKENDS = (\"nccl\",)"
+                  },
+                  {
+                    "line": 49,
+                    "source": "_MIN_ELEMENTS = 2 * 1024 * 1024"
+                  },
+                  {
+                    "line": 50,
+                    "source": "_MIN_CHUNK_ELEMENTS = 262144"
+                  },
+                  {
+                    "line": 51,
+                    "source": "_DEFAULT_CHUNKS = 8"
+                  },
+                  {
+                    "line": 52,
+                    "source": "_MAX_CHUNKS = 64"
+                  },
+                  {
+                    "line": 53,
+                    "source": "_TAG_STRIDE = 2"
+                  },
+                  {
+                    "line": 54,
+                    "source": "_TAG_SPACE = 1 << 30"
+                  },
+                  {
+                    "line": 56,
+                    "source": "try:"
+                  },
+                  {
+                    "line": 57,
+                    "source": "from torch._C._distributed_c10d import RedOpType"
+                  }
+                ],
+                "event": "exception",
+                "type": "ImportError",
+                "message": "cannot import name 'RedOpType' from 'torch._C._distributed_c10d' (/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/_C.cpython-312-x86_64-linux-gnu.so)",
+                "count": 1
+              }
+            ],
+            "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+          },
+          {
+            "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-2c54c80dde/run/candidate-diagnostics-rank-1.json",
+            "schema_version": "project.candidate-diagnostics.v1",
+            "events": [
+              {
+                "phase": "setup",
+                "bundle": "trial-b0a02885e2-param-df25c2ee",
+                "file": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/jobs/candidate-diagnostics-2c54c80dde/source/opop_candidates/trial-b0a02885e2.py",
+                "function": "<module>",
+                "line": 57,
+                "source": "from torch._C._distributed_c10d import RedOpType",
+                "recent_lines": [
+                  {
+                    "line": 37,
+                    "source": "from torch.distributed.distributed_c10d import ProcessGroup, ReduceOp, Work"
+                  },
+                  {
+                    "line": 39,
+                    "source": "CALL_IDS = ("
+                  },
+                  {
+                    "line": 46,
+                    "source": "_P2P_DEVICES = (\"cuda\",)"
+                  },
+                  {
+                    "line": 47,
+                    "source": "_P2P_BACKENDS = (\"nccl\",)"
+                  },
+                  {
+                    "line": 49,
+                    "source": "_MIN_ELEMENTS = 2 * 1024 * 1024"
+                  },
+                  {
+                    "line": 50,
+                    "source": "_MIN_CHUNK_ELEMENTS = 262144"
+                  },
+                  {
+                    "line": 51,
+                    "source": "_DEFAULT_CHUNKS = 8"
+                  },
+                  {
+                    "line": 52,
+                    "source": "_MAX_CHUNKS = 64"
+                  },
+                  {
+                    "line": 53,
+                    "source": "_TAG_STRIDE = 2"
+                  },
+                  {
+                    "line": 54,
+                    "source": "_TAG_SPACE = 1 << 30"
+                  },
+                  {
+                    "line": 56,
+                    "source": "try:"
+                  },
+                  {
+                    "line": 57,
+                    "source": "from torch._C._distributed_c10d import RedOpType"
+                  }
+                ],
+                "event": "exception",
+                "type": "ImportError",
+                "message": "cannot import name 'RedOpType' from 'torch._C._distributed_c10d' (/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/_C.cpython-312-x86_64-linux-gnu.so)",
+                "count": 1
+              }
+            ],
+            "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+          }
+        ],
+        "provenance": {
+          "revision": "3b0aed3ada2f19bb18e88e58eb0d852265245914fb1306583d4fa27c810ededb",
+          "parent_revision": "c63bc8c5a27187a3b4f6a7fdfb954cd4e0d72d1fd90274f4bbb39d12559a8866",
+          "bundles": [
+            "trial-b0a02885e2-param-df25c2ee"
+          ],
+          "plan": "sha256:9fd6f595eecf98aa9ccca25ce9a3b5b230ef3398b4d04aa888376965eb4811d6",
+          "registry": "sha256:90825e31814be9e2e979ef90b506f8f5c93dc4012d8a4ef301a2dff53e73f044",
+          "request_sha256": "bc907f93faef310c8f9bc3b8e0b94cacadeba1d62c9eec4ac809c45de78691b1",
+          "objective": {
+            "name": "step_ms",
+            "unit": "ms",
+            "direction": "minimize",
+            "constraints": [],
+            "rank_aggregation": "max"
+          },
+          "workload": {
+            "id": "accumulated_step",
+            "world_size": 2,
+            "micro_batch": 1,
+            "sequence_length": 128,
+            "accumulation_steps": 4,
+            "goals": [
+              {
+                "id": "step",
+                "metric": "step_ms",
+                "direction": "min"
+              },
+              {
+                "id": "communication",
+                "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+                "direction": "min",
+                "constraints": {
+                  "step_ms_max_baseline_ratio": 1.05
+                }
+              }
+            ]
+          },
+          "devices": [
+            "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+            "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+          ],
+          "framework_source": {
+            "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+            "files": 160,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+        },
+        "trigger": {
+          "policy": "on_reference",
+          "reference_sites": [
+            {
+              "rank": 0,
+              "bundle": "trial-b0a02885e2-param-df25c2ee",
+              "call": "d0938de87369efd500322679",
+              "invocations": 12,
+              "reference_invocations": 12
+            },
+            {
+              "rank": 0,
+              "bundle": "trial-b0a02885e2-param-df25c2ee",
+              "call": "b8ade439d7b8bd5fb5c1029b",
+              "invocations": 1,
+              "reference_invocations": 1
+            },
+            {
+              "rank": 1,
+              "bundle": "trial-b0a02885e2-param-df25c2ee",
+              "call": "d0938de87369efd500322679",
+              "invocations": 12,
+              "reference_invocations": 12
+            },
+            {
+              "rank": 1,
+              "bundle": "trial-b0a02885e2-param-df25c2ee",
+              "call": "b8ade439d7b8bd5fb5c1029b",
+              "invocations": 1,
+              "reference_invocations": 1
+            }
+          ],
+          "interpretation": "Any fully referenced site can expose a hidden fallback in a joint bundle. References can also implement legitimate composition or verification; this trigger does not change quality, feasibility or acceptance."
+        }
+      }
+    }
+  ]
+}

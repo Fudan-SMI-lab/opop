@@ -1,0 +1,81 @@
+{
+  "current_revision": "879a796ad383e4afbf0395e6d82794b366e6b0f2c6cae8f331fdbdd9adbb1b28",
+  "contract": {
+    "schema_version": "project.v2",
+    "id": "task",
+    "goal": "Reduce full graph encoder inference latency for the standard workload, preserving the full output checks.",
+    "objective": {
+      "name": "latency_ms",
+      "unit": "ms",
+      "direction": "minimize",
+      "required_metrics": [
+        {
+          "name": "latency_ms",
+          "unit": "ms"
+        }
+      ],
+      "aggregation": {
+        "kind": "sum",
+        "case_weights": {},
+        "callable": null
+      },
+      "improvement_threshold": 0.0
+    },
+    "workload": {
+      "edges": 65536,
+      "id": "standard",
+      "nodes": 4096
+    },
+    "quality": {
+      "atol": 1e-05,
+      "rtol": 0.0001
+    },
+    "completion": "One complete synchronized full-graph forward of the two-layer mean GraphSAGE encoder over the standard workload (4096 nodes, 65536 directed edges) under torch.inference_mode(), returning the full [4096, 64] float32 output tensor. The source's measured sample is wall time bracketed by torch.cuda.synchronize() before the forward and torch.cuda.synchronize() after it, with peak-memory stats reset immediately before the sample (infer.py:52-60); adapter run() performs exactly this one forward and the framework's surrounding CUDA synchronization marks the same completion boundary.",
+    "invariants": [
+      "Seeds: torch.manual_seed(20261021) before model construction; separate CPU torch.Generator seeded 20261022 for the input fixture (infer.py:14,20-23).",
+      "Numerics: float32 everywhere; torch.backends.cuda.matmul.allow_tf32=False; torch.backends.cudnn.allow_tf32=False; torch.set_float32_matmul_precision('highest') (infer.py:15-17, workloads.json dtype float32).",
+      "Architecture: two MeanSAGE layers, Linear(2*128->256) then Linear(2*256->64), with ReLU between layers; input_features=128, hidden_features=256, output_features=64 (model.py:18-26, workloads.json:2).",
+      "Aggregation semantics: messages = features.index_select(0, sources); neighbors = zeros_like(features).index_add_(0, destinations, messages); neighbors / degree.clamp_min(1).unsqueeze(1); duplicate directed edges contribute individually; nodes without incoming edges get zero neighbor features (model.py:11-15, README.md:17-19).",
+      "Workload graph: nodes=4096, edges=65536; degree = torch.bincount(destinations, minlength=4096).float(); the same edge list ordering and fixture construction path must be preserved.",
+      "Output: the complete [4096, 64] float32 output tensor, compared with torch.testing.assert_close(actual, reference, atol=1e-05, rtol=1e-4) (infer.py:45, workloads.json:9).",
+      "Timing boundary: each latency sample is the wall time of one forward between CUDA synchronizations; model/fixture construction, H2D transfer, warmup, quality checking and statistics queries are outside timing (README.md:13-15, infer.py:49-60).",
+      "No cross-invocation state: every forward is independent and uses the same GPU-resident inputs; the timed invocation contains no gradient clears or cache resets."
+    ],
+    "frozen_files": [
+      "opop_adapter.py",
+      "opop_evaluate.py"
+    ],
+    "task_definition": null,
+    "state_protocol": "Stateless inference. prepare() applies the source's thread/precision policies (torch.set_num_threads(4), manual_seed(20261021), TF32 disabled for matmul and cudnn, float32_matmul_precision 'highest'), constructs GraphEncoder(128, 256, 64) on context['device'] in eval mode, and builds the input fixture from a CPU generator seeded 20261022 (features randn(4096,128), sources/destinations randint(4096,(65536,)), degree=bincount(destinations,minlength=4096).float()), moving model and all four tensors onto the device; they stay resident in state. reset() is a no-op because inference has no cross-invocation state (README.md:19) and run() creates no persistent or request-local mutable state; each run() is an independent forward over the same inputs. The process group is never touched, and no communication occurs.",
+    "world_size": 1,
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ]
+  },
+  "original_reference_revision": "161cad79a71918dc07d114f7fdea30fca7541758008da98b5e3471c6043ea72f",
+  "original_baseline": [
+    {
+      "rank": 0,
+      "metrics": {
+        "latency_ms": 0.372995,
+        "graphs_per_second": 2681.0010858054397,
+        "peak_allocated_bytes": 97011200.0,
+        "framework.elapsed_ms": 0.372995,
+        "framework.peak_allocated_bytes": 97011200.0,
+        "framework.peak_reserved_bytes": 146800640.0,
+        "framework.allocated_bytes": 13125120.0,
+        "framework.reserved_bytes": 146800640.0,
+        "framework.lifecycle_peak_allocated_bytes": 98059776.0,
+        "framework.lifecycle_peak_reserved_bytes": 146800640.0
+      },
+      "diagnostics": {}
+    }
+  ],
+  "profiled_wall_ms": [
+    7.440961
+  ],
+  "measurement_policy": "Original baseline belongs to its immutable reference. Discovery uses intrusive hooks and is separate from clean timing and plain diagnostic objective samples. Profiled rank skew and kernel time can be heavily perturbed; they are not project J or wire time."
+}

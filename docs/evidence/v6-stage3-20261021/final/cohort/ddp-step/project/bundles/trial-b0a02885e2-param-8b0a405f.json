@@ -1,0 +1,63 @@
+{
+  "affected_calls": [
+    "b8ade439d7b8bd5fb5c1029b",
+    "d0938de87369efd500322679"
+  ],
+  "calls": [
+    "d0938de87369efd500322679",
+    "b8ade439d7b8bd5fb5c1029b"
+  ],
+  "contract_ref": "sha256:86da60adc15b0f15a2942dcd11214684e525aa0cd92d8a7dfb171f9b4b0e7e15",
+  "edits": [
+    {
+      "before_sha256": null,
+      "content_ref": "sha256:e94d114d391b3e81efa048a6ef8e51e101ba612f20a86c8dcb7038fd5d0226fa",
+      "path": "opop_candidates/trial-b0a02885e2.py",
+      "schema_version": "project.v1"
+    },
+    {
+      "before_sha256": null,
+      "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340",
+      "path": "opop_candidates/trial-b0a02885e2.targets.json",
+      "schema_version": "project.v1"
+    }
+  ],
+  "external_invariants": [
+    "Model architecture is frozen: GPT2Config(n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024) with resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False, attn_implementation='eager', FP32 weights via .float(), .train() mode, initialized under torch.manual_seed(20261020); no pretrained weights are downloaded (assets is empty by design, seeded synthetic fixtures are the task data).",
+    "Inputs are frozen: per-rank synthetic token IDs from torch.randint(0, 50257, (micro_batch=1, sequence_length=128)) repeated accumulation_steps=4 times using torch.Generator().manual_seed(31000 + rank).",
+    "Workload dimensions are frozen: world_size=2, micro_batch=1, sequence_length=128, accumulation_steps=4; effective batch 8 and 1024 tokens per step; the first 3 micro-batch backwards run under DDP.no_sync() and only the final micro-batch backward triggers the gradient all-reduce.",
+    "Numerical policies are frozen: TF32 disabled for cuBLAS matmul and cudnn, float32_matmul_precision 'highest', cudnn.benchmark False, torch num_threads=4 and num_interop_threads=1, seed 20261020.",
+    "DDP configuration is frozen: broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True; no communication hook and no profiler on the measured path (the source's bucket-inventory hook belongs to a separate diagnostic and is never installed).",
+    "Optimizer semantics are frozen: torch.optim.SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False); optimizer.zero_grad(set_to_none=True) executes inside the timed step (never pre-cleared in reset); each micro-batch loss is model(input_ids=tokens, labels=tokens, use_cache=False).loss / accumulation_steps and the accumulated loss is the sum over micro-batches.",
+    "Quality contract preserved from the source: finite accumulated loss; full per-parameter gradient comparison against the single-GPU full-global-batch reference with grad_atol=1e-6/grad_rtol=1e-4; exact cross-rank gradient equality with atol=0.0/rtol=0.0; post-step parameter comparison with parameter_atol=1e-6/parameter_rtol=1e-4; the +1-corruption negative control. The adapter exposes loss, every gradient and every updated parameter and leaves the comparisons to the framework; no accuracy or convergence is claimed beyond these reference-fidelity checks.",
+    "Objective semantics are frozen: step_ms is each rank's wall time of the complete accumulated step with the source's final torch.cuda.synchronize() as the completion boundary, aggregated as max across ranks; work is never moved out of the timed step to improve the score and no fabricated sub-metrics or sub-phase objectives are introduced.",
+    "The adapter uses context['device'] and the worker-initialized process group exclusively; it never picks a physical GPU, never initializes another default process group, never destroys a process group, and performs no CUDA work at import time."
+  ],
+  "groups": [
+    "f833b57a373d8262a384",
+    "8525af72c631b94e3dd0"
+  ],
+  "id": "trial-b0a02885e2-param-8b0a405f",
+  "implementation": "distributed",
+  "installer": "opop_candidates/trial-b0a02885e2.py",
+  "parameters": {
+    "chunks": 4
+  },
+  "parent_revision": "c63bc8c5a27187a3b4f6a7fdfb954cd4e0d72d1fd90274f4bbb39d12559a8866",
+  "plan_ref": null,
+  "read_set": [
+    "call:b8ade439d7b8bd5fb5c1029b",
+    "call:d0938de87369efd500322679"
+  ],
+  "registry_ref": null,
+  "replaces": [],
+  "requires": [],
+  "schema_version": "project.v2",
+  "scope": "joint",
+  "write_set": [
+    "file:opop_candidates/trial-b0a02885e2.py",
+    "file:opop_candidates/trial-b0a02885e2.targets.json",
+    "call:d0938de87369efd500322679",
+    "call:b8ade439d7b8bd5fb5c1029b"
+  ]
+}

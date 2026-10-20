@@ -1,0 +1,42 @@
+{
+  "goal": "Reduce full graph encoder inference latency for the standard workload, preserving the full output checks.",
+  "entrypoint": "infer.py",
+  "completion": "One complete synchronized full-graph forward of the two-layer mean GraphSAGE encoder over the standard workload (4096 nodes, 65536 directed edges) under torch.inference_mode(), returning the full [4096, 64] float32 output tensor. The source's measured sample is wall time bracketed by torch.cuda.synchronize() before the forward and torch.cuda.synchronize() after it, with peak-memory stats reset immediately before the sample (infer.py:52-60); adapter run() performs exactly this one forward and the framework's surrounding CUDA synchronization marks the same completion boundary.",
+  "state_protocol": "Stateless inference. prepare() applies the source's thread/precision policies (torch.set_num_threads(4), manual_seed(20261021), TF32 disabled for matmul and cudnn, float32_matmul_precision 'highest'), constructs GraphEncoder(128, 256, 64) on context['device'] in eval mode, and builds the input fixture from a CPU generator seeded 20261022 (features randn(4096,128), sources/destinations randint(4096,(65536,)), degree=bincount(destinations,minlength=4096).float()), moving model and all four tensors onto the device; they stay resident in state. reset() is a no-op because inference has no cross-invocation state (README.md:19) and run() creates no persistent or request-local mutable state; each run() is an independent forward over the same inputs. The process group is never touched, and no communication occurs.",
+  "invariants": [
+    "Seeds: torch.manual_seed(20261021) before model construction; separate CPU torch.Generator seeded 20261022 for the input fixture (infer.py:14,20-23).",
+    "Numerics: float32 everywhere; torch.backends.cuda.matmul.allow_tf32=False; torch.backends.cudnn.allow_tf32=False; torch.set_float32_matmul_precision('highest') (infer.py:15-17, workloads.json dtype float32).",
+    "Architecture: two MeanSAGE layers, Linear(2*128->256) then Linear(2*256->64), with ReLU between layers; input_features=128, hidden_features=256, output_features=64 (model.py:18-26, workloads.json:2).",
+    "Aggregation semantics: messages = features.index_select(0, sources); neighbors = zeros_like(features).index_add_(0, destinations, messages); neighbors / degree.clamp_min(1).unsqueeze(1); duplicate directed edges contribute individually; nodes without incoming edges get zero neighbor features (model.py:11-15, README.md:17-19).",
+    "Workload graph: nodes=4096, edges=65536; degree = torch.bincount(destinations, minlength=4096).float(); the same edge list ordering and fixture construction path must be preserved.",
+    "Output: the complete [4096, 64] float32 output tensor, compared with torch.testing.assert_close(actual, reference, atol=1e-05, rtol=1e-4) (infer.py:45, workloads.json:9).",
+    "Timing boundary: each latency sample is the wall time of one forward between CUDA synchronizations; model/fixture construction, H2D transfer, warmup, quality checking and statistics queries are outside timing (README.md:13-15, infer.py:49-60).",
+    "No cross-invocation state: every forward is independent and uses the same GPU-resident inputs; the timed invocation contains no gradient clears or cache resets."
+  ],
+  "objective": {
+    "name": "latency_ms",
+    "unit": "ms",
+    "direction": "minimize",
+    "constraints": []
+  },
+  "workload": {
+    "id": "standard",
+    "nodes": 4096,
+    "edges": 65536
+  },
+  "quality": {
+    "atol": 1e-05,
+    "rtol": 0.0001
+  },
+  "missing_information": [],
+  "assumptions": [
+    "The previous evaluator failure (FileNotFoundError reading workloads.json from the intake source root inside the worker) is repaired by embedding the frozen configuration (seed 20261021, model dims 128/256/64, quality tolerances, standard workload 4096 nodes / 65536 edges) directly in adapter.py; the adapter reads no external files at runtime.",
+    "MeanSAGE and GraphEncoder are re-declared verbatim from model.py inside adapter.py so the worker needs no source-tree import; the identical construction order under the fixed seed reproduces the source weights exactly.",
+    "context['device'] (e.g. cuda:0) replaces the source's device='cuda' default; single-process request with no distributed initialization and no required communication observations.",
+    "metrics() mirrors the source sample fields (infer.py:59-60): latency_ms = elapsed_ms, graphs_per_second = 1000/elapsed_ms from the unchanged work amount of one graph per forward, and peak_allocated_bytes from torch.cuda.max_memory_allocated queried in metrics() outside the timer after the framework's peak-stats reset.",
+    "workloads.json:14-15 declares a secondary memory goal (peak_allocated_bytes with graphs_per_second >= 0.95 baseline ratio); the request's user goal selects latency, so it stays out of the objective constraints while its metric is still exposed in metrics().",
+    "held_out_workloads entry unseen_graph (7168 nodes, 143360 edges, workloads.json:7) is not part of this frozen request and is not exercised.",
+    "observe() returns the full detached output tensor; the framework stores reference observations on CPU.",
+    "reset() intentionally performs no cache clears or gradient resets because the source has no such operations inside its timed invocation, and set_mode/before_run are unused because the source has no separate correctness-capture path or coordination."
+  ]
+}

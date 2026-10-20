@@ -1,0 +1,4136 @@
+{
+  "trial": "replay-01b5315e5c6b",
+  "replay": {
+    "source_output": "/root/opop-v6-stage3/final-e2e-187617c/resnet-memory",
+    "source_bundle": "trial-3c4e540078-param-d377cbf2",
+    "source_parent": "87e7d66efba88ff766579f51392ee6f6504cb3454d3642668ab4ef2890f8b2ec",
+    "target_parent": "b80beb0f2b66335af9bbdb747b6d4f80f26c33d46a7eed567199abff983dc33a",
+    "candidate_code_sha256": "4e9225689909204689a77ad9a2a0ab07e40ce6d41d3776e01a5cee1f72c49b52",
+    "code_changed": false,
+    "parameters_changed": false,
+    "binding": "same call identities, current observed signatures",
+    "new_generation": false
+  },
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "replay-01b5315e5c6b",
+    "parent_revision": "b80beb0f2b66335af9bbdb747b6d4f80f26c33d46a7eed567199abff983dc33a",
+    "contract_ref": "sha256:00cfbfca05f3b5510c7210bead2f0d5a7d27e9b1bf6fa7e072956a615eb6f3c2",
+    "scope": "region",
+    "implementation": "composite",
+    "groups": [
+      "6975d6e6c3dda842a119"
+    ],
+    "calls": [
+      "683c822136ed7958f3e9ba44"
+    ],
+    "affected_calls": [
+      "021f27d2d0d73dee5fab9084",
+      "2f3bfb9ee01d701be01d2ff3",
+      "35096a239aa1290aabeed5de",
+      "3c3c7a3e1837d0185b1df6f0",
+      "622af0a9c2e24b838dc42528",
+      "679ccfe137094282d25350c1",
+      "683c822136ed7958f3e9ba44",
+      "6f4047091b88293c3ed5c988",
+      "87335b95bb02e81155c4add6",
+      "8ef2341287e5b4afa9d0e7bf",
+      "aa9765a1830bed7ee2727282",
+      "c002ab4cac8ec5deeb415e47",
+      "cc658ee4e2f7b6628feb4ca4",
+      "d1400702f02f387d67569ac9",
+      "ea7cd77adb03bad473412ebc",
+      "eea81d115a4403a3083c1f64",
+      "f0045bb12e41619a90999d56"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/replay-01b5315e5c6b.py",
+        "before_sha256": null,
+        "content_ref": "sha256:4e9225689909204689a77ad9a2a0ab07e40ce6d41d3776e01a5cee1f72c49b52"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/replay-01b5315e5c6b.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:67054594371192de1c2a9ca4101804e8ff53d87d21678563ef9a4fe47ba47b70"
+      }
+    ],
+    "read_set": [
+      "call:021f27d2d0d73dee5fab9084",
+      "call:2f3bfb9ee01d701be01d2ff3",
+      "call:35096a239aa1290aabeed5de",
+      "call:3c3c7a3e1837d0185b1df6f0",
+      "call:622af0a9c2e24b838dc42528",
+      "call:679ccfe137094282d25350c1",
+      "call:683c822136ed7958f3e9ba44",
+      "call:6f4047091b88293c3ed5c988",
+      "call:87335b95bb02e81155c4add6",
+      "call:8ef2341287e5b4afa9d0e7bf",
+      "call:aa9765a1830bed7ee2727282",
+      "call:c002ab4cac8ec5deeb415e47",
+      "call:cc658ee4e2f7b6628feb4ca4",
+      "call:d1400702f02f387d67569ac9",
+      "call:ea7cd77adb03bad473412ebc",
+      "call:eea81d115a4403a3083c1f64",
+      "call:f0045bb12e41619a90999d56"
+    ],
+    "write_set": [
+      "file:opop_candidates/replay-01b5315e5c6b.py",
+      "file:opop_candidates/replay-01b5315e5c6b.targets.json",
+      "call:683c822136ed7958f3e9ba44"
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Model is pretrained ResNet-18 loaded from the local assets via ResNetForImageClassification.from_pretrained(assets, local_files_only=True, dtype=torch.float32) with eval() behavior; weights and activations stay FP32.",
+      "Numerical policies preserved from common.py:34-42: torch.backends.cuda.matmul.allow_tf32=False, torch.backends.cudnn.allow_tf32=False, torch.backends.cudnn.benchmark=False, torch.set_float32_matmul_precision('highest'), torch.manual_seed(20261020), 4 CPU threads and 1 interop thread.",
+      "Input is the offline image batch of 7 for workload id unseen_batch (held_out_workloads, workloads.json:21): images = np.load(assets/pixels.npy) moved to CUDA (shape (3,3,224,224) float32), pixels = images[torch.arange(7, device='cuda') % 3].contiguous() -> (7,3,224,224) FP32 (fixture indices 0,1,2,0,1,2,0), GPU-resident before the timed boundary; no H2D transfer or preprocessing inside run().",
+      "The measured workload is exactly one model(pixel_values=pixels).logits forward under torch.inference_mode(); no reduction of the work amount, batch, image size or class dimension.",
+      "Correctness requires the full 1000-class logits compared with atol=1e-4, rtol=1e-4 (torch.testing.assert_close) and exact top-1 equality torch.equal(actual.argmax(-1), reference.argmax(-1)); the +1-corruption negative control must be rejected.",
+      "peak_allocated_bytes is the process-level PyTorch CUDA allocated peak for one forward with peak stats reset immediately before the timed call (torch.cuda.max_memory_allocated after the synchronized run), not whole-device, reserved or driver memory.",
+      "images_per_second is the source's full-request throughput for the fixed batch of 7, computed as batch * 1e3 / latency_ms (7 * 1e3 / elapsed) around one complete forward on the GPU-resident input; it must not be converted into a cached-only throughput.",
+      "Throughput constraint: images_per_second >= 0.95 * baseline; memory reduction must not be obtained by violating this ratio or the frozen workload/precision/data.",
+      "Model loading, weight transfer to GPU and input construction happen in prepare outside timed execution; the module creates no CUDA tensors and initializes no CUDA context at import time."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/replay-01b5315e5c6b.py",
+    "parameters": {
+      "stem_chunk": 8
+    }
+  },
+  "evaluation_attempt": "replay-01b5315e5c6b-evaluation-0985544d",
+  "missing_coverage": [],
+  "publication": "rejected",
+  "baseline": {
+    "schema_version": 1,
+    "status": "passed",
+    "failure": null,
+    "wall_s": 7.845153640955687,
+    "ranks": [
+      {
+        "rank": 0,
+        "pid": 980102,
+        "exit_code": 0,
+        "status": "passed",
+        "binding": {
+          "pid": 980102,
+          "status": "verified",
+          "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "logical_device": 0,
+          "nvidia_smi_pid_uuids": [
+            "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+          ],
+          "pid_query_status": "observed",
+          "occupancy": {
+            "status": "sampled_clear",
+            "samples": 12,
+            "unavailable_samples": 0,
+            "wait_s": 0.09020916000008583,
+            "external_clients": [],
+            "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+          }
+        },
+        "framework_source": {
+          "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+          "files": 160,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "result": {
+          "valid": true,
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 7007,
+              "max_abs_error": 0.0
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 7007,
+              "max_abs_error": 0.0
+            }
+          ],
+          "coverage": {},
+          "math_policy_unchanged": true,
+          "setup": [],
+          "samples": [
+            {
+              "peak_allocated_bytes": 107539456.0,
+              "latency_ms": 1.765396,
+              "images_per_second": 3965.1160419531934,
+              "batch": 7.0,
+              "parameter_count": 11689512.0,
+              "framework.elapsed_ms": 1.765396,
+              "framework.peak_allocated_bytes": 107539456.0,
+              "framework.peak_reserved_bytes": 144703488.0,
+              "framework.allocated_bytes": 61430272.0,
+              "framework.reserved_bytes": 144703488.0,
+              "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+              "framework.lifecycle_peak_reserved_bytes": 144703488.0
+            },
+            {
+              "peak_allocated_bytes": 107539456.0,
+              "latency_ms": 1.801834,
+              "images_per_second": 3884.930576290602,
+              "batch": 7.0,
+              "parameter_count": 11689512.0,
+              "framework.elapsed_ms": 1.801834,
+              "framework.peak_allocated_bytes": 107539456.0,
+              "framework.peak_reserved_bytes": 144703488.0,
+              "framework.allocated_bytes": 61430272.0,
+              "framework.reserved_bytes": 144703488.0,
+              "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+              "framework.lifecycle_peak_reserved_bytes": 144703488.0
+            },
+            {
+              "peak_allocated_bytes": 107539456.0,
+              "latency_ms": 1.835525,
+              "images_per_second": 3813.6228054643766,
+              "batch": 7.0,
+              "parameter_count": 11689512.0,
+              "framework.elapsed_ms": 1.835525,
+              "framework.peak_allocated_bytes": 107539456.0,
+              "framework.peak_reserved_bytes": 144703488.0,
+              "framework.allocated_bytes": 61430272.0,
+              "framework.reserved_bytes": 144703488.0,
+              "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+              "framework.lifecycle_peak_reserved_bytes": 144703488.0
+            },
+            {
+              "peak_allocated_bytes": 107539456.0,
+              "latency_ms": 1.749564,
+              "images_per_second": 4000.9968197790995,
+              "batch": 7.0,
+              "parameter_count": 11689512.0,
+              "framework.elapsed_ms": 1.749564,
+              "framework.peak_allocated_bytes": 107539456.0,
+              "framework.peak_reserved_bytes": 144703488.0,
+              "framework.allocated_bytes": 61430272.0,
+              "framework.reserved_bytes": 144703488.0,
+              "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+              "framework.lifecycle_peak_reserved_bytes": 144703488.0
+            },
+            {
+              "peak_allocated_bytes": 107539456.0,
+              "latency_ms": 1.809701,
+              "images_per_second": 3868.0422898589327,
+              "batch": 7.0,
+              "parameter_count": 11689512.0,
+              "framework.elapsed_ms": 1.809701,
+              "framework.peak_allocated_bytes": 107539456.0,
+              "framework.peak_reserved_bytes": 144703488.0,
+              "framework.allocated_bytes": 61430272.0,
+              "framework.reserved_bytes": 144703488.0,
+              "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+              "framework.lifecycle_peak_reserved_bytes": 144703488.0
+            }
+          ],
+          "metrics": {
+            "peak_allocated_bytes": 107539456.0,
+            "latency_ms": 1.801834,
+            "images_per_second": 3884.930576290602,
+            "batch": 7.0,
+            "parameter_count": 11689512.0,
+            "framework.elapsed_ms": 1.801834,
+            "framework.peak_allocated_bytes": 107539456.0,
+            "framework.peak_reserved_bytes": 144703488.0,
+            "framework.allocated_bytes": 61430272.0,
+            "framework.reserved_bytes": 144703488.0,
+            "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+            "framework.lifecycle_peak_reserved_bytes": 144703488.0
+          },
+          "metric_samples": {},
+          "diagnostics": {},
+          "bundle_hashes": {}
+        }
+      }
+    ],
+    "lease_wait_s": 6.196992207318544,
+    "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+    "devices": [
+      "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+    ],
+    "worker_pids_reaped": true
+  },
+  "candidate": {
+    "schema_version": 1,
+    "status": "passed",
+    "failure": null,
+    "wall_s": 7.983592975884676,
+    "ranks": [
+      {
+        "rank": 0,
+        "pid": 980668,
+        "exit_code": 0,
+        "status": "passed",
+        "binding": {
+          "pid": 980668,
+          "status": "verified",
+          "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "logical_device": 0,
+          "nvidia_smi_pid_uuids": [
+            "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+          ],
+          "pid_query_status": "observed",
+          "occupancy": {
+            "status": "sampled_clear",
+            "samples": 12,
+            "unavailable_samples": 0,
+            "wait_s": 0.09597697481513023,
+            "external_clients": [],
+            "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+          }
+        },
+        "framework_source": {
+          "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+          "files": 160,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "result": {
+          "valid": true,
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 7007,
+              "max_abs_error": 0.0
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 7007,
+              "max_abs_error": 0.0
+            }
+          ],
+          "coverage": {
+            "replay-01b5315e5c6b": {
+              "counts": {
+                "683c822136ed7958f3e9ba44": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "683c822136ed7958f3e9ba44"
+              ],
+              "reference_invocations": {
+                "679ccfe137094282d25350c1": 2,
+                "aa9765a1830bed7ee2727282": 2
+              },
+              "candidate_declared_routes": [
+                {
+                  "call": "683c822136ed7958f3e9ba44",
+                  "route": "chunked_stem:ok",
+                  "count": 2
+                }
+              ],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "math_policy_unchanged": true,
+          "setup": [
+            {
+              "bundle": "replay-01b5315e5c6b",
+              "binding": {
+                "requested": "legacy",
+                "effective": "direct",
+                "reason": "no functional replacements"
+              },
+              "elapsed_ms": 1.936165,
+              "allocated_bytes": 52882432,
+              "reserved_bytes": 67108864,
+              "peak_allocated_bytes": 52882432,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            }
+          ],
+          "samples": [
+            {
+              "peak_allocated_bytes": 107539456.0,
+              "latency_ms": 1.979326,
+              "images_per_second": 3536.557393779499,
+              "batch": 7.0,
+              "parameter_count": 11689512.0,
+              "framework.elapsed_ms": 1.979326,
+              "framework.peak_allocated_bytes": 107539456.0,
+              "framework.peak_reserved_bytes": 144703488.0,
+              "framework.allocated_bytes": 61430272.0,
+              "framework.reserved_bytes": 144703488.0,
+              "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+              "framework.lifecycle_peak_reserved_bytes": 144703488.0
+            },
+            {
+              "peak_allocated_bytes": 107539456.0,
+              "latency_ms": 1.950376,
+              "images_per_second": 3589.051546983761,
+              "batch": 7.0,
+              "parameter_count": 11689512.0,
+              "framework.elapsed_ms": 1.950376,
+              "framework.peak_allocated_bytes": 107539456.0,
+              "framework.peak_reserved_bytes": 144703488.0,
+              "framework.allocated_bytes": 61430272.0,
+              "framework.reserved_bytes": 144703488.0,
+              "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+              "framework.lifecycle_peak_reserved_bytes": 144703488.0
+            },
+            {
+              "peak_allocated_bytes": 107539456.0,
+              "latency_ms": 1.915767,
+              "images_per_second": 3653.8890167750046,
+              "batch": 7.0,
+              "parameter_count": 11689512.0,
+              "framework.elapsed_ms": 1.915767,
+              "framework.peak_allocated_bytes": 107539456.0,
+              "framework.peak_reserved_bytes": 144703488.0,
+              "framework.allocated_bytes": 61430272.0,
+              "framework.reserved_bytes": 144703488.0,
+              "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+              "framework.lifecycle_peak_reserved_bytes": 144703488.0
+            },
+            {
+              "peak_allocated_bytes": 107539456.0,
+              "latency_ms": 2.146634,
+              "images_per_second": 3260.9191879006853,
+              "batch": 7.0,
+              "parameter_count": 11689512.0,
+              "framework.elapsed_ms": 2.146634,
+              "framework.peak_allocated_bytes": 107539456.0,
+              "framework.peak_reserved_bytes": 144703488.0,
+              "framework.allocated_bytes": 61430272.0,
+              "framework.reserved_bytes": 144703488.0,
+              "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+              "framework.lifecycle_peak_reserved_bytes": 144703488.0
+            },
+            {
+              "peak_allocated_bytes": 107539456.0,
+              "latency_ms": 2.537295,
+              "images_per_second": 2758.843571598888,
+              "batch": 7.0,
+              "parameter_count": 11689512.0,
+              "framework.elapsed_ms": 2.537295,
+              "framework.peak_allocated_bytes": 107539456.0,
+              "framework.peak_reserved_bytes": 144703488.0,
+              "framework.allocated_bytes": 61430272.0,
+              "framework.reserved_bytes": 144703488.0,
+              "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+              "framework.lifecycle_peak_reserved_bytes": 144703488.0
+            }
+          ],
+          "metrics": {
+            "peak_allocated_bytes": 107539456.0,
+            "latency_ms": 1.979326,
+            "images_per_second": 3536.557393779499,
+            "batch": 7.0,
+            "parameter_count": 11689512.0,
+            "framework.elapsed_ms": 1.979326,
+            "framework.peak_allocated_bytes": 107539456.0,
+            "framework.peak_reserved_bytes": 144703488.0,
+            "framework.allocated_bytes": 61430272.0,
+            "framework.reserved_bytes": 144703488.0,
+            "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+            "framework.lifecycle_peak_reserved_bytes": 144703488.0
+          },
+          "metric_samples": {},
+          "diagnostics": {},
+          "bundle_hashes": {
+            "replay-01b5315e5c6b": "115ced80102af6e1068d37e166e6d705bfef6f658c2233c79a8ac065f6f91449"
+          }
+        }
+      }
+    ],
+    "lease_wait_s": 5.7265494130551815,
+    "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+    "devices": [
+      "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+    ],
+    "worker_pids_reaped": true
+  },
+  "pairs": [
+    {
+      "parent": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 7.845153640955687,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 980102,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 980102,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 12,
+                "unavailable_samples": 0,
+                "wait_s": 0.09020916000008583,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 7007,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 7007,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {},
+              "math_policy_unchanged": true,
+              "setup": [],
+              "samples": [
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.765396,
+                  "images_per_second": 3965.1160419531934,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.765396,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                },
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.801834,
+                  "images_per_second": 3884.930576290602,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.801834,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                },
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.835525,
+                  "images_per_second": 3813.6228054643766,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.835525,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                },
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.749564,
+                  "images_per_second": 4000.9968197790995,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.749564,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                },
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.809701,
+                  "images_per_second": 3868.0422898589327,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.809701,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                }
+              ],
+              "metrics": {
+                "peak_allocated_bytes": 107539456.0,
+                "latency_ms": 1.801834,
+                "images_per_second": 3884.930576290602,
+                "batch": 7.0,
+                "parameter_count": 11689512.0,
+                "framework.elapsed_ms": 1.801834,
+                "framework.peak_allocated_bytes": 107539456.0,
+                "framework.peak_reserved_bytes": 144703488.0,
+                "framework.allocated_bytes": 61430272.0,
+                "framework.reserved_bytes": 144703488.0,
+                "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                "framework.lifecycle_peak_reserved_bytes": 144703488.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {}
+            }
+          }
+        ],
+        "lease_wait_s": 6.196992207318544,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      },
+      "candidate": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 7.983592975884676,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 980668,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 980668,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 12,
+                "unavailable_samples": 0,
+                "wait_s": 0.09597697481513023,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 7007,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 7007,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "replay-01b5315e5c6b": {
+                  "counts": {
+                    "683c822136ed7958f3e9ba44": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "683c822136ed7958f3e9ba44"
+                  ],
+                  "reference_invocations": {
+                    "679ccfe137094282d25350c1": 2,
+                    "aa9765a1830bed7ee2727282": 2
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "683c822136ed7958f3e9ba44",
+                      "route": "chunked_stem:ok",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "setup": [
+                {
+                  "bundle": "replay-01b5315e5c6b",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "direct",
+                    "reason": "no functional replacements"
+                  },
+                  "elapsed_ms": 1.936165,
+                  "allocated_bytes": 52882432,
+                  "reserved_bytes": 67108864,
+                  "peak_allocated_bytes": 52882432,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.979326,
+                  "images_per_second": 3536.557393779499,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.979326,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                },
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.950376,
+                  "images_per_second": 3589.051546983761,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.950376,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                },
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.915767,
+                  "images_per_second": 3653.8890167750046,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.915767,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                },
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 2.146634,
+                  "images_per_second": 3260.9191879006853,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 2.146634,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                },
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 2.537295,
+                  "images_per_second": 2758.843571598888,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 2.537295,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                }
+              ],
+              "metrics": {
+                "peak_allocated_bytes": 107539456.0,
+                "latency_ms": 1.979326,
+                "images_per_second": 3536.557393779499,
+                "batch": 7.0,
+                "parameter_count": 11689512.0,
+                "framework.elapsed_ms": 1.979326,
+                "framework.peak_allocated_bytes": 107539456.0,
+                "framework.peak_reserved_bytes": 144703488.0,
+                "framework.allocated_bytes": 61430272.0,
+                "framework.reserved_bytes": 144703488.0,
+                "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                "framework.lifecycle_peak_reserved_bytes": 144703488.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {
+                "replay-01b5315e5c6b": "115ced80102af6e1068d37e166e6d705bfef6f658c2233c79a8ac065f6f91449"
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 5.7265494130551815,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      }
+    },
+    {
+      "candidate": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 7.766387946903706,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 981017,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 981017,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 12,
+                "unavailable_samples": 0,
+                "wait_s": 0.053003326058387756,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 7007,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 7007,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "replay-01b5315e5c6b": {
+                  "counts": {
+                    "683c822136ed7958f3e9ba44": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "683c822136ed7958f3e9ba44"
+                  ],
+                  "reference_invocations": {
+                    "679ccfe137094282d25350c1": 2,
+                    "aa9765a1830bed7ee2727282": 2
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "683c822136ed7958f3e9ba44",
+                      "route": "chunked_stem:ok",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "setup": [
+                {
+                  "bundle": "replay-01b5315e5c6b",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "direct",
+                    "reason": "no functional replacements"
+                  },
+                  "elapsed_ms": 1.710429,
+                  "allocated_bytes": 52882432,
+                  "reserved_bytes": 67108864,
+                  "peak_allocated_bytes": 52882432,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.561903,
+                  "images_per_second": 4481.712372663347,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.561903,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                },
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.58618,
+                  "images_per_second": 4413.1183093974205,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.58618,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                },
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.506264,
+                  "images_per_second": 4647.259710117217,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.506264,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                },
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.56108,
+                  "images_per_second": 4484.07512747585,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.56108,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                },
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.52218,
+                  "images_per_second": 4598.667700271978,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.52218,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                }
+              ],
+              "metrics": {
+                "peak_allocated_bytes": 107539456.0,
+                "latency_ms": 1.56108,
+                "images_per_second": 4484.07512747585,
+                "batch": 7.0,
+                "parameter_count": 11689512.0,
+                "framework.elapsed_ms": 1.56108,
+                "framework.peak_allocated_bytes": 107539456.0,
+                "framework.peak_reserved_bytes": 144703488.0,
+                "framework.allocated_bytes": 61430272.0,
+                "framework.reserved_bytes": 144703488.0,
+                "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                "framework.lifecycle_peak_reserved_bytes": 144703488.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {
+                "replay-01b5315e5c6b": "115ced80102af6e1068d37e166e6d705bfef6f658c2233c79a8ac065f6f91449"
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 0.0001117996871471405,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      },
+      "parent": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 7.4156046025455,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 981339,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 981339,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 11,
+                "unavailable_samples": 0,
+                "wait_s": 0.09097284823656082,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 7007,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 7007,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {},
+              "math_policy_unchanged": true,
+              "setup": [],
+              "samples": [
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.795688,
+                  "images_per_second": 3898.227308975724,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.795688,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                },
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.816718,
+                  "images_per_second": 3853.102132526897,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.816718,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                },
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.763227,
+                  "images_per_second": 3969.9936536815735,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.763227,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                },
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.861969,
+                  "images_per_second": 3759.4610866238913,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.861969,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                },
+                {
+                  "peak_allocated_bytes": 107539456.0,
+                  "latency_ms": 1.927992,
+                  "images_per_second": 3630.7204594209934,
+                  "batch": 7.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 1.927992,
+                  "framework.peak_allocated_bytes": 107539456.0,
+                  "framework.peak_reserved_bytes": 144703488.0,
+                  "framework.allocated_bytes": 61430272.0,
+                  "framework.reserved_bytes": 144703488.0,
+                  "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                  "framework.lifecycle_peak_reserved_bytes": 144703488.0
+                }
+              ],
+              "metrics": {
+                "peak_allocated_bytes": 107539456.0,
+                "latency_ms": 1.816718,
+                "images_per_second": 3853.102132526897,
+                "batch": 7.0,
+                "parameter_count": 11689512.0,
+                "framework.elapsed_ms": 1.816718,
+                "framework.peak_allocated_bytes": 107539456.0,
+                "framework.peak_reserved_bytes": 144703488.0,
+                "framework.allocated_bytes": 61430272.0,
+                "framework.reserved_bytes": 144703488.0,
+                "framework.lifecycle_peak_allocated_bytes": 107567616.0,
+                "framework.lifecycle_peak_reserved_bytes": 144703488.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {}
+            }
+          }
+        ],
+        "lease_wait_s": 9.787827730178833e-05,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      }
+    }
+  ],
+  "measurement": {
+    "valid": true,
+    "objective": 107539456.0,
+    "reference": 107539456.0,
+    "parent_values": [
+      107539456.0,
+      107539456.0
+    ],
+    "candidate_values": [
+      107539456.0,
+      107539456.0
+    ],
+    "paired_gains": [
+      0.0,
+      0.0
+    ],
+    "noise_bounds": [
+      0.0,
+      0.0
+    ],
+    "constraints": [
+      {
+        "metric": "images_per_second",
+        "values": [
+          3536.557393779499,
+          4484.07512747585
+        ],
+        "limit": 3654.0288552889183,
+        "original_reference": 3846.3461634620194,
+        "passed": false
+      }
+    ],
+    "reasons": [
+      "original_baseline_constraint_failed",
+      "paired_gain_not_above_noise"
+    ],
+    "framework_source": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+    "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+  },
+  "evaluation": {
+    "schema_version": "project.v1",
+    "id": "replay-01b5315e5c6b",
+    "revision_id": "4355a0ceec94bc3c338c7e9b6168a090435a2b524e89ae69b21ed4cdba030403",
+    "parent_id": "b80beb0f2b66335af9bbdb747b6d4f80f26c33d46a7eed567199abff983dc33a",
+    "contract_ref": "sha256:00cfbfca05f3b5510c7210bead2f0d5a7d27e9b1bf6fa7e072956a615eb6f3c2",
+    "bundle_id": "replay-01b5315e5c6b",
+    "quality": "pass",
+    "feasible": false,
+    "objective": 107539456.0,
+    "reference_objective": 107539456.0,
+    "metrics": {
+      "valid": true,
+      "objective": 107539456.0,
+      "reference": 107539456.0,
+      "parent_values": [
+        107539456.0,
+        107539456.0
+      ],
+      "candidate_values": [
+        107539456.0,
+        107539456.0
+      ],
+      "paired_gains": [
+        0.0,
+        0.0
+      ],
+      "noise_bounds": [
+        0.0,
+        0.0
+      ],
+      "constraints": [
+        {
+          "metric": "images_per_second",
+          "values": [
+            3536.557393779499,
+            4484.07512747585
+          ],
+          "limit": 3654.0288552889183,
+          "original_reference": 3846.3461634620194,
+          "passed": false
+        }
+      ],
+      "reasons": [
+        "original_baseline_constraint_failed",
+        "paired_gain_not_above_noise"
+      ],
+      "framework_source": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+      "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+    },
+    "required_ranks": [
+      0
+    ],
+    "rank_bundle_hashes": {
+      "0": "115ced80102af6e1068d37e166e6d705bfef6f658c2233c79a8ac065f6f91449"
+    },
+    "required_calls": [
+      "683c822136ed7958f3e9ba44"
+    ],
+    "executed_calls": [
+      "683c822136ed7958f3e9ba44"
+    ],
+    "rank_executed_calls": {
+      "0": [
+        "683c822136ed7958f3e9ba44"
+      ]
+    },
+    "evidence": [
+      "/root/autodl-tmp/dev/v6-work/stage3-variants/resnet-memory-heldout/jobs/replay-01b5315e5c6b-evaluation-0985544d-pair-0-parent/run/receipt.json",
+      "/root/autodl-tmp/dev/v6-work/stage3-variants/resnet-memory-heldout/jobs/replay-01b5315e5c6b-evaluation-0985544d-pair-0-candidate/run/receipt.json",
+      "/root/autodl-tmp/dev/v6-work/stage3-variants/resnet-memory-heldout/jobs/replay-01b5315e5c6b-evaluation-0985544d-pair-1-candidate/run/receipt.json",
+      "/root/autodl-tmp/dev/v6-work/stage3-variants/resnet-memory-heldout/jobs/replay-01b5315e5c6b-evaluation-0985544d-pair-1-parent/run/receipt.json"
+    ],
+    "reasons": [
+      "original_baseline_constraint_failed",
+      "paired_gain_not_above_noise"
+    ]
+  },
+  "resources": {
+    "status": "observed",
+    "groups": [
+      {
+        "group": "6975d6e6c3dda842a119",
+        "bundle": "replay-01b5315e5c6b",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "683c822136ed7958f3e9ba44",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 119.874,
+                  "kernels": 5,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 119.874
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        50,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        256,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 1.408
+                    },
+                    {
+                      "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_medium_nn_v1",
+                      "registers per thread": 128,
+                      "shared memory": 16384,
+                      "grid": [
+                        686,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 67.648
+                    },
+                    {
+                      "kernel": "void cudnn::bn_fw_inf_1C11_kernel_NCHW<float, float, true, 1>(float, float, cudnnTensorStruct, float const*, cudnnTensorStruct, float*, cudnnTensorStruct, float const*, float const*, float const*, float const*, float)",
+                      "registers per thread": 19,
+                      "shared memory": 0,
+                      "grid": [
+                        64,
+                        7,
+                        1
+                      ],
+                      "block": [
+                        512,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 17.089
+                    },
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+                      "registers per thread": 24,
+                      "shared memory": 0,
+                      "grid": [
+                        5488,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 13.888
+                    },
+                    {
+                      "kernel": "void at::native::(anonymous namespace)::max_pool_forward_nchw<float, int>(int, float const*, long, long, long, int, int, int, int, int, int, int, int, int, int, float*, long*)",
+                      "registers per thread": 25,
+                      "shared memory": 0,
+                      "grid": [
+                        5488,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        256,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 19.841
+                    }
+                  ]
+                },
+                "after": {
+                  "cuda_us": 119.87400000000002,
+                  "kernels": 5,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 119.87400000000002
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        50,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        256,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 1.376
+                    },
+                    {
+                      "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_medium_nn_v1",
+                      "registers per thread": 128,
+                      "shared memory": 16384,
+                      "grid": [
+                        686,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 67.617
+                    },
+                    {
+                      "kernel": "void cudnn::bn_fw_inf_1C11_kernel_NCHW<float, float, true, 1>(float, float, cudnnTensorStruct, float const*, cudnnTensorStruct, float*, cudnnTensorStruct, float const*, float const*, float const*, float const*, float)",
+                      "registers per thread": 19,
+                      "shared memory": 0,
+                      "grid": [
+                        64,
+                        7,
+                        1
+                      ],
+                      "block": [
+                        512,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 16.992
+                    },
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+                      "registers per thread": 24,
+                      "shared memory": 0,
+                      "grid": [
+                        5488,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 13.953
+                    },
+                    {
+                      "kernel": "void at::native::(anonymous namespace)::max_pool_forward_nchw<float, int>(int, float const*, long, long, long, int, int, int, int, int, int, int, int, int, int, float*, long*)",
+                      "registers per thread": 25,
+                      "shared memory": 0,
+                      "grid": [
+                        5488,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        256,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 19.936
+                    }
+                  ]
+                },
+                "replacement_range": {
+                  "cuda_us": 119.87400000000002,
+                  "kernels": 5,
+                  "launch_configurations": [
+                    {
+                      "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        50,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        256,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    },
+                    {
+                      "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_medium_nn_v1",
+                      "registers per thread": 128,
+                      "shared memory": 16384,
+                      "grid": [
+                        686,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    },
+                    {
+                      "kernel": "void cudnn::bn_fw_inf_1C11_kernel_NCHW<float, float, true, 1>(float, float, cudnnTensorStruct, float const*, cudnnTensorStruct, float*, cudnnTensorStruct, float const*, float const*, float const*, float const*, float)",
+                      "registers per thread": 19,
+                      "shared memory": 0,
+                      "grid": [
+                        64,
+                        7,
+                        1
+                      ],
+                      "block": [
+                        512,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    },
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+                      "registers per thread": 24,
+                      "shared memory": 0,
+                      "grid": [
+                        5488,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    },
+                    {
+                      "kernel": "void at::native::(anonymous namespace)::max_pool_forward_nchw<float, int>(int, float const*, long, long, long, int, int, int, int, int, int, int, int, int, int, float*, long*)",
+                      "registers per thread": 25,
+                      "shared memory": 0,
+                      "grid": [
+                        5488,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        256,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1
+                    }
+                  ]
+                },
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "dff51d7fb516aff2edec",
+        "bundle": "replay-01b5315e5c6b",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "679ccfe137094282d25350c1",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 100.033,
+                  "kernels": 4,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 100.033
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        50,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        256,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 1.408
+                    },
+                    {
+                      "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_medium_nn_v1",
+                      "registers per thread": 128,
+                      "shared memory": 16384,
+                      "grid": [
+                        686,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 67.648
+                    },
+                    {
+                      "kernel": "void cudnn::bn_fw_inf_1C11_kernel_NCHW<float, float, true, 1>(float, float, cudnnTensorStruct, float const*, cudnnTensorStruct, float*, cudnnTensorStruct, float const*, float const*, float const*, float const*, float)",
+                      "registers per thread": 19,
+                      "shared memory": 0,
+                      "grid": [
+                        64,
+                        7,
+                        1
+                      ],
+                      "block": [
+                        512,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 17.089
+                    },
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+                      "registers per thread": 24,
+                      "shared memory": 0,
+                      "grid": [
+                        5488,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 13.888
+                    }
+                  ]
+                },
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "3d90549bbd8d7c8b413a",
+        "bundle": "replay-01b5315e5c6b",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "8ef2341287e5b4afa9d0e7bf",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 69.056,
+                  "kernels": 2,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 69.056
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        50,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        256,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 1.408
+                    },
+                    {
+                      "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_medium_nn_v1",
+                      "registers per thread": 128,
+                      "shared memory": 16384,
+                      "grid": [
+                        686,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 67.648
+                    }
+                  ]
+                },
+                "after": {
+                  "cuda_us": 68.99300000000001,
+                  "kernels": 2,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 68.99300000000001
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        50,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        256,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 1.376
+                    },
+                    {
+                      "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_medium_nn_v1",
+                      "registers per thread": 128,
+                      "shared memory": 16384,
+                      "grid": [
+                        686,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 67.617
+                    }
+                  ]
+                },
+                "replacement_range": null,
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "2a6e942436cd276b870e",
+        "bundle": "replay-01b5315e5c6b",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "6f4047091b88293c3ed5c988",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 69.056,
+                  "kernels": 2,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 69.056
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        50,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        256,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 1.408
+                    },
+                    {
+                      "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_medium_nn_v1",
+                      "registers per thread": 128,
+                      "shared memory": 16384,
+                      "grid": [
+                        686,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 67.648
+                    }
+                  ]
+                },
+                "after": {
+                  "cuda_us": 68.99300000000001,
+                  "kernels": 2,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 68.99300000000001
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+                      "registers per thread": 16,
+                      "shared memory": 0,
+                      "grid": [
+                        50,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        256,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 1.376
+                    },
+                    {
+                      "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_medium_nn_v1",
+                      "registers per thread": 128,
+                      "shared memory": 16384,
+                      "grid": [
+                        686,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 67.617
+                    }
+                  ]
+                },
+                "replacement_range": null,
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "c92b9330fdae06c7027a",
+        "bundle": "replay-01b5315e5c6b",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "aa9765a1830bed7ee2727282",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 19.841,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 19.841
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::(anonymous namespace)::max_pool_forward_nchw<float, int>(int, float const*, long, long, long, int, int, int, int, int, int, int, int, int, int, float*, long*)",
+                      "registers per thread": 25,
+                      "shared memory": 0,
+                      "grid": [
+                        5488,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        256,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 19.841
+                    }
+                  ]
+                },
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "eb12e00e3d6ba6ea7c26",
+        "bundle": "replay-01b5315e5c6b",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "f0045bb12e41619a90999d56",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 19.841,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 19.841
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::(anonymous namespace)::max_pool_forward_nchw<float, int>(int, float const*, long, long, long, int, int, int, int, int, int, int, int, int, int, float*, long*)",
+                      "registers per thread": 25,
+                      "shared memory": 0,
+                      "grid": [
+                        5488,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        256,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 19.841
+                    }
+                  ]
+                },
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "bf148a8c6f5da3628505",
+        "bundle": "replay-01b5315e5c6b",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "2f3bfb9ee01d701be01d2ff3",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 17.089,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 17.089
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void cudnn::bn_fw_inf_1C11_kernel_NCHW<float, float, true, 1>(float, float, cudnnTensorStruct, float const*, cudnnTensorStruct, float*, cudnnTensorStruct, float const*, float const*, float const*, float const*, float)",
+                      "registers per thread": 19,
+                      "shared memory": 0,
+                      "grid": [
+                        64,
+                        7,
+                        1
+                      ],
+                      "block": [
+                        512,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 17.089
+                    }
+                  ]
+                },
+                "after": {
+                  "cuda_us": 16.992,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 16.992
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void cudnn::bn_fw_inf_1C11_kernel_NCHW<float, float, true, 1>(float, float, cudnnTensorStruct, float const*, cudnnTensorStruct, float*, cudnnTensorStruct, float const*, float const*, float const*, float const*, float)",
+                      "registers per thread": 19,
+                      "shared memory": 0,
+                      "grid": [
+                        64,
+                        7,
+                        1
+                      ],
+                      "block": [
+                        512,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 16.992
+                    }
+                  ]
+                },
+                "replacement_range": null,
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "a6d767c2d007e47336b1",
+        "bundle": "replay-01b5315e5c6b",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "622af0a9c2e24b838dc42528",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 17.089,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 17.089
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void cudnn::bn_fw_inf_1C11_kernel_NCHW<float, float, true, 1>(float, float, cudnnTensorStruct, float const*, cudnnTensorStruct, float*, cudnnTensorStruct, float const*, float const*, float const*, float const*, float)",
+                      "registers per thread": 19,
+                      "shared memory": 0,
+                      "grid": [
+                        64,
+                        7,
+                        1
+                      ],
+                      "block": [
+                        512,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 17.089
+                    }
+                  ]
+                },
+                "after": {
+                  "cuda_us": 16.992,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 16.992
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void cudnn::bn_fw_inf_1C11_kernel_NCHW<float, float, true, 1>(float, float, cudnnTensorStruct, float const*, cudnnTensorStruct, float*, cudnnTensorStruct, float const*, float const*, float const*, float const*, float)",
+                      "registers per thread": 19,
+                      "shared memory": 0,
+                      "grid": [
+                        64,
+                        7,
+                        1
+                      ],
+                      "block": [
+                        512,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 16.992
+                    }
+                  ]
+                },
+                "replacement_range": null,
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "8306f2336e3465bbb9a6",
+        "bundle": "replay-01b5315e5c6b",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "35096a239aa1290aabeed5de",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 13.888,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 13.888
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+                      "registers per thread": 24,
+                      "shared memory": 0,
+                      "grid": [
+                        5488,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 13.888
+                    }
+                  ]
+                },
+                "after": {
+                  "cuda_us": 13.953,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 13.953
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+                      "registers per thread": 24,
+                      "shared memory": 0,
+                      "grid": [
+                        5488,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 13.953
+                    }
+                  ]
+                },
+                "replacement_range": null,
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "7b500206489e0bc6e3aa",
+        "bundle": "replay-01b5315e5c6b",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "c002ab4cac8ec5deeb415e47",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": {
+                  "cuda_us": 13.888,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 13.888
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+                      "registers per thread": 24,
+                      "shared memory": 0,
+                      "grid": [
+                        5488,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 13.888
+                    }
+                  ]
+                },
+                "after": {
+                  "cuda_us": 13.953,
+                  "kernels": 1,
+                  "communication_us": 0.0,
+                  "phase_cuda_us": {
+                    "run": 13.953
+                  },
+                  "launch_configurations": [
+                    {
+                      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+                      "registers per thread": 24,
+                      "shared memory": 0,
+                      "grid": [
+                        5488,
+                        1,
+                        1
+                      ],
+                      "block": [
+                        128,
+                        1,
+                        1
+                      ],
+                      "graph id": 0,
+                      "graph node id": 0,
+                      "invocations": 1,
+                      "cuda_us": 13.953
+                    }
+                  ]
+                },
+                "replacement_range": null,
+                "after_status": "observed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "33b0d94ff0d86de0e145",
+        "bundle": "replay-01b5315e5c6b",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "ea7cd77adb03bad473412ebc",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "a44a11e39673a3b5d656",
+        "bundle": "replay-01b5315e5c6b",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "3c3c7a3e1837d0185b1df6f0",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "798df708d05932b17f71",
+        "bundle": "replay-01b5315e5c6b",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "02a601aee1aa260ffe0a4ab3",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "0646957009c7d44eba63df47",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "12b55f89da995eafce02cb1f",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "1a3d96236b3eeed2963eb1e1",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "26bf72c482fe509116cfe563",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "2dc17233477d3e792ec1c6a1",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "31edac558e7a8ae295f0f870",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "350366bbcff360952206e584",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "3ac036f4c828a6d38c6de955",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "3ce040e35e7fbeec3b0268ed",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "3deaa908b87679baa6793821",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "417eeff1c9a8f375f159a7ec",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "434beee07f56ad819e0dde2b",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "54aebe8d463a22be1540be1b",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "5bcf3e08c0f782ca54ee4cfb",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "5cbdd570760b8cc41620a8d0",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "6b9c5064461c5d77717f0df1",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "6c416ffedaf08dbb099d8b4e",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "6d16a24233e5dc5e8a22a2bd",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "74fd899620ef53f2daef3e4d",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "8281ee4e53caf9d08df49f3d",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "860b9a28f8f68cb819e4e33d",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "88cf102df4b93ad807ba7876",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "91c4d0730aa73ec3af45d9eb",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "9952fea8f63b08896dafecc5",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "9d8f1394c27cd8d413b6e2e0",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "a1fa33af667e1a2b2c9d7f9e",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "a31f26abfa2af74d96b934ef",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "a485b1d1a26bba4519fb1c8c",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "a8b935a7d5ba9218160dc657",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "af11f51a15b6c4a80ba789dc",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "af27737d1424b2e5df441161",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "b12441aca6d9934b27911f84",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "b33ce86b7524d9f95307b6d0",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "b88514935731df403da8e5fc",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "c8888d866e6b014f05fcece9",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "ca1f233e0c891270f758ff58",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "cc658ee4e2f7b6628feb4ca4",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "cdc8aa1b8fe2a61ac823a7ee",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "cf89f34833437333bf1a7ac6",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "d1f12d99156dc6ee2b16b7f7",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "d353a237fe9cfef031c42a4a",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "dde67fe164885fe195f53b18",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "e4ffc6e7d82ef5f5a46801e7",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "e89f9cc69b909a408c22847b",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "eb9039ce4fefdfafe412915b",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          },
+          {
+            "id": "eea81d115a4403a3083c1f64",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "c279d448fb108b493359",
+        "bundle": "replay-01b5315e5c6b",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "021f27d2d0d73dee5fab9084",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "3264c69dfa51b73502af",
+        "bundle": "replay-01b5315e5c6b",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "87335b95bb02e81155c4add6",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "group": "90859fa00ce61ce6fa79",
+        "bundle": "replay-01b5315e5c6b",
+        "attribution_status": "joint_only",
+        "calls": [
+          {
+            "id": "d1400702f02f387d67569ac9",
+            "ranks": [
+              {
+                "rank": 0,
+                "before": null,
+                "after": null,
+                "replacement_range": null,
+                "after_status": "absent_or_unassociated"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "coverage": [
+      {
+        "cuda_kernels": 86,
+        "associated_kernels": 86,
+        "unassociated_kernels": 0,
+        "associated_below_project": 86,
+        "root_only_kernels": 0,
+        "backward_associated_kernels": 0,
+        "autograd_ranges": 0,
+        "forward_linked_autograd_ranges": 0,
+        "ambiguous_forward_sequences": 0
+      }
+    ],
+    "extra_collectors": {
+      "before": {
+        "execution_timeline": {
+          "status": "observed",
+          "ranks": [
+            {
+              "schema_version": 1,
+              "rank": 0,
+              "communication": {
+                "rank": 0,
+                "status": "not_observed",
+                "collectives": [],
+                "unmatched_communication_kernels": [],
+                "communication_kernel_count": 0,
+                "communication_kernel_sum_ms": 0.0,
+                "communication_union_ms": 0.0,
+                "compute_overlap_ms": 0.0,
+                "communication_without_compute_ms": 0.0,
+                "logical_input_bytes": 0,
+                "payload_coverage": {
+                  "observed_collectives": 0,
+                  "total_collectives": 0
+                },
+                "interpretation": "Logical per-rank payload is counted once per collective, not per kernel. Kernel time includes waiting. Interval overlap is local to one trace clock; uncovered communication is not a measured critical path or causal speedup."
+              },
+              "devices": {
+                "0": {
+                  "kernel_count": 86,
+                  "kernel_span_us": 3614.036865234375,
+                  "kernel_active_union_us": 1179.3359375,
+                  "gaps_between_kernels_us": 2434.700927734375,
+                  "communication_intervals_us": [],
+                  "compute_intervals_us": [
+                    [
+                      1659170533754.481,
+                      1659170533755.889
+                    ],
+                    [
+                      1659170533780.209,
+                      1659170533846.098
+                    ],
+                    [
+                      1659170534017.842,
+                      1659170534034.739
+                    ],
+                    [
+                      1659170534100.691,
+                      1659170534114.291
+                    ],
+                    [
+                      1659170534172.371,
+                      1659170534191.923
+                    ],
+                    [
+                      1659170534282.004,
+                      1659170534283.636
+                    ],
+                    [
+                      1659170534293.172,
+                      1659170534334.132
+                    ],
+                    [
+                      1659170534409.973,
+                      1659170534415.4768
+                    ],
+                    [
+                      1659170534557.238,
+                      1659170534561.366
+                    ],
+                    [
+                      1659170534628.502,
+                      1659170534630.0378
+                    ],
+                    [
+                      1659170534635.51,
+                      1659170534676.054
+                    ],
+                    [
+                      1659170534699.318,
+                      1659170534704.695
+                    ],
+                    [
+                      1659170534748.087,
+                      1659170534753.6228
+                    ],
+                    [
+                      1659170534771.159,
+                      1659170534775.383
+                    ],
+                    [
+                      1659170534824.247,
+                      1659170534825.8162
+                    ],
+                    [
+                      1659170534830.359,
+                      1659170534870.8079
+                    ],
+                    [
+                      1659170534886.904,
+                      1659170534892.215
+                    ],
+                    [
+                      1659170534909.496,
+                      1659170534913.592
+                    ],
+                    [
+                      1659170534949.464,
+                      1659170534951.0322
+                    ],
+                    [
+                      1659170534956.248,
+                      1659170534996.664
+                    ],
+                    [
+                      1659170535008.888,
+                      1659170535014.233
+                    ],
+                    [
+                      1659170535034.264,
+                      1659170535039.7688
+                    ],
+                    [
+                      1659170535052.825,
+                      1659170535056.921
+                    ],
+                    [
+                      1659170535115.385,
+                      1659170535116.633
+                    ],
+                    [
+                      1659170535132.249,
+                      1659170535175.417
+                    ],
+                    [
+                      1659170535189.017,
+                      1659170535192.7622
+                    ],
+                    [
+                      1659170535210.778,
+                      1659170535213.178
+                    ],
+                    [
+                      1659170535252.794,
+                      1659170535254.97
+                    ],
+                    [
+                      1659170535259.482,
+                      1659170535295.482
+                    ],
+                    [
+                      1659170535311.802,
+                      1659170535315.29
+                    ],
+                    [
+                      1659170535364.538,
+                      1659170535365.7861
+                    ],
+                    [
+                      1659170535372.763,
+                      1659170535384.187
+                    ],
+                    [
+                      1659170535425.499,
+                      1659170535429.051
+                    ],
+                    [
+                      1659170535442.875,
+                      1659170535445.819
+                    ],
+                    [
+                      1659170535461.659,
+                      1659170535464.123
+                    ],
+                    [
+                      1659170535509.307,
+                      1659170535511.5469
+                    ],
+                    [
+                      1659170535515.227,
+                      1659170535551.132
+                    ],
+                    [
+                      1659170535567.196,
+                      1659170535570.748
+                    ],
+                    [
+                      1659170535588.06,
+                      1659170535590.428
+                    ],
+                    [
+                      1659170535630.492,
+                      1659170535632.668
+                    ],
+                    [
+                      1659170535636.188,
+                      1659170535672.156
+                    ],
+                    [
+                      1659170535685.116,
+                      1659170535688.636
+                    ],
+                    [
+                      1659170535708.925,
+                      1659170535711.773
+                    ],
+                    [
+                      1659170535726.333,
+                      1659170535728.701
+                    ],
+                    [
+                      1659170535784.061,
+                      1659170535864.3171
+                    ],
+                    [
+                      1659170535864.957,
+                      1659170535867.8381
+                    ],
+                    [
+                      1659170535868.541,
+                      1659170535870.11
+                    ],
+                    [
+                      1659170535898.654,
+                      1659170535903.518
+                    ],
+                    [
+                      1659170535904.222,
+                      1659170535937.6619
+                    ],
+                    [
+                      1659170535954.142,
+                      1659170535956.99
+                    ],
+                    [
+                      1659170536000.222,
+                      1659170536012.606
+                    ],
+                    [
+                      1659170536049.119,
+                      1659170536052.0298
+                    ],
+                    [
+                      1659170536064.607,
+                      1659170536066.463
+                    ],
+                    [
+                      1659170536083.679,
+                      1659170536085.311
+                    ],
+                    [
+                      1659170536130.815,
+                      1659170536135.4548
+                    ],
+                    [
+                      1659170536136.351,
+                      1659170536169.823
+                    ],
+                    [
+                      1659170536187.807,
+                      1659170536190.5908
+                    ],
+                    [
+                      1659170536208.575,
+                      1659170536210.207
+                    ],
+                    [
+                      1659170536266.112,
+                      1659170536270.944
+                    ],
+                    [
+                      1659170536271.648,
+                      1659170536305.696
+                    ],
+                    [
+                      1659170536321.888,
+                      1659170536324.7358
+                    ],
+                    [
+                      1659170536346.048,
+                      1659170536347.904
+                    ],
+                    [
+                      1659170536363.648,
+                      1659170536365.248
+                    ],
+                    [
+                      1659170536416.833,
+                      1659170536537.985
+                    ],
+                    [
+                      1659170536538.721,
+                      1659170536541.9858
+                    ],
+                    [
+                      1659170536542.786,
+                      1659170536544.066
+                    ],
+                    [
+                      1659170536544.801,
+                      1659170536562.305
+                    ],
+                    [
+                      1659170536563.01,
+                      1659170536622.722
+                    ],
+                    [
+                      1659170536623.394,
+                      1659170536626.658
+                    ],
+                    [
+                      1659170536635.106,
+                      1659170536636.13
+                    ],
+                    [
+                      1659170536643.426,
+                      1659170536663.362
+                    ],
+                    [
+                      1659170536697.731,
+                      1659170536701.026
+                    ],
+                    [
+                      1659170536714.594,
+                      1659170536716.098
+                    ],
+                    [
+                      1659170536733.475,
+                      1659170536734.7861
+                    ],
+                    [
+                      1659170536791.331,
+                      1659170536805.507
+                    ],
+                    [
+                      1659170536806.275,
+                      1659170536866.8188
+                    ],
+                    [
+                      1659170536867.523,
+                      1659170536870.7869
+                    ],
+                    [
+                      1659170536871.427,
+                      1659170536872.739
+                    ],
+                    [
+                      1659170536906.787,
+                      1659170536922.7231
+                    ],
+                    [
+                      1659170536923.363,
+                      1659170536986.084
+                    ],
+                    [
+                      1659170536986.788,
+                      1659170536990.052
+                    ],
+                    [
+                      1659170536990.724,
+                      1659170536992.228
+                    ],
+                    [
+                      1659170537002.788,
+                      1659170537004.1
+                    ],
+                    [
+                      1659170537157.829,
+                      1659170537160.645
+                    ],
+                    [
+                      1659170537356.998,
+                      1659170537362.438
+                    ],
+                    [
+                      1659170537367.014,
+                      1659170537368.5178
+                    ]
+                  ],
+                  "compute_overlap_us": 0.0,
+                  "communication_after_last_compute_us": 0,
+                  "interpretation": "Observed kernel intervals only; copies and CPU work are separate. Gaps/tail are not recoverable time or a causal critical path."
+                }
+              },
+              "cuda_synchronization": [
+                {
+                  "name": "cudaDeviceSynchronize",
+                  "start_us": 1659170537441.63,
+                  "duration_us": 9.524,
+                  "pid": 967887,
+                  "tid": 967887,
+                  "args": {
+                    "cbid": 165,
+                    "correlation": 1430
+                  }
+                }
+              ],
+              "copies_and_memsets": [],
+              "gradient_readiness": {
+                "status": "not_observed",
+                "events": [],
+                "buckets": [],
+                "scope": "CPU post-accumulate callbacks; no GPU synchronization or communication-hook replacement"
+              },
+              "clock": {
+                "status": "observed",
+                "offset_bounds_us": [
+                  18956226440983.86,
+                  18956226442810.523
+                ],
+                "anchor_bounds_us": [
+                  [
+                    18956226440983.86,
+                    18956226442810.523
+                  ],
+                  [
+                    18956226441397.094,
+                    18956226441446.805
+                  ]
+                ],
+                "domain": {
+                  "host": "autodl-container-e8e84ea25b-cffd5c81",
+                  "boot_id": "9890bc2b-f323-49ae-b779-8f723299b44a",
+                  "clock": "CLOCK_MONOTONIC"
+                },
+                "scope": "CPU trace to host monotonic clock within this capture; excludes unknown GPU clock calibration error"
+              },
+              "workload_window": {
+                "start_us": 1659170533371.758,
+                "end_us": 1659170537489.126,
+                "scope": "explicit workload including final completion synchronization; excludes profiler preparation"
+              },
+              "scope": "Separate diagnostic capture, never the clean project objective",
+              "gradient_stream_markers": {
+                "status": "not_collected",
+                "events": [],
+                "scope": "Optional CUDA event recorded on each gradient callback's current stream; time relative to a rank-local GPU origin. No per-parameter synchronize. Adds event-record overhead; does not prove reducer bucket readiness, unique consumption, or cross-rank GPU clock alignment."
+              },
+              "trace": "/root/autodl-tmp/dev/v6-work/stage3-variants/resnet-memory-heldout/jobs/timeline-418f75955b/run/timeline-rank-0-0.json",
+              "trace_sha256": "c2c580899874904d9a44d0c922665d220f816b2fedabcbe726c989cd0d3562c5",
+              "profiled_wall_ms": 4.148533,
+              "gradient_hook_missing": [],
+              "gradient_hooks_enabled": false,
+              "clock_anchors": [
+                {
+                  "name": "opop.clock::0:before",
+                  "before_ns": 20615396972935027,
+                  "after_ns": 20615396974761687
+                },
+                {
+                  "name": "opop.clock::0:after",
+                  "before_ns": 20615396978918032,
+                  "after_ns": 20615396978967742
+                }
+              ]
+            }
+          ],
+          "cross_rank": {
+            "collectives": [],
+            "clock_policy": "Never subtract unaligned rank trace timestamps; CPU-only alignment bounds"
+          },
+          "run": {
+            "schema_version": 1,
+            "status": "passed",
+            "failure": null,
+            "wall_s": 8.60470287129283,
+            "ranks": [
+              {
+                "rank": 0,
+                "pid": 967887,
+                "exit_code": 0,
+                "status": "passed",
+                "binding": {
+                  "pid": 967887,
+                  "status": "verified",
+                  "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                  "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                  "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                  "logical_device": 0,
+                  "nvidia_smi_pid_uuids": [
+                    "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+                  ],
+                  "pid_query_status": "observed",
+                  "occupancy": {
+                    "status": "sampled_clear",
+                    "samples": 13,
+                    "unavailable_samples": 0,
+                    "wait_s": 0.09328744933009148,
+                    "external_clients": [],
+                    "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                  }
+                },
+                "framework_source": {
+                  "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+                  "files": 160,
+                  "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+                },
+                "result": {
+                  "valid": true,
+                  "reports": [
+                    "/root/autodl-tmp/dev/v6-work/stage3-variants/resnet-memory-heldout/jobs/timeline-418f75955b/run/timeline-analysis-rank-0-0.json"
+                  ],
+                  "collector": "execution_timeline",
+                  "scope": "Separate passive diagnostic; profiler/gradient hooks perturb execution. Compare against clean evaluation."
+                }
+              }
+            ],
+            "lease_wait_s": 0.00019373372197151184,
+            "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "worker_pids_reaped": true
+          },
+          "provenance": {
+            "revision": "b80beb0f2b66335af9bbdb747b6d4f80f26c33d46a7eed567199abff983dc33a",
+            "parent_revision": "50440bd27fe2bf4ef8650bfc9b7c826fb13e48c7b2f71c7b80310de5fb52994d",
+            "bundles": [],
+            "plan": "sha256:9bb2ac091bfc5e05cc717d3708381d2792db2317eaa3a82049ef180a292e682b",
+            "registry": "sha256:c3491236043aed89443fec9e253d82202a8d710648e5879e9b03f4d7b2d8a2a5",
+            "request_sha256": "c7a42acff4275c6bca0c268dbdc58ac4118c1eada6dc0b6173f5f1c1d01b59f1",
+            "objective": {
+              "name": "peak_allocated_bytes",
+              "unit": "bytes",
+              "direction": "minimize",
+              "constraints": [
+                {
+                  "metric": "images_per_second",
+                  "op": "ge",
+                  "baseline_ratio": 0.95
+                }
+              ]
+            },
+            "workload": {
+              "id": "unseen_batch",
+              "batch": 7
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          }
+        }
+      },
+      "after": {
+        "execution_timeline": {
+          "status": "observed",
+          "ranks": [
+            {
+              "schema_version": 1,
+              "rank": 0,
+              "communication": {
+                "rank": 0,
+                "status": "not_observed",
+                "collectives": [],
+                "unmatched_communication_kernels": [],
+                "communication_kernel_count": 0,
+                "communication_kernel_sum_ms": 0.0,
+                "communication_union_ms": 0.0,
+                "compute_overlap_ms": 0.0,
+                "communication_without_compute_ms": 0.0,
+                "logical_input_bytes": 0,
+                "payload_coverage": {
+                  "observed_collectives": 0,
+                  "total_collectives": 0
+                },
+                "interpretation": "Logical per-rank payload is counted once per collective, not per kernel. Kernel time includes waiting. Interval overlap is local to one trace clock; uncovered communication is not a measured critical path or causal speedup."
+              },
+              "devices": {
+                "0": {
+                  "kernel_count": 86,
+                  "kernel_span_us": 6857.552001953125,
+                  "kernel_active_union_us": 1186.434814453125,
+                  "gaps_between_kernels_us": 5671.1171875,
+                  "communication_intervals_us": [],
+                  "compute_intervals_us": [
+                    [
+                      1659452065969.306,
+                      1659452065970.682
+                    ],
+                    [
+                      1659452066034.554,
+                      1659452066100.187
+                    ],
+                    [
+                      1659452066380.829,
+                      1659452066397.821
+                    ],
+                    [
+                      1659452066513.118,
+                      1659452066526.877
+                    ],
+                    [
+                      1659452066636.414,
+                      1659452066656.126
+                    ],
+                    [
+                      1659452066842.304,
+                      1659452066843.904
+                    ],
+                    [
+                      1659452066877.536,
+                      1659452066918.0798
+                    ],
+                    [
+                      1659452067025.889,
+                      1659452067031.3928
+                    ],
+                    [
+                      1659452067079.01,
+                      1659452067083.138
+                    ],
+                    [
+                      1659452067185.378,
+                      1659452067186.946
+                    ],
+                    [
+                      1659452067193.794,
+                      1659452067234.435
+                    ],
+                    [
+                      1659452067370.948,
+                      1659452067376.356
+                    ],
+                    [
+                      1659452067478.308,
+                      1659452067483.844
+                    ],
+                    [
+                      1659452067535.941,
+                      1659452067540.0369
+                    ],
+                    [
+                      1659452067655.525,
+                      1659452067657.093
+                    ],
+                    [
+                      1659452067680.262,
+                      1659452067720.838
+                    ],
+                    [
+                      1659452067881.319,
+                      1659452067886.5352
+                    ],
+                    [
+                      1659452067949.32,
+                      1659452067953.512
+                    ],
+                    [
+                      1659452068072.744,
+                      1659452068074.312
+                    ],
+                    [
+                      1659452068085.769,
+                      1659452068126.313
+                    ],
+                    [
+                      1659452068216.073,
+                      1659452068221.546
+                    ],
+                    [
+                      1659452068295.274,
+                      1659452068300.97
+                    ],
+                    [
+                      1659452068349.002,
+                      1659452068353.258
+                    ],
+                    [
+                      1659452068488.971,
+                      1659452068490.219
+                    ],
+                    [
+                      1659452068519.147,
+                      1659452068562.476
+                    ],
+                    [
+                      1659452068663.181,
+                      1659452068666.732
+                    ],
+                    [
+                      1659452068789.261,
+                      1659452068791.661
+                    ],
+                    [
+                      1659452068894.67,
+                      1659452068896.942
+                    ],
+                    [
+                      1659452068907.438,
+                      1659452068943.503
+                    ],
+                    [
+                      1659452069052.623,
+                      1659452069056.239
+                    ],
+                    [
+                      1659452069179.056,
+                      1659452069180.272
+                    ],
+                    [
+                      1659452069205.84,
+                      1659452069217.2642
+                    ],
+                    [
+                      1659452069329.777,
+                      1659452069333.297
+                    ],
+                    [
+                      1659452069368.817,
+                      1659452069371.793
+                    ],
+                    [
+                      1659452069435.378,
+                      1659452069437.842
+                    ],
+                    [
+                      1659452069580.915,
+                      1659452069583.059
+                    ],
+                    [
+                      1659452069595.667,
+                      1659452069631.859
+                    ],
+                    [
+                      1659452069722.292,
+                      1659452069725.908
+                    ],
+                    [
+                      1659452069762.036,
+                      1659452069764.4358
+                    ],
+                    [
+                      1659452069849.173,
+                      1659452069851.445
+                    ],
+                    [
+                      1659452069866.165,
+                      1659452069902.165
+                    ],
+                    [
+                      1659452069987.958,
+                      1659452069991.446
+                    ],
+                    [
+                      1659452070065.334,
+                      1659452070068.2139
+                    ],
+                    [
+                      1659452070124.055,
+                      1659452070126.4548
+                    ],
+                    [
+                      1659452070289.144,
+                      1659452070369.944
+                    ],
+                    [
+                      1659452070445.017,
+                      1659452070447.897
+                    ],
+                    [
+                      1659452070507.161,
+                      1659452070508.793
+                    ],
+                    [
+                      1659452070627.514,
+                      1659452070632.186
+                    ],
+                    [
+                      1659452070641.594,
+                      1659452070675.13
+                    ],
+                    [
+                      1659452070796.987,
+                      1659452070799.8992
+                    ],
+                    [
+                      1659452070932.924,
+                      1659452070945.2441
+                    ],
+                    [
+                      1659452071017.213,
+                      1659452071020.0928
+                    ],
+                    [
+                      1659452071050.621,
+                      1659452071052.445
+                    ],
+                    [
+                      1659452071098.174,
+                      1659452071099.8052
+                    ],
+                    [
+                      1659452071218.238,
+                      1659452071223.07
+                    ],
+                    [
+                      1659452071228.382,
+                      1659452071262.0461
+                    ],
+                    [
+                      1659452071331.935,
+                      1659452071334.8472
+                    ],
+                    [
+                      1659452071368.575,
+                      1659452071370.207
+                    ],
+                    [
+                      1659452071467.104,
+                      1659452071471.808
+                    ],
+                    [
+                      1659452071476.896,
+                      1659452071510.496
+                    ],
+                    [
+                      1659452071570.369,
+                      1659452071573.345
+                    ],
+                    [
+                      1659452071601.665,
+                      1659452071603.521
+                    ],
+                    [
+                      1659452071628.129,
+                      1659452071629.761
+                    ],
+                    [
+                      1659452071703.426,
+                      1659452071823.074
+                    ],
+                    [
+                      1659452071823.81,
+                      1659452071827.074
+                    ],
+                    [
+                      1659452071827.779,
+                      1659452071829.09
+                    ],
+                    [
+                      1659452071880.387,
+                      1659452071897.9229
+                    ],
+                    [
+                      1659452071898.627,
+                      1659452071963.523
+                    ],
+                    [
+                      1659452071971.044,
+                      1659452071974.307
+                    ],
+                    [
+                      1659452072049.22,
+                      1659452072050.244
+                    ],
+                    [
+                      1659452072061.988,
+                      1659452072082.2441
+                    ],
+                    [
+                      1659452072139.461,
+                      1659452072142.7559
+                    ],
+                    [
+                      1659452072157.413,
+                      1659452072158.917
+                    ],
+                    [
+                      1659452072177.765,
+                      1659452072179.109
+                    ],
+                    [
+                      1659452072228.165,
+                      1659452072242.341
+                    ],
+                    [
+                      1659452072243.078,
+                      1659452072303.6538
+                    ],
+                    [
+                      1659452072304.358,
+                      1659452072307.6218
+                    ],
+                    [
+                      1659452072309.03,
+                      1659452072310.342
+                    ],
+                    [
+                      1659452072347.814,
+                      1659452072364.038
+                    ],
+                    [
+                      1659452072364.646,
+                      1659452072428.263
+                    ],
+                    [
+                      1659452072428.871,
+                      1659452072432.135
+                    ],
+                    [
+                      1659452072432.806,
+                      1659452072434.2788
+                    ],
+                    [
+                      1659452072443.334,
+                      1659452072444.647
+                    ],
+                    [
+                      1659452072609.064,
+                      1659452072611.848
+                    ],
+                    [
+                      1659452072814.825,
+                      1659452072820.457
+                    ],
+                    [
+                      1659452072825.353,
+                      1659452072826.858
+                    ]
+                  ],
+                  "compute_overlap_us": 0.0,
+                  "communication_after_last_compute_us": 0,
+                  "interpretation": "Observed kernel intervals only; copies and CPU work are separate. Gaps/tail are not recoverable time or a causal critical path."
+                }
+              },
+              "cuda_synchronization": [
+                {
+                  "name": "cudaDeviceSynchronize",
+                  "start_us": 1659452072922.47,
+                  "duration_us": 13.509,
+                  "pid": 982418,
+                  "tid": 982418,
+                  "args": {
+                    "cbid": 165,
+                    "correlation": 1433
+                  }
+                }
+              ],
+              "copies_and_memsets": [],
+              "gradient_readiness": {
+                "status": "not_observed",
+                "events": [],
+                "buckets": [],
+                "scope": "CPU post-accumulate callbacks; no GPU synchronization or communication-hook replacement"
+              },
+              "clock": {
+                "status": "observed",
+                "offset_bounds_us": [
+                  18956226441026.785,
+                  18956226442753.957
+                ],
+                "anchor_bounds_us": [
+                  [
+                    18956226441026.785,
+                    18956226442753.957
+                  ],
+                  [
+                    18956226441397.965,
+                    18956226441446.656
+                  ]
+                ],
+                "domain": {
+                  "host": "autodl-container-e8e84ea25b-cffd5c81",
+                  "boot_id": "9890bc2b-f323-49ae-b779-8f723299b44a",
+                  "clock": "CLOCK_MONOTONIC"
+                },
+                "scope": "CPU trace to host monotonic clock within this capture; excludes unknown GPU clock calibration error"
+              },
+              "workload_window": {
+                "start_us": 1659452065202.166,
+                "end_us": 1659452072981.272,
+                "scope": "explicit workload including final completion synchronization; excludes profiler preparation"
+              },
+              "scope": "Separate diagnostic capture, never the clean project objective",
+              "gradient_stream_markers": {
+                "status": "not_collected",
+                "events": [],
+                "scope": "Optional CUDA event recorded on each gradient callback's current stream; time relative to a rank-local GPU origin. No per-parameter synchronize. Adds event-record overhead; does not prove reducer bucket readiness, unique consumption, or cross-rank GPU clock alignment."
+              },
+              "trace": "/root/autodl-tmp/dev/v6-work/stage3-variants/resnet-memory-heldout/jobs/timeline-9bf89cda61/run/timeline-rank-0-0.json",
+              "trace_sha256": "52c65608b385adad6e60d02c9cbb2ed8ddc4c3ca2da84e94a4de6eb1435f1522",
+              "profiled_wall_ms": 7.817193,
+              "gradient_hook_missing": [],
+              "gradient_hooks_enabled": false,
+              "clock_anchors": [
+                {
+                  "name": "opop.clock::0:before",
+                  "before_ns": 20615678504858683,
+                  "after_ns": 20615678506585856
+                },
+                {
+                  "name": "opop.clock::0:after",
+                  "before_ns": 20615678514413409,
+                  "after_ns": 20615678514462100
+                }
+              ]
+            }
+          ],
+          "cross_rank": {
+            "collectives": [],
+            "clock_policy": "Never subtract unaligned rank trace timestamps; CPU-only alignment bounds"
+          },
+          "run": {
+            "schema_version": 1,
+            "status": "passed",
+            "failure": null,
+            "wall_s": 8.123756896704435,
+            "ranks": [
+              {
+                "rank": 0,
+                "pid": 982418,
+                "exit_code": 0,
+                "status": "passed",
+                "binding": {
+                  "pid": 982418,
+                  "status": "verified",
+                  "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                  "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                  "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                  "logical_device": 0,
+                  "nvidia_smi_pid_uuids": [
+                    "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+                  ],
+                  "pid_query_status": "observed",
+                  "occupancy": {
+                    "status": "sampled_clear",
+                    "samples": 12,
+                    "unavailable_samples": 0,
+                    "wait_s": 0.09476393461227417,
+                    "external_clients": [],
+                    "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                  }
+                },
+                "framework_source": {
+                  "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+                  "files": 160,
+                  "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+                },
+                "result": {
+                  "valid": true,
+                  "reports": [
+                    "/root/autodl-tmp/dev/v6-work/stage3-variants/resnet-memory-heldout/jobs/timeline-9bf89cda61/run/timeline-analysis-rank-0-0.json"
+                  ],
+                  "collector": "execution_timeline",
+                  "scope": "Separate passive diagnostic; profiler/gradient hooks perturb execution. Compare against clean evaluation."
+                }
+              }
+            ],
+            "lease_wait_s": 0.0001371726393699646,
+            "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "worker_pids_reaped": true
+          },
+          "provenance": {
+            "revision": "4355a0ceec94bc3c338c7e9b6168a090435a2b524e89ae69b21ed4cdba030403",
+            "parent_revision": "b80beb0f2b66335af9bbdb747b6d4f80f26c33d46a7eed567199abff983dc33a",
+            "bundles": [
+              "replay-01b5315e5c6b"
+            ],
+            "plan": "sha256:9bb2ac091bfc5e05cc717d3708381d2792db2317eaa3a82049ef180a292e682b",
+            "registry": "sha256:c3491236043aed89443fec9e253d82202a8d710648e5879e9b03f4d7b2d8a2a5",
+            "request_sha256": "c7a42acff4275c6bca0c268dbdc58ac4118c1eada6dc0b6173f5f1c1d01b59f1",
+            "objective": {
+              "name": "peak_allocated_bytes",
+              "unit": "bytes",
+              "direction": "minimize",
+              "constraints": [
+                {
+                  "metric": "images_per_second",
+                  "op": "ge",
+                  "baseline_ratio": 0.95
+                }
+              ]
+            },
+            "workload": {
+              "id": "unseen_batch",
+              "batch": 7
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          }
+        }
+      }
+    },
+    "communication": {
+      "before": [
+        {
+          "status": "not_applicable",
+          "reason": "disabled"
+        }
+      ],
+      "after": [
+        {
+          "status": "not_applicable",
+          "reason": "disabled"
+        }
+      ],
+      "cross_rank_after": {
+        "matched": [],
+        "incomplete": [],
+        "clock_policy": "No subtraction of timestamps from different rank clocks"
+      }
+    },
+    "evidence": [
+      "/root/autodl-tmp/dev/v6-work/stage3-variants/resnet-memory-heldout/jobs/replay-01b5315e5c6b-evaluation-0985544d-profile/run/trace-rank-0.json"
+    ],
+    "raw_discovery": [
+      "/root/autodl-tmp/dev/v6-work/stage3-variants/resnet-memory-heldout/jobs/replay-01b5315e5c6b-evaluation-0985544d-profile/run/discovery-rank-0.json"
+    ],
+    "interpretation": "Nested diagnostic durations overlap; project gain belongs to the complete bundle. Unmeasured independent group effects are unknown."
+  },
+  "decision": {
+    "state": "evaluated",
+    "revision": "4355a0ceec94bc3c338c7e9b6168a090435a2b524e89ae69b21ed4cdba030403",
+    "parent": "b80beb0f2b66335af9bbdb747b6d4f80f26c33d46a7eed567199abff983dc33a",
+    "bundle": "replay-01b5315e5c6b",
+    "accepted": false,
+    "reasons": [
+      "original_baseline_constraint_failed",
+      "paired_gain_not_above_noise",
+      "quality_or_constraint_failure",
+      "objective_not_improved"
+    ],
+    "report_ref": "sha256:ac4bb0e8744e4bb28017935801e32766e8632f5bbf02d5a72523f071ae476765"
+  }
+}

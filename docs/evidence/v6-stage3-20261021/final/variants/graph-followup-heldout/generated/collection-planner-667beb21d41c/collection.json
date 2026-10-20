@@ -1,0 +1,28 @@
+{
+  "collectors": [
+    "nsys"
+  ],
+  "requested_fields": [
+    "cuda_kernels",
+    "kernel_intervals_ns",
+    "kernel_device_and_stream_ids",
+    "kernel_active_union_us",
+    "gaps_between_kernels_us",
+    "kernel_span_us",
+    "memcpy_rows",
+    "nvtx_module_ranges",
+    "cuda_graph_trace_mode"
+  ],
+  "unavailable_fields": {
+    "communication_kernel_sum_ms": "not_applicable: single-device task (observations.json marks the communication capability not_applicable; request.json has one device and distributed_backend null)",
+    "communication_union_ms": "not_applicable: single-device task; no NCCL kernels exist in the torch trace to union",
+    "compute_overlap_ms": "not_applicable: single-device task; no communication intervals to overlap with compute intervals",
+    "communication_without_compute_ms": "not_applicable: single-device task; no communication intervals",
+    "nccl_algorithm_protocol_channel_selection": "unavailable: nccl_tuning requires communication enabled and at least 2 devices; kernel entry names alone do not identify the protocol and none exist here",
+    "per_collective_pcie_nvlink_bytes": "unavailable: no hardware traffic counters are collected; device_telemetry readings are device-wide with native windows, and memcpy or logical payload sizes are not PCIe/NVLink wire traffic (kept unknown, never inferred)",
+    "cross_rank_submit_spread_us": "unavailable: single rank; cross-rank spread requires matched participants and shared clock evidence (cross_rank matched is empty)",
+    "gpu_metric_tables": "unavailable: profiling.gpu_counters is not enabled in the request, so nsys runs without --gpu-metrics-devices; counter probe remains not_requested",
+    "gradient_bucket_readiness": "not_applicable: inference-only forward under torch.inference_mode() with world_size 1; no gradients, reducer buckets or post-accumulate callbacks exist, and bucket identity/timing stays unknown without them"
+  },
+  "rationale": "Single-process, single-device FP32 GraphSAGE forward (request.json: 1 device, distributed_backend null, communication not_applicable in observations.json), so nccl_tuning, device_telemetry and collective_calibration have no collectives to characterize and are excluded. The torch collector already ran and fully associated all 15 CUDA kernels with 0 unassociated and 0 ambiguous forward sequences (coverage.json), so re-profiling and execution_timeline's submit/cross-rank evidence add nothing: its distinctive c10d CPU-submit association, gradient-bucket callbacks and clock-alignment bounds require communication or multiple ranks, and its per-device kernel interval summary is derivable from the nsys export. Trace evidence shows index_add_ (~375us) plus index_select (~212us) dominating linear (~90us), with clean median latency 0.781ms versus 724.7us of hook-perturbed diagnostic CUDA time on the 7168-node/143360-edge workload; the discovery run's profiled wall was 6.57ms, confirming heavy profiler perturbation. The open questions for the latency objective are therefore clean-timeline questions: per-kernel nanosecond intervals without torch-profiler/discovery hooks, kernel active union versus span (inter-kernel gaps and launch overlap, i.e. device-bound versus launch-bound), per-module attribution via NVTX ranges for model.first/model.second, and whether node-level CUDA-graph tracing is supported for capture-based follow-ups. Nsys is installed (request.json tools.nsys) and is the single collector that resolves exactly these overlap, graph-tracing and attribution questions, so it is the only addition requested. python_runtime is excluded because cProfile perturbs execution and host time is already bounded as a small share of the synchronized 0.781ms window; it can be requested later if nsys shows launch-bound gaps. candidate_diagnostics is excluded because this revision has no installed candidate bundles yet (not_applicable). No PCIe/NVLink traffic is invented from payload or memcpy sizes, and no unavailable dimension is fabricated."
+}

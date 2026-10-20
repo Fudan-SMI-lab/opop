@@ -1,0 +1,171 @@
+{
+  "communication": {
+    "cross_rank": {
+      "matched": [],
+      "incomplete": [],
+      "clock_policy": "No subtraction of timestamps from different rank clocks"
+    },
+    "ranks": [
+      {
+        "status": "not_applicable",
+        "reason": "single-device task"
+      }
+    ],
+    "capabilities": [
+      {
+        "schema_version": "project.v1",
+        "id": "ae720e6d46e8f6b7151780634fc4d9f69d488438ea5314352ebcd141f89ee3cd",
+        "devices": [],
+        "supported_scopes": [
+          "group",
+          "joint",
+          "region",
+          "execution_plan"
+        ],
+        "fields": [
+          {
+            "schema_version": "project.v1",
+            "name": "communication",
+            "status": "not_applicable",
+            "value": null,
+            "unit": "capability",
+            "entity": null,
+            "reason": "single-device task",
+            "evidence": []
+          }
+        ],
+        "tools": {}
+      }
+    ]
+  },
+  "coverage": [
+    {
+      "cuda_kernels": 88,
+      "associated_kernels": 88,
+      "unassociated_kernels": 0,
+      "associated_below_project": 88,
+      "root_only_kernels": 0,
+      "backward_associated_kernels": 0,
+      "autograd_ranges": 0,
+      "forward_linked_autograd_ranges": 0,
+      "ambiguous_forward_sequences": 0
+    }
+  ],
+  "collection_plan": {
+    "plan": {
+      "collectors": [
+        "python_runtime"
+      ],
+      "requested_fields": [
+        "host_dispatch_self_time",
+        "host_binding_overhead"
+      ],
+      "unavailable_fields": {
+        "communication": "Not applicable: single-device task per observations.json capability field; the workload runs one process on one GPU with no process group and no NCCL (request.json notes).",
+        "nccl_algorithm_or_protocol": "No NCCL collectives exist to observe; the trace contains only compute kernels (coverage.json: 88 CUDA kernels, 0 unassociated, 0 communication), and kernel entry names alone cannot identify protocol anyway.",
+        "per_collective_bytes_or_link_traffic": "No collectives and no measured-region PCIe/NVLink traffic: the batch is resident on device before timing (request.json notes), so payload-derived or memcpy-derived traffic figures would be invented; only device-wide NVML rates could exist and they are not per-call bytes.",
+        "cross_rank_or_per_rank_intervals": "Single rank only; observations.json cross_rank.matched is empty and the clock policy forbids subtracting timestamps from different rank clocks.",
+        "gradient_bucket_attribution": "Inference-only workload under torch.inference_mode; coverage.json reports 0 backward_associated_kernels and 0 autograd_ranges, so no gradient buckets, post-accumulate events, or bucket identity questions exist."
+      },
+      "rationale": "Objective is latency_ms for one complete single-GPU batch=32 offline inference bounded by torch.cuda.synchronize() after the forward. The torch collector already ran and resolved GPU-side attribution completely (coverage.json: 88/88 CUDA kernels associated, 0 unassociated, 0 ambiguous forward sequences, 0 backward/autograd ranges), so torch is not re-requested and nsys is not selected: no open overlap, graph-tracing or attribution question remains on this single timeline with no CUDA graphs. The one unmeasured latency dimension is the host-side share of the measured window, so python_runtime is selected to decompose host dispatch and binding costs (per-layer Python and transformers wrapper frames) that the kernel-associated trace cannot split; it runs in a separate warmed cProfile pass, and its inclusive/self times will be used only as diagnostic host-cost evidence, never as performance scores or GPU compute durations. All communication-oriented collectors are excluded on observed evidence: capability field communication=not_applicable (single-device task), no process group or NCCL in the workload, so nccl_tuning and collective_calibration have no collectives to observe, and execution_timeline's multi-device CPU-to-CUDA submit, per-device interval and gradient callback machinery is redundant with the already-complete association and has no buckets to correlate. device_telemetry is excluded because its device-wide NVML utilization/memory samples have native windows that cannot attribute per-call latency, duplicate the peak_allocated_bytes the harness already records per sample, and no PCIe transfer occurs inside the measured region."
+    },
+    "agent": {
+      "role": "collection-planner",
+      "session": "ses_ea5c69da6ffeYJc7yuAq7lN0OW",
+      "message": "msg_15a3b2b8d001blC0eZJPEIFJ8c",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 7,
+        "reported_cost": 0.07918652095999999,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 112673.0,
+          "input": 14843.0,
+          "output": 1420.0,
+          "reasoning": 6874.0,
+          "cache.read": 89536.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea5c69da6ffeYJc7yuAq7lN0OW",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/opop-v6-stage3/final-e2e-187617c/resnet-latency/sandboxes/collection-planner-b29806a5e965",
+      "outputs": [
+        "collection.json"
+      ],
+      "feedback_provided": false,
+      "contract_repairs": 0,
+      "generation_snapshots": [
+        "/root/opop-v6-stage3/final-e2e-187617c/resnet-latency/generation-snapshots/generation-168624592d6f.json"
+      ]
+    }
+  },
+  "extra_collectors": {
+    "python_runtime": {
+      "status": "observed",
+      "input": "observations/current/python_runtime-aea48e29.json",
+      "sha256": "678ce4974967b3519437af1fe2c3fb039448037121d085ca04928a574c91aeed",
+      "bytes": 51977,
+      "provenance": {
+        "revision": "8d589a9388eeb94ab575d66014fec6408b2031977bafe8feb8229b8f13372480",
+        "parent_revision": "e40f48bec426ea343f71d5b35c0e8f09f874c0f298f8092dc4c57e71838e0512",
+        "bundles": [],
+        "plan": "sha256:eb7707e50726a93929321eab295758c570f341dac2e7e9b47601657de69dd975",
+        "registry": "sha256:80dccf954a7de3ec58a71075e32502defe71e8511f096fddcb9fc146c8f753c4",
+        "request_sha256": "76095aa457ad967f89798fa9d4df4ab5508faed8e210dd8abd51735e4cbd6943",
+        "objective": {
+          "name": "latency_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "offline",
+          "batch": 32,
+          "goals": [
+            {
+              "id": "throughput",
+              "metric": "images_per_second",
+              "direction": "max"
+            },
+            {
+              "id": "memory",
+              "metric": "peak_allocated_bytes",
+              "direction": "min",
+              "constraints": {
+                "images_per_second_min_baseline_ratio": 0.95
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+          "files": 160,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "scope": "cProfile perturbs Python dispatch; self/cumulative times include host waits and cannot be added to GPU durations or used for acceptance",
+          "profiled_wall_ms": 4.536754
+        }
+      ],
+      "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+    }
+  },
+  "ownership_input": "communication-ownership.json"
+}

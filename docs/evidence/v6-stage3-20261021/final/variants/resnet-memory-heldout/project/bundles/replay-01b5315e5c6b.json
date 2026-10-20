@@ -1,0 +1,90 @@
+{
+  "affected_calls": [
+    "021f27d2d0d73dee5fab9084",
+    "2f3bfb9ee01d701be01d2ff3",
+    "35096a239aa1290aabeed5de",
+    "3c3c7a3e1837d0185b1df6f0",
+    "622af0a9c2e24b838dc42528",
+    "679ccfe137094282d25350c1",
+    "683c822136ed7958f3e9ba44",
+    "6f4047091b88293c3ed5c988",
+    "87335b95bb02e81155c4add6",
+    "8ef2341287e5b4afa9d0e7bf",
+    "aa9765a1830bed7ee2727282",
+    "c002ab4cac8ec5deeb415e47",
+    "cc658ee4e2f7b6628feb4ca4",
+    "d1400702f02f387d67569ac9",
+    "ea7cd77adb03bad473412ebc",
+    "eea81d115a4403a3083c1f64",
+    "f0045bb12e41619a90999d56"
+  ],
+  "calls": [
+    "683c822136ed7958f3e9ba44"
+  ],
+  "contract_ref": "sha256:00cfbfca05f3b5510c7210bead2f0d5a7d27e9b1bf6fa7e072956a615eb6f3c2",
+  "edits": [
+    {
+      "before_sha256": null,
+      "content_ref": "sha256:4e9225689909204689a77ad9a2a0ab07e40ce6d41d3776e01a5cee1f72c49b52",
+      "path": "opop_candidates/replay-01b5315e5c6b.py",
+      "schema_version": "project.v1"
+    },
+    {
+      "before_sha256": null,
+      "content_ref": "sha256:67054594371192de1c2a9ca4101804e8ff53d87d21678563ef9a4fe47ba47b70",
+      "path": "opop_candidates/replay-01b5315e5c6b.targets.json",
+      "schema_version": "project.v1"
+    }
+  ],
+  "external_invariants": [
+    "Model is pretrained ResNet-18 loaded from the local assets via ResNetForImageClassification.from_pretrained(assets, local_files_only=True, dtype=torch.float32) with eval() behavior; weights and activations stay FP32.",
+    "Numerical policies preserved from common.py:34-42: torch.backends.cuda.matmul.allow_tf32=False, torch.backends.cudnn.allow_tf32=False, torch.backends.cudnn.benchmark=False, torch.set_float32_matmul_precision('highest'), torch.manual_seed(20261020), 4 CPU threads and 1 interop thread.",
+    "Input is the offline image batch of 7 for workload id unseen_batch (held_out_workloads, workloads.json:21): images = np.load(assets/pixels.npy) moved to CUDA (shape (3,3,224,224) float32), pixels = images[torch.arange(7, device='cuda') % 3].contiguous() -> (7,3,224,224) FP32 (fixture indices 0,1,2,0,1,2,0), GPU-resident before the timed boundary; no H2D transfer or preprocessing inside run().",
+    "The measured workload is exactly one model(pixel_values=pixels).logits forward under torch.inference_mode(); no reduction of the work amount, batch, image size or class dimension.",
+    "Correctness requires the full 1000-class logits compared with atol=1e-4, rtol=1e-4 (torch.testing.assert_close) and exact top-1 equality torch.equal(actual.argmax(-1), reference.argmax(-1)); the +1-corruption negative control must be rejected.",
+    "peak_allocated_bytes is the process-level PyTorch CUDA allocated peak for one forward with peak stats reset immediately before the timed call (torch.cuda.max_memory_allocated after the synchronized run), not whole-device, reserved or driver memory.",
+    "images_per_second is the source's full-request throughput for the fixed batch of 7, computed as batch * 1e3 / latency_ms (7 * 1e3 / elapsed) around one complete forward on the GPU-resident input; it must not be converted into a cached-only throughput.",
+    "Throughput constraint: images_per_second >= 0.95 * baseline; memory reduction must not be obtained by violating this ratio or the frozen workload/precision/data.",
+    "Model loading, weight transfer to GPU and input construction happen in prepare outside timed execution; the module creates no CUDA tensors and initializes no CUDA context at import time."
+  ],
+  "groups": [
+    "6975d6e6c3dda842a119"
+  ],
+  "id": "replay-01b5315e5c6b",
+  "implementation": "composite",
+  "installer": "opop_candidates/replay-01b5315e5c6b.py",
+  "parameters": {
+    "stem_chunk": 8
+  },
+  "parent_revision": "b80beb0f2b66335af9bbdb747b6d4f80f26c33d46a7eed567199abff983dc33a",
+  "plan_ref": null,
+  "read_set": [
+    "call:021f27d2d0d73dee5fab9084",
+    "call:2f3bfb9ee01d701be01d2ff3",
+    "call:35096a239aa1290aabeed5de",
+    "call:3c3c7a3e1837d0185b1df6f0",
+    "call:622af0a9c2e24b838dc42528",
+    "call:679ccfe137094282d25350c1",
+    "call:683c822136ed7958f3e9ba44",
+    "call:6f4047091b88293c3ed5c988",
+    "call:87335b95bb02e81155c4add6",
+    "call:8ef2341287e5b4afa9d0e7bf",
+    "call:aa9765a1830bed7ee2727282",
+    "call:c002ab4cac8ec5deeb415e47",
+    "call:cc658ee4e2f7b6628feb4ca4",
+    "call:d1400702f02f387d67569ac9",
+    "call:ea7cd77adb03bad473412ebc",
+    "call:eea81d115a4403a3083c1f64",
+    "call:f0045bb12e41619a90999d56"
+  ],
+  "registry_ref": null,
+  "replaces": [],
+  "requires": [],
+  "schema_version": "project.v2",
+  "scope": "region",
+  "write_set": [
+    "file:opop_candidates/replay-01b5315e5c6b.py",
+    "file:opop_candidates/replay-01b5315e5c6b.targets.json",
+    "call:683c822136ed7958f3e9ba44"
+  ]
+}

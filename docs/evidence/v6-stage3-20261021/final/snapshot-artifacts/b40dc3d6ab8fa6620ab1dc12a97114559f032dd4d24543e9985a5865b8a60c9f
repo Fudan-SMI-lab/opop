@@ -1,0 +1,87 @@
+{
+  "$defs": {
+    "Constraint": {
+      "properties": {
+        "expr": {
+          "title": "Expr",
+          "type": "string"
+        },
+        "rationale": {
+          "default": "",
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expr"
+      ],
+      "title": "Constraint",
+      "type": "object"
+    },
+    "ParamDomain": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "int",
+            "float",
+            "str"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "choices": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "title": "Choices",
+          "type": "array"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "choices"
+      ],
+      "title": "ParamDomain",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "params": {
+      "items": {
+        "$ref": "#/$defs/ParamDomain"
+      },
+      "title": "Params",
+      "type": "array"
+    },
+    "constraints": {
+      "items": {
+        "$ref": "#/$defs/Constraint"
+      },
+      "title": "Constraints",
+      "type": "array"
+    }
+  },
+  "title": "TaskSpace",
+  "type": "object"
+}

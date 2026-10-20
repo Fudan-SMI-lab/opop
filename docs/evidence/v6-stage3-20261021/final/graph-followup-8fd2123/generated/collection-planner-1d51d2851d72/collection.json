@@ -1,0 +1,25 @@
+{
+  "collectors": [
+    "torch",
+    "nsys",
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "torch.per_operator_cuda_kernel_time_ms",
+    "nsys.cuda_kernel_intervals_us",
+    "nsys.inter_kernel_gap_us",
+    "nsys.forward_gpu_busy_us",
+    "nsys.cuda_api_durations_us",
+    "python_runtime.cprofile_self_us_by_callable",
+    "python_runtime.cprofile_inclusive_us_by_callable",
+    "python_runtime.cprofile_calls_per_forward"
+  ],
+  "unavailable_fields": {
+    "nccl_algorithm_protocol_channels": "No distributed backend and no NCCL activity: request.json has distributed_backend=null and observations.json marks communication not_applicable (single-device task); coverage.json shows all 9 CUDA kernels associated to single-device operators, so nccl_tuning has nothing to observe.",
+    "collective_algorithm_reference_latency": "The workload contains no collectives; collective_calibration's synthetic allreduce has no counterpart to calibrate and is not selected.",
+    "per_operator_pcie_nvlink_bytes": "device_telemetry exposes device-wide NVML readings in native sampling windows only and cannot attribute per-operator bytes; inputs and outputs are GPU-resident around the timed region (prepare() moves tensors once, infer.py:25 and infer.py:28-30), so link traffic is not the latency dimension. Bytes must not be invented from logical payload or memcpy sizes.",
+    "device_telemetry.per_forward_gpu_utilization": "The measured forward is a sub-millisecond sequence of 9 small kernels; native NVML sampling windows cannot resolve per-forward utilization. nsys kernel intervals and gaps cover this need instead.",
+    "candidate_diagnostic_results": "available-collectors.json lists candidate_diagnostics, but the fixed source contains no framework adapter, operator groups, or candidate implementations (README.md), so no candidate exists to diagnose yet."
+  },
+  "rationale": "Frozen objective is latency_ms of one full graph encoder forward (infer.py:28-30, 51-61): a single-process, single-device ('cuda') FP32 workload with no distributed backend, empty required_observations, and communication marked not_applicable in observations.json, so all communication-flavored collectors are excluded. The torch collector already ran and coverage.json shows 9/9 CUDA kernels associated with 0 unassociated, 0 autograd ranges, and 0 ambiguous forward sequences, so operator attribution is already resolved; torch is retained only for its per-operator kernel durations, which rank the compute contributors (index_select gather, zeros/index_add_ scatter, degree divide, cat, relu, two addmm linears) under a 9-kernel forward. The decisive open questions for latency are overlap/serialization and launch overhead, so nsys is selected (binary present at request.json tools.nsys): per-repeat kernel intervals plus inter-kernel gaps and cudaLaunchKernel/cudaStreamSynchronize API durations quantify how much of the wall-clock latency_ms is GPU-busy versus launch-bound idle on the single eager stream, and establish the eager-stream baseline needed to judge any later CUDA-graph capture (graph tracing question) against native correlation. python_runtime is selected to investigate host dispatch and binding costs, since the timed wall-clock includes host enqueue of the ~20-op dispatch chain; its warmed cProfile self/inclusive times are treated strictly as host-side dispatch evidence, never as GPU compute durations or performance scores. Excluded: nccl_tuning and collective_calibration (no collectives exist), device_telemetry (no host-device transfers inside the timed region; device-wide native windows cannot resolve sub-millisecond forwards already covered by the kernel trace), execution_timeline (the torch trace already provides complete 9/9 CPU-to-CUDA submit association; single stream, single device, no gradients or communication hooks, and its clock-alignment bounds add nothing here), and candidate_diagnostics (no candidate implementations exist in the fixed source)."
+}

@@ -1,0 +1,67 @@
+{
+  "plan": {
+    "collectors": [
+      "execution_timeline",
+      "python_runtime"
+    ],
+    "requested_fields": [
+      "execution_timeline.cpu_to_cuda_submit_associations",
+      "execution_timeline.submit_to_kernel_launch_gaps",
+      "execution_timeline.ttft_boundary_synchronize_interval",
+      "execution_timeline.per_device_busy_idle_intervals",
+      "execution_timeline.synchronization_events",
+      "execution_timeline.clock_alignment_bounds",
+      "python_runtime.host_dispatch_inclusive_self_times",
+      "python_runtime.binding_call_costs"
+    ],
+    "unavailable_fields": {
+      "nccl_algorithm_protocol_channels": "Not applicable: single-process single-GPU task (request.json distributed_backend=null; observations.json communication capability status=not_applicable, reason 'single-device task'). No NCCL collectives exist for nccl_tuning to observe; kernel entry names alone could not identify protocol anyway.",
+      "per_collective_wire_bytes": "No collectives in the measured invocation; inputs and weights are GPU-resident before measurement. device_telemetry PCIe samples are device-wide readings with native windows, not per-collective or per-operation bytes, so it was not selected; PCIe/NVLink traffic will not be inferred from logical payload or memcpy sizes.",
+      "gradient_bucket_identity": "Inference-only workload: coverage.json reports backward_associated_kernels=0 and autograd_ranges=0, so there is no gradient storage, bucket, or post-accumulate callback to correlate; execution_timeline's passive CPU gradient callbacks are not applicable and no bucket-link candidates exist to disambiguate.",
+      "cross_rank_overlap_and_clock_alignment": "observations.json cross_rank.matched is empty and ranks report 'single-device task'; there is no peer clock to align and no inter-rank overlap to measure (clock policy: no subtraction of timestamps from different rank clocks).",
+      "gpu_readiness_and_consumer_completion": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion at the ttft boundary may remain unknown and are not fabricated.",
+      "clean_gpu_compute_durations_from_host_profiler": "python_runtime runs a warmed cProfile that perturbs execution; its inclusive/self times are host dispatch and binding diagnostics, not performance scores or GPU compute durations. GPU kernel timing evidence already exists from the completed torch run (coverage.json: 34229 cuda_kernels, associated_kernels=34229, unassociated_kernels=0).",
+      "nsys_nccl_wait_vs_wire_decomposition": "nsys is available but not selected: there is no NCCL waiting vs wire transfer to separate, kernel-to-operator attribution is already complete (associated_below_project=34229, ambiguous_forward_sequences=0), and no CUDA-graph tracing question arises in this eager sdpa inference path."
+    },
+    "rationale": "The frozen objective is ttft_ms on one infer() call of a single-process, single-GPU BF16 sdpa inference workload, so the open questions are host-side, not communication-side. The torch collector already ran and coverage.json shows complete attribution (34229/34229 kernels associated, 0 ambiguous forward sequences, 0 autograd ranges), so kernel-level GPU attribution needs no reinforcement. Communication-oriented collectors are excluded on capability evidence: nccl_tuning and collective_calibration have no collectives to observe (communication=not_applicable, 'single-device task'; a synthetic full-world SUM allreduce would be an unrelated reference experiment, not a lower bound or critical-path estimate for this task), and device_telemetry only yields device-wide NVML PCIe/utilization/memory readings with native windows that cannot be attributed to the prefill/argmax boundary of a GPU-resident-inputs invocation. nsys is available but adds nothing here: no overlap, graph-tracing, or attribution question remains, and nsys timelines alone would not separate transfer components or prove identity even if they did. execution_timeline is selected to obtain a separate plain trace with CPU-to-CUDA submit associations, the explicit boundary synchronize, per-device busy/idle intervals, and clock alignment bounds, which determines whether TTFT is GPU-compute-bound or host-dispatch-gap-bound (its optional gradient callbacks are not applicable to this inference workload). python_runtime is selected to investigate host dispatch and binding costs of the generate/forward loop under the legacy binding backend, accepted as a perturbing diagnostic whose times are not clean performance scores. candidate_diagnostics is deferred since no optimization candidates exist at collection time. Unavailable dimensions are listed with their observed reasons rather than guessed."
+  },
+  "agent": {
+    "role": "collection-planner",
+    "session": "ses_ea5ae38d3ffeLsAX280BzkR48M",
+    "message": "msg_15a534194001nNXF5cNBGMHYvh",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 6,
+      "reported_cost": 0.0676012375,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 88189.0,
+        "input": 13230.0,
+        "output": 1773.0,
+        "reasoning": 5794.0,
+        "cache.read": 67392.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea5ae38d3ffeLsAX280BzkR48M",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/stage3-variants/qwen-ttft-heldout/sandboxes/collection-planner-ac6e2956f95f",
+    "outputs": [
+      "collection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/stage3-variants/qwen-ttft-heldout/generation-snapshots/generation-e05032f2df68.json"
+    ]
+  }
+}

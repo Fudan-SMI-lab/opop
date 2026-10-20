@@ -1,0 +1,92 @@
+{
+  "affected_calls": [
+    "082954dfb7897b23be544855",
+    "216cc438ab119abe43785340",
+    "3ac036f4c828a6d38c6de955",
+    "6e9d6b583aadf65e4b1eb44d",
+    "76ffa2b5e33044ba6db7c860",
+    "80ff8693d7ac3cf2433b10f2",
+    "990cea7c86061e796cd2a5d7",
+    "a0b5ffd5bf021ca4ff461953",
+    "c32e164325026aa5527db4ed",
+    "dd76570a9bbdb0b333acb618",
+    "f0f4117235b31295be4311e6",
+    "fcb52401b04cde5fb368ea0f"
+  ],
+  "calls": [
+    "80ff8693d7ac3cf2433b10f2"
+  ],
+  "contract_ref": "sha256:8b86dd31f2c138cdc951c3f3b0d8982bac4bfda7e3432d3620110582aa4bef49",
+  "edits": [
+    {
+      "before_sha256": null,
+      "content_ref": "sha256:664089420017cb2cfae18f7552e06d7c0cd58ac2dc2e0027fcf939de9ddbbc5b",
+      "path": "opop_candidates/trial-c671461bdd.py",
+      "schema_version": "project.v1"
+    },
+    {
+      "before_sha256": null,
+      "content_ref": "sha256:7aa1eca9e6e34051f41c738a5de28fd8e9df33e967f49d27a01971a452e419bd",
+      "path": "opop_candidates/trial-c671461bdd.targets.json",
+      "schema_version": "project.v1"
+    }
+  ],
+  "external_invariants": [
+    "FP32 weights and features (workloads.json dtype float32); TF32 disabled via torch.backends.cuda.matmul.allow_tf32 = False and torch.backends.cudnn.allow_tf32 = False, and torch.set_float32_matmul_precision('highest') (infer.py:13-18).",
+    "Model architecture is fixed: two-layer mean GraphSAGE GraphEncoder with input_features=128, hidden_features=256, output_features=64, ReLU between layers, each layer projecting concat(self features, mean neighbor features) with nn.Linear (model.py).",
+    "model.eval() plus forward under @torch.inference_mode(); no cross-invocation state (infer.py:18,28-30).",
+    "Seeded fixtures reproduced exactly: torch.manual_seed(20261021) before model construction; a CPU torch.Generator seeded 20271021 (seed+1) produces features = randn(nodes, 128), sources = randint(nodes, (edges,)), destinations = randint(nodes, (edges,)); degree = torch.bincount(destinations, minlength=nodes).float() (infer.py:14-25, workloads.json seed).",
+    "Graph semantics: duplicate directed edges contribute individually via index_add_ on a zeros_like base; nodes without incoming edges keep zero neighbor features; neighbor mean divides by degree.clamp_min(1).unsqueeze(1) (model.py:11-15, README.md:17-19).",
+    "Quality check: the complete FP32 output tensor (shape [4096, 64] for the standard workload) compared with torch.testing.assert_close(atol=1e-5, rtol=1e-4); output is continuous floating point with no discrete outputs (infer.py:44-45, workloads.json quality).",
+    "One run() equals exactly one infer(model, inputs) forward on GPU-resident tensors; the full workload must be executed even though the objective is a single latency number.",
+    "Workload dimensions (nodes=4096, edges=65536) are read from request['workload'] in prepare(), not embedded as constants; the held-out unseen_graph workload (7168 nodes, 143360 edges) is not part of this request.",
+    "Single-process, single-device workload: model and inputs live on context['device']; no distributed backend and no communication (request devices/communication)."
+  ],
+  "groups": [
+    "1f40997fb4a53f41b9da",
+    "66fcde2159b1ab1f75f5",
+    "edc0a58ff71b8c7595f0",
+    "dde5131754ef3500c172",
+    "034c4a994dfe3e4c9bd1",
+    "e20f34533907df483e7c",
+    "0e77f480386500df0134",
+    "fc6048eb2ac9303f23f9",
+    "992609a8fac1ec0686d7",
+    "fa9131051011b2a25a20"
+  ],
+  "id": "trial-c671461bdd-param-ad89ddc6",
+  "implementation": "composite",
+  "installer": "opop_candidates/trial-c671461bdd.py",
+  "parameters": {
+    "reduce_block_p": 4,
+    "scatter_block_e": 2048
+  },
+  "parent_revision": "0913aed2ee401d23553686f1788a247e65aaa9a05c7dafb85509faadabb5dc7d",
+  "plan_ref": null,
+  "read_set": [
+    "call:082954dfb7897b23be544855",
+    "call:216cc438ab119abe43785340",
+    "call:3ac036f4c828a6d38c6de955",
+    "call:6e9d6b583aadf65e4b1eb44d",
+    "call:76ffa2b5e33044ba6db7c860",
+    "call:80ff8693d7ac3cf2433b10f2",
+    "call:990cea7c86061e796cd2a5d7",
+    "call:a0b5ffd5bf021ca4ff461953",
+    "call:c32e164325026aa5527db4ed",
+    "call:dd76570a9bbdb0b333acb618",
+    "call:f0f4117235b31295be4311e6",
+    "call:fcb52401b04cde5fb368ea0f"
+  ],
+  "registry_ref": null,
+  "replaces": [
+    "trial-678b0307f5-param-9fc9967a"
+  ],
+  "requires": [],
+  "schema_version": "project.v2",
+  "scope": "region",
+  "write_set": [
+    "file:opop_candidates/trial-c671461bdd.py",
+    "file:opop_candidates/trial-c671461bdd.targets.json",
+    "call:80ff8693d7ac3cf2433b10f2"
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "engine": "existing TaskSearch + OptunaTPETuner",
+  "space": {},
+  "selected": null,
+  "stats": [
+    {
+      "candidate_id": "cand-3702370a",
+      "space_id": "space-cand-3702370a",
+      "n_complete": 0,
+      "n_fail": 1,
+      "best": null,
+      "param_stats": [],
+      "resource_at_best": null,
+      "failure_clusters": []
+    }
+  ],
+  "responses": [],
+  "observations": [
+    {
+      "bundle": "trial-3c2ed50501-param-55588ae9",
+      "parameters": {},
+      "result": {
+        "score": null,
+        "valid": false,
+        "metrics": {},
+        "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+      },
+      "constraints": [],
+      "run": {
+        "status": "passed",
+        "failure": null,
+        "wall_s": 16.053012408316135,
+        "lease_wait_s": 5.911997821182013,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "result": {
+              "valid": false,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": false,
+                  "compared_elements": 4861984,
+                  "max_abs_error": 1.65625,
+                  "observation_path": "output.logits",
+                  "atol": 0.02,
+                  "rtol": 0.02,
+                  "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+                  "error": "Tensor-likes are not close!\n\nMismatched elements: 1342411 / 4861952 (27.6%)\nGreatest absolute difference: 1.65625 at index (0, 3, 100714) (up to 0.02 allowed)\nGreatest relative difference: 26368.0 at index (0, 23, 82333) (up to 0.02 allowed)"
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": false,
+                  "compared_elements": 4861984,
+                  "max_abs_error": 1.65625,
+                  "observation_path": "output.logits",
+                  "atol": 0.02,
+                  "rtol": 0.02,
+                  "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+                  "error": "Tensor-likes are not close!\n\nMismatched elements: 1342411 / 4861952 (27.6%)\nGreatest absolute difference: 1.65625 at index (0, 3, 100714) (up to 0.02 allowed)\nGreatest relative difference: 26368.0 at index (0, 23, 82333) (up to 0.02 allowed)"
+                }
+              ],
+              "coverage": {
+                "trial-3c2ed50501-param-55588ae9": {
+                  "counts": {
+                    "323bcbe006b343648b346af9": 62
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "323bcbe006b343648b346af9"
+                  ],
+                  "reference_invocations": {},
+                  "candidate_declared_routes": [
+                    {
+                      "call": "323bcbe006b343648b346af9",
+                      "route": "cuda_graph_capture",
+                      "count": 1
+                    },
+                    {
+                      "call": "323bcbe006b343648b346af9",
+                      "route": "cuda_graph_replay",
+                      "count": 58
+                    },
+                    {
+                      "call": "323bcbe006b343648b346af9",
+                      "route": "eager_composite",
+                      "count": 3
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "metrics": {}
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

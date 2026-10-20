@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "qwen_inference": {
+    "description": "Pretrained Qwen3-4B, BF16 SDPA, fixed-length greedy generation, GPU-resident token input",
+    "workloads": [
+      {"id": "interactive", "batch": 1, "prompt_tokens": 256, "new_tokens": 32,
+       "goals": [{"id": "ttft", "metric": "ttft_ms", "direction": "min"}, {"id": "decode", "metric": "decode_tokens_per_second", "direction": "max"}]},
+      {"id": "offline", "batch": 8, "prompt_tokens": 256, "new_tokens": 32,
+       "goals": [{"id": "throughput", "metric": "generated_tokens_per_second", "direction": "max"}]}
+    ],
+    "held_out_workloads": [{"id": "long_prompt", "batch": 2, "prompt_tokens": 768, "new_tokens": 16}],
+    "correctness": {"logits_atol": 0.02, "logits_rtol": 0.02, "require_exact_greedy_tokens": true},
+    "prompt": "Explain how a computer executes a neural network and why memory access, arithmetic and communication affect performance. Use concrete examples."
+  },
+  "resnet_inference": {
+    "description": "Pretrained ResNet-18, FP32 NCHW, GPU-resident preprocessed real images",
+    "workloads": [
+      {"id": "online", "batch": 1, "goals": [{"id": "latency", "metric": "latency_ms", "direction": "min"}]},
+      {"id": "offline", "batch": 32, "goals": [{"id": "throughput", "metric": "images_per_second", "direction": "max"}, {"id": "memory", "metric": "peak_allocated_bytes", "direction": "min", "constraints": {"images_per_second_min_baseline_ratio": 0.95}}]}
+    ],
+    "held_out_workloads": [{"id": "unseen_batch", "batch": 7}],
+    "correctness": {"logits_atol": 0.0001, "logits_rtol": 0.0001, "require_exact_top1": true}
+  },
+  "gpt2_ddp_training": {
+    "description": "GPT-2 124M FP32 training; deterministic random initialization and synthetic token IDs; real NCCL; SGD; competent no_sync accumulation baseline",
+    "model": {"n_layer": 12, "n_embd": 768, "n_head": 12, "vocab_size": 50257, "n_positions": 1024},
+    "workloads": [
+      {"id": "accumulated_step", "world_size": 2, "micro_batch": 1, "sequence_length": 128, "accumulation_steps": 4,
+       "goals": [{"id": "step", "metric": "step_ms", "direction": "min"},
+                {"id": "communication", "metric": "diagnostic.max_rank_nccl_kernel_sum_ms", "direction": "min", "constraints": {"step_ms_max_baseline_ratio": 1.05}}]}
+    ],
+    "held_out_workloads": [{"id": "longer_sequence", "world_size": 2, "micro_batch": 1, "sequence_length": 256, "accumulation_steps": 2}],
+    "correctness": {"grad_atol": 0.000001, "grad_rtol": 0.0001, "parameter_atol": 0.000001, "parameter_rtol": 0.0001},
+    "communication_metric_caveat": "Sum of device NCCL kernel durations per rank, then maximum across ranks. Includes device waiting; is not wire time, critical-path time or exposed communication. Profiled separately from clean step timing."
+  }
+}
