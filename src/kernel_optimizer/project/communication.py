@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 import shutil
 import subprocess
@@ -185,7 +186,16 @@ def transports(paths):
 
 
 def available_fields(observation):
+    """Expose observed numeric readings as well as the legacy capability names.
+
+    A registered metric may also be requested by its actual normalized field
+    name. Unknown/null fields and zeros from an absent trace are not readings.
+    """
     available = set()
+    if observation.get("status") == "observed":
+        available.update(name for name, value in observation.items()
+                         if isinstance(value, (int, float)) and not isinstance(value, bool)
+                         and math.isfinite(value))
     if observation.get("communication_kernel_count", 0):
         available.add("nccl_kernel_duration")
     if observation.get("collectives") and not observation.get("unmatched_communication_kernels"):
