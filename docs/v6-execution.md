@@ -42,9 +42,9 @@
 | P0，完成 | 会话用量只统计；受控 GPU helper 设备绑定、PID→UUID 与清理；必要旧行为检查 | [真实 provider、双卡执行、故障恢复证据](evidence/v6-p0-20261020/README.md)；提交 `bd9192a` |
 | P1，完成 | 版本化四种 scope、执行计划、组注册表、完整候选与事务；rank 生命周期 | [真实 Agent 联合编辑、质量负控制、提交及恢复](evidence/v6-p1-20261020/README.md)；提交 `bc7a61e`；属于基础设施控制实验 |
 | P2，三项目适配通过 | `optimize-project` 入口及真实项目理解／评测生成；输入、状态和测量协议 | [ResNet 独立输出一致](evidence/v6-p2-20261020/README.md)；[Qwen 全 logits/token 与 DDP 两步完整梯度/参数独立校验](evidence/v6-p5-20261020/README.md)；不等于三项目优化全部完成 |
-| P3，自动探索验证中 | module／functional 自动发现、依赖与包含闭包、真实选组与联合候选、schema 自动修复、AB／BA 评价及逐组反馈；新增可行非贪心前沿和四轮真实试验 | [真实联合候选](evidence/v6-p3-20261020/README.md)；[分支与整版评价](evidence/v6-p6-branches-20261020/README.md)；核心初始提交 `589144f`，分支提交 `7936d90` |
+| P3，自动探索通过 | module／functional 自动发现、依赖与包含闭包、真实选组与联合候选、schema 自动修复、AB／BA 评价及逐组反馈；可行非贪心前沿完成四轮，整版推广接受 | [真实联合候选](evidence/v6-p3-20261020/README.md)；[分支与整版评价](evidence/v6-p6-branches-20261020/README.md)；[自动推广结果](evidence/v6-post-recovery-20261020/README.md) |
 | P4，组合、整版回传与资源响应通过 | 旧 TaskSearch/TPE 项目适配；多候选完整回装、质量／覆盖分离、整版独立比较与 CAS；提交后重分组 | ResNet 两个 bundle 同时执行但组合变慢，拒绝；另一个 Graph 版本整版复测后提交；外层 Graph 绕过旧 bundle 的案例输出正确但覆盖失败，已单独归因；[组合证据](evidence/v6-p6-branches-20261020/README.md)与[资源反馈后接受版本](evidence/v6-feedback-closure-20261020/README.md) |
-| P5，采集与归属通过，优化继续 | 通信能力发现、Torch/Nsys、实际 transport；13/13 collective 的跨 rank 匹配及梯度存储/bucket/组多对多关联；硬件计数器权限不足时实测降级 | [真实中间证据](evidence/v6-p5-20261020/README.md)；DDP 自动候选仍在运行，不能以采集成功替代完整优化闭环 |
+| P5，当前硬件闭环通过 | 通信能力发现、Torch/Nsys、实际 transport；13/13 collective 跨 rank 匹配及 bucket／组关联；权限不足实测降级；真实通信策略通过两步完整质量后被整步约束拒绝 | [采集证据](evidence/v6-p5-20261020/README.md)；[最新负例](evidence/v6-post-recovery-20261020/README.md)，没有可靠通信加速结论 |
 | P6，进行中 | 八目标均已进入真实优化；新纯函数入口和保留 shape/seed 已验证；11 条正式对照已完成，继续分支恢复及有效多候选验收 | [目标切换及保留集](evidence/v6-p6-branches-20261020/README.md)；[正式 B 组 22 轮结果](evidence/v6-resumed-20261020/README.md)，失败和无改善均保留 |
 
 P1 的分布式执行设施与 P5 的通信采集共用数据模型；可提前做真实双 rank 探针，但不能把探针成功当作自动优化闭环成功。先贯通 ResNet，再接入 Qwen；DDP 为首个通信主案例。Qwen TP2 对单卡质量不一致仍是扩展案例的待解决问题，不阻塞前述三项目主线。

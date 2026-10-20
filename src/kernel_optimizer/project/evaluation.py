@@ -123,6 +123,20 @@ def corrupt(value: Any) -> Any:
 
 
 def worker_entry(context: dict) -> dict:
+    if context["parameters"].get("action") != "candidate_diagnostics":
+        return _worker_entry(context)
+    from kernel_optimizer.project.candidate_diagnostics import CandidateTrace
+    from kernel_optimizer.runtime.execution import write_json
+    trace = CandidateTrace(context["parameters"].get("bundles", []))
+    try:
+        with trace:
+            result = _worker_entry(context, candidate_trace=trace)
+        return {**result, "candidate_diagnostics": trace.report()}
+    finally:
+        write_json(Path(context["output"])/f"candidate-diagnostics-rank-{context['rank']}.json", trace.report())
+
+
+def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
     import torch
     parameters = context["parameters"]
     request = parameters["request"]
@@ -158,6 +172,8 @@ def worker_entry(context: dict) -> dict:
             lifecycle_allocated_peak = max(lifecycle_allocated_peak, torch.cuda.max_memory_allocated())
             lifecycle_reserved_peak = max(lifecycle_reserved_peak, torch.cuda.max_memory_reserved())
         bindings.append((bundle, binding))
+    if candidate_trace is not None:
+        candidate_trace.phase = "run"
     quality = request["quality"]
     reference_path = Path(parameters.get("reference_dir", context["output"])) / f"reference-rank-{context['rank']}.pt"
 
@@ -241,6 +257,14 @@ def worker_entry(context: dict) -> dict:
         return {"metrics": metrics, "metric_samples": metric_samples, "diagnostics": diagnostics}
 
     action = parameters.get("action", "controls")
+    if action == "candidate_diagnostics":
+        adapter.reset(state)
+        for _ in range(request["continuous_steps"]):
+            invoke(track=True)
+        return {"valid": True, "coverage": {
+            bundle["id"]: {"counts": dict(binding.counts), "fallbacks": dict(binding.fallbacks),
+                           **binding.path_telemetry()} for bundle, binding in bindings},
+                "scope": "Diagnostic execution only; no quality or performance acceptance"}
     if action == "collective_calibration":
         from kernel_optimizer.project.calibration import capture as calibrate
         return calibrate(context, parameters["collector_options"])

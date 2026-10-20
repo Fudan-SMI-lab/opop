@@ -64,12 +64,26 @@ class CollectiveCalibration:
                 "ranks": rows, "run": run, "protocol": options}
 
 
+class CandidateDiagnostics:
+    def collect(self, search, revision):
+        import json
+        if not revision.bundles:
+            return {"status": "not_applicable", "reason": "revision has no candidate installers"}
+        name = "candidate-diagnostics-"+uuid4().hex[:10]
+        run = search.execute(revision, name, "candidate_diagnostics")
+        files = sorted((search.output/"jobs"/name/"run").glob("candidate-diagnostics-rank-*.json"))
+        return {"status": "observed" if run["status"] == "passed" else "partial" if files else "unavailable",
+                "run": run, "evidence": [str(p) for p in files],
+                "ranks": [{"file": str(p), **json.loads(p.read_text())} for p in files]}
+
+
 def configured(profiling):
     registry = Registry()
     registry.register("torch_communication", TorchCommunication())
     registry.register("nsys", Nsys())
     registry.register("device_telemetry", DeviceTelemetry())
     registry.register("collective_calibration", CollectiveCalibration())
+    registry.register("candidate_diagnostics", CandidateDiagnostics())
     for name, factory in profiling.get("collector_plugins", {}).items():
         module, attribute = factory.split(":", 1)
         registry.register(name, getattr(importlib.import_module(module), attribute)())
@@ -77,7 +91,8 @@ def configured(profiling):
 
 
 def diagnostic_names(profiling):
-    return ["torch", "nsys", "device_telemetry", "collective_calibration", *profiling.get("collector_plugins", {})]
+    return ["torch", "nsys", "device_telemetry", "collective_calibration", "candidate_diagnostics",
+            *profiling.get("collector_plugins", {})]
 
 
 def collect(search, revision, names):

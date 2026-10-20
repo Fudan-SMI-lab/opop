@@ -32,6 +32,10 @@ class ProjectTaskEvaluator:
                    for name in run["ranks"][0]["result"]["metrics"]} if valid else {}
         constraints = constraints_for_runs([run], objective, self.coordinator.prepared["evaluation"]) if valid else []
         feasible = valid and all(row["passed"] for row in constraints)
+        from kernel_optimizer.project.candidate_diagnostics import should_trace
+        candidate_diagnostics = None
+        if should_trace(run, bundle.id, request.profiling):
+            candidate_diagnostics = self.coordinator.collect_extra(revision, ["candidate_diagnostics"])["candidate_diagnostics"]
         diagnostic = None
         if feasible and self.collect_resources:
             diagnostic = self.coordinator.execute(revision, bundle.id+"-resources", "profile")
@@ -55,7 +59,9 @@ class ProjectTaskEvaluator:
                         metrics[name] = max(r[name] for r in resources)
         result = TaskEvaluation(valid=feasible, score=metrics.get(objective["name"]), metrics=metrics,
                                 detail=None if feasible else "project quality/coverage/worker or original-baseline constraint failure; see raw observation")
-        self.observations.append({"bundle": bundle, "revision": revision, "run": run, "result": result, "constraints": constraints, "diagnostic": diagnostic})
+        self.observations.append({"bundle": bundle, "revision": revision, "run": run, "result": result,
+                                  "constraints": constraints, "diagnostic": diagnostic,
+                                  "candidate_diagnostics": candidate_diagnostics})
         return result
 
 
@@ -108,5 +114,6 @@ def tune(coordinator, template, path: Path, space: dict, trials: int):
         "stats": [s.model_dump(mode="json") for s in search.stats], "responses": responses,
         "observations": [{"bundle": x["bundle"].model_dump(mode="json"), "revision": x["revision"].id,
                           "result": x["result"].model_dump(mode="json"), "constraints": x["constraints"], "run": x["run"],
-                          "diagnostic": x["diagnostic"]} for x in evaluator.observations]}
+                          "diagnostic": x["diagnostic"], "candidate_diagnostics": x["candidate_diagnostics"]}
+                         for x in evaluator.observations]}
     return selected, receipt
