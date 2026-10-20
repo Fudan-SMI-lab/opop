@@ -1,0 +1,36 @@
+{
+  "raw_result": {
+    "path": "/root/autodl-tmp/dev/v6-work/p6-qwen-composition-assessment.json",
+    "bytes": 2417,
+    "sha256": "1c3471b1aa0f2f972c1be6ebff1cc85c0ea321fd99c70fd0062af02b5a50f325"
+  },
+  "result": {
+    "assessed_at": "2026-10-20T09:33:03.109286+00:00",
+    "trial": "trial-09def220ed",
+    "status": "effective_two_bundle_composition_quality_passed_performance_rejected",
+    "parent": "0643ca5cc67f8d8ec2f7b2e8e4719a523a6ee99e581015ab0f3f9f87bfe98ceb",
+    "tested_revision": "bddbf757f52fd5b47a58515262c859336bf0899f003e61d3c423b8d1b5961fd3",
+    "parent_pointer_after_rejection": "0643ca5cc67f8d8ec2f7b2e8e4719a523a6ee99e581015ab0f3f9f87bfe98ceb",
+    "candidate_sha256": "e34056e186fb42197a6d5d72224042bf66056e996f4b70227c7a10aa24be11e6",
+    "inherited_candidate_sha256": "46e9edb9f12561f1ebca882bad4544d2165f92fd132174823947f9ea2439ecbe",
+    "native_norm_kernels_by_replacement_call": {
+      "e4b9fadd2a6698840604b50c": 2263,
+      "3e156c66a7d31d558cc11e6c": 1116,
+      "02ccb458eafde687e522133f": 1116
+    },
+    "evidence": "p6-qwen-effective-composition-evidence.json",
+    "code_review": [
+      "The new mul replacement launches _k_norm into newly allocated xn/tb using current invocation inputs and returns xn; its paired cast returns the same tb written by that kernel; the parent weight multiplication consumes tb. These are output-contributing operations, not unused calibration calls.",
+      "Quality-route norm_fused counts are separate from norm_verify counts. Both paired candidates execute 4290 norm_fused calls across their two checked steps.",
+      "The warmed native trace has 4495 _k_norm launches with nested inherited-decoder and new-bundle replacement sites. The inherited code does not contain this kernel.",
+      "The inherited decoder records 62 eager_flat_decode_ws invocations and zero context.references invocations in each paired candidate endpoint."
+    ],
+    "limits": [
+      "Only the declared batch8 workload and original quality thresholds were checked; max_abs_error remains 0.125, not full-model bitwise equality.",
+      "RoPE verification still falls back; SiLU/rsqrt/entry/weight-scale sites delegate. The result does not claim all 26 selected groups were optimized.",
+      "Native scopes are nested; their timings are not additive independent causal contributions.",
+      "Paired throughput deteriorates, so this is a valid rejected composition, not an accepted optimization. The earlier batch1 Graph attempts remain failed effective-composition cases.",
+      "Developer supplied historical and preflight evidence is explicitly recorded; no claim of automatic retrieval of arbitrary cross-run history."
+    ]
+  }
+}

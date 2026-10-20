@@ -66,9 +66,9 @@ Qwen `trial-023e79293c` 在旧冻结实现下数值及配对计时通过，69.51
 
 其配对 TTFT 65.866→65.338 ms，收益 −1.621／2.676 ms，均未超过各自噪声规则，因此拒绝，未计作有效共存。原候选、诊断、全部调用与实际失败成本保留。
 
-接下来在独立目录 `p6-qwen-throughput-composition-c` 从已经接受的 batch=8 eager 解码版本验证互补候选。此控制实验让 Selection Agent 自行在真实 groups 中选 group/joint 范围，并要求保留已有 decoder bundle；没有人工指定算子组，也没有改变该任务的 workload、目标、质量或采样协议。默认工作流仍支持四种 scope。这个调整验证的是同一 Qwen 项目的另一个明确负载，不能将结果补写成此前 interactive Graph 已通过。
+随后在独立目录 `p6-qwen-throughput-composition-c` 从已经接受的 batch=8 eager 解码版本验证互补候选。此控制实验让 Selection Agent 自行在真实 groups 中选 group/joint 范围，并要求保留已有 decoder bundle；没有人工指定算子组，也没有改变该任务的 workload、目标、质量或采样协议。默认工作流仍支持四种 scope。这个调整验证的是同一 Qwen 项目的另一个明确负载，不能将结果补写成此前 interactive Graph 已通过。
 
-Qwen 有效多候选组合仍需完成。本目录暂不代表 P6 全部完成；下述草稿诊断不替代 Agent 正式提交和独立组合评价。
+该后续实验现已完成，正式提交结果见下文。草稿诊断与最终 Agent 提交分别留档，前者不替代自动提交和独立组合评价。
 
 自动触发另经真实 TaskSearch 验证：`p6-qwen-automatic-diagnostics-c` 使用原候选字节和参数，筛查观察到全部经过原实现后自行运行诊断，再次定位上述 logits 条件。筛查和诊断的源码哈希均为 `cc2c1b9634d05a488ceda558a96641b79c3583c93245dad79aa9c9a98098334f`；结果保存进参数反馈，接受指针未改变，不计作新优化收益。
 
@@ -88,4 +88,32 @@ Qwen 有效多候选组合仍需完成。本目录暂不代表 P6 全部完成�
 
 历史 packing 失败、草稿静态检查及上述诊断是开发期间显式提供的补充上下文，不宣称框架已经自动检索所有跨 run 历史。正常上一轮候选／反馈、worker 环境和 binding contract 则由框架自动注入。[工具访问记录](p6-qwen-composition-context-consumption.json)区分这些来源；文件名匹配只能证明对应访问或搜索，不能证明候选的因果推断成立。
 
-[用量快照](p6-resumed-final-usage.json)截至 15:03（UTC+8）包含 157 个会话、4,312 条 assistant 消息，provider 报告费用 $138.3096818128。包含嵌套探索分支，按 session/message 去重；不含外层 Codex 对话，不是账单，两个角色尚在运行，后续还会增加。费用没有用于设置调用额度。
+## 最终 Qwen 有效共存与退化拒绝
+
+原 `zhipuai/glm-5.3` 会话在 17:12:49 按服务端窗口恢复，随后正式提交 `trial-09def220ed`，由冻结 `790286a` 完成原 TaskSearch、完整质量、AB/BA 和原生 profile。期间发现 Agent 将修订文件写入拼错目录，已将[两个路径和实际哈希](p6-qwen-candidate-path-correction.json)回传；最终提交字节哈希为 `e34056e186fb42197a6d5d72224042bf66056e996f4b70227c7a10aa24be11e6`，不使用错目录中的未提交副本。
+
+[正式结果](p6-qwen-throughput-composition-c/trial-09def220ed.json)与[候选代码](p6-qwen-throughput-composition-c/trial-09def220ed-candidate.py)保留全部端点和实际提交字节：
+
+| 检查 | 实际结果 |
+|---|---|
+| 全量连续质量 | 每个候选端点的两个步骤各比较 38,895,872 个元素，均通过原阈值；最大绝对误差 0.125 |
+| 继承 decoder | 每个质量端点 62 次 `eager_flat_decode_ws`，0 次 `context.references`；原 bundle 保持安装和有效执行 |
+| 新增归一化融合 | 每个质量端点 `norm_fused` 4,290 次，另有 `norm_verify` 4,700 次；有效计算与校验计算分开 |
+| 原生贡献证据 | 独立预热后的单次 profile 有 4,495 次 `_k_norm`：hidden 2,263、q 1,116、k 1,116；带旧 decoder 与新候选的嵌套归属 |
+| 仍未生效的部分 | RoPE 两类经内部一致性守卫回退；rsqrt、SiLU、entry cast 和 weight scale 明确委托父实现，不称全部 26 个组都得到优化 |
+| 配对吞吐 | 父版本 364.162／357.128，组合 105.033／107.559 token/s；均值 360.645→106.296 |
+| 接受与回退 | 两对收益 −259.129／−249.569 token/s；拒绝整版，已接受指针保持父版本 |
+
+[有效共存审查](p6-qwen-composition-assessment.json)结合[调用与原生摘要](p6-qwen-effective-composition-evidence.json)和实际代码：新 `_k_norm` 使用当前输入写入乘法结果与 BF16 tensor，后续 cast 返回该 tensor，父 weight mul 消费它；不是仅执行后丢弃的校验 kernel。旧 decoder 实现不包含此 kernel，其根路径继续贡献 GEMM／attention 等计算。原生范围嵌套，不能将两个 bundle 的 kernel 数或时间相加当成独立贡献。
+
+来源是已接受的 batch=8 revision `ccfeeb296e5581c30d9e23a96750f209f9212e0cb166eeb5735dda3bdf13fe69`；分支重新发现后的实际比较父版本为 `0643ca5cc67f8d8ec2f7b2e8e4719a523a6ee99e581015ab0f3f9f87bfe98ceb`，待测组合为 `bddbf757f52fd5b47a58515262c859336bf0899f003e61d3c423b8d1b5961fd3`。拒绝后指针仍是实际父版本。该结果完成 Qwen 有效双 bundle 的功能验收，**不构成组合加速**。较早 batch=1 Graph 的失败仍为失败。
+
+最终代码移除了草稿中的 rsqrt／SiLU 融合，但全模型最大误差仍为 0.125，因此不能将先前的误差独断地归因于这两个变换，也不能接受候选文档中的逐位一致推断。RoPE 已越过编译问题，但仍未通过内部守卫。端到端退化由配对实测成立；没有额外隔离实验时，不能把全部损失因果分配给某个 kernel 或 Python dispatch。
+
+## Provider 恢复、备用请求与最终用量
+
+等待账户窗口期间，OpenCode 已列出的 `opencode/glm-5.3-flash-free` 通过[真实响应与文件输出探针](p6-provider-alternate-probe-e-result.json)，未向探针发送项目内容。随后在[独立分支](p6-qwen-composition-fallback-e-composition-protocol.json)复用原自动 selection，向真实候选角色提供草稿和实际诊断；模型配置只在该控制器内覆盖，没有修改私有全局配置。这是显式开发调整，不宣称框架自动选择了备用 provider。
+
+原会话完成必要质量、配对和原生共存验证后，尚未提交产物的备用角色被[显式取消](p6-qwen-composition-fallback-e-development-cancellation.json)。服务端确认中止，控制器以 `MessageAbortedError` 退出；没有把它计作有效试验或优化结果，也没有设置调用／token／费用／时长额度。[实际工具访问](p6-qwen-fallback-context-consumption.json)及全部已发生用量仍保留。
+
+[最终用量快照](p6-resumed-final-usage.json)截至 17:34（UTC+8）包含 162 个会话、4,534 条 assistant 消息，provider 报告费用 $150.0315571213。包含嵌套探索分支、失败和取消的请求，按 session/message 去重；此次刷新读取 160 个已记录项目会话，均可获取，其余早期会话快照保留在账本。统计不含外层 Codex 对话，不是账单；当前没有活动项目角色，费用始终只统计。

@@ -18,13 +18,13 @@
 | 项目 | 状态与证据 |
 |---|---|
 | box4-2 与独立 v6 工作树 | 已核验；[预检记录](v6-box42-preflight-20261020.md) |
-| 三个真实任务 | Qwen3-4B、ResNet-18、GPT-2 DDP 均已完成就绪运行；不是自动优化验收 |
+| 三个真实任务 | Qwen3-4B、ResNet-18、GPT-2 DDP 均已完成真实自动工作流及有效多候选验证；原就绪基线另行保留 |
 | GitHub 存档 | v6 分支已建立，SSH 推送成功；commit author 为 ZihangZ |
 | 开发请求截止时间 | 新增 `request_timeout_s: null`，保留旧默认 3600 秒；box4-2 开发配置同时关闭派生 idle 截止 |
 | 本次真实调用 | `zhipuai/glm-5.3` 成功读取 ResNet 源码并生成分析，51.01 秒；4 条 assistant 消息，完整会话报告成本 $0.0269474；[回执](evidence/v6-development-20261020/provider-receipt.json) |
 | 必要回归 | 203 passed；包括旧入口、资源反馈、worker/store、配置和本次变更 |
 | 完整会话用量 | P0 已实现按 session/message 去重的只统计账本；[P0 证据](evidence/v6-p0-20261020/README.md) |
-| 通用项目工作流 | 三项目自动评测、跨目标／保留集、自动整版推广、通信闭环和正式对照已完成；剩余 Qwen 有效多候选组合继续验证，见[逐项验收](v6-acceptance.md) |
+| 通用项目工作流 | P0–P6 当前硬件主线完成：三项目自动评测、多候选、跨目标／保留集、自动整版推广、通信闭环和正式对照均有真实证据，见[逐项验收及扩展边界](v6-acceptance.md) |
 
 本次测试删除与取舍：
 
@@ -45,7 +45,7 @@
 | P3，自动探索通过 | module／functional 自动发现、依赖与包含闭包、真实选组与联合候选、schema 自动修复、AB／BA 评价及逐组反馈；可行非贪心前沿完成四轮，整版推广接受 | [真实联合候选](evidence/v6-p3-20261020/README.md)；[分支与整版评价](evidence/v6-p6-branches-20261020/README.md)；[自动推广结果](evidence/v6-post-recovery-20261020/README.md) |
 | P4，组合、整版回传与资源响应通过 | 旧 TaskSearch/TPE 项目适配；多候选完整回装、质量／覆盖分离、整版独立比较与 CAS；提交后重分组 | ResNet 两个 bundle 同时执行但组合变慢，拒绝；另一个 Graph 版本整版复测后提交；外层 Graph 绕过旧 bundle 的案例输出正确但覆盖失败，已单独归因；[组合证据](evidence/v6-p6-branches-20261020/README.md)与[资源反馈后接受版本](evidence/v6-feedback-closure-20261020/README.md) |
 | P5，当前硬件闭环通过 | 通信能力发现、Torch/Nsys、实际 transport；13/13 collective 跨 rank 匹配及 bucket／组关联；权限不足实测降级；真实通信策略通过两步完整质量后被整步约束拒绝 | [采集证据](evidence/v6-p5-20261020/README.md)；[最新负例](evidence/v6-post-recovery-20261020/README.md)，没有可靠通信加速结论 |
-| P6，进行中 | 八目标均已进入真实优化；新纯函数入口和保留 shape/seed 已验证；11 条正式对照已完成，继续 Qwen 有效多候选验收 | [目标切换及保留集](evidence/v6-p6-branches-20261020/README.md)；[正式 B 组 22 轮结果](evidence/v6-resumed-20261020/README.md)，失败和无改善均保留 |
+| P6，当前硬件主线完成 | 八目标均已进入真实优化；新纯函数入口和保留 shape/seed 已验证；11 条正式对照完成；Qwen 两个有效 bundle 共同执行、质量通过但性能退化，正确拒绝 | [目标切换及保留集](evidence/v6-p6-branches-20261020/README.md)；[正式 B 组 22 轮结果](evidence/v6-resumed-20261020/README.md)；[Qwen 最终共存验收](evidence/v6-post-recovery-20261020/p6-qwen-composition-assessment.json)，失败和无改善均保留 |
 
 P1 的分布式执行设施与 P5 的通信采集共用数据模型；可提前做真实双 rank 探针，但不能把探针成功当作自动优化闭环成功。先贯通 ResNet，再接入 Qwen；DDP 为首个通信主案例。Qwen TP2 对单卡质量不一致仍是扩展案例的待解决问题，不阻塞前述三项目主线。
 
@@ -92,6 +92,10 @@ Qwen batch=8 在四次 Graph 质量失败后生成 eager 解码候选，完整�
 `6d71a3c` 与 `790286a` 已推送并同步 box4-2。新增通用候选异常／False 条件诊断，经真实 TaskSearch 自动触发验证；组合执行契约进入新生成、修复和恢复请求，补足安装阶段与实际 phase／dispatch 的语义。4 项初次诊断检查及后续 7 项角色／恢复相关检查分别记录，不重复相加。完整产物见[恢复后的验收证据](evidence/v6-post-recovery-20261020/README.md)。
 
 **16:52（UTC+8）的进展：** provider 再次返回账户窗口 429，提示 17:12:49 后恢复；原正式会话继续保留。等待期间，未提交草稿的真实 GPU 诊断发现 RoPE 编译错误被父实现回退掩盖。框架将自动诊断从“整个 bundle 回退”细化到“任一活动站点全部调用父实现”，并保留触发的 rank／call。4 项检查通过；隔离的完整 Qwen 筛查实际自动捕获了该编译错误，两个连续步骤通过原质量阈值，原接受指针未变。该诊断使用临时手工 proposal 包装原 Agent 草稿，不计作正式多候选验收；P6 仍待原 Agent 提交和完整组合评价。代码、实际请求与回执见[局部回退证据](evidence/v6-post-recovery-20261020/README.md#联合候选中的局部回退)。
+
+**17:34（UTC+8）的完成记录：** 原 GLM 会话按服务端窗口恢复，正式提交 `trial-09def220ed`。两个连续步骤各 38,895,872 个元素通过原阈值，最大绝对误差 0.125；已有 decoder 的 62 次调用与新增归一化融合的 4,290 次有效调用共同存在，独立 warmed trace 记录 4,495 次 `_k_norm`，代码与原生关联确认其结果进入模型输出。RoPE 仍在内部守卫回退，不算成功融合。AB/BA 吞吐从父版本 360.645 降为组合 106.296 token/s，整版拒绝，接受指针保持不变。最后一项 Qwen 有效共存验收完成，P6 主线关闭；未要求退化组合获得加速。
+
+局部回退修复及真实证据已在 `05f833a` 推送并同步 box4-2；正式 Qwen 测量始终使用冻结 `790286a`，未混入新诊断实现。期间另验证已列出的 OpenCode 内置服务可以真实响应，并在独立分支尝试修复；原会话完成必要验证后，该备用请求在提交前显式取消，保留用量与上下文，不计作优化结果。最终框架用量快照为 162 个会话、4,534 条 assistant 消息、provider 报告费用 $150.0315571213，未含外层 Codex，不是账单；没有用量额度，当前没有继续运行的项目角色。完整产物见[最终 Qwen 与用量证据](evidence/v6-post-recovery-20261020/README.md)。
 
 ## 命令与运行位置
 
