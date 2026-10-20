@@ -2,6 +2,17 @@ Candidate composition and execution contract
 
 The evaluator calls adapter.prepare(), then installs bundles in revision order.
 
+The evaluator adapter preserves the source workload; it does not choose or install
+optimization bindings. Selection chooses the editable boundary, the candidate
+returns replacements for declared sites, and the framework installs them.
+Functional replacements can incur dispatch cost on unrelated operators in the
+invocation. Module/project replacements use direct callable boundaries unless
+they also install functional replacements. Account for the effective binding
+backend when predicting whole-project benefit. Scope names alone do not select
+a cheaper backend: the actual returned replacement sites determine it. The
+optional binding_cost collector measures parent versus binding-only passthrough
+on additive candidates. Its cost is diagnostic and remains part of the score.
+
 The request's optional `binding_backend` defaults to `legacy`. The experimental
 `scoped` backend activates functional dispatch only inside observed module
 boundaries when every installed functional site has a resolvable boundary.

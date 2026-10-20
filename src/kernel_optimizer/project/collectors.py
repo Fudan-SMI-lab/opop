@@ -135,6 +135,8 @@ def configured(profiling):
     registry.register("candidate_diagnostics", CandidateDiagnostics())
     registry.register("execution_timeline", ExecutionTimeline())
     registry.register("python_runtime", PythonRuntime())
+    from kernel_optimizer.project.binding_cost import BindingCost
+    registry.register("binding_cost", BindingCost())
     for name, factory in profiling.get("collector_plugins", {}).items():
         module, attribute = factory.split(":", 1)
         registry.register(name, getattr(importlib.import_module(module), attribute)())
@@ -142,7 +144,7 @@ def configured(profiling):
 
 
 def diagnostic_names(profiling):
-    return ["torch", "nsys", "nccl_tuning", "device_telemetry", "collective_calibration", "candidate_diagnostics", "execution_timeline", "python_runtime",
+    return ["torch", "nsys", "nccl_tuning", "device_telemetry", "collective_calibration", "candidate_diagnostics", "execution_timeline", "python_runtime", "binding_cost",
             *profiling.get("collector_plugins", {})]
 
 

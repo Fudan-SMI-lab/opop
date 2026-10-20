@@ -65,10 +65,13 @@ def main():
                 if args.role == 'selection':
                     result = search.trial(feedback=json.dumps(feedback))
                 else:
+                    from kernel_optimizer.project.observation_artifacts import feedback_artifacts
+                    evidence_files, indexed_feedback = feedback_artifacts(json.dumps(feedback))
                     inputs = {name.removeprefix('inputs/'): raw for name, raw in files.items()
                               if name.startswith('inputs/') and not name.startswith('inputs/previous-candidate/')
                               and name != 'inputs/previous-feedback.txt'}
                     inputs.update(candidate_artifacts(json.dumps(ordinary), search.store))
+                    inputs.update(evidence_files)
                     prompt = Path(__file__).resolve().parents[1]/'src/kernel_optimizer/project/candidate_prompt.md'
                     instructions = prompt.read_text() + ('\nRepair the actual rejected implementation in '
                         'inputs/previous-candidate/ using the measured feedback. Preserve the selected '
@@ -76,7 +79,8 @@ def main():
                     with Runtime(config, log_dir=branch) as runtime:
                         generated, receipt = ProjectAgents(runtime, search.store).generate(
                             'candidate', inputs, instructions, ('candidate.py', 'proposal.json'),
-                            route(json.dumps(feedback), current_revision=parent.id), validator=validate_proposal)
+                            route(indexed_feedback, current_revision=parent.id,
+                                  selected_groups=saved['selection']['groups']), validator=validate_proposal)
                     discovery = search.current_discovery()
                     selection = saved['selection']
                     trial_id = 'repair-' + arm
