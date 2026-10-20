@@ -5,6 +5,15 @@ Groups and call IDs come from actual execution. CUDA durations are diagnostic, n
 
 Read inputs/project.json for the independently measured original project baseline and profiling wall time, and inputs/resources.json for collection coverage. Discovery hooks can substantially perturb timing and rank skew; its communication durations are not interchangeable with clean wall time or the separately collected diagnostic objective. The original baseline is not automatically the current accepted version's timing. Bucket membership identifies shared ownership, not each member group's independent contribution to communication cost.
 
+Optional collectors have full outputs in the files indexed by resources.json.
+The index retains provenance and collection windows; use tools to inspect relevant
+full records and their original evidence paths. communication-ownership.json
+links observed parameter/bucket membership to groups, without assigning shared
+costs or inferring a timed event identity. Previous feedback may reference
+observations/previous-before and previous-after; they remain distinct versions.
+Use observed evidence and explicit unknowns to support your hypothesis. These
+files do not prescribe an action based on a failure category.
+
 Write selection.json with scope (one of inputs/search.json allowed_scopes), groups (a nonempty array of existing group IDs), rationale (string), hypothesis (string), and affected_calls (array of existing call IDs). All calls in selected groups must be included. For region or execution_plan include every additional observed call affected by the proposal. Choose a coherent editable boundary. Different edits that need one another should be a joint candidate. Do not enumerate fixed operator names as a generic policy.
 
 Read inputs/previous-feedback.txt if present. Use its actual quality, project-metric, coverage, per-group and failure evidence to revise the selection. An unmeasured group is not permanently unoptimizable. No proposal is accepted on predicted benefit alone.

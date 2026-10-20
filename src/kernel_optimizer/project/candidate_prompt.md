@@ -1,6 +1,13 @@
 Generate candidate.py for the selected project optimization. Read inputs/request.json, selection.json, targets.json, adapter.py and the supplied source. The goal, workload, quality, dtype, completion boundary and state requirements are frozen. Never change batch, sequence length, generation count, effective training batch, sampling semantics, data or thresholds to manufacture improvement. Do not precompute/capture final answers for the known fixture; the workload must execute on each invocation. Do not modify framework, evaluator, reference inputs or external files.
 Read inputs/binding-contract.md when supplied: installation-time raw parent calls do not automatically activate inherited functional dispatch or the adapter's phases. Composition and Graph capture must preserve the actual parent execution semantics, with runtime coverage and native evidence.
 
+Read resources.json for optional collector files and communication-ownership.json
+for observed bucket/parameter/group membership. Full current and previous
+collector records remain available under inputs/observations with exact version
+provenance and raw evidence references. Use relevant records to distinguish
+measured facts from hypotheses; shared membership does not allocate communication
+time or establish GPU readiness. No collector output prescribes a failure route.
+
 Follow inputs/proposal.schema.json exactly. In particular, implementation is one enum string such as "composite", never a description; put descriptions in rationale.
 If inputs/previous-candidate/ exists, its manifest provides the actual prior candidate code and original targets for inspection. Use those bytes to diagnose failed attempts; the accepted inputs/source tree alone does not contain rejected implementations. Historical code is not permission to reuse stale bindings, bypass quality or assume the proposed optimization ran. Corroborate the prior rationale with the actual implementation and runtime evidence.
 

@@ -209,6 +209,9 @@ class ProjectSearch:
         policy = {"allowed_scopes": allowed_scopes, "leaf_groups_only": leaf_groups_only,
                   "selection_strategy": selection_strategy, "feedback_view": feedback_view}
         sources = {f.path: self.store.get_artifact(f.content_ref) for f in parent.files}
+        from kernel_optimizer.project.observation_artifacts import artifacts, feedback_artifacts, ownership
+        observation_files, observation_index = artifacts(discovery.get("extra_collectors"), "observations/current")
+        previous_files, feedback = feedback_artifacts(feedback)
         common = {"request.json": json.dumps(self.request.portable(), indent=2),
                   "project.json": json.dumps({"current_revision": parent.id, "contract": contract.model_dump(mode="json"),
                       "original_reference_revision": self.prepared["revision"],
@@ -219,12 +222,16 @@ class ProjectSearch:
                   "selection.schema.json": json.dumps(Selection.model_json_schema(), indent=2),
                   "proposal.schema.json": json.dumps(Proposal.model_json_schema(), indent=2),
                   "resources.json": json.dumps({"communication": discovery.get("communication"), "coverage": discovery["coverage"],
-                      "collection_plan": discovery.get("collection_plan"), "extra_collectors": discovery.get("extra_collectors")}, indent=2),
+                      "collection_plan": discovery.get("collection_plan"), "extra_collectors": observation_index,
+                      "ownership_input": "communication-ownership.json"}, indent=2),
                   "groups.json": json.dumps(discovery["groups"], indent=2), "calls.json": json.dumps(discovery["calls"], indent=2),
                   "call-resources.json": json.dumps(discovery.get("call_resources", {}), indent=2),
                   "search.json": json.dumps({**policy, "eligible_groups": [g["id"] for g in eligible], "unknown_dependencies": discovery["unknown_dependencies"],
                       "installed_bundles": [self.revisions.bundle(ident).model_dump(mode="json") for ident in parent.bundles]}),
                   "adapter.py": sources["opop_adapter.py"]}
+        common.update(observation_files)
+        common.update(previous_files)
+        common["communication-ownership.json"] = json.dumps(ownership(discovery), indent=2)
         from kernel_optimizer.control.direct_task import TaskSpace
         common["parameter-space.schema.json"] = json.dumps(TaskSpace.model_json_schema(), indent=2)
         from kernel_optimizer.project.aggregation import index
@@ -452,7 +459,10 @@ class ProjectSearch:
                         "after_status": "observed" if call in a["call_resources"] else "absent_or_unassociated"}
                         for b, a in zip(before, after, strict=True)]} for call in group["calls"]]})
         from kernel_optimizer.project.communication import match_ranks
+        selected_collectors = discovery.get("collection_plan", {}).get("plan", {}).get("collectors", [])
+        extra = self.collect_extra(candidate, selected_collectors) if selected_collectors else {}
         return {"status": "observed", "groups": groups, "coverage": [a["coverage"] for a in after],
+                "extra_collectors": {"before": discovery.get("extra_collectors", {}), "after": extra},
                 "communication": {"before": [b.get("communication") for b in before],
                                   "after": [a.get("communication") for a in after],
                                   "cross_rank_after": match_ranks([a["communication"] for a in after if "collectives" in a.get("communication", {})])},

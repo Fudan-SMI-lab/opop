@@ -49,18 +49,21 @@ def ddp_serial_reference(context):
 def main():
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument("--project", type=Path, required=True)
-    parser.add_argument("--case", choices=["qwen", "ddp"], required=True)
+    parser.add_argument("--case", choices=["qwen", "resnet", "ddp"], required=True)
     parser.add_argument("--readiness-reference", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     prepared = json.loads((args.project/"prepared.json").read_text())
     request = json.loads((args.project/"request.json").read_text())
     controls = Path(prepared["controls_path"])
-    if args.case == "qwen":
+    if args.case in {"qwen", "resnet"}:
         import torch
         reference = torch.load(args.readiness_reference, map_location="cpu", weights_only=True)
         actual = torch.load(controls/"reference-rank-0.pt", map_location="cpu", weights_only=True)
-        checks = [compare(row, {"tokens": reference["tokens"], "logits": reference["logits"]}, {"atol": 0, "rtol": 0}) for row in actual]
+        expected = ({"tokens": reference["tokens"], "logits": reference["logits"]} if args.case == "qwen"
+                    else {"logits": reference["logits"], "top1": reference["logits"].argmax(-1)})
+        checks = [compare(row, expected, {"atol": 0, "rtol": 0} if args.case == "qwen" else request["quality"])
+                  for row in actual]
         result = {"valid": all(check["passed"] for check in checks), "checks": checks,
                   "reference": str(args.readiness_reference), "reference_sha256": hashlib.sha256(args.readiness_reference.read_bytes()).hexdigest()}
     else:

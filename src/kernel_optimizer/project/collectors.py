@@ -124,6 +124,8 @@ def diagnostic_names(profiling):
 
 
 def collect(search, revision, names):
+    import hashlib
+    from kernel_optimizer.runtime.provenance import framework_source
     registry, results = configured(search.request.profiling), {}
     for name in names:
         if name == "torch":
@@ -132,4 +134,11 @@ def collect(search, revision, names):
             results[name] = registry.resolve(name).collect(search, revision)
         except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
             results[name] = {"status": "unavailable", "reason": f"{type(exc).__name__}: {exc}"}
+        results[name]["provenance"] = {
+            "revision": revision.id, "parent_revision": revision.parent_id,
+            "bundles": list(revision.bundles), "plan": revision.plan_ref, "registry": revision.registry_ref,
+            "request_sha256": hashlib.sha256((search.output/"request.json").read_bytes()).hexdigest(),
+            "objective": search.request.objective, "workload": search.request.workload,
+            "devices": search.request.devices, "framework_source": framework_source(),
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"}
     return results
