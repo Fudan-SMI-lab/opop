@@ -39,6 +39,15 @@ def clock_mapping(trace, anchors, domain):
 
 
 def analyze(trace, *, rank, anchors=(), domain=None, gradients=None, inventory=None):
+    raw_trace = trace
+    windows = [r for r in trace.get("traceEvents", [])
+               if r.get("ph") == "X" and r.get("name") == "opop.timeline_workload"]
+    window = None
+    if len(windows) == 1:
+        start, end = windows[0]["ts"], windows[0]["ts"]+windows[0]["dur"]
+        window = {"start_us": start, "end_us": end, "scope": "explicit workload including final completion synchronization; excludes profiler preparation"}
+        trace = {**trace, "traceEvents": [r for r in trace["traceEvents"]
+                 if "ts" in r and start <= r["ts"] < end]}
     rows = [r for r in trace.get("traceEvents", []) if r.get("ph") == "X" and "ts" in r]
     launches = defaultdict(list)
     external = defaultdict(list)
@@ -147,7 +156,7 @@ def analyze(trace, *, rank, anchors=(), domain=None, gradients=None, inventory=N
             "gradient_readiness": {"status": "observed" if readiness else "not_observed",
                                    "events": readiness, "buckets": buckets,
                                    "scope": "CPU post-accumulate callbacks; no GPU synchronization or communication-hook replacement"},
-            "clock": clock_mapping(trace, anchors, domain),
+            "clock": clock_mapping(raw_trace, anchors, domain), "workload_window": window,
             "scope": "Separate diagnostic capture, never the clean project objective"}
 
 
@@ -255,6 +264,14 @@ def capture(adapter, state, operation, synchronize, context):
             if torch.cuda.is_available():
                 activities.append(torch.profiler.ProfilerActivity.CUDA)
             with torch.profiler.profile(activities=activities, record_shapes=True) as profiler:
+                # Rank-local profiler startup can otherwise masquerade as
+                # workload arrival skew. Preparation remains outside the marked
+                # workload and outside its elapsed time; no per-op sync is added.
+                if callable(getattr(adapter, "before_run", None)):
+                    adapter.before_run(state)
+                elif torch.distributed.is_initialized():
+                    torch.distributed.barrier()
+                synchronize()
                 anchor("before")
                 started = time.perf_counter_ns()
                 with torch.profiler.record_function("opop.timeline_workload"):

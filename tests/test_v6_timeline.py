@@ -89,3 +89,15 @@ def test_repeated_gradient_callbacks_are_kept_without_guessing_microstep():
     bucket = result["gradient_readiness"]["buckets"][0]
     assert bucket["cpu_post_accumulate_times_us"]["model.weight"] == [10, 30]
     assert bucket["timed_collective_identity"] == "unknown"
+
+
+def test_profiler_preparation_collective_is_excluded_from_workload():
+    trace = {"traceEvents": [event("nccl_preparation_barrier", 0, 5, "kernel", device=0),
+                            event("opop.timeline_workload", 10, 30, "user_annotation"),
+                            event("compute", 15, 10, "kernel", device=0),
+                            event("cudaDeviceSynchronize", 41, 5, "cuda_runtime")]}
+    report = analyze(trace, rank=0)
+    assert report["communication"]["communication_kernel_count"] == 0
+    assert report["devices"]["0"]["kernel_count"] == 1
+    assert not report["cuda_synchronization"]
+    assert report["workload_window"]["end_us"] == 40

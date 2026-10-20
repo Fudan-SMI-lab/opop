@@ -114,35 +114,3 @@ def run(context):
     receipt = LocalExecutor().run(ExecutionRequest(entry=entry, cwd=tmp_path, output=tmp_path/"run",
         lease_dir=tmp_path/"leases", worker_timeout_s=30))
     assert receipt["status"] == "passed", receipt
-
-
-def test_compiled_signature_matches_reference_and_rechecks_mutated_tensors(tmp_path):
-    entry = tmp_path/"signature.py"
-    entry.write_text('''
-import torch
-from kernel_optimizer.project.binding import signature_guard
-from kernel_optimizer.project.discovery import tensor_description
-
-def run(context):
-    x=torch.arange(6.).reshape(2,3)
-    values=[x,x.t(),x.double(),x.clone().requires_grad_(),None,True,1,1.5,float("nan"),
-            float("inf"),complex(1,2),torch.float32,torch.device("cpu"),
-            {"x":[x,2],"flag":True},{1:x},[x,(1,2)]]
-    checks=0
-    for expected in values:
-        signature={"args":tensor_description((expected,)), "kwargs":tensor_description({"extra":expected})}
-        match=signature_guard([signature])
-        for actual in values:
-            args,kwargs=(actual,),{"extra":actual}
-            legacy={"args":tensor_description(args),"kwargs":tensor_description(kwargs)} in [signature]
-            assert match(args,kwargs)==legacy,(expected,actual)
-            checks+=1
-    guard=signature_guard([{"args":tensor_description((x,)),"kwargs":{}}])
-    assert guard((x,),{})
-    x.transpose_(0,1)
-    assert not guard((x,),{})
-    return {"comparisons":checks,"metadata_mutation_detected":True}
-''')
-    receipt = LocalExecutor().run(ExecutionRequest(entry=entry, cwd=tmp_path, output=tmp_path/"run",
-        lease_dir=tmp_path/"leases", worker_timeout_s=30))
-    assert receipt["status"] == "passed", receipt

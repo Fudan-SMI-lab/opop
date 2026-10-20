@@ -10,48 +10,6 @@ from pathlib import Path
 from kernel_optimizer.project.discovery import _phase, tensor_description
 
 
-def signature_guard(signatures):
-    """Compile immutable observed metadata, rechecking live tensors on every call.
-
-    No tensor-id cache: in-place metadata changes and reused Python identities
-    must still fail the original shape/stride/dtype/phase binding contract.
-    """
-    import torch
-
-    def compile_value(expected):
-        if isinstance(expected, dict):
-            if set(expected) == {"shape", "stride", "dtype", "device", "requires_grad"}:
-                shape, stride = tuple(expected["shape"]), tuple(expected["stride"])
-                def tensor(value):
-                    if isinstance(value, torch.Tensor):
-                        return (tuple(value.shape) == shape and tuple(value.stride()) == stride
-                                and str(value.dtype) == expected["dtype"]
-                                and value.device.type == expected["device"]
-                                and value.requires_grad == expected["requires_grad"])
-                    return tensor_description(value) == expected
-                return tensor
-            children = {key: compile_value(value) for key, value in expected.items()}
-            def mapping(value):
-                if not isinstance(value, dict):
-                    return tensor_description(value) == expected
-                # Discovery stringifies dictionary keys; retain that behavior.
-                items = value if all(isinstance(key, str) for key in value) else {str(k): v for k, v in value.items()}
-                return items.keys() == children.keys() and all(check(items[key]) for key, check in children.items())
-            return mapping
-        if isinstance(expected, list):
-            children = tuple(compile_value(value) for value in expected)
-            return lambda value: (isinstance(value, (tuple, list)) and len(value) == len(children)
-                                  and all(check(item) for check, item in zip(children, value)))
-        def scalar(value):
-            if type(value) in (bool, int, float, str, type(None)):
-                return value == expected
-            return tensor_description(value) == expected
-        return scalar
-
-    variants = [(compile_value(s["args"]), compile_value(s["kwargs"])) for s in signatures]
-    return lambda args, kwargs: any(a(args) and k(kwargs) for a, k in variants)
-
-
 class BindingSession:
     def __init__(self, adapter, state, specs: list[dict], *, rank=0, world_size=1, bundle_id=None):
         self.adapter, self.state = adapter, state
@@ -139,13 +97,13 @@ class BindingSession:
                     raise ValueError("ambiguous replacements for one physical site and phase")
                 entry[3].append((spec, wrapped))
         for owner, attr, original, variants in physical.values():
-            guarded = [(spec, replacement, signature_guard(spec["signatures"])) for spec, replacement in variants]
-            def dispatch(*args, _variants=guarded, _original=original, **kwargs):
-                for spec, replacement, matches in _variants:
+            def dispatch(*args, _variants=variants, _original=original, **kwargs):
+                for spec, replacement in _variants:
                     if spec["phase"] != _phase.get():
                         continue
                     if spec["kind"] == "module":
-                        if not matches(args, kwargs):
+                        signature = {"args": tensor_description(args), "kwargs": tensor_description(kwargs)}
+                        if signature not in spec["signatures"]:
                             if self.tracking:
                                 self.fallbacks[spec["id"]] += 1
                             continue
@@ -179,10 +137,8 @@ class BindingSession:
         indexed = {}
         for ident, replacement in self.functionals.items():
             spec = self.specs[ident]
-            operator = self.references[ident]
-            key = (spec["phase"], spec.get("site_parent"))
-            indexed.setdefault(operator, {}).setdefault(key, []).append((signature_guard(spec["signatures"]), replacement))
-        root_parent = hashlib.sha256(b"project.invoke|run").hexdigest()[:24]
+            key = (spec["target"], spec["phase"], spec.get("site_parent"))
+            indexed.setdefault(key, []).append((spec, replacement))
         if any(spec.get("site_parent") for spec in self.specs.values() if spec["id"] in self.functionals):
             seen = set()
             for root, model in self.models.items():
@@ -191,12 +147,8 @@ class BindingSession:
                         continue
                     seen.add(id(module))
                     target = root + ("."+path if path else "")
-                    phase_ids = {}
-                    def before(mod, args, target=target, phase_ids=phase_ids):
-                        phase = _phase.get()
-                        ident = phase_ids.get(phase)
-                        if ident is None:
-                            ident = phase_ids[phase] = hashlib.sha256((target+"|"+phase).encode()).hexdigest()[:24]
+                    def before(mod, args, target=target):
+                        ident = hashlib.sha256((target+"|"+_phase.get()).encode()).hexdigest()[:24]
                         binding.active_modules.set((*binding.active_modules.get(), ident))
                     def after(mod, args, result):
                         binding.active_modules.set(binding.active_modules.get()[:-1])
@@ -204,16 +156,17 @@ class BindingSession:
                     self.handles.append(module.register_forward_hook(after, always_call=True))
         class ReplacementMode(TorchDispatchMode):
             def __torch_dispatch__(self, func, types, args=(), kwargs=None):
-                by_context = indexed.get(func)
-                if by_context is None:
-                    return func(*args, **(kwargs or {}))
-                phase = _phase.get()
+                signature = None
+                target, phase = str(func), _phase.get()
                 stack = binding.active_modules.get()
-                parent = stack[-1] if stack else root_parent
-                for variants in (by_context.get((phase, parent), ()), by_context.get((phase, None), ())):
-                    for matches, replacement in variants:
-                        if matches(args, kwargs or {}):
-                            return replacement(*args, **(kwargs or {}))
+                parent = stack[-1] if stack else hashlib.sha256(b"project.invoke|run").hexdigest()[:24]
+                variants = indexed.get((target, phase, parent), ())
+                global_variants = indexed.get((target, phase, None), ())
+                for spec, replacement in (*variants, *global_variants):
+                    if signature is None:
+                        signature = {"args": tensor_description(args), "kwargs": tensor_description(kwargs or {})}
+                    if signature in spec["signatures"]:
+                        return replacement(*args, **(kwargs or {}))
                 return func(*args, **(kwargs or {}))
         self._mode = ReplacementMode()
 
