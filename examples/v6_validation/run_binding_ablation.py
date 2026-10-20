@@ -36,6 +36,7 @@ def run_protocol(search, revision, parent, output, *, pairs=2, original_controls
         arms.update(direct=(anchor, {"direct": True}), empty=(anchor, {}))
         comparisons.insert(0, ("direct", "empty"))
     protocol = {"source_run": str(search.output), "revision": revision.id, "parent": parent.id,
+                "accepted_at_start": search.revisions.current().id,
                 "anchor": anchor.id, "objective": search.request.objective, "workload": search.request.workload,
                 "request_sha256": hashlib.sha256((search.output/"request.json").read_bytes()).hexdigest(),
                 "framework_source": framework_source(), "pairs": pairs, "comparisons": comparisons,
@@ -65,7 +66,7 @@ def run_protocol(search, revision, parent, output, *, pairs=2, original_controls
                               for r in measured.get("ranks", [])]}), flush=True)
                 if measured["status"] != "passed" or not all(r.get("result", {}).get("valid") for r in measured["ranks"]):
                     raise ValueError(f"ablation quality/execution failed: {label}")
-    if search.revisions.current().id != protocol["parent"]:
+    if search.revisions.current().id != protocol["accepted_at_start"]:
         # This driver never commits. Concurrent updates invalidate its parent claim.
         raise ValueError("accepted parent changed during the diagnostic")
     return {"protocol": protocol, "runs": rows}

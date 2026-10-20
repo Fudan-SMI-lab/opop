@@ -147,6 +147,7 @@ class ProjectSearch:
             "select it when available and useful to resolve overlap, graph tracing or attribution questions. "
             "device_telemetry samples available NVML PCIe rates, utilization and memory separately; these are device-wide readings with native windows, not per-collective bytes. "
             "collective_calibration runs a separate synthetic full-world SUM allreduce at actually observed sizes/dtypes, with correctness checks; it is a reference experiment, not a performance lower bound or model critical-path estimate. "
+            "execution_timeline records a separate plain Torch trace, CPU-to-CUDA submit associations, synchronization, per-device intervals, and optional passive CPU gradient post-accumulate callbacks. It reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown. It never replaces a communication hook or determines subsequent search actions. "
             "Never invent PCIe/NVLink traffic from logical payload or memcpy sizes. Nsys timelines alone do not separate NCCL waiting from wire transfer or prove bucket identity. "
             "Exact bucket links require native correlation and observed gradient-storage membership; otherwise retain ambiguous candidates. List unavailable dimensions with observed reasons. "
             "Do not request every counter indiscriminately, change the task, or run tools yourself. "
