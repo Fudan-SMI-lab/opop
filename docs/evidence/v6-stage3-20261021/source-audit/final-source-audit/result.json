@@ -1,0 +1,745 @@
+{
+  "scope": "Independent developer audit; no modifications or messages to active pipelines",
+  "runs": [
+    {
+      "case": "resnet-memory",
+      "result": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 7.968432642519474,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 955173,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 955173,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 12,
+                "unavailable_samples": 0,
+                "wait_s": 0.09831700846552849,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "method": "Original source function and input/model construction; full generated reference comparison",
+              "workload": {
+                "id": "offline",
+                "batch": 32,
+                "goals": [
+                  {
+                    "id": "throughput",
+                    "metric": "images_per_second",
+                    "direction": "max"
+                  },
+                  {
+                    "id": "memory",
+                    "metric": "peak_allocated_bytes",
+                    "direction": "min",
+                    "constraints": {
+                      "images_per_second_min_baseline_ratio": 0.95
+                    }
+                  }
+                ]
+              },
+              "observation_keys": [
+                "logits",
+                "predicted_classes"
+              ],
+              "expected_shapes": {
+                "logits": [
+                  32,
+                  1000
+                ],
+                "predicted_classes": [
+                  32
+                ]
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 0.0002518072724342346,
+        "entry_sha256": "fd1510e3614cb496076743ee98c1928b1325184ac12abd9b08022a19269445a9",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      }
+    },
+    {
+      "case": "resnet-latency",
+      "result": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 7.97751234844327,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 955467,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 955467,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 12,
+                "unavailable_samples": 0,
+                "wait_s": 0.09013751894235611,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "method": "Original source function and input/model construction; full generated reference comparison",
+              "workload": {
+                "id": "offline",
+                "batch": 32,
+                "goals": [
+                  {
+                    "id": "throughput",
+                    "metric": "images_per_second",
+                    "direction": "max"
+                  },
+                  {
+                    "id": "memory",
+                    "metric": "peak_allocated_bytes",
+                    "direction": "min",
+                    "constraints": {
+                      "images_per_second_min_baseline_ratio": 0.95
+                    }
+                  }
+                ]
+              },
+              "observation_keys": [
+                "logits",
+                "predicted_class_ids"
+              ],
+              "expected_shapes": {
+                "logits": [
+                  32,
+                  1000
+                ],
+                "predicted_class_ids": [
+                  32
+                ]
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 0.00013248994946479797,
+        "entry_sha256": "fd1510e3614cb496076743ee98c1928b1325184ac12abd9b08022a19269445a9",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      }
+    },
+    {
+      "case": "qwen-ttft",
+      "result": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 11.77839957177639,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 955767,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 955767,
+              "status": "verified",
+              "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 18,
+                "unavailable_samples": 0,
+                "wait_s": 0.09247799962759018,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "passed": true,
+                  "compared_elements": 4861984,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "passed": true,
+                  "compared_elements": 4861984,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "method": "Original source function and input/model construction; full generated reference comparison",
+              "workload": {
+                "id": "interactive",
+                "batch": 1,
+                "prompt_tokens": 256,
+                "new_tokens": 32,
+                "goals": [
+                  {
+                    "id": "ttft",
+                    "metric": "ttft_ms",
+                    "direction": "min"
+                  },
+                  {
+                    "id": "decode",
+                    "metric": "decode_tokens_per_second",
+                    "direction": "max"
+                  }
+                ]
+              },
+              "observation_keys": [
+                "tokens",
+                "logits"
+              ],
+              "expected_shapes": {
+                "tokens": [
+                  1,
+                  32
+                ],
+                "logits": [
+                  1,
+                  32,
+                  151936
+                ]
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 0.00015891343355178833,
+        "entry_sha256": "fd1510e3614cb496076743ee98c1928b1325184ac12abd9b08022a19269445a9",
+        "devices": [
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "worker_pids_reaped": true
+      }
+    },
+    {
+      "case": "qwen-throughput",
+      "result": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 10.853906385600567,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 956090,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 956090,
+              "status": "verified",
+              "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 17,
+                "unavailable_samples": 0,
+                "wait_s": 0.09339416772127151,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "passed": true,
+                  "compared_elements": 4861984,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "passed": true,
+                  "compared_elements": 4861984,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "method": "Original source function and input/model construction; full generated reference comparison",
+              "workload": {
+                "id": "interactive",
+                "batch": 1,
+                "prompt_tokens": 256,
+                "new_tokens": 32,
+                "goals": [
+                  {
+                    "id": "ttft",
+                    "metric": "ttft_ms",
+                    "direction": "min"
+                  },
+                  {
+                    "id": "decode",
+                    "metric": "decode_tokens_per_second",
+                    "direction": "max"
+                  }
+                ]
+              },
+              "observation_keys": [
+                "tokens",
+                "logits"
+              ],
+              "expected_shapes": {
+                "tokens": [
+                  1,
+                  32
+                ],
+                "logits": [
+                  1,
+                  32,
+                  151936
+                ]
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 0.00023253634572029114,
+        "entry_sha256": "fd1510e3614cb496076743ee98c1928b1325184ac12abd9b08022a19269445a9",
+        "devices": [
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "worker_pids_reaped": true
+      }
+    },
+    {
+      "case": "graph-latency",
+      "result": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 4.310212071985006,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 956340,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 956340,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 7,
+                "unavailable_samples": 0,
+                "wait_s": 0.09699173644185066,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "passed": true,
+                  "compared_elements": 262144,
+                  "max_abs_error": 1.1920928955078125e-07
+                },
+                {
+                  "passed": true,
+                  "compared_elements": 262144,
+                  "max_abs_error": 1.1920928955078125e-07
+                }
+              ],
+              "method": "Original source function and input/model construction; full generated reference comparison",
+              "workload": {
+                "id": "standard",
+                "nodes": 4096,
+                "edges": 65536
+              },
+              "observation_keys": [
+                "output"
+              ],
+              "expected_shapes": {
+                "output": [
+                  4096,
+                  64
+                ]
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 0.00011070072650909424,
+        "entry_sha256": "fd1510e3614cb496076743ee98c1928b1325184ac12abd9b08022a19269445a9",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      }
+    },
+    {
+      "case": "ddp-step",
+      "result": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 20.34563022106886,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 956742,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 956742,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 33,
+                "unavailable_samples": 0,
+                "wait_s": 0.0954950824379921,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "rank": 0,
+                  "step": 0,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 7.450580596923828e-09
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "rank": 1,
+                  "step": 0,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 7.450580596923828e-09
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "step": 0,
+                  "global_loss": {
+                    "passed": true,
+                    "compared_elements": 1,
+                    "max_abs_error": 4.76837158203125e-07
+                  }
+                },
+                {
+                  "rank": 0,
+                  "step": 1,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 6.798654794692993e-08
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "rank": 1,
+                  "step": 1,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 6.798654794692993e-08
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "step": 1,
+                  "global_loss": {
+                    "passed": true,
+                    "compared_elements": 1,
+                    "max_abs_error": 0.0
+                  }
+                }
+              ],
+              "method": "original source accumulates the exact global batch serially, for two continuous optimizer updates",
+              "replica_gradient_checks": [
+                {
+                  "passed": true,
+                  "compared_elements": 124439808,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "passed": true,
+                  "compared_elements": 124439808,
+                  "max_abs_error": 0.0
+                }
+              ]
+            }
+          }
+        ],
+        "lease_wait_s": 0.00021552294492721558,
+        "entry_sha256": "fd1510e3614cb496076743ee98c1928b1325184ac12abd9b08022a19269445a9",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      }
+    },
+    {
+      "case": "ddp-communication",
+      "result": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 21.049806147813797,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 957245,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 957245,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 35,
+                "unavailable_samples": 0,
+                "wait_s": 0.034478478133678436,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "rank": 0,
+                  "step": 0,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 7.450580596923828e-09
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "rank": 1,
+                  "step": 0,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 7.450580596923828e-09
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "step": 0,
+                  "global_loss": {
+                    "passed": true,
+                    "compared_elements": 1,
+                    "max_abs_error": 4.76837158203125e-07
+                  }
+                },
+                {
+                  "rank": 0,
+                  "step": 1,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 6.798654794692993e-08
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "rank": 1,
+                  "step": 1,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 6.798654794692993e-08
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "step": 1,
+                  "global_loss": {
+                    "passed": true,
+                    "compared_elements": 1,
+                    "max_abs_error": 0.0
+                  }
+                }
+              ],
+              "method": "original source accumulates the exact global batch serially, for two continuous optimizer updates",
+              "replica_gradient_checks": [
+                {
+                  "passed": true,
+                  "compared_elements": 124439808,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "passed": true,
+                  "compared_elements": 124439808,
+                  "max_abs_error": 0.0
+                }
+              ]
+            }
+          }
+        ],
+        "lease_wait_s": 0.00013599172234535217,
+        "entry_sha256": "fd1510e3614cb496076743ee98c1928b1325184ac12abd9b08022a19269445a9",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      }
+    }
+  ]
+}

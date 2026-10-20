@@ -1,0 +1,42 @@
+{
+  "goal": "Reduce full graph encoder inference latency for the standard workload, preserving the full output checks.",
+  "entrypoint": "infer.py",
+  "completion": "One complete synchronized full-graph forward of the two-layer mean GraphSAGE encoder over the seeded standard directed multigraph (4096 nodes, 65536 edges) on GPU-resident inputs under torch.inference_mode(), returning the full [4096, 64] FP32 output tensor. The measured completion boundary is the wall-clock interval around this single forward with CUDA synchronization at both boundaries, exactly as the source records each latency_ms sample (infer.py:53-58). Model and input construction, the H2D transfer, the reference assert_close check, artifact writing, warmup and per-sample statistics queries are benchmark infrastructure outside the measured work (README.md:13-15).",
+  "state_protocol": "prepare(context, request) reproduces infer.py:12-25 once outside timing: applies the source numerical policies (torch.set_num_threads(4), manual_seed(20261021), allow_tf32=False for matmul and cudnn, float32_matmul_precision('highest')), builds GraphEncoder on context['device'] in eval mode, builds the input fixture from a CPU generator seeded 20261022 (features randn, sources/destinations randint, degree bincount of destinations), and keeps model plus input tensors in state. reset(state) is a no-op because inference has no cross-invocation state (README.md:19): each forward allocates request-local buffers and consumes no RNG. run(state) executes exactly one full encoder forward under torch.inference_mode() and returns its output tensor; the framework synchronizes CUDA before and after this call. observe(state, result) returns the complete detached FP32 output tensor on CPU. metrics(state, result, elapsed_ms) reports latency_ms (the frozen objective, equal to the framework's synchronized elapsed time), graphs_per_second = 1000/latency_ms, and peak_allocated_bytes queried from torch.cuda.max_memory_allocated on the bound device outside the timer (source resets peak stats before each sample; the framework does the same before its timer). models(state) exposes the loaded root GraphEncoder for discovery and controlled replacement.",
+  "invariants": [
+    "FP32 arithmetic with TF32 disabled for matmul and cudnn and float32_matmul_precision('highest') (infer.py:15-17, workloads.json:11).",
+    "Architecture unchanged: two-layer mean GraphSAGE with Linear(2*input->output) per layer, input_features=128, hidden_features=256, output_features=64, ReLU between layers, mean aggregation over incoming directed edges (model.py).",
+    "Seeded fixtures unchanged: torch.manual_seed(20261021) for weight initialization; separate CPU generator seeded 20261022 for features, sources and destinations; degree = bincount(destinations, minlength=nodes).float() (infer.py:14, 20-24).",
+    "Graph semantics preserved: duplicate directed edges contribute individually to mean aggregation via index_add_; nodes without incoming edges use zero neighbor features via degree.clamp_min(1) (model.py:12-14, README.md:17-19).",
+    "Timed work is exactly one full encoder forward under torch.inference_mode() with eval-mode weights and GPU-resident inputs; construction, quality checking and statistics queries remain outside the timer (infer.py:28-30, README.md:13-15).",
+    "Correctness observation is the complete output tensor of shape [nodes, output_features] compared with torch.testing.assert_close using atol=1e-05, rtol=1e-4 (infer.py:44-45, workloads.json:9); no sampled or hashed outputs.",
+    "Workload dimensions (nodes=4096, edges=65536 for the frozen standard row) are read from request['workload'] rather than embedded, so the same adapter serves a validated variant with different dimensions through the identical source path.",
+    "Model root and all tensors use context['device'], the worker-bound CUDA device, rather than an assumed physical GPU.",
+    "metrics() derives throughput from the unchanged work amount and elapsed_ms only (graphs_per_second = 1000/latency_ms, matching infer.py:59) and queries CUDA peak statistics outside the timer."
+  ],
+  "objective": {
+    "name": "latency_ms",
+    "unit": "ms",
+    "direction": "minimize",
+    "constraints": []
+  },
+  "workload": {
+    "id": "standard",
+    "nodes": 4096,
+    "edges": 65536
+  },
+  "quality": {
+    "atol": 1e-05,
+    "rtol": 0.0001
+  },
+  "missing_information": [],
+  "assumptions": [
+    "The worker deploys adapter.py to a directory where the inputs/source tree is not present (this is the concrete prior failure: FileNotFoundError reading workloads.json next to the module), so the adapter is self-contained: the encoder classes are reproduced verbatim from model.py and the workload-independent configuration (model dimensions, seed 20261021, num_threads 4, TF32/precision policies) is embedded from workloads.json; only nodes/edges come from request['workload'].",
+    "context['device'] is the bound CUDA device (the source's default 'cuda' resolves to the same single-GPU deployment; request notes single-process, no distributed initialization), and the worker has already bound CUDA before prepare().",
+    "The framework's synchronized wall time surrounding run() carries the same semantics as the source's per-sample latency_ms (perf_counter_ns between torch.cuda.synchronize calls), so metrics() reports it directly without an internal completion point.",
+    "graphs_per_second = 1000/latency_ms and peak_allocated_bytes = torch.cuda.max_memory_allocated(device) are the source's other per-sample fields (infer.py:59-60); the framework resets peak stats immediately before its timer, matching the source's per-sample reset, so metrics() only queries the statistic.",
+    "The secondary memory goal in workloads.json (peak_allocated_bytes minimize with graphs_per_second ge baseline_ratio 0.95) is recorded in the request notes and reported as a metric, not added to the frozen objective constraints, because the user goal selects latency.",
+    "The held-out workload unseen_graph (7168 nodes, 143360 edges) is not part of this frozen request; the adapter would exercise it through the same code path if a validated variant supplied those dimensions.",
+    "Inference is stateless, so no CPU parameter/optimizer snapshot is needed and reset() legitimately does nothing."
+  ]
+}
