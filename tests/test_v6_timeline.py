@@ -94,6 +94,7 @@ def test_repeated_gradient_callbacks_are_kept_without_guessing_microstep():
 def test_profiler_preparation_collective_is_excluded_from_workload():
     trace = {"traceEvents": [event("nccl_preparation_barrier", 0, 5, "kernel", device=0),
                             event("opop.timeline_workload", 10, 30, "user_annotation"),
+                            event("opop.timeline_workload", 15, 10, "gpu_user_annotation"),
                             event("compute", 15, 10, "kernel", device=0),
                             event("cudaDeviceSynchronize", 41, 5, "cuda_runtime")]}
     report = analyze(trace, rank=0)

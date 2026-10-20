@@ -89,7 +89,10 @@ _DTYPE_BYTES = {"float": 4, "float32": 4, "half": 2, "float16": 2, "bfloat16": 2
 
 def trace_window(trace, label):
     """Keep operations submitted inside one explicit, completion-bounded workload."""
-    windows = [r for r in trace.get("traceEvents", []) if r.get("ph") == "X" and r.get("name") == label]
+    # Kineto can mirror one CPU annotation as a GPU annotation of the same name.
+    # Only the CPU range contains the declared host-side completion boundary.
+    windows = [r for r in trace.get("traceEvents", []) if r.get("ph") == "X"
+               and r.get("cat") == "user_annotation" and r.get("name") == label]
     if len(windows) != 1:
         return trace, None
     start, end = windows[0]["ts"], windows[0]["ts"]+windows[0]["dur"]

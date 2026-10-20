@@ -23,7 +23,7 @@ def clock_mapping(trace, anchors, domain):
     bounds = []
     for anchor in anchors:
         rows = [r for r in trace.get("traceEvents", [])
-                if r.get("ph") == "X" and r.get("name") == anchor["name"]]
+                if r.get("ph") == "X" and r.get("cat") != "gpu_user_annotation" and r.get("name") == anchor["name"]]
         if len(rows) != 1:
             continue
         row = rows[0]
@@ -131,7 +131,7 @@ def analyze(trace, *, rank, anchors=(), domain=None, gradients=None, inventory=N
     readiness = []
     for name, metadata in (gradients or {}).items():
         for row in rows:
-            if row.get("name") == name:
+            if row.get("name") == name and row.get("cat") != "gpu_user_annotation":
                 readiness.append({**_event(row), "parameters": metadata})
     buckets = []
     for bucket in (inventory or {}).get("buckets", []):
