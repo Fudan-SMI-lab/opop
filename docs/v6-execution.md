@@ -1,6 +1,11 @@
 # v6 执行记录
 
-更新：2026-10-20。正式设计见 [实施方案](plan-v6-general-c3-and-communication.md)，真实项目见 [验证矩阵](v6-validation-projects.md)。当前分支为 `v6`，开发与 GPU 验证环境为 box4-2。本文件是持续更新的执行清单，不是新一轮等待批准的方案。
+更新：2026-10-21。正式设计见 [实施方案](plan-v6-general-c3-and-communication.md)，真实项目见 [验证矩阵](v6-validation-projects.md)。当前分支为 `v6`，开发与 GPU 验证环境为 box4-2。本文件是持续更新的执行清单，不是新一轮等待批准的方案。
+
+最新任务为失败原因核验，未继续修改框架：[Qwen / DDP 诊断](v6-qwen-ddp-failure-analysis.md)
+完成四个原 Qwen 候选复现、八个诊断变体、14 个 DDP 独立端点、五组双 rank CPU profile 和
+48 个旧通信 trace 分解。确认 Qwen 数值路径变化与缓存接口问题、DDP 绑定开销及 P2P 守卫回退。
+原自主实验、接受规则和已接受版本保持不变；这些开发诊断不计为新的自主优化成功。
 
 ## 执行约定
 

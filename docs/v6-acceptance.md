@@ -6,6 +6,8 @@
 
 ## 验收矩阵
 
+2026-10-21 失败专项核验：四个 Qwen 数值失败已复现并以诊断干预定位到合并 GEMM／Triton 数值路径、capture mask 分支及补齐 KV attention 路径；StaticCache 签名回退另行确认。DDP 原 P2P 候选实际因 ReduceOp 守卫全部回退，functional 绑定透传本身增加约 94–104 ms，不能将退化全归因于通信算法。详见 [失败原因核验](v6-qwen-ddp-failure-analysis.md)。本轮未修改框架或发布新候选。
+
 | 要求 | 实际证据 | 状态 |
 |---|---|---|
 | 原项目/目标/启动命令入口，无预先 request/adapter/targets | [Stage 3 完整流程](evidence/v6-stage3-20261021/final/README.md)：四类项目、八流程、16 轮，原批 5/14 与图后续 2/2 轮接受；自动错误反馈和第二轮执行 | 工作流通过；Qwen 数值正确性和通信收益仍有失败 |
