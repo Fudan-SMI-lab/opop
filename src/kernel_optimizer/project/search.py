@@ -146,7 +146,14 @@ class ProjectSearch:
                   "coverage.json": json.dumps(discovery["coverage"], indent=2),
                   "collection.schema.json": json.dumps(CollectionPlan.model_json_schema(), indent=2)}
         if evaluation is not None:
-            inputs["evaluation.json"] = json.dumps(evaluation, indent=2)
+            reference = {"revision": self.prepared["revision"],
+                "ranks": [{"rank": row["rank"], "metrics": row.get("result", {}).get("metrics", {})}
+                          for row in self.prepared["evaluation"].get("ranks", [])],
+                "interpretation": "Original independently measured reference, not necessarily the candidate's "
+                                  "current parent. Parent discovery in observations.json is intrusive profiling "
+                                  "and must not be substituted for this clean score. Paired parent values, when "
+                                  "available, are reported separately in evaluation.measurement."}
+            inputs["evaluation.json"] = json.dumps({**evaluation, "original_reference": reference}, indent=2)
             inputs["revisions.json"] = json.dumps({"candidates": [
                 {"revision": r.id, "parent": r.parent_id, "bundles": list(r.bundles)} for r in revisions],
                 "discovery_revision": discovery["revision"]}, indent=2)
