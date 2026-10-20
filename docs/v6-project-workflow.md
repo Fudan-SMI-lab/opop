@@ -115,6 +115,8 @@ Torch module 与 functional 调用由实际执行发现，记录阶段、shape�
 
 `--replay-from SOURCE_RUN --replay-bundle BUNDLE_ID` 在目标 run 上评测原候选，代码和参数不变，只绑定当前已发现的同一 call 身份和签名。不能映射的调用明确返回不支持，不按名称猜测替代站点。默认只产生 exploration 结果；`--publish-replay` 也必须通过独立配对评价。
 
+最终候选可能声明替换源 run 的旧候选，而新工作负载的基线尚未安装任何候选。此时可以显式添加 `--replay-absent-replacements`，仅省略这些旧候选的移除关系，并在回放记录中保留原始关系和迁移说明。该选项要求目标版本为空，不会省略 `requires` 依赖，不会改变候选代码、参数或验收条件；默认仍要求显式映射所有关系。
+
 `--resume-trial TRIAL_ID` 可复用已提交的 `generated.json` 制品，无需再次调用生成 Agent，要求父版本完全相同。原始失败、调用回执、候选字节和每次独立测量均保留。中断后的已存在作业目录应保留，不用删除目录或覆盖历史来制造“成功重跑”。
 
 `--branch-from RUN [--branch-revision REVISION]` 建立隔离实验。可从已测量、质量与约束通过但未改善的候选继续搜索；不会改动源 run 的已接受指针。引用的原始正确性 tensors 只读共享，候选文件、事务和索引独立。分支上的接受只表示相对分支父版本通过，不能直接宣称优于源 run 的最优版本；推广回主版本前须完整重新比较。

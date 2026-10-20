@@ -25,6 +25,8 @@ def add_project_parser(parser):
     parser.add_argument("--resume-generation", type=Path, help="continue an interrupted selection/candidate sandbox in its original provider session; implies --resume")
     parser.add_argument("--replay-from", type=Path, help="source run for frozen-candidate cross-goal/held-out evaluation")
     parser.add_argument("--replay-bundle", help="exact stored bundle ID to replay without code/parameter changes")
+    parser.add_argument("--replay-absent-replacements", action="store_true",
+                        help="explicitly omit source-run replacement IDs when replaying onto an empty target version")
     parser.add_argument("--publish-replay", action="store_true", help="publish a replay only if its independent paired evaluation passes")
     parser.add_argument("--branch-from", type=Path, help="create an isolated experiment from a prepared run")
     parser.add_argument("--branch-revision", help="explicit quality-passing branch parent, including a non-improving candidate")
@@ -74,6 +76,8 @@ def cmd_optimize_project(args):
         args.resume = True
     if bool(getattr(args, "replay_from", None)) != bool(replay):
         raise ValueError("replay-from and replay-bundle must be supplied together")
+    if getattr(args, "replay_absent_replacements", False) and not replay:
+        raise ValueError("replay-absent-replacements requires a frozen-bundle replay")
     if replay and (args.prepare_only or args.discover_only or args.resume_trial):
         raise ValueError("replay cannot be combined with prepare-only/discover-only/resume-trial")
     branch = getattr(args, "branch_from", None)
@@ -119,7 +123,8 @@ def cmd_optimize_project(args):
                 search.resume_generation(resume_generation)
             elif replay:
                 from kernel_optimizer.project.replay import transfer_bundle
-                bundle, metadata = transfer_bundle(args.replay_from, replay, search)
+                bundle, metadata = transfer_bundle(args.replay_from, replay, search,
+                    allow_absent_replacements=getattr(args, "replay_absent_replacements", False))
                 search.validate_bundle(bundle, metadata, publish=getattr(args, "publish_replay", False))
             elif args.resume_trial:
                 search.resume_trial(args.resume_trial)

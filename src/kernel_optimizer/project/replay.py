@@ -15,7 +15,7 @@ from kernel_optimizer.runtime.execution import write_json
 
 
 def transfer_bundle(source_output, source_bundle, search, *, parent=None, discovery=None,
-                    dependency_map=None):
+                    dependency_map=None, allow_absent_replacements=False):
     source_output = Path(source_output)
     source = RevisionStore(RunStore.open(source_output))
     original = source.bundle(source_bundle)
@@ -45,7 +45,17 @@ def transfer_bundle(source_output, source_bundle, search, *, parent=None, discov
             if old_targets[ident].get(key) != call_lookup[ident].get(key):
                 raise ValueError(f"call identity changed meaning: {ident} {key}")
     mapping = dependency_map or {}
-    dependencies = set(original.requires) | set(original.replaces)
+    # A replacement removes a source-run predecessor; it does not necessarily
+    # depend on that predecessor's implementation. An explicit replay onto a
+    # pristine variant can omit those removals because nothing is installed
+    # there. True `requires` relations and nonempty target versions still need
+    # their ordinary identities. Candidate code and parameters stay immutable.
+    omitted_replacements = set()
+    if allow_absent_replacements:
+        if parent.bundles:
+            raise ValueError("omitting source replacements requires an empty target version")
+        omitted_replacements = set(original.replaces)
+    dependencies = set(original.requires) | (set(original.replaces) - omitted_replacements)
     if dependencies - mapping.keys():
         raise ValueError("replay requires explicit identities for inherited dependencies/replacements")
     affected = set(original.calls)
@@ -70,12 +80,16 @@ def transfer_bundle(source_output, source_bundle, search, *, parent=None, discov
                    json.dumps([call_lookup[c] for c in sorted(affected)])))),
         read_set=tuple("call:"+c for c in sorted(affected)),
         write_set=("file:"+installer, "file:"+targets_path, *("call:"+c for c in original.calls)),
-        requires=tuple(mapping[c] for c in original.requires), replaces=tuple(mapping[c] for c in original.replaces),
+        requires=tuple(mapping[c] for c in original.requires),
+        replaces=tuple(mapping[c] for c in original.replaces if c not in omitted_replacements),
         external_invariants=contract.invariants, installer=installer, parameters=original.parameters)
     provenance = {"trial": ident, "replay": {"source_output": str(source_output), "source_bundle": source_bundle,
         "source_parent": original.parent_revision, "target_parent": parent.id,
         "candidate_code_sha256": hashlib.sha256(code).hexdigest(), "code_changed": False,
         "parameters_changed": False, "binding": "same call identities, current observed signatures",
-        "new_generation": False}}
+        "new_generation": False,
+        "source_replaces": list(original.replaces),
+        "omitted_replacements": sorted(omitted_replacements),
+        "replacement_migration": "explicit empty target" if omitted_replacements else "identity mapping"}}
     write_json(search.output / "trials" / ident / "replay.json", {**provenance, "bundle": bundle.model_dump(mode="json")})
     return bundle, provenance
