@@ -22,7 +22,8 @@ keep their entry points and defaults. Provider usage is observed, never capped.
    tool-visible input hashes, outputs, usage and invalid results. Sampling
    count defines this experiment, not a limit on development or model use.
 5. Screen communication opportunity on the actual two-4090 topology. Verify
-   that requested controls affect the real NCCL trace. Report end-to-end time
+   actual protocol/channel decisions from NCCL tuning logs, without inferring
+   protocol from the profiler kernel entry name. Report end-to-end time
    separately from summed NCCL kernel time. Manual screening is not autonomous
    optimization.
 6. Freeze the implementation for end-to-end tests: three existing projects
@@ -93,6 +94,16 @@ as reconstructed, never as contemporaneous snapshots.
 
 ## Progress
 
-Initial implementation is under validation. No new performance or generalization
-claim is made by this document. Stage evidence and final limitations will be
-added after the actual runs.
+Implementation frozen at `187617ce316403ea627c0d33392cc020bca2cb63`; 25 focused
+checks and an actual two-GPU NCCL tuning worker passed. Seven fresh complete
+pipelines are running from project/goal/launch-command inputs: Qwen TTFT and
+throughput, ResNet latency and memory, DDP step and communication, and GraphSAGE
+latency. Their final outcomes, source-fidelity audit, cross-goal and held-out
+checks are still pending.
+
+Completed developer experiments are archived in
+[evidence/v6-stage3-20261021/followup/README.md](evidence/v6-stage3-20261021/followup/README.md).
+The calibration reminder did not establish better decisions and was not promoted.
+Boundary/lifetime changes have isolated measurements; prompt-generation samples
+remain small. Protocol, channel and SHM controls have not produced a demonstrated
+communication speedup. These experiments are not counted as autonomous runs.

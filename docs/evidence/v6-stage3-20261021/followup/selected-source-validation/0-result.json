@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "failure": null,
+  "wall_s": 6.813532870262861,
+  "ranks": [
+    {
+      "rank": 0,
+      "pid": 925374,
+      "exit_code": 0,
+      "status": "passed",
+      "binding": {
+        "pid": 925374,
+        "status": "verified",
+        "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "logical_device": 0,
+        "nvidia_smi_pid_uuids": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "pid_query_status": "observed",
+        "occupancy": {
+          "status": "sampled_clear",
+          "samples": 11,
+          "unavailable_samples": 0,
+          "wait_s": 0.04727279767394066,
+          "external_clients": [],
+          "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+        }
+      },
+      "framework_source": {
+        "sha256": "4d1d3858809a9446dd5c74343402fe12e2e067bc5928b9d8cec3cf2a144afe8a",
+        "files": 159,
+        "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+      },
+      "result": {
+        "case": "resnet_inference",
+        "created_unix": 1792514466.4107103,
+        "protocol": "readiness_baseline_not_optimization",
+        "python": "3.12.4",
+        "torch": "2.13.0+cu129",
+        "cuda": "12.9",
+        "device": "NVIDIA GeForce RTX 4090",
+        "visible_devices": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "gpu_inventory": [
+          "0, GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2, 00000000:27:00.0, NVIDIA GeForce RTX 4090",
+          "1, GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d, 00000000:5A:00.0, NVIDIA GeForce RTX 4090"
+        ],
+        "pid": 925374,
+        "warmup": 2,
+        "repeats": 15,
+        "source_sha256": {
+          "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+          "gpt2_ddp_training.py": "37d1632436c8f927a52401b6d1fb9e63bd7b8d33d643d0f914916bb89b3364fe",
+          "make_project_requests.py": "190d66273a70aa2cfa5f803c91f942ed8fa94720f8eb956d318dd898d5deec97",
+          "prepare_resnet_assets.py": "27d2943825c829a3296a8ee3db765db8ae7a133e3247dc3e093be1ff4e7884c9",
+          "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+          "resnet_inference.py": "b98cd81b4aa6fb8211be6382d9870bbf433eb352c248a4b2aaf8f5fde2b50997",
+          "run_autonomous.py": "2df907c61c8a8ce13b7716de212c92b7fe85e7dddbd912a63fa764f96ee042cc",
+          "run_binding_ablation.py": "bb66444d1c1d421b5f2a71d22976a861e38febb18b4eda1d9d76ecd287dbe362",
+          "run_binding_backends.py": "94dece68a7ba9ead9a0ad87191420c24bff585153c68920e0194e7920a173935",
+          "run_comparison.py": "95072588acacf5df2aeaaac0777fa0eacec191947c78c8ce9f54798f3631826f",
+          "run_interaction.py": "2516c83fcd8ba739bbac15d3d7510fa6f914198f47a6e04702567814733d0ebe",
+          "run_suite.py": "139a0535511dd15f3ae6dd11717d209b54fa7f600796be97ca08e4fb08430ab5",
+          "run_timeline_comparison.py": "c1fb45ece80dfda8dea19cffa2f45a61d3138c6c18382ef4af7c6d7b5ae0bea1",
+          "source_fidelity.py": "73f879ad64c9d1cf9d445fb9507b7746b0549db604498d64a1dc60aa520ab104",
+          "unregistered_signal.py": "dbe7cb64df53837c888e4dcc509b52836fa7d86093ce497fa503f0d39cb3393a"
+        },
+        "workloads_sha256": "08cde5f6c0f64c069865e17ec3d58489848710496ab3aae7cdcca70808270994",
+        "quality_scope": "Reference fidelity; no downstream accuracy/convergence claim",
+        "asset_manifest_sha256": "0daedcfdfe3b2c32deb3b3c087a6f55f8bf94a314433f07a520efe95ffbd8414",
+        "parameter_count": 11689512,
+        "workloads": [
+          {
+            "workload": {
+              "id": "offline",
+              "batch": 32,
+              "goals": [
+                {
+                  "id": "throughput",
+                  "metric": "images_per_second",
+                  "direction": "max"
+                },
+                {
+                  "id": "memory",
+                  "metric": "peak_allocated_bytes",
+                  "direction": "min",
+                  "constraints": {
+                    "images_per_second_min_baseline_ratio": 0.95
+                  }
+                }
+              ]
+            },
+            "correctness": {
+              "passed": true,
+              "max_abs_error": 0.0,
+              "atol": 0.0001,
+              "rtol": 0.0001,
+              "corrupted_output_rejected": true,
+              "exact_top1": true,
+              "predicted_labels": [
+                "Pembroke, Pembroke Welsh corgi",
+                "German shepherd, German shepherd dog, German police dog, alsatian",
+                "reel"
+              ]
+            },
+            "samples": [
+              {
+                "latency_ms": 4.186965,
+                "images_per_second": 7642.76749387683,
+                "peak_allocated_bytes": 282264064
+              },
+              {
+                "latency_ms": 4.180563,
+                "images_per_second": 7654.47141928013,
+                "peak_allocated_bytes": 282264064
+              },
+              {
+                "latency_ms": 4.186803,
+                "images_per_second": 7643.06321553701,
+                "peak_allocated_bytes": 282264064
+              },
+              {
+                "latency_ms": 4.177657,
+                "images_per_second": 7659.795909525363,
+                "peak_allocated_bytes": 282264064
+              },
+              {
+                "latency_ms": 4.176516,
+                "images_per_second": 7661.888521437485,
+                "peak_allocated_bytes": 282264064
+              },
+              {
+                "latency_ms": 4.180165,
+                "images_per_second": 7655.200213388706,
+                "peak_allocated_bytes": 282264064
+              },
+              {
+                "latency_ms": 4.179644,
+                "images_per_second": 7656.1544476036715,
+                "peak_allocated_bytes": 282264064
+              },
+              {
+                "latency_ms": 4.18368,
+                "images_per_second": 7648.76854826373,
+                "peak_allocated_bytes": 282264064
+              },
+              {
+                "latency_ms": 4.176617,
+                "images_per_second": 7661.703239727272,
+                "peak_allocated_bytes": 282264064
+              },
+              {
+                "latency_ms": 4.190162,
+                "images_per_second": 7636.9362330143795,
+                "peak_allocated_bytes": 282264064
+              },
+              {
+                "latency_ms": 4.180822,
+                "images_per_second": 7653.9972282962535,
+                "peak_allocated_bytes": 282264064
+              },
+              {
+                "latency_ms": 4.617418,
+                "images_per_second": 6930.280082938127,
+                "peak_allocated_bytes": 281975808
+              },
+              {
+                "latency_ms": 4.196956,
+                "images_per_second": 7624.573619547119,
+                "peak_allocated_bytes": 281975808
+              },
+              {
+                "latency_ms": 4.194079,
+                "images_per_second": 7629.8038258220695,
+                "peak_allocated_bytes": 281975808
+              },
+              {
+                "latency_ms": 4.194821,
+                "images_per_second": 7628.454229632206,
+                "peak_allocated_bytes": 281975808
+              }
+            ],
+            "summary": {
+              "latency_ms": {
+                "median": 4.18368,
+                "min": 4.176516,
+                "max": 4.617418
+              },
+              "images_per_second": {
+                "median": 7648.76854826373,
+                "min": 6930.280082938127,
+                "max": 7661.888521437485
+              },
+              "peak_allocated_bytes": {
+                "median": 282264064,
+                "min": 281975808,
+                "max": 282264064
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "lease_wait_s": 31.6747525036335,
+  "entry_sha256": "d9b41502d713e9cabc6c1a4da6a635076abf320d56d1f38ea3735e28ea4d54d3",
+  "devices": [
+    "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+  ],
+  "worker_pids_reaped": true
+}

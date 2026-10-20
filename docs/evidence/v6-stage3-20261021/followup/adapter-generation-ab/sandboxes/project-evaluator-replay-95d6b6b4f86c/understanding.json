@@ -1,0 +1,63 @@
+{
+  "goal": "Reduce peak GPU allocated memory for one complete offline image batch inference, preserving the source quality checks and throughput constraint.",
+  "entrypoint": "resnet_inference.py",
+  "completion": "One measured invocation equals one complete offline batch inference: infer(model, pixels) (resnet_inference.py:14-16), i.e. ResNetForImageClassification forward model(pixel_values=pixels).logits under torch.inference_mode() on the FP32 NCHW batch=32 tensor built from pixels.npy (resnet_inference.py:29). The source's completion boundary is torch.cuda.synchronize() after the forward and before reading perf_counter_ns and torch.cuda.max_memory_allocated() (resnet_inference.py:42-48); the framework's synchronized timer boundaries around run() reproduce it. Excluded from the measured invocation: model loading, pixels.npy host load and H2D transfer, batch construction, reference construction and quality checks, reference .pt save, warmup/repeat statistics loop, result writing, and the opt-in --profile trace.",
+  "state_protocol": "prepare() applies common.py configure() numerics (seed 20261020, TF32 off for matmul/cudnn, cudnn.benchmark off, float32_matmul_precision 'highest', 4 CPU threads) on context['device'], loads ResNetForImageClassification FP32 from the request assets directory onto that device in eval mode, loads pixels.npy to GPU, builds the source fixture pixels = images[arange(32) % 3].contiguous(), and keeps model, pixels and device in state; the GPU-resident input fixture stays in state because its lifetime contributes to the peak-memory objective. run() executes the single inference-mode forward and returns {'logits': tensor}. observe() returns the detached full [32,1000] logits, the argmax top-1 tensor and its integer list. metrics() reads torch.cuda.max_memory_allocated() outside the timer (framework resets peak stats immediately before its timer, matching the source's per-repeat reset-before/query-after semantics) and derives images_per_second = batch*1000/elapsed_ms. reset() re-seeds torch.manual_seed(20261020); there is no optimizer, gradient, cache or counter state and no process group to preserve. models() exposes the loaded ResNet root module. set_mode() only records the mode: full logits are the run output in every mode, so quality/measure/profile execution semantics are identical.",
+  "invariants": [
+    "Workload is the single 'offline' row (workloads.json resnet_inference.workloads[1]): batch=32 forward over pixels.npy fixtures; the 'online' batch=1 row and held-out 'unseen_batch' batch=7 row are not part of this request.",
+    "Batch construction is fixed: images[torch.arange(32, device=cuda) % len(images)].contiguous() over the (3,3,224,224) float32 pixels.npy tensor (resnet_inference.py:29).",
+    "Precision FP32 (dtype=torch.float32) with TF32 disabled for matmul and cudnn, cudnn.benchmark off, float32_matmul_precision 'highest', deterministic seed 20261020, torch.set_num_threads(4) (common.py:34-42).",
+    "Full 1000-class logits are the observed output, compared with atol=rtol=0.0001, plus exact top-1 equality (torch.equal on argmax) per workloads.json resnet_inference.correctness and request quality; the negative control rejects a +1 corruption of the logits.",
+    "peak_allocated_bytes is the per-process PyTorch CUDA allocated peak (torch.cuda.reset_peak_memory_stats() before the timed call, torch.cuda.max_memory_allocated() after), not whole-GPU, reserved or driver memory.",
+    "images_per_second is full-request throughput of the fixed batch=32 forward: workload batch * 1e9 / elapsed_ns (resnet_inference.py:48), constrained to >= 0.95x baseline.",
+    "Model and data come only from request assets (config.json, model.safetensors, preprocessor_config.json, pixels.npy in one directory); local_files_only=True, no downloads.",
+    "Single-process, single-CUDA-device execution on context['device']; no distributed launch or process-group initialization."
+  ],
+  "objective": {
+    "name": "peak_allocated_bytes",
+    "unit": "bytes",
+    "direction": "minimize",
+    "constraints": [
+      {
+        "metric": "images_per_second",
+        "op": "ge",
+        "baseline_ratio": 0.95
+      }
+    ]
+  },
+  "workload": {
+    "id": "offline",
+    "batch": 32,
+    "goals": [
+      {
+        "id": "throughput",
+        "metric": "images_per_second",
+        "direction": "max"
+      },
+      {
+        "id": "memory",
+        "metric": "peak_allocated_bytes",
+        "direction": "min",
+        "constraints": {
+          "images_per_second_min_baseline_ratio": 0.95
+        }
+      }
+    ]
+  },
+  "quality": {
+    "atol": 0.0001,
+    "rtol": 0.0001,
+    "logits_atol": 0.0001,
+    "logits_rtol": 0.0001,
+    "require_exact_top1": true
+  },
+  "missing_information": [],
+  "assumptions": [
+    "All asset files (model.safetensors, config.json, preprocessor_config.json, pixels.npy, asset-manifest.json) reside in one directory, so ResNetForImageClassification.from_pretrained(<dir>, local_files_only=True, dtype=torch.float32) reproduces the source load from the request's model_config path; model_weights/pixels paths from request.assets are used for pixels and directory resolution.",
+    "The framework resets CUDA peak stats immediately before its timer and synchronizes at both run() boundaries, so querying torch.cuda.max_memory_allocated() inside metrics() (outside the timer) equals the source's per-repeat peak measurement; no duplicate reset/sync is performed inside run().",
+    "Quality checks are enforced by the framework against reference observations from this adapter; the adapter supplies full logits and top-1 integers rather than re-running the source's self-referential close_check/negative_check inside the measured path.",
+    "request fields rank/world_size/distributed_backend are unused for this single-process task; the worker-initialized context device is used instead of physical GPU 0.",
+    "The source's --profile diagnostic (common.py profile_once) is an opt-in separate collector and is not part of this objective, so no profiler runs inside run()/metrics().",
+    "set_mode is accepted for ABI completeness but changes nothing because the clean timing path already returns the full logits."
+  ]
+}

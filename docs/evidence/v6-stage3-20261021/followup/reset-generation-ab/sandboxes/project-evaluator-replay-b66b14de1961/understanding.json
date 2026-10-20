@@ -1,0 +1,65 @@
+{
+  "goal": "minimize step_ms for the complete frozen source workload, preserving source numerical and state semantics",
+  "entrypoint": "gpt2_ddp_training.py",
+  "completion": "The frozen workload is one complete DDP training step, exactly the source's step(): optimizer.zero_grad(set_to_none=True) followed by four micro-batches of micro_batch=1 x sequence_length=128 (the first three under model.no_sync(), the last one performing the DDP gradient all-reduce), each computing GPT2LMHeadModel(input_ids=tokens, labels=tokens, use_cache=False).loss divided by accumulation_steps=4 and then loss.backward(), then optimizer.step(), then torch.cuda.synchronize(). run() returns the sum of the four scaled micro-losses (the same total accumulate() returns in the source) plus the individual micro-losses, and the workload completes when run() returns after that final synchronize.",
+  "state_protocol": "prepare() applies the source's configure() policy (torch.set_num_threads(4), one interop thread, torch.manual_seed(20261020), TF32 disabled for matmul and cudnn, cudnn.benchmark=False, float32_matmul_precision 'highest'), seeds torch.manual_seed(20261020) immediately before constructing GPT2LMHeadModel (n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, all dropout 0.0, use_cache=False, attn_implementation='eager') in FP32 on context['device'] in train mode, wraps it in DDP(device_ids=[local device], broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True) over the worker-initialized NCCL group, creates SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False), generates the four per-rank token batches once with torch.Generator().manual_seed(31000+rank), snapshots the initial state_dict on CPU, and (for world_size>1) creates a side gloo control group with a generous timeout for source-style barriers. reset() only reloads that CPU snapshot into the unwrapped model outside timing; it does not pre-clear gradients because the source clears them with optimizer.zero_grad(set_to_none=True) inside the timed accumulate(), and SGD with momentum 0 carries no optimizer state, so weight restoration is a full restore. before_run() mirrors the source's pre-step control barrier on the gloo group (never on the NCCL data path). run() executes the whole step with kernel_optimizer.project.discovery.phase annotations ('step', 'accumulate', 'micro_step', 'optimizer_step') and ends with torch.cuda.synchronize() as in the source. observe() returns detached CPU clones of the scalar loss, every unwrapped-name gradient and every updated parameter. metrics() derives step_ms and tokens_per_second from the unchanged work amount and elapsed_ms. models() exposes the unwrapped GPT-2 root module for discovery/replacement. The adapter never registers communication hooks, never runs a profiler inside timing, and never destroys the process group.",
+  "invariants": [
+    "Numerical policy: FP32 weights and activations; torch.backends.cuda.matmul.allow_tf32=False; torch.backends.cudnn.allow_tf32=False; torch.backends.cudnn.benchmark=False; torch.set_float32_matmul_precision('highest'); torch.set_num_threads(4).",
+    "Initialization: torch.manual_seed(20261020) immediately before model construction; GPT2Config(n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, resid_pdrop=0.0, embd_pdrop=0.0, attn_pdrop=0.0, use_cache=False, attn_implementation='eager'); model is .float(), moved to context['device'], and in train() mode.",
+    "Data: per-rank inputs are four tensors of torch.randint(0, 50257, (1, 128), generator=torch.Generator().manual_seed(31000 + rank)).to(device); they are generated once in prepare() and never regenerated inside the timed step.",
+    "Accumulation semantics: the timed step begins with optimizer.zero_grad(set_to_none=True); each micro-batch computes model(input_ids=tokens, labels=tokens, use_cache=False).loss / 4 then loss.backward(); the first three micro-batches run under model.no_sync() and only the fourth triggers DDP gradient all-reduction.",
+    "Optimizer: torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False); optimizer.step() runs after the fourth backward and the step ends with torch.cuda.synchronize().",
+    "DDP construction: DDP(raw_model, device_ids=[context local device], broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True) over the worker-initialized NCCL process group; no communication hooks are registered and no default process group is created by the adapter.",
+    "Reset semantics: the only mutable carry-over between repeats is model weight state; reset() reloads the CPU snapshot of the initial state_dict taken in prepare(); gradient clearing stays inside run() because the source performs it inside the timed step.",
+    "Correctness observation schema: {loss: scalar loss, gradients: full unwrapped-parameter-name to gradient tensor mapping, parameters: full unwrapped-parameter-name to updated tensor mapping}, returned as detached tensors (CPU clones); the tied lm_head/wte weight appears once under named_parameters().",
+    "Frozen work amount: 2 ranks x micro_batch 1 x sequence_length 128 x accumulation_steps 4 = 1024 tokens per step and effective batch 8; throughput metrics derive from this fixed amount and elapsed_ms only.",
+    "Quality scope is reference fidelity under the request's grad/parameter tolerances; no accuracy or convergence claim beyond the source's own checks."
+  ],
+  "objective": {
+    "name": "step_ms",
+    "direction": "minimize",
+    "unit": "ms",
+    "paired_repeats": 2
+  },
+  "workload": {
+    "id": "accumulated_step",
+    "world_size": 2,
+    "micro_batch": 1,
+    "sequence_length": 128,
+    "accumulation_steps": 4,
+    "goals": [
+      {
+        "id": "step",
+        "metric": "step_ms",
+        "direction": "min"
+      },
+      {
+        "id": "communication",
+        "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+        "direction": "min",
+        "constraints": {
+          "step_ms_max_baseline_ratio": 1.05
+        }
+      }
+    ]
+  },
+  "quality": {
+    "grad_atol": 1e-06,
+    "grad_rtol": 0.0001,
+    "parameter_atol": 1e-06,
+    "parameter_rtol": 0.0001,
+    "atol": 1e-06,
+    "rtol": 0.0001
+  },
+  "missing_information": [],
+  "assumptions": [
+    "The worker initializes the NCCL process group and supplies context['device'], context['rank'] and context['world_size'] after device binding; the adapter only creates a side gloo control group for barriers, never another default process group.",
+    "All ranks execute identical adapter code, so collective calls (DDP construction broadcast, new_group, barrier) are symmetric across ranks.",
+    "Weights and token IDs are seeded synthetic fixtures explicitly declared by the source; empty request assets therefore require no pretrained weights or downloads.",
+    "Model architecture hyperparameters are embedded from the source workloads.json 'gpt2_ddp_training' section because request['workload'] does not carry them.",
+    "The framework performs warmup/repeats, boundary CUDA synchronization and separate NCCL communication diagnostics (max_rank_nccl_kernel_sum_ms) with its own tooling; run()/metrics() therefore run no profiler and register no comm hooks.",
+    "Bucket inventory in the source belongs to a separate diagnostic pass and is intentionally not reproduced in the adapter's timing path.",
+    "The source's held-out workload 'longer_sequence' is not part of this frozen request.",
+    "The gloo control group uses a longer timeout than the source's 120s purely for robustness under the worker's 900s budget; this does not alter any measured or numerical semantics."
+  ]
+}

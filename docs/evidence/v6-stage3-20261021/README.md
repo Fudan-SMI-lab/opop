@@ -60,3 +60,5 @@ Qwen 使用同一次调用的内外计时之差判断边界：四个端点的中
 
 采样次数属于实验设计。所有原始 GPU 证据的 SHA-256、路径和大小见
 [manifest.json](manifest.json)。私有 provider 配置不在此归档中。
+
+Completed generation A/B, lifetime, channel and SHM experiments: [followup/README.md](followup/README.md). Latest implementation freeze: `187617c`; 25 focused tests passed. Seven fresh complete pipelines are still running.

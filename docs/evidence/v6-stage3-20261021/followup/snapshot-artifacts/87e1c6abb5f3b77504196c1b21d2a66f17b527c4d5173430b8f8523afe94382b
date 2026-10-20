@@ -1,0 +1,166 @@
+{
+  "current_revision": "a8839126832757267aa123289d04468a213909494717bbcda4751bee94cfc083",
+  "contract": {
+    "schema_version": "project.v2",
+    "id": "task",
+    "goal": "minimize diagnostic.max_rank_nccl_kernel_sum_ms for the complete frozen source workload, preserving source numerical and state semantics",
+    "objective": {
+      "name": "diagnostic.max_rank_nccl_kernel_sum_ms",
+      "unit": "ms",
+      "direction": "minimize",
+      "required_metrics": [
+        {
+          "name": "diagnostic.max_rank_nccl_kernel_sum_ms",
+          "unit": "ms"
+        }
+      ],
+      "aggregation": {
+        "kind": "sum",
+        "case_weights": {},
+        "callable": null
+      },
+      "improvement_threshold": 0.0
+    },
+    "workload": {
+      "accumulation_steps": 4,
+      "goals": [
+        {
+          "direction": "min",
+          "id": "step",
+          "metric": "step_ms"
+        },
+        {
+          "constraints": {
+            "step_ms_max_baseline_ratio": 1.05
+          },
+          "direction": "min",
+          "id": "communication",
+          "metric": "diagnostic.max_rank_nccl_kernel_sum_ms"
+        }
+      ],
+      "id": "accumulated_step",
+      "micro_batch": 1,
+      "sequence_length": 128,
+      "world_size": 2
+    },
+    "quality": {
+      "atol": 1e-06,
+      "grad_atol": 1e-06,
+      "grad_rtol": 0.0001,
+      "parameter_atol": 1e-06,
+      "parameter_rtol": 0.0001,
+      "rtol": 0.0001
+    },
+    "completion": "One workload run is exactly one source training step: optimizer.zero_grad(set_to_none=True), then four micro-batch forward/backward passes of the (1,128) token batch with loss divided by accumulation_steps under DDP no_sync() for the first three micro-steps, the synced full gradient all-reduce issued by the final backward, then optimizer.step(), closing with torch.cuda.synchronize() as the source's completion boundary. The framework wall-clock timer surrounds run() with CUDA synchronization at both boundaries; the communication objective uses the same run boundary via the framework's torch_communication collector (field communication_kernel_sum_ms, maximum across ranks) in separate diagnostic runs, never a profiler inside run()/metrics().",
+    "invariants": [
+      "Workload frozen at world_size=2, micro_batch=1, sequence_length=128, accumulation_steps=4: effective training batch 8 and 1024 tokens per step must not change.",
+      "Numerical policy frozen: float32 parameters and compute, TF32 disabled for matmul and cudnn, float32_matmul_precision('highest'), cudnn.benchmark False, all dropout probabilities 0, eager attention, use_cache False.",
+      "Seeds frozen: torch.manual_seed(20261020) for global RNG and model initialization; per-rank inputs from torch.Generator().manual_seed(31000 + rank).",
+      "Loss semantics frozen: each micro-batch loss divided by accumulation_steps (4), one backward per micro-batch, reported loss is the sum of the four scaled detached micro losses.",
+      "Communication semantics frozen: DDP with bucket_cap_mb=25, gradient_as_bucket_view=True, broadcast_buffers=False; no_sync() on the first three micro-steps with the full gradient all-reduce on the fourth backward, followed by optimizer.step().",
+      "Optimizer frozen: SGD lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False, with optimizer.zero_grad(set_to_none=True) inside the measured step.",
+      "Repetition semantics frozen: every measured step starts from the identical initial parameters via the CPU state_dict snapshot, so repeats reproduce the source's reset/step loop.",
+      "Correctness observation schema frozen: {loss: scalar loss tensor, gradients: full parameter-name to gradient tensor mapping of the unwrapped model, parameters: full parameter-name to updated tensor mapping of the unwrapped model}.",
+      "Required communication observations (collective_identity, logical_payload, cross_rank_collectives) are collected and validated by the framework; the adapter installs no communication hook and inventories no buckets during measured runs.",
+      "The objective constraint requires step_ms <= 1.05x baseline; no accuracy or convergence claim beyond the source's reference-fidelity checks.",
+      "Model construction, weight seeding, input generation and the gloo control group are outside timed execution; only the source step body (zero_grad, accumulation with its communication, optimizer update) is measured."
+    ],
+    "frozen_files": [
+      "opop_adapter.py",
+      "opop_evaluate.py"
+    ],
+    "task_definition": null,
+    "state_protocol": "prepare() applies common.configure() policies (torch num_threads 4, interop threads 1, manual_seed 20261020, TF32 disabled for matmul/cudnn, float32_matmul_precision 'highest', cudnn.benchmark False), re-seeds 20261020 and builds GPT2LMHeadModel(GPT2Config(n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, dropout 0, use_cache False, eager attention)) in float32 on context['device'], wraps it in DDP(device_ids=[local device index], broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True) over the worker-initialized NCCL process group, creates the source's extra gloo control group for pre-step barriers, builds SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False), and generates this rank's four accumulation token tensors with torch.Generator().manual_seed(31000 + rank) as randint(0, 50257, (1,128)) moved to the device. A CPU clone of the unwrapped model's state_dict is kept as the initial snapshot. reset() reloads that snapshot outside timing (SGD at momentum 0 is stateless; gradients are cleared by zero_grad at the start of each run, matching the source). before_run() performs the source's pre-step CUDA synchronize, gloo control-group barrier and peak-memory-stat reset, all outside the timer. The adapter never destroys the process group and installs no communication hook.",
+    "world_size": 2,
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ]
+  },
+  "original_reference_revision": "803ab3b881b8749c4fc2c91640c2be857728975a10cd4be33d990840fd8556bc",
+  "original_baseline": [
+    {
+      "rank": 0,
+      "metrics": {
+        "step_ms": 141.173286,
+        "tokens_per_second": 7253.496954090876,
+        "peak_allocated_bytes": 1977713152.0,
+        "effective_batch": 8.0,
+        "tokens_per_step": 1024.0,
+        "parameter_count": 124439808.0,
+        "framework.elapsed_ms": 141.173286,
+        "framework.peak_allocated_bytes": 1977713152.0,
+        "framework.peak_reserved_bytes": 2080374784.0,
+        "framework.allocated_bytes": 1014018048.0,
+        "framework.reserved_bytes": 2080374784.0,
+        "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+        "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+        "diagnostic.max_rank_nccl_kernel_sum_ms": 62.135881999999995
+      },
+      "diagnostics": {
+        "values": [
+          63.142672000000005,
+          62.135881999999995,
+          62.08090800000001
+        ],
+        "evidence": [
+          "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/ddp-communication/preparation/3da111ea7ca2/controls/metric-rank-0-0.json",
+          "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/ddp-communication/preparation/3da111ea7ca2/controls/metric-rank-0-1.json",
+          "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/ddp-communication/preparation/3da111ea7ca2/controls/metric-rank-0-2.json"
+        ],
+        "profiled_wall_ms": [
+          198.621166,
+          192.339279,
+          190.212227
+        ],
+        "protocol": "profiler_start_then_rank_preparation_v2; explicit completion-bounded workload, excluding preparation collectives",
+        "scope": "separate plain PyTorch diagnostic; kernel time includes waiting, not wire or critical-path time"
+      }
+    },
+    {
+      "rank": 1,
+      "metrics": {
+        "step_ms": 141.311265,
+        "tokens_per_second": 7246.41450205686,
+        "peak_allocated_bytes": 1977713152.0,
+        "effective_batch": 8.0,
+        "tokens_per_step": 1024.0,
+        "parameter_count": 124439808.0,
+        "framework.elapsed_ms": 141.311265,
+        "framework.peak_allocated_bytes": 1977713152.0,
+        "framework.peak_reserved_bytes": 2080374784.0,
+        "framework.allocated_bytes": 1014018048.0,
+        "framework.reserved_bytes": 2080374784.0,
+        "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+        "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+        "diagnostic.max_rank_nccl_kernel_sum_ms": 86.47527700000002
+      },
+      "diagnostics": {
+        "values": [
+          86.47527700000002,
+          83.71755800000001,
+          86.994141
+        ],
+        "evidence": [
+          "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/ddp-communication/preparation/3da111ea7ca2/controls/metric-rank-1-0.json",
+          "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/ddp-communication/preparation/3da111ea7ca2/controls/metric-rank-1-1.json",
+          "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/ddp-communication/preparation/3da111ea7ca2/controls/metric-rank-1-2.json"
+        ],
+        "profiled_wall_ms": [
+          198.868595,
+          192.604049,
+          190.45449
+        ],
+        "protocol": "profiler_start_then_rank_preparation_v2; explicit completion-bounded workload, excluding preparation collectives",
+        "scope": "separate plain PyTorch diagnostic; kernel time includes waiting, not wire or critical-path time"
+      }
+    }
+  ],
+  "profiled_wall_ms": [
+    1147.332679,
+    1171.159282
+  ],
+  "measurement_policy": "Original baseline belongs to its immutable reference. Discovery uses intrusive hooks and is separate from clean timing and plain diagnostic objective samples. Profiled rank skew and kernel time can be heavily perturbed; they are not project J or wire time."
+}

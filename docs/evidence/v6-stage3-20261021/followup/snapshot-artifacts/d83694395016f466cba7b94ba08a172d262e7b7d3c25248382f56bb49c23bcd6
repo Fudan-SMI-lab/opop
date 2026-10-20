@@ -1,0 +1,87 @@
+{
+  "schema_version": "project-request.v1",
+  "source_root": "/root/opop-v6-stage3/intake-validation/resnet-memory.intake/source",
+  "entry": "resnet_inference.py",
+  "files": [
+    "resnet_inference.py",
+    "common.py",
+    "workloads.json"
+  ],
+  "goal": "Reduce peak GPU allocated memory for one complete offline image batch inference, preserving the source quality checks and throughput constraint.",
+  "objective": {
+    "name": "peak_allocated_bytes",
+    "unit": "bytes",
+    "direction": "minimize",
+    "constraints": [
+      {
+        "metric": "images_per_second",
+        "op": "ge",
+        "baseline_ratio": 0.95
+      }
+    ]
+  },
+  "workload": {
+    "id": "offline",
+    "batch": 32,
+    "goals": [
+      {
+        "id": "throughput",
+        "metric": "images_per_second",
+        "direction": "max"
+      },
+      {
+        "id": "memory",
+        "metric": "peak_allocated_bytes",
+        "direction": "min",
+        "constraints": {
+          "images_per_second_min_baseline_ratio": 0.95
+        }
+      }
+    ]
+  },
+  "quality": {
+    "atol": 0.0001,
+    "rtol": 0.0001,
+    "logits_atol": 0.0001,
+    "logits_rtol": 0.0001,
+    "require_exact_top1": true
+  },
+  "assets": {
+    "model_weights": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/model.safetensors",
+    "model_config": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/config.json",
+    "preprocessor_config": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/preprocessor_config.json",
+    "pixels": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/pixels.npy",
+    "asset_manifest": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/asset-manifest.json"
+  },
+  "devices": [
+    "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+  ],
+  "distributed_backend": null,
+  "communication": "auto",
+  "required_observations": [],
+  "tools": {
+    "ncu": "/usr/local/cuda/bin/ncu",
+    "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+  },
+  "profiling": {
+    "agent_plan": true
+  },
+  "binding_backend": "legacy",
+  "warmup": 2,
+  "repeats": 5,
+  "continuous_steps": 2,
+  "worker_timeout_s": 900.0,
+  "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+  "notes": [
+    "Command provenance: user command 'python resnet_inference.py --assets /root/autodl-tmp/dev/v6-work/validation-assets/resnet18 --output /tmp/original-resnet' (intent.json); no --warmup/--repeats/--profile given, so common.py defaults apply (warmup=2, repeats=5, no diagnostic profiling).",
+    "Selected workload row copied verbatim from workloads.json resnet_inference.workloads[1] ('offline', batch=32); the memory goal with throughput floor exists only on this row, matching the user's 'offline image batch inference' goal. The script also runs the 'online' batch=1 row (resnet_inference.py:28 loops all config rows); only the offline row is this task's workload.",
+    "Source constraint notation 'images_per_second_min_baseline_ratio: 0.95' converted to generic constraint: images_per_second >= 0.95 x baseline. images_per_second is full-request throughput of the fixed batch=32 forward (workload['batch'] * 1e9 / elapsed, resnet_inference.py:48), not cached-only throughput.",
+    "peak_allocated_bytes is the per-process PyTorch CUDA allocated peak: torch.cuda.reset_peak_memory_stats() before each timed repeat and torch.cuda.max_memory_allocated() after (resnet_inference.py:43,48); summarize() reports median/min/max over the 5 repeats (common.py:66-70). It is not whole-GPU, reserved or driver memory (README.md:46).",
+    "Quality semantics from workloads.json resnet_inference.correctness, enforced at resnet_inference.py:31-35: full 1000-class logits compared with torch.testing.assert_close(atol=0.0001, rtol=0.0001) via close_check (common.py:74-76); discrete output requiring exact comparison: top-1 labels, torch.equal(actual.argmax(-1), reference.argmax(-1)) with require_exact_top1=true; negative control must reject a +1 corruption of the logits (common.py:79-84).",
+    "Numerical policy preserved: FP32 (dtype=torch.float32), TF32 disabled for matmul and cudnn, cudnn.benchmark off, float32_matmul_precision 'highest', deterministic seed, torch.set_num_threads(4) (resnet_inference.py:23, common.py:34-42).",
+    "Measurement boundary excludes model load, pixels.npy host load and H2D copy, reference construction (two extra infer calls + checks + torch.save of {pixels, logits} reference tensors), warmup, repeat loop, result.json writing, and the separate --profile trace (README.md:41: all main timing excludes loading, preprocessing, transfer, checks and profiling).",
+    "Single-process, single-CUDA-device task: configure(device=0), .cuda() (common.py:38, resnet_inference.py:23-24); no distributed launch (contrast gpt2_ddp_training which uses torch.distributed.run). device_count=1 of the 2 GPUs in deployment.json inventory.",
+    "The --profile diagnostic (profile_once, common.py:87-105) is opt-in, separate from clean timing, and not requested; no diagnostic collector source is declared for this objective.",
+    "One measured invocation: One complete offline image batch inference: infer(model, pixels) (resnet_inference.py:14-16), i.e. ResNetForImageClassification forward model(pixel_values=pixels).logits under torch.inference_mode(), on the single-GPU FP32 NCHW batch=32 tensor built at resnet_inference.py:29 from assets pixels.npy as images[torch.arange(32, device='cuda') % len(images)].contiguous(). Excludes benchmark harness: model loading, pixel host-to-device transfer, reference construction and quality checks, reference .pt save, statistical warmup/repeats loop, result writing, and the opt-in --profile diagnostic trace."
+  ]
+}
