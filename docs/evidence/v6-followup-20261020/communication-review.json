@@ -1,0 +1,344 @@
+{
+  "agent": {
+    "role": "diagnostic-review",
+    "session": "ses_ea708f632ffeW4c08cu55VkNYV",
+    "message": "msg_1590bd6b6001hJUEIRh74Q2jAb",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 59,
+      "reported_cost": 1.50652726626,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 4002970.0,
+        "input": 119763.0,
+        "output": 18095.0,
+        "reasoning": 34200.0,
+        "cache.read": 3830912.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea708f632ffeW4c08cu55VkNYV",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/p6-ddp-feedback-composition-b/sandboxes/diagnostic-review-d38b588c6106",
+    "outputs": [
+      "review.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0
+  },
+  "review": {
+    "schema_version": "diagnostic-review.v1",
+    "review_type": "developer-launched diagnostic review (no acceptance, no publication, no optimization candidate)",
+    "scope": {
+      "question": "Why does the communication-path candidate (revision af2f9080..., child bundle trial-bee8d599aa-param-47de78f8, route=align_first) change whole-step time relative to parent (888033e6...), and what do the supplied communication/binding measurements actually establish about GPU readiness, consumer dependencies, and transfer vs waiting?",
+      "method": "Read-only review of supplied inputs plus verification against the executed framework snapshot (freeze df33b7422bce) sources and the materialized job outputs (coverage, requests, raw chrome traces) they reference. CPU-only checks were run with the measured worker's interpreter /root/autodl-tmp/dev-venv/bin/python (torch 2.13.0+cu129, transformers 5.16.1, nccl 2.29.7 per inputs/worker-environment.json; torch.cuda.is_available()==False in this sandbox). No GPU work was run here; no source, provider configuration, quality threshold or workload was modified.",
+      "measurement_classes_distinguished": [
+        "clean whole-step measurements: inputs/binding-ablation.json (arms direct/empty/parent/passthrough/candidate, 2 AB/BA pairs per comparison, all gradient/parameter checks passed with max_abs_error 0.0); step_ms here is the project objective",
+        "separate profiled runs: inputs/timeline.json (8 captures, torch.profiler CPU+CUDA activities with record_shapes=True, gradient hooks on/off variants; the collector itself labels them 'Separate diagnostic capture, never the clean project objective')",
+        "optional GPU event markers: inputs/gpu-markers.json (rank-local CUDA events on gradient callbacks; separate capture, arm not recorded)",
+        "CPU-only checks performed in this review (no GPU): interpreter/API verification and a nested-TorchDispatchMode microbenchmark"
+      ]
+    },
+    "observations": [
+      {
+        "id": "O1",
+        "claim": "All clean ablation runs are numerically clean: every rank of every arm passed both continuous-step checks against the reference with compared_elements 248,879,623 and max_abs_error 0.0.",
+        "evidence": [
+          "E1"
+        ]
+      },
+      {
+        "id": "O2",
+        "claim": "Clean step_ms splits into two clusters with tight within-run cross-rank agreement (|delta| <= 1.3 ms): fast cluster 131.6-148.7 ms contains all 8 runs of direct/empty/parent; slow cluster 219.8-250.2 ms contains all 4 runs of the child revision af2f9080 (passthrough 223.1/232.3, candidate 219.8/250.2). Parent mean values: 148.7, 143.5, 134.1, 131.6; candidate: 250.2 (pair0), 219.8 (pair1); the slow state flips between arms across pairs (pair0 parent fast/child slow; pair1 child first and slow, parent fast), so a fixed arm effect cannot be identified from these 2 pairs alone. The direct-vs-empty contrast itself flips with AB/BA position (direct 141.6 vs empty 136.6 in pair0; empty 144.7 vs direct 139.1 in pair1), demonstrating a ~5 ms order/position effect at clean-run granularity.",
+        "evidence": [
+          "E1"
+        ]
+      },
+      {
+        "id": "O3",
+        "claim": "In the separate profiled captures, candidate wall is consistently +135 to +151 ms over parent at matched hooks/pair (parent hooks0 187.4-189.5, hooks1 202.5-208.9; candidate hooks0 324.6-328.6, hooks1 346.7-358.8). Gradient hooks alone add ~13-21 ms in the parent arm (hooks0 vs hooks1).",
+        "evidence": [
+          "E2"
+        ]
+      },
+      {
+        "id": "O4",
+        "claim": "GPU-side native work is invariant across arms in the profiled captures: kernel count 3188 per rank in all 8 captures, gpu_memcpy 17, gpu_memset 144, cuda_runtime API rows 3817-3880, communication kernel count 13 (12x 28,351,488 B + 1x 157,541,376 B = 497,759,232 B logical per rank, equal to gradient_logical_bytes_per_rank), communication-after-last-compute 0. NCCL kernel sum ranges overlap: parent 62.5-88.7 ms, candidate 60.2-82.1 ms; max-rank sums parent 70.8-88.7 vs candidate 64.9-82.1 (mean 79.6 vs 73.7, inconsistent direction, small magnitude).",
+        "evidence": [
+          "E2",
+          "E4",
+          "E9"
+        ]
+      },
+      {
+        "id": "O5",
+        "claim": "The candidate changes the CPU/GPU execution regime, not the kernels. Parent: collective CPU submissions every 1.46-2.68 ms with launch-to-kernel-start growing monotonically to 17.2-51.7 ms across the 13 collectives (CPU runs ahead, GPU backlogged). Candidate: submission cadence 3.10-5.48 ms with launch-to-kernel-start ~0.01 ms (GPU idle, CPU-paced); GPU idle gaps (kernel span minus active union) rise from 74.1-118.3 ms (parent) to 230.0-266.1 ms (candidate), i.e. essentially the whole profiled wall delta appears as GPU idle, not as kernel time.",
+        "evidence": [
+          "E2"
+        ]
+      },
+      {
+        "id": "O6",
+        "claim": "Raw chrome traces show the profiled CPU-side inflation is dispatch re-entry: parent has 16,140 cpu_op events in the workload window and 0 'PythonDispatchMode' records; candidate has 28,663 (hooks0) / 29,847 (hooks1) cpu_op events including 6,169 / 7,353 'PythonDispatchMode' records, with aten::view 1568->3380 and aten::t 404->808 while kernels stay identical.",
+        "evidence": [
+          "E10"
+        ]
+      },
+      {
+        "id": "O7",
+        "claim": "Binding-kind asymmetry (verified in the executed snapshot): the parent bundle's installer returns only module-kind replacements (292 covered module sites; the 1682 functional specs in its targets.json are declared but not returned by build()), so the parent arm runs with no TorchDispatchMode. The child bundle returns 2 functional replacements for c10d.allreduce_; any installed functional replacement makes BindingSession create a ReplacementMode (TorchDispatchMode) that wraps the entire adapter.run step (forward+backward of 4 microsteps, collectives, optimizer), and the timed operation enters one mode per bundle with an ExitStack. The passthrough arm installs reference-forwarding wrappers at the same 2 functional sites (child computation skipped) and therefore also runs under the mode.",
+        "evidence": [
+          "E6",
+          "E7",
+          "E8"
+        ]
+      },
+      {
+        "id": "O8",
+        "claim": "CPU-only reproduction on the worker interpreter: wrapping trivial 4-op CPU iterations in fall-through TorchDispatchMode layers raises plain per-iteration cost 8.1 -> 37.9 -> 50.0 us for 0/1/2 mode layers, and under torch.profiler(CPU, record_shapes=True) multiplies recorded events 2200 -> 3800 -> 5400 with PythonDispatchMode records 0/800/1600 and aten::view records 200/800/1200. This reproduces the parent-vs-candidate trace signature and bounds the mechanism: each extra dispatch layer adds microseconds per op unprofiled and ~10 us per additionally recorded op under the profiler (+12,523 extra cpu_op records vs +135-151 ms profiled delta).",
+        "evidence": [
+          "E11"
+        ]
+      },
+      {
+        "id": "O9",
+        "claim": "The candidate executed route=align_first (parameters '{\"route\": \"align_first\"}' in the timeline job request; clean-run coverage telemetry: d0938de8 'default-pg-align' x1 + 'default-pg-parent' x11, b8ade439 'default-pg-parent' x1 per run), i.e. one CPU-side gloo control-group barrier before the first collective of the sequence. The first collective's innermost c10d::allreduce_ CPU range inflates to 1.0-44.1 ms in candidate captures (parent: 0.083-0.297 ms), consistent with barrier wait absorbed there plus first-call warmup; steady-state candidate ranges are 0.23-0.40 ms vs parent 0.083-0.15 ms.",
+        "evidence": [
+          "E2",
+          "E7",
+          "E12"
+        ]
+      },
+      {
+        "id": "O10",
+        "claim": "Bounded CPU clocks establish CPU-side rank relationships only: both ranks share host autodl-container-e8e84ea25b-cffd5c81 and boot_id 9890bc2b-... under CLOCK_MONOTONIC, with anchor-bracketed trace-to-host offset bounds of ~110-300 us width. Cross-rank CPU submission offsets for matched collectives: parent shows persistent per-run offsets of -26.0 to +19.8 ms (sign varies by run, roughly constant per run); candidate converges to |offset| <= 1.3 ms after the first collective (first-collective offsets -42.6/+12.4 ms). The clock mapping explicitly 'excludes unknown GPU clock calibration error'.",
+        "evidence": [
+          "E2",
+          "E5"
+        ]
+      },
+      {
+        "id": "O11",
+        "claim": "What remains unknown per collective, by the data's own fields: gpu_input_ready (CPU submission does not establish GPU producer completion) and consumer_completion (no unique data-consumer/event dependency proven). Gradient readiness evidence is CPU post-accumulate callbacks only: 592 events per rank (148 parameters x 4 microsteps), 13 buckets (12x12 + 1x5 parameters), bucket last-callback times spanning the collective window, with timed_collective_identity 'unknown' and interpretation 'Not GPU bucket-ready timestamps'.",
+        "evidence": [
+          "E2",
+          "E5"
+        ]
+      },
+      {
+        "id": "O12",
+        "claim": "inputs/gpu-markers.json is a further separate capture whose arm/revision and collector options are not recorded: profiled wall 227.8/228.4 ms, 592 events, 13 buckets, workload_window null, times relative to rank-local GPU origins; its own scope states it adds event-record overhead and proves neither reducer bucket readiness, unique consumption, nor cross-rank GPU clock alignment. Its wall matches neither timeline arm set and cannot be attributed.",
+        "evidence": [
+          "E3"
+        ]
+      },
+      {
+        "id": "O13",
+        "claim": "Precedent and semantics forbid reading kernel sums as throughput: the candidate's own documentation records the previously rejected split-communicator trial lowering the discovery NCCL kernel sum 225.85 -> 139.87 ms while clean paired step_ms regressed 146.88 -> 240.51 ms (paired gains -89.91/-97.35 ms); the framework's normalize() interpretation states 'Kernel time includes waiting' and 'uncovered communication is not a measured critical path or causal speedup'. The communication goal (diagnostic.max_rank_nccl_kernel_sum_ms, constraint step_ms_max_baseline_ratio 1.05) is a diagnostic, not a speed claim.",
+        "evidence": [
+          "E4",
+          "E9",
+          "E13"
+        ]
+      },
+      {
+        "id": "O14",
+        "claim": "The measurable pure-Python object costs are far too small to explain the deltas: dist.AllreduceOptions() costs 25.9 us first / 0.62 us warm on the worker interpreter (CPU-only). The observed per-collective steady-state delta (+0.15-0.25 ms) and first-call inflation (1-44 ms) therefore must be dominated by dispatch-layer re-entry, barrier wait, and profiler recording, not by Python object construction.",
+        "evidence": [
+          "E11",
+          "E2"
+        ]
+      }
+    ],
+    "hypotheses": [
+      {
+        "id": "H1",
+        "statement": "The candidate's whole-step slowdown is a dispatch-induced native execution change: installing any functional-kind replacement (the child's 2 c10d.allreduce_ sites) forces the entire step through a Python TorchDispatchMode. This flips the regime from GPU-backlogged/CPU-ahead (parent, no mode) to CPU-dispatch-paced with idle GPU, multiplies CPU op records under the profiler (+12.5k records, +135-151 ms), and adds an unprofiled per-op traversal cost that plausibly accounts for tens of ms in clean runs. It is not the Python body of the 13 collective calls (the body costs ~0.15-0.25 ms each), and it applies equally to the passthrough arm whose child computation is skipped.",
+        "status": "mechanism verified in source and traces; magnitude attribution split between verified (profiled) and consistent-but-unproven (clean)",
+        "evidence": [
+          "O5",
+          "O6",
+          "O7",
+          "O8",
+          "O14"
+        ],
+        "falsifiable_by": "NM1/NM3"
+      },
+      {
+        "id": "H2",
+        "statement": "The clean-run slow cluster (all 4 child-revision runs) is primarily the same mode-traversal cost (causal revision-level effect of the child binding), with a residual run-level noise of roughly +-8-17 ms and a demonstrated ~5 ms order effect; the alternative explanation, an environmental bimodal state that coincidentally hit exactly the 4 child-revision runs while sparing all 8 others, cannot be excluded at 2 AB/BA pairs.",
+        "status": "undecided; both explanations consistent with E1",
+        "evidence": [
+          "O2",
+          "O7",
+          "O8"
+        ],
+        "falsifiable_by": "NM2"
+      },
+      {
+        "id": "H3",
+        "statement": "The align_first barrier does what it claims at the CPU level: it absorbs rank-arrival skew into a bounded pre-issue CPU wait inside the first collective's range (observed up to ~44 ms; subsequent submit offsets <= 1.3 ms vs parent's persistent 7-30 ms). Any NCCL kernel-sum reduction it produces (here max-rank mean -7%, prior trial -38%) reflects removing peer-wait spin from GPU kernel time, not faster transport, and has never coincided with a step-time gain in the available data.",
+        "status": "CPU-side supported; GPU-side benefit unproven and contradicted by step time in all available runs",
+        "evidence": [
+          "O9",
+          "O10",
+          "O4",
+          "O13"
+        ],
+        "falsifiable_by": "NM4/NM5"
+      },
+      {
+        "id": "H4",
+        "statement": "The first-collective 1.0-44.1 ms CPU range decomposes into barrier wait (by design) plus first-call warmup costs (lazy 'from torch._C._distributed_c10d import ProcessGroup' inside the replacement, first pybind boxing/unboxing, first AllreduceOptions construction ~26 us measured) plus profiler first-record initialization; the decomposition has not been measured.",
+        "status": "open",
+        "evidence": [
+          "O9",
+          "O14"
+        ],
+        "falsifiable_by": "NM6"
+      },
+      {
+        "id": "H5",
+        "statement": "Transfer vs waiting inside the NCCL kernels remains undecomposed: kernel durations conflate algorithm time with peer-arrival spin, GPU producer completion times are unobserved, and no data-consumer dependency is proven, so neither wire time nor readiness gaps can be computed from these inputs.",
+        "status": "unknown by construction of the collectors",
+        "evidence": [
+          "O11",
+          "O12",
+          "O13"
+        ],
+        "falsifiable_by": "NM4/NM5"
+      }
+    ],
+    "limitations": [
+      "Clean evidence is 2 AB/BA pairs per comparison with a demonstrated ~5 ms position effect and a bimodal ~85-100 ms run-level state; no arm effect (including the direct-vs-empty scaffolding contrast) is identifiable at this sample size.",
+      "The timeline and gpu-markers captures are separate profiled runs, not the clean objective: torch.profiler with CPU+CUDA activities and record_shapes=True amplifies Python dispatch re-entry (~10 us per extra cpu_op record per O8), gradient hooks add ~13-21 ms (parent arm), and the collector's own scope warns that profiler/hooks perturb execution and must be compared against clean evaluation.",
+      "The condensed inputs/timeline.json omits per-collective NCCL kernel durations (they exist only in the sha-referenced raw traces retained in the job directories); per-collective GPU-side statements here are limited to counts, sums, unions, overlap and launch links.",
+      "inputs/gpu-markers.json lacks arm/revision/collector-option provenance and a workload window, uses rank-local GPU origins without cross-rank alignment, and adds event-record overhead; it cannot support arm comparison.",
+      "Clock evidence is CPU-only (host CLOCK_MONOTONIC, shared boot_id, anchor-bounded offsets ~110-300 us wide); GPU clock calibration error is explicitly out of scope, so no cross-rank GPU timestamp comparison is valid.",
+      "gpu_input_ready and consumer_completion are 'unknown' for every collective by construction; gradient readiness is CPU post-accumulate callback ordering, not GPU bucket readiness, and bucket-to-collective identity is unproven.",
+      "NCCL kernel sums include peer-wait spin; the framework's own interpretation and the rejected split-communicator trial both demonstrate divergence between kernel sums and clean step_ms, so no throughput inference is drawn from them.",
+      "CPU checks in this review ran without any GPU (torch.cuda.is_available() is False in this sandbox) on trivial tensor ops; they bound mechanisms and orders of magnitude, not the workload's exact op mix. GPU-side follow-ups belong to the framework's leased workers.",
+      "This review did not modify framework code, provider configuration, thresholds or workload, did not create an optimization candidate, and prescribes no model-name or failure-type routing rules; revisions/bundles referenced were verified read-only from the executed snapshot df33b7422bce and materialized job outputs."
+    ],
+    "next_measurements": [
+      {
+        "id": "NM1",
+        "purpose": "Isolate binding-kind cost from child-body semantics: run the timeline capture for a diagnostic arm where the child bundle is installed but its replacements delegate immediately to the parent reference (passthrough already provides the clean-run variant; a timeline/profiled passthrough capture would provide the profiled variant), and an arm with the parent bundle only (already equals parent). Difference vs parent isolates mode-traversal cost; difference vs candidate isolates the child body + barrier.",
+        "supports": "H1",
+        "constraint": "diagnostic arms only, framework-executed in leased workers; no acceptance or publication"
+      },
+      {
+        "id": "NM2",
+        "purpose": "Resolve clean bimodality vs arm effect: repeat the binding ablation with >= 6-8 AB/BA pairs and record per-run GPU clock/power/temperature samples plus host load alongside step_ms, pre-registering the cluster state as a covariate.",
+        "supports": "H2",
+        "constraint": "clean measurement only; unchanged workload and thresholds"
+      },
+      {
+        "id": "NM3",
+        "purpose": "Attribute the CPU-time locus without CUDA recording: repeat the timeline captures with record_shapes=False and/or CPU-only activities, and add a CPU sampling profiler (e.g. py-spy) for candidate vs parent, to split mode-traversal frames from shape recording and reducer/pybind work.",
+        "supports": "H1",
+        "constraint": "separate diagnostic captures, never the objective"
+      },
+      {
+        "id": "NM4",
+        "purpose": "Establish GPU readiness and consumer dependencies: per bucket, record producer-completion CUDA events on the gradient-producing stream, the allreduce Work completion, and the first optimizer consumption, each with rank-local origins plus the existing anchor-bracketed host-monotonic mapping (and a CPU barrier bracket to bound cross-rank offset); fill in gpu_input_ready/consumer_completion that are currently unknown.",
+        "supports": "H3, H5",
+        "constraint": "rank-local GPU timing only; no cross-rank GPU clock alignment claim; events add overhead, so keep out of clean runs"
+      },
+      {
+        "id": "NM5",
+        "purpose": "Decompose transfer vs waiting inside NCCL kernels: per-collective kernel intervals joined with NCCL info-level logs or nsys (tool paths already declared in inputs/request.json) to separate pre-arrival wait from active algorithm time, reported per collective and never summed into a throughput claim.",
+        "supports": "H3, H5",
+        "constraint": "diagnostic-only metric; explicitly not usable for step_ms or gain inference"
+      },
+      {
+        "id": "NM6",
+        "purpose": "Decompose the first-collective 1-44 ms: record sub-phase timings inside the replacement (lazy import, ProcessGroup unbox, AllreduceOptions construction, barrier wait, backend.allreduce, work boxing) via one-shot CPU timers or route labels, in the existing timeline capture.",
+        "supports": "H4",
+        "constraint": "measurement instrumentation only, removed afterward"
+      },
+      {
+        "id": "NM7",
+        "purpose": "Make gpu-markers attributable: stamp arm/revision/collector options and a workload window into marker outputs and repeat symmetrically across arms if GPU-side gradient timing is needed.",
+        "supports": "O12, H5",
+        "constraint": "optional collector; overhead-bearing, diagnostic-only"
+      }
+    ],
+    "evidence": [
+      {
+        "id": "E1",
+        "ref": "inputs/binding-ablation.json",
+        "detail": "Clean paired ablation, 12 runs: direct/empty (anchor a9ab5593), parent/passthrough/candidate (parent 888033e6, child af2f9080, passthrough_bundles=[trial-bee8d599aa-param-47de78f8]); per-rank step_ms, checks all passed (max_abs_error 0.0)."
+      },
+      {
+        "id": "E2",
+        "ref": "inputs/timeline.json",
+        "detail": "8 profiled captures (parent/candidate x hooks0/hooks1 x pairs 0/1): per-rank profiled_wall_ms, communication aggregates, per-collective CPU submissions/launch links, cross_rank CPU submit spreads, clock bounds; protocol declares 'Developer-launched separate timeline diagnostic. No quality/performance acceptance or publication.'"
+      },
+      {
+        "id": "E3",
+        "ref": "inputs/gpu-markers.json",
+        "detail": "Two-rank GPU event marker capture: wall 227.817/228.420 ms, events 592, buckets 13, workload_window null, rank-local origins, scope disclaimers."
+      },
+      {
+        "id": "E4",
+        "ref": "inputs/communication-candidate.py",
+        "detail": "Child bundle source: routes parent/align_first/align_each, gloo control-group barrier, same-communicator allreduce via backend.allreduce, docstring history of rejected split-communicator trial (225.85->139.87 ms kernel sum with 146.88->240.51 ms clean step regression)."
+      },
+      {
+        "id": "E5",
+        "ref": "inputs/timeline-collector.py",
+        "detail": "Collection method: clock_mapping bracketing (lines 21-38), cpu_submission innermost-c10d-range selection and unknown gpu_input_ready/consumer_completion (lines 99-115), cross_rank CPU-only spread policy (lines 163-200), capture() profiler/hook perturbation warnings (lines 203-305)."
+      },
+      {
+        "id": "E6",
+        "ref": "/root/autodl-tmp/dev/opop-v6-freezes/df33b7422bce/src/kernel_optimizer/project/binding.py",
+        "detail": "Executed snapshot: install() lines 49-66 (passthrough installs reference-forwarding wrappers, child computation skipped); functional replacements populate self.functionals (lines 84-90); any functional triggers _create_dispatch_mode (114-115); invoke() wraps adapter.run in the mode (173-176)."
+      },
+      {
+        "id": "E7",
+        "ref": "/root/autodl-tmp/dev/v6-work/p6-ddp-feedback-composition-b/jobs/followup-ddp-binding-df33b74-parent-candidate-0-candidate/run/rank-0.json and .../source/opop_candidates/{trial-32cd1ce604,trial-bee8d599aa}.targets.json",
+        "detail": "Coverage: parent bundle covered sites = 292 module-kind only (functional specs declared but not returned by its installer, verified against trial-32cd1ce604.py build()); child bundle = 2 functional c10d.allreduce_ sites; candidate routes 'default-pg-align' x1, 'default-pg-parent' x11+1."
+      },
+      {
+        "id": "E8",
+        "ref": "/root/autodl-tmp/dev/opop-v6-freezes/df33b7422bce/src/kernel_optimizer/project/evaluation.py",
+        "detail": "Timed operation() enters one mode per bundle via ExitStack (lines 209-218); 'direct' bypasses binding scaffolding on the unmodified anchor."
+      },
+      {
+        "id": "E9",
+        "ref": "/root/autodl-tmp/dev/opop-v6/src/kernel_optimizer/project/communication.py",
+        "detail": "communication_kernel_sum_ms semantics (lines 90-137): sums NCCL kernel durations; 'Kernel time includes waiting'; 'uncovered communication is not a measured critical path or causal speedup'."
+      },
+      {
+        "id": "E10",
+        "ref": "Raw chrome traces in /root/autodl-tmp/dev/v6-work/p6-ddp-feedback-composition-b/jobs/followup-ddp-timeline-15326f6-{arm}/run/timeline-rank-0-0.json for all 8 arms",
+        "detail": "Workload-window event counts by category: parent 16,140 cpu_op / 0 PythonDispatchMode; candidate 28,663-29,847 cpu_op / 6,169-7,353 PythonDispatchMode; aten::view 1568 vs 3380, aten::t 404 vs 808; kernels 3188, memcpy 17, memset 144 in all captures."
+      },
+      {
+        "id": "E11",
+        "ref": "CPU-only checks with /root/autodl-tmp/dev-venv/bin/python in this sandbox (no GPU initialized)",
+        "detail": "torch 2.13.0+cu129; dist.AllreduceOptions() 25.9 us first / 0.62 us warm; c10d::allreduce_ schema (TensorList, ProcessGroup, ReduceOp, ...) -> (Tensor[], Work); nested fall-through TorchDispatchMode microbenchmark: per-4-op-iteration 8.06/37.86/50.04 us and profiler events 2200/3800/5400 with PythonDispatchMode 0/800/1600 for 0/1/2 mode layers."
+      },
+      {
+        "id": "E12",
+        "ref": "/root/autodl-tmp/dev/v6-work/p6-ddp-feedback-composition-b/jobs/followup-ddp-timeline-15326f6-candidate-hooks0-pair0/run/request.json",
+        "detail": "Timeline candidate arm bundle parameters '{\"route\": \"align_first\"}' on trial-bee8d599aa-param-47de78f8, alongside retained parent bundle trial-32cd1ce604-param-3a67a278."
+      },
+      {
+        "id": "E13",
+        "ref": "inputs/request.json",
+        "detail": "Objective step_ms (paired_repeats 2), communication goal diagnostic.max_rank_nccl_kernel_sum_ms with constraint step_ms_max_baseline_ratio 1.05, workload accumulated_step (world_size 2, micro_batch 1, seq 128, accumulation 4), declared nsys/ncu tool paths."
+      }
+    ]
+  }
+}

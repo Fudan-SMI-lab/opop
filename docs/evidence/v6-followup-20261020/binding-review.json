@@ -1,0 +1,405 @@
+{
+  "agent": {
+    "role": "diagnostic-review",
+    "session": "ses_ea719f584ffe8amn6tovzHYfyv",
+    "message": "msg_158efe659001NUOi7FZwgqJQwQ",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 15,
+      "reported_cost": 0.36245796594,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 560323.0,
+        "input": 85902.0,
+        "output": 10668.0,
+        "reasoning": 19721.0,
+        "cache.read": 444032.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea719f584ffe8amn6tovzHYfyv",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/p6-qwen-throughput-composition-c/sandboxes/diagnostic-review-7c23fbedb9cd",
+    "outputs": [
+      "review.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0
+  },
+  "review": {
+    "meta": {
+      "review_type": "developer-launched diagnostic of binding runtime overhead",
+      "scope": "Analysis of unchanged framework sources and the supplied partial paired ablation; no patches implemented, no routing failures addressed, no search-policy change, no GPU access, no optimization run",
+      "inputs_read": [
+        "inputs/worker-environment.json",
+        "inputs/partial-ablation.json",
+        "inputs/binding.py",
+        "inputs/discovery.py",
+        "inputs/evaluation.py"
+      ],
+      "local_cpu_checks": {
+        "python": "/root/autodl-tmp/dev-venv/bin/python",
+        "python_version": "3.12.4",
+        "torch": "2.13.0+cu129",
+        "cpu": "Intel(R) Xeon(R) Gold 6430, 128 cores",
+        "note": "CPU-only microbenchmarks on this host; absolute microsecond values are not the leased GPU worker's host-CPU values and are used for ranking and consistency checks only"
+      },
+      "source_provenance": "inputs/binding.py and inputs/evaluation.py equal the installed kernel_optimizer sources plus the diagnostic-harness additions (diagnostic_passthrough, direct ablation, execution_timeline); the dispatch/mode/hook hot paths are byte-identical. inputs/discovery.py is byte-identical to the installed copy. Line citations below reference the inputs/ copies."
+    },
+    "observations": [
+      {
+        "id": "O1",
+        "kind": "measurement",
+        "statement": "The [parent, candidate] comparison is incomplete: 'parent' pair 0 appears twice (371.038 and 372.229 tok/s, corresponding to the two comparisons that include parent) but no 'candidate' arm run exists in the runs list, and reverse-order pairs are not present. No statement about candidate performance is possible from this file.",
+        "evidence": "inputs/partial-ablation.json arms (candidate at revision bddbf75..., options {}) vs runs[] which contain only direct/empty/parent/passthrough entries; protocol.comparisons includes [\"parent\", \"candidate\"]."
+      },
+      {
+        "id": "O2",
+        "kind": "measurement",
+        "statement": "direct vs empty (both no-binding paths at the anchor revision) shows no systematic difference; the ablation harness itself adds no detectable overhead when zero bundles are installed.",
+        "evidence": "generated_tokens_per_second: direct 300.610/325.971 (pair 0/1) vs empty 307.569/324.053; differences -2.3%/+0.6%, sign flips across pairs. decode_ms: 724.780/660.585 vs 705.747/664.846. operation() at inputs/evaluation.py:209-221 takes the direct branch only when ablation.direct is set, otherwise an empty ExitStack around adapter.run - identical work when bindings is empty."
+      },
+      {
+        "id": "O3",
+        "kind": "measurement",
+        "statement": "The passthrough arm (binding sites installed, candidate build and computation omitted) is 2.2-2.9x slower than both the parent arm and the no-binding baseline in decode, while its prefill cost is nearly unchanged.",
+        "evidence": "decode_ms: passthrough 1693.813/1904.158 vs parent 564.322/563.537 (and 560.248 for the duplicated pair 0) and vs empty 705.747/664.846. Per decode step (32 steps): passthrough 52.9-59.5 ms vs parent 17.6 ms vs empty 20.8-22.7 ms. ttft_ms: passthrough 131.692/131.310 vs parent 125.843/125.468/125.544 and empty 126.242/125.147 - only +4.5-4.9% while decode grows +200-240%."
+      },
+      {
+        "id": "O4",
+        "kind": "measurement",
+        "statement": "Deltas vs the no-binding baseline: passthrough adds +30.9/+38.7 ms of wall time per decode step (per pair), while the parent arm, which carries the same binding machinery plus candidate computation, is 3-4 ms per step faster than the baseline.",
+        "evidence": "(1693.813-705.747)/32=30.9 ms and (1904.158-664.846)/32=38.7 ms per step vs empty; parent decode 560.248-564.322 vs empty 664.846-705.747."
+      },
+      {
+        "id": "O5",
+        "kind": "measurement",
+        "statement": "Run-to-run spread differs by arm: parent decode is tight (560.2-564.3 ms, ~0.7% spread), empty/direct spread ~3-5%, passthrough spreads ~12% (1693.8 vs 1904.2 ms). Only two pairs exist per comparison.",
+        "evidence": "decode_ms values in inputs/partial-ablation.json runs[]."
+      },
+      {
+        "id": "O6",
+        "kind": "measurement",
+        "statement": "All runs passed quality checks; however passthrough is the only arm with nonzero max_abs_error (0.125 on both continuous steps of both pairs) while direct, empty and parent report 0.0. The cause of the numerical difference is not identified by this data.",
+        "evidence": "checks[].max_abs_error in every runs[] entry; compare() at inputs/evaluation.py:38-88 applies request tolerances (not included in this file)."
+      },
+      {
+        "id": "O7",
+        "kind": "measurement",
+        "statement": "Peak memory is identical between parent and passthrough and ~327.7 MiB above direct/empty; the extra allocation is associated with the binding session/bundle (or revision), not with candidate computation.",
+        "evidence": "peak_allocated_bytes 8995072000 for parent and passthrough vs 8651642880 for direct and empty (difference 343429120 bytes); allocated_bytes differs by the same amount. setup[] timings are recorded separately from the scored run (inputs/evaluation.py:174-178)."
+      },
+      {
+        "id": "O8",
+        "kind": "measurement",
+        "statement": "Arms run at different revisions: direct/empty at anchor 1ec42ec..., parent at 0643ca5..., passthrough at bddbf75... (the candidate revision, in passthrough mode). Baseline comparability across arms is assumed by the protocol, not proven here.",
+        "evidence": "protocol.arms in inputs/partial-ablation.json."
+      },
+      {
+        "id": "O9",
+        "kind": "source",
+        "statement": "Passthrough preserves every per-call binding mechanism and only removes candidate build/compute: replacements become reference wrappers that call the originals, but module/project sites still get the dispatch wrapper and functional sites still populate self.functionals, which forces creation of the TorchDispatchMode and the module hooks.",
+        "evidence": "inputs/binding.py:49-60 (diagnostic_passthrough branch), :77-98 (wrapped/physical entries built for every replacement), :114-115 (_create_dispatch_mode when functionals non-empty), :131-171 (mode and hooks)."
+      },
+      {
+        "id": "O10",
+        "kind": "source",
+        "statement": "While the mode is active, every aten op in the process pays the ReplacementMode body: str(func), a ContextVar phase read, a sha256 of a constant when the module stack is empty, two index dict probes, and for any populated bucket a full tensor_description walk of all args plus a linear list-membership scan against spec['signatures'].",
+        "evidence": "inputs/binding.py:157-170; tensor_description at inputs/discovery.py:33-50 rebuilds nested lists/dicts and str(dtype) per tensor; signatures membership is `signature in spec[\"signatures\"]` with signatures a plain list (built during discovery at inputs/discovery.py:119-120)."
+      },
+      {
+        "id": "O11",
+        "kind": "source",
+        "statement": "Module dispatch computes the signature description inside the variant loop, once per module-kind variant, before the membership test; fallback still pays the description cost.",
+        "evidence": "inputs/binding.py:100-111 (signature computed at :105 inside the for-loop over _variants; contrast the lazy `signature is None` guard used in the functional mode at :167)."
+      },
+      {
+        "id": "O12",
+        "kind": "source",
+        "statement": "When any functional spec declares site_parent, forward pre/post hooks are registered on every module of every model; each pre-hook hashes target+'|'+phase with sha256 and pushes onto a ContextVar-held tuple by full tuple concatenation; each post-hook pops by slicing.",
+        "evidence": "inputs/binding.py:142-156; hooks are installed at binding-install time and remain for the whole run; the parent ident for functional calls is stack[-1] (:161-162)."
+      },
+      {
+        "id": "O13",
+        "kind": "source",
+        "statement": "Nested parent semantics: functional variants are indexed by (target, phase, site_parent) and consulted as parent-specific variants first, then global (site_parent None) variants; the default parent when the stack is empty is the digest of 'project.invoke|run', matching the discovery root call id.",
+        "evidence": "inputs/binding.py:137-141, :160-165; discovery key construction at inputs/discovery.py:107-111 ('project.invoke' entered with phase from _phase, default 'run' at inputs/discovery.py:21)."
+      },
+      {
+        "id": "O14",
+        "kind": "source",
+        "statement": "Counting that must survive any change: reference_calls (through context.references only), counts/fallbacks per spec id, and candidate-declared routes; coverage acceptance requires every expected call id to appear in counts.",
+        "evidence": "inputs/binding.py:52-56, :77-79, :107-108, :118-129; inputs/evaluation.py:344-348 (covered = expected subset of counts, part of validity)."
+      },
+      {
+        "id": "O15",
+        "kind": "local_cpu_measurement",
+        "statement": "Per-call costs of the mirrored hot paths on this host's CPU with the worker interpreter: signature construction 3.6-8.3 us depending on arg count; list-membership miss 0.97/3.7/15.5 us at K=8/32/128 signatures (hit-first ~0.56 us at any K); TorchDispatchMode floor +6.2 us/op over no-mode eager (8.39 vs 2.21 us); mode with one 8-signature bucket +12.3-12.6 us/op; module dispatch wrapper 3.8 us hit / 6.9 us miss; hook ident+ContextVar push/pop 1.57 us; str(func) 1.04 us; constant parent sha256 0.63 us.",
+        "evidence": "microbenchmark replicating inputs/binding.py:100-170 and inputs/discovery.py:33-50 verbatim, run at /tmp/opencode/bench_binding_overhead.py with /root/autodl-tmp/dev-venv/bin/python (torch 2.13.0+cu129, CPU tensors only)."
+      },
+      {
+        "id": "O16",
+        "kind": "local_cpu_measurement",
+        "statement": "The op-object keying primitive used by one proposed change is sound in this interpreter: torch.ops.aten.add.Tensor is a process-stable, hashable object, resolvable by the same getattr walk binding already uses, and str(func) yields the 'aten.add.Tensor' format that discovery stores as spec target.",
+        "evidence": "interpreter check under inputs/worker-environment.json inspection policy; resolution walk mirrors inputs/binding.py:43-47."
+      }
+    ],
+    "hypotheses": [
+      {
+        "id": "H1",
+        "status": "unproved",
+        "claim": "The passthrough decode regression is CPU-side Python dispatch overhead that becomes visible only in the launch-bound decode regime, not GPU work or candidate-side cost.",
+        "mechanism": "Every aten op pays the ReplacementMode body (O10) and every module forward pays dispatch/signature work and, when site_parent is used, hook hashing and ContextVar tuple rebuilds (O11, O12). Local per-op costs (O15) times a per-forward op count in the low thousands bracket the observed +31-39 ms per decode step (O4). During prefill the same CPU work is pipelined under ~120 ms of saturated GPU compute, leaving only the observed +5.6-6.1 ms ttft residue (O3); decode steps end in sampling-induced synchronization, so CPU and GPU costs serialize and wall per step approaches CPU_overhead + GPU_step, matching 52.9-59.5 ms.",
+        "consistent_with": [
+          "O3",
+          "O4",
+          "O9",
+          "O10",
+          "O11",
+          "O12",
+          "O15"
+        ],
+        "alternate_explanations": [
+          "Revision differences between passthrough (bddbf75) and the baselines (O8) contributing adapter-level differences",
+          "Mode-induced changes in composite-op decomposition or backend selection also slowing GPU-side work (would also explain O6)",
+          "Per-step allocations (signature dicts, tuple concatenation) increasing GC pressure in the timed region"
+        ],
+        "decisive_measurements": [
+          "M2",
+          "M3",
+          "M5"
+        ]
+      },
+      {
+        "id": "H2",
+        "status": "unproved",
+        "claim": "Within the dispatch overhead, the dominant terms are the TorchDispatchMode interception floor plus tensor_description construction and linear signature-list scans at populated buckets, with hook sha256/tuple costs secondary.",
+        "mechanism": "O15 ranks: mode floor ~6.2 us/op; bucket with signature work ~12.5 us/op; hook cost ~1.6 us/module. If functional specs exist for commonly executed ops, most ops in those buckets pay the full body; ops outside buckets pay the floor. Linear membership makes cost grow with observed signature diversity per site (K), which discovery accumulates per call id across shapes/steps.",
+        "consistent_with": [
+          "O10",
+          "O11",
+          "O12",
+          "O15"
+        ],
+        "alternate_explanations": [
+          "If the bundle has no functional specs with site_parent, hooks are not installed (inputs/binding.py:142) and hook costs vanish",
+          "If all signature lists are short (K<=8), membership is minor and the mode floor dominates",
+          "If the bundle is module-only, no mode is created at all (inputs/binding.py:114) and the overhead must be attributed to module dispatch signatures alone"
+        ],
+        "decisive_measurements": [
+          "M3",
+          "M4",
+          "M5"
+        ]
+      },
+      {
+        "id": "H3",
+        "status": "unproved",
+        "claim": "The parent arm's net speedup over the baseline is candidate computational saving that exceeds the same binding overhead, implying the residual op stream seen by the mode in parent is much smaller than in passthrough.",
+        "mechanism": "Parent carries the same install path minus candidate build (O9); the mode taxes only ops actually executed, and replacements that perform fewer aten ops shrink the taxed stream, while passthrough executes the full eager stream through the mode.",
+        "consistent_with": [
+          "O3",
+          "O4",
+          "O9"
+        ],
+        "alternate_explanations": [
+          "Revision differences between parent (0643ca5) and passthrough (bddbf75) bundles/spec sets (O8)",
+          "Different numbers of installed sites between the two bundles"
+        ],
+        "decisive_measurements": [
+          "M1",
+          "M3",
+          "M4"
+        ]
+      },
+      {
+        "id": "H4",
+        "status": "unproved",
+        "claim": "The nonzero passthrough max_abs_error (O6) originates from re-dispatch through the mode or from the revision change, not from passthrough substituting different math.",
+        "mechanism": "Passthrough replacements call the original functions unchanged (inputs/binding.py:52-56, :57-60); remaining sources of numerical drift are composite-op re-dispatch under TorchDispatchMode or adapter differences at revision bddbf75.",
+        "consistent_with": [
+          "O6",
+          "O8",
+          "O9"
+        ],
+        "decisive_measurements": [
+          "M4",
+          "M8"
+        ]
+      },
+      {
+        "id": "H5",
+        "status": "unproved",
+        "claim": "The higher run-to-run spread of the CPU-bound arms (passthrough ~12%, empty/direct 3-5% vs parent ~0.7%, O5) reflects host CPU contention sensitivity of Python dispatch work, not GPU variance.",
+        "mechanism": "CPU-bound steps expose scheduler/GC jitter directly; GPU-bound steps (parent) hide it.",
+        "consistent_with": [
+          "O3",
+          "O5",
+          "H1"
+        ],
+        "decisive_measurements": [
+          "M1",
+          "M7"
+        ]
+      }
+    ],
+    "next_measurements": [
+      {
+        "id": "M1",
+        "what": "Complete the pending [parent, candidate] paired runs including reverse-order pairs, and raise paired repeats for passthrough/empty.",
+        "where": "framework leased GPU worker; no code change",
+        "decision": "Makes candidate-vs-parent statements possible at all (O1) and tightens the ratio uncertainty from O5; required before any conclusion that depends on candidate behavior."
+      },
+      {
+        "id": "M2",
+        "what": "Count aten ops and module forwards per prefill pass and per decode step at the anchor revision, using the existing profile/trace artifacts (trace-rank JSON already records functional events and module calls).",
+        "where": "framework worker; existing action='profile' path (inputs/evaluation.py:300-336), CPU-side analysis of the trace",
+        "decision": "Turns H1's bracket into arithmetic: ops x per-op cost + modules x hook cost vs observed +31-39 ms/step (O4, O15). If predicted overhead falls far short, the CPU-overhead explanation is wrong and O8-revision effects move up."
+      },
+      {
+        "id": "M3",
+        "what": "Add temporary diagnostic tallies to the binding session (not the timed path): __torch_dispatch__ invocations, signature constructions, membership scans with len(spec['signatures']) per scan, index bucket sizes, hook pushes; or infer match/fallback composition from the existing candidate_diagnostics action counts.",
+        "where": "framework worker; candidate_diagnostics action already runs track=True steps and reports counts/fallbacks/reference_calls (inputs/evaluation.py:269-276, inputs/binding.py:126-129)",
+        "decision": "Directly decides H2 (which hot path dominates) and quantifies K per site; fallback counts also show whether signature misses are common (misses pay the largest membership cost)."
+      },
+      {
+        "id": "M4",
+        "what": "Inspect the bundle artifact trial-09def220ed-param-def7baa6: number of functional vs module vs project specs, which spec targets, whether any functional spec declares site_parent (hook gate at inputs/binding.py:142), and per-spec signature-list lengths.",
+        "where": "local CPU / artifact read; static inspection",
+        "decision": "Eliminates the alternate explanations of H2 (hooks absent? module-only? short lists?) and informs H3/H4 (site counts, revision contents)."
+      },
+      {
+        "id": "M5",
+        "what": "Factor-isolating passthrough variants, one at a time: (a) module-only binding (functional replacements withheld so no mode is created), (b) hooks suppressed (no site_parent), (c) passthrough with the proposed generic changes applied, each with unchanged quality checks and coverage.",
+        "where": "framework GPU worker; diagnostic options only, no acceptance",
+        "decision": "Splits mode floor vs hook cost vs signature cost (H1, H2) and validates that proposed changes preserve outputs bit-for-bit and coverage counters (M5c is the acceptance gate for every change in possible_generic_changes)."
+      },
+      {
+        "id": "M6",
+        "what": "CPU-only replication: run the adapter's decode step under the passthrough harness on CPU with cProfile/py-spy attribution.",
+        "where": "local CPU with /root/autodl-tmp/dev-venv/bin/python, if the adapter is CPU-runnable",
+        "decision": "Ranks tensor_description vs membership vs sha256 vs mode overhead on real model code without GPU; corroborates or refutes H2 ranking ahead of any patch."
+      },
+      {
+        "id": "M7",
+        "what": "Use the existing execution_timeline/nsys actions on the passthrough arm to correlate CPU launch gaps with dispatch work.",
+        "where": "framework worker; inputs/evaluation.py:286-299",
+        "decision": "Tests the serialization picture of H1 (CPU+GPU adding per step) and the contention reading of H5."
+      },
+      {
+        "id": "M8",
+        "what": "Isolate the passthrough numerical difference: compare passthrough vs empty activations per layer, or run the candidate revision's bundle in passthrough against the anchor reference with the mode entered but no variants installed.",
+        "where": "framework worker (GPU) for activation capture; mode-only variant is a diagnostic option",
+        "decision": "Separates revision-caused vs mode-re-dispatch-caused numerical drift (H4, O6); matters because it bounds what 'unchanged behavior' means when validating generic changes."
+      }
+    ],
+    "possible_generic_changes": [
+      {
+        "id": "C1",
+        "change": "Precompute the default parent ident once (module constant or session attribute) instead of hashing b\"project.invoke|run\" on every aten call executed outside any module.",
+        "location": "inputs/binding.py:162",
+        "preserves": [
+          "identical parent value, so functional context matching unchanged",
+          "phase/signature matching untouched",
+          "coverage counting untouched"
+        ],
+        "expected_effect": "removes ~0.6 us/op on stack-empty ops (O15); zero behavior change",
+        "risk": "none identified; pure constant folding"
+      },
+      {
+        "id": "C2",
+        "change": "Cache module idents per (target, phase) in a dict captured by the hook closures; hash only on first encounter of a pair.",
+        "location": "inputs/binding.py:150-152",
+        "preserves": [
+          "same ident sequence, same nested stack order (nested parent candidate semantics unchanged)",
+          "phase changes still produce distinct idents via the cache key"
+        ],
+        "expected_effect": "removes the per-module-forward sha256 (~1.2 of the 1.57 us measured hook cost, O15); benefit scales with module count per forward",
+        "risk": "cache must be keyed on phase, not target alone, or idents would blur phases"
+      },
+      {
+        "id": "C3",
+        "change": "Replace the ContextVar tuple stack with a cons-cell stack ((ident, previous)); push allocates one 2-tuple, pop reads the tail, innermost parent is cell[0] instead of stack[-1].",
+        "location": "inputs/binding.py:152-154, :161",
+        "preserves": [
+          "LIFO order and immutable-update semantics of the ContextVar (async-safety unchanged)",
+          "same parent resolution for nested sites"
+        ],
+        "expected_effect": "O(1) allocation per module forward instead of O(depth) tuple copy; modest (depth is small), stacks with C2",
+        "risk": "pop must use the exact pushed cell; exception paths already rely on always_call=True post-hooks pairing with pre-hooks"
+      },
+      {
+        "id": "C4",
+        "change": "Hoist signature construction out of the variant loop in module/project dispatch and make it lazy (compute once on the first module-kind variant, reuse across variants), mirroring the existing `signature is None` guard in the functional mode.",
+        "location": "inputs/binding.py:104-109 (contrast :167)",
+        "preserves": [
+          "identical membership decisions and fallback accounting; only the number of tensor_description invocations changes"
+        ],
+        "expected_effect": "removes 3.6-8.3 us per duplicate variant per module call (O15); helps sites with multiple specs on one physical owner",
+        "risk": "none identified; no ordering change"
+      },
+      {
+        "id": "C5",
+        "change": "Build, at install time, a per-spec membership set keyed by a canonical serialization of each entry of spec['signatures'] (e.g. transactions.canonical/identity at full digest length, or json.dumps(sort_keys=True)); replace the linear `signature in spec[\"signatures\"]` with a key membership test, keeping spec['signatures'] as the declared authority.",
+        "location": "inputs/binding.py:106, :168; canonicalization exists at kernel_optimizer.project.transactions (identity = sha256 over sorted-key JSON, already used by discovery grouping at inputs/discovery.py:110, :207-211)",
+        "preserves": [
+          "accepted signature set identical up to canonicalization fidelity; tensor_description output is JSON-safe (dicts with str keys, lists, str/bool/int/float/None), so canonical keys are faithful; spec['signatures'] stays authoritative and the set is derived",
+          "phase and parent-context matching unchanged",
+          "fallback counting on miss unchanged"
+        ],
+        "expected_effect": "membership drops from up to 15.5 us (K=128 miss) to a sub-microsecond probe (O15); largest win where sites accumulated many signatures",
+        "risk": "a canonicalization collision would wrongly match; using full untruncated digests keeps this at the same sha256-collision assumption the project already relies on for grouping; validate under M5c (bit-identical outputs and coverage)"
+      },
+      {
+        "id": "C6",
+        "change": "Key the functional index by the resolved op object instead of str(func) per call: resolve each functional spec['target'] to its OpOverload via the getattr walk already used in __init__, index by (op, phase, parent) with the object's identity/hash; keep a string-keyed fallback for targets that fail resolution.",
+        "location": "inputs/binding.py:43-47 (existing resolution walk), :137-141 (index build), :160-164 (lookup)",
+        "preserves": [
+          "same match set: OpOverload objects are process-stable and str(func) equals the stored target format (O16)",
+          "lookup order parent-specific-then-global and phase equality unchanged"
+        ],
+        "expected_effect": "removes ~1.0 us/op of str(func) on every intercepted op (O15)",
+        "risk": "ops reached as different overload objects for the same string would previously collide by name; verify none of the bundle targets rely on that (M4)"
+      },
+      {
+        "id": "C7",
+        "change": "Micro-cleanups in the dispatch bodies: avoid `kwargs or {}` allocations when kwargs is None (call func(*args) directly), and hoist the diagnostic imports out of the per-call branch.",
+        "location": "inputs/binding.py:81-82, :167, :169-170",
+        "preserves": [
+          "call semantics identical; kwargs-present behavior unchanged"
+        ],
+        "expected_effect": "small (~0.1-0.3 us/op); included only because it is free",
+        "risk": "none identified"
+      },
+      {
+        "id": "C8",
+        "change": "Optional and more invasive, listed separately because it is not strictly local: enter the ReplacementMode only within phases where at least one functional spec could match (phase equality at inputs/binding.py:163 is the only phase gate), instead of around the whole adapter.run; hook registration windows would need the same gating.",
+        "location": "inputs/evaluation.py:212-218 (mode entry), inputs/binding.py:142-156 (hooks), :173-177 (invoke)",
+        "preserves": [
+          "matching cannot occur in phases with no functional specs, so scoping the mode to declared phases does not change which calls match, provided phase transitions are observable at entry",
+          "coverage counting unchanged for declared phases"
+        ],
+        "expected_effect": "removes the ~6 us/op mode floor (O15) for ops in phases without functional candidates; the floor is otherwise irreducible because TorchDispatchMode intercepts every op",
+        "risk": "highest of the list: a missed phase transition would silently skip matching; requires explicit enumeration of phases present in specs and a guard that re-enters conservatively on unknown phases; adopt only if M3/M5 show the floor dominates after C1-C7"
+      }
+    ],
+    "uncertainty": {
+      "incomplete_comparison": "The [parent, candidate] comparison has no candidate-side runs and no reverse-order pairs (O1). Nothing in this review should be read as a statement about the candidate's performance; the parent-vs-passthrough and direct-vs-empty contrasts are the only completed evidence.",
+      "attribution_is_hypothesis": "The decomposition of the +31-39 ms/step passthrough overhead into mode floor, signature construction, membership scans and hook costs (H1, H2) is unproved until M2-M5 land; the per-op microsecond figures (O15) come from a different host CPU than the leased worker's, so only their ranking and order of magnitude are transferable.",
+      "unknown_bundle_shape": "Number of functional specs, use of site_parent (hook gate), and signature-list lengths of bundle trial-09def220ed-param-def7baa6 are unknown (M4); several hypotheses (H2 alternates) hinge on these.",
+      "confounded_revisions": "Passthrough runs at the candidate revision, parent at a different revision, baselines at the anchor (O8); any revision-level adapter difference is entangled with the measured contrasts, and the nonzero passthrough max_abs_error (O6) is unexplained (H4).",
+      "sample_size": "Two pairs per comparison; passthrough's 12% pair spread (O5) means ratio estimates carry roughly that relative uncertainty; effects smaller than ~5% (e.g. the direct-vs-empty delta, O2) are within noise and were treated as null.",
+      "change_validation": "Every proposed change (C1-C7, optionally C8) must be validated by unchanged quality checks, unchanged coverage counters (O14) and unchanged max_abs_error relative to the corresponding arm (M5c) before adoption; none has been implemented or executed in this review.",
+      "scope_limits": "No routing-failure analysis, no search-policy modification, no model-specific matching rules and no per-failure action state machine are proposed; all changes are generic binding-mechanics changes evaluated against the stated invariants (signature/phase/context matching, nested parent candidate semantics, coverage)."
+    }
+  }
+}

@@ -97,6 +97,16 @@ Qwen batch=8 在四次 Graph 质量失败后生成 eager 解码候选，完整�
 
 局部回退修复及真实证据已在 `05f833a` 推送并同步 box4-2；正式 Qwen 测量始终使用冻结 `790286a`，未混入新诊断实现。期间另验证已列出的 OpenCode 内置服务可以真实响应，并在独立分支尝试修复；原会话完成必要验证后，该备用请求在提交前显式取消，保留用量与上下文，不计作优化结果。最终框架用量快照为 162 个会话、4,534 条 assistant 消息、provider 报告费用 $150.0315571213，未含外层 Codex，不是账单；没有用量额度，当前没有继续运行的项目角色。完整产物见[最终 Qwen 与用量证据](evidence/v6-post-recovery-20261020/README.md)。
 
+## 自动化复核、组合诊断与通信时序补齐
+
+此前的“主线完成”是功能路径验收，不能等同于所有实验均从原始项目输入开始、全程没有开发者介入，也不能代表原计划 §6 的所有通信维度已经可观测。正式 B 组从已准备/发现的版本自动运行；部分其他实验是开发者发起的复测，ResNet 恢复与最终 Qwen 组合还包含运行中修复或上下文补充。逐项说明见 [自动化证据复核](v6-autonomy-audit-and-followup.md)。
+
+用户确认先做组合退化诊断和通信时序，暂缓失败类型路由、信息获取约束及搜索状态机。本轮已在三项目完成同父版本的原始/空载、透传和真实候选对照，均执行原完整质量；新增绑定透传本身就出现明显退化。Qwen 的 native trace 与 CPU profile 支持调查分派路径，但不能将所有时差等同于纯 Python 成本。一次签名守卫微优化未证明稳定收益，已撤回。
+
+`execution_timeline`、`python_runtime` 经现有采集器 registry 接入。双卡原生关联覆盖 13 个 collective；梯度回调和可选 CUDA stream marker 每 rank 各 592 次。通信目标采样改为 profiler 初始化后、显式 workload 窗口前完成 rank 准备；修复实测发现的 CPU/GPU 同名 annotation 歧义。GPU bucket 就绪、唯一消费关系和等待/传输分离仍有 unknown，不宣称已经完整解决。
+
+代码检查点 `d9e0929` 在 box4-2 通过 24 项相关检查及双卡真实通信评价。两次真实 GLM-5.3 诊断会话完成，其分析逐项核对而非直接作为事实；费用仅统计。本轮是开发者发起的诊断，不冒充新的无人干预优化，也没有新的通信或通用绑定加速结论。原接受版本指针未变。全部配对、失败、重解析来源、原始文件哈希和 Agent 回执见 [本轮证据](evidence/v6-followup-20261020/README.md)。
+
 ## 命令与运行位置
 
 本地仓库：`D:\Pyhon_projects\opop\v6`。服务器仓库：`/root/autodl-tmp/dev/opop-v6`。服务器工作目录：`/root/autodl-tmp/dev/v6-work`。Python：`/root/autodl-tmp/dev-venv/bin/python`。
