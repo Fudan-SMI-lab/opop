@@ -98,6 +98,7 @@ def repository_files(root):
 
 
 def deployment(config):
+    from kernel_optimizer.project.collectors import metric_catalog
     defaults = config.project_defaults
     try:
         inventory = gpu_inventory()
@@ -112,7 +113,8 @@ def deployment(config):
     tools.update(defaults.tools)
     return {"devices": devices, "inventory": inventory, "probe_error": probe_error,
             "tools": tools, "lease_dir": str(defaults.lease_dir.expanduser().resolve()),
-            "profiling": defaults.profiling, "worker_timeout_s": defaults.worker_timeout_s}
+            "profiling": defaults.profiling, "worker_timeout_s": defaults.worker_timeout_s,
+            "metric_collectors": metric_catalog(defaults.profiling)}
 
 
 def resolve_request(proposal, source, goal, environment):
@@ -133,6 +135,15 @@ def resolve_request(proposal, source, goal, environment):
         raise ValueError("declared workload needs more GPUs than the available deployment")
     if d.distributed_backend and d.device_count < 2:
         raise ValueError("this distributed executor requires at least two bound GPUs")
+    if d.objective.source:
+        from kernel_optimizer.project.collectors import configured
+        source_spec = d.objective.source
+        provider = configured(environment["profiling"]).resolve(source_spec.get("collector"))
+        if not callable(getattr(provider, "metric", None)):
+            raise ValueError("objective source must select a metric-capable collector")
+        fields = getattr(provider, "metric_fields", None)
+        if fields is not None and source_spec.get("field") not in fields:
+            raise ValueError(f"collector metric field is unavailable; supported fields: {sorted(fields)}")
     return ProjectRequest(source_root=source, entry=d.entry, files=list(dict.fromkeys(d.files)), goal=goal,
         objective=d.objective.model_dump(exclude_none=True, exclude_unset=True),
         workload=d.workload, quality=d.quality.model_dump(exclude_none=True, exclude_unset=True), assets=d.assets,

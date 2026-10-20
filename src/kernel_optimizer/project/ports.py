@@ -52,3 +52,6 @@ class Registry:
             return self._providers[name]
         except KeyError:
             raise ValueError(f"unsupported provider {name}; available: {sorted(self._providers)}") from None
+
+    def items(self):
+        return self._providers.items()

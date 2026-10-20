@@ -48,6 +48,13 @@ ordinary evaluator metrics belong in objective and its constraints.
 For diagnostic objectives, declare their existing collector source only if the
 project/user actually requests that metric. The task's ordinary end-to-end time
 and quality remain distinct from diagnostic kernel time.
+Installed metric collector names and field meanings are in
+deployment.json.metric_collectors; map source measurements to that actual
+interface, not to a source helper-function name. If no installed collector can
+measure the requested definition, report that missing capability. Quality
+requirements belong in quality and the independent correctness observations;
+objective.constraints contains performance measurements, not invented success
+flags for correctness.
 
 Write intake.json following the schema. Use status=needs_input, a concise
 questions list and description=null if unresolved semantics prevent a valid

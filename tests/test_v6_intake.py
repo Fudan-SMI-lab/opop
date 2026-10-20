@@ -47,3 +47,20 @@ def test_real_intake_constraint_notation_is_rejected_before_request_is_frozen():
     objective = ObjectiveDescription.model_validate(value)
     serialized = objective.model_dump(exclude_none=True, exclude_unset=True)
     assert serialized["constraints"] == [{"metric": "throughput", "op": "ge", "baseline_ratio": 0.95}]
+
+
+def test_intake_diagnostic_source_must_match_an_installed_metric_interface(tmp_path):
+    (tmp_path/"entry.py").write_text("def run(): pass\n")
+    proposal = IntakeProposal(status="ready", description={
+        "entry": "entry.py", "files": ["entry.py"], "invocation": "one training update",
+        "objective": {"name": "comm_ms", "unit": "ms", "direction": "minimize",
+                      "source": {"collector": "profile_once", "field": "nccl_kernel_sum_ms"}},
+        "workload": {}, "quality": {"atol": 0, "rtol": 0}, "device_count": 2,
+        "distributed_backend": "nccl",
+    }, evidence={}, assumptions=[], questions=[])
+    environment = {"devices": ["GPU-A", "GPU-B"], "lease_dir": str(tmp_path/"leases"),
+                   "tools": {}, "profiling": {}, "worker_timeout_s": 600}
+    with pytest.raises(ValueError, match="unsupported provider"):
+        resolve_request(proposal, tmp_path, "reduce communication duration", environment)
+    proposal.description.objective.source = {"collector": "torch_communication", "field": "communication_kernel_sum_ms"}
+    assert resolve_request(proposal, tmp_path, "reduce communication duration", environment).objective["source"] == proposal.description.objective.source

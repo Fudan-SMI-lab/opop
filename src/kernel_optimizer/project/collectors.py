@@ -8,6 +8,17 @@ from kernel_optimizer.project.ports import Registry
 
 
 class TorchCommunication:
+    metric_fields = {
+        "communication_kernel_sum_ms": {
+            "unit": "ms", "meaning": "Per-rank sum of device communication-kernel durations in a separately profiled invocation; includes waiting, not wire time or a critical-path lower bound."},
+        "communication_union_ms": {
+            "unit": "ms", "meaning": "Per-rank union of communication-kernel intervals."},
+        "compute_overlap_ms": {
+            "unit": "ms", "meaning": "Local trace-clock overlap of communication and compute intervals."},
+        "communication_without_compute_ms": {
+            "unit": "ms", "meaning": "Communication intervals without observed compute overlap; not a measured critical path."},
+    }
+
     def metric(self, adapter, state, operation, synchronize, context, source, repeats):
         from kernel_optimizer.project.communication import sample_metric
         return sample_metric(adapter, state, operation, synchronize, context, source, repeats)
@@ -121,6 +132,13 @@ def configured(profiling):
 def diagnostic_names(profiling):
     return ["torch", "nsys", "device_telemetry", "collective_calibration", "candidate_diagnostics", "execution_timeline", "python_runtime",
             *profiling.get("collector_plugins", {})]
+
+
+def metric_catalog(profiling):
+    """Describe installed metric interfaces, without claiming hardware availability."""
+    return {name: {"fields": getattr(provider, "metric_fields", None),
+                   "availability": "must be verified by the actual workload worker"}
+            for name, provider in configured(profiling).items() if callable(getattr(provider, "metric", None))}
 
 
 def collect(search, revision, names):
