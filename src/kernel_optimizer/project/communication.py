@@ -87,6 +87,18 @@ _DTYPE_BYTES = {"float": 4, "float32": 4, "half": 2, "float16": 2, "bfloat16": 2
                 "short": 2, "int16": 2, "char": 1, "byte": 1, "int8": 1, "uint8": 1, "bool": 1}
 
 
+def trace_window(trace, label):
+    """Keep operations submitted inside one explicit, completion-bounded workload."""
+    windows = [r for r in trace.get("traceEvents", []) if r.get("ph") == "X" and r.get("name") == label]
+    if len(windows) != 1:
+        return trace, None
+    start, end = windows[0]["ts"], windows[0]["ts"]+windows[0]["dur"]
+    window = {"start_us": start, "end_us": end,
+              "scope": "explicit workload including final completion synchronization; excludes profiler preparation"}
+    return {**trace, "traceEvents": [r for r in trace["traceEvents"]
+            if "ts" in r and start <= r["ts"] < end]}, window
+
+
 def normalize(trace, associations, rank):
     kernels = [row for row in trace.get("traceEvents", []) if row.get("cat") == "kernel" and row.get("ph") == "X"]
     joined = {k["correlation"]: k for k in associations["kernels"]}
@@ -254,12 +266,23 @@ def sample_metric(adapter, state, operation, synchronize, context, source, repea
         if torch.cuda.is_available():
             activities.append(torch.profiler.ProfilerActivity.CUDA)
         with torch.profiler.profile(activities=activities, record_shapes=True) as profiler:
+            # Profiler initialization is rank-local and can introduce arrival
+            # skew. Prepare again outside the explicitly marked score window.
+            if callable(getattr(adapter, "before_run", None)):
+                adapter.before_run(state)
+            elif torch.distributed.is_initialized():
+                torch.distributed.barrier()
+            synchronize()
             started = time.perf_counter_ns()
-            operation(); synchronize()
+            with torch.profiler.record_function("opop.communication_metric_workload"):
+                operation(); synchronize()
             perturbation.append((time.perf_counter_ns()-started)/1e6)
         path = Path(context["output"])/f"metric-rank-{context['rank']}-{index}.json"
         profiler.export_chrome_trace(str(path))
-        observed = normalize(json.loads(path.read_text()), {"kernels": []}, context["rank"])
+        trace, window = trace_window(json.loads(path.read_text()), "opop.communication_metric_workload")
+        if window is None:
+            raise ValueError("communication metric workload boundary is missing or ambiguous")
+        observed = normalize(trace, {"kernels": []}, context["rank"])
         if observed["status"] != "observed":
             raise ValueError("required communication metric was not observed")
         value = observed.get(source["field"])
@@ -267,4 +290,5 @@ def sample_metric(adapter, state, operation, synchronize, context, source, repea
             raise ValueError(f"required collector field is unavailable: {source['field']}")
         values.append(float(value)); evidence.append(str(path))
     return {"values": values, "evidence": evidence, "profiled_wall_ms": perturbation,
+            "protocol": "profiler_start_then_rank_preparation_v2; explicit completion-bounded workload, excluding preparation collectives",
             "scope": "separate plain PyTorch diagnostic; kernel time includes waiting, not wire or critical-path time"}

@@ -8,7 +8,7 @@ from pathlib import Path
 import platform
 import time
 
-from kernel_optimizer.project.communication import intervals, overlap, normalize
+from kernel_optimizer.project.communication import intervals, overlap, normalize, trace_window
 from kernel_optimizer.runtime.execution import write_json
 
 
@@ -40,14 +40,7 @@ def clock_mapping(trace, anchors, domain):
 
 def analyze(trace, *, rank, anchors=(), domain=None, gradients=None, inventory=None):
     raw_trace = trace
-    windows = [r for r in trace.get("traceEvents", [])
-               if r.get("ph") == "X" and r.get("name") == "opop.timeline_workload"]
-    window = None
-    if len(windows) == 1:
-        start, end = windows[0]["ts"], windows[0]["ts"]+windows[0]["dur"]
-        window = {"start_us": start, "end_us": end, "scope": "explicit workload including final completion synchronization; excludes profiler preparation"}
-        trace = {**trace, "traceEvents": [r for r in trace["traceEvents"]
-                 if "ts" in r and start <= r["ts"] < end]}
+    trace, window = trace_window(trace, "opop.timeline_workload")
     rows = [r for r in trace.get("traceEvents", []) if r.get("ph") == "X" and "ts" in r]
     launches = defaultdict(list)
     external = defaultdict(list)
