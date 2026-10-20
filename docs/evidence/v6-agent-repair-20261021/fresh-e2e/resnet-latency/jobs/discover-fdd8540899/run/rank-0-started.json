@@ -1,0 +1,119 @@
+{
+  "rank": 0,
+  "world_size": 1,
+  "device": "cuda:0",
+  "output": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-e2e/resnet-latency/jobs/discover-fdd8540899/run",
+  "parameters": {
+    "request": {
+      "schema_version": "project-request.v1",
+      "source_root": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-e2e/resnet-latency.intake/source",
+      "entry": "resnet_inference.py",
+      "files": [
+        "resnet_inference.py",
+        "common.py",
+        "workloads.json"
+      ],
+      "goal": "Reduce latency for one complete offline batch=32 image inference, preserving the source quality checks.",
+      "objective": {
+        "name": "latency_ms",
+        "unit": "ms",
+        "direction": "minimize",
+        "constraints": []
+      },
+      "workload": {
+        "id": "offline",
+        "batch": 32,
+        "goals": [
+          {
+            "id": "throughput",
+            "metric": "images_per_second",
+            "direction": "max"
+          },
+          {
+            "id": "memory",
+            "metric": "peak_allocated_bytes",
+            "direction": "min",
+            "constraints": {
+              "images_per_second_min_baseline_ratio": 0.95
+            }
+          }
+        ]
+      },
+      "quality": {
+        "atol": 0.0001,
+        "rtol": 0.0001,
+        "logits_atol": 0.0001,
+        "logits_rtol": 0.0001,
+        "require_exact_top1": true
+      },
+      "assets": {
+        "assets_dir": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18",
+        "model_safetensors": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/model.safetensors",
+        "config_json": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/config.json",
+        "pixels_npy": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/pixels.npy",
+        "asset_manifest": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/asset-manifest.json"
+      },
+      "devices": [
+        "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+      ],
+      "distributed_backend": null,
+      "communication": "auto",
+      "required_observations": [],
+      "tools": {
+        "ncu": "/usr/local/cuda/bin/ncu",
+        "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+      },
+      "profiling": {
+        "agent_plan": true
+      },
+      "binding_backend": "legacy",
+      "measurement_lifetime": "invocation",
+      "warmup": 2,
+      "repeats": 5,
+      "continuous_steps": 2,
+      "worker_timeout_s": 900.0,
+      "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+      "notes": [
+        "Command provenance: user command 'python resnet_inference.py --assets /root/autodl-tmp/dev/v6-work/validation-assets/resnet18 --output /tmp/original-resnet' uses common.py argument defaults: --workloads workloads.json, --warmup 2, --repeats 5, no --profile. The script iterates both resnet_inference rows (online batch=1, offline batch=32); the user goal selects the offline batch=32 row.",
+        "Objective metric key 'latency_ms' is the exact per-sample field recorded by the source (resnet_inference.py:48): wall time of one complete batch forward between CUDA syncs. At fixed batch=32, latency_ms and images_per_second (= batch * 1e9 / elapsed_ns, same line) are reciprocals; README explicitly forbids treating fixed-batch step time and tokens/s as independent objectives, so minimizing latency_ms is the user-selected view of the row's throughput goal.",
+        "Discrete exact comparison: top-1 labels must match exactly; resnet_inference.py:33 asserts torch.equal(actual.argmax(-1), reference.argmax(-1)) and workloads.json resnet_inference.correctness.require_exact_top1=true.",
+        "Tensor comparison: full 1000-class logits via torch.testing.assert_close with atol=rtol=0.0001 (resnet_inference.py:31, common.py:74-76); corrupted-output negative control must be rejected (common.py:79-84).",
+        "Batch construction is deterministic: pixels = images[torch.arange(32, device='cuda') % 3].contiguous() from pixels.npy, which holds 3 real preprocessed public images (dog1.jpg, dog2.jpg, astronaut.jpg; FP32 NCHW 224x224, ImageNet mean/std, prepare_resnet_assets.py:47-67).",
+        "Numerics policy preserved (common.py:34-42): FP32 weights (dtype=torch.float32), TF32 disabled for matmul and cudnn, cudnn.benchmark=False, float32_matmul_precision='highest', torch.manual_seed(20261020), torch.set_num_threads(4).",
+        "The row constraint images_per_second_min_baseline_ratio=0.95 in workloads.json is scoped to the memory goal (peak_allocated_bytes, minimize) of this row; the user request is latency, so no performance constraint is attached to this objective. Peak memory (peak_allocated_bytes per sample, torch.cuda.max_memory_allocated) is still recorded by the source harness.",
+        "Single-process single-GPU workload: configure(device=0)/.cuda(); no NCCL, no distributed launch. The second GPU in the deployment inventory is not required. torch_communication collector is not requested and no required_observations are declared.",
+        "The source --profile diagnostic trace (common.py:87-105 profile_once) is separate from clean timing and absent from the user command; it is measurement infrastructure, not part of adapter.run().",
+        "One measured invocation: resnet_inference.infer(model, pixels) (resnet_inference.py:14-16): one complete forward model(pixel_values=pixels).logits under torch.inference_mode() on the prebuilt GPU-resident FP32 NCHW batch=32 pixel tensor of the offline workload row, bounded by torch.cuda.synchronize() before and after (resnet_inference.py:42-47). Excludes model loading (from_pretrained(...).cuda().eval()), pixel tensor construction from pixels.npy (resnet_inference.py:23-29), reference construction, close/negative quality checks, reference torch.save, the statistical warmup/repeats loop and result.json writing."
+      ]
+    },
+    "adapter": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-e2e/resnet-latency/jobs/discover-fdd8540899/source/opop_adapter.py",
+    "action": "profile",
+    "collector_options": {},
+    "reference_dir": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-e2e/resnet-latency/preparation/4c6391d1f8d6/controls",
+    "bundles": []
+  },
+  "binding": {
+    "pid": 131436,
+    "status": "verified",
+    "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+    "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+    "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+    "logical_device": 0,
+    "nvidia_smi_pid_uuids": [
+      "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+    ],
+    "pid_query_status": "observed"
+  },
+  "revision": {
+    "revision": "a2ce1768290d695fe8803a535f5398561791d08cf9bc3208e47c6ac40720adc0",
+    "bundles": [],
+    "bundle_hashes": {},
+    "files": {
+      "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+      "opop_adapter.py": "75417985048ff29ffabb607f280811a2c390ab1659a477428c3f77e0164ca52c",
+      "opop_evaluate.py": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+      "resnet_inference.py": "b98cd81b4aa6fb8211be6382d9870bbf433eb352c248a4b2aaf8f5fde2b50997",
+      "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+    }
+  }
+}

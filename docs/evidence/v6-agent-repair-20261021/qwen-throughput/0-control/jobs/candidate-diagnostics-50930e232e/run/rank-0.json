@@ -1,0 +1,129 @@
+{
+  "status": "passed",
+  "binding": {
+    "pid": 254330,
+    "status": "verified",
+    "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "logical_device": 0,
+    "nvidia_smi_pid_uuids": [
+      "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+    ],
+    "pid_query_status": "observed",
+    "occupancy": {
+      "status": "sampled_clear",
+      "samples": 38,
+      "unavailable_samples": 0,
+      "wait_s": 0.07044658437371254,
+      "external_clients": [],
+      "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+    }
+  },
+  "framework_source": {
+    "sha256": "5b74946e86a194124889c8262ca3a7083e7a32e19f34aa5d58908fc31facd8c1",
+    "files": 160,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "result": {
+    "valid": true,
+    "coverage": {
+      "repair-control-param-e3dd88c3": {
+        "counts": {
+          "323bcbe006b343648b346af9": 62
+        },
+        "fallbacks": {},
+        "reference_invocations": {
+          "323bcbe006b343648b346af9": 95
+        },
+        "candidate_declared_routes": [
+          {
+            "call": "323bcbe006b343648b346af9",
+            "route": "eager_parent_setup",
+            "count": 31
+          },
+          {
+            "call": "323bcbe006b343648b346af9",
+            "route": "fallback_setup",
+            "count": 31
+          },
+          {
+            "call": "323bcbe006b343648b346af9",
+            "route": "fallback_verify",
+            "count": 1
+          }
+        ],
+        "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+      }
+    },
+    "scope": "Diagnostic execution only; no quality or performance acceptance",
+    "candidate_diagnostics": {
+      "schema_version": "project.candidate-diagnostics.v1",
+      "events": [
+        {
+          "phase": "run",
+          "bundle": "repair-control-param-e3dd88c3",
+          "file": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/qwen-throughput/0-control/jobs/candidate-diagnostics-50930e232e/source/opop_candidates/repair-control.py",
+          "function": "_try_setup",
+          "line": 204,
+          "source": "raise RuntimeError(\"captured replay does not reproduce eager parent logits\")",
+          "recent_lines": [
+            {
+              "line": 193,
+              "source": "graph = torch.cuda.CUDAGraph()"
+            },
+            {
+              "line": 194,
+              "source": "_capture_chain(graph, stream, chain)"
+            },
+            {
+              "line": 195,
+              "source": "graph.replay()"
+            },
+            {
+              "line": 196,
+              "source": "ok = len(L) == st[\"n_steps\"] and len(st[\"E\"]) == st[\"n_steps\"]"
+            },
+            {
+              "line": 197,
+              "source": "if ok:"
+            },
+            {
+              "line": 198,
+              "source": "for i in range(st[\"n_steps\"]):"
+            },
+            {
+              "line": 199,
+              "source": "if not torch.equal(L[i], st[\"E\"][i]):"
+            },
+            {
+              "line": 200,
+              "source": "ok = False"
+            },
+            {
+              "line": 201,
+              "source": "break"
+            },
+            {
+              "line": 202,
+              "source": "if not ok:"
+            },
+            {
+              "line": 203,
+              "source": "st[\"verify_failed\"] = True"
+            },
+            {
+              "line": 204,
+              "source": "raise RuntimeError(\"captured replay does not reproduce eager parent logits\")"
+            }
+          ],
+          "event": "exception",
+          "type": "RuntimeError",
+          "message": "captured replay does not reproduce eager parent logits",
+          "count": 1
+        }
+      ],
+      "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+    }
+  }
+}

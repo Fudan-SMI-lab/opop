@@ -1,0 +1,39 @@
+{
+  "revision": "02ed8cf7cd1a72fd1896b232b1fdfd46711270f9971e01fe1315c636ec743a2a",
+  "collectors": [
+    "nccl_tuning",
+    "binding_cost",
+    "execution_timeline",
+    "nsys",
+    "collective_calibration"
+  ],
+  "requested_fields": [
+    "nccl_tuning.algorithm",
+    "nccl_tuning.protocol",
+    "nccl_tuning.nchannels",
+    "nccl_tuning.size_threshold_decisions",
+    "binding_cost.parent_whole_invocation_ms",
+    "binding_cost.binding_only_passthrough_ms",
+    "binding_cost.ab_ba_order",
+    "binding_cost.quality_checks",
+    "execution_timeline.per_device_intervals",
+    "execution_timeline.cpu_submit_associations",
+    "execution_timeline.synchronization_events",
+    "execution_timeline.clock_alignment_bounds",
+    "nsys.nccl_kernel_intervals_per_rank",
+    "nsys.nccl_compute_overlap",
+    "nsys.stream_placement",
+    "collective_calibration.allreduce_ms_at_observed_sizes",
+    "collective_calibration.dtypes_and_sizes",
+    "collective_calibration.correctness_checks"
+  ],
+  "unavailable_fields": {
+    "nvlink_bytes": "NVML nvmlDeviceGetNvLinkState returned status 3 on both GPUs (nvlink probe not_supported) and peer_access is 0.0 in both directions; no per-link traffic counters exist on this fabric",
+    "pcie_bytes": "Only device-wide NVML rate samples with native 20 ms sampling windows are available; hardware byte counters require a collector-specific probe that has not succeeded, and logical payload sizes are not traffic",
+    "hardware_utilization": "Requires a hardware-counter probe that has not succeeded; capability probe leaves this unknown",
+    "nccl_wait_vs_wire_split": "NCCL kernel durations include device waiting; neither kernel durations nor nsys timelines separate NCCL waiting from wire transfer",
+    "per_bucket_protocol_in_run": "nccl_tuning captures actual algorithm/protocol/channel decisions in a separate warmed worker and does not join payload-size matches to operator groups; exact in-run per-bucket protocol attribution is unavailable",
+    "bucket_identity_for_candidate": "Exact bucket links for the candidate require native correlation plus observed gradient-storage membership; absent that evidence bucket candidates remain ambiguous (nsys alone cannot prove bucket identity)"
+  },
+  "rationale": "Evaluation shows all three parameter candidates (NCCL nchannels/proto overrides) rejected for step_ms (253.86/295.48/289.42 ms vs limit 144.80) and none reduces max-rank communication_kernel_sum_ms below the original 63.67 ms (89.08/128.40/110.20). The observed uncertainty is mechanistic, not parametric: candidate 02ed8cf7 regressed step time by ~116 ms while its max-rank comm kernel sum rose only ~25 ms (rank 0 actually improved to 60.12 vs 63.32), so roughly 90 ms of non-communication time appeared and the regression must not be assumed to be NCCL algorithm cost. Plan for revision 02ed8cf7cd1a72fd1896b232b1fdfd46711270f9971e01fe1315c636ec743a2a (closest to the constraint, conservative Simple protocol for the PCIe-only fabric, and the largest rank asymmetry 60.12 vs 89.08 ms, a waiting-imbalance signal): (1) nccl_tuning to capture the actual warmed-worker algorithm/protocol/channel decisions and confirm whether nchannels=4/proto=Simple actually bound, since the parent trace's RING_LL kernel entry names alone do not identify the protocol; (2) binding_cost in clean AB/BA workers to separate binding-only passthrough overhead (functional_sites=2, legacy binding, no fallbacks) from the parameter effect on the whole invocation; (3) execution_timeline for CPU-to-CUDA submit associations, synchronization and per-device intervals to attribute the extra wall time to host submit/sync stalls versus device intervals, with clock alignment bounds applied to CPU submissions only; (4) nsys (available per capability probe) to resolve the overlap/attribution question of whether the 13 bucket allreduces still overlap backward compute or became serialized, accepting that it cannot separate NCCL waiting from wire transfer; (5) collective_calibration as a correctness-checked reference experiment running a full-world SUM allreduce at the actually observed sizes/dtypes (12x 28,351,488 B + 1x 157,541,376 B f32) to establish what warmed default tuning achieves at exactly these sizes on this topology, not as a lower bound or critical-path estimate. torch already ran; device_telemetry is excluded because device-wide NVML rates with native windows cannot attribute per-collective traffic or answer these questions; python_runtime is excluded because binding_cost isolates whole-invocation binding cost more cleanly without cProfile perturbation; candidate_diagnostics has no grounded question in the capability or trace evidence. If binding_cost comes back clean and the timeline shows device-side serialization with no achievable comm-sum reduction at observed sizes, further NCCL parameter collection on this candidate is not useful."
+}

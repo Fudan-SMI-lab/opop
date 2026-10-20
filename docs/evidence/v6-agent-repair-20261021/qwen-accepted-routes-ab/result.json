@@ -1,0 +1,135 @@
+{
+  "control": {
+    "plan": {
+      "collectors": [],
+      "requested_fields": [],
+      "unavailable_fields": {
+        "communication.nccl_algorithm_protocol_channel_selection": "Not applicable: single-process single-GPU task with no process group and no NCCL (observations.json capabilities[0].fields[0] communication status=not_applicable, reason 'single-device task'; request.json notes: device_count=1, distributed_backend=null). nccl_tuning's warmed-worker decisions have no collective to report on for this workload.",
+        "communication.collective_allreduce_calibration": "Not applicable: no collectives exist on one device; collective_calibration's synthetic full-world SUM allreduce at observed sizes/dtypes has no matching operator group here and would not bound or model ttft_ms for this prefill-bound objective.",
+        "communication.pcie_nvlink_traffic_bytes": "Unavailable: this workload performs no inter-device communication, and device_telemetry only samples device-wide NVLM/NVML PCIe, utilization and memory windows with native sampling windows, not per-collective or per-memcpy bytes; PCIe/NVLink traffic must not be inferred from logical payload or memcpy sizes.",
+        "communication.cross_rank_clock_alignment_bounds": "Not applicable: single rank (observations.json cross_rank.matched=[], ranks[0].status=not_applicable, reason 'single-device task').",
+        "communication.bucket_identity_gradient_storage_membership": "Not applicable: inference-only task under torch.inference_mode with no gradients, no communication hook and no DDP buckets; exact bucket links require native correlation plus observed gradient-storage membership, neither of which can exist here, so this dimension stays unknown by construction.",
+        "host.dispatch_binding_cost_clean_scores": "Not available cleanly: python_runtime's warmed cProfile perturbs execution and its inclusive/self times are not clean performance scores or GPU compute durations; no host-side anomaly is observed to justify it (evaluation.json rank 0 framework.elapsed_ms=713.479034 vs end_to_end_ms=713.236868).",
+        "binding.machinery_overhead_whole_invocation": "Not measurable usefully: evaluation.json setup[0].binding shows requested='legacy', effective='direct', reason='no functional replacements', functional_sites=null - the measured invocation path contains no binding machinery for binding_cost's parent-vs-binding-only-passthrough AB/BA comparison to isolate.",
+        "attribution.kernel_to_operator_association": "Already resolved, not unavailable: coverage.json reports 66441/66441 cuda_kernels associated below project with 0 unassociated, 0 root_only_kernels, 0 backward/autograd ranges and 0 ambiguous_forward_sequences from the torch collector that already ran."
+      },
+      "rationale": "Frozen objective is ttft_ms for a single-process single-GPU Qwen3-4B interactive inference row (request.json: one device UUID, distributed_backend=null, notes 'no process group, no NCCL'), and observations.json records communication capability as not_applicable ('single-device task') with an empty cross_rank table, so every communication-oriented collector is structurally inapplicable: nccl_tuning has no NCCL algorithm/protocol/channel decision to capture, collective_calibration has no allreduce to calibrate, and no PCIe/NVLink traffic exists to measure (device_telemetry is device-wide NVML windows only, and traffic must not be invented from logical payload or memcpy sizes). The torch collector already ran and answered kernel attribution completely (coverage.json: 66441/66441 kernels associated, 0 unassociated, 0 ambiguous forward sequences), so there is no open attribution, overlap or graph-tracing question that would justify optional nsys. The evaluated candidate 425fcdd623d0bfc3622bb45bb23ae4dff3c38a2060e0d03b3fde3751624daafc passed quality with a clean paired measurement (evaluation.json: measurement.valid=true, accepted=true, framework_fallbacks=0, objective 24.69429 ms vs paired parent 26.191631 ms; original reference 25.798801 ms) and no failure or anomaly to diagnose; its binding is effective='direct' with reason 'no functional replacements', so binding_cost would isolate machinery that is absent from the measured path and would report no per-group effects. python_runtime is not requested because no host-dispatch anomaly is observed (framework.elapsed_ms 713.479034 tracks end_to_end_ms 713.236868) and its perturbing cProfile times are not clean ttft_ms evidence; execution_timeline only adds CPU-submission clock-alignment bounds, synchronization and gradient-callback plumbing aimed at distributed/training questions, never determines subsequent search actions, and GPU readiness would remain unknown anyway. candidate_diagnostics has no capability or trace evidence supporting it in these artifacts. No observed uncertainty remains that an available collector can resolve on this candidate, so further collection is not useful and the collector list is empty; revision is left null because no collection is being requested.",
+      "revision": null
+    },
+    "agent": {
+      "role": "collection-planner",
+      "session": "ses_ea486e688ffe3gB6ARMvTGWj7W",
+      "message": "msg_15b7bbdf10019B7zB3Rw8Jxq7F",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 9,
+        "reported_cost": 0.12974178896,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 167666.0,
+          "input": 23246.0,
+          "output": 2563.0,
+          "reasoning": 12577.0,
+          "cache.read": 129280.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea486e688ffe3gB6ARMvTGWj7W",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft/sandboxes/collection-planner-00915541e036",
+      "outputs": [
+        "collection.json"
+      ],
+      "feedback_provided": false,
+      "contract_repairs": 0,
+      "generation_snapshots": [
+        "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft/generation-snapshots/generation-06b10b49ac56.json"
+      ]
+    }
+  },
+  "treatment": {
+    "plan": {
+      "collectors": [
+        "candidate_diagnostics",
+        "execution_timeline",
+        "nsys"
+      ],
+      "requested_fields": [
+        "candidate_diagnostics.route_evidence.c9d14173dd4887d4a4133553.parent_fallback_validation",
+        "candidate_diagnostics.exception_and_fallback_evidence",
+        "execution_timeline.cpu_to_cuda_submit_associations",
+        "execution_timeline.synchronization_events",
+        "execution_timeline.per_device_intervals",
+        "execution_timeline.prefill_to_first_token_boundary_interval",
+        "nsys.cuda_kernel_timeline_prefill",
+        "nsys.cpu_launch_gaps_and_overlap"
+      ],
+      "unavailable_fields": {
+        "communication.nccl_algorithm_protocol_channels": "Single-device task: no process group, no NCCL collectives (request.json notes; observations.json communication=not_applicable 'single-device task'); nccl_tuning is not applicable and kernel names alone would not identify protocol anyway.",
+        "communication.allreduce_calibration": "No collectives exist to calibrate; collective_calibration's synthetic full-world SUM allreduce has no counterpart in this single-GPU workload.",
+        "communication.per_collective_pcie_nvlink_bytes": "No communication occurs; device_telemetry supplies device-wide PCIe/utilization/memory windows only, not per-op bytes, and wire traffic must not be invented from logical payload or memcpy sizes.",
+        "torch_profile": "Already collected: coverage.json shows 66441/66441 CUDA kernels associated (0 unassociated), so re-running the torch collector adds nothing.",
+        "binding_cost.per_group_ttft_overhead": "binding_cost reports whole-invocation cost only; the invocation is decode-dominated (decode_ms ~688.9 vs ttft_ms ~24.4), so TTFT-specific binding overhead cannot be resolved from it.",
+        "gpu_readiness_and_consumer_completion_bounds": "execution_timeline reports clock alignment bounds for CPU submit matching only; GPU readiness and consumer completion may remain unknown.",
+        "host_dispatch_clean_timings": "python_runtime perturbs execution and its inclusive/self cProfile times are not clean performance scores or GPU compute durations, so clean per-op host cost stays unknown."
+      },
+      "rationale": "The task is single-process single-GPU greedy inference (request.json: .cuda() on device 0, no process group, distributed_backend null; observations.json marks communication not_applicable), so nccl_tuning, collective_calibration and any communication payload dimension are unavailable, and device_telemetry's device-wide native windows cannot attribute a ~25 ms prefill inside a ~713 ms invocation. The torch collector already ran with complete kernel association (coverage.json), so it is not re-requested. The remaining observed uncertainty in evaluation.json is: the accepted candidate improved ttft_ms 26.192 -> 24.694 (~5.7%) yet its only declared route is 'parent_fallback_validation' for call c9d14173dd4887d4a4133553 (count 2, matching 2 candidate invocations) and binding is effective 'direct' with 'no functional replacements' \u2014 candidate-reported telemetry that must be corroborated with traces or actual exception evidence, and the prefill-side source of the gain is unattributed. Plan on this exact candidate: candidate_diagnostics for native route/exception evidence behind the declared fallback-validation route; execution_timeline for a plain trace with CPU-to-CUDA submit associations, synchronization and per-device intervals to corroborate the declared route and bound the prefill-to-first-token boundary interval; nsys for an independent kernel/CPU timeline to attribute the prefill interval (launch gaps, overlap, sequencing). python_runtime and binding_cost are not selected: the former perturbs execution without clean timings, the latter reports only whole-invocation cost dominated by decode.",
+      "revision": "425fcdd623d0bfc3622bb45bb23ae4dff3c38a2060e0d03b3fde3751624daafc"
+    },
+    "agent": {
+      "role": "collection-planner",
+      "session": "ses_ea4818b0affeSGH6ExA6V5vr7a",
+      "message": "msg_15b7fccc9001xN4jHk4siaRt2V",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 9,
+        "reported_cost": 0.08122845181999999,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 127861.0,
+          "input": 15538.0,
+          "output": 2030.0,
+          "reasoning": 5461.0,
+          "cache.read": 104832.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea4818b0affeSGH6ExA6V5vr7a",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/qwen-accepted-routes-ab/sandboxes/collection-planner-replay-02dbf40d7be1",
+      "outputs": [
+        "collection.json"
+      ],
+      "feedback_provided": false,
+      "contract_repairs": 0,
+      "generation_snapshots": [
+        "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/qwen-accepted-routes-ab/generation-snapshots/generation-2f5814aaadfd.json"
+      ]
+    }
+  },
+  "edit": {
+    "path": "inputs/evaluation.json",
+    "old": "{\n  \"quality\": \"pass\",\n  \"decision\": {\n    \"state\": \"evaluated\",\n    \"revision\": \"425fcdd623d0bfc3622bb45bb23ae4dff3c38a2060e0d03b3fde3751624daafc\",\n    \"parent\": \"b759f42861842302784e96233f0ed68092b7455479704ff9609958d9a2a6907b\",\n    \"bundle\": \"trial-e262267559-param-9f9110c1\",\n    \"accepted\": true,\n    \"reasons\": [],\n    \"report_ref\": \"sha256:a1df7fedfeb61020995b3f6d1ea5e9896872d96dd8be1aea30ca2ae75fbaa491\"\n  },\n  \"measurement\": {\n    \"valid\": true,\n    \"objective\": 24.69429,\n    \"reference\": 26.191631,\n    \"reasons\": [],\n    \"constraints\": []\n  },\n  \"endpoint\": {\n    \"status\": \"passed\",\n    \"failure\": null,\n    \"quality_and_coverage_valid\": true,\n    \"ranks\": [\n      {\n        \"rank\": 0,\n        \"metrics\": {\n          \"ttft_ms\": 24.403225,\n          \"decode_ms\": 688.869473,\n          \"end_to_end_ms\": 713.236868,\n          \"decode_tokens_per_second\": 45.001268331714854,\n          \"generated_tokens_per_second\": 44.865880376783885,\n          \"generated_tokens_per_second_wall\": 44.85065219169426,\n          \"peak_allocated_bytes\": 8168429568.0,\n          \"framework.elapsed_ms\": 713.479034,\n          \"framework.peak_allocated_bytes\": 8168429568.0,\n          \"framework.peak_reserved_bytes\": 8277458944.0,\n          \"framework.allocated_bytes\": 8110232064.0,\n          \"framework.reserved_bytes\": 8277458944.0,\n          \"framework.lifecycle_peak_allocated_bytes\": 8232796160.0,\n          \"framework.lifecycle_peak_reserved_bytes\": 8277458944.0\n        },\n        \"setup\": [\n          {\n            \"bundle\": \"trial-e262267559-param-9f9110c1\",\n            \"binding\": {\n              \"requested\": \"legacy\",\n              \"effective\": \"direct\",\n              \"reason\": \"no functional replacements\",\n              \"functional_sites\": null\n            }\n          }\n        ],\n        \"coverage\": {\n          \"trial-e262267559-param-9f9110c1\": {\n            \"candidate_invocations\": 2,\n            \"framework_fallbacks\": 0,\n            \"reference_invocations\": 2\n          }\n        }\n      }\n    ],\n    \"interpretation\": \"Reference invocations may implement fallback, verification or composition; these totals do not identify an optimization's native execution path.\"\n  },\n  \"evidence\": [\n    \"/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft/jobs/trial-e262267559-evaluation-4d5f0ce9-pair-0-parent/run/receipt.json\",\n    \"/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft/jobs/trial-e262267559-evaluation-4d5f0ce9-pair-0-candidate/run/receipt.json\",\n    \"/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft/jobs/trial-e262267559-evaluation-4d5f0ce9-pair-1-candidate/run/receipt.json\",\n    \"/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft/jobs/trial-e262267559-evaluation-4d5f0ce9-pair-1-parent/run/receipt.json\"\n  ],\n  \"original_reference\": {\n    \"revision\": \"78e3128e68a120e0ecfcc13ee23672072d35adfce958b4b935e5c59f468e7af3\",\n    \"ranks\": [\n      {\n        \"rank\": 0,\n        \"metrics\": {\n          \"ttft_ms\": 25.798801,\n          \"decode_ms\": 727.934248,\n          \"end_to_end_ms\": 753.223048,\n          \"decode_tokens_per_second\": 42.58626391761691,\n          \"generated_tokens_per_second\": 42.484095627408365,\n          \"generated_tokens_per_second_wall\": 42.47183307847579,\n          \"peak_allocated_bytes\": 8168429568.0,\n          \"framework.elapsed_ms\": 753.44052,\n          \"framework.peak_allocated_bytes\": 8168429568.0,\n          \"framework.peak_reserved_bytes\": 8239710208.0,\n          \"framework.allocated_bytes\": 8110232064.0,\n          \"framework.reserved_bytes\": 8239710208.0,\n          \"framework.lifecycle_peak_allocated_bytes\": 8181748736.0,\n          \"framework.lifecycle_peak_reserved_bytes\": 8239710208.0\n        }\n      }\n    ],\n    \"interpretation\": \"Original independently measured reference, not necessarily the candidate's current parent. Parent discovery in observations.json is intrusive profiling and must not be substituted for this clean score. Paired parent values, when available, are reported separately in evaluation.measurement.\"\n  }\n}",
+    "new": "{\n  \"quality\": \"pass\",\n  \"decision\": {\n    \"state\": \"evaluated\",\n    \"revision\": \"425fcdd623d0bfc3622bb45bb23ae4dff3c38a2060e0d03b3fde3751624daafc\",\n    \"parent\": \"b759f42861842302784e96233f0ed68092b7455479704ff9609958d9a2a6907b\",\n    \"bundle\": \"trial-e262267559-param-9f9110c1\",\n    \"accepted\": true,\n    \"reasons\": [],\n    \"report_ref\": \"sha256:a1df7fedfeb61020995b3f6d1ea5e9896872d96dd8be1aea30ca2ae75fbaa491\"\n  },\n  \"measurement\": {\n    \"valid\": true,\n    \"objective\": 24.69429,\n    \"reference\": 26.191631,\n    \"reasons\": [],\n    \"constraints\": []\n  },\n  \"endpoint\": {\n    \"status\": \"passed\",\n    \"failure\": null,\n    \"quality_and_coverage_valid\": true,\n    \"ranks\": [\n      {\n        \"rank\": 0,\n        \"metrics\": {\n          \"ttft_ms\": 24.403225,\n          \"decode_ms\": 688.869473,\n          \"end_to_end_ms\": 713.236868,\n          \"decode_tokens_per_second\": 45.001268331714854,\n          \"generated_tokens_per_second\": 44.865880376783885,\n          \"generated_tokens_per_second_wall\": 44.85065219169426,\n          \"peak_allocated_bytes\": 8168429568.0,\n          \"framework.elapsed_ms\": 713.479034,\n          \"framework.peak_allocated_bytes\": 8168429568.0,\n          \"framework.peak_reserved_bytes\": 8277458944.0,\n          \"framework.allocated_bytes\": 8110232064.0,\n          \"framework.reserved_bytes\": 8277458944.0,\n          \"framework.lifecycle_peak_allocated_bytes\": 8232796160.0,\n          \"framework.lifecycle_peak_reserved_bytes\": 8277458944.0\n        },\n        \"setup\": [\n          {\n            \"bundle\": \"trial-e262267559-param-9f9110c1\",\n            \"binding\": {\n              \"requested\": \"legacy\",\n              \"effective\": \"direct\",\n              \"reason\": \"no functional replacements\",\n              \"functional_sites\": null\n            }\n          }\n        ],\n        \"coverage\": {\n          \"trial-e262267559-param-9f9110c1\": {\n            \"candidate_invocations\": 2,\n            \"framework_fallbacks\": 0,\n            \"reference_invocations\": 2,\n            \"candidate_declared_routes\": [\n              {\n                \"call\": \"c9d14173dd4887d4a4133553\",\n                \"route\": \"parent_fallback_validation\",\n                \"count\": 2\n              }\n            ]\n          }\n        }\n      }\n    ],\n    \"interpretation\": \"Reference invocations may implement fallback, verification or composition. Route labels are candidate-reported telemetry, not independent native proof; corroborate them with traces or actual exception evidence.\"\n  },\n  \"evidence\": [\n    \"/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft/jobs/trial-e262267559-evaluation-4d5f0ce9-pair-0-parent/run/receipt.json\",\n    \"/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft/jobs/trial-e262267559-evaluation-4d5f0ce9-pair-0-candidate/run/receipt.json\",\n    \"/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft/jobs/trial-e262267559-evaluation-4d5f0ce9-pair-1-candidate/run/receipt.json\",\n    \"/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft/jobs/trial-e262267559-evaluation-4d5f0ce9-pair-1-parent/run/receipt.json\"\n  ],\n  \"original_reference\": {\n    \"revision\": \"78e3128e68a120e0ecfcc13ee23672072d35adfce958b4b935e5c59f468e7af3\",\n    \"ranks\": [\n      {\n        \"rank\": 0,\n        \"metrics\": {\n          \"ttft_ms\": 25.798801,\n          \"decode_ms\": 727.934248,\n          \"end_to_end_ms\": 753.223048,\n          \"decode_tokens_per_second\": 42.58626391761691,\n          \"generated_tokens_per_second\": 42.484095627408365,\n          \"generated_tokens_per_second_wall\": 42.47183307847579,\n          \"peak_allocated_bytes\": 8168429568.0,\n          \"framework.elapsed_ms\": 753.44052,\n          \"framework.peak_allocated_bytes\": 8168429568.0,\n          \"framework.peak_reserved_bytes\": 8239710208.0,\n          \"framework.allocated_bytes\": 8110232064.0,\n          \"framework.reserved_bytes\": 8239710208.0,\n          \"framework.lifecycle_peak_allocated_bytes\": 8181748736.0,\n          \"framework.lifecycle_peak_reserved_bytes\": 8239710208.0\n        }\n      }\n    ],\n    \"interpretation\": \"Original independently measured reference, not necessarily the candidate's current parent. Parent discovery in observations.json is intrusive profiling and must not be substituted for this clean score. Paired parent values, when available, are reported separately in evaluation.measurement.\"\n  }\n}"
+  },
+  "source_receipt": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft/jobs/trial-e262267559-evaluation-4d5f0ce9-pair-0-candidate/run/receipt.json",
+  "scope": "Single generation comparison; telemetry is a candidate claim, no optimization outcome or independent mechanism proof inferred"
+}

@@ -1,0 +1,181 @@
+{
+  "trial": "repair-control",
+  "selection": {
+    "scope": "joint",
+    "groups": [
+      "f833b57a373d8262a384",
+      "8525af72c631b94e3dd0"
+    ],
+    "affected_calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "rationale": "The requested objective is step_ms (max across ranks; original baseline 136.86/137.05 ms). Composition of one accumulated step, from measured evidence: non-NCCL compute kernels total ~34.0 ms for all 4 micro-batches (nsys rank-0 trace spans the complete accumulate: 8 embedding gathers, 13 NCCL kernels, ends at the loss stack), while the 13 DDP bucket allreduces cost ~61.8 ms when measured cleanly (collective_calibration: 28,351,488 B -> 3.52 ms median, 157,541,376 B -> 19.50 ms; 12x3.52+19.5). Exposure: after the first collective kernel starts, only 8.49 ms of compute remains in the final backward and 1.73 ms after the last starts, so communication is essentially fully serialized at the step tail; overlap with compute cannot be increased further inside the frozen no_sync schedule. The wire path is NCCL RING_LL over SHM/direct (peer_access 0 in both directions, NVLink unsupported, 2 channels) at a logical 8.05 GB/s for both payload sizes, while device telemetry during the comm window shows pcie.tx ~7.3 GB/s and pcie.rx ~8.5 GB/s, i.e. the LL-protocol path, not the link, appears to set the ~62 ms floor (PCIe/SHM saturation estimate for the 497,759,232 B per-rank gradient payload is ~40 ms). These 13 collectives are the only collectives in the step (payload coverage 13/13 observed) and are jointly owned by exactly two eligible call groups at the shared c10d.allreduce_.default dispatch boundary: f833b57a373d8262a384 (call d0938de87369efd500322679, 12 invocations of the 7,087,872-element bucket shape) and 8525af72c631b94e3dd0 (call b8ade439d7b8bd5fb5c1029b, the single 39,385,344-element embedding bucket). Bucket membership spreads across all layer groups, so no per-layer group independently owns communication cost; conversely, faster local compute kernels (mm 10.5 ms, addmm 4.8 ms inclusive) cannot move step_ms materially while ~45% of the step is exposed communication. A replacement must cover both payload shapes at this one boundary, so the two groups are selected as a joint candidate. Constraints preserved: same worker-initialized process group, async_op=True Work semantics, in-place float32 SUM into the gradient_as_bucket_view bucket tensors, no DDP configuration/bucketing change and no comm hook; DDP's own world-size division and the frozen step boundary stay untouched. Per-element the reduction remains a single two-addend sum (commutative), so results are bitwise identical to NCCL's ring sum, keeping the exact cross-rank replica check (atol=0/rtol=0), the full-global-batch gradient reference check and the parameter check unchanged, and the diagnostic communication goal only improves.",
+    "hypothesis": "Replacing the bucket allreduce dispatch at both selected call groups with a bandwidth-optimized two-rank reduction on the existing NCCL process group - e.g. a chunked one-shot exchange that splits each bucket into large contiguous halves, exchanges them with point-to-point sends/receceptions so both directions move SIMPLE-protocol bulk transfers, adds each half locally, and swaps the reduced halves back into the bucket view; or any equivalent path that lifts effective throughput above the observed 8.05 GB/s RING_LL ceiling - will shorten the ~62 ms serialized tail communication toward the ~40 ms link-saturation estimate and reduce step_ms by roughly 10-20 ms (~8-15%), because communication is measured to be almost fully exposed (only 8.49 ms of overlap available) and is the largest single block of the 137 ms step. Bitwise-identical gradient values (two-addend commutative sum, DDP still divides by world size) preserve every quality check including exact cross-rank equality. This is a hypothesis to be tested: if the 8 GB/s LL result already reflects the SHM/PCIe hard ceiling for this pair, or if chunking adds launch overhead comparable to the bandwidth gain, measured step_ms will not improve and the candidate must be rejected on measurement; expected benefit is not acceptance."
+  },
+  "proposal": {
+    "implementation": "distributed",
+    "replacement_calls": [
+      "d0938de87369efd500322679",
+      "b8ade439d7b8bd5fb5c1029b"
+    ],
+    "rationale": "Repair of the rejected joint bundle trial-b0a02885e2 (groups f833b57a373d8262a384 + 8525af72c631b94e3dd0) at the shared c10d.allreduce_.default boundary that owns all 13 DDP bucket collectives of the step (12x 7,087,872-element buckets + the 39,385,344-element embedding bucket). The measured feedback shows the previous custom path NEVER executed: every observed run recorded route 'parent:guard_reduce_op' for all 13 calls on both ranks, and candidate_diagnostics captured ImportError for 'torch._C._distributed_c10d.RedOpType', which does not exist in the measured torch 2.13.0+cu129. Root cause confirmed by CPU inspection with the worker's own python: at this boundary the replacement receives args [TensorList, __torch__.torch.classes.c10d.ProcessGroup ScriptObject, __torch__.torch.classes.c10d.ReduceOp ScriptObject, None]; the old guard isinstance-checked the pybind ReduceOp class and the absent RedOpType, so the ScriptObject never matched. The repair identifies SUM via the accessor torch itself uses for the same object (torch/distributed/_local_tensor/_c10d.py: reduce_op_so.op(), compared with ReduceOp.SUM), resolves the boxed process group via ProcessGroup.unbox, and keeps the dispatcher's actual 4-positional-arg arrival form (async_op/timeout defaults) while newly guarding async_op=False to the parent. This repair keeps the selected boundary and frozen contract, and executes the selection's hypothesis through a tunable strategy parameter: 'p2p' (default) is the chunk-free one-shot halves exchange - each rank isends one contiguous half (SIMPLE-protocol bulk point-to-point), irecvs the peer's half into persistent scratch with a unique monotonic tag per exchange round, reduces its kept half with one local add, and swaps reduced halves back with a second grouped exchange; 'rs_ag' is the canonical equivalent decomposition via the process group's pybind _reduce_scatter_base/_allgather_base at identical wire volume with no manual adds. Both were validated on CPU with the measured worker's python against the real op under a framework-shaped TorchDispatchMode: results are bitwise equal to the parent SUM, bitwise identical across ranks, ABI (tensors, boxed Work) preserved, fallback routes recorded. How the feedback changes this attempt's expectation: beyond the guard defect, the measurements expose a structural cost that no boundary-preserving implementation can remove - the framework's binding ablations measured parent 128.7-145.2ms vs passthrough 217.1-239.6ms and the previous candidate 230.4-239.0ms, i.e. installing ANY functional replacement at this boundary (legacy or scoped backend) creates the global ReplacementMode TorchDispatchMode over adapter.run plus per-module hooks, taxing every aten op of the ~2,500-op step by ~+38us and adding +94-104ms total; the entire communication budget is only ~61.8ms (collective_calibration medians 3.52ms x 12 + 19.50ms, flat ~8.05GB/s logical across both payload sizes, matching the 3.3ms average in-step kernels), so even reducing communication to zero could not offset the binding cost, and the flat rate across 28MB/157MB and contexts additionally suggests ~8GB/s may already be this SHM/PCIe pair's ceiling (peer_access 0 both directions, 2 channels). This candidate therefore makes the selected hypothesis actually execute and be measured honestly: route telemetry will now show p2p_oneshot/rs_ag_oneshot instead of silent parent fallbacks, the p2p path tests whether point-to-point bulk transfers lift throughput above the observed RING_LL rate, and acceptance remains decided by the bound worker's paired project measurement exactly as the selection requires; expected benefit is not acceptance, and if the paired gain does not exceed noise the candidate must again be rejected on measurement.",
+    "setup_work": {
+      "build_time": "No CUDA work at build; no model/parameter transforms; no new process groups, no environment changes, no comm hooks, no CUDA Graph capture. build() reads context['parameters']['exchange'] (validated against {'p2p','rs_ag'}, default 'p2p'), binds the parent references from context['references'], and returns two closures for the declared call IDs sharing a per-device scratch cache, a lazy options pair and a monotonic P2P tag counter. Installation cost is the framework's module import only.",
+      "runtime_lazy": "The first supported invocation allocates one persistent fp32 scratch per CUDA device, grown to the largest half-bucket seen (19,692,672 elements = 75.1MiB for the 39,385,344-element embedding bucket; the 7,087,872-element buckets use a 13.5MiB prefix slice until then). Allocation happens once per worker during warmup invocations and the buffer is retained for the process lifetime; first-use NCCL P2P / reduce-scatter path warmup also lands in warmup invocations.",
+      "per_call_work": "p2p: two grouped batch_isend_irecv enqueues (one contiguous chunk per direction per round, unique tag per round), one elementwise add over half the bucket, and event-based Work.wait() stream syncs (NCCL wait is event-based; the CPU never blocks). rs_ag: one _reduce_scatter_base and one _allgather_base enqueue on the process group's NCCL stream plus event-based waits. Both strategies use pybind / point-to-point APIs, so the custom path itself does not re-enter the intercepted c10d.allreduce_ op, adds no dispatch-mode hops of its own, and returns the final Work boxed via Work.boxed exactly at the parent op's return position.",
+      "memory_impact": "Steady state retains +75.1MiB allocated scratch, visible in framework.peak_allocated_bytes and lifecycle counters; no per-invocation growth; no graphs or retained graph pools. This is a documented setup/retained allocation, not a general physical-memory saving."
+    },
+    "quality_risks": [
+      "Exactness: every output element is a single two-addend commutative fp32 sum computed on exactly one rank and copied verbatim to the peer, so bucket values are bitwise equal to the parent SUM and bitwise identical across ranks (the atol=0/rtol=0 replica check holds structurally); DDP's world-size division happens outside this boundary and is untouched, so the reference-gradient (1e-6/1e-4), parameter (1e-6/1e-4), finite-loss and negative-control checks are unaffected. Both strategies were verified bitwise-identical to the real op on CPU with the measured worker's python.",
+      "Structural binding overhead dominates step_ms: measured passthrough ablations put ANY functional replacement at this boundary at +94-104ms vs the parent (parent 128.7-145.2ms, passthrough 217.1-239.6ms, previous candidate 230.4-239.0ms) because the legacy binding wraps adapter.run in a global TorchDispatchMode over every aten op; the whole communication budget is ~61.8ms, so this repair cannot beat the parent on step_ms unless that structural cost is addressed outside the frozen selection closure. Reported honestly; the paired measurement decides.",
+      "Transport hypothesis may be null: the logical rate is flat ~8.05GB/s across both payload sizes in clean calibration and in-step kernels (RING_LL), so point-to-point SIMPLE transfers may tie rather than lift throughput; the p2p path additionally adds ~4-5ms/step of local half-bucket add compute (12 x 3.54M-element adds + one 19.69M-element add) and grouped-launch overhead. If so, measured step_ms will not improve and the candidate is rejected on measurement, as the selection states.",
+      "Work-handle coverage: the returned handle is the final grouped op's genuine WorkNCCL boxed with Work.boxed (the same mechanism the parent op returns). All exchange ops of one bucket serialize on the process group's NCCL stream, the event-based wait() calls order the caller's (backward) stream before return, and round-2 sends are ordered after the local add by enqueue-time stream synchronization, so DDP-side wait/finalize semantics are preserved.",
+      "Divergent routing would hang rather than corrupt: every guard is a pure function of rank-identical inputs (bucket shape/dtype/layout/size, backend, world membership, reduce op, async flag), fallback happens strictly before any enqueue, post-enqueue exceptions propagate instead of triggering a parent fallback (a parent call after partial sends would double-reduce the bucket), and unique monotonic per-exchange tags prevent cross-bucket op mismatch under issue-order skew between ranks.",
+      "Memory accounting: the retained +75.1MiB scratch raises warm-run peak_allocated_bytes and lifecycle counters; reported explicitly as setup/retained allocation rather than described as a saving.",
+      "The workload's second, non-requested diagnostic goal (max_rank_nccl_kernel_sum_ms, separate profiled invocations with a step_ms<=1.05x baseline constraint) counts NCCL AllReduce kernel time; this replacement substitutes Send/Recv or ReduceScatter/AllGather kernels, so that diagnostic becomes non-comparable while the requested step_ms objective is unaffected.",
+      "The parent timeout argument is not forwarded (P2POp exposes no timeout; the pybind options keep their defaults), so the process group's default timeout governs, matching the parent's timeout=-1 default behavior; async_op=False now falls back to the parent instead of returning unwaited work.",
+      "Tunable 'exchange' only selects between two semantics-preserving strategies at identical wire volume and is read from context['parameters']; every legal choice preserves quality contracts, the TaskSearch loop screens both against the complete project, and the selected candidate is revalidated with paired project measurements before publication."
+    ],
+    "eliminated_calls": [],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {
+      "params": [
+        {
+          "name": "exchange",
+          "kind": "str",
+          "choices": [
+            "p2p",
+            "rs_ag"
+          ],
+          "description": "Two-rank exchange strategy at the bucket boundary. 'p2p': chunk-free one-shot contiguous halves exchange with grouped isend/irecv, one local add per bucket and monotonic per-round tags (the selection's primary hypothesis, SIMPLE-protocol bulk transfers). 'rs_ag': reduce-scatter + all-gather decomposition via the process group's pybind collectives at the same wire volume with no manual adds. Both compute the exact two-addend SUM; only transport differs, never task semantics."
+        }
+      ],
+      "constraints": []
+    }
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea502eb8affeCdm09Q7rIf4MaF",
+    "message": "msg_15b19c146001Ng46ejKojpNFb2",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 98,
+      "reported_cost": 4.30611486876,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 12003363.0,
+        "input": 370967.0,
+        "output": 24031.0,
+        "reasoning": 75629.0,
+        "cache.read": 11532736.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea502eb8affeCdm09Q7rIf4MaF",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/ddp-step/0-control/sandboxes/candidate-11b4e04ddbcf",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/ddp-step/0-control/generation-snapshots/generation-6dd2682477cf.json"
+    ]
+  },
+  "experiment": {
+    "source_run": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step",
+    "trial": "trial-b0a02885e2",
+    "role": "candidate",
+    "snapshot": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/generation-snapshots/generation-2b80d03accf6.json",
+    "original_framework": {
+      "sha256": "49395b455fa48dc70ebd3581959a0875ea6fca6980b81a1ff0385279abb9e70b",
+      "files": 160,
+      "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+    },
+    "framework": {
+      "sha256": "5b74946e86a194124889c8262ca3a7083e7a32e19f34aa5d58908fc31facd8c1",
+      "files": 160,
+      "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+    },
+    "repeats": 1,
+    "evidence_sha256": "317ea04f21088c7c4282a7f3b009283166e15efe33e77038071cac9625afb896",
+    "treatment": "Only supplemental_evidence is added to ordinary feedback",
+    "scope": "Fresh sessions; developer-supplied diagnosis; unchanged GPU validation; isolated publication"
+  },
+  "arm": "control",
+  "repeat": 0,
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "repair-control",
+    "parent_revision": "c63bc8c5a27187a3b4f6a7fdfb954cd4e0d72d1fd90274f4bbb39d12559a8866",
+    "contract_ref": "sha256:86da60adc15b0f15a2942dcd11214684e525aa0cd92d8a7dfb171f9b4b0e7e15",
+    "scope": "joint",
+    "implementation": "distributed",
+    "groups": [
+      "f833b57a373d8262a384",
+      "8525af72c631b94e3dd0"
+    ],
+    "calls": [
+      "d0938de87369efd500322679",
+      "b8ade439d7b8bd5fb5c1029b"
+    ],
+    "affected_calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/repair-control.py",
+        "before_sha256": null,
+        "content_ref": "sha256:a01359787a4c15d4835955a2cd708993f6074a2dc0044972d4783580fcc07fe3"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/repair-control.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+      }
+    ],
+    "read_set": [
+      "call:b8ade439d7b8bd5fb5c1029b",
+      "call:d0938de87369efd500322679"
+    ],
+    "write_set": [
+      "file:opop_candidates/repair-control.py",
+      "file:opop_candidates/repair-control.targets.json",
+      "call:d0938de87369efd500322679",
+      "call:b8ade439d7b8bd5fb5c1029b"
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Model architecture is frozen: GPT2Config(n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024) with resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False, attn_implementation='eager', FP32 weights via .float(), .train() mode, initialized under torch.manual_seed(20261020); no pretrained weights are downloaded (assets is empty by design, seeded synthetic fixtures are the task data).",
+      "Inputs are frozen: per-rank synthetic token IDs from torch.randint(0, 50257, (micro_batch=1, sequence_length=128)) repeated accumulation_steps=4 times using torch.Generator().manual_seed(31000 + rank).",
+      "Workload dimensions are frozen: world_size=2, micro_batch=1, sequence_length=128, accumulation_steps=4; effective batch 8 and 1024 tokens per step; the first 3 micro-batch backwards run under DDP.no_sync() and only the final micro-batch backward triggers the gradient all-reduce.",
+      "Numerical policies are frozen: TF32 disabled for cuBLAS matmul and cudnn, float32_matmul_precision 'highest', cudnn.benchmark False, torch num_threads=4 and num_interop_threads=1, seed 20261020.",
+      "DDP configuration is frozen: broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True; no communication hook and no profiler on the measured path (the source's bucket-inventory hook belongs to a separate diagnostic and is never installed).",
+      "Optimizer semantics are frozen: torch.optim.SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False); optimizer.zero_grad(set_to_none=True) executes inside the timed step (never pre-cleared in reset); each micro-batch loss is model(input_ids=tokens, labels=tokens, use_cache=False).loss / accumulation_steps and the accumulated loss is the sum over micro-batches.",
+      "Quality contract preserved from the source: finite accumulated loss; full per-parameter gradient comparison against the single-GPU full-global-batch reference with grad_atol=1e-6/grad_rtol=1e-4; exact cross-rank gradient equality with atol=0.0/rtol=0.0; post-step parameter comparison with parameter_atol=1e-6/parameter_rtol=1e-4; the +1-corruption negative control. The adapter exposes loss, every gradient and every updated parameter and leaves the comparisons to the framework; no accuracy or convergence is claimed beyond these reference-fidelity checks.",
+      "Objective semantics are frozen: step_ms is each rank's wall time of the complete accumulated step with the source's final torch.cuda.synchronize() as the completion boundary, aggregated as max across ranks; work is never moved out of the timed step to improve the score and no fabricated sub-metrics or sub-phase objectives are introduced.",
+      "The adapter uses context['device'] and the worker-initialized process group exclusively; it never picks a physical GPU, never initializes another default process group, never destroys a process group, and performs no CUDA work at import time."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/repair-control.py",
+    "parameters": {}
+  }
+}

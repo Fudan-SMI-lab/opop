@@ -1,0 +1,67 @@
+{
+  "plan": {
+    "collectors": [
+      "nccl_tuning",
+      "collective_calibration",
+      "execution_timeline"
+    ],
+    "requested_fields": [
+      "nccl_tuning.algorithm_protocol_channel_decisions",
+      "nccl_tuning.effective_env_vs_default_by_message_size",
+      "collective_calibration.allreduce_sum_f32_duration_ms.size_28351488",
+      "collective_calibration.allreduce_sum_f32_duration_ms.size_157541376",
+      "collective_calibration.correctness",
+      "execution_timeline.cpu_submit_to_cuda_association",
+      "execution_timeline.synchronization_events",
+      "execution_timeline.per_device_intervals",
+      "execution_timeline.clock_alignment_bounds"
+    ],
+    "unavailable_fields": {
+      "per_collective_wire_time_ms": "No available collector separates NCCL wire transfer from in-kernel device waiting; the source metric sums kernel durations that include waiting (parent trace: rank 0 allreduce seq 22 starts ~10.2 ms before rank 1's identical-payload kernel and lasts 13.7 ms vs 3.6 ms). collective_calibration is a separate warmed reference experiment, not a decomposition of the candidate step.",
+      "per_bucket_link_bytes": "device_telemetry NVLink/PCIe rates are device-wide NVML samples with native windows and cannot be attributed per bucket or per collective; converting logical payload sizes (28351488/157541376 bytes) into link traffic would invent measurements.",
+      "candidate_run_bucket_kernel_attribution": "Exact bucket links require native correlation plus observed gradient-storage membership; only the parent discovery pass (observations.json) carries that instrumentation. The selected collectors run in separate warmed workers without bucket joins, so candidate bucket identity stays inherited from the parent and remains ambiguous if sizes coincide.",
+      "gpu_readiness_and_consumer_completion_bounds": "execution_timeline reports clock-alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown."
+    },
+    "rationale": "All three forced NCCL parameter candidates regressed both constraints (step_ms 253.9/295.5/289.4 vs limit 144.8; max-rank comm kernel sum 89.1/128.4/110.2 ms vs baseline 63.7 ms), so the least-regressed candidate 02ed8cf7 (nchannels=4, proto=Simple) is selected for diagnosis. The parent trace shows per-bucket kernel durations are wait-dominated (rank 0 ~13.5 ms vs rank 1 ~3.6 ms per identical 27 MB bucket; the metric is not wire time), so the comm-sum and step regressions must not be read as algorithm cost. nccl_tuning captures the actual algorithm/protocol/channel decisions in a separate warmed worker (kernel entry names alone do not identify the protocol) to establish what the forced env really produced and what the default tuner selects at the observed sizes; collective_calibration measures a clean warmed full-world SUM f32 allreduce at the observed 28351488- and 157541376-byte sizes with correctness checks to separate transfer cost from arrival skew; execution_timeline attributes the ~90 ms of step-time regression not accounted for by NCCL kernels (step +116 ms vs comm +26 ms max-rank) via CPU submit association, synchronization events and per-device intervals. Nsys omitted: timelines alone cannot separate NCCL waiting from wire transfer or prove bucket identity, and execution_timeline already covers submit association. torch already ran; python_runtime and binding_cost target host dispatch and binding overhead, which cannot explain a 2x step regression with framework_fallbacks=0 and identical legacy binding; device_telemetry is device-wide and not attributable per collective; candidate_diagnostics has no described capability matching these questions. No failure-category policy or optimization action is presumed; the reference invocations in coverage are not treated as fallback.",
+    "revision": "02ed8cf7cd1a72fd1896b232b1fdfd46711270f9971e01fe1315c636ec743a2a"
+  },
+  "agent": {
+    "role": "collection-planner",
+    "session": "ses_ea47f5559ffeo6shb0Agg6h9hm",
+    "message": "msg_15b82d167001yqlWWsV3IQK32d",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 12,
+      "reported_cost": 0.19590524898,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 387542.0,
+        "input": 46183.0,
+        "output": 2216.0,
+        "reasoning": 7751.0,
+        "cache.read": 331392.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea47f5559ffeo6shb0Agg6h9hm",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-fixed/ddp-communication/sandboxes/collection-planner-bd42e9b8822f",
+    "outputs": [
+      "collection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-fixed/ddp-communication/generation-snapshots/generation-104ee34dc033.json"
+    ]
+  }
+}

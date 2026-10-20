@@ -1,0 +1,44 @@
+Loading weights:   0%|          | 0/398 [00:00<?, ?it/s]Loading weights: 100%|██████████| 398/398 [00:00<00:00, 6297.54it/s]
+USDT:2026-10-21 04:56:14 264132:264132 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 04:56:27 264132:264132 SyncActivityProfilerHandler.cpp:59] profiler_stop
+ERROR:2026-10-21 04:56:36 264132:264132 output_json.cpp:977] Failed to write to log file!
+Traceback (most recent call last):
+  File "/root/autodl-tmp/dev/opop-v6-freezes/95280f22be48/src/kernel_optimizer/runtime/worker.py", line 73, in main
+    result = getattr(module, request.function)(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/dev/opop-v6-freezes/95280f22be48/src/kernel_optimizer/project/evaluation.py", line 127, in worker_entry
+    return _worker_entry(context)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/dev/opop-v6-freezes/95280f22be48/src/kernel_optimizer/project/evaluation.py", line 338, in _worker_entry
+    observed = capture(adapter, state, Path(context["output"]), context["rank"], operation, synchronize)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/dev/opop-v6-freezes/95280f22be48/src/kernel_optimizer/project/discovery.py", line 205, in capture
+    trace = json.loads(trace_path.read_text())
+                       ^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/pathlib.py", line 1027, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/pathlib.py", line 1013, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/root/autodl-tmp/dev/v6-work/agent-repair-20261021/qwen-ttft/0-control/jobs/repair-control-evaluation-e229f931-profile/run/trace-rank-0.json'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/root/autodl-tmp/dev/opop-v6-freezes/95280f22be48/src/kernel_optimizer/runtime/worker.py", line 97, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/root/autodl-tmp/dev/opop-v6-freezes/95280f22be48/src/kernel_optimizer/runtime/worker.py", line 85, in main
+    write_json(request.output / f"rank-{rank}.json", {"status": "failed", "binding": context["binding"],
+  File "/root/autodl-tmp/dev/opop-v6-freezes/95280f22be48/src/kernel_optimizer/runtime/execution.py", line 42, in write_json
+    temporary.write_text(json.dumps(data, indent=2, allow_nan=False), encoding="utf-8")
+  File "/root/miniconda3/lib/python3.12/pathlib.py", line 1047, in write_text
+    with self.open(mode='w', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/pathlib.py", line 1013, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 28] No space left on device: '/root/autodl-tmp/dev/v6-work/agent-repair-20261021/qwen-ttft/0-control/jobs/repair-control-evaluation-e229f931-profile/run/rank-0.json.tmp'

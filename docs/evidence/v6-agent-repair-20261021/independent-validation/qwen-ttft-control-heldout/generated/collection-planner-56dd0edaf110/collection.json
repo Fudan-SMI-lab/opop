@@ -1,0 +1,22 @@
+{
+  "collectors": [
+    "execution_timeline",
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "prefill_gpu_busy_ms",
+    "prefill_vs_decode_gpu_interval_split",
+    "prefill_cpu_submit_to_kernel_start_gaps",
+    "ttft_boundary_synchronization_timestamps",
+    "host_dispatch_self_time_ms",
+    "host_dispatch_inclusive_time_by_callsite"
+  ],
+  "unavailable_fields": {
+    "nccl_algorithm_protocol_channels": "Single-device task with no collectives (observations.json: communication capability status not_applicable, reason 'single-device task'; request.json distributed_backend null), so nccl_tuning has no NCCL algorithm/protocol/channel decisions to capture; kernel entry names alone would not identify protocol anyway.",
+    "per_collective_or_per_phase_pcie_bytes": "No collectives exist on this task; device_telemetry only samples device-wide NVML PCIe/utilization/memory in native windows and cannot produce per-collective or prefill/decode-resolved bytes. PCIe/NVLink traffic is not invented from logical payload or memcpy sizes.",
+    "candidate_whole_invocation_ablation_cost": "binding_cost requires an existing additive candidate; no candidate has been built yet, so it is not applicable at this stage (it would run only in later candidate resource feedback).",
+    "gpu_readiness_and_consumer_completion": "execution_timeline reports clock alignment bounds for matched CPU submissions only; GPU readiness and consumer completion may remain unknown, so residual submit-to-execution attribution beyond those bounds is retained as unknown.",
+    "gradient_bucket_correlation": "Inference-only invocation under torch.inference_mode with no gradients and no communication hooks; there are no gradient buckets, so native-correlation bucket identity cannot be established and no bucket-attributed traffic is reported."
+  },
+  "rationale": "The frozen objective ttft_ms is a single-GPU inference boundary (prefill plus argmax up to the explicit torch.cuda.synchronize) with no communication dimension (observations.json: communication not_applicable, 'single-device task'). The torch collector already ran with complete attribution (coverage.json: 34229/34229 cuda_kernels associated, 0 unassociated, 0 root-only, 0 ambiguous_forward_sequences), so torch is not re-run and nsys is not selected: no attribution, graph-tracing, or unresolved overlap question remains, and the CPU-submit versus GPU-execution overlap question is covered by execution_timeline's submit associations, synchronization events and per-device intervals. execution_timeline is selected to split the measured invocation into the prefill window versus the cached decode steps and to quantify GPU busy time against host submit gaps at the ttft boundary; its clock-alignment bound limitation is recorded in unavailable_fields. python_runtime is selected to attribute host dispatch and binding costs across the per-layer forward pass, the main TTFT lever besides prefill kernels; it is understood to perturb execution, and its inclusive/self times are used only for relative host-side attribution, never as performance scores or GPU durations. nccl_tuning and collective_calibration are excluded because there are no collectives to tune or calibrate on one device. device_telemetry is excluded because device-wide NVML samples in native windows cannot be attributed to the prefill window or yield per-phase bytes, and weights/inputs are already GPU-resident so no PCIe transfer question exists. candidate_diagnostics and binding_cost are excluded because no candidate exists yet. Requested fields are limited to what the two selected collectors can actually observe; unavailable dimensions are listed with observed reasons instead of being synthesized."
+}

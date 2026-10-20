@@ -1,0 +1,269 @@
+{
+  "communication": {
+    "cross_rank": {
+      "matched": [],
+      "incomplete": [],
+      "clock_policy": "No subtraction of timestamps from different rank clocks"
+    },
+    "ranks": [
+      {
+        "status": "not_applicable",
+        "reason": "single-device task"
+      }
+    ],
+    "capabilities": [
+      {
+        "schema_version": "project.v1",
+        "id": "ae720e6d46e8f6b7151780634fc4d9f69d488438ea5314352ebcd141f89ee3cd",
+        "devices": [],
+        "supported_scopes": [
+          "group",
+          "joint",
+          "region",
+          "execution_plan"
+        ],
+        "fields": [
+          {
+            "schema_version": "project.v1",
+            "name": "communication",
+            "status": "not_applicable",
+            "value": null,
+            "unit": "capability",
+            "entity": null,
+            "reason": "single-device task",
+            "evidence": []
+          }
+        ],
+        "tools": {}
+      }
+    ]
+  },
+  "coverage": [
+    {
+      "cuda_kernels": 88,
+      "associated_kernels": 88,
+      "unassociated_kernels": 0,
+      "associated_below_project": 88,
+      "root_only_kernels": 0,
+      "backward_associated_kernels": 0,
+      "autograd_ranges": 0,
+      "forward_linked_autograd_ranges": 0,
+      "ambiguous_forward_sequences": 0
+    }
+  ],
+  "collection_plan": {
+    "plan": {
+      "collectors": [
+        "execution_timeline",
+        "python_runtime"
+      ],
+      "requested_fields": [
+        "cpu_to_cuda_submit_associations",
+        "cpu_submission_clock_alignment_bounds",
+        "kernel_launch_gaps",
+        "cuda_synchronization_intervals",
+        "per_device_execution_intervals",
+        "host_dispatch_inclusive_times",
+        "host_dispatch_self_times"
+      ],
+      "unavailable_fields": {
+        "nccl_algorithm_protocol_channels": "Single-device task: the communication capability is not_applicable with reason 'single-device task' (observations.json) and distributed_backend is null (request.json); no NCCL collectives exist for nccl_tuning to observe, and kernel entry names alone cannot identify protocol.",
+        "per_collective_wire_bytes": "No collectives exist in a single-device task; device_telemetry NVML PCIe rates are device-wide readings with native sampling windows and cannot be attributed per collective or per kernel. PCIe/NVLink traffic must not be inferred from logical payload or memcpy sizes.",
+        "allreduce_reference_timing": "collective_calibration's synthetic full-world SUM allreduce requires a distributed world; only one device is listed and communication is not_applicable.",
+        "cross_rank_clock_alignment": "ranks status is not_applicable ('single-device task') and cross_rank.matched is empty; no second rank clock exists to align or subtract.",
+        "backward_and_gradient_bucket_timings": "Workload is forward-only under @torch.inference_mode() (request.json notes); coverage.json shows 0 autograd ranges, 0 backward_associated_kernels and 0 ambiguous forward sequences, so no backward pass or gradient buckets exist to time or correlate.",
+        "candidate_binding_cost": "No additive candidate exists yet; binding_cost compares a candidate's parent against a binding-only passthrough and is inapplicable before any candidate exists (also inapplicable if bundles replace the parent).",
+        "gpu_readiness_and_consumer_completion_bounds": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown for the measured invocation."
+      },
+      "rationale": "Frozen objective is latency_ms of one complete batch=32 FP32 ResNet-18 forward on a single GPU (request.json), so the open diagnostic question after the already-run torch collector is whether per-call latency is host-dispatch-bound or GPU-execution-bound. The torch baseline already gives complete kernel attribution (coverage.json: 88 cuda_kernels, 88 associated, 0 unassociated, 0 root_only, 0 ambiguous forward sequences), so nsys is not needed: no overlap, graph-tracing or attribution question remains open. execution_timeline is selected for its CPU-to-CUDA submit associations, synchronization points and per-device intervals, which distinguish host submission stalls/launch gaps from GPU execution in the measured invocation; its clock alignment bounds cover CPU submissions only, so GPU readiness stays unknown where unobserved. python_runtime is selected for a warmed cProfile view of host dispatch and binding costs per forward call, used strictly diagnostically since it perturbs execution and its inclusive/self times are not clean performance scores or GPU durations. nccl_tuning, collective_calibration and cross-rank fields are not applicable (single device, no collectives); device_telemetry is skipped because its device-wide NVML utilization/PCIe/memory windows cannot be attributed to the millisecond-scale measured invocation, host-to-device input transfer is excluded from the measured unit, and peak_allocated_bytes is already available from torch; binding_cost and candidate diagnostics are skipped because no candidate exists yet.",
+      "revision": null
+    },
+    "agent": {
+      "role": "collection-planner",
+      "session": "ses_ea4aafedcffepfkZcOiPzDfXaG",
+      "message": "msg_15b562ea9001GEvgWW54c2Fc3H",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 6,
+        "reported_cost": 0.06196486294,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 86341.0,
+          "input": 12446.0,
+          "output": 1585.0,
+          "reasoning": 4854.0,
+          "cache.read": 67456.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea4aafedcffepfkZcOiPzDfXaG",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/resnet-latency/sandboxes/collection-planner-369f62a18c67",
+      "outputs": [
+        "collection.json"
+      ],
+      "feedback_provided": false,
+      "contract_repairs": 0,
+      "generation_snapshots": [
+        "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/resnet-latency/generation-snapshots/generation-b03804c3d984.json"
+      ]
+    }
+  },
+  "extra_collectors": {
+    "execution_timeline": {
+      "status": "observed",
+      "input": "observations/current/execution_timeline-1221e205.json",
+      "sha256": "1cd9c2322800eb99f28374a14c5bee517d9f63083f659fcbef52564b0b8446ee",
+      "bytes": 15912,
+      "provenance": {
+        "revision": "353b783e8c1a987a9305832a39ef23445850c3364ad002512a2dd725127b54af",
+        "parent_revision": "aadf810b96b666d16a290554d5b014517a88fe816898331e7a4a0f7ae8b03cbf",
+        "bundles": [
+          "trial-d2a4cb48d3-param-21cc696e"
+        ],
+        "plan": "sha256:a0022ea9824c5cf0e4aa5a81d4522bb783d6db30db3e4845acbda72cd50ef1b0",
+        "registry": "sha256:aada5e9e4d98f8e46754365bc9ee369b1d6ea5ee3fcc76ee247ad975fbfc3ca6",
+        "request_sha256": "87c8ffe1f0d5a61ca6e9c3caaf137a4b58fd00d8f71c8a6f8635b7bce582c4ba",
+        "objective": {
+          "name": "latency_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "offline",
+          "batch": 32,
+          "goals": [
+            {
+              "id": "throughput",
+              "metric": "images_per_second",
+              "direction": "max"
+            },
+            {
+              "id": "memory",
+              "metric": "peak_allocated_bytes",
+              "direction": "min",
+              "constraints": {
+                "images_per_second_min_baseline_ratio": 0.95
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "3f8440cd0b839b5ae3a384e3af81f5cdf675ba487823733dedf35c80d5610492",
+          "files": 162,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "scope": "Separate diagnostic capture, never the clean project objective",
+          "workload_window": {
+            "start_us": 1676737959851.658,
+            "end_us": 1676737964317.563,
+            "scope": "explicit workload including final completion synchronization; excludes profiler preparation"
+          },
+          "profiled_wall_ms": 4.491508,
+          "clock": {
+            "status": "observed",
+            "offset_bounds_us": [
+              18956226441058.414,
+              18956226442467.26
+            ],
+            "anchor_bounds_us": [
+              [
+                18956226441058.414,
+                18956226442467.26
+              ],
+              [
+                18956226441400.05,
+                18956226441441.406
+              ]
+            ],
+            "domain": {
+              "host": "autodl-container-e8e84ea25b-cffd5c81",
+              "boot_id": "9890bc2b-f323-49ae-b779-8f723299b44a",
+              "clock": "CLOCK_MONOTONIC"
+            },
+            "scope": "CPU trace to host monotonic clock within this capture; excludes unknown GPU clock calibration error"
+          },
+          "gradient_hooks_enabled": false
+        }
+      ],
+      "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+    },
+    "python_runtime": {
+      "status": "observed",
+      "input": "observations/current/python_runtime-aea48e29.json",
+      "sha256": "835598eac1f52454d1083dd4aadc21986c8e3014344f18d8afc0dee4563273bb",
+      "bytes": 51846,
+      "provenance": {
+        "revision": "353b783e8c1a987a9305832a39ef23445850c3364ad002512a2dd725127b54af",
+        "parent_revision": "aadf810b96b666d16a290554d5b014517a88fe816898331e7a4a0f7ae8b03cbf",
+        "bundles": [
+          "trial-d2a4cb48d3-param-21cc696e"
+        ],
+        "plan": "sha256:a0022ea9824c5cf0e4aa5a81d4522bb783d6db30db3e4845acbda72cd50ef1b0",
+        "registry": "sha256:aada5e9e4d98f8e46754365bc9ee369b1d6ea5ee3fcc76ee247ad975fbfc3ca6",
+        "request_sha256": "87c8ffe1f0d5a61ca6e9c3caaf137a4b58fd00d8f71c8a6f8635b7bce582c4ba",
+        "objective": {
+          "name": "latency_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "offline",
+          "batch": 32,
+          "goals": [
+            {
+              "id": "throughput",
+              "metric": "images_per_second",
+              "direction": "max"
+            },
+            {
+              "id": "memory",
+              "metric": "peak_allocated_bytes",
+              "direction": "min",
+              "constraints": {
+                "images_per_second_min_baseline_ratio": 0.95
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "3f8440cd0b839b5ae3a384e3af81f5cdf675ba487823733dedf35c80d5610492",
+          "files": 162,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "scope": "cProfile perturbs Python dispatch; self/cumulative times include host waits and cannot be added to GPU durations or used for acceptance",
+          "profiled_wall_ms": 4.509397
+        }
+      ],
+      "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+    }
+  },
+  "ownership_input": "communication-ownership.json"
+}

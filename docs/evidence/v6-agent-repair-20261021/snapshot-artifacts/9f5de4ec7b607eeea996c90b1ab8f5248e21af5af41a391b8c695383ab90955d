@@ -1,0 +1,63 @@
+{
+  "schema_version": "project.v2",
+  "id": "trial-5a705e709d",
+  "parent_revision": "fc9ec3b15cf986b7444fd68aa56941cd109661d9884d2a632e3ab58464aa1e46",
+  "contract_ref": "sha256:7bfb7e96ca6807911568cbbf8089bffe3a903bd6bba6583c682b0fda95e724a3",
+  "scope": "joint",
+  "implementation": "distributed",
+  "groups": [
+    "f833b57a373d8262a384",
+    "8525af72c631b94e3dd0"
+  ],
+  "calls": [
+    "d0938de87369efd500322679",
+    "b8ade439d7b8bd5fb5c1029b"
+  ],
+  "affected_calls": [
+    "b8ade439d7b8bd5fb5c1029b",
+    "d0938de87369efd500322679"
+  ],
+  "edits": [
+    {
+      "schema_version": "project.v1",
+      "path": "opop_candidates/trial-5a705e709d.py",
+      "before_sha256": null,
+      "content_ref": "sha256:263af160f3904bcbfb667d6417aa8f53a192ef5118e40f658a9b9720c0745a26"
+    },
+    {
+      "schema_version": "project.v1",
+      "path": "opop_candidates/trial-5a705e709d.targets.json",
+      "before_sha256": null,
+      "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+    }
+  ],
+  "read_set": [
+    "call:b8ade439d7b8bd5fb5c1029b",
+    "call:d0938de87369efd500322679"
+  ],
+  "write_set": [
+    "file:opop_candidates/trial-5a705e709d.py",
+    "file:opop_candidates/trial-5a705e709d.targets.json",
+    "call:d0938de87369efd500322679",
+    "call:b8ade439d7b8bd5fb5c1029b"
+  ],
+  "requires": [],
+  "replaces": [],
+  "external_invariants": [
+    "Model architecture frozen: GPT-2 124M FP32 (n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024) with resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False and attn_implementation='eager', in train mode.",
+    "Deterministic seeds preserved: torch.manual_seed(20261020) for model construction (called in configure and again in make_model exactly as the source does) and torch.Generator().manual_seed(31000 + source_rank) for each rank's accumulation_steps synthetic token-ID batches of shape (micro_batch, sequence_length).",
+    "Numerical policies preserved: TF32 disabled for matmul and cudnn, cudnn.benchmark=False, float32 matmul precision 'highest', torch.set_num_threads(4), set_num_interop_threads(1).",
+    "DDP configuration preserved: bucket_cap_mb=25, gradient_as_bucket_view=True, broadcast_buffers=False on the NCCL default process group initialized by the worker; the adapter never calls init_process_group and never installs a communication hook in the measured path.",
+    "Accumulation semantics preserved: loss divided by accumulation_steps, backward per micro-batch, no_sync on the first accumulation_steps-1 micro-batches and the synchronized gradient all-reduce on the final one, so the reduced gradients equal the serial global-batch (world_size*micro_batch*accumulation_steps = 8) average.",
+    "Optimizer semantics preserved: torch.optim.SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) applied once per step after the accumulation.",
+    "Timed-boundary division preserved: optimizer.zero_grad(set_to_none=True) executes inside run() at the start of accumulate(), not in reset(); the step ends with torch.cuda.synchronize() inside run().",
+    "Correctness checks preserved with source tolerances: finite loss; global-batch gradient and parameter-update checks against the serial reference at atol=1e-6/rtol=1e-4; cross-rank gradient replica equality at atol=0.0, rtol=0.0; the +1 corruption negative control must be rejected.",
+    "Step-time constraint preserved: clean step time (max across ranks of per-rank wall time) must stay <= 1.05x the original baseline (goals.constraints.step_ms_max_baseline_ratio).",
+    "Communication metric definition preserved: per-rank sum of device NCCL kernel durations in a separately profiled invocation, maximum across ranks, median of 3 profiled samples; it includes device waiting and is not wire time, exposed communication or a critical-path bound; profiling is separate from clean timing.",
+    "Workload dimensions (world_size, micro_batch, sequence_length, accumulation_steps) are read from request['workload'] in prepare(), never embedded as constants, so the held-out longer_sequence variant (sequence_length=256, accumulation_steps=2) runs through the same adapter; the bucket-inventory hook pass of the source is a diagnostic owned by the framework and is not part of run()."
+  ],
+  "plan_ref": null,
+  "registry_ref": null,
+  "installer": "opop_candidates/trial-5a705e709d.py",
+  "parameters": {}
+}

@@ -1,0 +1,6 @@
+{
+  "provenance": "/root/autodl-tmp/dev/v6-work/failure-analysis-20261021/ddp-reduceop-audit.json",
+  "scope": "One actual-worker ABI observation; no replacement code supplied.",
+  "observed": "The dispatcher reduce_op is a torch.ScriptObject wrapping __torch__.torch.classes.c10d.ReduceOp. For the observed SUM its op() returns plain integer0. The candidate _reduce_op_is_sum rejects it; the attempted top-level RedOpType import is unavailable in this worker. Original paired logs and replay each show 13 parent:guard_reduce_op routes and no p2p_oneshot. Therefore P2P exchange performance has never been measured.",
+  "constraint": "Inspect the installed worker ABI and preserve rejection/fallback for genuinely unsupported operations; do not treat arbitrary integers as SUM."
+}

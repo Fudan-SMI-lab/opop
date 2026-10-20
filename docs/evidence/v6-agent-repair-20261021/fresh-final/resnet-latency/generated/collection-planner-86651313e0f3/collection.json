@@ -1,0 +1,30 @@
+{
+  "collectors": [
+    "candidate_diagnostics",
+    "execution_timeline"
+  ],
+  "requested_fields": [
+    "candidate_diagnostics.route_counts_per_site",
+    "candidate_diagnostics.per_site_host_and_kernel_breakdown",
+    "candidate_diagnostics.kernel_counts_and_durations_by_name",
+    "candidate_diagnostics.new_ops_vs_parent_trace",
+    "execution_timeline.cpu_to_cuda_submit_association",
+    "execution_timeline.per_device_busy_idle_intervals",
+    "execution_timeline.gpu_idle_gap_total_within_invocation",
+    "execution_timeline.synchronization_points",
+    "execution_timeline.cpu_submit_clock_alignment_bounds"
+  ],
+  "unavailable_fields": {
+    "nccl_algorithm_protocol_channel_decision": "Not applicable: single-device task; observations.json reports the communication capability as not_applicable with reason 'single-device task', and neither the parent discovery trace nor the candidate profile trace contains any nccl kernel, so no NCCL algorithm/protocol/channel decision exists to capture (kernel entry names alone could not identify one).",
+    "per_collective_payload_bandwidth_and_group_join": "No collectives occur in the measured forward on parent or candidate, so there is no operator group to join payload-size matches to; PCIe/NVLink traffic must not be invented from logical payload or memcpy sizes.",
+    "synthetic_allreference_collective_timing": "collective_calibration's synthetic full-world SUM allreduce has no collective to calibrate on this single-GPU workload; it would be a reference experiment unrelated to the critical path, not a performance lower bound or critical-path estimate.",
+    "per_invocation_pcie_nvlink_bytes": "device_telemetry exposes only device-wide NVML PCIe/utilization/memory samples in native windows; the ~4.18 ms measured invocation keeps input and logits device-resident (resnet_inference.py:29-30,45), so device-wide readings cannot be attributed to one millisecond-scale invocation.",
+    "nsys_overlap_graph_tracing_or_attribution": "coverage.json records 88/88 kernels associated below project scope with 0 unassociated, 0 root-only and 0 ambiguous forward sequences; eager single-device execution raises no overlap, graph-tracing or attribution question that justifies the optional separate nsys run.",
+    "binding_only_passthrough_whole_invocation_cost": "binding_cost is inapplicable to this candidate: the accepted bundle replaces the parent computation at all 20 selected sites (evaluation coverage: 40 candidate invocations, 0 framework fallbacks, 0 reference invocations; binding effective 'direct', reason 'no functional replacements'), so there is no additive parent-passthrough structure to compare, and it would only report whole-invocation cost, not per-group effects.",
+    "gpu_readiness_and_consumer_completion_bounds": "execution_timeline reports clock-alignment bounds only for matching CPU submissions; for the candidate's submitted conv/add kernels, GPU readiness and consumer completion may remain unknown.",
+    "clean_objective_rescore_from_diagnostics": "The selected collectors run instrumented in separate workers and are not clean measurement; evaluation.json's clean paired result (4.181138 ms candidate vs 4.227431 ms parent) remains the only clean latency score, and python_runtime-style perturbed times must not be read as clean performance or GPU durations.",
+    "torch_collector_rerun": "The torch collector already ran on this exact candidate (trial-d2a4cb48d3-evaluation-736061f8-profile: 88/88 kernels associated, 0 unassociated) and is not re-requested."
+  },
+  "rationale": "Revision is pinned to the only listed candidate aadf810b96b666d16a290554d5b014517a88fe816898331e7a4a0f7ae8b03cbf (bundle trial-d2a4cb48d3-param-21cc696e, quality pass, accepted). The observed uncertainty is candidate-scoped: the clean paired win is only ~46 us (4.227431 -> 4.181138 ms) although the parent trace attributes 0.428 ms to the 20 cudnn::bn_fw_inf kernels the fold removes. The candidate's own torch profile explains little of the gap: conv kernels are byte-for-byte comparable, batch_norm kernels are gone, but 20 new per-site output-sized elementwise add_ kernels (0.357 ms total, including a 207 us add on the [32,64,112,112] stem output) and 20 host-side aten::reshape calls now appear inside the folded sites, and peak_allocated_bytes rose 281.98 -> 326.96 MB, consistent with the retained folded weight/bias copies (~11.2M params x 4 B). Open questions before any next candidate: (1) are these per-site add_/reshape ops real steady-state costs of this exact candidate rather than discovery-instrumentation artifacts; (2) which CPU path submits each new add kernel (convolution bias handling vs activation module vs binding shim); (3) how much of the current 4.181 ms is GPU-busy versus idle gaps on the candidate (parent showed ~81 us gaps). candidate_diagnostics is selected to run route, per-site and kernel-composition diagnostics on this candidate in a separate worker; execution_timeline is selected for its independent plain Torch trace with CPU-to-CUDA submit associations, synchronization points and per-device busy/idle intervals to answer (2) and (3), accepting that only CPU-submission clock-alignment bounds are reported. Single-device evidence (communication not_applicable; zero NCCL kernels in both traces) makes nccl_tuning and collective_calibration inapplicable; device_telemetry cannot attribute device-wide NVML windows to a ~4.18 ms GPU-resident invocation; nsys is not selected because attribution is already complete (88/88, no ambiguous sequences) with no overlap or graph-tracing question; binding_cost is inapplicable because the bundle replaces the parent at all 20 sites (0 fallbacks, 0 reference invocations) rather than adding a passthrough; python_runtime is not re-requested because the parent run already showed host dispatch hidden behind GPU work and its perturbed cProfile times are not clean scores or GPU durations; the torch collector already ran on this candidate.",
+  "revision": "aadf810b96b666d16a290554d5b014517a88fe816898331e7a4a0f7ae8b03cbf"
+}

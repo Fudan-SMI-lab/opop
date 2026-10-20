@@ -1,0 +1,94 @@
+{
+  "adapter": "/root/opop-v6-stage3/final-e2e-187617c/ddp-communication/sandboxes/candidate-38ece4f5d421/inputs/adapter.py",
+  "adapter_sha256": "ad2a20c7ed6f03285efdd78b0013b8e2e8d656283a3fbf55fac13cb34a92d687",
+  "adapter_functions": {
+    "_configure": {
+      "line": 34,
+      "end": 46
+    },
+    "_make_model": {
+      "line": 49,
+      "end": 52
+    },
+    "_make_inputs": {
+      "line": 55,
+      "end": 58
+    },
+    "_accumulate": {
+      "line": 61,
+      "end": 72
+    },
+    "prepare": {
+      "line": 75,
+      "end": 114
+    },
+    "reset": {
+      "line": 117,
+      "end": 122
+    },
+    "run": {
+      "line": 127,
+      "end": 137
+    },
+    "observe": {
+      "line": 140,
+      "end": 153
+    },
+    "metrics": {
+      "line": 156,
+      "end": 175
+    },
+    "models": {
+      "line": 178,
+      "end": 179
+    },
+    "set_mode": {
+      "line": 182,
+      "end": 183
+    },
+    "before_run": {
+      "line": 186,
+      "end": 188
+    }
+  },
+  "imports": [
+    "from __future__ import annotations",
+    "from contextlib import contextmanager, nullcontext",
+    "from datetime import timedelta",
+    "import torch",
+    "import torch.distributed as dist",
+    "from torch.nn.parallel import DistributedDataParallel as DDP",
+    "from transformers import GPT2Config, GPT2LMHeadModel"
+  ],
+  "selection_agent": "/root/opop-v6-stage3/final-e2e-187617c/ddp-communication/sandboxes/selection-21a67b590ada",
+  "candidate_agent": "/root/opop-v6-stage3/final-e2e-187617c/ddp-communication/sandboxes/candidate-38ece4f5d421",
+  "replacement_sites": [
+    {
+      "id": "b8ade439d7b8bd5fb5c1029b",
+      "kind": "functional",
+      "target": "c10d.allreduce_.default",
+      "phase": "run",
+      "site_parent": "5d7d6bb13691b02f533f62b0",
+      "count": 1
+    },
+    {
+      "id": "d0938de87369efd500322679",
+      "kind": "functional",
+      "target": "c10d.allreduce_.default",
+      "phase": "run",
+      "site_parent": "5d7d6bb13691b02f533f62b0",
+      "count": 12
+    }
+  ],
+  "project_root_id": "5d7d6bb13691b02f533f62b0",
+  "chain": [
+    "adapter.models exposes model and adapter.run preserves original training",
+    "selection chooses groups/affected closure",
+    "candidate proposal/build specifies actual replacement call ids",
+    "evaluation._worker_entry constructs BindingSession and calls install",
+    "BindingSession._create_dispatch_mode enables global legacy functional mode",
+    "evaluation.operation enters BindingSession.activate around adapter.run"
+  ],
+  "ownership": "The global mode is framework-owned; the selected callable boundary is chosen by selection/candidate agents. Adapter code does not install that mode.",
+  "scoped_applicability": "Observed collective site_parent is project.invoke, not a resolvable module-forward boundary; existing scoped mode falls back to legacy for these sites."
+}

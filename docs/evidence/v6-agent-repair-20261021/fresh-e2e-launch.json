@@ -1,0 +1,58 @@
+[
+  {
+    "case": "ddp-communication",
+    "pid": 126476,
+    "head": "4936eb2cb114cd48b958d603d645d751e9352a45",
+    "command": [
+      "/root/autodl-tmp/dev-venv/bin/python",
+      "-B",
+      "-u",
+      "-m",
+      "kernel_optimizer.cli",
+      "--config",
+      "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/ddp-communication-fresh-deployment.yaml",
+      "optimize-project",
+      "--project",
+      "/root/autodl-tmp/dev/opop-v6-freezes/4936eb2cb114/examples/v6_validation",
+      "--goal",
+      "Reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks.",
+      "--command",
+      "torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp --profile",
+      "--output",
+      "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-e2e/ddp-communication",
+      "--rounds",
+      "2"
+    ],
+    "output": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-e2e/ddp-communication",
+    "log": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/ddp-communication-fresh.log",
+    "scope": "Fresh raw project/goal entry; no adapter, selected groups, diagnosis or candidate supplied; two autonomous rounds"
+  },
+  {
+    "case": "resnet-latency",
+    "pid": 126477,
+    "head": "4936eb2cb114cd48b958d603d645d751e9352a45",
+    "command": [
+      "/root/autodl-tmp/dev-venv/bin/python",
+      "-B",
+      "-u",
+      "-m",
+      "kernel_optimizer.cli",
+      "--config",
+      "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/resnet-latency-fresh-deployment.yaml",
+      "optimize-project",
+      "--project",
+      "/root/autodl-tmp/dev/opop-v6-freezes/4936eb2cb114/examples/v6_validation",
+      "--goal",
+      "Reduce latency for one complete offline batch=32 image inference, preserving the source quality checks.",
+      "--command",
+      "python resnet_inference.py --assets /root/autodl-tmp/dev/v6-work/validation-assets/resnet18 --output /tmp/original-resnet",
+      "--output",
+      "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-e2e/resnet-latency",
+      "--rounds",
+      "2"
+    ],
+    "output": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-e2e/resnet-latency",
+    "log": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/resnet-latency-fresh.log",
+    "scope": "Fresh raw project/goal entry; no adapter, selected groups, diagnosis or candidate supplied; two autonomous rounds"
+  }
+]

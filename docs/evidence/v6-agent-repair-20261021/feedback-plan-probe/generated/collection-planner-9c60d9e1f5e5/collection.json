@@ -1,0 +1,34 @@
+{
+  "collectors": [
+    "binding_cost",
+    "execution_timeline",
+    "nsys",
+    "nccl_tuning",
+    "collective_calibration"
+  ],
+  "requested_fields": [
+    "binding_cost.parent_invocation_ms",
+    "binding_cost.binding_only_passthrough_invocation_ms",
+    "execution_timeline.cpu_to_cuda_submit_associations",
+    "execution_timeline.synchronization_events",
+    "execution_timeline.per_device_intervals_ms",
+    "execution_timeline.clock_alignment_bounds",
+    "nsys.nccl_kernel_intervals",
+    "nsys.compute_communication_overlap_ms",
+    "nsys.per_device_idle_gaps_ms",
+    "nccl_tuning.algorithm_by_size",
+    "nccl_tuning.protocol_by_size",
+    "nccl_tuning.channel_count_by_size",
+    "collective_calibration.allreduce_sum_f32_28351488b_ms",
+    "collective_calibration.allreduce_sum_f32_157541376b_ms",
+    "collective_calibration.correctness_checks"
+  ],
+  "unavailable_fields": {
+    "per_collective_wire_time_ms": "No available collector separates NCCL waiting from wire transfer; nsys timelines cannot split this, and collective_calibration is only a synthetic reference experiment, so wire time per bucket remains unknown.",
+    "per_collective_pcie_nvlink_bytes": "Only device-wide NVML rates with native sampling windows are available (device_telemetry); per-collective traffic cannot be derived from logical payload or memcpy sizes, so this dimension is not requested and remains unknown.",
+    "gpu_consumer_completion_alignment_per_bucket": "execution_timeline reports clock alignment bounds for CPU submissions only; GPU readiness and consumer completion for each bucket may remain unknown.",
+    "clean_host_dispatch_cost_ms": "python_runtime perturbs execution and its inclusive/self times are not clean performance scores or GPU compute durations, so no clean host dispatch cost is obtainable."
+  },
+  "rationale": "Parent discovery shows 13 bucket allreduces per step (12x28,351,488B + 1x157,541,376B, f32 SUM) already attributed via observed gradient-storage membership, with rank-0 NCCL kernel durations ~4x rank-1 at identical payloads (e.g. 13.8ms vs 3.6ms per 28MB bucket, plus a 114ms first-bucket outlier) - the objective is waiting-inclusive, and peer_access is disabled in both directions. All three parameter_screening candidates reduced communication_kernel_sum_ms (parent max-rank ~284.7ms down to 60-87ms) yet every one violates the step_ms constraint (227.0/276.9/264.4ms vs limit 151.86ms, original reference 144.63ms), so the decisive uncertainty is not the comm number itself but where the extra ~82-132ms of step wall time sits: relocated wait in the sync_wait path, framework binding overhead, or communication serialized against compute. I target revision 560d64a468acf7c63d3e5eee7f714a24dd8b3ad869c9e5b8ee98a7df04b4ab44 (sync_wait_budget_ms=250), which is closest to feasibility on both metrics (step 227.0ms, comm max 71.35ms), making its residual excess the most actionable question. binding_cost is applicable (an additive legacy-bound candidate exists with functional_sites=2 and zero framework fallbacks) and splits whole-invocation cost between parent and binding-only passthrough to separate framework overhead from candidate-intrinsic cost. execution_timeline records the candidate's synchronization events and CPU-to-CUDA submit associations with clock-alignment bounds to expose host-side waiting without replacing any communication hook. nsys (available per request.json tools) supplies the GPU-side timeline to check whether the shortened NCCL kernels are now serialized with or displaced from compute. nccl_tuning captures the actual NCCL algorithm/protocol/channel decisions at the observed sizes/dtypes in a separate warmed worker, since kernel entry names alone do not identify the protocol. collective_calibration provides a correctness-checked synthetic full-world SUM allreduce reference at exactly the observed 28,351,488B and 157,541,376B sizes to gauge how much of the measured kernel duration is algorithm cost versus waiting - as a reference, not a lower bound or critical-path estimate. torch is omitted because it already ran and evaluation.json carries its per-rank fields; device_telemetry is omitted because its device-wide NVML windows cannot attribute per-collective traffic; python_runtime is omitted because its perturbed inclusive/self times are not clean scores; candidate_diagnostics has no capability or trace evidence supporting a specific uncertainty here.",
+  "revision": "560d64a468acf7c63d3e5eee7f714a24dd8b3ad869c9e5b8ee98a7df04b4ab44"
+}

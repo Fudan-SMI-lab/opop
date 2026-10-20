@@ -1,0 +1,183 @@
+{
+  "current_revision": "fc9ec3b15cf986b7444fd68aa56941cd109661d9884d2a632e3ab58464aa1e46",
+  "contract": {
+    "schema_version": "project.v2",
+    "id": "task",
+    "goal": "Reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks.",
+    "objective": {
+      "name": "communication_kernel_sum_ms",
+      "unit": "ms",
+      "direction": "minimize",
+      "required_metrics": [
+        {
+          "name": "communication_kernel_sum_ms",
+          "unit": "ms"
+        }
+      ],
+      "aggregation": {
+        "kind": "sum",
+        "case_weights": {},
+        "callable": null
+      },
+      "improvement_threshold": 0.0
+    },
+    "workload": {
+      "accumulation_steps": 4,
+      "goals": [
+        {
+          "direction": "min",
+          "id": "step",
+          "metric": "step_ms"
+        },
+        {
+          "constraints": {
+            "step_ms_max_baseline_ratio": 1.05
+          },
+          "direction": "min",
+          "id": "communication",
+          "metric": "diagnostic.max_rank_nccl_kernel_sum_ms"
+        }
+      ],
+      "id": "accumulated_step",
+      "micro_batch": 1,
+      "sequence_length": 128,
+      "world_size": 2
+    },
+    "quality": {
+      "atol": 1e-06,
+      "checks": [
+        "finite_loss",
+        "global_batch_gradient_check",
+        "corrupted_output_rejected",
+        "exact_gradient_replica_check",
+        "parameter_update_check"
+      ],
+      "grad_atol": 1e-06,
+      "grad_rtol": 0.0001,
+      "parameter_atol": 1e-06,
+      "parameter_rtol": 0.0001,
+      "rtol": 0.0001
+    },
+    "completion": "One measured invocation is the source's step() (gpt2_ddp_training.py:102-105): accumulate() over accumulation_steps=4 micro-batches of shape (micro_batch=1, sequence_length=128), with model.no_sync() on the first 3 micro-batches and the synchronized DDP all-reduce on the final backward, followed by torch.optim.SGD (lr=0.001, foreach=False) optimizer.step() and torch.cuda.synchronize(). run() returns after that final device synchronization; optimizer.zero_grad(set_to_none=True) happens inside accumulate(), inside the timed boundary. The communication objective's completion is per separately profiled sample: the sum of device NCCL kernel durations of that step on one rank, then maximum across ranks, then median of 3 profiled samples; clean step_ms is max across ranks of per-rank wall time with the gloo control barrier and state reset outside the timed boundary.",
+    "invariants": [
+      "Model architecture frozen: GPT-2 124M FP32 (n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024) with resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False and attn_implementation='eager', in train mode.",
+      "Deterministic seeds preserved: torch.manual_seed(20261020) for model construction (called in configure and again in make_model exactly as the source does) and torch.Generator().manual_seed(31000 + source_rank) for each rank's accumulation_steps synthetic token-ID batches of shape (micro_batch, sequence_length).",
+      "Numerical policies preserved: TF32 disabled for matmul and cudnn, cudnn.benchmark=False, float32 matmul precision 'highest', torch.set_num_threads(4), set_num_interop_threads(1).",
+      "DDP configuration preserved: bucket_cap_mb=25, gradient_as_bucket_view=True, broadcast_buffers=False on the NCCL default process group initialized by the worker; the adapter never calls init_process_group and never installs a communication hook in the measured path.",
+      "Accumulation semantics preserved: loss divided by accumulation_steps, backward per micro-batch, no_sync on the first accumulation_steps-1 micro-batches and the synchronized gradient all-reduce on the final one, so the reduced gradients equal the serial global-batch (world_size*micro_batch*accumulation_steps = 8) average.",
+      "Optimizer semantics preserved: torch.optim.SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) applied once per step after the accumulation.",
+      "Timed-boundary division preserved: optimizer.zero_grad(set_to_none=True) executes inside run() at the start of accumulate(), not in reset(); the step ends with torch.cuda.synchronize() inside run().",
+      "Correctness checks preserved with source tolerances: finite loss; global-batch gradient and parameter-update checks against the serial reference at atol=1e-6/rtol=1e-4; cross-rank gradient replica equality at atol=0.0, rtol=0.0; the +1 corruption negative control must be rejected.",
+      "Step-time constraint preserved: clean step time (max across ranks of per-rank wall time) must stay <= 1.05x the original baseline (goals.constraints.step_ms_max_baseline_ratio).",
+      "Communication metric definition preserved: per-rank sum of device NCCL kernel durations in a separately profiled invocation, maximum across ranks, median of 3 profiled samples; it includes device waiting and is not wire time, exposed communication or a critical-path bound; profiling is separate from clean timing.",
+      "Workload dimensions (world_size, micro_batch, sequence_length, accumulation_steps) are read from request['workload'] in prepare(), never embedded as constants, so the held-out longer_sequence variant (sequence_length=256, accumulation_steps=2) runs through the same adapter; the bucket-inventory hook pass of the source is a diagnostic owned by the framework and is not part of run()."
+    ],
+    "frozen_files": [
+      "opop_adapter.py",
+      "opop_evaluate.py"
+    ],
+    "task_definition": null,
+    "state_protocol": "prepare(context, request) configures the source's numerical policies (TF32 off, cudnn benchmark off, matmul precision 'highest', num_threads 4, interop 1, torch.manual_seed(20261020)), builds GPT-2 124M FP32 with the deterministic seed, wraps it in DDP(bucket_cap_mb=25, gradient_as_bucket_view=True, broadcast_buffers=False) on the worker's already-initialized NCCL default group using context['device'], creates the SGD optimizer, generates this rank's synthetic token IDs from the per-source-rank generator seed 31000+rank, snapshots the initial state_dict to CPU, and creates the gloo control group. reset(state) restores the initial weights via raw_model.load_state_dict(initial); gradients are not pre-cleared because the source clears them inside the timed accumulate() via optimizer.zero_grad(set_to_none=True), and SGD with momentum=0 and weight_decay=0 holds no optimizer state, so weights fully determine the repeat point. before_run(state) performs the source's pre-step torch.cuda.synchronize() and gloo control-group barrier outside the timer. run(state) executes the full accumulated step (4 micro-batches, no_sync on the first 3, synchronized all-reduce on the last, then optimizer.step() and torch.cuda.synchronize()) and returns the summed loss plus per-micro-batch losses. observe(state, result) returns detached CPU copies of loss, all named gradients and all named updated parameters. metrics(state, result, elapsed_ms) reports clean project metrics (step_ms from elapsed_ms, tokens_per_second over the unchanged 1024-token step, peak_allocated_bytes from CUDA stats queried outside the timer) plus the source constraint ratio; the communication objective itself is collected by the framework's torch_communication collector in separate diagnostic runs, so no profiler or comm hook runs inside run()/metrics(). models(state) exposes the root GPT2LMHeadModel. The process group is never destroyed.",
+    "world_size": 2,
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ]
+  },
+  "original_reference_revision": "279a86854b26f06a1536a2c0567e97b8c470833cae1305b9f19058dec7d17b43",
+  "original_baseline": [
+    {
+      "rank": 0,
+      "metrics": {
+        "step_ms": 137.796888,
+        "tokens_per_second": 7431.227329313852,
+        "tokens_per_step": 1024.0,
+        "effective_batch": 8.0,
+        "peak_allocated_bytes": 1977712640.0,
+        "parameter_count": 124439808.0,
+        "world_size": 2.0,
+        "micro_batch": 1.0,
+        "sequence_length": 128.0,
+        "accumulation_steps": 4.0,
+        "step_ms_max_baseline_ratio": 1.05,
+        "framework.elapsed_ms": 137.796888,
+        "framework.peak_allocated_bytes": 1977712640.0,
+        "framework.peak_reserved_bytes": 2080374784.0,
+        "framework.allocated_bytes": 1014019584.0,
+        "framework.reserved_bytes": 2080374784.0,
+        "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+        "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+        "communication_kernel_sum_ms": 63.31623999999999
+      },
+      "diagnostics": {
+        "values": [
+          63.210482000000006,
+          63.31623999999999,
+          66.478742
+        ],
+        "evidence": [
+          "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-fixed/ddp-communication/preparation/9bfa336cd20c/controls/metric-rank-0-0.json",
+          "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-fixed/ddp-communication/preparation/9bfa336cd20c/controls/metric-rank-0-1.json",
+          "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-fixed/ddp-communication/preparation/9bfa336cd20c/controls/metric-rank-0-2.json"
+        ],
+        "profiled_wall_ms": [
+          191.622805,
+          191.099659,
+          188.727997
+        ],
+        "protocol": "profiler_start_then_rank_preparation_v2; explicit completion-bounded workload, excluding preparation collectives",
+        "scope": "separate plain PyTorch diagnostic; kernel time includes waiting, not wire or critical-path time"
+      }
+    },
+    {
+      "rank": 1,
+      "metrics": {
+        "step_ms": 137.907823,
+        "tokens_per_second": 7425.2495451255145,
+        "tokens_per_step": 1024.0,
+        "effective_batch": 8.0,
+        "peak_allocated_bytes": 1977712640.0,
+        "parameter_count": 124439808.0,
+        "world_size": 2.0,
+        "micro_batch": 1.0,
+        "sequence_length": 128.0,
+        "accumulation_steps": 4.0,
+        "step_ms_max_baseline_ratio": 1.05,
+        "framework.elapsed_ms": 137.907823,
+        "framework.peak_allocated_bytes": 1977712640.0,
+        "framework.peak_reserved_bytes": 2080374784.0,
+        "framework.allocated_bytes": 1014019584.0,
+        "framework.reserved_bytes": 2080374784.0,
+        "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+        "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+        "communication_kernel_sum_ms": 63.67189099999999
+      },
+      "diagnostics": {
+        "values": [
+          63.413535,
+          63.67189099999999,
+          64.115572
+        ],
+        "evidence": [
+          "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-fixed/ddp-communication/preparation/9bfa336cd20c/controls/metric-rank-1-0.json",
+          "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-fixed/ddp-communication/preparation/9bfa336cd20c/controls/metric-rank-1-1.json",
+          "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-fixed/ddp-communication/preparation/9bfa336cd20c/controls/metric-rank-1-2.json"
+        ],
+        "profiled_wall_ms": [
+          191.681336,
+          191.249917,
+          188.852399
+        ],
+        "protocol": "profiler_start_then_rank_preparation_v2; explicit completion-bounded workload, excluding preparation collectives",
+        "scope": "separate plain PyTorch diagnostic; kernel time includes waiting, not wire or critical-path time"
+      }
+    }
+  ],
+  "profiled_wall_ms": [
+    1099.440761,
+    1088.859862
+  ],
+  "measurement_policy": "Original baseline belongs to its immutable reference. Discovery uses intrusive hooks and is separate from clean timing and plain diagnostic objective samples. Profiled rank skew and kernel time can be heavily perturbed; they are not project J or wire time."
+}

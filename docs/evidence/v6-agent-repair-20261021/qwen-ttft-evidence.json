@@ -1,0 +1,6 @@
+{
+  "provenance": "/root/autodl-tmp/dev/v6-work/failure-analysis-20261021/qwen-math/result.json",
+  "scope": "Developer diagnosis of this exact rejected candidate; no optimized implementation supplied.",
+  "observed": "CUDA capture of the unchanged parent changes the actual attention path. In this installed Transformers, is_tracing includes stream capture; _ignore_causal_mask_sdpa then produces a mask and use_gqa_in_sdpa expands KV heads. First attention eager: K=[1,8,256,128], mask=None, GQA true, causal true. Capture: K=[1,32,256,128], bool mask, GQA false, causal false. Upstream Q/K/V agree. First attention difference 0.0009765625; full generation maxabs 5.0625. Original greedy tokens agree but logits fail the frozen tolerance.",
+  "intervention": "A diagnostic limited to the known unpadded full prefill preserved the eager attention decision during capture; Graph still executed and two complete generations had zero error. This does not justify globally disabling masks or assuming padded inputs have the same semantics."
+}

@@ -1,0 +1,12 @@
+{
+  "invariants": [
+    "Workload is frozen to the 'long_prompt' row of workloads.json (held_out_workloads, selected unchanged by the request): batch=2, prompt_tokens=768, new_tokens=16; input ids are the chat-templated workloads.json prompt tokenized with add_special_tokens=False (enable_thinking=False, add_generation_prompt=True) replicated by whole-prompt repetition and truncated to exactly 768 tokens, placed on the bound device as an int64 tensor of shape [2,768].",
+    "Model is Qwen3ForCausalLM loaded from the request assets directory with dtype=torch.bfloat16, attn_implementation='sdpa', local_files_only=True, moved to context['device'] and kept in eval mode; weights are never mutated.",
+    "Generation is greedy: each step takes argmax of output.logits[:, -1] with keepdim=True; exactly 16 tokens are produced (1 prefill token + 15 decode steps) with EOS early stopping disabled by the explicit loop, and past_key_values are threaded through every decode step with use_cache=True and logits_to_keep=1.",
+    "The measured invocation preserves the full generation workload: the 15 cached decode steps remain inside run(); only the ttft_ms objective targets the first-token boundary at the explicit torch.cuda.synchronize after the first argmax (qwen_inference.py:23).",
+    "Numerical policy matches the source: seed 20261020, torch.set_num_threads(4), set_num_interop_threads(1), TF32 disabled for cuda.matmul and cudnn, cudnn.benchmark False, float32_matmul_precision 'highest'; run executes under torch.inference_mode.",
+    "Correctness observations in quality mode are the full per-step last-position logits (stacked to [2,16,vocab]) and the full greedy token sequence [2,16]; the framework compares logits within logits_atol=logits_rtol=0.02 (mirrored by atol/rtol) and requires torch.equal greedy tokens; the +1-corruption negative control of common.negative_check must be rejected; no accuracy or convergence claim beyond this reference fidelity.",
+    "Single-process single-GPU task on context['device']: no collectives, no process-group creation or destruction in the adapter, no second reference model allocated.",
+    "Measure/profile modes keep the source's clean non-capture timing path (no logit retention), and execution semantics plus total work amount are identical across modes."
+  ]
+}

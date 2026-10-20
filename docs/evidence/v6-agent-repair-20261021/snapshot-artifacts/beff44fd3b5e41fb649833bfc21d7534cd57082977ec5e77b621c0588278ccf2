@@ -1,0 +1,108 @@
+{
+  "current_revision": "ef78aa2040cb8a31cd3e215ce78cae8dcd95f874dbaeb52ee5ace4596821627b",
+  "contract": {
+    "schema_version": "project.v2",
+    "id": "task",
+    "goal": "Increase full-request generated tokens per second for the interactive workload, preserving the source generation length and correctness checks.",
+    "objective": {
+      "name": "generated_tokens_per_second",
+      "unit": "tokens/s",
+      "direction": "maximize",
+      "required_metrics": [
+        {
+          "name": "generated_tokens_per_second",
+          "unit": "tokens/s"
+        }
+      ],
+      "aggregation": {
+        "kind": "sum",
+        "case_weights": {},
+        "callable": null
+      },
+      "improvement_threshold": 0.0
+    },
+    "workload": {
+      "batch": 1,
+      "goals": [
+        {
+          "direction": "min",
+          "id": "ttft",
+          "metric": "ttft_ms"
+        },
+        {
+          "direction": "max",
+          "id": "decode",
+          "metric": "decode_tokens_per_second"
+        }
+      ],
+      "id": "interactive",
+      "new_tokens": 32,
+      "prompt_tokens": 256
+    },
+    "quality": {
+      "atol": 0.02,
+      "logits_atol": 0.02,
+      "logits_rtol": 0.02,
+      "require_exact_greedy_tokens": true,
+      "rtol": 0.02
+    },
+    "completion": "One complete infer() execution of the interactive workload: under torch.inference_mode(), a CUDA-synchronized start boundary, prefill of the 256-token GPU-resident input_ids with use_cache=True and logits_to_keep=1 followed by argmax of the first token, an explicit CUDA-synchronized first-token-ready boundary (the source's TTFT point), exactly new_tokens-1=31 KV-cached greedy decode steps, then torch.cat of the generated tokens and a final CUDA-synchronized end boundary. The workload is complete only after that final synchronize; EOS early stopping is disabled by the explicit loop, so exactly 32 tokens are produced.",
+    "invariants": [
+      "Exactly new_tokens=32 greedy tokens are generated; EOS early stopping is disabled by the explicit decode loop, so generation length is fixed.",
+      "Input is the chat-templated config prompt (apply_chat_template with add_generation_prompt=True, enable_thinking=False), encoded without special tokens, repeated and truncated to prompt_tokens=256, replicated to batch=1, resident on the bound CUDA device.",
+      "Model is Qwen3ForCausalLM loaded from the frozen local asset revision with dtype=torch.bfloat16 and attn_implementation='sdpa', in eval mode, called with use_cache=True and logits_to_keep=1 on every step.",
+      "Numerical policies match common.py:configure: TF32 disabled for matmul and cudnn, cudnn.benchmark off, float32_matmul_precision 'highest', seed 20261020.",
+      "Token selection is argmax over the last-position logits at every step (greedy, deterministic); no sampling randomness affects outputs.",
+      "generated_tokens_per_second = batch * new_tokens / end-to-end elapsed time, where the window includes prefill and the first token; it is not decode-only throughput and not TTFT.",
+      "TTFT is measured at the source's explicit first-token boundary: the CUDA synchronize immediately after prefill and the first argmax complete; the decode window covers the remaining 31 cached steps.",
+      "Correctness observations are the generated token ids (exact integer equality) and the per-step last-token logits for all 32 positions compared at logits_atol=logits_rtol=0.02, matching the source's capture path.",
+      "Timing excludes model/tokenizer loading, chat-template tokenization, host input construction, correctness comparisons, warmup/repeats, and profiling; these belong to setup or the harness.",
+      "Single process on one bound GPU (no distributed backend); the adapter never initializes a process group and uses context['device'] rather than choosing a physical GPU.",
+      "Workload, objective, quality thresholds and asset revision are frozen; batch=1, prompt_tokens=256 and new_tokens=32 must not be changed to improve a score."
+    ],
+    "frozen_files": [
+      "opop_adapter.py",
+      "opop_evaluate.py"
+    ],
+    "task_definition": null,
+    "state_protocol": "prepare() loads the tokenizer and Qwen3ForCausalLM from request['assets']['qwen3_4b_weights'] (bfloat16, sdpa, eval) onto context['device'], applies the source's numerical policies (TF32 disabled, float32 matmul precision 'highest', cudnn.benchmark off, torch.manual_seed(20261020), thread caps) and builds the chat-templated (enable_thinking=False) prompt repeated/truncated to prompt_tokens and replicated to batch, all outside timing. run() is fully self-contained: it creates its own request-local KV cache and generated-token list each invocation, so reset() only restores the RNG seed and is otherwise a no-op; the process group is never destroyed. set_mode('quality') retains per-step logits exactly like the source's capture path, while 'measure'/'profile' keep the source's clean timing path that drops them; execution semantics and work amount are identical across modes.",
+    "world_size": 1,
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ]
+  },
+  "original_reference_revision": "976c5dc0a8ea609315788dd854f4217cfbf554338d0e63f230d5bdcee6a68007",
+  "original_baseline": [
+    {
+      "rank": 0,
+      "metrics": {
+        "generated_tokens_per_second": 43.89004622826101,
+        "ttft_ms": 24.409105,
+        "decode_ms": 704.424116,
+        "end_to_end_ms": 728.833221,
+        "decode_tokens_per_second": 44.00757909316097,
+        "internal_generated_tokens_per_second": 43.90579226903819,
+        "generated_tokens": 32.0,
+        "batch": 1.0,
+        "prompt_tokens": 256.0,
+        "new_tokens": 32.0,
+        "peak_allocated_bytes": 8168429568.0,
+        "framework.elapsed_ms": 729.094698,
+        "framework.peak_allocated_bytes": 8168429568.0,
+        "framework.peak_reserved_bytes": 8239710208.0,
+        "framework.allocated_bytes": 8110232064.0,
+        "framework.reserved_bytes": 8239710208.0,
+        "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+        "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+      },
+      "diagnostics": {}
+    }
+  ],
+  "profiled_wall_ms": [
+    11903.90502
+  ],
+  "measurement_policy": "Original baseline belongs to its immutable reference. Discovery uses intrusive hooks and is separate from clean timing and plain diagnostic objective samples. Profiled rank skew and kernel time can be heavily perturbed; they are not project J or wire time."
+}

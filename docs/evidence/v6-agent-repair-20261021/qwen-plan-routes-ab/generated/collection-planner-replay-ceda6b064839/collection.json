@@ -1,0 +1,23 @@
+{
+  "collectors": [
+    "candidate_diagnostics",
+    "execution_timeline"
+  ],
+  "requested_fields": [
+    "candidate_setup_failure_exception_evidence",
+    "executed_route_native_corroboration",
+    "effective_binding_functional_sites",
+    "prefill_cpu_to_cuda_submit_associations",
+    "first_token_boundary_sync_per_device_interval"
+  ],
+  "unavailable_fields": {
+    "nccl_algorithm_protocol_channel_decisions": "nccl_tuning not selected: single-process single-GPU task with no process group and no NCCL (request.json distributed_backend null; observations.json capability communication=not_applicable, reason 'single-device task'); no NCCL decisions exist to capture.",
+    "per_collective_pcie_nvlink_bytes": "Not derivable in this task: no distributed collectives run, device_telemetry (not selected) provides only device-wide NVML window readings rather than per-collective bytes, and PCIe/NVLink traffic must not be invented from logical payload or memcpy sizes.",
+    "nsys_nccl_wait_vs_wire_separation": "nsys not selected: no NCCL communication exists on this single device to separate waiting from wire transfer, and the already-run torch collector associated all 66441 kernels with 0 unassociated and 0 ambiguous sequences, leaving no overlap or attribution gap for nsys to resolve.",
+    "gpu_ready_and_consumer_completion_bounds": "execution_timeline reports clock alignment bounds for CPU-to-CUDA submit associations only; GPU readiness and consumer completion of the first-token boundary may remain unknown.",
+    "per_group_candidate_cost_effects": "binding_cost not selected: the effective binding is 'direct' with reason 'no functional replacements' and functional_sites null, so there is no bound candidate path whose binding-only passthrough overhead is informative; it would report whole-invocation cost only, not per-group effects.",
+    "clean_host_dispatch_self_times": "python_runtime not selected: its cProfile trace perturbs execution and inclusive/self times are not clean performance scores or GPU compute durations; host dispatch cost is not the open uncertainty for this candidate."
+  },
+  "rationale": "The candidate's clean paired project measurement shows a gain within noise (objective 24.755876 ms vs parent reference 24.886222 ms, reasons ['paired_gain_not_above_noise'], accepted=false), both candidate invocations self-declared route 'parent_fallback_setup_failure' (count 2, framework_fallbacks 0), and the binding resolved from requested 'legacy' to effective 'direct' with reason 'no functional replacements' and functional_sites null. The endpoint interpretation explicitly states these route labels are candidate-reported telemetry, not independent native proof, and should be corroborated with traces or actual exception evidence; the framework also cautions not to assume that calling a reference is necessarily fallback or that a noise-level result reflects algorithm cost. The open uncertainties are therefore: (1) whether setup genuinely failed and with what actual exception on this exact revision, and (2) which code path the measured invocations actually executed. candidate_diagnostics runs on this exact candidate in a separate worker and targets the real setup-failure exception evidence behind the declared route. execution_timeline records an independent plain Torch trace with CPU-to-CUDA submit associations, the explicit first-token-ready synchronization at the ttft completion boundary (qwen_inference.py:16-24), and per-device intervals, corroborating or refuting the declared parent path during the prefill window that defines the ttft_ms objective. The torch collector already ran (coverage: 66441/66441 kernels associated, 0 unassociated, 0 ambiguous forward sequences), so kernel attribution is complete and nsys adds nothing for the remaining fallback/path question. nccl_tuning, collective_calibration, and any communication telemetry are not applicable: this is a single-process single-GPU task with no process group, no NCCL, and capability communication marked not_applicable ('single-device task'). device_telemetry offers only device-wide NVML utilization/PCIe window readings that cannot address the executed-path question. python_runtime perturbs execution and does not produce clean timings. binding_cost is uninformative while the effective binding is direct with no functional sites. Revision is set to the single listed candidate a00f1d61fb09e2ecb3a13f065428cc022d0b40b5c82f7058374294929c9d955f, matching evaluation.decision.revision; no failure-category policy or optimization action is prescribed by this plan.",
+  "revision": "a00f1d61fb09e2ecb3a13f065428cc022d0b40b5c82f7058374294929c9d955f"
+}

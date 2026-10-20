@@ -1,0 +1,203 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "failure": null,
+  "wall_s": 21.757188834249973,
+  "ranks": [
+    {
+      "rank": 0,
+      "pid": 309273,
+      "exit_code": 0,
+      "status": "passed",
+      "binding": {
+        "pid": 309273,
+        "status": "verified",
+        "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+        "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+        "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+        "logical_device": 0,
+        "nvidia_smi_pid_uuids": [
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "pid_query_status": "observed",
+        "occupancy": {
+          "status": "sampled_clear",
+          "samples": 32,
+          "unavailable_samples": 0,
+          "wait_s": 0.052866723388433456,
+          "external_clients": [],
+          "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+        }
+      },
+      "framework_source": {
+        "sha256": "5b74946e86a194124889c8262ca3a7083e7a32e19f34aa5d58908fc31facd8c1",
+        "files": 160,
+        "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+      },
+      "result": {
+        "valid": true,
+        "coverage": {
+          "recovered-treatment-param-42ede39c": {
+            "counts": {
+              "323bcbe006b343648b346af9": 62
+            },
+            "fallbacks": {},
+            "reference_invocations": {
+              "323bcbe006b343648b346af9": 66
+            },
+            "candidate_declared_routes": [
+              {
+                "call": "323bcbe006b343648b346af9",
+                "route": "eager_window_parent",
+                "count": 62
+              },
+              {
+                "call": "323bcbe006b343648b346af9",
+                "route": "fallback_capture",
+                "count": 1
+              }
+            ],
+            "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+          }
+        },
+        "scope": "Diagnostic execution only; no quality or performance acceptance",
+        "candidate_diagnostics": {
+          "schema_version": "project.candidate-diagnostics.v1",
+          "events": [
+            {
+              "phase": "run",
+              "bundle": "recovered-treatment-param-42ede39c",
+              "file": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/qwen-throughput/0-treatment-recovered/jobs/candidate-diagnostics-5a667a07ff/source/opop_candidates/recovered-treatment.py",
+              "function": "_capture_all",
+              "line": 248,
+              "source": "raise RuntimeError(\"captured step diverged from eager parent\")",
+              "recent_lines": [
+                {
+                  "line": 238,
+                  "source": "graph = torch.cuda.CUDAGraph()"
+                },
+                {
+                  "line": 239,
+                  "source": "_set_lengths(target - 1)"
+                },
+                {
+                  "line": 240,
+                  "source": "with torch.cuda.graph(graph, capture_error_mode=\"thread_local\"):"
+                },
+                {
+                  "line": 241,
+                  "source": "out = _parent_step()"
+                },
+                {
+                  "line": 240,
+                  "source": "with torch.cuda.graph(graph, capture_error_mode=\"thread_local\"):"
+                },
+                {
+                  "line": 242,
+                  "source": "_set_lengths(target - 1)"
+                },
+                {
+                  "line": 243,
+                  "source": "graph.replay()"
+                },
+                {
+                  "line": 244,
+                  "source": "_set_lengths(target - 1)"
+                },
+                {
+                  "line": 245,
+                  "source": "eager = _parent_step()"
+                },
+                {
+                  "line": 246,
+                  "source": "_set_lengths(target - 1)"
+                },
+                {
+                  "line": 247,
+                  "source": "if not torch.equal(out.logits, eager.logits):"
+                },
+                {
+                  "line": 248,
+                  "source": "raise RuntimeError(\"captured step diverged from eager parent\")"
+                }
+              ],
+              "event": "exception",
+              "type": "RuntimeError",
+              "message": "captured step diverged from eager parent",
+              "count": 1
+            },
+            {
+              "phase": "run",
+              "bundle": "recovered-treatment-param-42ede39c",
+              "file": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/qwen-throughput/0-treatment-recovered/jobs/candidate-diagnostics-5a667a07ff/source/opop_candidates/recovered-treatment.py",
+              "function": "_run",
+              "line": 330,
+              "source": "_capture_all()",
+              "recent_lines": [
+                {
+                  "line": 309,
+                  "source": "st[\"caller_cache\"] = past"
+                },
+                {
+                  "line": 310,
+                  "source": "st[\"invocation_broken\"] = False"
+                },
+                {
+                  "line": 312,
+                  "source": "target = st[\"pos\"] + 1"
+                },
+                {
+                  "line": 313,
+                  "source": "if target > st[\"capacity\"]:"
+                },
+                {
+                  "line": 319,
+                  "source": "st[\"input\"].copy_(input_ids)"
+                },
+                {
+                  "line": 320,
+                  "source": "route = None"
+                },
+                {
+                  "line": 321,
+                  "source": "logits = None"
+                },
+                {
+                  "line": 322,
+                  "source": "try:"
+                },
+                {
+                  "line": 323,
+                  "source": "if st[\"graphs\"] is not None and target in st[\"graphs\"]:"
+                },
+                {
+                  "line": 328,
+                  "source": "if st[\"graphs\"] is None and not st[\"capture_failed\"] and _cuda_ready():"
+                },
+                {
+                  "line": 329,
+                  "source": "try:"
+                },
+                {
+                  "line": 330,
+                  "source": "_capture_all()"
+                }
+              ],
+              "event": "exception",
+              "type": "RuntimeError",
+              "message": "captured step diverged from eager parent",
+              "count": 1
+            }
+          ],
+          "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+        }
+      }
+    }
+  ],
+  "lease_wait_s": 52.398532036691904,
+  "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+  "devices": [
+    "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+  ],
+  "worker_pids_reaped": true
+}

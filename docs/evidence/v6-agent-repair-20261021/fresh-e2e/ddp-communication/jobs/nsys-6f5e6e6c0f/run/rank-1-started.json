@@ -1,0 +1,146 @@
+{
+  "rank": 1,
+  "world_size": 2,
+  "device": "cuda:1",
+  "output": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-e2e/ddp-communication/jobs/nsys-6f5e6e6c0f/run",
+  "parameters": {
+    "request": {
+      "schema_version": "project-request.v1",
+      "source_root": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-e2e/ddp-communication.intake/source",
+      "entry": "gpt2_ddp_training.py",
+      "files": [
+        "gpt2_ddp_training.py",
+        "common.py",
+        "workloads.json",
+        "README.md"
+      ],
+      "goal": "Reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks.",
+      "objective": {
+        "name": "communication_kernel_sum_ms",
+        "unit": "ms",
+        "direction": "minimize",
+        "constraints": [
+          {
+            "metric": "step_ms",
+            "op": "le",
+            "baseline_ratio": 1.05,
+            "rank_aggregation": "max"
+          }
+        ],
+        "source": {
+          "collector": "torch_communication",
+          "field": "communication_kernel_sum_ms",
+          "source_metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+          "source_symbol": "gpt2_ddp_training.py:156-157 record['diagnostic']['max_rank_nccl_kernel_sum_ms'] from common.py:99 profile_once nccl_kernel_sum_ms",
+          "source_reduction": "per-rank sum of NCCL kernel durations in a separately profiled step, maximum across ranks, median of the 3 profiled samples"
+        },
+        "rank_aggregation": "max"
+      },
+      "workload": {
+        "id": "accumulated_step",
+        "world_size": 2,
+        "micro_batch": 1,
+        "sequence_length": 128,
+        "accumulation_steps": 4,
+        "goals": [
+          {
+            "id": "step",
+            "metric": "step_ms",
+            "direction": "min"
+          },
+          {
+            "id": "communication",
+            "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+            "direction": "min",
+            "constraints": {
+              "step_ms_max_baseline_ratio": 1.05
+            }
+          }
+        ],
+        "model": {
+          "n_layer": 12,
+          "n_embd": 768,
+          "n_head": 12,
+          "vocab_size": 50257,
+          "n_positions": 1024
+        }
+      },
+      "quality": {
+        "atol": 1e-06,
+        "rtol": 0.0001,
+        "grad_atol": 1e-06,
+        "grad_rtol": 0.0001,
+        "parameter_atol": 1e-06,
+        "parameter_rtol": 0.0001,
+        "rank_gradient_replica_atol": 0.0,
+        "rank_gradient_replica_rtol": 0.0
+      },
+      "assets": {},
+      "devices": [
+        "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+      ],
+      "distributed_backend": "nccl",
+      "communication": "auto",
+      "required_observations": [
+        "communication_kernel_sum_ms"
+      ],
+      "tools": {
+        "ncu": "/usr/local/cuda/bin/ncu",
+        "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+      },
+      "profiling": {
+        "agent_plan": true
+      },
+      "binding_backend": "legacy",
+      "measurement_lifetime": "invocation",
+      "warmup": 2,
+      "repeats": 5,
+      "continuous_steps": 2,
+      "worker_timeout_s": 900.0,
+      "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+      "notes": [
+        "User command: torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp --profile; README.md:37 documents the equivalent python -m torch.distributed.run --standalone --nproc-per-node=2 form. The command sets no --warmup/--repeats, so common.py:24-25 defaults (2 warmup, 5 clean repeats) apply.",
+        "Objective is the diagnostic communication metric requested in the goal, distinct from the end-to-end step time: per-rank summed device NCCL kernel duration of the accumulated step, max over ranks, median of 3 separately profiled iterations (--profile, gpt2_ddp_training.py:121-125,156-157). Per workloads.json communication_metric_caveat it includes device waiting and is not wire time, critical-path time or exposed communication; the source also reports profiling perturbation.",
+        "Mapped to the installed deployment.json metric collector torch_communication field communication_kernel_sum_ms (unit ms, per-rank sum of device communication-kernel durations in a separately profiled invocation) with max rank aggregation; collector availability must be verified by the actual workload worker.",
+        "Constraint (performance, not correctness): clean step time, max over ranks and median of the 5 clean repeats, must remain <= 1.05x baseline; source notation goals[1].constraints.step_ms_max_baseline_ratio=1.05 in workloads.json, restated in README.md:48.",
+        "Quality: FP32 model, TF32 disabled and float32 matmul precision 'highest' (common.py:34-42). Full gradients are compared against a rank-0 serial single-device reference that consumes the exact global batch (8 samples, 1024 tokens) with grad atol=1e-6/rtol=1e-4 (gpt2_ddp_training.py:68-78); post-update parameters with atol=1e-6/rtol=1e-4 (lines 88-91); loss asserted finite (line 65); negative +1-corruption control must be rejected (line 78).",
+        "Exact discrete comparison: every rank's full gradients must equal the rank-0 replica exactly via torch.testing.assert_close(atol=0.0, rtol=0.0) on broadcast tensors (gpt2_ddp_training.py:81-86); optimizer state/step semantics: SGD lr=0.001, momentum=0, weight_decay=0, foreach=False (line 60).",
+        "Baseline communication behavior to preserve: first 3 of 4 micro-batches under DDP.no_sync(), single gradient reduction per step; DDP(broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True) (gpt2_ddp_training.py:40,59). The separate inventory comm hook (bucket bytes/call counts, gpt2_ddp_training.py:128-142) is a diagnostic outside clean timing and the measured invocation.",
+        "Timing boundaries: step time is per-rank wall time of step() after cuda synchronize and a gloo control-group barrier; ranks are not summed (gpt2_ddp_training.py:111-119,150-152). The gloo group (barrier, all_gather_object) is auxiliary process control, not part of the measured NCCL workload.",
+        "Inputs and weights are seeded synthetic fixtures (torch.manual_seed(20261020) init; token IDs from generator seed 31000+rank), so no external model weights or datasets are needed.",
+        "One measured invocation: One accumulated GPT-2 DDP training step per rank: optimizer.zero_grad(set_to_none=True); forward+backward over the 4 seeded micro-batches of shape (micro_batch=1, sequence_length=128) with the first 3 under model.no_sync() and the gradient allreduce on the final micro-batch; SGD(lr=0.001) optimizer.step(); torch.cuda.synchronize(). Each measured unit starts from the fixed seed-20261020 initial weights (harness restores state outside the timed region). Reference construction, correctness checks, statistical warmup/repeats, the profile wrapper, the bucket-inventory hook run and report writing are measurement infrastructure outside this invocation."
+      ]
+    },
+    "adapter": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-e2e/ddp-communication/jobs/nsys-6f5e6e6c0f/source/opop_adapter.py",
+    "action": "nsys_profile",
+    "collector_options": {},
+    "reference_dir": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-e2e/ddp-communication/preparation/4d2a8c9d116a/controls",
+    "bundles": []
+  },
+  "binding": {
+    "pid": 258327,
+    "status": "verified",
+    "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "logical_device": 1,
+    "nvidia_smi_pid_uuids": [
+      "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+    ],
+    "pid_query_status": "observed"
+  },
+  "revision": {
+    "revision": "0cefa1e7b0cf9d6124876bed6e0d1ce12b1e655e1b041ae226fd37f04c74277f",
+    "bundles": [],
+    "bundle_hashes": {},
+    "files": {
+      "README.md": "97dbce99c0065e87f4accf1bbe6d52aa4438a289d7eaec1c85a9c6b1cb25f68d",
+      "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+      "gpt2_ddp_training.py": "37d1632436c8f927a52401b6d1fb9e63bd7b8d33d643d0f914916bb89b3364fe",
+      "opop_adapter.py": "54611507af69aa58867e56da0a290c5983839a3e928508e3f0c497aeb3b3ef9c",
+      "opop_evaluate.py": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+      "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+    }
+  }
+}

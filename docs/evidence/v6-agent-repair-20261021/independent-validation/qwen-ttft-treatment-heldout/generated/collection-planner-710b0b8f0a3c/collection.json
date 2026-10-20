@@ -1,0 +1,26 @@
+{
+  "collectors": [
+    "execution_timeline",
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "execution_timeline.cpu_to_cuda_submit_associations",
+    "execution_timeline.synchronization_events",
+    "execution_timeline.per_device_intervals",
+    "execution_timeline.prefill_window_host_device_gaps",
+    "python_runtime.host_self_time_by_function",
+    "python_runtime.host_inclusive_time_by_function",
+    "python_runtime.prefill_host_dispatch_and_binding_overhead"
+  ],
+  "unavailable_fields": {
+    "communication.nccl_algorithm_protocol_channels": "Single-device task (observations.json ranks[0] not_applicable 'single-device task'; capability field 'communication' not_applicable); no NCCL communicator exists, so nccl_tuning has nothing to observe and kernel names alone would not identify protocol anyway.",
+    "communication.allreduce_reference_timing": "No collectives in infer() (qwen_inference.py); collective_calibration's synthetic full-world SUM allreduce has no counterpart in this workload and would not bound the single-GPU critical path.",
+    "pcie_nvlink_bytes_per_operation": "One leased GPU with resident weights and no inter-device links; device_telemetry (not selected) provides only device-wide NVML rates with native sampling windows, and traffic must not be invented from payload or memcpy sizes.",
+    "device_utilization_attributed_to_prefill": "device_telemetry readings are device-wide with native windows and cannot be attributed to the prefill/argmax window or per-operator groups; torch.cuda.max_memory_allocated already covers peak memory in the harness metrics.",
+    "gpu_readiness_and_consumer_completion_intervals": "execution_timeline reports clock alignment bounds for CPU submissions only; GPU readiness and consumer completion may remain unknown for the first-token boundary.",
+    "gradient_post_accumulate_callbacks": "Inference-only workload under torch.inference_mode; coverage.json shows autograd_ranges=0 and backward_associated_kernels=0, so no gradient callbacks exist to observe.",
+    "candidate_diagnostics_and_binding_cost": "No candidate exists yet; binding_cost requires an existing additive candidate's parent/binding-only passthrough pair and is not applicable before candidate creation or when bundles replace the parent.",
+    "cross_rank_intervals": "Single rank/device; observations.json cross_rank.matched is empty and clock policy forbids subtracting timestamps from different rank clocks."
+  },
+  "rationale": "The frozen objective is ttft_ms: host wall-clock time from after a cuda.synchronize across the batch=2, 768-token prefill, argmax, and the explicit first-token torch.cuda.synchronize (qwen_inference.py infer()). The torch collector already ran and coverage is complete (34229/34229 kernels associated, 0 unassociated, 0 ambiguous, 0 root-only, 0 backward/autograd), so per-operator GPU attribution is resolved and there are no outstanding overlap, graph-tracing, or attribution questions that would justify nsys; the task is single-device, so nccl_tuning, collective_calibration, and any communication capability are not applicable. The remaining unknowns for a latency objective are host-side: whether the GPU idles between prefill kernel submissions, where synchronization stalls the first-token boundary, and how much Python dispatch and binding cost the transformers forward path adds inside the timed window. execution_timeline supplies CPU-to-CUDA submit associations, synchronization events, and per-device intervals to locate host-device gaps in the prefill window (clock alignment bounds cover CPU submissions only, so GPU readiness stays unknown); python_runtime supplies a warmed cProfile host call trace to quantify dispatch/binding overhead, acknowledging it perturbs execution and its inclusive/self times are not clean performance scores or GPU durations. binding_cost and candidate_diagnostics are deferred until a candidate exists. Unavailable dimensions and the observed reasons for each are listed in unavailable_fields; the framework may retain them as unknown."
+}

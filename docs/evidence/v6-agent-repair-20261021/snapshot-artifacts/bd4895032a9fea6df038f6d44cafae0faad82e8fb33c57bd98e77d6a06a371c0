@@ -1,0 +1,71 @@
+{
+  "schema_version": "project.v2",
+  "id": "task",
+  "goal": "Reduce first-token latency for the interactive workload, preserving the full generation workload and the source correctness checks.",
+  "objective": {
+    "name": "ttft_ms",
+    "unit": "ms",
+    "direction": "minimize",
+    "required_metrics": [
+      {
+        "name": "ttft_ms",
+        "unit": "ms"
+      }
+    ],
+    "aggregation": {
+      "kind": "sum",
+      "case_weights": {},
+      "callable": null
+    },
+    "improvement_threshold": 0.0
+  },
+  "workload": {
+    "batch": 1,
+    "goals": [
+      {
+        "direction": "min",
+        "id": "ttft",
+        "metric": "ttft_ms"
+      },
+      {
+        "direction": "max",
+        "id": "decode",
+        "metric": "decode_tokens_per_second"
+      }
+    ],
+    "id": "interactive",
+    "new_tokens": 32,
+    "prompt_tokens": 256
+  },
+  "quality": {
+    "atol": 0.02,
+    "logits_atol": 0.02,
+    "logits_rtol": 0.02,
+    "require_exact_greedy_tokens": true,
+    "rtol": 0.02
+  },
+  "completion": "ttft_ms completes when the 256-token prefill forward (use_cache=True, logits_to_keep=1) and the argmax over the last-position logits have finished at the explicit torch.cuda.synchronize in qwen_inference.py:23; the measured invocation does not stop there: it then runs the remaining new_tokens-1=31 greedy decode steps reusing past_key_values and finishes at the final synchronize, returning the 32 concatenated greedy tokens. One adapter.run() is exactly one infer(model, inputs, new_tokens=32) call on the frozen GPU-resident inputs; model/tokenizer loading, tokenization, host input construction, teacher-forced reference capture runs, correctness checks, reference .pt saving, report writing and profiling are outside run().",
+  "invariants": [
+    "Workload is frozen to the 'interactive' row of workloads.json: batch=1, prompt_tokens=256, new_tokens=32; input ids are the chat-templated workloads.json prompt tokenized with add_special_tokens=False (enable_thinking=False, add_generation_prompt=True) replicated by whole-prompt repetition and truncated to exactly 256 tokens, placed on the bound device as an int64 tensor of shape [1,256].",
+    "Model is Qwen3ForCausalLM loaded from the request assets directory with dtype=torch.bfloat16, attn_implementation='sdpa', local_files_only=True, moved to context['device'] and kept in eval mode; weights are never mutated.",
+    "Generation is greedy: each step takes argmax of output.logits[:, -1] with keepdim=True; exactly 32 tokens are produced (1 prefill token + 31 decode steps) with EOS early stopping disabled by the explicit loop, and past_key_values are threaded through every decode step with use_cache=True and logits_to_keep=1.",
+    "The measured invocation preserves the full generation workload: the 31 cached decode steps remain inside run(); only the ttft_ms objective targets the first-token boundary at the explicit torch.cuda.synchronize after the first argmax (qwen_inference.py:23).",
+    "Numerical policy matches the source: seed 20261020, torch.set_num_threads(4), set_num_interop_threads(1), TF32 disabled for cuda.matmul and cudnn, cudnn.benchmark False, float32_matmul_precision 'highest'; run executes under torch.inference_mode.",
+    "Correctness observations in quality mode are the full per-step last-position logits (stacked to [1,32,vocab]) and the full greedy token sequence [1,32]; the framework compares logits within logits_atol=logits_rtol=0.02 (mirrored by atol/rtol) and requires torch.equal greedy tokens; the +1-corruption negative control of common.negative_check must be rejected; no accuracy or convergence claim beyond this reference fidelity.",
+    "Single-process single-GPU task on context['device']: no collectives, no process-group creation or destruction in the adapter, no second reference model allocated.",
+    "Measure/profile modes keep the source's clean non-capture timing path (no logit retention), and execution semantics plus total work amount are identical across modes."
+  ],
+  "frozen_files": [
+    "opop_adapter.py",
+    "opop_evaluate.py"
+  ],
+  "task_definition": null,
+  "state_protocol": "prepare(context, request) applies the source numerical policy (torch.set_num_threads(4), set_num_interop_threads(1), manual_seed(20261020), torch.cuda.set_device(context['device']), TF32 disabled for matmul and cudnn, cudnn.benchmark False, float32_matmul_precision 'highest'), loads the tokenizer and Qwen3ForCausalLM from request['assets']['assets'] with dtype=bfloat16, attn_implementation='sdpa', local_files_only=True onto context['device'], places it in eval mode, and builds the input tensor by chat-templating the workloads.json prompt, tokenizing with add_special_tokens=False and replicating the ids to exactly 256 tokens for batch=1; model, inputs, workload parameters, mode and seed are kept in the state dict. reset(state) reseeds torch to 20261020, restores eval mode and drops stored results; the KV cache is created fresh inside run(), so inference is otherwise stateless and reset needs no cache or gradient handling. run(state) executes the whole infer() body under torch.inference_mode with the source's leading synchronize, prefill+argmax, the internal first-token-ready synchronize, 31 cached decode steps with per-step argmax, the final synchronize, and returns tokens, per-step logits only in quality mode (state['mode']=='quality', matching the source's capture=True reference runs), and raw phase timestamps in ns. observe(state, result) returns the detached greedy token tensor [1,32] and, in quality mode, the detached stacked per-step logits [1,32,vocab] that the source compares with torch.testing.assert_close; no timings are exposed. metrics(state, result, elapsed_ms) reports ttft_ms, decode_ms, end_to_end_ms, decode_tokens_per_second, generated_tokens_per_second computed from the source's internal perf_counter_ns boundaries, plus wall_elapsed_ms and peak_allocated_bytes (torch.cuda.max_memory_allocated() queried outside the timer after the framework's peak reset). models(state) returns {'model': state['model']}; set_mode toggles only logit capture and changes no execution semantics.",
+  "world_size": 1,
+  "allowed_scopes": [
+    "group",
+    "joint",
+    "region",
+    "execution_plan"
+  ]
+}

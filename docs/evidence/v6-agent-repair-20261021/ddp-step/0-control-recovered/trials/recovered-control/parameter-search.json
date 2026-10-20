@@ -1,0 +1,878 @@
+{
+  "engine": "existing TaskSearch + OptunaTPETuner",
+  "measurement_scope": "complete project",
+  "resource_fields": {
+    "framework.allocated_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "framework.reserved_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "framework.peak_allocated_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "framework.peak_reserved_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "framework.lifecycle_peak_allocated_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "framework.lifecycle_peak_reserved_bytes": {
+      "unit": "bytes",
+      "kind": "gauge",
+      "scope": "project allocator"
+    },
+    "replacement.kernel_launches": {
+      "unit": "count",
+      "kind": "count",
+      "scope": "native launches inside this bundle's observed replacement ranges",
+      "rank_aggregation": "max",
+      "interpretation": "separate intrusive diagnostic run; nested work and fallback included; launch metadata is not dynamic utilization"
+    },
+    "replacement.diagnostic_kernel_sum_us": {
+      "unit": "us",
+      "kind": "duration",
+      "scope": "native launches inside this bundle's observed replacement ranges",
+      "rank_aggregation": "max",
+      "interpretation": "separate intrusive diagnostic run; nested work and fallback included; launch metadata is not dynamic utilization"
+    },
+    "replacement.max_registers_per_thread": {
+      "unit": "count",
+      "kind": "launch_metadata",
+      "scope": "native launches inside this bundle's observed replacement ranges",
+      "rank_aggregation": "max",
+      "interpretation": "separate intrusive diagnostic run; nested work and fallback included; launch metadata is not dynamic utilization"
+    },
+    "replacement.max_shared_memory_bytes": {
+      "unit": "bytes",
+      "kind": "launch_metadata",
+      "scope": "native launches inside this bundle's observed replacement ranges",
+      "rank_aggregation": "max",
+      "interpretation": "separate intrusive diagnostic run; nested work and fallback included; launch metadata is not dynamic utilization"
+    }
+  },
+  "response_interpretation": "Finite differences of observed screening endpoints, not independent causal sensitivities or acceptance evidence. Objective/throughput/workload constants are not automatically labelled resources. Zero resource change is observed, not missing. Kernel counters require separately available diagnostic evidence.",
+  "parameter_trials": 3,
+  "space": {
+    "params": [
+      {
+        "name": "exchange",
+        "kind": "str",
+        "choices": [
+          "p2p",
+          "rs_ag"
+        ],
+        "description": "Two-rank exchange strategy at the bucket boundary. 'p2p': chunk-free one-shot contiguous halves exchange with grouped isend/irecv, one local add per bucket and monotonic per-round tags (the selection's primary hypothesis, SIMPLE-protocol bulk transfers). 'rs_ag': reduce-scatter + all-gather decomposition via the process group's pybind collectives at the same wire volume with no manual adds. Both compute the exact two-addend SUM; only transport differs, never task semantics."
+      }
+    ],
+    "constraints": []
+  },
+  "selected": "recovered-control-param-66017c95",
+  "stats": [
+    {
+      "candidate_id": "cand-6a14db6d",
+      "space_id": "space-cand-6a14db6d",
+      "n_complete": 1,
+      "n_fail": 1,
+      "best": {
+        "trial_id": "tr-d804aa5f",
+        "candidate_id": "cand-6a14db6d",
+        "space_id": "space-cand-6a14db6d",
+        "params": {
+          "values": {
+            "exchange": "rs_ag"
+          }
+        },
+        "status": "complete",
+        "failure_kind": null,
+        "failure_detail": "",
+        "latency_ms": null,
+        "task_evaluation": {
+          "score": 263.122762,
+          "valid": true,
+          "metrics": {
+            "step_ms": 263.122762,
+            "tokens_per_second": 3895.0352955812386,
+            "peak_allocated_bytes": 2057283072.0,
+            "framework.elapsed_ms": 263.122762,
+            "framework.peak_allocated_bytes": 2057283072.0,
+            "framework.peak_reserved_bytes": 2392850432.0,
+            "framework.allocated_bytes": 1092788736.0,
+            "framework.reserved_bytes": 2392850432.0,
+            "framework.lifecycle_peak_allocated_bytes": 2057283072.0,
+            "framework.lifecycle_peak_reserved_bytes": 2392850432.0,
+            "replacement.max_registers_per_thread": 96.0,
+            "replacement.kernel_launches": 26.0,
+            "replacement.diagnostic_kernel_sum_us": 322462.282,
+            "replacement.max_shared_memory_bytes": 96384.0
+          },
+          "detail": null
+        },
+        "profile": null,
+        "fp64_rescued_trials": null,
+        "job_wall_s": null,
+        "job_timed_out": null
+      },
+      "param_stats": [
+        {
+          "name": "exchange",
+          "best_value": "rs_ag",
+          "best_trial_value": "rs_ag",
+          "at_boundary": false,
+          "boundary_direction": null,
+          "effect_pct": 0.0,
+          "latency_by_value": {},
+          "objective_by_value": {
+            "'rs_ag'": 263.122762
+          },
+          "effect_absolute": 0.0,
+          "failure_rate_by_value": {
+            "'p2p'": 1.0,
+            "'rs_ag'": 0.0
+          }
+        }
+      ],
+      "resource_at_best": null,
+      "failure_clusters": []
+    }
+  ],
+  "responses": [
+    {
+      "candidate_id": "recovered-control",
+      "axis": "exchange",
+      "a_params": {
+        "values": {
+          "exchange": "rs_ag"
+        }
+      },
+      "b_params": {
+        "values": {
+          "exchange": "p2p"
+        }
+      },
+      "a": {
+        "score": 263.122762,
+        "valid": true,
+        "metrics": {
+          "step_ms": 263.122762,
+          "tokens_per_second": 3895.0352955812386,
+          "peak_allocated_bytes": 2057283072.0,
+          "framework.elapsed_ms": 263.122762,
+          "framework.peak_allocated_bytes": 2057283072.0,
+          "framework.peak_reserved_bytes": 2392850432.0,
+          "framework.allocated_bytes": 1092788736.0,
+          "framework.reserved_bytes": 2392850432.0,
+          "framework.lifecycle_peak_allocated_bytes": 2057283072.0,
+          "framework.lifecycle_peak_reserved_bytes": 2392850432.0,
+          "replacement.max_registers_per_thread": 96.0,
+          "replacement.kernel_launches": 26.0,
+          "replacement.diagnostic_kernel_sum_us": 322462.282,
+          "replacement.max_shared_memory_bytes": 96384.0
+        },
+        "detail": null
+      },
+      "b": {
+        "score": null,
+        "valid": false,
+        "metrics": {},
+        "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+      },
+      "delta_j": null,
+      "gain": null,
+      "parameter_slope": null,
+      "resource_deltas": {},
+      "resource_slopes": {},
+      "unknown_resources": [
+        "framework.allocated_bytes",
+        "framework.lifecycle_peak_allocated_bytes",
+        "framework.lifecycle_peak_reserved_bytes",
+        "framework.peak_allocated_bytes",
+        "framework.peak_reserved_bytes",
+        "framework.reserved_bytes",
+        "replacement.diagnostic_kernel_sum_us",
+        "replacement.kernel_launches",
+        "replacement.max_registers_per_thread",
+        "replacement.max_shared_memory_bytes"
+      ],
+      "resource_status": "unknown",
+      "reason": "invalid_endpoint"
+    }
+  ],
+  "observations": [
+    {
+      "bundle": {
+        "schema_version": "project.v2",
+        "id": "recovered-control-param-66017c95",
+        "parent_revision": "c63bc8c5a27187a3b4f6a7fdfb954cd4e0d72d1fd90274f4bbb39d12559a8866",
+        "contract_ref": "sha256:86da60adc15b0f15a2942dcd11214684e525aa0cd92d8a7dfb171f9b4b0e7e15",
+        "scope": "joint",
+        "implementation": "distributed",
+        "groups": [
+          "f833b57a373d8262a384",
+          "8525af72c631b94e3dd0"
+        ],
+        "calls": [
+          "d0938de87369efd500322679",
+          "b8ade439d7b8bd5fb5c1029b"
+        ],
+        "affected_calls": [
+          "b8ade439d7b8bd5fb5c1029b",
+          "d0938de87369efd500322679"
+        ],
+        "edits": [
+          {
+            "schema_version": "project.v1",
+            "path": "opop_candidates/recovered-control.py",
+            "before_sha256": null,
+            "content_ref": "sha256:a01359787a4c15d4835955a2cd708993f6074a2dc0044972d4783580fcc07fe3"
+          },
+          {
+            "schema_version": "project.v1",
+            "path": "opop_candidates/recovered-control.targets.json",
+            "before_sha256": null,
+            "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+          }
+        ],
+        "read_set": [
+          "call:b8ade439d7b8bd5fb5c1029b",
+          "call:d0938de87369efd500322679"
+        ],
+        "write_set": [
+          "file:opop_candidates/recovered-control.py",
+          "file:opop_candidates/recovered-control.targets.json",
+          "call:d0938de87369efd500322679",
+          "call:b8ade439d7b8bd5fb5c1029b"
+        ],
+        "requires": [],
+        "replaces": [],
+        "external_invariants": [
+          "Model architecture is frozen: GPT2Config(n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024) with resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False, attn_implementation='eager', FP32 weights via .float(), .train() mode, initialized under torch.manual_seed(20261020); no pretrained weights are downloaded (assets is empty by design, seeded synthetic fixtures are the task data).",
+          "Inputs are frozen: per-rank synthetic token IDs from torch.randint(0, 50257, (micro_batch=1, sequence_length=128)) repeated accumulation_steps=4 times using torch.Generator().manual_seed(31000 + rank).",
+          "Workload dimensions are frozen: world_size=2, micro_batch=1, sequence_length=128, accumulation_steps=4; effective batch 8 and 1024 tokens per step; the first 3 micro-batch backwards run under DDP.no_sync() and only the final micro-batch backward triggers the gradient all-reduce.",
+          "Numerical policies are frozen: TF32 disabled for cuBLAS matmul and cudnn, float32_matmul_precision 'highest', cudnn.benchmark False, torch num_threads=4 and num_interop_threads=1, seed 20261020.",
+          "DDP configuration is frozen: broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True; no communication hook and no profiler on the measured path (the source's bucket-inventory hook belongs to a separate diagnostic and is never installed).",
+          "Optimizer semantics are frozen: torch.optim.SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False); optimizer.zero_grad(set_to_none=True) executes inside the timed step (never pre-cleared in reset); each micro-batch loss is model(input_ids=tokens, labels=tokens, use_cache=False).loss / accumulation_steps and the accumulated loss is the sum over micro-batches.",
+          "Quality contract preserved from the source: finite accumulated loss; full per-parameter gradient comparison against the single-GPU full-global-batch reference with grad_atol=1e-6/grad_rtol=1e-4; exact cross-rank gradient equality with atol=0.0/rtol=0.0; post-step parameter comparison with parameter_atol=1e-6/parameter_rtol=1e-4; the +1-corruption negative control. The adapter exposes loss, every gradient and every updated parameter and leaves the comparisons to the framework; no accuracy or convergence is claimed beyond these reference-fidelity checks.",
+          "Objective semantics are frozen: step_ms is each rank's wall time of the complete accumulated step with the source's final torch.cuda.synchronize() as the completion boundary, aggregated as max across ranks; work is never moved out of the timed step to improve the score and no fabricated sub-metrics or sub-phase objectives are introduced.",
+          "The adapter uses context['device'] and the worker-initialized process group exclusively; it never picks a physical GPU, never initializes another default process group, never destroys a process group, and performs no CUDA work at import time."
+        ],
+        "plan_ref": null,
+        "registry_ref": null,
+        "installer": "opop_candidates/recovered-control.py",
+        "parameters": {
+          "exchange": "rs_ag"
+        }
+      },
+      "revision": "4e2556afd31ee50c337f3d6a16a2b5118225b9cc326b6ec0b47f59ca8f684261",
+      "result": {
+        "score": 263.122762,
+        "valid": true,
+        "metrics": {
+          "step_ms": 263.122762,
+          "tokens_per_second": 3895.0352955812386,
+          "peak_allocated_bytes": 2057283072.0,
+          "framework.elapsed_ms": 263.122762,
+          "framework.peak_allocated_bytes": 2057283072.0,
+          "framework.peak_reserved_bytes": 2392850432.0,
+          "framework.allocated_bytes": 1092788736.0,
+          "framework.reserved_bytes": 2392850432.0,
+          "framework.lifecycle_peak_allocated_bytes": 2057283072.0,
+          "framework.lifecycle_peak_reserved_bytes": 2392850432.0,
+          "replacement.max_registers_per_thread": 96.0,
+          "replacement.kernel_launches": 26.0,
+          "replacement.diagnostic_kernel_sum_us": 322462.282,
+          "replacement.max_shared_memory_bytes": 96384.0
+        },
+        "detail": null
+      },
+      "constraints": [],
+      "run": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 21.138029143214226,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 390734,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 390734,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 34,
+                "unavailable_samples": 0,
+                "wait_s": 0.035059720277786255,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "5b74946e86a194124889c8262ca3a7083e7a32e19f34aa5d58908fc31facd8c1",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "recovered-control-param-66017c95": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "d0938de87369efd500322679",
+                    "b8ade439d7b8bd5fb5c1029b"
+                  ],
+                  "reference_invocations": {},
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "rs_ag_oneshot",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "rs_ag_oneshot",
+                      "count": 12
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "setup": [
+                {
+                  "bundle": "recovered-control-param-66017c95",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "legacy",
+                    "reason": "legacy requested",
+                    "functional_sites": 2,
+                    "scope_ids": [
+                      "5d7d6bb13691b02f533f62b0"
+                    ]
+                  },
+                  "elapsed_ms": 5.402842,
+                  "allocated_bytes": 996322304,
+                  "reserved_bytes": 1556086784,
+                  "peak_allocated_bytes": 996322304,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "step_ms": 270.378307,
+                  "tokens_per_second": 3787.28608578794,
+                  "peak_allocated_bytes": 2057283072.0,
+                  "framework.elapsed_ms": 270.378307,
+                  "framework.peak_allocated_bytes": 2057283072.0,
+                  "framework.peak_reserved_bytes": 2392850432.0,
+                  "framework.allocated_bytes": 1092788736.0,
+                  "framework.reserved_bytes": 2392850432.0,
+                  "framework.lifecycle_peak_allocated_bytes": 2057283072.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2392850432.0
+                },
+                {
+                  "step_ms": 263.765834,
+                  "tokens_per_second": 3882.23138861874,
+                  "peak_allocated_bytes": 2057283072.0,
+                  "framework.elapsed_ms": 263.765834,
+                  "framework.peak_allocated_bytes": 2057283072.0,
+                  "framework.peak_reserved_bytes": 2392850432.0,
+                  "framework.allocated_bytes": 1092788736.0,
+                  "framework.reserved_bytes": 2392850432.0,
+                  "framework.lifecycle_peak_allocated_bytes": 2057283072.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2392850432.0
+                },
+                {
+                  "step_ms": 260.102915,
+                  "tokens_per_second": 3936.903206178985,
+                  "peak_allocated_bytes": 2057283072.0,
+                  "framework.elapsed_ms": 260.102915,
+                  "framework.peak_allocated_bytes": 2057283072.0,
+                  "framework.peak_reserved_bytes": 2392850432.0,
+                  "framework.allocated_bytes": 1092788736.0,
+                  "framework.reserved_bytes": 2392850432.0,
+                  "framework.lifecycle_peak_allocated_bytes": 2057283072.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2392850432.0
+                },
+                {
+                  "step_ms": 262.898773,
+                  "tokens_per_second": 3895.0352955812386,
+                  "peak_allocated_bytes": 2057283072.0,
+                  "framework.elapsed_ms": 262.898773,
+                  "framework.peak_allocated_bytes": 2057283072.0,
+                  "framework.peak_reserved_bytes": 2392850432.0,
+                  "framework.allocated_bytes": 1092788736.0,
+                  "framework.reserved_bytes": 2392850432.0,
+                  "framework.lifecycle_peak_allocated_bytes": 2057283072.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2392850432.0
+                },
+                {
+                  "step_ms": 256.307537,
+                  "tokens_per_second": 3995.20050009298,
+                  "peak_allocated_bytes": 2057283072.0,
+                  "framework.elapsed_ms": 256.307537,
+                  "framework.peak_allocated_bytes": 2057283072.0,
+                  "framework.peak_reserved_bytes": 2392850432.0,
+                  "framework.allocated_bytes": 1092788736.0,
+                  "framework.reserved_bytes": 2392850432.0,
+                  "framework.lifecycle_peak_allocated_bytes": 2057283072.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2392850432.0
+                }
+              ],
+              "metrics": {
+                "step_ms": 262.898773,
+                "tokens_per_second": 3895.0352955812386,
+                "peak_allocated_bytes": 2057283072.0,
+                "framework.elapsed_ms": 262.898773,
+                "framework.peak_allocated_bytes": 2057283072.0,
+                "framework.peak_reserved_bytes": 2392850432.0,
+                "framework.allocated_bytes": 1092788736.0,
+                "framework.reserved_bytes": 2392850432.0,
+                "framework.lifecycle_peak_allocated_bytes": 2057283072.0,
+                "framework.lifecycle_peak_reserved_bytes": 2392850432.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {
+                "recovered-control-param-66017c95": "d93d5c3f849da10d86ae045ec8bfeabe6959132c24e47d1cb41e8ca58c1a17ed"
+              }
+            }
+          },
+          {
+            "rank": 1,
+            "pid": 390735,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 390735,
+              "status": "verified",
+              "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "logical_device": 1,
+              "nvidia_smi_pid_uuids": [
+                "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 34,
+                "unavailable_samples": 0,
+                "wait_s": 0.07128121703863144,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "5b74946e86a194124889c8262ca3a7083e7a32e19f34aa5d58908fc31facd8c1",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "recovered-control-param-66017c95": {
+                  "counts": {
+                    "d0938de87369efd500322679": 12,
+                    "b8ade439d7b8bd5fb5c1029b": 1
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "d0938de87369efd500322679",
+                    "b8ade439d7b8bd5fb5c1029b"
+                  ],
+                  "reference_invocations": {},
+                  "candidate_declared_routes": [
+                    {
+                      "call": "b8ade439d7b8bd5fb5c1029b",
+                      "route": "rs_ag_oneshot",
+                      "count": 1
+                    },
+                    {
+                      "call": "d0938de87369efd500322679",
+                      "route": "rs_ag_oneshot",
+                      "count": 12
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "setup": [
+                {
+                  "bundle": "recovered-control-param-66017c95",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "legacy",
+                    "reason": "legacy requested",
+                    "functional_sites": 2,
+                    "scope_ids": [
+                      "5d7d6bb13691b02f533f62b0"
+                    ]
+                  },
+                  "elapsed_ms": 5.34102,
+                  "allocated_bytes": 996322304,
+                  "reserved_bytes": 1556086784,
+                  "peak_allocated_bytes": 996322304,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "step_ms": 270.558559,
+                  "tokens_per_second": 3784.762913377285,
+                  "peak_allocated_bytes": 2057283072.0,
+                  "framework.elapsed_ms": 270.558559,
+                  "framework.peak_allocated_bytes": 2057283072.0,
+                  "framework.peak_reserved_bytes": 2392850432.0,
+                  "framework.allocated_bytes": 1092788736.0,
+                  "framework.reserved_bytes": 2392850432.0,
+                  "framework.lifecycle_peak_allocated_bytes": 2057283072.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2392850432.0
+                },
+                {
+                  "step_ms": 263.940964,
+                  "tokens_per_second": 3879.655452042677,
+                  "peak_allocated_bytes": 2057283072.0,
+                  "framework.elapsed_ms": 263.940964,
+                  "framework.peak_allocated_bytes": 2057283072.0,
+                  "framework.peak_reserved_bytes": 2392850432.0,
+                  "framework.allocated_bytes": 1092788736.0,
+                  "framework.reserved_bytes": 2392850432.0,
+                  "framework.lifecycle_peak_allocated_bytes": 2057283072.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2392850432.0
+                },
+                {
+                  "step_ms": 260.166819,
+                  "tokens_per_second": 3935.9361963832907,
+                  "peak_allocated_bytes": 2057283072.0,
+                  "framework.elapsed_ms": 260.166819,
+                  "framework.peak_allocated_bytes": 2057283072.0,
+                  "framework.peak_reserved_bytes": 2392850432.0,
+                  "framework.allocated_bytes": 1092788736.0,
+                  "framework.reserved_bytes": 2392850432.0,
+                  "framework.lifecycle_peak_allocated_bytes": 2057283072.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2392850432.0
+                },
+                {
+                  "step_ms": 263.122762,
+                  "tokens_per_second": 3891.719561685051,
+                  "peak_allocated_bytes": 2057283072.0,
+                  "framework.elapsed_ms": 263.122762,
+                  "framework.peak_allocated_bytes": 2057283072.0,
+                  "framework.peak_reserved_bytes": 2392850432.0,
+                  "framework.allocated_bytes": 1092788736.0,
+                  "framework.reserved_bytes": 2392850432.0,
+                  "framework.lifecycle_peak_allocated_bytes": 2057283072.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2392850432.0
+                },
+                {
+                  "step_ms": 256.435545,
+                  "tokens_per_second": 3993.206168045074,
+                  "peak_allocated_bytes": 2057283072.0,
+                  "framework.elapsed_ms": 256.435545,
+                  "framework.peak_allocated_bytes": 2057283072.0,
+                  "framework.peak_reserved_bytes": 2392850432.0,
+                  "framework.allocated_bytes": 1092788736.0,
+                  "framework.reserved_bytes": 2392850432.0,
+                  "framework.lifecycle_peak_allocated_bytes": 2057283072.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2392850432.0
+                }
+              ],
+              "metrics": {
+                "step_ms": 263.122762,
+                "tokens_per_second": 3891.719561685051,
+                "peak_allocated_bytes": 2057283072.0,
+                "framework.elapsed_ms": 263.122762,
+                "framework.peak_allocated_bytes": 2057283072.0,
+                "framework.peak_reserved_bytes": 2392850432.0,
+                "framework.allocated_bytes": 1092788736.0,
+                "framework.reserved_bytes": 2392850432.0,
+                "framework.lifecycle_peak_allocated_bytes": 2057283072.0,
+                "framework.lifecycle_peak_reserved_bytes": 2392850432.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {
+                "recovered-control-param-66017c95": "d93d5c3f849da10d86ae045ec8bfeabe6959132c24e47d1cb41e8ca58c1a17ed"
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 0.0001642368733882904,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "worker_pids_reaped": true
+      },
+      "diagnostic": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 17.718916095793247,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 391226,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 391226,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 24,
+                "unavailable_samples": 0,
+                "wait_s": 0.05405983328819275,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "5b74946e86a194124889c8262ca3a7083e7a32e19f34aa5d58908fc31facd8c1",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "discovery": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/ddp-step/0-control-recovered/jobs/recovered-control-param-66017c95-resources/run/discovery-rank-0.json",
+              "coverage": {
+                "cuda_kernels": 4013,
+                "associated_kernels": 4013,
+                "unassociated_kernels": 0,
+                "associated_below_project": 4013,
+                "root_only_kernels": 0,
+                "backward_associated_kernels": 2690,
+                "autograd_ranges": 3048,
+                "forward_linked_autograd_ranges": 2456,
+                "ambiguous_forward_sequences": 108
+              },
+              "call_sites": 1531,
+              "groups": 863
+            }
+          },
+          {
+            "rank": 1,
+            "pid": 391227,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 391227,
+              "status": "verified",
+              "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+              "logical_device": 1,
+              "nvidia_smi_pid_uuids": [
+                "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 23,
+                "unavailable_samples": 0,
+                "wait_s": 0.05550559237599373,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "5b74946e86a194124889c8262ca3a7083e7a32e19f34aa5d58908fc31facd8c1",
+              "files": 160,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "discovery": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/ddp-step/0-control-recovered/jobs/recovered-control-param-66017c95-resources/run/discovery-rank-1.json",
+              "coverage": {
+                "cuda_kernels": 4013,
+                "associated_kernels": 4013,
+                "unassociated_kernels": 0,
+                "associated_below_project": 4013,
+                "root_only_kernels": 0,
+                "backward_associated_kernels": 2690,
+                "autograd_ranges": 3048,
+                "forward_linked_autograd_ranges": 2456,
+                "ambiguous_forward_sequences": 108
+              },
+              "call_sites": 1531,
+              "groups": 863
+            }
+          }
+        ],
+        "lease_wait_s": 0.00017280131578445435,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "worker_pids_reaped": true
+      },
+      "candidate_diagnostics": null
+    },
+    {
+      "bundle": {
+        "schema_version": "project.v2",
+        "id": "recovered-control-param-d2e9edec",
+        "parent_revision": "c63bc8c5a27187a3b4f6a7fdfb954cd4e0d72d1fd90274f4bbb39d12559a8866",
+        "contract_ref": "sha256:86da60adc15b0f15a2942dcd11214684e525aa0cd92d8a7dfb171f9b4b0e7e15",
+        "scope": "joint",
+        "implementation": "distributed",
+        "groups": [
+          "f833b57a373d8262a384",
+          "8525af72c631b94e3dd0"
+        ],
+        "calls": [
+          "d0938de87369efd500322679",
+          "b8ade439d7b8bd5fb5c1029b"
+        ],
+        "affected_calls": [
+          "b8ade439d7b8bd5fb5c1029b",
+          "d0938de87369efd500322679"
+        ],
+        "edits": [
+          {
+            "schema_version": "project.v1",
+            "path": "opop_candidates/recovered-control.py",
+            "before_sha256": null,
+            "content_ref": "sha256:a01359787a4c15d4835955a2cd708993f6074a2dc0044972d4783580fcc07fe3"
+          },
+          {
+            "schema_version": "project.v1",
+            "path": "opop_candidates/recovered-control.targets.json",
+            "before_sha256": null,
+            "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+          }
+        ],
+        "read_set": [
+          "call:b8ade439d7b8bd5fb5c1029b",
+          "call:d0938de87369efd500322679"
+        ],
+        "write_set": [
+          "file:opop_candidates/recovered-control.py",
+          "file:opop_candidates/recovered-control.targets.json",
+          "call:d0938de87369efd500322679",
+          "call:b8ade439d7b8bd5fb5c1029b"
+        ],
+        "requires": [],
+        "replaces": [],
+        "external_invariants": [
+          "Model architecture is frozen: GPT2Config(n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024) with resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False, attn_implementation='eager', FP32 weights via .float(), .train() mode, initialized under torch.manual_seed(20261020); no pretrained weights are downloaded (assets is empty by design, seeded synthetic fixtures are the task data).",
+          "Inputs are frozen: per-rank synthetic token IDs from torch.randint(0, 50257, (micro_batch=1, sequence_length=128)) repeated accumulation_steps=4 times using torch.Generator().manual_seed(31000 + rank).",
+          "Workload dimensions are frozen: world_size=2, micro_batch=1, sequence_length=128, accumulation_steps=4; effective batch 8 and 1024 tokens per step; the first 3 micro-batch backwards run under DDP.no_sync() and only the final micro-batch backward triggers the gradient all-reduce.",
+          "Numerical policies are frozen: TF32 disabled for cuBLAS matmul and cudnn, float32_matmul_precision 'highest', cudnn.benchmark False, torch num_threads=4 and num_interop_threads=1, seed 20261020.",
+          "DDP configuration is frozen: broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True; no communication hook and no profiler on the measured path (the source's bucket-inventory hook belongs to a separate diagnostic and is never installed).",
+          "Optimizer semantics are frozen: torch.optim.SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False); optimizer.zero_grad(set_to_none=True) executes inside the timed step (never pre-cleared in reset); each micro-batch loss is model(input_ids=tokens, labels=tokens, use_cache=False).loss / accumulation_steps and the accumulated loss is the sum over micro-batches.",
+          "Quality contract preserved from the source: finite accumulated loss; full per-parameter gradient comparison against the single-GPU full-global-batch reference with grad_atol=1e-6/grad_rtol=1e-4; exact cross-rank gradient equality with atol=0.0/rtol=0.0; post-step parameter comparison with parameter_atol=1e-6/parameter_rtol=1e-4; the +1-corruption negative control. The adapter exposes loss, every gradient and every updated parameter and leaves the comparisons to the framework; no accuracy or convergence is claimed beyond these reference-fidelity checks.",
+          "Objective semantics are frozen: step_ms is each rank's wall time of the complete accumulated step with the source's final torch.cuda.synchronize() as the completion boundary, aggregated as max across ranks; work is never moved out of the timed step to improve the score and no fabricated sub-metrics or sub-phase objectives are introduced.",
+          "The adapter uses context['device'] and the worker-initialized process group exclusively; it never picks a physical GPU, never initializes another default process group, never destroys a process group, and performs no CUDA work at import time."
+        ],
+        "plan_ref": null,
+        "registry_ref": null,
+        "installer": "opop_candidates/recovered-control.py",
+        "parameters": {
+          "exchange": "p2p"
+        }
+      },
+      "revision": "df6918dafb1d78650cafadd445383bfaca923ee51b450294f6f4629e197c7cb4",
+      "result": {
+        "score": null,
+        "valid": false,
+        "metrics": {},
+        "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+      },
+      "constraints": [],
+      "run": {
+        "schema_version": 1,
+        "status": "failed",
+        "failure": "rank_failed",
+        "wall_s": 14.560241345316172,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 391600,
+            "exit_code": -11,
+            "status": "missing_result"
+          },
+          {
+            "rank": 1,
+            "pid": 391601,
+            "exit_code": -11,
+            "status": "missing_result"
+          }
+        ],
+        "lease_wait_s": 0.00016130134463310242,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "worker_pids_reaped": true
+      },
+      "diagnostic": null,
+      "candidate_diagnostics": null
+    }
+  ]
+}

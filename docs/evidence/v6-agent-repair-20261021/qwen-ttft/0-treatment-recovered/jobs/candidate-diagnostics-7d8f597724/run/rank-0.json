@@ -1,0 +1,102 @@
+{
+  "status": "passed",
+  "binding": {
+    "pid": 275983,
+    "status": "verified",
+    "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "logical_device": 0,
+    "nvidia_smi_pid_uuids": [
+      "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+    ],
+    "pid_query_status": "observed",
+    "occupancy": {
+      "status": "sampled_clear",
+      "samples": 32,
+      "unavailable_samples": 0,
+      "wait_s": 0.07148753106594086,
+      "external_clients": [],
+      "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+    }
+  },
+  "framework_source": {
+    "sha256": "5b74946e86a194124889c8262ca3a7083e7a32e19f34aa5d58908fc31facd8c1",
+    "files": 160,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "result": {
+    "valid": true,
+    "coverage": {
+      "recovered-treatment-param-4601b665": {
+        "counts": {
+          "900c23e99c808d2c9bda215a": 2
+        },
+        "fallbacks": {},
+        "reference_invocations": {
+          "900c23e99c808d2c9bda215a": 5
+        },
+        "candidate_declared_routes": [
+          {
+            "call": "900c23e99c808d2c9bda215a",
+            "route": "prefill_cuda_graph_capture_verify_replay",
+            "count": 1
+          },
+          {
+            "call": "900c23e99c808d2c9bda215a",
+            "route": "prefill_cuda_graph_replay",
+            "count": 1
+          }
+        ],
+        "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+      }
+    },
+    "scope": "Diagnostic execution only; no quality or performance acceptance",
+    "candidate_diagnostics": {
+      "schema_version": "project.candidate-diagnostics.v1",
+      "events": [
+        {
+          "phase": "run",
+          "bundle": "recovered-treatment-param-4601b665",
+          "file": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/qwen-ttft/0-treatment-recovered/jobs/candidate-diagnostics-7d8f597724/source/opop_candidates/recovered-treatment.py",
+          "function": "_eager_false",
+          "line": 117,
+          "source": "return False",
+          "recent_lines": [
+            {
+              "line": 117,
+              "source": "return False"
+            }
+          ],
+          "event": "return",
+          "type": "bool",
+          "message": "False",
+          "count": 1
+        },
+        {
+          "phase": "run",
+          "bundle": "recovered-treatment-param-4601b665",
+          "file": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/qwen-ttft/0-treatment-recovered/jobs/candidate-diagnostics-7d8f597724/source/opop_candidates/recovered-treatment.py",
+          "function": "__exit__",
+          "line": 173,
+          "source": "return False",
+          "recent_lines": [
+            {
+              "line": 172,
+              "source": "self._restore()"
+            },
+            {
+              "line": 173,
+              "source": "return False"
+            }
+          ],
+          "event": "return",
+          "type": "bool",
+          "message": "False",
+          "count": 1
+        }
+      ],
+      "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+    }
+  }
+}

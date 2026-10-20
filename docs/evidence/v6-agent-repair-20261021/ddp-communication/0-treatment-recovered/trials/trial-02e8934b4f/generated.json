@@ -1,0 +1,226 @@
+{
+  "trial": "trial-02e8934b4f",
+  "selection": {
+    "scope": "group",
+    "groups": [
+      "b57f55423ea79f2933a2"
+    ],
+    "rationale": "Selected group is the module boundary model.lm_head (torch.nn.modules.linear.Linear, group b57f55423ea79f2933a2, call 777caab7ef6f850ba94458b5, phase microbatch_forward, ranks 0/1, exactly 4 invocations per accumulated step - one per micro-batch, the 4th being the synchronized micro-batch whose backward dispatches the 13 DDP bucket all-reduces). Why the previous boundary must be abandoned rather than repaired again: both prior candidates on the two c10d::allreduce_ functional groups reached the metric floor (63.16-63.61 ms in trial-92d5f02cbf; 60.5-73.2 ms per-rank in trial-d17bd1eb8f's observations) with bitwise-identical gradients, and were rejected solely on step_ms (229.4-258.2 ms vs the 151.86 ms limit, 100% parameter-trial failure). The clean binding-only ablation in the feedback decomposes that failure: parent step_ms 134.787/137.304, passthrough functional binding with candidate computation omitted 228.652/235.029, once-per-step rendezvous 237.479/251.751 - i.e. the legacy functional binding itself, which the framework source (kernel_optimizer/project/binding.py, _create_dispatch_mode/activate) activates as a global TorchDispatchMode around the entire adapter invocation for any bundle containing functional sites (7564 dispatch callbacks + 604 module prehooks per step for 13 target collectives), already violates the constraint before any candidate logic runs. A module-only bundle installs no TorchDispatchMode and no global module hooks: it swaps module.forward for one phase/signature-gated dispatch wrapper costing ~microseconds x 4 calls per step, so the step-time channel that killed both predecessors is removed by construction. Why this group is the right module boundary for the objective: the objective's addressable excess over transport is early-arrival host skew charged into NCCL kernel durations - concentrated in the FIRST collective (execution_timeline-1221e205 seq21: 14.04 ms on rank 0 vs 3.62 ms on rank 1, cross-rank CPU-submit spread 10.4-10.7 ms, both kernels ending within ~90 us; every later kernel at the floor), while the torch_communication-collected baseline (94.49 ms vs rank 1's 63.66 ms and the 62.3/63.4 ms calibration floor from collective_calibration-1af5837f: 3.55-3.66 ms x 12 small buckets + 19.4-19.8 ms large) carries 31-48 ms of skew with direction that flips across collectors (nsys shows rank 1 waiting), so the remedy must be symmetric. model.lm_head is the LAST module executed in the forward pass, immediately before the loss computation and the final backward that fires bucket 0's dispatch - the latest replaceable point upstream of the first allreduce that does not require functional dispatch, minimizing the skew that re-develops between alignment and first dispatch. Bucket 0's parameters (h.11 + ln_f per communication-ownership.json) confirm the first dispatched bucket belongs to the tail of the backward that follows this call site. The replacement calls the unchanged parent via context.references on every invocation, so all 13 allreduce dispatches, the reducer, the NCCL process group, bucket views and bitwise gradient outputs are untouched; the /dev/shm counter page used for the cross-rank arrival rendezvous is named at installation time over the adapter's existing gloo control group, outside every timed or profiled region, exactly as in the prior mechanism-validated trials.",
+    "hypothesis": "Repair hypothesis for the step_ms rejection, to be tested by actual execution: replace model.lm_head.forward with a wrapper that counts its invocations, publishes a monotonically increasing arrival count to a 16-byte /dev/shm counter page (one int64 per rank, set up once at build() over the existing gloo control group, outside timing), and on every 4th invocation of each 4-micro-batch cycle - the synchronized micro-batch, both ranks counting identical call streams from the frozen workload - performs the symmetric cross-rank arrival rendezvous (tight bounded spin on the peer counter, single budget parameter, graceful degrade: budget expiry proceeds to the parent and repeated timeouts disable the wait while counting continues, so a waiting peer is never orphaned) before calling the unchanged parent op; all other invocations call the parent directly. Expected objective effect: the early rank's host wait replaces the device-side spin inside the first NCCL kernel (which in baseline ends within ~90 us of the peer's kernel regardless of who waits), so the first kernel's duration falls to its ~3.6 ms transport floor and the max-rank kernel-duration median drops from the 94.49 ms baseline toward the 62.3-63.6 ms floor plus a residual for skew re-developing between lm_head and the first dispatch (loss + autograd entry + tail-block backward, ~50-80 host ops: estimated 1-5 ms clean, proportionally more under the torch_communication collector whose per-op recording asymmetry produces the 31-48 ms profiled skew), i.e. an expected ~64-70 ms versus 94.49 ms. Expected step_ms effect (hypothesis, not measurement): the module dispatch adds ~microseconds; the single wait is bounded by the actual cross-rank skew (~10.5 ms in clean runs, the observed CPU-submit spread), occurs while the GPU still holds the final micro-batch's forward tail plus the rank-1-paced NCCL chain as slack, and the prior trials' +9/+17 ms rendezvous cost was measured only on top of the ~95 ms TorchDispatchMode binding that no longer exists here; the clean parent endpoints (134.8/137.3 ms) and the 151.86 ms constraint leave 14-17 ms of measured headroom against a wait of at most the skew, with the budget/degrade path bounding the worst case at baseline behavior. Quality expectations: every invocation still executes the parent op with unmodified arguments (4 reference calls per step, full coverage of the single selected call), gradients remain bitwise identical across ranks as measured twice on this exact rendezvous mechanism (max_abs_error 0.0 over 248,879,621 compared elements in trial-92d5f02cbf), and no gloo collective, NCCL kernel or CUDA work is added inside any timed or profiled region.",
+    "affected_calls": [
+      "41bb181bcdf4089588635263",
+      "777caab7ef6f850ba94458b5",
+      "83f1708b32f16750ab58eae7",
+      "8cd03463957baee66b0f2929",
+      "90273a75b98016b3abfe80f9"
+    ]
+  },
+  "proposal": {
+    "implementation": "distributed",
+    "replacement_calls": [
+      "777caab7ef6f850ba94458b5"
+    ],
+    "rationale": "Repair of the step_ms rejection that killed both prior candidates (trial-92d5f02cbf, trial-d17bd1eb8f). How the previous feedback changes this attempt: its clean binding-only ablation measured parent step_ms 134.787/137.304 ms, passthrough legacy functional binding with all candidate computation omitted 228.652/235.029 ms, and the once-per-step rendezvous 237.479/251.751 ms against the 151.86 ms limit - i.e. the global TorchDispatchMode that the legacy backend activates around the entire adapter invocation for any bundle containing functional sites (7564 dispatch callbacks + 604 module prehooks per step for the 13 target collectives) already violates the constraint before candidate logic runs, so repairing the rendezvous on the c10d::allreduce_ boundary is impossible under this contract. This attempt therefore installs a single module-only replacement at model.lm_head (group b57f55423ea79f2933a2, call 777caab7ef6f850ba94458b5, phase microbatch_forward, ranks 0/1, exactly 4 invocations per accumulated step): a module-only bundle contains no functional site, so the framework installs no TorchDispatchMode and no global forward hooks, and the step-time channel that rejected both predecessors is removed by construction; the wrapper itself costs ~microseconds x 4 calls per step. Mechanism (the same symmetric arrival rendezvous both predecessors validated at the dispatch boundary with bitwise-identical gradients, max_abs_error 0.0 over 248,879,621 compared elements): the wrapper counts compatible invocations and publishes a monotonic arrival count to a 16-byte /dev/shm counter page set up once at build() over the adapter's existing gloo control group, outside every timed or profiled region; on each cycle-final invocation - every accumulation_steps-th (4th) lm_head call, i.e. the synchronized micro-batch, with the cycle length read from the frozen state workload rather than hard-coded, and both ranks counting identical call streams - it spins on the peer counter (single budget parameter, graceful degrade: budget expiry proceeds to the parent, two consecutive timeouts disable the wait while counting continues so a waiting peer is never orphaned) before calling the unchanged parent forward through context.references; all other invocations call the parent directly. Measured facts motivating the boundary: the baseline objective 94.49 ms (profiled reps 93.52/94.49/110.06) exceeds the 62.3/63.4 ms calibration floor (collective_calibration-1af5837f: 3.55-3.66 ms x 12 small buckets + 19.4-19.8 ms large), and the excess is early-arrival host skew charged into the FIRST collective (execution_timeline-1221e205 seq 21: 14.04 ms on rank 0 vs 3.62 ms on rank 1, cross-rank CPU-submit spread 10.4-10.7 ms, both kernels ending within ~90 us; every later kernel at the floor on both ranks; nsys flips the skew direction, so the remedy must be symmetric). model.lm_head is the last module boundary in the forward pass, immediately before the loss and the synchronized backward whose first dispatched bucket (bucket 0 = h.11 + ln_f per communication-ownership.json) belongs to the backward tail following this call site, so it is the latest replaceable point upstream of the first allreduce that needs no functional dispatch. Hypotheses to be tested by actual execution (not measurements): the host wait replaces the device-side spin inside the first NCCL kernel, whose duration should fall toward its ~3.6 ms transport floor while skew re-developing between lm_head and the first dispatch (loss + autograd entry + tail-block backward) adds an estimated 1-5 ms clean and proportionally more under the torch_communication collector's asymmetric per-op recording (31-48 ms profiled skew), giving an expected objective around 64-70 ms versus 94.49 ms; the mechanism itself already measured the floor when applied at the dispatch sites (63.16-63.61 ms in trial-92d5f02cbf; 59.7-63.1 ms samples in trial-d17bd1eb8f). Expected step_ms effect: the single wait is bounded by the actual cross-rank skew (~10.5 ms in clean runs, the observed CPU-submit spread), occurs while the GPU still holds the final micro-batch's forward tail and the peer-paced NCCL chain as slack, and the prior trials' +9/+17 ms rendezvous cost was measured only on top of the ~95 ms TorchDispatchMode binding that no longer exists here; the clean parent endpoints 134.787/137.304 ms leave 14.5 ms of headroom against the 151.86 ms limit, with the budget/degrade path bounding the worst case at baseline behavior. No gloo collective, NCCL kernel or CUDA work is added inside any timed or profiled region; the parent op runs on every invocation with unmodified arguments, so all 13 allreduce dispatches, the reducer, bucket views and the bitwise cross-rank gradient check are untouched.",
+    "setup_work": {
+      "when": "installation only (build), outside every timed or profiled region; the equivalent setup measured ~7.8-8.3 ms in the prior trials' setup receipts",
+      "steps": [
+        "Read the frozen accumulation cycle from context['state']['workload']['accumulation_steps'] (4); no workload field is modified.",
+        "Symmetric token agreement on the adapter's existing gloo control group (state['control_group']) via all_gather_object of a rank-0 random 32-hex token; no new process group is created and the NCCL group is untouched.",
+        "Rank 0 creates a 16-byte file under /dev/shm named with the token (two zeroed int64 arrival counters, one per rank); one barrier; both ranks mmap it read-write and close the fd.",
+        "Liveness probe: each rank writes a distinct magic value to its slot and spins for the peer's magic (bounded at 5 s); outcomes are agreed symmetrically with all_gather_object so a partial failure degrades BOTH ranks to the pure parent path (setup-parent route) instead of hanging a barrier; on failure the mapping is closed and the page unlinked.",
+        "Rank 0 zeroes both counters and one barrier orders the reset before any invocation; the local sequence starts at 0 and the cycle-final wait is armed.",
+        "An atexit hook unlinks the page; the mapping is held for the process lifetime via a keepalive reference.",
+        "No parameter/weight transforms, no CUDA allocations, no captured graphs; every invocation still executes the parent forward on the current inputs."
+      ],
+      "memory": "No CUDA allocations, no parameter transforms, no retained device pools or graphs. Retained host state is one 16-byte tmpfs mapping plus one atexit hook; the file descriptor is closed after mmap. framework.peak_allocated_bytes, framework.peak_reserved_bytes and the lifecycle peaks are unaffected by setup; the tmpfs page is unlinked at process exit. The per-call wrapper adds only Python-level counter stores.",
+      "tunable_parameters": "sync_wait_budget_ms (default 1000, legal 250/500/1000/2000) bounds how long each cycle-final invocation may wait for the peer's arrival before degrading to the parent path; it never changes workload, sampling, data, thresholds or the dispatch sequence."
+    },
+    "quality_risks": [
+      "Step_ms is the repaired channel: a module-only bundle installs no TorchDispatchMode and no global module hooks (the framework source activates the global dispatch mode only when a bundle contains functional sites), so the ~95 ms binding overhead measured in the ablation cannot recur; the remaining risk is the single cycle-final host wait, which is bounded by the actual cross-rank skew (~10.5 ms clean, 31-48 ms profiled) against 14.5 ms of measured parent headroom, overlaps the still-queued forward tail and the peer-paced NCCL chain, and degrades to the pure parent path on budget expiry.",
+      "Cycle detection counts compatible lm_head invocations modulo accumulation_steps read from the frozen workload (4 per step on both ranks, since the framework routes the wrapper only inside phase microbatch_forward with the observed signature). Both ranks count identical call streams, so the cycle-final predicate is evaluated identically; if an unexpected extra compatible call ever occurred on both ranks, the worst case is a bounded host wait at a shifted point with unchanged outputs, and a one-sided deviation is covered by the budget timeout and disable path.",
+      "Extra framework executions outside clean timing (quality checks, warmup, the collector's 3 profiled repetitions, the separate hook-inventory style diagnostics) each add 4 counted calls per step on both ranks; waits there are bounded by the budget and never enter the step_ms measurement boundary.",
+      "If a cycle-final wait exceeds the budget, that invocation still calls the parent (correctness unchanged) and the repetition degrades toward the baseline objective value; after two consecutive timeouts the wait disables permanently (degraded-parent routes) while arrival counting continues, so a still-waiting peer is never orphaned; worst-case added host latency is about 2x budget once per process.",
+      "Interception depends on the framework's module dispatch (phase microbatch_forward plus the exact observed [1,128,768] fp32 CUDA signature); an unexpected argument form routes to signature-guard-parent pure passthrough without counting, preserving baseline behavior, and coverage falls back to the framework's own fallback accounting rather than silent parent execution.",
+      "Numerical outputs are unchanged by construction (identical parent op, operands, order and process group); the bitwise cross-rank replica check (atol=0.0, rtol=0.0), the reference global-batch gradient check, the post-step parameter check and the +1 corruption negative control would detect any deviation, and the identical rendezvous mechanism measured max_abs_error 0.0 twice on this project.",
+      "Installation-time gloo rendezvous relies on the control group present on both ranks (adapter.prepare creates it); every stage outcome is agreed symmetrically, and any failure falls back to setup-parent pure passthrough at baseline metric without affecting correctness or collective participation.",
+      "The tight spin holds the GIL only between periodic deadline checks (~0.5-1 ms slices with time.sleep(0) yields) and runs on the dispatching thread for the duration of the peer skew only; no NCCL kernel, gloo collective or CUDA work is added inside timing, and no in-place rewrites or alias changes are performed."
+    ],
+    "eliminated_calls": [],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {
+      "params": [
+        {
+          "name": "sync_wait_budget_ms",
+          "kind": "int",
+          "choices": [
+            250,
+            500,
+            1000,
+            2000
+          ],
+          "description": "Maximum host-side wait at each cycle-final (synchronized micro-batch) rendezvous for the peer's arrival before degrading to the pure parent path; 250 ms already covers the largest observed in-step skew (48 ms profiled, ~180 ms under the separate nsys diagnostic) with margin."
+        }
+      ],
+      "constraints": []
+    }
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea4d38e50ffeBOB1t2Enclq1L3",
+    "message": "msg_15b350954001AKfYTJ1ugYinyg",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 40,
+      "reported_cost": 1.4054394383,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 3784115.0,
+        "input": 131992.0,
+        "output": 7873.0,
+        "reasoning": 32410.0,
+        "cache.read": 3611840.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea4d38e50ffeBOB1t2Enclq1L3",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/ddp-communication/0-treatment-recovered/sandboxes/selection-71c1b85b0d5a",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/ddp-communication/0-treatment-recovered/generation-snapshots/generation-62233eba4fb6.json"
+    ]
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea4cae30affeArbG7gCiy0D7yy",
+    "message": "msg_15b3c228a001mvHYCKoAaXz2pF",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 38,
+      "reported_cost": 1.0436973732,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 2739190.0,
+        "input": 96822.0,
+        "output": 15970.0,
+        "reasoning": 19678.0,
+        "cache.read": 2606720.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea4cae30affeArbG7gCiy0D7yy",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/ddp-communication/0-treatment-recovered/sandboxes/candidate-6b3752ea1739",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/ddp-communication/0-treatment-recovered/generation-snapshots/generation-a1505fc2ea13.json"
+    ]
+  },
+  "experiment_policy": {
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ],
+    "leaf_groups_only": false,
+    "selection_strategy": "agent",
+    "feedback_view": "full"
+  },
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-02e8934b4f",
+    "parent_revision": "63ad2b215444e546c9cf07cffac43c2fe47fea7813e8f0d8e0492247318d90b9",
+    "contract_ref": "sha256:566680c6d3b30c96f1bf6fb43b357d5e732160c5284ad27d57c4b16e6f6dc940",
+    "scope": "group",
+    "implementation": "distributed",
+    "groups": [
+      "b57f55423ea79f2933a2"
+    ],
+    "calls": [
+      "777caab7ef6f850ba94458b5"
+    ],
+    "affected_calls": [
+      "41bb181bcdf4089588635263",
+      "777caab7ef6f850ba94458b5",
+      "83f1708b32f16750ab58eae7",
+      "8cd03463957baee66b0f2929",
+      "90273a75b98016b3abfe80f9"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-02e8934b4f.py",
+        "before_sha256": null,
+        "content_ref": "sha256:0b0e25b56785caed571593d45037749c944973ff36e2049a6728219a1a640b8a"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-02e8934b4f.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:4f41643463968c02771e69afeb6716f98817df0ab38922d02a37178ad02d1cdb"
+      }
+    ],
+    "read_set": [
+      "call:41bb181bcdf4089588635263",
+      "call:777caab7ef6f850ba94458b5",
+      "call:83f1708b32f16750ab58eae7",
+      "call:8cd03463957baee66b0f2929",
+      "call:90273a75b98016b3abfe80f9"
+    ],
+    "write_set": [
+      "file:opop_candidates/trial-02e8934b4f.py",
+      "file:opop_candidates/trial-02e8934b4f.targets.json",
+      "call:777caab7ef6f850ba94458b5"
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Numerical policy: FP32 weights and inputs, TF32 disabled for matmul and cudnn, cudnn.benchmark=False, float32_matmul_precision 'highest', dropout 0 (resid/attn/embd), use_cache=False, eager attention (common.py:34-42, gpt2_ddp_training.py:24-27).",
+      "Model: GPT2LMHeadModel with n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, built after torch.manual_seed(20261020), .float().to(context['device']).train(); weights are seeded synthetic fixtures, never pretrained or downloaded.",
+      "Data: per-rank inputs are torch.randint(0, 50257, (micro_batch=1, sequence_length=128)) over accumulation_steps=4 tensors from torch.Generator().manual_seed(31000+rank), moved to the rank's device; effective batch 8 = world_size 2 x micro_batch 1 x accumulation_steps 4, i.e. 1024 tokens per step.",
+      "DDP configuration: broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True over the worker-initialized NCCL process group; the baseline already wraps the first accumulation_steps-1 = 3 micro-batches in model.no_sync() so only the final backward all-reduces.",
+      "Loss semantics: each micro-batch loss is divided by accumulation_steps (4) before backward; the reported loss is torch.stack(per-micro losses).sum().",
+      "Optimizer: SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) over DDP model parameters; exactly one optimizer.step() per accumulated step.",
+      "Timed-work division: optimizer.zero_grad(set_to_none=True) happens inside the timed accumulate (gpt2_ddp_training.py:37) and must not be pre-cleared in reset; reset only reloads the initial weights snapshot taken before any step.",
+      "Completion boundary: run() ends with torch.cuda.synchronize() exactly like the source step(); step_ms is the full accumulated-step wall time (max across ranks for the constraint) and must remain <= 1.05x baseline.",
+      "Gradient exactness: every parameter gradient must be bitwise identical across ranks (source checks assert_close atol=0.0, rtol=0.0 against a rank-0 broadcast replica), so observations must carry every real gradient and updated parameter, not samples or hashes.",
+      "Workload freeze: world_size 2, micro_batch 1, sequence_length 128, accumulation_steps 4; the adapter raises if the launched world size differs, and never alters batch, lengths, architecture, precision, data or completion to improve a score.",
+      "Communication objective semantics: per-rank sum of device NCCL kernel durations, max across the 2 ranks, median over 3 separately profiled repetitions; collected by the framework's torch_communication collector, never emulated or fabricated inside run()/metrics().",
+      "Process-group discipline: reuse the worker's NCCL group, use a separate gloo group only for barriers outside timing, never destroy the process group, and never install a communication hook merely to inventory buckets.",
+      "Determinism: identical seeds (20261020 for weights, 31000+rank for tokens) let independent workers reproduce the same reference observations; no RNG is consumed inside the step itself."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-02e8934b4f.py",
+    "parameters": {}
+  }
+}

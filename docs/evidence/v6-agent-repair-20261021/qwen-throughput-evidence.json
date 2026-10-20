@@ -1,0 +1,6 @@
+{
+  "provenance": "/root/autodl-tmp/dev/v6-work/failure-analysis-20261021/static_live_attention_window/result.json",
+  "scope": "Developer diagnosis of this exact rejected candidate; no optimized implementation supplied.",
+  "observed": "The first decode already differs: DynamicCache uses valid KV length257, 8 heads, no mask, GQA true; StaticCache exposes capacity296,32heads,bool mask,GQA false. A diagnostic keeping StaticCache but using valid KV prefix and original attention restored two full generations to zero error. Independently, returning StaticCache changes subsequent module input signatures observed only with DynamicCache: two generations had 2 candidate calls and 60 framework fallbacks, so the Graph never ran. Correct logits alone did not fix this interface mismatch.",
+  "constraint": "Preserve cache lifetime, external state and live invocation compatibility; do not weaken guards or quality thresholds. Diagnose actual path execution, not just installation."
+}

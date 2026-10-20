@@ -1,0 +1,381 @@
+{
+  "rank": 1,
+  "world_size": 2,
+  "device": "cuda:1",
+  "output": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/ddp-step/0-control-recovered/jobs/recovered-control-param-66017c95-screen/run",
+  "parameters": {
+    "request": {
+      "schema_version": "project-request.v1",
+      "source_root": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step.intake/source",
+      "entry": "gpt2_ddp_training.py",
+      "files": [
+        "gpt2_ddp_training.py",
+        "common.py",
+        "workloads.json"
+      ],
+      "goal": "Reduce the complete accumulated training step time for the existing two-GPU workload, preserving the source full gradient and parameter checks.",
+      "objective": {
+        "name": "step_ms",
+        "unit": "ms",
+        "direction": "minimize",
+        "constraints": [],
+        "rank_aggregation": "max"
+      },
+      "workload": {
+        "id": "accumulated_step",
+        "world_size": 2,
+        "micro_batch": 1,
+        "sequence_length": 128,
+        "accumulation_steps": 4,
+        "goals": [
+          {
+            "id": "step",
+            "metric": "step_ms",
+            "direction": "min"
+          },
+          {
+            "id": "communication",
+            "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+            "direction": "min",
+            "constraints": {
+              "step_ms_max_baseline_ratio": 1.05
+            }
+          }
+        ]
+      },
+      "quality": {
+        "atol": 1e-06,
+        "rtol": 0.0001,
+        "grad_atol": 1e-06,
+        "grad_rtol": 0.0001,
+        "parameter_atol": 1e-06,
+        "parameter_rtol": 0.0001,
+        "exact_gradient_replica_check": {
+          "atol": 0.0,
+          "rtol": 0.0
+        },
+        "finite_loss_required": true,
+        "negative_control_required": true
+      },
+      "assets": {},
+      "devices": [
+        "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+      ],
+      "distributed_backend": "nccl",
+      "communication": "auto",
+      "required_observations": [],
+      "tools": {
+        "ncu": "/usr/local/cuda/bin/ncu",
+        "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+      },
+      "profiling": {
+        "agent_plan": true
+      },
+      "binding_backend": "legacy",
+      "measurement_lifetime": "invocation",
+      "warmup": 2,
+      "repeats": 5,
+      "continuous_steps": 2,
+      "worker_timeout_s": 900.0,
+      "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+      "notes": [
+        "Command provenance: intent.json command 'torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp'; equivalent launcher documented in README.md ('python -m torch.distributed.run --standalone --nproc-per-node=2 .../gpt2_ddp_training.py'). Warmup=2 and repeats=5 are the source defaults (common.py arguments(); command does not override).",
+        "Metric key step_ms is produced per repeat as max across ranks of local step time (gpt2_ddp_training.py:148-152; README: '\u4e3b\u5206\u6570\u53d6\u540c\u4e00\u6b65\u5404 rank \u672c\u5730\u8017\u65f6\u7684\u6700\u5927\u503c\uff0c\u4e0d\u76f8\u52a0\u4e0d\u540c rank \u65f6\u95f4'), summarized to median/min/max by common.summarize. Gloo control barrier is outside the timed boundary; torch.cuda.synchronize() ends each timed step.",
+        "Selected workload row is gpt2_ddp_training.workloads[0] 'accumulated_step' copied verbatim from workloads.json, including its goals list; the user-requested objective is the 'step' goal only. Effective batch = world_size*micro_batch*accumulation_steps = 8; tokens per step = 1024.",
+        "Quality semantics (all preserved from source): full-global-batch single-GPU reference gradient comparison per parameter with grad_atol=1e-6/grad_rtol=1e-4 (gpt2_ddp_training.py:67-78 via common.close_check), exact cross-rank gradient equality with atol=0.0/rtol=0.0 via torch.testing.assert_close after dist.broadcast from rank 0 (gpt2_ddp_training.py:80-86, discrete exact comparison), post-step parameter comparison with parameter_atol=1e-6/parameter_rtol=1e-4 (gpt2_ddp_training.py:88-91), finite accumulated loss assert (line 65), and the +1-corruption negative control (common.negative_check, line 78).",
+        "Precision/state policies preserved: FP32 weights (.float(), gpt2_ddp_training.py:27), TF32 disabled and float32 matmul precision 'highest' (common.configure), dropout disabled (resid_pdrop/embd_pdrop/attn_pdrop=0.0, use_cache=False, attn_implementation='eager'), deterministic seeds (model 20261020, inputs 31000+rank), DDP with broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True, and the baseline's existing no_sync accumulation for the first 3 micro-batches.",
+        "The source also defines a diagnostic communication goal (diagnostic.max_rank_nccl_kernel_sum_ms with a step_ms<=1.05x baseline constraint, workloads.json gpt2_ddp_training.goals[1]) measured in 3 separate profiled invocations with its own caveat string; it is not requested by the user's goal, so no diagnostic collector source or required_observations are declared here. The torch_communication collector fields in deployment.json are unrelated to this step_ms objective.",
+        "No external model weights or datasets: GPT-2 124M is constructed from GPT2Config with seeded synthetic initialization and synthetic token IDs; assets stays empty. Output artifacts (rank-N.json, result.json) are written by the harness's save() into the --output directory, not part of the measured step.",
+        "One measured invocation: One complete accumulated training step as defined by step() in gpt2_ddp_training.py:102-105, executed per rank from reset initial weights: accumulate(model, optimizer, inputs) running 4 micro-batches of shape (micro_batch=1, sequence_length=128) where the first accumulation_steps-1=3 micro-batches run under DDP.no_sync() and the final micro-batch performs the DDP gradient allreduce, followed by optimizer.step() (SGD lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) and torch.cuda.synchronize(). Excludes benchmark harness: weight reset (reset/load_state_dict), Gloo control-group barriers, warmup loop, 5 timed repeats, peak-memory sampling, single-GPU reference construction, all correctness checks, --profile traces and the separate bucket-inventory comm hook."
+      ]
+    },
+    "adapter": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/ddp-step/0-control-recovered/jobs/recovered-control-param-66017c95-screen/source/opop_adapter.py",
+    "action": "evaluate",
+    "collector_options": {},
+    "reference_dir": "/root/opop-v6-stage3/final-e2e-187617c/ddp-step/preparation/d6408d6e146b/controls",
+    "bundles": [
+      {
+        "id": "recovered-control-param-66017c95",
+        "file": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/ddp-step/0-control-recovered/jobs/recovered-control-param-66017c95-screen/source/opop_candidates/recovered-control.py",
+        "parameters": {
+          "exchange": "rs_ag"
+        },
+        "specs": [
+          {
+            "id": "b8ade439d7b8bd5fb5c1029b",
+            "target": "c10d.allreduce_.default",
+            "kind": "functional",
+            "phase": "run",
+            "semantics": "c10d::allreduce_(Tensor[] tensors, __torch__.torch.classes.c10d.ProcessGroup process_group, __torch__.torch.classes.c10d.ReduceOp reduce_op, Tensor? sparse_indices, bool async_op=True, int timeout=-1) -> (Tensor[], __torch__.torch.classes.c10d.Work)",
+            "attributes": {},
+            "signatures": [
+              {
+                "args": [
+                  [
+                    {
+                      "shape": [
+                        39385344
+                      ],
+                      "stride": [
+                        1
+                      ],
+                      "dtype": "torch.float32",
+                      "device": "cuda",
+                      "requires_grad": false
+                    }
+                  ],
+                  {
+                    "type": "ScriptObject"
+                  },
+                  {
+                    "type": "ScriptObject"
+                  },
+                  null
+                ],
+                "kwargs": {}
+              }
+            ],
+            "count": 1,
+            "parents": [
+              "5d7d6bb13691b02f533f62b0"
+            ],
+            "site_parent": "5d7d6bb13691b02f533f62b0",
+            "ranks": [
+              0,
+              1
+            ],
+            "rank_specs": {
+              "0": {
+                "attributes": {},
+                "signatures": [
+                  {
+                    "args": [
+                      [
+                        {
+                          "shape": [
+                            39385344
+                          ],
+                          "stride": [
+                            1
+                          ],
+                          "dtype": "torch.float32",
+                          "device": "cuda",
+                          "requires_grad": false
+                        }
+                      ],
+                      {
+                        "type": "ScriptObject"
+                      },
+                      {
+                        "type": "ScriptObject"
+                      },
+                      null
+                    ],
+                    "kwargs": {}
+                  }
+                ],
+                "count": 1,
+                "parents": [
+                  "5d7d6bb13691b02f533f62b0"
+                ]
+              },
+              "1": {
+                "attributes": {},
+                "signatures": [
+                  {
+                    "args": [
+                      [
+                        {
+                          "shape": [
+                            39385344
+                          ],
+                          "stride": [
+                            1
+                          ],
+                          "dtype": "torch.float32",
+                          "device": "cuda",
+                          "requires_grad": false
+                        }
+                      ],
+                      {
+                        "type": "ScriptObject"
+                      },
+                      {
+                        "type": "ScriptObject"
+                      },
+                      null
+                    ],
+                    "kwargs": {}
+                  }
+                ],
+                "count": 1,
+                "parents": [
+                  "5d7d6bb13691b02f533f62b0"
+                ]
+              }
+            }
+          },
+          {
+            "id": "d0938de87369efd500322679",
+            "target": "c10d.allreduce_.default",
+            "kind": "functional",
+            "phase": "run",
+            "semantics": "c10d::allreduce_(Tensor[] tensors, __torch__.torch.classes.c10d.ProcessGroup process_group, __torch__.torch.classes.c10d.ReduceOp reduce_op, Tensor? sparse_indices, bool async_op=True, int timeout=-1) -> (Tensor[], __torch__.torch.classes.c10d.Work)",
+            "attributes": {},
+            "signatures": [
+              {
+                "args": [
+                  [
+                    {
+                      "shape": [
+                        7087872
+                      ],
+                      "stride": [
+                        1
+                      ],
+                      "dtype": "torch.float32",
+                      "device": "cuda",
+                      "requires_grad": false
+                    }
+                  ],
+                  {
+                    "type": "ScriptObject"
+                  },
+                  {
+                    "type": "ScriptObject"
+                  },
+                  null
+                ],
+                "kwargs": {}
+              }
+            ],
+            "count": 12,
+            "parents": [
+              "5d7d6bb13691b02f533f62b0"
+            ],
+            "site_parent": "5d7d6bb13691b02f533f62b0",
+            "ranks": [
+              0,
+              1
+            ],
+            "rank_specs": {
+              "0": {
+                "attributes": {},
+                "signatures": [
+                  {
+                    "args": [
+                      [
+                        {
+                          "shape": [
+                            7087872
+                          ],
+                          "stride": [
+                            1
+                          ],
+                          "dtype": "torch.float32",
+                          "device": "cuda",
+                          "requires_grad": false
+                        }
+                      ],
+                      {
+                        "type": "ScriptObject"
+                      },
+                      {
+                        "type": "ScriptObject"
+                      },
+                      null
+                    ],
+                    "kwargs": {}
+                  }
+                ],
+                "count": 12,
+                "parents": [
+                  "5d7d6bb13691b02f533f62b0"
+                ]
+              },
+              "1": {
+                "attributes": {},
+                "signatures": [
+                  {
+                    "args": [
+                      [
+                        {
+                          "shape": [
+                            7087872
+                          ],
+                          "stride": [
+                            1
+                          ],
+                          "dtype": "torch.float32",
+                          "device": "cuda",
+                          "requires_grad": false
+                        }
+                      ],
+                      {
+                        "type": "ScriptObject"
+                      },
+                      {
+                        "type": "ScriptObject"
+                      },
+                      null
+                    ],
+                    "kwargs": {}
+                  }
+                ],
+                "count": 12,
+                "parents": [
+                  "5d7d6bb13691b02f533f62b0"
+                ]
+              }
+            }
+          }
+        ],
+        "expected_calls": [
+          "d0938de87369efd500322679",
+          "b8ade439d7b8bd5fb5c1029b"
+        ],
+        "expected_calls_by_rank": {
+          "0": [
+            "d0938de87369efd500322679",
+            "b8ade439d7b8bd5fb5c1029b"
+          ],
+          "1": [
+            "d0938de87369efd500322679",
+            "b8ade439d7b8bd5fb5c1029b"
+          ]
+        }
+      }
+    ]
+  },
+  "binding": {
+    "pid": 390735,
+    "status": "verified",
+    "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "logical_device": 1,
+    "nvidia_smi_pid_uuids": [
+      "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+    ],
+    "pid_query_status": "observed"
+  },
+  "revision": {
+    "revision": "4e2556afd31ee50c337f3d6a16a2b5118225b9cc326b6ec0b47f59ca8f684261",
+    "bundles": [
+      "recovered-control-param-66017c95"
+    ],
+    "bundle_hashes": {
+      "recovered-control-param-66017c95": "d93d5c3f849da10d86ae045ec8bfeabe6959132c24e47d1cb41e8ca58c1a17ed"
+    },
+    "files": {
+      "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+      "gpt2_ddp_training.py": "37d1632436c8f927a52401b6d1fb9e63bd7b8d33d643d0f914916bb89b3364fe",
+      "opop_adapter.py": "d29cebf17dd15011b7e187938fa211c7f98a670684f72afeb1b602d3e9a87cb1",
+      "opop_candidates/recovered-control.py": "a01359787a4c15d4835955a2cd708993f6074a2dc0044972d4783580fcc07fe3",
+      "opop_candidates/recovered-control.targets.json": "be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340",
+      "opop_evaluate.py": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+      "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+    }
+  }
+}

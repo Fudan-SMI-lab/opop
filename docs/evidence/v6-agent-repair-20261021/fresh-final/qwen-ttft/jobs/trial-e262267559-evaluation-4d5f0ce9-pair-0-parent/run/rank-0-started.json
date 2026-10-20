@@ -1,0 +1,117 @@
+{
+  "rank": 0,
+  "world_size": 1,
+  "device": "cuda:0",
+  "output": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft/jobs/trial-e262267559-evaluation-4d5f0ce9-pair-0-parent/run",
+  "parameters": {
+    "request": {
+      "schema_version": "project-request.v1",
+      "source_root": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft.intake/source",
+      "entry": "qwen_inference.py",
+      "files": [
+        "qwen_inference.py",
+        "common.py",
+        "workloads.json",
+        "README.md"
+      ],
+      "goal": "Reduce first-token latency for the interactive workload, preserving the full generation workload and the source correctness checks.",
+      "objective": {
+        "name": "ttft_ms",
+        "unit": "ms",
+        "direction": "minimize",
+        "constraints": []
+      },
+      "workload": {
+        "id": "interactive",
+        "batch": 1,
+        "prompt_tokens": 256,
+        "new_tokens": 32,
+        "goals": [
+          {
+            "id": "ttft",
+            "metric": "ttft_ms",
+            "direction": "min"
+          },
+          {
+            "id": "decode",
+            "metric": "decode_tokens_per_second",
+            "direction": "max"
+          }
+        ],
+        "prompt": "Explain how a computer executes a neural network and why memory access, arithmetic and communication affect performance. Use concrete examples."
+      },
+      "quality": {
+        "atol": 0.02,
+        "rtol": 0.02,
+        "logits_atol": 0.02,
+        "logits_rtol": 0.02,
+        "require_exact_greedy_tokens": true
+      },
+      "assets": {
+        "qwen3_4b": "/root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c"
+      },
+      "devices": [
+        "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+      ],
+      "distributed_backend": null,
+      "communication": "auto",
+      "required_observations": [],
+      "tools": {
+        "ncu": "/usr/local/cuda/bin/ncu",
+        "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+      },
+      "profiling": {
+        "agent_plan": true,
+        "feedback_agent_plan": true
+      },
+      "binding_backend": "legacy",
+      "measurement_lifetime": "invocation",
+      "warmup": 2,
+      "repeats": 5,
+      "continuous_steps": 2,
+      "worker_timeout_s": 900.0,
+      "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+      "notes": [
+        "Command provenance: intent.json supplies 'python qwen_inference.py --assets /root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c --output /tmp/original-qwen', run from the repository root with /root/autodl-tmp/dev-venv/bin/python (README.md; worker-environment.json).",
+        "ttft_ms is produced by the source itself (qwen_inference.py:37) as the interval from the pre-forward synchronize to the explicit first-token-ready synchronize after prefill+argmax (qwen_inference.py:16-24); this is the completion boundary of the objective. decode_ms, end_to_end_ms, decode_tokens_per_second, generated_tokens_per_second and peak_allocated_bytes are also reported per sample but only ttft_ms is the objective here; the interactive row's decode goal is a separate goal, not a constraint of this request.",
+        "The full generation workload is preserved: the timed unit always completes all 32 tokens (prefill + 31 cached decode steps); only prefill/first-token latency is optimized, the decode loop is not truncated.",
+        "Discrete exact comparison: generated greedy tokens must satisfy torch.equal (qwen_inference.py:62) - exact match required, no tolerance. Captured per-step last-token logits (stacked shape [batch, new_tokens, vocab]) are compared with torch.testing.assert_close at atol=rtol=0.02 (common.py:74-76, qwen_inference.py:61); the +1 corruption negative control must be rejected (common.py:79-84).",
+        "Precision/state policy: BF16 weights with attn_implementation='sdpa' (qwen_inference.py:49); TF32 disabled, float32_matmul_precision 'highest', cudnn.benchmark False, seed 20261020, 4 torch threads (common.py:34-42); use_cache=True with the KV cache carried across decode steps, logits_to_keep=1.",
+        "Workload and quality field names (id, batch, prompt_tokens, new_tokens, goals, prompt; logits_atol, logits_rtol, require_exact_greedy_tokens) are copied unchanged from workloads.json qwen_inference; the 'offline' (batch=8) row and held_out_workloads (long_prompt) are not part of this task.",
+        "Reference construction (two capture runs, one with teacher forcing), correctness checks, {id}-reference.pt saving, warmup/repeats statistics, summarize() and profile_once() belong to the benchmark harness, not the work repeated per measurement; --profile adds a separately traced diagnostic run and is not requested by the command.",
+        "Single-process single-GPU task: model is placed with .cuda() and configure() pins device 0; no process group, no NCCL, hence device_count=1, no distributed_backend and no required communication observations. Worker binds the leased GPU UUID from deployment.json.",
+        "One measured invocation: Measured invocation: qwen_inference.infer(model, inputs, new_tokens=32) (qwen_inference.py:15-41) under torch.inference_mode for the 'interactive' workload row (workloads.json qwen_inference.workloads[0]: id=interactive, batch=1, prompt_tokens=256, new_tokens=32). Inputs are the chat-templated fixed prompt tokens repeated/truncated to 256, resident on GPU as a batch=1 tensor. One unit = one full fixed-length greedy generation: prefill forward with use_cache=True, logits_to_keep=1, argmax of the last position, explicit torch.cuda.synchronize() at the first-token-ready boundary, then 31 cached decode steps (EOS stopping disabled by the explicit loop). Model/tokenizer loading, input preparation, reference capture runs, correctness checks, reference tensor saving, warmup, repeats and --profile tracing are setup or measurement infrastructure outside this unit."
+      ]
+    },
+    "adapter": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft/jobs/trial-e262267559-evaluation-4d5f0ce9-pair-0-parent/source/opop_adapter.py",
+    "action": "evaluate",
+    "collector_options": {},
+    "reference_dir": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft/preparation/bc5d799ef4bd/controls",
+    "bundles": []
+  },
+  "binding": {
+    "pid": 388780,
+    "status": "verified",
+    "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "logical_device": 0,
+    "nvidia_smi_pid_uuids": [
+      "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+    ],
+    "pid_query_status": "observed"
+  },
+  "revision": {
+    "revision": "b759f42861842302784e96233f0ed68092b7455479704ff9609958d9a2a6907b",
+    "bundles": [],
+    "bundle_hashes": {},
+    "files": {
+      "README.md": "97dbce99c0065e87f4accf1bbe6d52aa4438a289d7eaec1c85a9c6b1cb25f68d",
+      "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+      "opop_adapter.py": "70a63f3f47e5347f48e7ba0849a6383a8a0a54cc592b43581faacdecf38fc738",
+      "opop_evaluate.py": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+      "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+      "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+    }
+  }
+}

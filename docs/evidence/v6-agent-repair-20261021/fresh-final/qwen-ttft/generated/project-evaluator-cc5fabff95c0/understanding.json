@@ -1,0 +1,61 @@
+{
+  "goal": "Reduce first-token latency for the interactive workload, preserving the full generation workload and the source correctness checks.",
+  "entrypoint": "qwen_inference.py",
+  "completion": "One measured unit is qwen_inference.infer(model, inputs, new_tokens=32) (qwen_inference.py:15-41) under torch.inference_mode for the 'interactive' workload row: prefill forward with use_cache=True and logits_to_keep=1, argmax of the last-position logits, then an explicit torch.cuda.synchronize() that marks the first-token-ready boundary (qwen_inference.py:16-24), followed by exactly new_tokens-1 cached greedy decode steps and a final torch.cuda.synchronize(). The workload is complete only when all 32 greedy tokens over the full prefill+decode chain have been produced; the decode loop is never truncated. The ttft_ms objective completes at the source's own first-token-ready synchronize after prefill+argmax, measured with perf_counter_ns across that boundary.",
+  "state_protocol": "prepare(context, request) applies the source's configure() policies (seed 20261020, 4 torch threads + 1 interop thread, TF32 disabled, float32_matmul_precision 'highest', cudnn.benchmark False, torch.cuda.set_device on context['device']), loads the tokenizer and Qwen3-4B weights BF16 with attn_implementation='sdpa' from request['assets']['qwen3_4b'] onto the worker device in eval mode, builds the chat-templated prompt (add_generation_prompt=True, enable_thinking=False, add_special_tokens=False) repeated/truncated to request['workload']['prompt_tokens'] and repeated to request['workload']['batch'] as a GPU-resident tensor, and stores model/inputs/new_tokens in state. All workload dimensions are read from request['workload'] in prepare(), never embedded as constants. run(state) creates its own request-local KV cache (the prefill call starts from an empty cache) and returns tokens, optional quality-mode logits, and the source-measured phase metrics; no state survives between runs except the immutable loaded model and input tensor. reset(state) is therefore a no-op: greedy argmax consumes no RNG, model weights are never mutated (eval + inference_mode), and each run builds a fresh cache, matching the source where repeats simply call infer again. set_mode('quality') enables per-step last-token logits capture (stacked to [batch, new_tokens, vocab] like the source's capture=True reference path); measure/profile keep the source's clean no-capture timing path.",
+  "invariants": [
+    "The full fixed-length generation must complete: one prefill forward plus exactly new_tokens-1 cached decode steps; EOS early stopping is disabled by the explicit loop and the decode loop must not be truncated or batched differently (qwen_inference.py:25-32).",
+    "Greedy decoding only: every step takes argmax over the last-position logits of the previous step's token; no sampling or beam search.",
+    "use_cache=True with the KV cache carried across decode steps, and logits_to_keep=1 so only the last position's logits are materialized (prefill and every decode step).",
+    "Numerical policy is fixed: BF16 weights with attn_implementation='sdpa', TF32 disabled for matmul and cudnn, float32_matmul_precision 'highest', cudnn.benchmark False, torch.manual_seed(20261020), set_num_threads(4), set_num_interop_threads(1) (qwen_inference.py:49, common.py:34-42).",
+    "Inputs are the chat-templated fixed prompt tokens repeated/truncated to exactly 256 tokens, batch=1, resident on the bound GPU before timing; tokenization and host-to-device transfer are setup, not timed.",
+    "The first-token boundary is the source's explicit torch.cuda.synchronize() after prefill forward + argmax (qwen_inference.py:16-24); ttft_ms, decode_ms, end_to_end_ms, decode_tokens_per_second (batch*(new_tokens-1)/decode interval) and generated_tokens_per_second (batch*new_tokens/end-to-end interval) all come from perf_counter_ns around these source boundaries and must keep those exact semantics.",
+    "Correctness checks: generated greedy tokens must satisfy torch.equal exactly (no tolerance), and the captured per-step last-token logits stacked to [batch, new_tokens, vocab] are compared with torch.testing.assert_close at atol=rtol=0.02 (common.py:74-76, qwen_inference.py:61-62); the +1 corruption negative control must be rejected (common.py:79-84).",
+    "Model loading, tokenization, input construction, reference capture runs (including the teacher-forced second pass), correctness checks, {id}-reference.pt saving, warmup, repeats, summarize() and --profile tracing are benchmark-harness setup or measurement infrastructure outside the timed unit and are not repeated inside run().",
+    "Single-process single-GPU task: the model is placed on the worker-provided device, there is no process group and no NCCL communication, and the adapter must not initialize another process group or allocate a second reference model on GPU.",
+    "All mutable per-run state (KV cache, generated-token list, per-step logits list) is created inside run and released with it; nothing is pre-cleared or pre-warmed across the measured boundary that the source itself does inside infer()."
+  ],
+  "objective": {
+    "name": "ttft_ms",
+    "unit": "ms",
+    "direction": "minimize",
+    "constraints": []
+  },
+  "workload": {
+    "id": "interactive",
+    "batch": 1,
+    "prompt_tokens": 256,
+    "new_tokens": 32,
+    "goals": [
+      {
+        "id": "ttft",
+        "metric": "ttft_ms",
+        "direction": "min"
+      },
+      {
+        "id": "decode",
+        "metric": "decode_tokens_per_second",
+        "direction": "max"
+      }
+    ],
+    "prompt": "Explain how a computer executes a neural network and why memory access, arithmetic and communication affect performance. Use concrete examples."
+  },
+  "quality": {
+    "atol": 0.02,
+    "rtol": 0.02,
+    "logits_atol": 0.02,
+    "logits_rtol": 0.02,
+    "require_exact_greedy_tokens": true
+  },
+  "missing_information": [],
+  "assumptions": [
+    "The framework calls set_mode('quality') before correctness-observation runs: logits capture (per-step last-token logits stacked to [batch, new_tokens, vocab], exactly the source's capture=True path) is enabled only in quality mode, while measure/profile use the source's clean no-capture timing path; execution semantics and the full 32-token work amount are identical in every mode.",
+    "context['device'] (e.g. cuda:0) names the already-bound local device; the adapter applies torch.cuda.set_device to it and places the model and inputs there instead of choosing a physical GPU, and never initializes another process group.",
+    "The 'offline' (batch=8) row and the held_out_workloads 'long_prompt' entry in workloads.json are not part of this frozen request; the adapter reads batch, prompt_tokens, new_tokens and prompt from request['workload'] so a separately validated workload variant works with the same adapter unchanged.",
+    "The objective has no source collector descriptor, so metrics() returns the source-measured ttft_ms produced inside run() at the source's actual first-token-ready CUDA synchronization, plus the source's other per-sample metrics; no profiler runs inside run()/metrics().",
+    "observe() returns detached CPU tensors (generated token ids and, in quality mode, the stacked full per-step logits); the framework stores reference observations on CPU, so no second reference model is allocated on GPU.",
+    "peak_allocated_bytes in metrics() is queried via torch.cuda.max_memory_allocated outside the timed region after the framework's own peak reset; it is the process-level PyTorch allocated peak, not whole-GPU or NCCL/driver memory.",
+    "reset() being a no-op follows the source: repeats invoke infer() repeatedly on the same immutable model and fixed input tensor, with a fresh request-local KV cache per call and no RNG consumption in greedy argmax, so there is no cross-run mutable state to restore.",
+    "The teacher-forcing second capture pass used to build {id}-reference.pt in the harness is reference-construction infrastructure; the adapter's run() implements only the plain greedy path, and the worker performs the reference comparison."
+  ]
+}

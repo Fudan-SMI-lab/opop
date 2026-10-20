@@ -1,0 +1,190 @@
+{
+  "trial": "trial-43f18a5360",
+  "selection": {
+    "scope": "joint",
+    "groups": [
+      "f833b57a373d8262a384",
+      "8525af72c631b94e3dd0"
+    ],
+    "affected_calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "rationale": "Ownership (unchanged from current discovery, revision fc9ec3b1): the objective communication_kernel_sum_ms is generated exclusively by the 13 fp32 c10d::allreduce_ calls of DDP's final-micro-batch reducer - group f833b57a373d8262a384 (call d0938de87369efd500322679, 12 buckets of 7,087,872 elements = 28,351,488 B each) and group 8525af72c631b94e3dd0 (call b8ade439d7b8bd5fb5c1029b, one 39,385,344-element = 157,541,376 B bucket), 497,759,232 B total on the default NCCL process group; execution_timeline shows exactly 13 NCCL kernels in the step and no other NCCL device work, so no compute-side group can move this metric. The two groups must stay a joint candidate: they share the single c10d.allreduce_.default dispatch target, one site parent (5d7d6bb13691b02f533f62b0) and one replacement implementation, and communication-ownership.json shows all 13 buckets share member parameter groups, so shared costs cannot be attributed independently. Measured transport facts: collective_calibration (observations/current/collective_calibration-1af5837f.json) puts the warmed intrinsic cost at exactly these sizes at 12x3.536+19.383 = 61.82 ms (rank 0) and 12x3.615+19.522 = 62.90 ms (rank 1), i.e. ~8.0-8.1 GB/s logical payload on the tuner-chosen RING/SIMPLE 2-channel SHM configuration (nccl_tuning-f6198e01.json); the clean baseline (project.json original_baseline) is 63.32/63.67 ms, so only ~0.8 ms (max-rank rank 1) to ~1.5 ms (rank 0) of in-kernel waiting plus one profiled excursion (rank 0 sample 66.48 ms, +4.7 ms over floor) separate the metric from the intrinsic floor - the metric is transfer-bound and the bytes, dtype, DDP bucket configuration and no-comm-hook rules are contract invariants. Concrete failure being repaired (previous-feedback.txt, trial-5a705e709d, decision no_valid_parameter_candidate): the candidate rerouted the bucket allreduces onto a lazily created second NCCL process group with forced NCCL_NCHANNELS/NCCL_PROTO; all three arms (4/Simple, 4/LL128, 16/LL128) blew the step-time constraint (253.9/295.5/289.4 ms vs limit 144.8 ms, because the second PG broke the reducer's comm-stream/compute overlap) and worsened the max-rank kernel sum (89.1/128.4/110.2 ms) through rank-asymmetric in-kernel waiting (rank 1 rose to 87.7-105.3 ms while rank 0 improved to ~60.0 ms), even though exact numerics held (max_abs_error 0.0). Conclusion drawn from that evidence: communicator creation, env-forced channel/protocol tuning and any stream rerouting are excluded levers; the only measured, in-contract headroom left at this site is the launch-skew waiting component, visible as the first-kernel inflation in every profiled sample (execution_timeline-1221e205.json: cross-rank CPU submit spread 10.3-10.7 ms on the first collective with a 14.06 ms first kernel vs 3.6 ms intrinsic; all later kernels sit back-to-back with 1-2 us gaps at intrinsic cost).",
+    "hypothesis": "A joint functional replacement of both allreduce_ groups that keeps every bucket allreduce on the worker's default NCCL process group by calling the captured reference (context.references) with the original process_group, stream, reduce op and async semantics - explicitly no new_group, no NCCL environment forcing, no comm hook, no bucket reordering, none of the mechanisms the failed trial used - and additionally removes the residual in-kernel launch-skew waiting: on the first allreduce_ call of each reduction burst the replacement performs one bounded cross-rank CPU-side launch alignment (rendezvous on a small gloo/helper group or shared-memory flag, producing no NCCL kernels) so neither rank enters its first ring kernel materially before its peer, then issues the unmodified reference call for all 13 buckets. Because the transfer itself is measured at its intrinsic floor (~62.9 ms max-rank) and is not addressable in-contract, the expected effect is bounded and small: the max-rank median should drop from 63.67 ms toward ~62.9-63.2 ms (about 0.5-0.8 ms, up to ~2.8 ms if skew-excursion samples like the 66.48 ms rank-0 sample are suppressed), with step_ms unchanged or slightly better since the alignment cost moves from counted GPU in-kernel waiting to uncounted CPU rendezvous inside the existing 6.9 ms step-time slack (limit 144.8 vs baseline 137.9 ms). Numerics are untouched: identical fp32 ring SUM on the same communicator in the same order, so exact_gradient_replica_check (atol=0/rtol=0), the global-batch and parameter-update checks behave exactly as baseline, as the failed trial already demonstrated numerically-correct rerouting. Unknowns to test rather than assume: whether the launch-skew component is stable across the 3 profiled samples or dominated by one excursion; whether the alignment rendezvous itself stays below the removed waiting in wall time under the 1.05x step constraint; and whether suppressing skew also stabilizes rank 1's median. Fallback within the same boundary: alignment off after the first bucket, or pure pass-through reference calls, which reduces the candidate to a measured control that empirically pins the transport floor of this 2-channel SHM topology. A null result is informative: it would establish that the objective is at its in-contract floor and that no further site change can move it without violating frozen bytes or DDP invariants."
+  },
+  "proposal": {
+    "implementation": "distributed",
+    "replacement_calls": [
+      "d0938de87369efd500322679",
+      "b8ade439d7b8bd5fb5c1029b"
+    ],
+    "rationale": "Ownership (selection.json, revision fc9ec3b1): the objective communication_kernel_sum_ms (max-rank sum of device NCCL kernel durations, median of 3 separately profiled samples) is generated exclusively by the 13 fp32 c10d::allreduce_ calls of DDP's final-micro-batch reducer - call d0938de87369efd500322679 (12 buckets of 7,087,872 elements = 28,351,488 B) and call b8ade439d7b8bd5fb5c1029b (the 39,385,344-element = 157,541,376 B closing bucket), 497,759,232 B total on the default NCCL process group; execution_timeline-1221e205.json shows exactly 13 NCCL kernels and no other NCCL device work in the step. Failure being repaired (previous-feedback.txt, trial-5a705e709d, decision no_valid_parameter_candidate): the prior candidate rerouted those allreduces onto a lazily created second NCCL process group with forced NCCL_NCHANNELS/NCCL_PROTO; all arms numerically exact (max_abs_error 0.0) but blew the step constraint (253.9/295.5/289.4 ms vs limit 144.8 ms) and worsened the max-rank kernel sum (89.1/128.4/110.2 ms; rank 1 rose to 87.7-105.3 ms while rank 0 fell to ~60 ms) through rank-asymmetric in-kernel waiting after the rerouting broke the reducer's comm-stream/compute relationship. That evidence excludes communicator creation, env-forced channel/protocol tuning and stream rerouting as levers. This attempt therefore keeps every bucket allreduce on the worker's default NCCL process group by calling the captured reference (context.references) with the original process_group, reduce op, sparse_indices and async semantics - explicitly no new_group, no NCCL environment forcing, no comm hook, no bucket reordering - and adds only the one measured, in-contract headroom left at this site: removing the residual launch-skew waiting. Measured bounds: the warmed intrinsic back-to-back cost at exactly these sizes is 12x3.536+19.383 = 61.82 ms (rank 0) and 12x3.615+19.522 = 62.90 ms (rank 1) (collective_calibration-1af5837f.json), while the clean baseline (project.json original_baseline) is 63.32/63.67 ms, i.e. only ~0.8 ms (rank 1) to ~1.5 ms (rank 0) of in-kernel waiting plus one excursion (rank 0 sample 66.48 ms, +4.7 ms) separate the metric from the intrinsic floor; the discovery timeline shows the mechanism (first-kernel inflation: cross-rank CPU submit spread with a 14.06 ms first kernel vs 3.6 ms intrinsic, all later kernels back-to-back at intrinsic cost on stream 17). Mechanism of the fix: on the first allreduce_ call of each reduction burst the replacement performs one bounded cross-rank CPU rendezvous - a gloo barrier on the adapter's existing control group from context.state, producing no NCCL kernels - so neither rank enters its first ring kernel materially before its peer, then issues the unmodified reference call for all 13 buckets. The waiting the early rank previously spun inside counted NCCL kernel durations becomes uncounted CPU rendezvous. Expected effect is deliberately bounded and small: the max-rank median should drop from 63.67 ms toward ~62.9-63.2 ms (about 0.5-0.8 ms, up to ~2.8 ms in samples where the 66.48 ms excursion is suppressed), with step_ms unchanged or nearly unchanged because the alignment cost is a CPU stall of at most the skew magnitude (~1-1.5 ms in clean runs) while the GPU keeps draining its launch queue, inside the 6.9 ms step-time slack (limit 144.8 vs baseline 137.9 ms). Numerics are untouched: identical fp32 ring SUM on the same communicator in the same bucket order on both ranks, so exact_gradient_replica_check (atol=0/rtol=0), global_batch_gradient_check, parameter_update_check, finite_loss and the corruption negative control behave exactly as baseline, as the failed trial already demonstrated bit-exact rerouting through the captured reference path. Unknowns tested rather than assumed: whether the launch-skew component is stable across the 3 profiled samples or dominated by the one excursion; whether the barrier's release skew stays below the removed waiting; and whether rank 1's median also stabilizes. A null result is informative: it pins the objective at its in-contract transport floor (~62.9 ms max-rank) for this 2-channel SHM no-P2P topology, proving no further site change can move it without violating frozen bytes, dtype or DDP invariants. This changes the previous attempt by removing the parameterized second-communicator mechanism entirely: parameter_space is empty, the candidate has one deterministic configuration, and there are no control arms to misattribute.",
+    "setup_work": "Build time (installation, after prepare, quality tracking off, no adapter phase active): resolve the adapter's existing gloo control group from context['state']['control'] and build two Python closures sharing one burst flag; no collective is issued at build time, no model parameter is transformed, no fixture-dependent data is cached, no new process group or communicator is created, no environment variable is touched, and setup allocation is zero (setup receipt should show allocation delta ~0 bytes; no CUDA Graph pools are retained). Runtime per burst (once per step, on the first of the 13 bucket allreduce_ calls): one torch.distributed.barrier on the gloo control group - a CPU-side socket rendezvous bounded by the group's 120 s timeout that launches no NCCL kernel and allocates no device memory - costing on the order of 0.1-0.3 ms of CPU on the releasing ranks, paid inside the step as the replacement of previously counted in-kernel spin. The first rendezvous occurs during the untimed correctness pass, so timed repeats, the 3 profiled diagnostic samples and clean timing see only the warm path (dict/flag check per call plus one barrier per burst). The workload executes fully on current inputs on every invocation; nothing is precomputed or captured for the known fixture.",
+    "quality_risks": [
+      "Symmetric rendezvous requirement: the barrier is entered only on the first call of each burst and the burst state machine is driven purely by the observed call sequence, which is identical on both ranks for this deterministic workload (12 small buckets then the closing bucket; the flag reopens after the closing call, so held-out variants with different workload dimensions still traverse matched barrier points). The signature guard depends only on the call signature, which is rank-independent, so one rank cannot take the barrier path while the peer falls back. An asymmetric gloo failure would surface honestly: the blocked peer raises after the group's 120 s timeout (well inside the 900 s worker timeout), alignment is then permanently disabled in that process via the runtime_failed:alignment_* route, and subsequent steps degrade to pure parent pass-through rather than silent misrouting.",
+      "Step-time constraint: the barrier converts counted GPU in-kernel spin into an uncounted CPU stall of at most the arrival skew; clean-run skew is measured at ~1-1.5 ms versus the 6.9 ms slack (limit 144.8 ms vs baseline 137.9 ms), and the GPU continues executing its enqueued backward work during the stall, so the expected wall-time impact is at or below the removed waiting. Rare larger skews would add at most their magnitude to the early rank's step, and the max-rank step is normally the late rank, which does not wait.",
+      "Bounded objective effect: the transfer itself is measured at its intrinsic floor (62.90 ms max-rank), so the expected improvement is only the launch-skew component (~0.5-0.8 ms median, up to ~2.8 ms if excursion samples are suppressed). The metric's definition includes device waiting and is not wire time; no wire-time or general transfer-speed reduction is claimed. If the residual gap is contention rather than skew, this candidate reduces to a measured control that empirically pins the in-contract floor.",
+      "Numerics: the replacement forwards the exact original process_group, reduce op, sparse_indices and async semantics to the captured reference for every call, on the same communicator and in the same order on both ranks, so gradients remain bit-identical across ranks (atol=0/rtol=0) and within 1e-6/1e-4 of the serial reference; no retry or double-issue exists around the reference call - an exception from the reference propagates exactly as it would from the parent.",
+      "Defensive runtime guards (single contiguous fp32 CUDA bucket tensor, null sparse_indices, no extra args/kwargs) are stricter than the framework's signature match; any mismatch routes to the plain parent operator unchanged, which can only forfeit the bounded gain, never correctness.",
+      "No tunable parameters: a single deterministic configuration removes the failure mode of the previous trial, where search arms on a rerouted communicator produced invalid endpoints; there are no control arms to publish by accident."
+    ],
+    "eliminated_calls": [],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {}
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea47c80b7ffegVZnYDjLkxuog5",
+    "message": "msg_15b8bd648001Ei28z4PWbvV8YZ",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 38,
+      "reported_cost": 1.1086692587,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 2914781.0,
+        "input": 113570.0,
+        "output": 7004.0,
+        "reasoning": 27999.0,
+        "cache.read": 2766208.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea47c80b7ffegVZnYDjLkxuog5",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-fixed/ddp-communication/sandboxes/selection-688748ff6aad",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-fixed/ddp-communication/generation-snapshots/generation-9a2e83464eeb.json"
+    ]
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea47411f7ffeQXAt0YZ7yLIVPP",
+    "message": "msg_15b938c590015XRDCTU0gCj9k2",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 28,
+      "reported_cost": 0.97877508684,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 2470353.0,
+        "input": 108425.0,
+        "output": 8027.0,
+        "reasoning": 28909.0,
+        "cache.read": 2324992.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea47411f7ffeQXAt0YZ7yLIVPP",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-fixed/ddp-communication/sandboxes/candidate-612ec73bbdbc",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-fixed/ddp-communication/generation-snapshots/generation-cf9abb1b603c.json"
+    ]
+  },
+  "experiment_policy": {
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ],
+    "leaf_groups_only": false,
+    "selection_strategy": "agent",
+    "feedback_view": "full"
+  },
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-43f18a5360",
+    "parent_revision": "fc9ec3b15cf986b7444fd68aa56941cd109661d9884d2a632e3ab58464aa1e46",
+    "contract_ref": "sha256:7bfb7e96ca6807911568cbbf8089bffe3a903bd6bba6583c682b0fda95e724a3",
+    "scope": "joint",
+    "implementation": "distributed",
+    "groups": [
+      "f833b57a373d8262a384",
+      "8525af72c631b94e3dd0"
+    ],
+    "calls": [
+      "d0938de87369efd500322679",
+      "b8ade439d7b8bd5fb5c1029b"
+    ],
+    "affected_calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-43f18a5360.py",
+        "before_sha256": null,
+        "content_ref": "sha256:2289f6d8d38d6b81d020fa4861f63fde98342c71af58f5fc5923f9072dc5a5b7"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-43f18a5360.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+      }
+    ],
+    "read_set": [
+      "call:b8ade439d7b8bd5fb5c1029b",
+      "call:d0938de87369efd500322679"
+    ],
+    "write_set": [
+      "file:opop_candidates/trial-43f18a5360.py",
+      "file:opop_candidates/trial-43f18a5360.targets.json",
+      "call:d0938de87369efd500322679",
+      "call:b8ade439d7b8bd5fb5c1029b"
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Model architecture frozen: GPT-2 124M FP32 (n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024) with resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False and attn_implementation='eager', in train mode.",
+      "Deterministic seeds preserved: torch.manual_seed(20261020) for model construction (called in configure and again in make_model exactly as the source does) and torch.Generator().manual_seed(31000 + source_rank) for each rank's accumulation_steps synthetic token-ID batches of shape (micro_batch, sequence_length).",
+      "Numerical policies preserved: TF32 disabled for matmul and cudnn, cudnn.benchmark=False, float32 matmul precision 'highest', torch.set_num_threads(4), set_num_interop_threads(1).",
+      "DDP configuration preserved: bucket_cap_mb=25, gradient_as_bucket_view=True, broadcast_buffers=False on the NCCL default process group initialized by the worker; the adapter never calls init_process_group and never installs a communication hook in the measured path.",
+      "Accumulation semantics preserved: loss divided by accumulation_steps, backward per micro-batch, no_sync on the first accumulation_steps-1 micro-batches and the synchronized gradient all-reduce on the final one, so the reduced gradients equal the serial global-batch (world_size*micro_batch*accumulation_steps = 8) average.",
+      "Optimizer semantics preserved: torch.optim.SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) applied once per step after the accumulation.",
+      "Timed-boundary division preserved: optimizer.zero_grad(set_to_none=True) executes inside run() at the start of accumulate(), not in reset(); the step ends with torch.cuda.synchronize() inside run().",
+      "Correctness checks preserved with source tolerances: finite loss; global-batch gradient and parameter-update checks against the serial reference at atol=1e-6/rtol=1e-4; cross-rank gradient replica equality at atol=0.0, rtol=0.0; the +1 corruption negative control must be rejected.",
+      "Step-time constraint preserved: clean step time (max across ranks of per-rank wall time) must stay <= 1.05x the original baseline (goals.constraints.step_ms_max_baseline_ratio).",
+      "Communication metric definition preserved: per-rank sum of device NCCL kernel durations in a separately profiled invocation, maximum across ranks, median of 3 profiled samples; it includes device waiting and is not wire time, exposed communication or a critical-path bound; profiling is separate from clean timing.",
+      "Workload dimensions (world_size, micro_batch, sequence_length, accumulation_steps) are read from request['workload'] in prepare(), never embedded as constants, so the held-out longer_sequence variant (sequence_length=256, accumulation_steps=2) runs through the same adapter; the bucket-inventory hook pass of the source is a diagnostic owned by the framework and is not part of run()."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-43f18a5360.py",
+    "parameters": {}
+  }
+}

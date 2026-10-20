@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "failure": null,
+  "wall_s": 7.16708393022418,
+  "ranks": [
+    {
+      "rank": 0,
+      "pid": 262306,
+      "exit_code": 0,
+      "status": "passed",
+      "binding": {
+        "pid": 262306,
+        "status": "verified",
+        "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "logical_device": 0,
+        "nvidia_smi_pid_uuids": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "pid_query_status": "observed",
+        "occupancy": {
+          "status": "sampled_clear",
+          "samples": 12,
+          "unavailable_samples": 0,
+          "wait_s": 0.09315935894846916,
+          "external_clients": [],
+          "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+        }
+      },
+      "framework_source": {
+        "sha256": "87dd536ccf041a41abeab277cb15c1282ed9dab2e5f1210625f9925a6c6432be",
+        "files": 161,
+        "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+      },
+      "result": {
+        "valid": true,
+        "checks": [
+          {
+            "passed": true,
+            "compared_elements": 32032,
+            "max_abs_error": 0.0
+          },
+          {
+            "passed": true,
+            "compared_elements": 32032,
+            "max_abs_error": 0.0
+          }
+        ],
+        "method": "Original source function and input/model construction; full generated reference comparison",
+        "workload": {
+          "id": "offline",
+          "batch": 32,
+          "goals": [
+            {
+              "id": "throughput",
+              "metric": "images_per_second",
+              "direction": "max"
+            },
+            {
+              "id": "memory",
+              "metric": "peak_allocated_bytes",
+              "direction": "min",
+              "constraints": {
+                "images_per_second_min_baseline_ratio": 0.95
+              }
+            }
+          ]
+        },
+        "observation_keys": [
+          "logits",
+          "predicted_label_ids"
+        ],
+        "expected_shapes": {
+          "logits": [
+            32,
+            1000
+          ],
+          "predicted_label_ids": [
+            32
+          ]
+        }
+      }
+    }
+  ],
+  "lease_wait_s": 0.00021556392312049866,
+  "entry_sha256": "15a60188eb8c0fe4ef0d4625e5b2a86eabe106824cb4edd0a42fe5a682b8922e",
+  "devices": [
+    "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+  ],
+  "worker_pids_reaped": true
+}
