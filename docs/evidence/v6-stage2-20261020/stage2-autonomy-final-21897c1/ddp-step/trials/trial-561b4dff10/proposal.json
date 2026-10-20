@@ -1,0 +1,45 @@
+{
+  "implementation": "distributed",
+  "replacement_calls": [
+    "b8ade439d7b8bd5fb5c1029b",
+    "d0938de87369efd500322679"
+  ],
+  "rationale": "Measured facts (inputs/observations on this host): the step's dominant non-compute cost is the DDP gradient allreduce family executed at the end of the 4th backward - 13 c10d::allreduce_ bucket calls on one NCCL stream, all observed as ncclDevKernel_AllReduce_Sum_f32_RING_LL (12 x 7,087,872 fp32 elements = 28,351,488 B each, one x 39,385,344 elements = 157,541,376 B; 497,759,232 B/rank/step, exactly the ownership recorded in communication-ownership.json). Isolated paired calibration gives 3.60-3.68 ms per 28.35 MB bucket and 19.54-19.83 ms for the 157.5 MB bucket, i.e. ~7.9-8.0 GB/s logical payload rate - the LL protocol carries ~50% flag overhead on multi-MB payloads over the observed non-P2P SHM path (peer_access.0.1 = peer_access.1.0 = 0). This candidate reroutes exactly those two declared call sites through a dedicated ProcessGroupNCCL created over a prefixed view of the default store, so its communicator is produced by an independent ncclCommInitRank - never a split of the parent communicator - while NCCL_PROTO names a bulk protocol (default SIMPLE) and Options.config.max_ctas caps its channel count. The replacement calls group.allreduce with the received reduce op (SUM semantics of DDP buckets; explicit ReduceOp.SUM options if the scripting-class holder cannot marshal through pybind), performs the same in-place reduction on the same tensor list, and returns the same (tensors, Work) contract, so DDP bucket readiness, the no_sync accumulation schedule and gradient/parameter updates are unchanged: a 2-rank allreduce is one pairwise fp32 add per element under any NCCL algorithm/protocol, so results stay bitwise identical and well inside grad/param atol=1e-6, rtol=1e-4. Guards fall back to the parent reference on setup failure (group is None: 'parent_fallback_setup') or on any non-observed signature (shape/stride/dtype/device/numel/sparse_indices, 'parent_fallback_signature'); both decision points are deterministic and symmetric across ranks, and an error raised after a collective is enqueued is propagated rather than converted to a divergent per-rank fallback. Expected effect: NCCL wire time for ~497.75 MB/rank/step moves from the LL rate toward the bulk-protocol rate (hypothesis: ~63 ms toward ~32-40 ms), reducing step_ms (~133 ms clean baseline) by roughly 15-25% and lowering diagnostic.max_rank_nccl_kernel_sum_ms proportionally without adding work, keeping the communication goal's step_ms <= 1.05x baseline constraint. No previous-candidate directory or previous-feedback.txt exists; this is the first attempt for this selection, so the achievable SIMPLE throughput on this host remains the tested unknown.",
+  "setup_work": {
+    "timing": "All setup runs once inside build() (installation, before validation, quality tracking off, adapter invocation not started); it is outside every timed step.",
+    "actions": [
+      "Construct a dedicated ProcessGroupNCCL(store, rank, world_size, Options) over PrefixStore('opop_bulk_nccl:<build>:<proto>:<ctas>', default store) - an independent communicator rendezvous, collective across both ranks and therefore symmetric.",
+      "While NCCL_PROTO is temporarily set (restored immediately afterwards), run a one-element fp32 probe allreduce plus work.wait() and torch.cuda.synchronize() to force lazy ncclCommInitRank under the intended protocol and to verify the alternative executor end to end before any replacement can select it.",
+      "Set Options.config.max_ctas from the nccl_max_ctas parameter (per-communicator channel cap); no model parameter, gradient, optimizer state, bucket layout, no_sync pattern or workload input is touched."
+    ],
+    "memory": "The probe tensor is one fp32 element. The new NCCL communicator allocates its own channel buffers and staging memory through the CUDA driver (order tens of MB depending on the channel cap); this is outside the caching allocator, so framework.peak_allocated_bytes / lifecycle peak_allocated do not see it and PyTorch reserved memory is not reduced - reported as added driver-side memory, not a saving. One alternative communicator exists per process for the current parameterization; a torn-down/reinstalled bundle creates another (build counter keeps store prefixes unique).",
+    "fallback": "If any setup step fails, group stays None and every replacement call routes to the parent reference with the 'parent_fallback_setup' label; the candidate then measures like the parent."
+  },
+  "quality_risks": [
+    "The dispatcher receives the reduce op and process group as scripting-class holders; the pybind group.allreduce call with such a holder raises TypeError before anything is enqueued, which is handled symmetrically on both ranks by re-issuing with explicit ReduceOp.SUM options (DDP bucket reduction is SUM). If the sum of zeros probe or an allreduce enqueue fails at runtime, the exception propagates loudly rather than falling back per rank, because a post-enqueue per-rank fallback could desynchronize the collective.",
+    "Forcing NCCL_PROTO=SIMPLE (or LL) on the alternative communicator is a protocol/algo change only; for 2-rank SUM it cannot reorder any addition beyond the single pairwise add per element, so gradients and updated parameters are expected to be bitwise identical to the parent - verified by the framework's paired grad/param checks rather than assumed here.",
+    "The achievable bulk-protocol throughput over the SHM path and the best channel cap are the tested unknowns; the secondary communication goal keeps the step_ms <= 1.05x baseline constraint, and the LL choice in the parameter space reproduces the parent's protocol as a no-regression arm.",
+    "The alternative group uses its default watchdog timeout (Options.timeout is not pybind-exposed); the collectives carry identical work, so a hang would surface as a loud worker timeout, never as silent divergence.",
+    "NCCL_PROTO is set only around the alternative communicator's initialization (restored in a finally block); the default group's communicator already exists from prepare (DDP construction broadcasts), so parent-path collectives keep their original tuner behavior."
+  ],
+  "eliminated_calls": [],
+  "requires": [],
+  "replaces": [],
+  "parameter_space": {
+    "params": [
+      {
+        "name": "nccl_proto",
+        "kind": "str",
+        "choices": ["SIMPLE", "LL"],
+        "description": "Protocol forced on the dedicated bucket-allreduce communicator at its ncclCommInitRank (read from NCCL_PROTO while it initializes). SIMPLE is the bulk-protocol hypothesis; LL reproduces the parent's observed RING_LL protocol as a control arm."
+      },
+      {
+        "name": "nccl_max_ctas",
+        "kind": "int",
+        "choices": [2, 4, 8, 16],
+        "description": "Per-communicator channel cap (ProcessGroupNCCL Options.config.max_ctas) for the dedicated bucket-allreduce communicator; the parent's LL kernels ran with 2 channels (grid 2 x block 544)."
+      }
+    ],
+    "constraints": []
+  }
+}

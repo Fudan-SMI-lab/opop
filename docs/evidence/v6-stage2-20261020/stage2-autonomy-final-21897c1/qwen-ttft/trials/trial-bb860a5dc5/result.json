@@ -1,0 +1,493 @@
+{
+  "trial": "trial-bb860a5dc5",
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-bb860a5dc5",
+    "parent_revision": "05687c76950039da3776581c390d6c142babc0cf7d3259cf659aee631e49d028",
+    "contract_ref": "sha256:29a22a22e9c9e4ee2eb5b53996f91720ccfa02ac256db06d2b38fec419a4d82a",
+    "scope": "region",
+    "implementation": "composite",
+    "groups": [
+      "e0861b46dbeeb562f67f"
+    ],
+    "calls": [
+      "900c23e99c808d2c9bda215a"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-bb860a5dc5.py",
+        "before_sha256": null,
+        "content_ref": "sha256:658281835f30f20c6ebe9d357d4f18bfbfb2d6a93cb1e21a90ceee62df198726"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-bb860a5dc5.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:ec71bfdba9dc44613375584ad6cf637a4abcd64e955aa7ee66d39c52f10aa2ab"
+      }
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Model is Qwen3ForCausalLM loaded from request['assets']['assets'] with dtype bfloat16, attn_implementation='sdpa', local_files_only=True, evaluated in eval mode on the worker-bound device from context['device'].",
+      "Numerical policies match common.configure(): torch.manual_seed(20261020), cuda.matmul.allow_tf32=False, cudnn.allow_tf32=False, cudnn.benchmark=False, float32_matmul_precision('highest'), num_threads(4), num_interop_threads(1).",
+      "Input is real source data: the fixed workloads.json prompt rendered with the Qwen3 chat template (add_generation_prompt=True, enable_thinking=False), encoded without special tokens, then tiled/truncated to exactly 256 prompt tokens and repeated to batch 1 on device.",
+      "Generation is greedy: each step takes argmax over the last-position logits (logits_to_keep=1) with keepdim, producing exactly 32 tokens; no EOS early stopping, no sampling, no teacher forcing inside run (the source's teacher pass is only its internal reference-determinism check).",
+      "Decode steps feed only the single previous greedy token and reuse the KV cache grown from prefill (use_cache=True), never re-encoding the prompt.",
+      "TTFT boundary is the source's own: torch.cuda.synchronize() after prefill forward plus first argmax, bracketed by time.perf_counter_ns(); decode and end-to-end use the source's formulas including decode_tokens_per_second = batch*(new_tokens-1)*1e9/(end-first).",
+      "Correctness observation layout equals the source reference: tokens int64 [1,32] (all generated token IDs concatenated on dim 1) and logits stacked on dim 1 to [1,32,151936] holding the last-position logits of every generation step including prefill, checked against logits_atol/logits_rtol=0.02 and require_exact_greedy_tokens.",
+      "Full work amount is fixed: 1 prefill forward over 256 tokens plus 31 single-token decode forwards; observation capture in quality mode only retains tensors that the timing path already computes and must not alter execution semantics.",
+      "No process-group or CUDA initialization at import time; the module only prepares state inside prepare(), and initialization/weight loading stay outside timed execution."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-bb860a5dc5.py",
+    "parameters": {},
+    "affected_calls_count": 3646,
+    "read_set_count": 3646,
+    "write_set_count": 3
+  },
+  "selection": {
+    "scope": "region",
+    "groups": [
+      "e0861b46dbeeb562f67f"
+    ],
+    "rationale": "Objective is ttft_ms, whose boundary is the adapter's torch.cuda.synchronize() after the single prefill forward (input_ids [1,256], use_cache=True, logits_to_keep=1) plus first argmax, all inside phase 'prefill'; decode (31 steps, separate group 3e293c00b1fb98fbe29f) is outside the metric. Measured facts: clean original baseline ttft_ms=25.684 (project.json); the separate execution_timeline diagnostic shows the prefill window contains 2144 GPU kernels with an active union of only 20.571ms (hardware kernel durations, not host-inflated), so roughly 5ms of every clean TTFT window is host dispatch, launch bubbles and sync latency rather than GPU execution; prefill dispatches ~500 Python module calls and ~1600 aten ops through eager PyTorch (python_runtime corroborates per-call host cost, e.g. 8096 linear dispatches across the 32 forwards). The prefill GEMMs (aten::linear, 16.40ms CUDA, 76% of prefill kernel time) already execute at ~120-140 bf16 TFLOPS on ampere (per-group launch configurations), so kernel-level GEMM tuning alone offers limited headroom, while ~1820 small elementwise/norm/rope/cache kernels plus eager dispatch form the structural overhead. Opportunity selected: replace the prefill-phase Qwen3ForCausalLM.forward boundary (group e0861b46dbeeb562f67f, target 'model', phases=['prefill'], exactly 1 observed invocation, call 900c23e99c808d2c9bda215a with parents [project invoke]) with a lazy CUDA-graph policy: capture the real parent-context forward on an early actual invocation (warmup exists: warmup=2 before repeats=5), then replay in later invocations. Replay re-executes the identical kernel sequence reading the stable per-state input buffer, removing Python/module/aten dispatch from the TTFT critical path while returning the same last-position logits and an equivalent KV cache object for the untouched eager decode steps. This is a region candidate because every nested prefill call's execution is re-routed (graph replay does not re-run Python hooks) - the whole prefill bundle is explicitly replaced at this one coherent editable boundary, and all 3646 prefill-phase observed call IDs are listed as affected. Numerics: same kernels in the same order on the same data, so outputs are bit-identical to eager, satisfying logits_atol/rtol=0.02, require_exact_greedy_tokens and state semantics; decode remains eager so decode_tokens_per_second is preserved. Known implementation constraints carried as explicit unknowns: static graph-pool buffers alias across repeats (returned logits must be cloned and the KV cache re-wrapped per invocation, preserving cache/alias semantics per the binding contract), allocator/graph-pool interaction, and capture must occur inside the actual adapter invocation context so the accepted parent's work is captured.",
+    "hypothesis": "Host dispatch, not GPU execution, accounts for ~5.1ms of the 25.684ms clean TTFT (25.684ms wall vs 20.571ms prefill kernel union); capturing the prefill forward as a CUDA graph during a warmup invocation and replaying it in measured invocations will cut ttft_ms toward the dense GPU-execution floor of ~20.6-21.5ms (expected saving ~2.5-5ms, i.e. ~10-20%), with bit-identical tokens/logits and no decode_tokens_per_second regression. This is a hypothesis to be tested by the framework's paired repeats: if the clean eager path already keeps the GPU dense (host fully overlapped), the measured gain will be small and the follow-up lever becomes fusing the ~1820 elementwise/launch nodes and projection GEMMs inside the same region.",
+    "affected_calls_count": 3646
+  },
+  "proposal": {
+    "implementation": "composite",
+    "replacement_calls": [
+      "900c23e99c808d2c9bda215a"
+    ],
+    "rationale": "Objective is ttft_ms for the frozen interactive workload; the selected region (group e0861b46dbeeb562f67f) is the single Qwen3ForCausalLM prefill invocation (call 900c23e99c808d2c9bda215a, target 'model', phase 'prefill', signature input_ids [1,256] int64 + use_cache=True + logits_to_keep=1). Measured facts: original baseline ttft_ms=25.684299 while the prefill region's diagnostic CUDA time is 21485.5us (group inventory), leaving roughly 4.2ms of the first-token boundary as non-kernel wall; python_runtime shows the host dispatching every one of the region's 3646 observed calls per invocation (546 module __call__s, 253 aten::linear, 145 RMSNorm chains, RoPE elementwise), with module _call_impl cumulative ~1.03s over 32 forwards in the perturbed cProfile capture - i.e. the batch-1 prefill is host-submit dense and the GPU idles between the ~2.1k recorded kernels. No installed bundles exist (search.json installed_bundles=[]), so the parent at this boundary is the accepted parent. The candidate replaces the region boundary with a lazily captured single CUDA Graph of the unmodified parent forward: on the first real invocation (inside the evaluator's dispatch context, per binding-contract.md, so the accepted parent's actual work is captured) it runs 3 side-stream warmup parent forwards, then captures context['references'][call_id] into a CUDA Graph with a static input buffer; every subsequent invocation copies the current input_ids into the static buffer and replays the graph, then rebuilds a fresh DynamicCache bound to the replayed per-layer K/V tensors and returns a CausalLMOutputWithPast with cloned logits. Replay re-executes the full native kernel sequence of the parent on the current input each invocation (no precomputed outputs), removes per-op host dispatch from the first-token boundary, and reproduces the parent's own kernels bit-identically (same kernels, addresses and order), so exact greedy tokens and the 2% logits tolerance are preserved by construction rather than by re-tuning. Decode-phase invocations of the same physical module have different signatures ([1,1] input with an existing cache) and no observed prefill-region call id, so they keep the parent path: decode_tokens_per_second is untouched. This is a single-device task (communication not_applicable per resources.json), world_size=1, so no collective participation is affected. There is no inputs/previous-feedback.txt and no inputs/previous-candidate manifest, so this is the first attempt and no historical rationale needs revising. Route labels cuda_graph_captured / cuda_graph_replay / fallback:* are reported per call through context['record_route']; they are diagnostics, with acceptance resting on the framework's own output checks and native trace evidence that the replayed kernels constitute the returned logits and KV cache.",
+    "setup_work": "One-time lazy setup inside the first candidate invocation (quality/warm path, not per-invocation): 3 warmup parent forwards on a side stream (allocator and cuBLAS workspace warm-up, outputs discarded), one CUDA Graph capture of the parent forward with a static [1,256] int64 input buffer, shape/dtype validation of the captured logits ([1,1,151936] bf16) and 36x2 K/V tensors ([1,8,256,128] bf16), then an immediate replay that produces that invocation's real output. Retained for the process lifetime after setup: static input (~2 KiB), static logits (~0.3 MiB), 72 static K/V tensors (~36 MiB total), and the CUDA Graph private pool holding the captured intermediates. Memory-scope effects: retained graph-pool blocks increase reserved memory and framework.lifecycle_peak_reserved_bytes; warm-run framework.peak_allocated_bytes can fall because prefill intermediates now allocate inside the graph pool, while lifecycle peaks (which include this preparation) can rise; none of these counter movements is a general physical-memory saving, and the graph pool may also hold non-PyTorch-driver allocations not visible to these counters. Setup cost lands in whichever run triggers the first invocation and is not hidden from any measurement boundary.",
+    "quality_risks": [
+      "CUDA Graph capture can fail if any observer active during the first invocation performs a capture-illegal operation; this is caught, labeled fallback:setup_failure:<Exception>, and every call then uses the eager parent, so correctness is preserved at baseline speed.",
+      "Replay reproduces the parent's captured kernels deterministically (identical kernel sequence and addresses); residual risk is cuBLAS run-to-run nondeterminism, which would surface as a quality mismatch and is bounded by the existing logits tolerance and exact-greedy-token checks.",
+      "The fresh DynamicCache returned per invocation binds read-only views of the static K/V pool tensors; the observed decode parent only consumes them through out-of-place torch.cat growth and shape reads, so no in-place aliasing occurs. The logits are cloned per call so no output aliases the retained static buffers. The layout expectation (transformers 5.16.1 DynamicCache.layers with keys/values/dtype/device/is_initialized) is validated after capture with a mismatch routing to setup-failure fallback rather than silent corruption.",
+      "Signature deviations (positional args, non-[1,256] shapes, attention_mask/position_ids/cache kwargs, output flags) bypass the graph and run the parent eagerly under fallback:signature, preserving semantics for any unforeseen call shape.",
+      "A runtime failure during replay or cache reconstruction permanently demotes the site to the eager parent (fallback:runtime_failure), so a single transient error cannot corrupt later invocations.",
+      "Graph replay does not rerun Python hooks: the inner prefill sites listed in eliminated_calls execute as Python only during the one-time capture warm-up/capture passes and never during steady-state replays; their contribution to the output is carried by the native kernels inside the graph, which the framework observes independently of route labels."
+    ],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {},
+    "eliminated_calls_count": 3645
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea6a8c367ffeGudwYowkcHCxxj",
+    "message": "msg_1595f957f001f6Hqpz6vB2NE2t",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 21,
+      "reported_cost": 0.54899435568,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 1245048.0,
+        "input": 78368.0,
+        "output": 6018.0,
+        "reasoning": 21462.0,
+        "cache.read": 1139200.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea6a8c367ffeGudwYowkcHCxxj",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/qwen-ttft/sandboxes/selection-6423dc694710",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea6a05556ffeDx0EyvTaKbxhpJ",
+    "message": "msg_1596e2862001F7V4xvfkQAMZq4",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 55,
+      "reported_cost": 1.77411880962,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 5027454.0,
+        "input": 123215.0,
+        "output": 9236.0,
+        "reasoning": 32347.0,
+        "cache.read": 4862656.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea6a05556ffeDx0EyvTaKbxhpJ",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/qwen-ttft/sandboxes/candidate-f876de172ba7",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0
+  },
+  "measurement": null,
+  "decision": {
+    "accepted": false,
+    "reasons": [
+      "no_valid_parameter_candidate"
+    ]
+  },
+  "evaluation": null,
+  "publication": null,
+  "missing_coverage": null,
+  "evaluation_attempt": null,
+  "pairs": [],
+  "resources": {
+    "status": null,
+    "reason": null,
+    "evidence": null,
+    "raw_discovery": null,
+    "extra_collectors": {}
+  },
+  "native_replacement_summary": [],
+  "raw_trial_scope": "Full resource arrays, affected-call closures, eliminated-call lists, and read/write sets remain in the hashed original server receipt. Public counted fields summarize these lists; actual replacement sites, parameters, quality, measurements, and decision are retained.",
+  "parameter_search": {
+    "engine": "existing TaskSearch + OptunaTPETuner",
+    "measurement_scope": "complete project",
+    "parameter_trials": 3,
+    "space": {},
+    "selected": null,
+    "stats": [
+      {
+        "candidate_id": "cand-3bea9b00",
+        "space_id": "space-cand-3bea9b00",
+        "n_complete": 0,
+        "n_fail": 1,
+        "best": null,
+        "param_stats": [],
+        "resource_at_best": null,
+        "failure_clusters": []
+      }
+    ],
+    "responses": [],
+    "response_interpretation": "Finite differences of observed screening endpoints, not independent causal sensitivities or acceptance evidence. Objective/throughput/workload constants are not automatically labelled resources. Zero resource change is observed, not missing. Kernel counters require separately available diagnostic evidence.",
+    "observations": [
+      {
+        "bundle": {
+          "schema_version": "project.v2",
+          "id": "trial-bb860a5dc5-param-1da3c439",
+          "parent_revision": "05687c76950039da3776581c390d6c142babc0cf7d3259cf659aee631e49d028",
+          "contract_ref": "sha256:29a22a22e9c9e4ee2eb5b53996f91720ccfa02ac256db06d2b38fec419a4d82a",
+          "scope": "region",
+          "implementation": "composite",
+          "groups": [
+            "e0861b46dbeeb562f67f"
+          ],
+          "calls": [
+            "900c23e99c808d2c9bda215a"
+          ],
+          "edits": [
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-bb860a5dc5.py",
+              "before_sha256": null,
+              "content_ref": "sha256:658281835f30f20c6ebe9d357d4f18bfbfb2d6a93cb1e21a90ceee62df198726"
+            },
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-bb860a5dc5.targets.json",
+              "before_sha256": null,
+              "content_ref": "sha256:ec71bfdba9dc44613375584ad6cf637a4abcd64e955aa7ee66d39c52f10aa2ab"
+            }
+          ],
+          "requires": [],
+          "replaces": [],
+          "external_invariants": [
+            "Model is Qwen3ForCausalLM loaded from request['assets']['assets'] with dtype bfloat16, attn_implementation='sdpa', local_files_only=True, evaluated in eval mode on the worker-bound device from context['device'].",
+            "Numerical policies match common.configure(): torch.manual_seed(20261020), cuda.matmul.allow_tf32=False, cudnn.allow_tf32=False, cudnn.benchmark=False, float32_matmul_precision('highest'), num_threads(4), num_interop_threads(1).",
+            "Input is real source data: the fixed workloads.json prompt rendered with the Qwen3 chat template (add_generation_prompt=True, enable_thinking=False), encoded without special tokens, then tiled/truncated to exactly 256 prompt tokens and repeated to batch 1 on device.",
+            "Generation is greedy: each step takes argmax over the last-position logits (logits_to_keep=1) with keepdim, producing exactly 32 tokens; no EOS early stopping, no sampling, no teacher forcing inside run (the source's teacher pass is only its internal reference-determinism check).",
+            "Decode steps feed only the single previous greedy token and reuse the KV cache grown from prefill (use_cache=True), never re-encoding the prompt.",
+            "TTFT boundary is the source's own: torch.cuda.synchronize() after prefill forward plus first argmax, bracketed by time.perf_counter_ns(); decode and end-to-end use the source's formulas including decode_tokens_per_second = batch*(new_tokens-1)*1e9/(end-first).",
+            "Correctness observation layout equals the source reference: tokens int64 [1,32] (all generated token IDs concatenated on dim 1) and logits stacked on dim 1 to [1,32,151936] holding the last-position logits of every generation step including prefill, checked against logits_atol/logits_rtol=0.02 and require_exact_greedy_tokens.",
+            "Full work amount is fixed: 1 prefill forward over 256 tokens plus 31 single-token decode forwards; observation capture in quality mode only retains tensors that the timing path already computes and must not alter execution semantics.",
+            "No process-group or CUDA initialization at import time; the module only prepares state inside prepare(), and initialization/weight loading stay outside timed execution."
+          ],
+          "plan_ref": null,
+          "registry_ref": null,
+          "installer": "opop_candidates/trial-bb860a5dc5.py",
+          "parameters": {},
+          "affected_calls_count": 3646,
+          "read_set_count": 3646,
+          "write_set_count": 3
+        },
+        "revision": "f0d7b9545432683926af46ef9e2d4cce29c2446c5bca6a69ba0ddaa318fd8220",
+        "result": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "constraints": [],
+        "run": {
+          "status": "passed",
+          "failure": null,
+          "ranks": [
+            {
+              "rank": 0,
+              "status": "passed",
+              "error": null,
+              "framework_source": {
+                "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": false,
+                "checks": [
+                  {
+                    "continuous_step": 0,
+                    "passed": false,
+                    "compared_elements": 4861984,
+                    "max_abs_error": 5.0625,
+                    "observation_path": "output.logits",
+                    "atol": 0.02,
+                    "rtol": 0.02,
+                    "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+                    "error": "Tensor-likes are not close!\n\nMismatched elements: 2017208 / 4861952 (41.5%)\nGreatest absolute difference: 5.0625 at index (0, 21, 137522) (up to 0.02 allowed)\nGreatest relative difference: 27648.0 at index (0, 23, 82333) (up to 0.02 allowed)"
+                  },
+                  {
+                    "continuous_step": 1,
+                    "passed": false,
+                    "compared_elements": 4861984,
+                    "max_abs_error": 5.0625,
+                    "observation_path": "output.logits",
+                    "atol": 0.02,
+                    "rtol": 0.02,
+                    "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+                    "error": "Tensor-likes are not close!\n\nMismatched elements: 2017208 / 4861952 (41.5%)\nGreatest absolute difference: 5.0625 at index (0, 21, 137522) (up to 0.02 allowed)\nGreatest relative difference: 27648.0 at index (0, 23, 82333) (up to 0.02 allowed)"
+                  }
+                ],
+                "coverage": {
+                  "trial-bb860a5dc5-param-1da3c439": {
+                    "counts": {
+                      "900c23e99c808d2c9bda215a": 2
+                    },
+                    "fallbacks": {},
+                    "required": [
+                      "900c23e99c808d2c9bda215a"
+                    ],
+                    "reference_invocations": {
+                      "900c23e99c808d2c9bda215a": 4
+                    },
+                    "candidate_declared_routes": [
+                      {
+                        "call": "900c23e99c808d2c9bda215a",
+                        "route": "cuda_graph_captured",
+                        "count": 1
+                      },
+                      {
+                        "call": "900c23e99c808d2c9bda215a",
+                        "route": "cuda_graph_replay",
+                        "count": 2
+                      }
+                    ],
+                    "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                  }
+                },
+                "setup": [
+                  {
+                    "bundle": "trial-bb860a5dc5-param-1da3c439",
+                    "binding": {
+                      "requested": "legacy",
+                      "effective": "direct",
+                      "reason": "no functional replacements"
+                    },
+                    "elapsed_ms": 23.36942,
+                    "allocated_bytes": 8101711872,
+                    "reserved_bytes": 8103395328,
+                    "peak_allocated_bytes": 8101711872,
+                    "scope": "installation after model prepare; separate from the declared warm-model score"
+                  }
+                ],
+                "samples": [],
+                "metrics": {},
+                "diagnostics": null,
+                "metric_samples": null
+              }
+            }
+          ]
+        },
+        "diagnostic": null,
+        "candidate_diagnostics": {
+          "status": "observed",
+          "run": {
+            "schema_version": 1,
+            "status": "passed",
+            "failure": null,
+            "wall_s": 18.417026214301586,
+            "ranks": [
+              {
+                "rank": 0,
+                "pid": 748092,
+                "exit_code": 0,
+                "status": "passed",
+                "binding": {
+                  "pid": 748092,
+                  "status": "verified",
+                  "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                  "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                  "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                  "logical_device": 0,
+                  "nvidia_smi_pid_uuids": [
+                    "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+                  ],
+                  "pid_query_status": "observed",
+                  "occupancy": {
+                    "status": "sampled_clear",
+                    "samples": 29,
+                    "unavailable_samples": 0,
+                    "wait_s": 0.08916208148002625,
+                    "external_clients": [],
+                    "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                  }
+                },
+                "framework_source": {
+                  "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+                  "files": 155,
+                  "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+                },
+                "result": {
+                  "valid": true,
+                  "coverage": {
+                    "trial-bb860a5dc5-param-1da3c439": {
+                      "counts": {
+                        "900c23e99c808d2c9bda215a": 2
+                      },
+                      "fallbacks": {},
+                      "reference_invocations": {
+                        "900c23e99c808d2c9bda215a": 4
+                      },
+                      "candidate_declared_routes": [
+                        {
+                          "call": "900c23e99c808d2c9bda215a",
+                          "route": "cuda_graph_captured",
+                          "count": 1
+                        },
+                        {
+                          "call": "900c23e99c808d2c9bda215a",
+                          "route": "cuda_graph_replay",
+                          "count": 2
+                        }
+                      ],
+                      "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                    }
+                  },
+                  "scope": "Diagnostic execution only; no quality or performance acceptance",
+                  "candidate_diagnostics": {
+                    "schema_version": "project.candidate-diagnostics.v1",
+                    "events": [],
+                    "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+                  }
+                }
+              }
+            ],
+            "lease_wait_s": 18.39694021269679,
+            "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "worker_pids_reaped": true
+          },
+          "evidence": [
+            "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/qwen-ttft/jobs/candidate-diagnostics-fdbdeb88fd/run/candidate-diagnostics-rank-0.json"
+          ],
+          "ranks": [
+            {
+              "file": "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/qwen-ttft/jobs/candidate-diagnostics-fdbdeb88fd/run/candidate-diagnostics-rank-0.json",
+              "schema_version": "project.candidate-diagnostics.v1",
+              "events": [],
+              "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+            }
+          ],
+          "provenance": {
+            "revision": "f0d7b9545432683926af46ef9e2d4cce29c2446c5bca6a69ba0ddaa318fd8220",
+            "parent_revision": "05687c76950039da3776581c390d6c142babc0cf7d3259cf659aee631e49d028",
+            "bundles": [
+              "trial-bb860a5dc5-param-1da3c439"
+            ],
+            "plan": "sha256:9fe216b9ca239cd09470b6b1d1151e0fb7b7c880352fa150030b7291f619c416",
+            "registry": "sha256:96e657f310a059bea9d1a506e0622012a216fdc4547b15c9a2bc82064a9ef126",
+            "request_sha256": "cc1ba8a690c88e9c1c7c5ece4fc1b3aea0ca0fb2f10322103922a2c5bf8af84c",
+            "objective": {
+              "name": "ttft_ms",
+              "direction": "minimize",
+              "unit": "ms",
+              "paired_repeats": 2
+            },
+            "workload": {
+              "id": "interactive",
+              "batch": 1,
+              "prompt_tokens": 256,
+              "new_tokens": 32,
+              "goals": [
+                {
+                  "id": "ttft",
+                  "metric": "ttft_ms",
+                  "direction": "min"
+                },
+                {
+                  "id": "decode",
+                  "metric": "decode_tokens_per_second",
+                  "direction": "max"
+                }
+              ]
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "trigger": {
+            "policy": "on_reference",
+            "reference_sites": [
+              {
+                "rank": 0,
+                "bundle": "trial-bb860a5dc5-param-1da3c439",
+                "call": "900c23e99c808d2c9bda215a",
+                "invocations": 2,
+                "reference_invocations": 4
+              }
+            ],
+            "interpretation": "Any fully referenced site can expose a hidden fallback in a joint bundle. References can also implement legitimate composition or verification; this trigger does not change quality, feasibility or acceptance."
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,676 @@
+{
+  "trial": "trial-fdeb45db0b",
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-fdeb45db0b",
+    "parent_revision": "3b2492569e35a37e812ab23938167ced8dfd4c62b6660d41db32c2363d0b82d2",
+    "contract_ref": "sha256:92a3ee1d5893ffe036bb6e8eae2def741343eb0622e91112f93aad2bd1e81379",
+    "scope": "joint",
+    "implementation": "distributed",
+    "groups": [
+      "f833b57a373d8262a384",
+      "8525af72c631b94e3dd0"
+    ],
+    "calls": [
+      "d0938de87369efd500322679",
+      "b8ade439d7b8bd5fb5c1029b"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-fdeb45db0b.py",
+        "before_sha256": null,
+        "content_ref": "sha256:a00d5201d64faddaa7424074f99ffdcb5130a7e4bb72713d6ca81dc3d9fdec11"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-fdeb45db0b.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+      }
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "FP32 parameters, activations and gradients; torch.backends.cuda.matmul.allow_tf32 = False, torch.backends.cudnn.allow_tf32 = False, torch.backends.cudnn.benchmark = False, torch.set_float32_matmul_precision('highest'), 4 CPU threads, 1 interop thread",
+      "torch.manual_seed(20261020) before model construction; per-rank inputs from torch.Generator().manual_seed(31000 + rank); inputs are generated once outside timing and reused unchanged for every repeat",
+      "GPT-2 config n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False, attn_implementation='eager'; model in train() mode with .float() weights",
+      "Each micro-step computes model(input_ids=tokens, labels=tokens, use_cache=False).loss divided by accumulation_steps, then backward(); the reported loss is torch.stack(micro_losses).sum()",
+      "optimizer.zero_grad(set_to_none=True) opens every step; the first accumulation_steps-1 micro-steps run under DDP.no_sync() and only the final micro-step performs the DDP gradient allreduce",
+      "DDP is constructed with broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True and no communication hook in the clean timing path",
+      "Optimizer is torch.optim.SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) over the DDP module's parameters",
+      "reset() must restore identical starting parameters/buffers from the initial CPU snapshot so every repeat starts from the same weights; the process group is never destroyed",
+      "Effective batch = world_size * micro_batch * accumulation_steps = 8; tokens per step = 1024; these derive from the unchanged work amount",
+      "Correctness observations use unwrapped GPT2LMHeadModel parameter names (lm_head.weight is tied to transformer.wte.weight and appears once); gradients and updated parameters are returned in full as detached tensors",
+      "Communication diagnostics (diagnostic.max_rank_nccl_kernel_sum_ms) are measured by the framework in separate diagnostic runs; run()/metrics() contain no profiler and no inventory hook"
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-fdeb45db0b.py",
+    "parameters": {},
+    "affected_calls_count": 2,
+    "read_set_count": 2,
+    "write_set_count": 4
+  },
+  "selection": {
+    "scope": "joint",
+    "groups": [
+      "f833b57a373d8262a384",
+      "8525af72c631b94e3dd0"
+    ],
+    "rationale": "The dominant cost in this workload is the DDP gradient allreduce executed on the final micro-step: 13 separate c10d::allreduce_ dispatches (call d0938de87369efd500322679, 12 invocations of one contiguous 7,087,872-element fp32 bucket each; call b8ade439d7b8bd5fb5c1029b, one 39,385,344-element bucket) totaling 497.7MB, all launched back-to-back on the NCCL stream (stream 17). Measured facts: the separately collected diagnostic objective diagnostic.max_rank_nccl_kernel_sum_ms is 281.4ms on rank 0 vs 63.4ms on rank 1; rank-1 in-situ kernel durations (3.55ms per 27MB bucket, 19.3ms for the 150MB bucket) match the clean collective-calibration medians (3.59-3.66ms, 19.46ms), so the fabric sustains ~7.9-8.1 GB/s logical payload regardless of chunking and per-bucket wire time will not drop with fusion. Rank-0's inflation to ~14.4ms per bucket (first kernel 43.6ms) is in-kernel spin-wait for the later-arriving peer: 13 independent skew-exposure and launch episodes, one per collective. Non-NCCL compute kernels sum to only ~34.5ms (261.8ms project diagnostic minus 227.3ms inclusive allreduce) and only the final micro-step's ~7ms backward overlaps the allreduce stream, because the first 3 micro-steps run under no_sync (frozen source semantics). GPU utilization during the ~140.5ms clean step is ~16%, consistent with a long exposed communication tail plus dispatch gaps. A compute-side rewrite targets at most ~34.5ms of GPU-busy time and leaves the ~62ms serial communication tail untouched, so the communication dispatch is the larger and directly measurable lever for both step_ms and the communication goal. The two groups must be selected together: they share the same dispatch target c10d.allreduce_.default, the same process group, stream and DDP Work contract, and any batching policy over the 12 small buckets changes enqueue timing for the large bucket, so one coordinated replacement must own both call sites.",
+    "hypothesis": "Replacing both c10d.allreduce_.default dispatch sites with a coordinated batching policy that accumulates arriving bucket tensors and issues fewer grouped allreduce_ calls (the signature already accepts Tensor[]; ProcessGroupNCCL coalesces multi-tensor calls into single kernels, e.g. 13 kernels down to 2-3) will: (1) collapse the 13 per-collective launch and inter-rank skew episodes that dominate the max-rank NCCL kernel sum (281.4ms vs the ~63ms actually-busy rank), substantially reducing diagnostic.max_rank_nccl_kernel_sum_ms; (2) modestly reduce step_ms by removing serial dispatch/wait episodes on the post-backward critical path while aggregate wire time stays ~62ms (fabric-bound at ~8GB/s); and (3) preserve numerics, since SUM-averaging is applied to the same fp32 bucket-view tensors with DDP's unchanged world_size scaling, provided the replacement keeps async_op=True, returns Work objects the DDP reducer accepts, and completes all communication before optimizer.step(). Treat benefits as hypotheses: the clean-run skew magnitude is unknown (the 281ms diagnostic includes discovery-hook perturbation), deferring small-bucket enqueues trades a few ms of backward overlap for consolidated launches, and any reduction-order changes from grouped NCCL kernels must pass the 1e-6/1e-4 gradient tolerances; the step_ms_max_baseline_ratio 1.05 constraint must hold. DDP construction (bucket_cap_mb=25, gradient_as_bucket_view=True, no communication hook) and the no_sync accumulation structure are frozen, so batching must happen at these dispatch sites rather than by rebuilding DDP.",
+    "affected_calls_count": 2
+  },
+  "proposal": {
+    "implementation": "distributed",
+    "replacement_calls": [
+      "d0938de87369efd500322679",
+      "b8ade439d7b8bd5fb5c1029b"
+    ],
+    "rationale": "Joint replacement of both c10d.allreduce_.default dispatch sites (12 invocations of the 7,087,872-element fp32 bucket, 1 invocation of the 39,385,344-element bucket, same process group and DDP Work contract) with one coordinated batching policy that preserves the dispatch sites, the bucket tensors, the SUM semantics, async_op=True and the (Tensor[], Work) return contract, while consolidating the collectives. Mechanism: the small-bucket replacement defers each arriving bucket and still returns a real c10d Work handle (the most recently issued collective's Work; on the very first deferral of an install, a one-element scratch allreduce issued through the parent operator creates it). When the large-bucket dispatch arrives - observed last on both ranks (collective sequences 21-32 small, 33 large) - the accumulated buffers plus the large bucket are issued as ONE multi-tensor call through the parent-class coalescing operator c10d.allreduce_coalesced_, whose NCCL implementation (ProcessGroupNCCL::allreduce_coalesced) wraps the per-tensor ncclAllReduce enqueues in a single nccl group, fusing the step's 497.7MB of gradient payload into one grouped kernel instead of 13 independent launch/skew episodes. c10d.allreduce_ itself rejects tensor lists longer than one on the NCCL backend (verified in the installed torch 2.13 binary), which is why the coalesced operator is used for grouped flushes and the intercepted call's own parent operator is used unchanged for single-tensor calls (scratch, solo large bucket, per-tensor degradation). Why deferral is safe with this torch build (verified by disassembling the installed libtorch): the C++ caller of the op is ProcessGroup::allreduce invoked from _AllReduceBySumCommHook::runHook, which only calls the returned Work's getFuture; Reducer::finalize_backward waits for all bucket futures via c10::collectAll(...)->wait() before finalize_bucket_dense runs (finalize_bucket_dense is called only from finalize_backward), so the folded collective's Work - the last collective of the step on the process group - is the synchronization point covering every deferred bucket's data, exactly like the baseline's final-bucket Work; with gradient_as_bucket_view=True nothing copies bucket data on future completion. Numerics: with world_size=2 the per-element reduction is a single commutative fp32 addition, so grouped and per-bucket allreduces are bitwise equal per element; DDP's world-size division happens in the reducer before dispatch and is untouched. Expected effects, stated as hypotheses per the selection: the communication objective (diagnostic.max_rank_nccl_kernel_sum_ms) should drop sharply because 13 per-collective inter-rank skew/launch exposure episodes collapse into one (the profiled diagnostic showed 281.4ms on rank 0 vs 63.4ms actually-busy rank 1; clean-run skew magnitude is unknown); step_ms gains the removed dispatch episodes (~0.18ms CPU per c10d::allreduce_ submission plus inter-kernel gaps) minus the lost overlap of early small-bucket allreduces with the final backward's ~7-8ms of GPU compute; aggregate wire time stays ~62ms because the measured fabric sustains 7.9-8.1 GB/s regardless of chunking (collective calibration medians 3.59ms/27MB and 19.46ms/150MB). The step_ms_max_baseline_ratio 1.05 constraint has margin because the overlap loss is bounded by the final backward's compute while 12 submission episodes and their GPU-side gaps are removed. Ordering safety: every flush trigger is call-count based (group-size threshold, large-bucket arrival, guard mismatch, repeated-bucket-storage anomaly), never time based, so both ranks - which observe the deterministic bucket readiness order of the frozen model - enqueue the identical collective sequence; the workload's own collectives (no_sync micro-steps issue none) and the framework's int32 consensus allreduces do not match the observed fp32 bucket signatures and pass through the parent unchanged. A tunable small_group_size flushes queued small buckets earlier (6/9/12 buckets per group), trading consolidation for partial restoration of the baseline's backward overlap; 16 (default) folds everything with the large bucket. Fallback labels distinguish unsupported signature (fallback_parent, order-preserving by flushing pending first), setup failure (setup_defer_unavailable when the deferral machinery cannot produce a Work) and runtime failure (flush_error_per_tensor when a grouped call fails and degrades to per-tensor parent calls). No inputs/previous-feedback.txt exists, so this is a first attempt with no prior rejected implementation to reconcile. CPU-verified end to end (worker python, real dispatch mode interception, two-process gloo): per-element results are exactly the pre-division SUM mean on both ranks, routes and collective order are identical across ranks, deferred Works wait cleanly, and the nested-dispatch re-entry hazard found in testing is neutralized by an in-flight passthrough guard. Binding contract compliance: replacements execute only inside the framework's dispatch mode during actual adapter invocations on the autograd-engine thread; no installation-time parent calls are treated as execution proof; the workload runs on current gradients every invocation with no fixture-dependent caching; collective participation is symmetric on both ranks since both sites exist on ranks 0 and 1 (build returns no replacements if either local site is absent, keeping the mapping rank-legal).",
+    "setup_work": "build(context) constructs only Python objects (a batcher state machine and two closures) and performs no GPU work, no allocations, no parameter transforms and no CUDA graph capture; installation cost is negligible and reported by the framework's setup timing. Lazy runtime setup, documented for memory accounting: on the first deferred small-bucket call of the first step after each install, a persistent 1-element fp32 CUDA scratch tensor (4 bytes plus allocator overhead) is allocated and one 1-element allreduce is issued through the parent operator to obtain an initial real Work handle; the tensor and the most recent Work handle are retained for the install's lifetime (a few hundred bytes of host/GPU metadata), pending bucket references exist only between deferral and the same step's flush and add no GPU memory because the bucket buffers are DDP-owned. No warm-run peak_allocated reduction is claimed from this; framework.peak_allocated_bytes and lifecycle peaks are unaffected up to allocator rounding.",
+    "quality_risks": [
+      "Deferred calls return a Work handle from an earlier collective; correctness relies on the torch 2.13 reducer only waiting on futures at finalize_backward (collectAll then wait) and on finalize_bucket_dense running after those waits - verified by disassembling the installed libtorch_cpu.so; a torch upgrade changing this contract would be caught by the gradient/parameter checks, not silently tolerated.",
+      "The fold trigger assumes the large bucket is dispatched after the small buckets, as observed on both ranks (sequences 21-33); guard mismatches and repeated-bucket-storage anomalies flush pending before falling back to the parent, and a small_group_size below 12 bounds accumulation, but a hypothetical mid-evaluation bucket-structure drift that changed only the large bucket's signature could leave a step's small buckets unreduced and would surface as a quality failure rather than a silent pass.",
+      "The grouped kernel count is a hypothesis: ProcessGroupNCCL::allreduce_coalesced wraps per-tensor ncclAllReduce in one nccl group and is expected to fuse into a single kernel (possibly a few for internal chunking); the communication diagnostic and nsys evidence from the framework's leased workers are the acceptance proof, and per-bucket wire time is fabric-bound at the measured 7.9-8.1 GB/s.",
+      "Full folding removes the baseline's overlap between the early small-bucket allreduces and the final backward's compute (bounded by that ~7-8ms GPU segment); if this exceeded the removed dispatch and skew costs, step_ms could regress toward the 1.05 constraint ceiling - the small_group_size parameter exists so the tuner can trade back overlap (6 restores two earlier grouped launches).",
+      "Numerics are bitwise identical per element for two-rank SUM (single commutative fp32 add per element regardless of protocol or grouping); if the grouped path still failed numerically, the flush_error_per_tensor degradation reproduces baseline per-bucket calls and the route telemetry records it."
+    ],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {
+      "params": [
+        {
+          "name": "small_group_size",
+          "kind": "int",
+          "choices": [
+            6,
+            9,
+            12,
+            16
+          ],
+          "description": "Number of deferred small-bucket gradients accumulated before a grouped allreduce is issued early; 16 (default) never triggers early and folds all 12 small buckets into the single call made at the large-bucket dispatch. Lower values flush grouped collectives earlier during backward, partially restoring the baseline's communication/compute overlap at the cost of more (but still coalesced) collectives. Frozen task semantics are unchanged for every choice."
+        }
+      ],
+      "constraints": []
+    },
+    "eliminated_calls_count": 0
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea6b675ffffeRQ9DqZwT5AUweB",
+    "message": "msg_1594df996001O3XFp9sch2BATp",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 15,
+      "reported_cost": 0.46128574634,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 1052768.0,
+        "input": 85385.0,
+        "output": 4052.0,
+        "reasoning": 14019.0,
+        "cache.read": 949312.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea6b675ffffeRQ9DqZwT5AUweB",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/ddp-step/sandboxes/selection-358c8aa97f3c",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea6b1ecc9ffewDIpTWCfB4VYhC",
+    "message": "msg_1597cd9fc001DUgM2LUzNIoMPN",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 146,
+      "reported_cost": 6.1037179748,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 18405948.0,
+        "input": 216440.0,
+        "output": 30394.0,
+        "reasoning": 75210.0,
+        "cache.read": 18083904.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea6b1ecc9ffewDIpTWCfB4VYhC",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/ddp-step/sandboxes/candidate-43ca78737b16",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0
+  },
+  "measurement": null,
+  "decision": {
+    "accepted": false,
+    "reasons": [
+      "no_valid_parameter_candidate"
+    ]
+  },
+  "evaluation": null,
+  "publication": null,
+  "missing_coverage": null,
+  "evaluation_attempt": null,
+  "pairs": [],
+  "resources": {
+    "status": null,
+    "reason": null,
+    "evidence": null,
+    "raw_discovery": null,
+    "extra_collectors": {}
+  },
+  "native_replacement_summary": [],
+  "raw_trial_scope": "Full resource arrays, affected-call closures, eliminated-call lists, and read/write sets remain in the hashed original server receipt. Public counted fields summarize these lists; actual replacement sites, parameters, quality, measurements, and decision are retained.",
+  "parameter_search": {
+    "engine": "existing TaskSearch + OptunaTPETuner",
+    "measurement_scope": "complete project",
+    "parameter_trials": 3,
+    "space": {
+      "params": [
+        {
+          "name": "small_group_size",
+          "kind": "int",
+          "choices": [
+            6,
+            9,
+            12,
+            16
+          ],
+          "description": "Number of deferred small-bucket gradients accumulated before a grouped allreduce is issued early; 16 (default) never triggers early and folds all 12 small buckets into the single call made at the large-bucket dispatch. Lower values flush grouped collectives earlier during backward, partially restoring the baseline's communication/compute overlap at the cost of more (but still coalesced) collectives. Frozen task semantics are unchanged for every choice."
+        }
+      ],
+      "constraints": []
+    },
+    "selected": null,
+    "stats": [
+      {
+        "candidate_id": "cand-c11767f3",
+        "space_id": "space-cand-c11767f3",
+        "n_complete": 0,
+        "n_fail": 3,
+        "best": null,
+        "param_stats": [
+          {
+            "name": "small_group_size",
+            "best_value": 6,
+            "best_trial_value": null,
+            "at_boundary": false,
+            "boundary_direction": null,
+            "effect_pct": 0.0,
+            "latency_by_value": {},
+            "objective_by_value": {},
+            "effect_absolute": null,
+            "failure_rate_by_value": {
+              "6": 1.0,
+              "9": 1.0,
+              "16": 1.0
+            }
+          }
+        ],
+        "resource_at_best": null,
+        "failure_clusters": []
+      }
+    ],
+    "responses": [
+      {
+        "candidate_id": "trial-fdeb45db0b",
+        "axis": "small_group_size",
+        "a_params": {
+          "values": {
+            "small_group_size": 9
+          }
+        },
+        "b_params": {
+          "values": {
+            "small_group_size": 16
+          }
+        },
+        "a": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "b": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "delta_j": null,
+        "gain": null,
+        "parameter_slope": null,
+        "resource_deltas": {},
+        "resource_slopes": {},
+        "unknown_resources": [
+          "framework.allocated_bytes",
+          "framework.lifecycle_peak_allocated_bytes",
+          "framework.lifecycle_peak_reserved_bytes",
+          "framework.peak_allocated_bytes",
+          "framework.peak_reserved_bytes",
+          "framework.reserved_bytes",
+          "replacement.diagnostic_kernel_sum_us",
+          "replacement.kernel_launches",
+          "replacement.max_registers_per_thread",
+          "replacement.max_shared_memory_bytes"
+        ],
+        "resource_status": "unknown",
+        "reason": "invalid_endpoint"
+      },
+      {
+        "candidate_id": "trial-fdeb45db0b",
+        "axis": "small_group_size",
+        "a_params": {
+          "values": {
+            "small_group_size": 16
+          }
+        },
+        "b_params": {
+          "values": {
+            "small_group_size": 6
+          }
+        },
+        "a": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "b": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "delta_j": null,
+        "gain": null,
+        "parameter_slope": null,
+        "resource_deltas": {},
+        "resource_slopes": {},
+        "unknown_resources": [
+          "framework.allocated_bytes",
+          "framework.lifecycle_peak_allocated_bytes",
+          "framework.lifecycle_peak_reserved_bytes",
+          "framework.peak_allocated_bytes",
+          "framework.peak_reserved_bytes",
+          "framework.reserved_bytes",
+          "replacement.diagnostic_kernel_sum_us",
+          "replacement.kernel_launches",
+          "replacement.max_registers_per_thread",
+          "replacement.max_shared_memory_bytes"
+        ],
+        "resource_status": "unknown",
+        "reason": "invalid_endpoint"
+      }
+    ],
+    "response_interpretation": "Finite differences of observed screening endpoints, not independent causal sensitivities or acceptance evidence. Objective/throughput/workload constants are not automatically labelled resources. Zero resource change is observed, not missing. Kernel counters require separately available diagnostic evidence.",
+    "observations": [
+      {
+        "bundle": {
+          "schema_version": "project.v2",
+          "id": "trial-fdeb45db0b-param-47be2d9e",
+          "parent_revision": "3b2492569e35a37e812ab23938167ced8dfd4c62b6660d41db32c2363d0b82d2",
+          "contract_ref": "sha256:92a3ee1d5893ffe036bb6e8eae2def741343eb0622e91112f93aad2bd1e81379",
+          "scope": "joint",
+          "implementation": "distributed",
+          "groups": [
+            "f833b57a373d8262a384",
+            "8525af72c631b94e3dd0"
+          ],
+          "calls": [
+            "d0938de87369efd500322679",
+            "b8ade439d7b8bd5fb5c1029b"
+          ],
+          "edits": [
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-fdeb45db0b.py",
+              "before_sha256": null,
+              "content_ref": "sha256:a00d5201d64faddaa7424074f99ffdcb5130a7e4bb72713d6ca81dc3d9fdec11"
+            },
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-fdeb45db0b.targets.json",
+              "before_sha256": null,
+              "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+            }
+          ],
+          "requires": [],
+          "replaces": [],
+          "external_invariants": [
+            "FP32 parameters, activations and gradients; torch.backends.cuda.matmul.allow_tf32 = False, torch.backends.cudnn.allow_tf32 = False, torch.backends.cudnn.benchmark = False, torch.set_float32_matmul_precision('highest'), 4 CPU threads, 1 interop thread",
+            "torch.manual_seed(20261020) before model construction; per-rank inputs from torch.Generator().manual_seed(31000 + rank); inputs are generated once outside timing and reused unchanged for every repeat",
+            "GPT-2 config n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False, attn_implementation='eager'; model in train() mode with .float() weights",
+            "Each micro-step computes model(input_ids=tokens, labels=tokens, use_cache=False).loss divided by accumulation_steps, then backward(); the reported loss is torch.stack(micro_losses).sum()",
+            "optimizer.zero_grad(set_to_none=True) opens every step; the first accumulation_steps-1 micro-steps run under DDP.no_sync() and only the final micro-step performs the DDP gradient allreduce",
+            "DDP is constructed with broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True and no communication hook in the clean timing path",
+            "Optimizer is torch.optim.SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) over the DDP module's parameters",
+            "reset() must restore identical starting parameters/buffers from the initial CPU snapshot so every repeat starts from the same weights; the process group is never destroyed",
+            "Effective batch = world_size * micro_batch * accumulation_steps = 8; tokens per step = 1024; these derive from the unchanged work amount",
+            "Correctness observations use unwrapped GPT2LMHeadModel parameter names (lm_head.weight is tied to transformer.wte.weight and appears once); gradients and updated parameters are returned in full as detached tensors",
+            "Communication diagnostics (diagnostic.max_rank_nccl_kernel_sum_ms) are measured by the framework in separate diagnostic runs; run()/metrics() contain no profiler and no inventory hook"
+          ],
+          "plan_ref": null,
+          "registry_ref": null,
+          "installer": "opop_candidates/trial-fdeb45db0b.py",
+          "parameters": {
+            "small_group_size": 9
+          },
+          "affected_calls_count": 2,
+          "read_set_count": 2,
+          "write_set_count": 4
+        },
+        "revision": "c35a96c5a58266a8f1be926ee677fc833639e56569c933330b3717783736dce1",
+        "result": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "constraints": [],
+        "run": {
+          "status": "failed",
+          "failure": "rank_failed",
+          "ranks": [
+            {
+              "rank": 0,
+              "status": "failed",
+              "error": "<built-in method run_backward of torch._C._EngineBase object at 0x7fc26bef0440> returned NULL without setting an exception",
+              "framework_source": {
+                "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": null,
+                "checks": null,
+                "coverage": null,
+                "setup": null,
+                "samples": null,
+                "metrics": null,
+                "diagnostics": null,
+                "metric_samples": null
+              }
+            },
+            {
+              "rank": 1,
+              "status": "failed",
+              "error": "<built-in method run_backward of torch._C._EngineBase object at 0x7fc2888f8440> returned NULL without setting an exception",
+              "framework_source": {
+                "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": null,
+                "checks": null,
+                "coverage": null,
+                "setup": null,
+                "samples": null,
+                "metrics": null,
+                "diagnostics": null,
+                "metric_samples": null
+              }
+            }
+          ]
+        },
+        "diagnostic": null,
+        "candidate_diagnostics": null
+      },
+      {
+        "bundle": {
+          "schema_version": "project.v2",
+          "id": "trial-fdeb45db0b-param-d0705dbc",
+          "parent_revision": "3b2492569e35a37e812ab23938167ced8dfd4c62b6660d41db32c2363d0b82d2",
+          "contract_ref": "sha256:92a3ee1d5893ffe036bb6e8eae2def741343eb0622e91112f93aad2bd1e81379",
+          "scope": "joint",
+          "implementation": "distributed",
+          "groups": [
+            "f833b57a373d8262a384",
+            "8525af72c631b94e3dd0"
+          ],
+          "calls": [
+            "d0938de87369efd500322679",
+            "b8ade439d7b8bd5fb5c1029b"
+          ],
+          "edits": [
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-fdeb45db0b.py",
+              "before_sha256": null,
+              "content_ref": "sha256:a00d5201d64faddaa7424074f99ffdcb5130a7e4bb72713d6ca81dc3d9fdec11"
+            },
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-fdeb45db0b.targets.json",
+              "before_sha256": null,
+              "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+            }
+          ],
+          "requires": [],
+          "replaces": [],
+          "external_invariants": [
+            "FP32 parameters, activations and gradients; torch.backends.cuda.matmul.allow_tf32 = False, torch.backends.cudnn.allow_tf32 = False, torch.backends.cudnn.benchmark = False, torch.set_float32_matmul_precision('highest'), 4 CPU threads, 1 interop thread",
+            "torch.manual_seed(20261020) before model construction; per-rank inputs from torch.Generator().manual_seed(31000 + rank); inputs are generated once outside timing and reused unchanged for every repeat",
+            "GPT-2 config n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False, attn_implementation='eager'; model in train() mode with .float() weights",
+            "Each micro-step computes model(input_ids=tokens, labels=tokens, use_cache=False).loss divided by accumulation_steps, then backward(); the reported loss is torch.stack(micro_losses).sum()",
+            "optimizer.zero_grad(set_to_none=True) opens every step; the first accumulation_steps-1 micro-steps run under DDP.no_sync() and only the final micro-step performs the DDP gradient allreduce",
+            "DDP is constructed with broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True and no communication hook in the clean timing path",
+            "Optimizer is torch.optim.SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) over the DDP module's parameters",
+            "reset() must restore identical starting parameters/buffers from the initial CPU snapshot so every repeat starts from the same weights; the process group is never destroyed",
+            "Effective batch = world_size * micro_batch * accumulation_steps = 8; tokens per step = 1024; these derive from the unchanged work amount",
+            "Correctness observations use unwrapped GPT2LMHeadModel parameter names (lm_head.weight is tied to transformer.wte.weight and appears once); gradients and updated parameters are returned in full as detached tensors",
+            "Communication diagnostics (diagnostic.max_rank_nccl_kernel_sum_ms) are measured by the framework in separate diagnostic runs; run()/metrics() contain no profiler and no inventory hook"
+          ],
+          "plan_ref": null,
+          "registry_ref": null,
+          "installer": "opop_candidates/trial-fdeb45db0b.py",
+          "parameters": {
+            "small_group_size": 16
+          },
+          "affected_calls_count": 2,
+          "read_set_count": 2,
+          "write_set_count": 4
+        },
+        "revision": "676e87199604a48bdbcfc92cee8ce5df74b425ec0e938d9dd37af43ec9d5eff6",
+        "result": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "constraints": [],
+        "run": {
+          "status": "failed",
+          "failure": "rank_failed",
+          "ranks": [
+            {
+              "rank": 0,
+              "status": "failed",
+              "error": "<built-in method run_backward of torch._C._EngineBase object at 0x7f7a73500440> returned NULL without setting an exception",
+              "framework_source": {
+                "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": null,
+                "checks": null,
+                "coverage": null,
+                "setup": null,
+                "samples": null,
+                "metrics": null,
+                "diagnostics": null,
+                "metric_samples": null
+              }
+            },
+            {
+              "rank": 1,
+              "status": "failed",
+              "error": "<built-in method run_backward of torch._C._EngineBase object at 0x7fdd84900440> returned NULL without setting an exception",
+              "framework_source": {
+                "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": null,
+                "checks": null,
+                "coverage": null,
+                "setup": null,
+                "samples": null,
+                "metrics": null,
+                "diagnostics": null,
+                "metric_samples": null
+              }
+            }
+          ]
+        },
+        "diagnostic": null,
+        "candidate_diagnostics": null
+      },
+      {
+        "bundle": {
+          "schema_version": "project.v2",
+          "id": "trial-fdeb45db0b-param-c2d29461",
+          "parent_revision": "3b2492569e35a37e812ab23938167ced8dfd4c62b6660d41db32c2363d0b82d2",
+          "contract_ref": "sha256:92a3ee1d5893ffe036bb6e8eae2def741343eb0622e91112f93aad2bd1e81379",
+          "scope": "joint",
+          "implementation": "distributed",
+          "groups": [
+            "f833b57a373d8262a384",
+            "8525af72c631b94e3dd0"
+          ],
+          "calls": [
+            "d0938de87369efd500322679",
+            "b8ade439d7b8bd5fb5c1029b"
+          ],
+          "edits": [
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-fdeb45db0b.py",
+              "before_sha256": null,
+              "content_ref": "sha256:a00d5201d64faddaa7424074f99ffdcb5130a7e4bb72713d6ca81dc3d9fdec11"
+            },
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-fdeb45db0b.targets.json",
+              "before_sha256": null,
+              "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+            }
+          ],
+          "requires": [],
+          "replaces": [],
+          "external_invariants": [
+            "FP32 parameters, activations and gradients; torch.backends.cuda.matmul.allow_tf32 = False, torch.backends.cudnn.allow_tf32 = False, torch.backends.cudnn.benchmark = False, torch.set_float32_matmul_precision('highest'), 4 CPU threads, 1 interop thread",
+            "torch.manual_seed(20261020) before model construction; per-rank inputs from torch.Generator().manual_seed(31000 + rank); inputs are generated once outside timing and reused unchanged for every repeat",
+            "GPT-2 config n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False, attn_implementation='eager'; model in train() mode with .float() weights",
+            "Each micro-step computes model(input_ids=tokens, labels=tokens, use_cache=False).loss divided by accumulation_steps, then backward(); the reported loss is torch.stack(micro_losses).sum()",
+            "optimizer.zero_grad(set_to_none=True) opens every step; the first accumulation_steps-1 micro-steps run under DDP.no_sync() and only the final micro-step performs the DDP gradient allreduce",
+            "DDP is constructed with broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True and no communication hook in the clean timing path",
+            "Optimizer is torch.optim.SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) over the DDP module's parameters",
+            "reset() must restore identical starting parameters/buffers from the initial CPU snapshot so every repeat starts from the same weights; the process group is never destroyed",
+            "Effective batch = world_size * micro_batch * accumulation_steps = 8; tokens per step = 1024; these derive from the unchanged work amount",
+            "Correctness observations use unwrapped GPT2LMHeadModel parameter names (lm_head.weight is tied to transformer.wte.weight and appears once); gradients and updated parameters are returned in full as detached tensors",
+            "Communication diagnostics (diagnostic.max_rank_nccl_kernel_sum_ms) are measured by the framework in separate diagnostic runs; run()/metrics() contain no profiler and no inventory hook"
+          ],
+          "plan_ref": null,
+          "registry_ref": null,
+          "installer": "opop_candidates/trial-fdeb45db0b.py",
+          "parameters": {
+            "small_group_size": 6
+          },
+          "affected_calls_count": 2,
+          "read_set_count": 2,
+          "write_set_count": 4
+        },
+        "revision": "c9ff598ddc5868425657844f47c1f3679377826be1a9a841476d739845fa6824",
+        "result": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "constraints": [],
+        "run": {
+          "status": "failed",
+          "failure": "rank_failed",
+          "ranks": [
+            {
+              "rank": 0,
+              "status": "failed",
+              "error": "<built-in method run_backward of torch._C._EngineBase object at 0x7f496cb00440> returned NULL without setting an exception",
+              "framework_source": {
+                "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": null,
+                "checks": null,
+                "coverage": null,
+                "setup": null,
+                "samples": null,
+                "metrics": null,
+                "diagnostics": null,
+                "metric_samples": null
+              }
+            },
+            {
+              "rank": 1,
+              "status": "failed",
+              "error": "<built-in method run_backward of torch._C._EngineBase object at 0x7f6449f08440> returned NULL without setting an exception",
+              "framework_source": {
+                "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": null,
+                "checks": null,
+                "coverage": null,
+                "setup": null,
+                "samples": null,
+                "metrics": null,
+                "diagnostics": null,
+                "metric_samples": null
+              }
+            }
+          ]
+        },
+        "diagnostic": null,
+        "candidate_diagnostics": null
+      }
+    ]
+  }
+}

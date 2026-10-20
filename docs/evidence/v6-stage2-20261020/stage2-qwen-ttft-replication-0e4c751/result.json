@@ -1,0 +1,949 @@
+{
+  "status": "completed",
+  "protocol": {
+    "source": {
+      "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+      "files": 155,
+      "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+    },
+    "source_run": "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/qwen-ttft",
+    "source_trial": "trial-d3b2286ec3",
+    "parent": "ada7f8b0d73d27b95cfc7dd1d40583809e2c12b1af787b6d4c407872bdc2d9d9",
+    "candidate": "c19243b755688aa5559ccad4522de6ab9f39e19150292b7f5782aa4b3c995351",
+    "accepted_at_start": "c19243b755688aa5559ccad4522de6ab9f39e19150292b7f5782aa4b3c995351",
+    "started_at": "2026-10-20T14:03:32.367182+00:00",
+    "request": {
+      "schema_version": "project-request.v1",
+      "source_root": "/root/autodl-tmp/dev/opop-v6-freezes/0e4c751bf0a6/examples/v6_validation",
+      "entry": "qwen_inference.py",
+      "files": [
+        "qwen_inference.py",
+        "common.py",
+        "workloads.json"
+      ],
+      "goal": "minimize ttft_ms for the complete frozen source workload, preserving source numerical and state semantics",
+      "objective": {
+        "name": "ttft_ms",
+        "direction": "minimize",
+        "unit": "ms",
+        "paired_repeats": 2
+      },
+      "workload": {
+        "id": "interactive",
+        "batch": 1,
+        "prompt_tokens": 256,
+        "new_tokens": 32,
+        "goals": [
+          {
+            "id": "ttft",
+            "metric": "ttft_ms",
+            "direction": "min"
+          },
+          {
+            "id": "decode",
+            "metric": "decode_tokens_per_second",
+            "direction": "max"
+          }
+        ]
+      },
+      "quality": {
+        "logits_atol": 0.02,
+        "logits_rtol": 0.02,
+        "require_exact_greedy_tokens": true,
+        "atol": 0.02,
+        "rtol": 0.02
+      },
+      "assets": {
+        "assets": "/root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c"
+      },
+      "devices": [
+        "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+      ],
+      "distributed_backend": null,
+      "communication": "auto",
+      "required_observations": [],
+      "tools": {
+        "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys",
+        "ncu": "/usr/local/cuda/bin/ncu"
+      },
+      "profiling": {
+        "agent_plan": true
+      },
+      "binding_backend": "legacy",
+      "warmup": 2,
+      "repeats": 5,
+      "continuous_steps": 2,
+      "worker_timeout_s": 900.0,
+      "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+      "notes": [
+        "Preserve source dtype, TF32 policy, seed, real data and completion boundaries.",
+        "Model loading is outside timing. Generated replacement work and synchronization stay inside the declared workload boundary.",
+        "The required correctness observation schema is {tokens: all generated token IDs, logits: all generation-step logits}, with the same layout as the source reference."
+      ]
+    },
+    "scope": "Developer-started independent AB/BA on unchanged accepted candidate, after autonomous roles finish; no generation, publication, or intervention in original runs"
+  },
+  "measurement": {
+    "valid": true,
+    "objective": 23.422317,
+    "reference": 25.087469,
+    "parent_values": [
+      24.825376,
+      25.349562
+    ],
+    "candidate_values": [
+      23.391912,
+      23.452722
+    ],
+    "paired_gains": [
+      1.4334639999999972,
+      1.8968399999999974
+    ],
+    "noise_bounds": [
+      0.22573999999999472,
+      0.3203239999999994
+    ],
+    "constraints": [],
+    "reasons": [],
+    "framework_source": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+    "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+  },
+  "pairs": [
+    {
+      "parent": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 17.535648975521326,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 878189,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 878189,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 29,
+                "unavailable_samples": 0,
+                "wait_s": 0.052196405827999115,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 4861984,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 4861984,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {},
+              "math_policy_unchanged": true,
+              "setup": [],
+              "samples": [
+                {
+                  "ttft_ms": 24.825376,
+                  "decode_ms": 709.317793,
+                  "end_to_end_ms": 734.143169,
+                  "decode_tokens_per_second": 43.7039650011994,
+                  "generated_tokens_per_second": 43.588228224732006,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 734.363285,
+                  "framework.elapsed_ms": 734.363285,
+                  "framework.peak_allocated_bytes": 8179939840.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                },
+                {
+                  "ttft_ms": 24.913505,
+                  "decode_ms": 707.67546,
+                  "end_to_end_ms": 732.588965,
+                  "decode_tokens_per_second": 43.80539068007247,
+                  "generated_tokens_per_second": 43.680701633282176,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 732.800077,
+                  "framework.elapsed_ms": 732.800077,
+                  "framework.peak_allocated_bytes": 8179939840.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                },
+                {
+                  "ttft_ms": 24.712506,
+                  "decode_ms": 695.403753,
+                  "end_to_end_ms": 720.116259,
+                  "decode_tokens_per_second": 44.57841917916713,
+                  "generated_tokens_per_second": 44.43726912156833,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 720.313846,
+                  "framework.elapsed_ms": 720.313846,
+                  "framework.peak_allocated_bytes": 8179939840.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                },
+                {
+                  "ttft_ms": 29.450803,
+                  "decode_ms": 701.397915,
+                  "end_to_end_ms": 730.848718,
+                  "decode_tokens_per_second": 44.19745102892129,
+                  "generated_tokens_per_second": 43.784711133611104,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 731.081293,
+                  "framework.elapsed_ms": 731.081293,
+                  "framework.peak_allocated_bytes": 8179939840.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                },
+                {
+                  "ttft_ms": 24.666178,
+                  "decode_ms": 705.387848,
+                  "end_to_end_ms": 730.054026,
+                  "decode_tokens_per_second": 43.94745399696764,
+                  "generated_tokens_per_second": 43.83237248252638,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 730.274866,
+                  "framework.elapsed_ms": 730.274866,
+                  "framework.peak_allocated_bytes": 8179939840.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                }
+              ],
+              "metrics": {
+                "ttft_ms": 24.825376,
+                "decode_ms": 705.387848,
+                "end_to_end_ms": 730.848718,
+                "decode_tokens_per_second": 43.94745399696764,
+                "generated_tokens_per_second": 43.784711133611104,
+                "batch": 1.0,
+                "prompt_tokens": 256.0,
+                "new_tokens": 32.0,
+                "generated_tokens": 32.0,
+                "decode_tokens": 31.0,
+                "framework_elapsed_ms": 731.081293,
+                "framework.elapsed_ms": 731.081293,
+                "framework.peak_allocated_bytes": 8179939840.0,
+                "framework.peak_reserved_bytes": 8239710208.0,
+                "framework.allocated_bytes": 8119956480.0,
+                "framework.reserved_bytes": 8239710208.0,
+                "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {}
+            }
+          }
+        ],
+        "lease_wait_s": 0.00024256855249404907,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      },
+      "candidate": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 17.082728143781424,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 878387,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 878387,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 28,
+                "unavailable_samples": 0,
+                "wait_s": 0.07362797483801842,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 4861984,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 4861984,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-d3b2286ec3-param-58a9b60a": {
+                  "counts": {
+                    "900c23e99c808d2c9bda215a": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "900c23e99c808d2c9bda215a"
+                  ],
+                  "reference_invocations": {},
+                  "candidate_declared_routes": [
+                    {
+                      "call": "900c23e99c808d2c9bda215a",
+                      "route": "lean_prefill_eager",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "setup": [
+                {
+                  "bundle": "trial-d3b2286ec3-param-58a9b60a",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "direct",
+                    "reason": "no functional replacements"
+                  },
+                  "elapsed_ms": 28.736316,
+                  "allocated_bytes": 8101711872,
+                  "reserved_bytes": 8103395328,
+                  "peak_allocated_bytes": 8101711872,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "ttft_ms": 23.329606,
+                  "decode_ms": 667.57034,
+                  "end_to_end_ms": 690.899946,
+                  "decode_tokens_per_second": 46.437054108785,
+                  "generated_tokens_per_second": 46.31640252002567,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 691.118814,
+                  "framework.elapsed_ms": 691.118814,
+                  "framework.peak_allocated_bytes": 8179546624.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                },
+                {
+                  "ttft_ms": 23.397997,
+                  "decode_ms": 668.858995,
+                  "end_to_end_ms": 692.256992,
+                  "decode_tokens_per_second": 46.34758631002637,
+                  "generated_tokens_per_second": 46.22560749808938,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 692.475774,
+                  "framework.elapsed_ms": 692.475774,
+                  "framework.peak_allocated_bytes": 8179546624.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                },
+                {
+                  "ttft_ms": 23.391912,
+                  "decode_ms": 673.511057,
+                  "end_to_end_ms": 696.902969,
+                  "decode_tokens_per_second": 46.02745519588404,
+                  "generated_tokens_per_second": 45.917439619919314,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 697.194624,
+                  "framework.elapsed_ms": 697.194624,
+                  "framework.peak_allocated_bytes": 8179546624.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                },
+                {
+                  "ttft_ms": 23.387656,
+                  "decode_ms": 669.239277,
+                  "end_to_end_ms": 692.626933,
+                  "decode_tokens_per_second": 46.32125020958685,
+                  "generated_tokens_per_second": 46.20091780346636,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 692.867406,
+                  "framework.elapsed_ms": 692.867406,
+                  "framework.peak_allocated_bytes": 8179546624.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                },
+                {
+                  "ttft_ms": 23.471048,
+                  "decode_ms": 674.819996,
+                  "end_to_end_ms": 698.291044,
+                  "decode_tokens_per_second": 45.93817637851976,
+                  "generated_tokens_per_second": 45.826164140234916,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 698.504423,
+                  "framework.elapsed_ms": 698.504423,
+                  "framework.peak_allocated_bytes": 8179546624.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                }
+              ],
+              "metrics": {
+                "ttft_ms": 23.391912,
+                "decode_ms": 669.239277,
+                "end_to_end_ms": 692.626933,
+                "decode_tokens_per_second": 46.32125020958685,
+                "generated_tokens_per_second": 46.20091780346636,
+                "batch": 1.0,
+                "prompt_tokens": 256.0,
+                "new_tokens": 32.0,
+                "generated_tokens": 32.0,
+                "decode_tokens": 31.0,
+                "framework_elapsed_ms": 692.867406,
+                "framework.elapsed_ms": 692.867406,
+                "framework.peak_allocated_bytes": 8179546624.0,
+                "framework.peak_reserved_bytes": 8239710208.0,
+                "framework.allocated_bytes": 8119956480.0,
+                "framework.reserved_bytes": 8239710208.0,
+                "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {
+                "trial-d3b2286ec3-param-58a9b60a": "31f28e20ea815ac3cbee39980b75711b36eb1d15dcb0f805112d2a7867e7aed5"
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 0.00019985437393188477,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      }
+    },
+    {
+      "candidate": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 17.783611591905355,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 878583,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 878583,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 29,
+                "unavailable_samples": 0,
+                "wait_s": 0.07423662021756172,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 4861984,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 4861984,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {
+                "trial-d3b2286ec3-param-58a9b60a": {
+                  "counts": {
+                    "900c23e99c808d2c9bda215a": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "900c23e99c808d2c9bda215a"
+                  ],
+                  "reference_invocations": {},
+                  "candidate_declared_routes": [
+                    {
+                      "call": "900c23e99c808d2c9bda215a",
+                      "route": "lean_prefill_eager",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "math_policy_unchanged": true,
+              "setup": [
+                {
+                  "bundle": "trial-d3b2286ec3-param-58a9b60a",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "direct",
+                    "reason": "no functional replacements"
+                  },
+                  "elapsed_ms": 38.893792,
+                  "allocated_bytes": 8101711872,
+                  "reserved_bytes": 8103395328,
+                  "peak_allocated_bytes": 8101711872,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "ttft_ms": 23.667426,
+                  "decode_ms": 690.170861,
+                  "end_to_end_ms": 713.838287,
+                  "decode_tokens_per_second": 44.91641382118565,
+                  "generated_tokens_per_second": 44.828080228764755,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 714.057178,
+                  "framework.elapsed_ms": 714.057178,
+                  "framework.peak_allocated_bytes": 8179546624.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                },
+                {
+                  "ttft_ms": 23.514891,
+                  "decode_ms": 691.30563,
+                  "end_to_end_ms": 714.820521,
+                  "decode_tokens_per_second": 44.842684125109756,
+                  "generated_tokens_per_second": 44.76648201877797,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 715.046489,
+                  "framework.elapsed_ms": 715.046489,
+                  "framework.peak_allocated_bytes": 8179546624.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                },
+                {
+                  "ttft_ms": 23.452722,
+                  "decode_ms": 686.219182,
+                  "end_to_end_ms": 709.671904,
+                  "decode_tokens_per_second": 45.17507060885395,
+                  "generated_tokens_per_second": 45.09125952378129,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 709.921197,
+                  "framework.elapsed_ms": 709.921197,
+                  "framework.peak_allocated_bytes": 8179546624.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                },
+                {
+                  "ttft_ms": 23.395467,
+                  "decode_ms": 687.879739,
+                  "end_to_end_ms": 711.275206,
+                  "decode_tokens_per_second": 45.066016982948234,
+                  "generated_tokens_per_second": 44.98961826598522,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 711.493013,
+                  "framework.elapsed_ms": 711.493013,
+                  "framework.peak_allocated_bytes": 8179546624.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                },
+                {
+                  "ttft_ms": 23.416792,
+                  "decode_ms": 694.201541,
+                  "end_to_end_ms": 717.618333,
+                  "decode_tokens_per_second": 44.655619685523,
+                  "generated_tokens_per_second": 44.591948851451654,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 717.858194,
+                  "framework.elapsed_ms": 717.858194,
+                  "framework.peak_allocated_bytes": 8179546624.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                }
+              ],
+              "metrics": {
+                "ttft_ms": 23.452722,
+                "decode_ms": 690.170861,
+                "end_to_end_ms": 713.838287,
+                "decode_tokens_per_second": 44.91641382118565,
+                "generated_tokens_per_second": 44.828080228764755,
+                "batch": 1.0,
+                "prompt_tokens": 256.0,
+                "new_tokens": 32.0,
+                "generated_tokens": 32.0,
+                "decode_tokens": 31.0,
+                "framework_elapsed_ms": 714.057178,
+                "framework.elapsed_ms": 714.057178,
+                "framework.peak_allocated_bytes": 8179546624.0,
+                "framework.peak_reserved_bytes": 8239710208.0,
+                "framework.allocated_bytes": 8119956480.0,
+                "framework.reserved_bytes": 8239710208.0,
+                "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {
+                "trial-d3b2286ec3-param-58a9b60a": "31f28e20ea815ac3cbee39980b75711b36eb1d15dcb0f805112d2a7867e7aed5"
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 0.000186040997505188,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      },
+      "parent": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 17.483786705881357,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 878767,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 878767,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 29,
+                "unavailable_samples": 0,
+                "wait_s": 0.07082320004701614,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 4861984,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 4861984,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {},
+              "math_policy_unchanged": true,
+              "setup": [],
+              "samples": [
+                {
+                  "ttft_ms": 25.509724,
+                  "decode_ms": 698.294807,
+                  "end_to_end_ms": 723.804531,
+                  "decode_tokens_per_second": 44.39385727810518,
+                  "generated_tokens_per_second": 44.210831280358484,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 724.103831,
+                  "framework.elapsed_ms": 724.103831,
+                  "framework.peak_allocated_bytes": 8179939840.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                },
+                {
+                  "ttft_ms": 25.349562,
+                  "decode_ms": 695.365395,
+                  "end_to_end_ms": 720.714957,
+                  "decode_tokens_per_second": 44.58087823021449,
+                  "generated_tokens_per_second": 44.40035507685461,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 720.948611,
+                  "framework.elapsed_ms": 720.948611,
+                  "framework.peak_allocated_bytes": 8179939840.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                },
+                {
+                  "ttft_ms": 25.073965,
+                  "decode_ms": 689.290301,
+                  "end_to_end_ms": 714.364266,
+                  "decode_tokens_per_second": 44.97379399510802,
+                  "generated_tokens_per_second": 44.79507377822843,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 714.665006,
+                  "framework.elapsed_ms": 714.665006,
+                  "framework.peak_allocated_bytes": 8179939840.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                },
+                {
+                  "ttft_ms": 25.299556,
+                  "decode_ms": 789.800312,
+                  "end_to_end_ms": 815.099868,
+                  "decode_tokens_per_second": 39.250427644804475,
+                  "generated_tokens_per_second": 39.258992985139336,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 815.420397,
+                  "framework.elapsed_ms": 815.420397,
+                  "framework.peak_allocated_bytes": 8179939840.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                },
+                {
+                  "ttft_ms": 31.316355,
+                  "decode_ms": 717.203751,
+                  "end_to_end_ms": 748.520106,
+                  "decode_tokens_per_second": 43.223421456980084,
+                  "generated_tokens_per_second": 42.75102264253674,
+                  "batch": 1.0,
+                  "prompt_tokens": 256.0,
+                  "new_tokens": 32.0,
+                  "generated_tokens": 32.0,
+                  "decode_tokens": 31.0,
+                  "framework_elapsed_ms": 748.907676,
+                  "framework.elapsed_ms": 748.907676,
+                  "framework.peak_allocated_bytes": 8179939840.0,
+                  "framework.peak_reserved_bytes": 8239710208.0,
+                  "framework.allocated_bytes": 8119956480.0,
+                  "framework.reserved_bytes": 8239710208.0,
+                  "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                  "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+                }
+              ],
+              "metrics": {
+                "ttft_ms": 25.349562,
+                "decode_ms": 698.294807,
+                "end_to_end_ms": 723.804531,
+                "decode_tokens_per_second": 44.39385727810518,
+                "generated_tokens_per_second": 44.210831280358484,
+                "batch": 1.0,
+                "prompt_tokens": 256.0,
+                "new_tokens": 32.0,
+                "generated_tokens": 32.0,
+                "decode_tokens": 31.0,
+                "framework_elapsed_ms": 724.103831,
+                "framework.elapsed_ms": 724.103831,
+                "framework.peak_allocated_bytes": 8179939840.0,
+                "framework.peak_reserved_bytes": 8239710208.0,
+                "framework.allocated_bytes": 8119956480.0,
+                "framework.reserved_bytes": 8239710208.0,
+                "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+                "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "bundle_hashes": {}
+            }
+          }
+        ],
+        "lease_wait_s": 0.00019780918955802917,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      }
+    }
+  ],
+  "accepted_pointer_unchanged": true,
+  "framework_unchanged": true
+}

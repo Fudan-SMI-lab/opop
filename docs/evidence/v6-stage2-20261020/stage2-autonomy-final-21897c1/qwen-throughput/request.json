@@ -1,0 +1,69 @@
+{
+  "schema_version": "project-request.v1",
+  "source_root": "/root/autodl-tmp/dev/opop-v6-freezes/21897c111d64/examples/v6_validation",
+  "entry": "qwen_inference.py",
+  "files": [
+    "qwen_inference.py",
+    "common.py",
+    "workloads.json"
+  ],
+  "goal": "maximize generated_tokens_per_second for the complete frozen source workload, preserving source numerical and state semantics",
+  "objective": {
+    "name": "generated_tokens_per_second",
+    "direction": "maximize",
+    "unit": "tokens/s",
+    "paired_repeats": 2
+  },
+  "workload": {
+    "id": "interactive",
+    "batch": 1,
+    "prompt_tokens": 256,
+    "new_tokens": 32,
+    "goals": [
+      {
+        "id": "ttft",
+        "metric": "ttft_ms",
+        "direction": "min"
+      },
+      {
+        "id": "decode",
+        "metric": "decode_tokens_per_second",
+        "direction": "max"
+      }
+    ]
+  },
+  "quality": {
+    "logits_atol": 0.02,
+    "logits_rtol": 0.02,
+    "require_exact_greedy_tokens": true,
+    "atol": 0.02,
+    "rtol": 0.02
+  },
+  "assets": {
+    "assets": "/root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c"
+  },
+  "devices": [
+    "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+  ],
+  "distributed_backend": null,
+  "communication": "auto",
+  "required_observations": [],
+  "tools": {
+    "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys",
+    "ncu": "/usr/local/cuda/bin/ncu"
+  },
+  "profiling": {
+    "agent_plan": true
+  },
+  "binding_backend": "legacy",
+  "warmup": 2,
+  "repeats": 5,
+  "continuous_steps": 2,
+  "worker_timeout_s": 900.0,
+  "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+  "notes": [
+    "Preserve source dtype, TF32 policy, seed, real data and completion boundaries.",
+    "Model loading is outside timing. Generated replacement work and synchronization stay inside the declared workload boundary.",
+    "The required correctness observation schema is {tokens: all generated token IDs, logits: all generation-step logits}, with the same layout as the source reference."
+  ]
+}

@@ -1,0 +1,2571 @@
+{
+  "trial": "trial-c7e622b52b",
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-c7e622b52b-param-31ad5eae",
+    "parent_revision": "ea2c621e0900ecb1b9bdc73afa531d5b80c1ed208cbb424791ce57151c800467",
+    "contract_ref": "sha256:360103795f7aa40b7e738dba761e54e5def14127e85802d6d2f174723d7b0c9a",
+    "scope": "region",
+    "implementation": "composite",
+    "groups": [
+      "c0af3909ba0a106672d5",
+      "5d6060b158cac3430090",
+      "5233e425bbe8203a4dc0",
+      "5eb0dee1d36938317bbe",
+      "c1271430eda49ac23557",
+      "9f7c0638f7c2fd3e7c50",
+      "836e80426d566f8f5dce",
+      "39b672d8d4bea8959c44",
+      "867f8d20e37fedce71c4",
+      "c30ffc96e594cd4d7734",
+      "0022893ec8c1ceea869f",
+      "04fe5ffd91a3ecdc1ced",
+      "9c1e6f2c47a84d7de11d",
+      "4e7e7ecf95e285fe008e"
+    ],
+    "calls": [
+      "0336537f2acb6fcfee02ffa0",
+      "09031aa64ee50b771c4ef341",
+      "0d063be934673a4264c8feca",
+      "0d8ad2e9cbbbff5cf80492ea",
+      "189963b5e443e271cc7ced62",
+      "1cbbcdc66d055254d2fe56e3",
+      "1dcfd07639d32233c49eafdf",
+      "2c0aa2f70446c64d0ac7cc0b",
+      "38dc3865394409b009fe7d6e",
+      "44c7b84953e1e2a64370b1a5",
+      "4914c9e0e59913ca9b8712b8",
+      "5005892165447f61026c33e0",
+      "5627e761be4fee9f944ef5aa",
+      "5d01f20a9b2dd63baaad70db",
+      "60c1612c74cb4ca3fbd18818",
+      "6c843982dcd328be1f2c6956",
+      "6d17e25a4f8679b7b8f3d445",
+      "74b4e07cdc6cf824d4432aa8",
+      "98b3d34b58088bc3e54b4269",
+      "b92e9ace8737abe290b03c62",
+      "babacb997a72996bf303d028",
+      "c5121e145e8228f9895df00b",
+      "c537568c768f9d62c7963b23",
+      "cb6b6154a858cd3cb07be445",
+      "dfb96bb329e6c3859d690b9a",
+      "dfff79902eee9ec5e9c45788",
+      "e3983f1c815a57f6c63d17cb",
+      "f386d6ce7891ec8f95d095b4",
+      "f3ec7e68beb5e3d3f846d2fa"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-c7e622b52b.py",
+        "before_sha256": null,
+        "content_ref": "sha256:b74fc90c604789390b475c8194c58c5bb61cd1c4c8720d9bee60cf3866c53635"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-c7e622b52b.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:bac8c511febe2e8efc91c6609125bea46227e4171d1df968045f94dcd935830e"
+      }
+    ],
+    "requires": [],
+    "replaces": [
+      "trial-25dfd4d7ca-param-82f6ef75"
+    ],
+    "external_invariants": [
+      "Model is pretrained microsoft/resnet-18 loaded from the local assets directory (local_files_only, no downloads) with dtype float32, in eval mode, on context['device'].",
+      "Numerical policies from common.configure(): torch.backends.cuda.matmul.allow_tf32=False, torch.backends.cudnn.allow_tf32=False, torch.backends.cudnn.benchmark=False, torch.set_float32_matmul_precision('highest'), torch.manual_seed(20261020), set_num_threads(4).",
+      "Input batch is exactly images[torch.arange(32, device=cuda) % 3].contiguous() from pixels.npy; data, batch size 32, layout NCHW 224x224 and float32 dtype are unchanged.",
+      "The forward runs under torch.inference_mode() with model.eval(); no dropout, sampling or randomness is involved.",
+      "run() executes the complete workload (single forward producing full logits for all 32 images); no work is moved outside the measured boundary and no extra synchronization semantics are altered.",
+      "Correctness observation schema is {logits: full (32, num_classes) logits tensor, top1: argmax class indices}; logits must satisfy atol=rtol=1e-4 and top1 must match exactly.",
+      "latency_ms is wall time of the full workload with CUDA synchronization at both boundaries, matching the source's measured region.",
+      "images_per_second is derived from the unchanged work amount: batch * 1000 / elapsed_ms.",
+      "peak_allocated_bytes is torch.cuda.max_memory_allocated() with the watermark reset before the timed region, as in the source; the memory goal carries the constraint images_per_second >= 0.95 * baseline ratio.",
+      "No accuracy or convergence claim beyond the source's reference-fidelity checks (close_check on logits, exact top1, negative corruption control)."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-c7e622b52b.py",
+    "parameters": {},
+    "affected_calls_count": 183,
+    "read_set_count": 183,
+    "write_set_count": 31
+  },
+  "selection": {
+    "scope": "region",
+    "groups": [
+      "c0af3909ba0a106672d5",
+      "5d6060b158cac3430090",
+      "5233e425bbe8203a4dc0",
+      "5eb0dee1d36938317bbe",
+      "c1271430eda49ac23557",
+      "9f7c0638f7c2fd3e7c50",
+      "836e80426d566f8f5dce",
+      "39b672d8d4bea8959c44",
+      "867f8d20e37fedce71c4",
+      "c30ffc96e594cd4d7734",
+      "0022893ec8c1ceea869f",
+      "04fe5ffd91a3ecdc1ced",
+      "9c1e6f2c47a84d7de11d",
+      "4e7e7ecf95e285fe008e"
+    ],
+    "rationale": "Current evidence (accepted bundle trial-25dfd4d7ca, clean latency_ms 3.633) makes the GPU the critical path: in observations/current/execution_timeline the 70 kernels span 3500.9 us with 3420.8 us active union and only 80.1 us of gaps, and the host submits everything before a 293 us final cudaDeviceSynchronize drain, so only GPU-kernel-time removal moves latency_ms materially. Convolutions are 2971 us (85%, cudnn heuristic winograd/scudnn, TF32 and benchmark frozen off) and are near the practical fp32 floor; the remaining addressable fat is non-conv kernels plus conv-site tier inconsistencies, all owned by one coherent editable region, the pooler plus the 8 ResNetBasicLayer residual blocks whose children include all conv sites: (1) max_pool_forward_nchw on [32,64,112,224] costs 189.2 us (5.4%) while moving ~180 MB (it writes a 51.4 MB int64 indices tensor the workload never reads) = ~0.95 TB/s effective, versus 4.03 TB/s achieved by the add_ vectorized kernel on a same-size tensor in the same trace - a ~4x bandwidth gap; (2) the 8 residual add_ (77.2 us) + post-residual ReLU (62.4 us) pairs are two full memory passes that one fused add+relu kernel can execute for the add cost alone (~139.6 -> ~80 us); (3) steady-state trace contradicts the previous bundle's per-site calibration on identical shapes: at 64x64x3x3 the fused sites total 229.6/226.4 us while the conv2d+relu_ fallback sites total 238.8/238.1 us (same for 128 and 256 channel shapes), so re-tiering the 8 fallback conv sites (F.conv2d + separate relu_ kernel ~76 us total) to the fused epilogue path saves ~40 us more. Region boundary: MaxPool2d (embedder.pooler), all 4 ResNetBasicLayer groups, and the 5 ResNetConvLayer + 3 ResNetShortCut groups of the accepted bundle, so the earlier whole bundle is explicitly replaced rather than composed around; BasicLayer replacements must still dispatch through layer[0]/layer[1]/shortcut module boundaries so the conv-site replacements actually execute (no graph capture - replay would skip the Python dispatch the coverage counts).",
+    "hypothesis": "Three exact-numerics edits inside this region remove ~200-235 us of GPU time from the 3484 us kernel path, taking clean latency_ms from ~3.63 to ~3.40-3.43 ms (-5.5 to -6.5%) with paired gains expected to exceed the prior MAD noise bounds (~0.01-0.04 ms): (a) replace MaxPool2d's forward with an index-free fused max-pool kernel (Triton 3.7.1 is in the measured worker env; compile at build/warmup outside timing) computing the same 3x3/s2/p1 NCHW max - max is exact, so logits and top1 are bitwise unchanged and the 51.4 MB indices allocation disappears, lowering peak_allocated_bytes; (b) replace each BasicLayer's aten add_ + nn.ReLU pair with one fused add-then-relu kernel (same op order, bitwise identical), invoked after the inherited conv-site module calls so their dispatch remains observed; (c) re-tier the 8 fallback conv sites to cudnn_convolution_relu where the current steady-state trace shows it faster (64/128/256-channel 3x3 shapes) with guarded fallback, explicitly replacing the earlier whole conv bundle. Unknowns to test on the leased GPU, not assume: actual achievable Triton pooling bandwidth on GPU-4bead555 (only ~4 TB/s elementwise evidence exists, no direct pooling measurement), Triton launch overhead net of the 80 us gap budget, and whether fused epilogue holds its trace-measured advantage when re-calibrated in a fresh worker; if pooling tops out at ~2 TB/s the win shrinks to ~95 us and total gain to ~3.5%, still above noise. Risks bounded by per-site guards falling back to current behavior, worst case equal to the accepted 3.633 ms baseline.",
+    "affected_calls_count": 183
+  },
+  "proposal": {
+    "implementation": "composite",
+    "replacement_calls": [
+      "0336537f2acb6fcfee02ffa0",
+      "09031aa64ee50b771c4ef341",
+      "0d063be934673a4264c8feca",
+      "0d8ad2e9cbbbff5cf80492ea",
+      "189963b5e443e271cc7ced62",
+      "1cbbcdc66d055254d2fe56e3",
+      "1dcfd07639d32233c49eafdf",
+      "2c0aa2f70446c64d0ac7cc0b",
+      "38dc3865394409b009fe7d6e",
+      "44c7b84953e1e2a64370b1a5",
+      "4914c9e0e59913ca9b8712b8",
+      "5005892165447f61026c33e0",
+      "5627e761be4fee9f944ef5aa",
+      "5d01f20a9b2dd63baaad70db",
+      "60c1612c74cb4ca3fbd18818",
+      "6c843982dcd328be1f2c6956",
+      "6d17e25a4f8679b7b8f3d445",
+      "74b4e07cdc6cf824d4432aa8",
+      "98b3d34b58088bc3e54b4269",
+      "b92e9ace8737abe290b03c62",
+      "babacb997a72996bf303d028",
+      "c5121e145e8228f9895df00b",
+      "c537568c768f9d62c7963b23",
+      "cb6b6154a858cd3cb07be445",
+      "dfb96bb329e6c3859d690b9a",
+      "dfff79902eee9ec5e9c45788",
+      "e3983f1c815a57f6c63d17cb",
+      "f386d6ce7891ec8f95d095b4",
+      "f3ec7e68beb5e3d3f846d2fa"
+    ],
+    "rationale": "Previous feedback (trial-25dfd4d7ca, accepted, clean latency_ms 3.633, quality pass with max_abs_error 9.5e-6) changes this attempt in two ways: (1) it is now the baseline to beat and its 20 conv-site call writes overlap this region, so this proposal explicitly replaces the whole installed bundle trial-25dfd4d7ca-param-82f6ef75 and re-provides the folded-BN conv execution itself rather than composing around it; (2) the steady-state observations/current execution_timeline on that accepted state shows the remaining addressable GPU fat outside the conv kernels: max_pool_forward_nchw on [32,64,112,112] costs 189.2 us while writing a 51.4 MB int64 indices tensor the workload never reads (~0.95 TB/s effective, versus 4.03 TB/s achieved by the vectorized add_ kernel on same-sized traffic in the same trace); the 8 residual aten add_ (77.2 us) plus post-residual ReLU (62.4 us) pairs run as two full memory passes; and each of the 11 no-relu folded conv sites (8 layer.1 ConvLayers + 3 ResNetShortCut) launches a separate bias-apply elementwise kernel after its conv kernel (~85 us total in target-resources launch_configurations). Host dispatch is not the critical path (70 kernels span 3500.9 us with 3420.8 us active union, 80.1 us of gaps, host submits everything before a 293 us final drain), so only GPU-kernel-time removal moves latency_ms. This candidate rebuilds the selected region as one coherent composite: (a) the embedder.pooler MaxPool2d site executes an index-free Triton 3x3/stride-2/pad-1 NCHW max kernel (compiled at installation; max is exact, so values are bitwise identical to F.max_pool2d and the 51.4 MB indices allocation disappears, lowering per-run peak_allocated_bytes); (b) each of the 8 ResNetBasicLayer sites dispatches layer[0], layer[1] and shortcut through their physical module boundaries so the installed conv-site replacements actually execute and are counted (no CUDA-graph capture, which would skip the Python dispatch the coverage counts), then fuses the residual epilogue: the preferred tier routes layer.1 through aten::cudnn_convolution_add_relu so conv+bias+add+relu run in one cudnn epilogue (removing the separate bias kernel, the add_ kernel and the relu kernel on those sites); a per-call verified residual handoff (shape/dtype/device-checked tensor left in a per-block channel plus a fused flag the producer must set) decides whether the fused result may be returned directly - correctness never depends on the handoff: when the flag is absent (wrapper guard fallback, calibration rejection, or any exception) the block computes one Triton add+relu kernel, relu(a+b) in place on the layer.1 output the composite owns, replacing the separate add_ and relu passes; (c) the 20 conv sites keep the accepted bundle's behavior: eval BatchNorm2d folded into the conv weight and a derived bias, tiered per site at installation by calibration (cudnn_convolution_relu for the 9 relu sites when compliant and not slower, F.conv2d on folded tensors otherwise, parent on any failure). Expected effect against the observed trace: pooling 189.2 us -> ~45-70 us (actual achievable Triton pooling bandwidth on GPU-4bead555 is unknown until measured; only ~4 TB/s elementwise evidence exists), residual epilogue 139.6 us add_+relu -> ~80 us as a Triton kernel or ~zero marginal cost when absorbed into the add_relu conv epilogue, layer.1 bias kernels ~67 us -> 0 on fused sites: roughly 190-320 us of the 3484 us kernel path, taking clean latency_ms from ~3.63 toward ~3.31-3.44 ms. Every numerics claim is gated per site at installation (atol=rtol=1e-4 elementwise vs the raw parent on seeded synthetic randn inputs; fixture data never read; global RNG untouched) and end-to-end by the frozen quality check; worst case every guard falls back to parents and behavior equals the previously accepted bundle. Consumers of the eliminated calls remain valid: the pooler output feeds stage 1 unchanged (same values, indices never read); the residual add_/relu/activation boundaries are computed by the fused epilogue or the Triton add+relu kernel inside the block replacement; Sequential/Identity container wrappers are subsumed by the block replacement's direct child dispatch; aten conv children of still-dispatched conv sites may re-materialize as observations of the same op identity under the folded weights while the original parent paths (aten.max_pool2d, aten.add_, aten.relu) no longer execute.",
+    "setup_work": {
+      "description": "All setup runs on the leased worker inside build(context), outside the timed boundary: (1) eval-BN folding per conv site into derived contiguous fp32 tensors w' (same shape as conv weight) and b' (out_channels), lazily rechecked via parameter/buffer version counters, retained for the candidate lifetime; source parameters and running stats never mutated. (2) Triton kernels (_maxpool3x3_s2 index-free pooling, _add_relu fused epilogue) compile at their first calibration launch; compiled binaries live in the Triton/driver cache, which torch allocator counters do not measure. (3) Per-site calibration on seeded per-call CPU generators (synthetic randn moved to device; fixture pixels never read; torch.manual_seed policy untouched): one raw parent reference execution, elementwise atol=rtol=1e-4 equivalence gate per tier (pooling additionally gated on torch.equal exactness), CUDA-event timing (3 warmup + 8 iterations) of compliant tiers and of the parent, parent chosen when >10% faster. (4) BasicLayer tiers calibrate the whole composed block (layer[0]/shortcut through their chosen conv tiers, layer.1 fused or plain) against the raw block parent, including the cudnn_convolution_add_relu alpha probe (None, then 1.0).",
+      "retained_memory": "Retained folded weights/biases ~44.7 MB plus ~19 KB across the 20 conv sites (same as the accepted bundle this proposal replaces); no other persistent buffers.",
+      "transient_memory": "Calibration transients peak at roughly 300-700 MB (stem-site dominated: 19.2 MB input with ~103 MB tier outputs; pooler-site 102.8 MB input plus the parent's 51.4 MB indices), freed to the caching allocator before runs; they raise framework.lifecycle_peak_allocated_bytes and lifecycle_peak_reserved_bytes but not the per-run peak_allocated_bytes counter the adapter resets before timing. At runtime the candidate lowers per-run allocations: the 51.4 MB pooler indices tensor and the separate post-residual relu output (up to 25.7 MB per block) are no longer allocated, so per-run peak_allocated_bytes should fall; this is a counter decrease on the declared metric, not a general physical-memory saving.",
+      "state_and_sync": "Warm-model inference lifecycle only: no training, no parameter mutation, no added streams/events, no CUDA graphs, no cudnn/TF32 policy changes; the workload executes on current inputs on every invocation with the source's synchronization boundaries unchanged."
+    },
+    "quality_risks": [
+      "BN folding reassociates fp32 arithmetic (the prior accepted bundle measured 9.5e-6 max end-to-end logits error); the fused add_relu epilogue reassociates conv+bias+add slightly differently than (conv+bias) then +residual; both are bounded per site by the installation 1e-4 elementwise gate against the raw parent and end-to-end by the frozen logits atol=rtol=1e-4 check.",
+      "aten::cudnn_convolution_add_relu semantics (alpha, bias application, relu placement) are not assumed: calibration probes alpha in (None, 1.0) and rejects the tier unless relu(conv+bias+residual) matches the raw parent within 1e-4; rejected blocks keep the F.conv2d tier plus the Triton add+relu kernel, still numerically correct.",
+      "aten::cudnn_convolution_relu and cudnn_convolution_add_relu expose no allow_tf32 argument; if their epilogue used TF32 the per-site calibration gate would detect the mismatch and route the site to F.conv2d, which carries the global allow_tf32=False policy; the accepted prior bundle already ran 9 sites on cudnn_convolution_relu with 9.5e-6 end-to-end error, evidencing the fp32 path.",
+      "Triton pooling is exact max (installation gate torch.equal against F.max_pool2d on synthetic input including border windows; NaN-propagating maximum and relu-keeps-NaN replicated in-kernel), so pooler values are bitwise unchanged; any mismatch routes the site to the parent. relu outputs of -0.0 vs +0.0 can differ only bitwise (absolute difference 0), inside tolerance.",
+      "exact_top1 could flip only if accumulated error crossed the top-two logit gap; real-image margins and the 9.5e-6 scale of prior measured error make this unlikely but it is not proven.",
+      "The residual handoff is never trusted blindly: the layer.1 replacement consumes the channel only when shape/dtype/device match and sets the fused flag only after the op returns; the block replacement re-checks the flag per call and otherwise computes the Triton add+relu itself, so wrapper guard fallbacks, calibration rejections and exceptions degrade to correct separate kernels rather than wrong values; isolated invocations of the layer.1 site never see the channel and return the plain folded conv.",
+      "Per-site timing calibration could mis-rank tiers on a noisy worker; the consequence is only performance (a slower compliant tier or the parent), never correctness.",
+      "The cudnn heuristic may pick a slower algorithm for the add_relu epilogue shape; the calibration timing gate then routes that block to the Triton add+relu tier or the parent, bounding the loss to previously accepted behavior.",
+      "Guards route to parents on train mode, grad-enabled callers, non-fp32/non-CUDA/mismatched-channel inputs, non-contiguous pooler inputs, unfoldable statistics and any runtime exception (labels: setup_route_parent, setup_unsupported_module, setup_unsupported_normalization, setup_unsupported_activation, setup_fold_unavailable, setup_calibration_failed, setup_parent_fastest, setup_triton_unavailable, setup_exception_parent, guard_unsupported_signature_parent, guard_fold_unavailable_parent, runtime_failure_parent)."
+    ],
+    "requires": [],
+    "replaces": [
+      "trial-25dfd4d7ca-param-82f6ef75"
+    ],
+    "parameter_space": {},
+    "eliminated_calls_count": 78
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea6a1c162ffeRzJiMoMDhc4kb5",
+    "message": "msg_1596aa6ec001r3gKxRJ9KhX3D7",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 32,
+      "reported_cost": 0.7663843984,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "input": 87311.0,
+        "output": 8309.0,
+        "reasoning": 30025.0,
+        "cache.read": 1679040.0,
+        "cache.write": 0.0,
+        "total": 1804685.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea6a1c162ffeRzJiMoMDhc4kb5",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/resnet-latency/sandboxes/selection-f87487c6b82d",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea6953eafffe1rafJzejjk9V0f",
+    "message": "msg_1598bafac001BWKDdDIjRAO84s",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 72,
+      "reported_cost": 4.55533261986,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 12559429.0,
+        "input": 352028.0,
+        "output": 38930.0,
+        "reasoning": 86487.0,
+        "cache.read": 12081984.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea6953eafffe1rafJzejjk9V0f",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/resnet-latency/sandboxes/candidate-fe21e3d86bdb",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": true,
+    "contract_repairs": 0
+  },
+  "measurement": {
+    "valid": true,
+    "objective": 3.3187085,
+    "reference": 3.6303565,
+    "parent_values": [
+      3.622617,
+      3.638096
+    ],
+    "candidate_values": [
+      3.30182,
+      3.335597
+    ],
+    "paired_gains": [
+      0.3207969999999998,
+      0.3024990000000001
+    ],
+    "noise_bounds": [
+      0.02443200000000001,
+      0.014348000000000027
+    ],
+    "constraints": [],
+    "reasons": [],
+    "framework_source": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+    "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+  },
+  "decision": {
+    "state": "evaluated",
+    "revision": "d0757bef09263cbf895f19660b318b04b38c6e3531352e12ffd0d64c7ba9ab03",
+    "parent": "ea2c621e0900ecb1b9bdc73afa531d5b80c1ed208cbb424791ce57151c800467",
+    "bundle": "trial-c7e622b52b-param-31ad5eae",
+    "accepted": true,
+    "reasons": [],
+    "report_ref": "sha256:557e1439d6e3214a8768cd302f38dcf102d74d0a994a7067feca67c6a1015aa9"
+  },
+  "evaluation": {
+    "schema_version": "project.v1",
+    "id": "trial-c7e622b52b",
+    "revision_id": "d0757bef09263cbf895f19660b318b04b38c6e3531352e12ffd0d64c7ba9ab03",
+    "parent_id": "ea2c621e0900ecb1b9bdc73afa531d5b80c1ed208cbb424791ce57151c800467",
+    "contract_ref": "sha256:360103795f7aa40b7e738dba761e54e5def14127e85802d6d2f174723d7b0c9a",
+    "bundle_id": "trial-c7e622b52b-param-31ad5eae",
+    "quality": "pass",
+    "feasible": true,
+    "objective": 3.3187085,
+    "reference_objective": 3.6303565,
+    "metrics": {
+      "valid": true,
+      "objective": 3.3187085,
+      "reference": 3.6303565,
+      "parent_values": [
+        3.622617,
+        3.638096
+      ],
+      "candidate_values": [
+        3.30182,
+        3.335597
+      ],
+      "paired_gains": [
+        0.3207969999999998,
+        0.3024990000000001
+      ],
+      "noise_bounds": [
+        0.02443200000000001,
+        0.014348000000000027
+      ],
+      "constraints": [],
+      "reasons": [],
+      "framework_source": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+      "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+    },
+    "required_ranks": [
+      0
+    ],
+    "rank_bundle_hashes": {
+      "0": "fba5d0810b77f62fb8c47d217a3083a5c6916ad702a77ff84c82cee265b76fab"
+    },
+    "required_calls": [
+      "0336537f2acb6fcfee02ffa0",
+      "09031aa64ee50b771c4ef341",
+      "0d063be934673a4264c8feca",
+      "0d8ad2e9cbbbff5cf80492ea",
+      "189963b5e443e271cc7ced62",
+      "1cbbcdc66d055254d2fe56e3",
+      "1dcfd07639d32233c49eafdf",
+      "2c0aa2f70446c64d0ac7cc0b",
+      "38dc3865394409b009fe7d6e",
+      "44c7b84953e1e2a64370b1a5",
+      "4914c9e0e59913ca9b8712b8",
+      "5005892165447f61026c33e0",
+      "5627e761be4fee9f944ef5aa",
+      "5d01f20a9b2dd63baaad70db",
+      "60c1612c74cb4ca3fbd18818",
+      "6c843982dcd328be1f2c6956",
+      "6d17e25a4f8679b7b8f3d445",
+      "74b4e07cdc6cf824d4432aa8",
+      "98b3d34b58088bc3e54b4269",
+      "b92e9ace8737abe290b03c62",
+      "babacb997a72996bf303d028",
+      "c5121e145e8228f9895df00b",
+      "c537568c768f9d62c7963b23",
+      "cb6b6154a858cd3cb07be445",
+      "dfb96bb329e6c3859d690b9a",
+      "dfff79902eee9ec5e9c45788",
+      "e3983f1c815a57f6c63d17cb",
+      "f386d6ce7891ec8f95d095b4",
+      "f3ec7e68beb5e3d3f846d2fa"
+    ],
+    "executed_calls": [
+      "0336537f2acb6fcfee02ffa0",
+      "09031aa64ee50b771c4ef341",
+      "0d063be934673a4264c8feca",
+      "0d8ad2e9cbbbff5cf80492ea",
+      "189963b5e443e271cc7ced62",
+      "1cbbcdc66d055254d2fe56e3",
+      "1dcfd07639d32233c49eafdf",
+      "2c0aa2f70446c64d0ac7cc0b",
+      "38dc3865394409b009fe7d6e",
+      "44c7b84953e1e2a64370b1a5",
+      "4914c9e0e59913ca9b8712b8",
+      "5005892165447f61026c33e0",
+      "5627e761be4fee9f944ef5aa",
+      "5d01f20a9b2dd63baaad70db",
+      "60c1612c74cb4ca3fbd18818",
+      "6c843982dcd328be1f2c6956",
+      "6d17e25a4f8679b7b8f3d445",
+      "74b4e07cdc6cf824d4432aa8",
+      "98b3d34b58088bc3e54b4269",
+      "b92e9ace8737abe290b03c62",
+      "babacb997a72996bf303d028",
+      "c5121e145e8228f9895df00b",
+      "c537568c768f9d62c7963b23",
+      "cb6b6154a858cd3cb07be445",
+      "dfb96bb329e6c3859d690b9a",
+      "dfff79902eee9ec5e9c45788",
+      "e3983f1c815a57f6c63d17cb",
+      "f386d6ce7891ec8f95d095b4",
+      "f3ec7e68beb5e3d3f846d2fa"
+    ],
+    "rank_executed_calls": {
+      "0": [
+        "1dcfd07639d32233c49eafdf",
+        "babacb997a72996bf303d028",
+        "f3ec7e68beb5e3d3f846d2fa",
+        "e3983f1c815a57f6c63d17cb",
+        "0336537f2acb6fcfee02ffa0",
+        "dfb96bb329e6c3859d690b9a",
+        "5d01f20a9b2dd63baaad70db",
+        "c5121e145e8228f9895df00b",
+        "b92e9ace8737abe290b03c62",
+        "6d17e25a4f8679b7b8f3d445",
+        "2c0aa2f70446c64d0ac7cc0b",
+        "6c843982dcd328be1f2c6956",
+        "189963b5e443e271cc7ced62",
+        "1cbbcdc66d055254d2fe56e3",
+        "f386d6ce7891ec8f95d095b4",
+        "98b3d34b58088bc3e54b4269",
+        "38dc3865394409b009fe7d6e",
+        "5627e761be4fee9f944ef5aa",
+        "dfff79902eee9ec5e9c45788",
+        "09031aa64ee50b771c4ef341",
+        "0d063be934673a4264c8feca",
+        "44c7b84953e1e2a64370b1a5",
+        "4914c9e0e59913ca9b8712b8",
+        "60c1612c74cb4ca3fbd18818",
+        "5005892165447f61026c33e0",
+        "0d8ad2e9cbbbff5cf80492ea",
+        "74b4e07cdc6cf824d4432aa8",
+        "c537568c768f9d62c7963b23",
+        "cb6b6154a858cd3cb07be445"
+      ]
+    },
+    "evidence": [
+      "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/resnet-latency/jobs/trial-c7e622b52b-evaluation-e16a1e36-pair-0-parent/run/receipt.json",
+      "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/resnet-latency/jobs/trial-c7e622b52b-evaluation-e16a1e36-pair-0-candidate/run/receipt.json",
+      "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/resnet-latency/jobs/trial-c7e622b52b-evaluation-e16a1e36-pair-1-candidate/run/receipt.json",
+      "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/resnet-latency/jobs/trial-c7e622b52b-evaluation-e16a1e36-pair-1-parent/run/receipt.json"
+    ],
+    "reasons": []
+  },
+  "publication": "committed",
+  "missing_coverage": [],
+  "evaluation_attempt": "trial-c7e622b52b-evaluation-e16a1e36",
+  "pairs": [
+    {
+      "parent": {
+        "status": "passed",
+        "failure": null,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "error": null,
+            "framework_source": {
+              "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 9.5367431640625e-06
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 9.5367431640625e-06
+                }
+              ],
+              "coverage": {
+                "trial-25dfd4d7ca-param-82f6ef75": {
+                  "counts": {
+                    "1dcfd07639d32233c49eafdf": 2,
+                    "e3983f1c815a57f6c63d17cb": 2,
+                    "0336537f2acb6fcfee02ffa0": 2,
+                    "5d01f20a9b2dd63baaad70db": 2,
+                    "c5121e145e8228f9895df00b": 2,
+                    "6d17e25a4f8679b7b8f3d445": 2,
+                    "6c843982dcd328be1f2c6956": 2,
+                    "2c0aa2f70446c64d0ac7cc0b": 2,
+                    "1cbbcdc66d055254d2fe56e3": 2,
+                    "f386d6ce7891ec8f95d095b4": 2,
+                    "38dc3865394409b009fe7d6e": 2,
+                    "dfff79902eee9ec5e9c45788": 2,
+                    "5627e761be4fee9f944ef5aa": 2,
+                    "0d063be934673a4264c8feca": 2,
+                    "44c7b84953e1e2a64370b1a5": 2,
+                    "60c1612c74cb4ca3fbd18818": 2,
+                    "0d8ad2e9cbbbff5cf80492ea": 2,
+                    "5005892165447f61026c33e0": 2,
+                    "c537568c768f9d62c7963b23": 2,
+                    "cb6b6154a858cd3cb07be445": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "0336537f2acb6fcfee02ffa0",
+                    "0d063be934673a4264c8feca",
+                    "0d8ad2e9cbbbff5cf80492ea",
+                    "1cbbcdc66d055254d2fe56e3",
+                    "1dcfd07639d32233c49eafdf",
+                    "2c0aa2f70446c64d0ac7cc0b",
+                    "38dc3865394409b009fe7d6e",
+                    "44c7b84953e1e2a64370b1a5",
+                    "5005892165447f61026c33e0",
+                    "5627e761be4fee9f944ef5aa",
+                    "5d01f20a9b2dd63baaad70db",
+                    "60c1612c74cb4ca3fbd18818",
+                    "6c843982dcd328be1f2c6956",
+                    "6d17e25a4f8679b7b8f3d445",
+                    "c5121e145e8228f9895df00b",
+                    "c537568c768f9d62c7963b23",
+                    "cb6b6154a858cd3cb07be445",
+                    "dfff79902eee9ec5e9c45788",
+                    "e3983f1c815a57f6c63d17cb",
+                    "f386d6ce7891ec8f95d095b4"
+                  ],
+                  "reference_invocations": {},
+                  "candidate_declared_routes": [
+                    {
+                      "call": "0336537f2acb6fcfee02ffa0",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "0d063be934673a4264c8feca",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "0d8ad2e9cbbbff5cf80492ea",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "1cbbcdc66d055254d2fe56e3",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "1dcfd07639d32233c49eafdf",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "2c0aa2f70446c64d0ac7cc0b",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "38dc3865394409b009fe7d6e",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "44c7b84953e1e2a64370b1a5",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "5005892165447f61026c33e0",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "5627e761be4fee9f944ef5aa",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "5d01f20a9b2dd63baaad70db",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "60c1612c74cb4ca3fbd18818",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "6c843982dcd328be1f2c6956",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "6d17e25a4f8679b7b8f3d445",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "c5121e145e8228f9895df00b",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "c537568c768f9d62c7963b23",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "cb6b6154a858cd3cb07be445",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "dfff79902eee9ec5e9c45788",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "e3983f1c815a57f6c63d17cb",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "f386d6ce7891ec8f95d095b4",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "setup": [
+                {
+                  "bundle": "trial-25dfd4d7ca-param-82f6ef75",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "direct",
+                    "reason": "no functional replacements"
+                  },
+                  "elapsed_ms": 744.810843,
+                  "allocated_bytes": 67935232,
+                  "reserved_bytes": 767557632,
+                  "peak_allocated_bytes": 601043456,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "latency_ms": 3.610401,
+                  "images_per_second": 8863.281391734603,
+                  "peak_allocated_bytes": 301888512,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.610401,
+                  "framework.peak_allocated_bytes": 301888512.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 122185728.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                {
+                  "latency_ms": 3.603602,
+                  "images_per_second": 8880.003951601759,
+                  "peak_allocated_bytes": 301888512,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.603602,
+                  "framework.peak_allocated_bytes": 301888512.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 122185728.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                {
+                  "latency_ms": 3.64883,
+                  "images_per_second": 8769.934472145866,
+                  "peak_allocated_bytes": 301888512,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.64883,
+                  "framework.peak_allocated_bytes": 301888512.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 122185728.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                {
+                  "latency_ms": 3.622617,
+                  "images_per_second": 8833.393096758504,
+                  "peak_allocated_bytes": 301888512,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.622617,
+                  "framework.peak_allocated_bytes": 301888512.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 122185728.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                {
+                  "latency_ms": 3.62633,
+                  "images_per_second": 8824.348583829933,
+                  "peak_allocated_bytes": 301888512,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.62633,
+                  "framework.peak_allocated_bytes": 301888512.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 122185728.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                }
+              ],
+              "metrics": {
+                "latency_ms": 3.622617,
+                "images_per_second": 8833.393096758504,
+                "peak_allocated_bytes": 301888512,
+                "batch": 32,
+                "framework.elapsed_ms": 3.622617,
+                "framework.peak_allocated_bytes": 301888512.0,
+                "framework.peak_reserved_bytes": 769654784.0,
+                "framework.allocated_bytes": 122185728.0,
+                "framework.reserved_bytes": 769654784.0,
+                "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                "framework.lifecycle_peak_reserved_bytes": 769654784.0
+              },
+              "diagnostics": {},
+              "metric_samples": {}
+            }
+          }
+        ]
+      },
+      "candidate": {
+        "status": "passed",
+        "failure": null,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "error": null,
+            "framework_source": {
+              "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 9.5367431640625e-06
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 9.5367431640625e-06
+                }
+              ],
+              "coverage": {
+                "trial-c7e622b52b-param-31ad5eae": {
+                  "counts": {
+                    "1dcfd07639d32233c49eafdf": 2,
+                    "babacb997a72996bf303d028": 2,
+                    "f3ec7e68beb5e3d3f846d2fa": 2,
+                    "e3983f1c815a57f6c63d17cb": 2,
+                    "0336537f2acb6fcfee02ffa0": 2,
+                    "dfb96bb329e6c3859d690b9a": 2,
+                    "5d01f20a9b2dd63baaad70db": 2,
+                    "c5121e145e8228f9895df00b": 2,
+                    "b92e9ace8737abe290b03c62": 2,
+                    "6d17e25a4f8679b7b8f3d445": 2,
+                    "2c0aa2f70446c64d0ac7cc0b": 2,
+                    "6c843982dcd328be1f2c6956": 2,
+                    "189963b5e443e271cc7ced62": 2,
+                    "1cbbcdc66d055254d2fe56e3": 2,
+                    "f386d6ce7891ec8f95d095b4": 2,
+                    "98b3d34b58088bc3e54b4269": 2,
+                    "38dc3865394409b009fe7d6e": 2,
+                    "5627e761be4fee9f944ef5aa": 2,
+                    "dfff79902eee9ec5e9c45788": 2,
+                    "09031aa64ee50b771c4ef341": 2,
+                    "0d063be934673a4264c8feca": 2,
+                    "44c7b84953e1e2a64370b1a5": 2,
+                    "4914c9e0e59913ca9b8712b8": 2,
+                    "60c1612c74cb4ca3fbd18818": 2,
+                    "5005892165447f61026c33e0": 2,
+                    "0d8ad2e9cbbbff5cf80492ea": 2,
+                    "74b4e07cdc6cf824d4432aa8": 2,
+                    "c537568c768f9d62c7963b23": 2,
+                    "cb6b6154a858cd3cb07be445": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "0336537f2acb6fcfee02ffa0",
+                    "09031aa64ee50b771c4ef341",
+                    "0d063be934673a4264c8feca",
+                    "0d8ad2e9cbbbff5cf80492ea",
+                    "189963b5e443e271cc7ced62",
+                    "1cbbcdc66d055254d2fe56e3",
+                    "1dcfd07639d32233c49eafdf",
+                    "2c0aa2f70446c64d0ac7cc0b",
+                    "38dc3865394409b009fe7d6e",
+                    "44c7b84953e1e2a64370b1a5",
+                    "4914c9e0e59913ca9b8712b8",
+                    "5005892165447f61026c33e0",
+                    "5627e761be4fee9f944ef5aa",
+                    "5d01f20a9b2dd63baaad70db",
+                    "60c1612c74cb4ca3fbd18818",
+                    "6c843982dcd328be1f2c6956",
+                    "6d17e25a4f8679b7b8f3d445",
+                    "74b4e07cdc6cf824d4432aa8",
+                    "98b3d34b58088bc3e54b4269",
+                    "b92e9ace8737abe290b03c62",
+                    "babacb997a72996bf303d028",
+                    "c5121e145e8228f9895df00b",
+                    "c537568c768f9d62c7963b23",
+                    "cb6b6154a858cd3cb07be445",
+                    "dfb96bb329e6c3859d690b9a",
+                    "dfff79902eee9ec5e9c45788",
+                    "e3983f1c815a57f6c63d17cb",
+                    "f386d6ce7891ec8f95d095b4",
+                    "f3ec7e68beb5e3d3f846d2fa"
+                  ],
+                  "reference_invocations": {},
+                  "candidate_declared_routes": [
+                    {
+                      "call": "0336537f2acb6fcfee02ffa0",
+                      "route": "cudnn_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "09031aa64ee50b771c4ef341",
+                      "route": "basic_layer_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "0d063be934673a4264c8feca",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "0d8ad2e9cbbbff5cf80492ea",
+                      "route": "cudnn_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "189963b5e443e271cc7ced62",
+                      "route": "basic_layer_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "1cbbcdc66d055254d2fe56e3",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "1dcfd07639d32233c49eafdf",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "2c0aa2f70446c64d0ac7cc0b",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "38dc3865394409b009fe7d6e",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "44c7b84953e1e2a64370b1a5",
+                      "route": "cudnn_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "4914c9e0e59913ca9b8712b8",
+                      "route": "basic_layer_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "5005892165447f61026c33e0",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "5627e761be4fee9f944ef5aa",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "5d01f20a9b2dd63baaad70db",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "60c1612c74cb4ca3fbd18818",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "6c843982dcd328be1f2c6956",
+                      "route": "cudnn_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "6d17e25a4f8679b7b8f3d445",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "74b4e07cdc6cf824d4432aa8",
+                      "route": "basic_layer_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "98b3d34b58088bc3e54b4269",
+                      "route": "basic_layer_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "b92e9ace8737abe290b03c62",
+                      "route": "basic_layer_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "babacb997a72996bf303d028",
+                      "route": "triton_maxpool3x3s2",
+                      "count": 2
+                    },
+                    {
+                      "call": "c5121e145e8228f9895df00b",
+                      "route": "cudnn_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "c537568c768f9d62c7963b23",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "cb6b6154a858cd3cb07be445",
+                      "route": "cudnn_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "dfb96bb329e6c3859d690b9a",
+                      "route": "basic_layer_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "dfff79902eee9ec5e9c45788",
+                      "route": "cudnn_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "e3983f1c815a57f6c63d17cb",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "f386d6ce7891ec8f95d095b4",
+                      "route": "cudnn_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "f3ec7e68beb5e3d3f846d2fa",
+                      "route": "basic_layer_conv_bias_add_relu_fused",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "setup": [
+                {
+                  "bundle": "trial-c7e622b52b-param-31ad5eae",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "direct",
+                    "reason": "no functional replacements"
+                  },
+                  "elapsed_ms": 1844.965878,
+                  "allocated_bytes": 113465856,
+                  "reserved_bytes": 769654784,
+                  "peak_allocated_bytes": 601043456,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "latency_ms": 3.302701,
+                  "images_per_second": 9689.039365053028,
+                  "peak_allocated_bytes": 250602496,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.302701,
+                  "framework.peak_allocated_bytes": 250602496.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 122279936.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                {
+                  "latency_ms": 3.30182,
+                  "images_per_second": 9691.624619149437,
+                  "peak_allocated_bytes": 250602496,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.30182,
+                  "framework.peak_allocated_bytes": 250602496.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 122279936.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                {
+                  "latency_ms": 3.283086,
+                  "images_per_second": 9746.927128926869,
+                  "peak_allocated_bytes": 250602496,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.283086,
+                  "framework.peak_allocated_bytes": 250602496.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 122279936.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                {
+                  "latency_ms": 3.315922,
+                  "images_per_second": 9650.407940838175,
+                  "peak_allocated_bytes": 250602496,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.315922,
+                  "framework.peak_allocated_bytes": 250602496.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 122279936.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                {
+                  "latency_ms": 3.30176,
+                  "images_per_second": 9691.800736576857,
+                  "peak_allocated_bytes": 250602496,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.30176,
+                  "framework.peak_allocated_bytes": 250602496.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 122279936.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                }
+              ],
+              "metrics": {
+                "latency_ms": 3.30182,
+                "images_per_second": 9691.624619149437,
+                "peak_allocated_bytes": 250602496,
+                "batch": 32,
+                "framework.elapsed_ms": 3.30182,
+                "framework.peak_allocated_bytes": 250602496.0,
+                "framework.peak_reserved_bytes": 769654784.0,
+                "framework.allocated_bytes": 122279936.0,
+                "framework.reserved_bytes": 769654784.0,
+                "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                "framework.lifecycle_peak_reserved_bytes": 769654784.0
+              },
+              "diagnostics": {},
+              "metric_samples": {}
+            }
+          }
+        ]
+      }
+    },
+    {
+      "candidate": {
+        "status": "passed",
+        "failure": null,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "error": null,
+            "framework_source": {
+              "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 9.5367431640625e-06
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 9.5367431640625e-06
+                }
+              ],
+              "coverage": {
+                "trial-c7e622b52b-param-31ad5eae": {
+                  "counts": {
+                    "1dcfd07639d32233c49eafdf": 2,
+                    "babacb997a72996bf303d028": 2,
+                    "f3ec7e68beb5e3d3f846d2fa": 2,
+                    "e3983f1c815a57f6c63d17cb": 2,
+                    "0336537f2acb6fcfee02ffa0": 2,
+                    "dfb96bb329e6c3859d690b9a": 2,
+                    "5d01f20a9b2dd63baaad70db": 2,
+                    "c5121e145e8228f9895df00b": 2,
+                    "b92e9ace8737abe290b03c62": 2,
+                    "6d17e25a4f8679b7b8f3d445": 2,
+                    "2c0aa2f70446c64d0ac7cc0b": 2,
+                    "6c843982dcd328be1f2c6956": 2,
+                    "189963b5e443e271cc7ced62": 2,
+                    "1cbbcdc66d055254d2fe56e3": 2,
+                    "f386d6ce7891ec8f95d095b4": 2,
+                    "98b3d34b58088bc3e54b4269": 2,
+                    "38dc3865394409b009fe7d6e": 2,
+                    "5627e761be4fee9f944ef5aa": 2,
+                    "dfff79902eee9ec5e9c45788": 2,
+                    "09031aa64ee50b771c4ef341": 2,
+                    "0d063be934673a4264c8feca": 2,
+                    "44c7b84953e1e2a64370b1a5": 2,
+                    "4914c9e0e59913ca9b8712b8": 2,
+                    "60c1612c74cb4ca3fbd18818": 2,
+                    "5005892165447f61026c33e0": 2,
+                    "0d8ad2e9cbbbff5cf80492ea": 2,
+                    "74b4e07cdc6cf824d4432aa8": 2,
+                    "c537568c768f9d62c7963b23": 2,
+                    "cb6b6154a858cd3cb07be445": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "0336537f2acb6fcfee02ffa0",
+                    "09031aa64ee50b771c4ef341",
+                    "0d063be934673a4264c8feca",
+                    "0d8ad2e9cbbbff5cf80492ea",
+                    "189963b5e443e271cc7ced62",
+                    "1cbbcdc66d055254d2fe56e3",
+                    "1dcfd07639d32233c49eafdf",
+                    "2c0aa2f70446c64d0ac7cc0b",
+                    "38dc3865394409b009fe7d6e",
+                    "44c7b84953e1e2a64370b1a5",
+                    "4914c9e0e59913ca9b8712b8",
+                    "5005892165447f61026c33e0",
+                    "5627e761be4fee9f944ef5aa",
+                    "5d01f20a9b2dd63baaad70db",
+                    "60c1612c74cb4ca3fbd18818",
+                    "6c843982dcd328be1f2c6956",
+                    "6d17e25a4f8679b7b8f3d445",
+                    "74b4e07cdc6cf824d4432aa8",
+                    "98b3d34b58088bc3e54b4269",
+                    "b92e9ace8737abe290b03c62",
+                    "babacb997a72996bf303d028",
+                    "c5121e145e8228f9895df00b",
+                    "c537568c768f9d62c7963b23",
+                    "cb6b6154a858cd3cb07be445",
+                    "dfb96bb329e6c3859d690b9a",
+                    "dfff79902eee9ec5e9c45788",
+                    "e3983f1c815a57f6c63d17cb",
+                    "f386d6ce7891ec8f95d095b4",
+                    "f3ec7e68beb5e3d3f846d2fa"
+                  ],
+                  "reference_invocations": {},
+                  "candidate_declared_routes": [
+                    {
+                      "call": "0336537f2acb6fcfee02ffa0",
+                      "route": "cudnn_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "09031aa64ee50b771c4ef341",
+                      "route": "basic_layer_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "0d063be934673a4264c8feca",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "0d8ad2e9cbbbff5cf80492ea",
+                      "route": "cudnn_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "189963b5e443e271cc7ced62",
+                      "route": "basic_layer_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "1cbbcdc66d055254d2fe56e3",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "1dcfd07639d32233c49eafdf",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "2c0aa2f70446c64d0ac7cc0b",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "38dc3865394409b009fe7d6e",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "44c7b84953e1e2a64370b1a5",
+                      "route": "cudnn_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "4914c9e0e59913ca9b8712b8",
+                      "route": "basic_layer_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "5005892165447f61026c33e0",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "5627e761be4fee9f944ef5aa",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "5d01f20a9b2dd63baaad70db",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "60c1612c74cb4ca3fbd18818",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "6c843982dcd328be1f2c6956",
+                      "route": "cudnn_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "6d17e25a4f8679b7b8f3d445",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "74b4e07cdc6cf824d4432aa8",
+                      "route": "basic_layer_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "98b3d34b58088bc3e54b4269",
+                      "route": "basic_layer_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "b92e9ace8737abe290b03c62",
+                      "route": "basic_layer_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "babacb997a72996bf303d028",
+                      "route": "triton_maxpool3x3s2",
+                      "count": 2
+                    },
+                    {
+                      "call": "c5121e145e8228f9895df00b",
+                      "route": "cudnn_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "c537568c768f9d62c7963b23",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "cb6b6154a858cd3cb07be445",
+                      "route": "cudnn_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "dfb96bb329e6c3859d690b9a",
+                      "route": "basic_layer_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "dfff79902eee9ec5e9c45788",
+                      "route": "cudnn_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "e3983f1c815a57f6c63d17cb",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "f386d6ce7891ec8f95d095b4",
+                      "route": "cudnn_conv_bias_add_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "f3ec7e68beb5e3d3f846d2fa",
+                      "route": "basic_layer_conv_bias_add_relu_fused",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "setup": [
+                {
+                  "bundle": "trial-c7e622b52b-param-31ad5eae",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "direct",
+                    "reason": "no functional replacements"
+                  },
+                  "elapsed_ms": 1877.94182,
+                  "allocated_bytes": 113465856,
+                  "reserved_bytes": 769654784,
+                  "peak_allocated_bytes": 601043456,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "latency_ms": 3.330296,
+                  "images_per_second": 9608.755498009787,
+                  "peak_allocated_bytes": 250602496,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.330296,
+                  "framework.peak_allocated_bytes": 250602496.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 122279936.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                {
+                  "latency_ms": 3.342979,
+                  "images_per_second": 9572.300633656389,
+                  "peak_allocated_bytes": 250602496,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.342979,
+                  "framework.peak_allocated_bytes": 250602496.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 122279936.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                {
+                  "latency_ms": 3.331278,
+                  "images_per_second": 9605.923012129279,
+                  "peak_allocated_bytes": 250602496,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.331278,
+                  "framework.peak_allocated_bytes": 250602496.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 122279936.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                {
+                  "latency_ms": 3.335597,
+                  "images_per_second": 9593.48506429284,
+                  "peak_allocated_bytes": 250602496,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.335597,
+                  "framework.peak_allocated_bytes": 250602496.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 122279936.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                {
+                  "latency_ms": 3.347873,
+                  "images_per_second": 9558.307618001041,
+                  "peak_allocated_bytes": 250602496,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.347873,
+                  "framework.peak_allocated_bytes": 250602496.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 122279936.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                }
+              ],
+              "metrics": {
+                "latency_ms": 3.335597,
+                "images_per_second": 9593.48506429284,
+                "peak_allocated_bytes": 250602496,
+                "batch": 32,
+                "framework.elapsed_ms": 3.335597,
+                "framework.peak_allocated_bytes": 250602496.0,
+                "framework.peak_reserved_bytes": 769654784.0,
+                "framework.allocated_bytes": 122279936.0,
+                "framework.reserved_bytes": 769654784.0,
+                "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                "framework.lifecycle_peak_reserved_bytes": 769654784.0
+              },
+              "diagnostics": {},
+              "metric_samples": {}
+            }
+          }
+        ]
+      },
+      "parent": {
+        "status": "passed",
+        "failure": null,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "error": null,
+            "framework_source": {
+              "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 9.5367431640625e-06
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 9.5367431640625e-06
+                }
+              ],
+              "coverage": {
+                "trial-25dfd4d7ca-param-82f6ef75": {
+                  "counts": {
+                    "1dcfd07639d32233c49eafdf": 2,
+                    "e3983f1c815a57f6c63d17cb": 2,
+                    "0336537f2acb6fcfee02ffa0": 2,
+                    "5d01f20a9b2dd63baaad70db": 2,
+                    "c5121e145e8228f9895df00b": 2,
+                    "6d17e25a4f8679b7b8f3d445": 2,
+                    "6c843982dcd328be1f2c6956": 2,
+                    "2c0aa2f70446c64d0ac7cc0b": 2,
+                    "1cbbcdc66d055254d2fe56e3": 2,
+                    "f386d6ce7891ec8f95d095b4": 2,
+                    "38dc3865394409b009fe7d6e": 2,
+                    "dfff79902eee9ec5e9c45788": 2,
+                    "5627e761be4fee9f944ef5aa": 2,
+                    "0d063be934673a4264c8feca": 2,
+                    "44c7b84953e1e2a64370b1a5": 2,
+                    "60c1612c74cb4ca3fbd18818": 2,
+                    "0d8ad2e9cbbbff5cf80492ea": 2,
+                    "5005892165447f61026c33e0": 2,
+                    "c537568c768f9d62c7963b23": 2,
+                    "cb6b6154a858cd3cb07be445": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "0336537f2acb6fcfee02ffa0",
+                    "0d063be934673a4264c8feca",
+                    "0d8ad2e9cbbbff5cf80492ea",
+                    "1cbbcdc66d055254d2fe56e3",
+                    "1dcfd07639d32233c49eafdf",
+                    "2c0aa2f70446c64d0ac7cc0b",
+                    "38dc3865394409b009fe7d6e",
+                    "44c7b84953e1e2a64370b1a5",
+                    "5005892165447f61026c33e0",
+                    "5627e761be4fee9f944ef5aa",
+                    "5d01f20a9b2dd63baaad70db",
+                    "60c1612c74cb4ca3fbd18818",
+                    "6c843982dcd328be1f2c6956",
+                    "6d17e25a4f8679b7b8f3d445",
+                    "c5121e145e8228f9895df00b",
+                    "c537568c768f9d62c7963b23",
+                    "cb6b6154a858cd3cb07be445",
+                    "dfff79902eee9ec5e9c45788",
+                    "e3983f1c815a57f6c63d17cb",
+                    "f386d6ce7891ec8f95d095b4"
+                  ],
+                  "reference_invocations": {
+                    "44c7b84953e1e2a64370b1a5": 2
+                  },
+                  "candidate_declared_routes": [
+                    {
+                      "call": "0336537f2acb6fcfee02ffa0",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "0d063be934673a4264c8feca",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "0d8ad2e9cbbbff5cf80492ea",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "1cbbcdc66d055254d2fe56e3",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "1dcfd07639d32233c49eafdf",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "2c0aa2f70446c64d0ac7cc0b",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "38dc3865394409b009fe7d6e",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "44c7b84953e1e2a64370b1a5",
+                      "route": "setup_route_parent:setup_parent_fastest",
+                      "count": 2
+                    },
+                    {
+                      "call": "5005892165447f61026c33e0",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "5627e761be4fee9f944ef5aa",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "5d01f20a9b2dd63baaad70db",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "60c1612c74cb4ca3fbd18818",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "6c843982dcd328be1f2c6956",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "6d17e25a4f8679b7b8f3d445",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "c5121e145e8228f9895df00b",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "c537568c768f9d62c7963b23",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "cb6b6154a858cd3cb07be445",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "dfff79902eee9ec5e9c45788",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    },
+                    {
+                      "call": "e3983f1c815a57f6c63d17cb",
+                      "route": "cudnn_conv_bias_relu_fused",
+                      "count": 2
+                    },
+                    {
+                      "call": "f386d6ce7891ec8f95d095b4",
+                      "route": "conv2d_bn_folded",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "setup": [
+                {
+                  "bundle": "trial-25dfd4d7ca-param-82f6ef75",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "direct",
+                    "reason": "no functional replacements"
+                  },
+                  "elapsed_ms": 763.130777,
+                  "allocated_bytes": 67935232,
+                  "reserved_bytes": 767557632,
+                  "peak_allocated_bytes": 601043456,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "latency_ms": 3.657211,
+                  "images_per_second": 8749.836965928407,
+                  "peak_allocated_bytes": 299528192,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.657211,
+                  "framework.peak_allocated_bytes": 299528192.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 119825408.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                {
+                  "latency_ms": 3.629787,
+                  "images_per_second": 8815.944296455964,
+                  "peak_allocated_bytes": 299528192,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.629787,
+                  "framework.peak_allocated_bytes": 299528192.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 119825408.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                {
+                  "latency_ms": 3.638096,
+                  "images_per_second": 8795.809676270224,
+                  "peak_allocated_bytes": 299528192,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.638096,
+                  "framework.peak_allocated_bytes": 299528192.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 119825408.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                {
+                  "latency_ms": 3.630922,
+                  "images_per_second": 8813.188495924727,
+                  "peak_allocated_bytes": 299528192,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.630922,
+                  "framework.peak_allocated_bytes": 299528192.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 119825408.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                {
+                  "latency_ms": 3.640637,
+                  "images_per_second": 8789.670598853992,
+                  "peak_allocated_bytes": 299528192,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.640637,
+                  "framework.peak_allocated_bytes": 299528192.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 119825408.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                }
+              ],
+              "metrics": {
+                "latency_ms": 3.638096,
+                "images_per_second": 8795.809676270224,
+                "peak_allocated_bytes": 299528192,
+                "batch": 32,
+                "framework.elapsed_ms": 3.638096,
+                "framework.peak_allocated_bytes": 299528192.0,
+                "framework.peak_reserved_bytes": 769654784.0,
+                "framework.allocated_bytes": 119825408.0,
+                "framework.reserved_bytes": 769654784.0,
+                "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                "framework.lifecycle_peak_reserved_bytes": 769654784.0
+              },
+              "diagnostics": {},
+              "metric_samples": {}
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "resources": {
+    "status": "observed",
+    "reason": null,
+    "evidence": [
+      "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/resnet-latency/jobs/trial-c7e622b52b-evaluation-e16a1e36-profile/run/trace-rank-0.json"
+    ],
+    "raw_discovery": [
+      "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/resnet-latency/jobs/trial-c7e622b52b-evaluation-e16a1e36-profile/run/discovery-rank-0.json"
+    ],
+    "extra_collectors": {
+      "before": {
+        "execution_timeline": {
+          "status": "observed",
+          "reason": null,
+          "provenance": {
+            "revision": "ea2c621e0900ecb1b9bdc73afa531d5b80c1ed208cbb424791ce57151c800467",
+            "parent_revision": "ee05788936b1b49d465ce3be10816f768f917bbfd77b54b93ce3374dfbf5ab6a",
+            "bundles": [
+              "trial-25dfd4d7ca-param-82f6ef75"
+            ],
+            "plan": "sha256:73c321e7e3f3aaa965453dc5069803b55cbbe8877384410366873970a5889874",
+            "registry": "sha256:ed9b202dbb8ac2fa8d4621748d92b5ae5c64a84b8e14f4551875d70441f396cc",
+            "request_sha256": "c008715e3ad55dfcd79496c797231a78d1616eb399aba7d2532bbbc63dcd6680",
+            "objective": {
+              "name": "latency_ms",
+              "direction": "minimize",
+              "unit": "ms",
+              "paired_repeats": 2
+            },
+            "workload": {
+              "id": "offline",
+              "batch": 32,
+              "goals": [
+                {
+                  "id": "throughput",
+                  "metric": "images_per_second",
+                  "direction": "max"
+                },
+                {
+                  "id": "memory",
+                  "metric": "peak_allocated_bytes",
+                  "direction": "min",
+                  "constraints": {
+                    "images_per_second_min_baseline_ratio": 0.95
+                  }
+                }
+              ]
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "scope": null,
+          "ranks": [
+            {
+              "rank": 0,
+              "scope": "Separate diagnostic capture, never the clean project objective",
+              "profiled_wall_ms": 4.108597,
+              "workload_window": {
+                "start_us": 1643673843012.226,
+                "end_us": 1643673847092.1511,
+                "scope": "explicit workload including final completion synchronization; excludes profiler preparation"
+              },
+              "clock": {
+                "status": "observed",
+                "offset_bounds_us": [
+                  18956226440938.11,
+                  18956226442861.19
+                ],
+                "anchor_bounds_us": [
+                  [
+                    18956226440938.11,
+                    18956226442861.19
+                  ],
+                  [
+                    18956226441398.23,
+                    18956226441447.406
+                  ]
+                ],
+                "domain": {
+                  "host": "autodl-container-e8e84ea25b-cffd5c81",
+                  "boot_id": "9890bc2b-f323-49ae-b779-8f723299b44a",
+                  "clock": "CLOCK_MONOTONIC"
+                },
+                "scope": "CPU trace to host monotonic clock within this capture; excludes unknown GPU clock calibration error"
+              },
+              "trace": "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/resnet-latency/jobs/timeline-677b8cc94f/run/timeline-rank-0-0.json",
+              "trace_sha256": "b882090b6cc77a235d04f8c7d5d69888f9ed91bce45206a59de1d9d18d267ecc",
+              "communication_status": "not_observed",
+              "collective_count": 0,
+              "logical_input_bytes_sum": null,
+              "communication_kernel_sum_ms": 0.0,
+              "gradient_callbacks": 0,
+              "buckets": 0
+            }
+          ]
+        },
+        "python_runtime": {
+          "status": "observed",
+          "reason": null,
+          "provenance": {
+            "revision": "ea2c621e0900ecb1b9bdc73afa531d5b80c1ed208cbb424791ce57151c800467",
+            "parent_revision": "ee05788936b1b49d465ce3be10816f768f917bbfd77b54b93ce3374dfbf5ab6a",
+            "bundles": [
+              "trial-25dfd4d7ca-param-82f6ef75"
+            ],
+            "plan": "sha256:73c321e7e3f3aaa965453dc5069803b55cbbe8877384410366873970a5889874",
+            "registry": "sha256:ed9b202dbb8ac2fa8d4621748d92b5ae5c64a84b8e14f4551875d70441f396cc",
+            "request_sha256": "c008715e3ad55dfcd79496c797231a78d1616eb399aba7d2532bbbc63dcd6680",
+            "objective": {
+              "name": "latency_ms",
+              "direction": "minimize",
+              "unit": "ms",
+              "paired_repeats": 2
+            },
+            "workload": {
+              "id": "offline",
+              "batch": 32,
+              "goals": [
+                {
+                  "id": "throughput",
+                  "metric": "images_per_second",
+                  "direction": "max"
+                },
+                {
+                  "id": "memory",
+                  "metric": "peak_allocated_bytes",
+                  "direction": "min",
+                  "constraints": {
+                    "images_per_second_min_baseline_ratio": 0.95
+                  }
+                }
+              ]
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "scope": null,
+          "ranks": [
+            {
+              "rank": 0,
+              "scope": "cProfile perturbs Python dispatch; self/cumulative times include host waits and cannot be added to GPU durations or used for acceptance",
+              "profiled_wall_ms": 4.133191,
+              "workload_window": null,
+              "clock": null,
+              "trace": null,
+              "trace_sha256": null,
+              "communication_status": null,
+              "collective_count": null,
+              "logical_input_bytes_sum": null,
+              "communication_kernel_sum_ms": null,
+              "gradient_callbacks": null,
+              "buckets": null
+            }
+          ]
+        }
+      },
+      "after": {
+        "execution_timeline": {
+          "status": "observed",
+          "reason": null,
+          "provenance": {
+            "revision": "d0757bef09263cbf895f19660b318b04b38c6e3531352e12ffd0d64c7ba9ab03",
+            "parent_revision": "ea2c621e0900ecb1b9bdc73afa531d5b80c1ed208cbb424791ce57151c800467",
+            "bundles": [
+              "trial-c7e622b52b-param-31ad5eae"
+            ],
+            "plan": "sha256:73c321e7e3f3aaa965453dc5069803b55cbbe8877384410366873970a5889874",
+            "registry": "sha256:ed9b202dbb8ac2fa8d4621748d92b5ae5c64a84b8e14f4551875d70441f396cc",
+            "request_sha256": "c008715e3ad55dfcd79496c797231a78d1616eb399aba7d2532bbbc63dcd6680",
+            "objective": {
+              "name": "latency_ms",
+              "direction": "minimize",
+              "unit": "ms",
+              "paired_repeats": 2
+            },
+            "workload": {
+              "id": "offline",
+              "batch": 32,
+              "goals": [
+                {
+                  "id": "throughput",
+                  "metric": "images_per_second",
+                  "direction": "max"
+                },
+                {
+                  "id": "memory",
+                  "metric": "peak_allocated_bytes",
+                  "direction": "min",
+                  "constraints": {
+                    "images_per_second_min_baseline_ratio": 0.95
+                  }
+                }
+              ]
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "scope": null,
+          "ranks": [
+            {
+              "rank": 0,
+              "scope": "Separate diagnostic capture, never the clean project objective",
+              "profiled_wall_ms": 3.570954,
+              "workload_window": {
+                "start_us": 1647170818835.939,
+                "end_us": 1647170822386.701,
+                "scope": "explicit workload including final completion synchronization; excludes profiler preparation"
+              },
+              "clock": {
+                "status": "observed",
+                "offset_bounds_us": [
+                  18956226441111.582,
+                  18956226442450.418
+                ],
+                "anchor_bounds_us": [
+                  [
+                    18956226441111.582,
+                    18956226442450.418
+                  ],
+                  [
+                    18956226441403.875,
+                    18956226441439.75
+                  ]
+                ],
+                "domain": {
+                  "host": "autodl-container-e8e84ea25b-cffd5c81",
+                  "boot_id": "9890bc2b-f323-49ae-b779-8f723299b44a",
+                  "clock": "CLOCK_MONOTONIC"
+                },
+                "scope": "CPU trace to host monotonic clock within this capture; excludes unknown GPU clock calibration error"
+              },
+              "trace": "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/resnet-latency/jobs/timeline-3b6a889464/run/timeline-rank-0-0.json",
+              "trace_sha256": "66d68ea7dfef1bd1147d80daf59701e13132599c9b287be0aa8d3d0563f4dc69",
+              "communication_status": "not_observed",
+              "collective_count": 0,
+              "logical_input_bytes_sum": null,
+              "communication_kernel_sum_ms": 0.0,
+              "gradient_callbacks": 0,
+              "buckets": 0
+            }
+          ]
+        },
+        "python_runtime": {
+          "status": "observed",
+          "reason": null,
+          "provenance": {
+            "revision": "d0757bef09263cbf895f19660b318b04b38c6e3531352e12ffd0d64c7ba9ab03",
+            "parent_revision": "ea2c621e0900ecb1b9bdc73afa531d5b80c1ed208cbb424791ce57151c800467",
+            "bundles": [
+              "trial-c7e622b52b-param-31ad5eae"
+            ],
+            "plan": "sha256:73c321e7e3f3aaa965453dc5069803b55cbbe8877384410366873970a5889874",
+            "registry": "sha256:ed9b202dbb8ac2fa8d4621748d92b5ae5c64a84b8e14f4551875d70441f396cc",
+            "request_sha256": "c008715e3ad55dfcd79496c797231a78d1616eb399aba7d2532bbbc63dcd6680",
+            "objective": {
+              "name": "latency_ms",
+              "direction": "minimize",
+              "unit": "ms",
+              "paired_repeats": 2
+            },
+            "workload": {
+              "id": "offline",
+              "batch": 32,
+              "goals": [
+                {
+                  "id": "throughput",
+                  "metric": "images_per_second",
+                  "direction": "max"
+                },
+                {
+                  "id": "memory",
+                  "metric": "peak_allocated_bytes",
+                  "direction": "min",
+                  "constraints": {
+                    "images_per_second_min_baseline_ratio": 0.95
+                  }
+                }
+              ]
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "scope": null,
+          "ranks": [
+            {
+              "rank": 0,
+              "scope": "cProfile perturbs Python dispatch; self/cumulative times include host waits and cannot be added to GPU durations or used for acceptance",
+              "profiled_wall_ms": 3.630809,
+              "workload_window": null,
+              "clock": null,
+              "trace": null,
+              "trace_sha256": null,
+              "communication_status": null,
+              "collective_count": null,
+              "logical_input_bytes_sum": null,
+              "communication_kernel_sum_ms": null,
+              "gradient_callbacks": null,
+              "buckets": null
+            }
+          ]
+        }
+      }
+    }
+  },
+  "native_replacement_summary": [
+    {
+      "rank": 0,
+      "bundle": "trial-c7e622b52b-param-31ad5eae",
+      "raw_discovery": "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/resnet-latency/jobs/trial-c7e622b52b-evaluation-e16a1e36-profile/run/discovery-rank-0.json",
+      "launches": 43,
+      "kernel_names": {
+        "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)": 10,
+        "_5x_cudnn_ampere_scudnn_128x64_relu_medium_nn_v1": 2,
+        "_maxpool3x3_s2": 1,
+        "_5x_cudnn_ampere_scudnn_128x64_relu_small_nn_v1": 5,
+        "_5x_cudnn_ampere_scudnn_128x128_relu_small_nn_v1": 3,
+        "void implicit_convolve_sgemm<float, float, 512, 6, 8, 3, 3, 5, 1, false, false, true>(int, int, int, float const*, int, float*, float const*, kernel_conv_params, unsigned long long, int, float, float, int, float const*, float const*, bool, bool, int, int)": 1,
+        "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native::CUDAFunctor_add<float> >(at::TensorIteratorBase&, at::native::CUDAFunctor_add<float> const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::CUDAFunctor_add<float> >(at::TensorIteratorBase&, at::native::CUDAFunctor_add<float> const&)::{lambda(int)#1})": 3,
+        "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)": 9,
+        "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile148n_nt_v1": 3,
+        "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile442t_nt_v1": 6
+      },
+      "launches_by_bundle": {
+        "trial-c7e622b52b-param-31ad5eae": 43
+      },
+      "scope": "Native launches associated with this bundle's replacement ranges, including any parent calls; separate diagnostic capture, not clean timing."
+    }
+  ],
+  "raw_trial_scope": "Full resource arrays, affected-call closures, eliminated-call lists, and read/write sets remain in the hashed original server receipt. Public counted fields summarize these lists; actual replacement sites, parameters, quality, measurements, and decision are retained.",
+  "parameter_search": {
+    "engine": "existing TaskSearch + OptunaTPETuner",
+    "measurement_scope": "complete project",
+    "parameter_trials": 3,
+    "space": {},
+    "selected": "trial-c7e622b52b-param-31ad5eae",
+    "stats": [
+      {
+        "candidate_id": "cand-64a29da7",
+        "space_id": "space-cand-64a29da7",
+        "n_complete": 1,
+        "n_fail": 0,
+        "best": {
+          "trial_id": "tr-d46b857a",
+          "candidate_id": "cand-64a29da7",
+          "space_id": "space-cand-64a29da7",
+          "params": {
+            "values": {}
+          },
+          "status": "complete",
+          "failure_kind": null,
+          "failure_detail": "",
+          "latency_ms": null,
+          "task_evaluation": {
+            "score": 3.375944,
+            "valid": true,
+            "metrics": {
+              "latency_ms": 3.375944,
+              "images_per_second": 9478.83021756285,
+              "peak_allocated_bytes": 250602496.0,
+              "batch": 32.0,
+              "framework.elapsed_ms": 3.375944,
+              "framework.peak_allocated_bytes": 250602496.0,
+              "framework.peak_reserved_bytes": 769654784.0,
+              "framework.allocated_bytes": 122279936.0,
+              "framework.reserved_bytes": 769654784.0,
+              "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+              "framework.lifecycle_peak_reserved_bytes": 769654784.0
+            },
+            "detail": null
+          },
+          "profile": null,
+          "fp64_rescued_trials": null,
+          "job_wall_s": null,
+          "job_timed_out": null
+        },
+        "param_stats": [],
+        "resource_at_best": null,
+        "failure_clusters": []
+      }
+    ],
+    "responses": [],
+    "response_interpretation": "Finite differences of observed screening endpoints, not independent causal sensitivities or acceptance evidence. Objective/throughput/workload constants are not automatically labelled resources. Zero resource change is observed, not missing. Kernel counters require separately available diagnostic evidence.",
+    "observations": [
+      {
+        "bundle": {
+          "schema_version": "project.v2",
+          "id": "trial-c7e622b52b-param-31ad5eae",
+          "parent_revision": "ea2c621e0900ecb1b9bdc73afa531d5b80c1ed208cbb424791ce57151c800467",
+          "contract_ref": "sha256:360103795f7aa40b7e738dba761e54e5def14127e85802d6d2f174723d7b0c9a",
+          "scope": "region",
+          "implementation": "composite",
+          "groups": [
+            "c0af3909ba0a106672d5",
+            "5d6060b158cac3430090",
+            "5233e425bbe8203a4dc0",
+            "5eb0dee1d36938317bbe",
+            "c1271430eda49ac23557",
+            "9f7c0638f7c2fd3e7c50",
+            "836e80426d566f8f5dce",
+            "39b672d8d4bea8959c44",
+            "867f8d20e37fedce71c4",
+            "c30ffc96e594cd4d7734",
+            "0022893ec8c1ceea869f",
+            "04fe5ffd91a3ecdc1ced",
+            "9c1e6f2c47a84d7de11d",
+            "4e7e7ecf95e285fe008e"
+          ],
+          "calls": [
+            "0336537f2acb6fcfee02ffa0",
+            "09031aa64ee50b771c4ef341",
+            "0d063be934673a4264c8feca",
+            "0d8ad2e9cbbbff5cf80492ea",
+            "189963b5e443e271cc7ced62",
+            "1cbbcdc66d055254d2fe56e3",
+            "1dcfd07639d32233c49eafdf",
+            "2c0aa2f70446c64d0ac7cc0b",
+            "38dc3865394409b009fe7d6e",
+            "44c7b84953e1e2a64370b1a5",
+            "4914c9e0e59913ca9b8712b8",
+            "5005892165447f61026c33e0",
+            "5627e761be4fee9f944ef5aa",
+            "5d01f20a9b2dd63baaad70db",
+            "60c1612c74cb4ca3fbd18818",
+            "6c843982dcd328be1f2c6956",
+            "6d17e25a4f8679b7b8f3d445",
+            "74b4e07cdc6cf824d4432aa8",
+            "98b3d34b58088bc3e54b4269",
+            "b92e9ace8737abe290b03c62",
+            "babacb997a72996bf303d028",
+            "c5121e145e8228f9895df00b",
+            "c537568c768f9d62c7963b23",
+            "cb6b6154a858cd3cb07be445",
+            "dfb96bb329e6c3859d690b9a",
+            "dfff79902eee9ec5e9c45788",
+            "e3983f1c815a57f6c63d17cb",
+            "f386d6ce7891ec8f95d095b4",
+            "f3ec7e68beb5e3d3f846d2fa"
+          ],
+          "edits": [
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-c7e622b52b.py",
+              "before_sha256": null,
+              "content_ref": "sha256:b74fc90c604789390b475c8194c58c5bb61cd1c4c8720d9bee60cf3866c53635"
+            },
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-c7e622b52b.targets.json",
+              "before_sha256": null,
+              "content_ref": "sha256:bac8c511febe2e8efc91c6609125bea46227e4171d1df968045f94dcd935830e"
+            }
+          ],
+          "requires": [],
+          "replaces": [
+            "trial-25dfd4d7ca-param-82f6ef75"
+          ],
+          "external_invariants": [
+            "Model is pretrained microsoft/resnet-18 loaded from the local assets directory (local_files_only, no downloads) with dtype float32, in eval mode, on context['device'].",
+            "Numerical policies from common.configure(): torch.backends.cuda.matmul.allow_tf32=False, torch.backends.cudnn.allow_tf32=False, torch.backends.cudnn.benchmark=False, torch.set_float32_matmul_precision('highest'), torch.manual_seed(20261020), set_num_threads(4).",
+            "Input batch is exactly images[torch.arange(32, device=cuda) % 3].contiguous() from pixels.npy; data, batch size 32, layout NCHW 224x224 and float32 dtype are unchanged.",
+            "The forward runs under torch.inference_mode() with model.eval(); no dropout, sampling or randomness is involved.",
+            "run() executes the complete workload (single forward producing full logits for all 32 images); no work is moved outside the measured boundary and no extra synchronization semantics are altered.",
+            "Correctness observation schema is {logits: full (32, num_classes) logits tensor, top1: argmax class indices}; logits must satisfy atol=rtol=1e-4 and top1 must match exactly.",
+            "latency_ms is wall time of the full workload with CUDA synchronization at both boundaries, matching the source's measured region.",
+            "images_per_second is derived from the unchanged work amount: batch * 1000 / elapsed_ms.",
+            "peak_allocated_bytes is torch.cuda.max_memory_allocated() with the watermark reset before the timed region, as in the source; the memory goal carries the constraint images_per_second >= 0.95 * baseline ratio.",
+            "No accuracy or convergence claim beyond the source's reference-fidelity checks (close_check on logits, exact top1, negative corruption control)."
+          ],
+          "plan_ref": null,
+          "registry_ref": null,
+          "installer": "opop_candidates/trial-c7e622b52b.py",
+          "parameters": {},
+          "affected_calls_count": 183,
+          "read_set_count": 183,
+          "write_set_count": 31
+        },
+        "revision": "d0757bef09263cbf895f19660b318b04b38c6e3531352e12ffd0d64c7ba9ab03",
+        "result": {
+          "score": 3.375944,
+          "valid": true,
+          "metrics": {
+            "latency_ms": 3.375944,
+            "images_per_second": 9478.83021756285,
+            "peak_allocated_bytes": 250602496.0,
+            "batch": 32.0,
+            "framework.elapsed_ms": 3.375944,
+            "framework.peak_allocated_bytes": 250602496.0,
+            "framework.peak_reserved_bytes": 769654784.0,
+            "framework.allocated_bytes": 122279936.0,
+            "framework.reserved_bytes": 769654784.0,
+            "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+            "framework.lifecycle_peak_reserved_bytes": 769654784.0
+          },
+          "detail": null
+        },
+        "constraints": [],
+        "run": {
+          "status": "passed",
+          "failure": null,
+          "ranks": [
+            {
+              "rank": 0,
+              "status": "passed",
+              "error": null,
+              "framework_source": {
+                "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": true,
+                "checks": [
+                  {
+                    "continuous_step": 0,
+                    "passed": true,
+                    "compared_elements": 32032,
+                    "max_abs_error": 9.5367431640625e-06
+                  },
+                  {
+                    "continuous_step": 1,
+                    "passed": true,
+                    "compared_elements": 32032,
+                    "max_abs_error": 9.5367431640625e-06
+                  }
+                ],
+                "coverage": {
+                  "trial-c7e622b52b-param-31ad5eae": {
+                    "counts": {
+                      "1dcfd07639d32233c49eafdf": 2,
+                      "babacb997a72996bf303d028": 2,
+                      "f3ec7e68beb5e3d3f846d2fa": 2,
+                      "e3983f1c815a57f6c63d17cb": 2,
+                      "0336537f2acb6fcfee02ffa0": 2,
+                      "dfb96bb329e6c3859d690b9a": 2,
+                      "5d01f20a9b2dd63baaad70db": 2,
+                      "c5121e145e8228f9895df00b": 2,
+                      "b92e9ace8737abe290b03c62": 2,
+                      "6d17e25a4f8679b7b8f3d445": 2,
+                      "2c0aa2f70446c64d0ac7cc0b": 2,
+                      "6c843982dcd328be1f2c6956": 2,
+                      "189963b5e443e271cc7ced62": 2,
+                      "1cbbcdc66d055254d2fe56e3": 2,
+                      "f386d6ce7891ec8f95d095b4": 2,
+                      "98b3d34b58088bc3e54b4269": 2,
+                      "38dc3865394409b009fe7d6e": 2,
+                      "5627e761be4fee9f944ef5aa": 2,
+                      "dfff79902eee9ec5e9c45788": 2,
+                      "09031aa64ee50b771c4ef341": 2,
+                      "0d063be934673a4264c8feca": 2,
+                      "44c7b84953e1e2a64370b1a5": 2,
+                      "4914c9e0e59913ca9b8712b8": 2,
+                      "60c1612c74cb4ca3fbd18818": 2,
+                      "5005892165447f61026c33e0": 2,
+                      "0d8ad2e9cbbbff5cf80492ea": 2,
+                      "74b4e07cdc6cf824d4432aa8": 2,
+                      "c537568c768f9d62c7963b23": 2,
+                      "cb6b6154a858cd3cb07be445": 2
+                    },
+                    "fallbacks": {},
+                    "required": [
+                      "0336537f2acb6fcfee02ffa0",
+                      "09031aa64ee50b771c4ef341",
+                      "0d063be934673a4264c8feca",
+                      "0d8ad2e9cbbbff5cf80492ea",
+                      "189963b5e443e271cc7ced62",
+                      "1cbbcdc66d055254d2fe56e3",
+                      "1dcfd07639d32233c49eafdf",
+                      "2c0aa2f70446c64d0ac7cc0b",
+                      "38dc3865394409b009fe7d6e",
+                      "44c7b84953e1e2a64370b1a5",
+                      "4914c9e0e59913ca9b8712b8",
+                      "5005892165447f61026c33e0",
+                      "5627e761be4fee9f944ef5aa",
+                      "5d01f20a9b2dd63baaad70db",
+                      "60c1612c74cb4ca3fbd18818",
+                      "6c843982dcd328be1f2c6956",
+                      "6d17e25a4f8679b7b8f3d445",
+                      "74b4e07cdc6cf824d4432aa8",
+                      "98b3d34b58088bc3e54b4269",
+                      "b92e9ace8737abe290b03c62",
+                      "babacb997a72996bf303d028",
+                      "c5121e145e8228f9895df00b",
+                      "c537568c768f9d62c7963b23",
+                      "cb6b6154a858cd3cb07be445",
+                      "dfb96bb329e6c3859d690b9a",
+                      "dfff79902eee9ec5e9c45788",
+                      "e3983f1c815a57f6c63d17cb",
+                      "f386d6ce7891ec8f95d095b4",
+                      "f3ec7e68beb5e3d3f846d2fa"
+                    ],
+                    "reference_invocations": {},
+                    "candidate_declared_routes": [
+                      {
+                        "call": "0336537f2acb6fcfee02ffa0",
+                        "route": "cudnn_conv_bias_add_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "09031aa64ee50b771c4ef341",
+                        "route": "basic_layer_conv_bias_add_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "0d063be934673a4264c8feca",
+                        "route": "cudnn_conv_bias_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "0d8ad2e9cbbbff5cf80492ea",
+                        "route": "cudnn_conv_bias_add_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "189963b5e443e271cc7ced62",
+                        "route": "basic_layer_conv_bias_add_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "1cbbcdc66d055254d2fe56e3",
+                        "route": "cudnn_conv_bias_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "1dcfd07639d32233c49eafdf",
+                        "route": "cudnn_conv_bias_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "2c0aa2f70446c64d0ac7cc0b",
+                        "route": "conv2d_bn_folded",
+                        "count": 2
+                      },
+                      {
+                        "call": "38dc3865394409b009fe7d6e",
+                        "route": "cudnn_conv_bias_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "44c7b84953e1e2a64370b1a5",
+                        "route": "cudnn_conv_bias_add_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "4914c9e0e59913ca9b8712b8",
+                        "route": "basic_layer_conv_bias_add_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "5005892165447f61026c33e0",
+                        "route": "conv2d_bn_folded",
+                        "count": 2
+                      },
+                      {
+                        "call": "5627e761be4fee9f944ef5aa",
+                        "route": "conv2d_bn_folded",
+                        "count": 2
+                      },
+                      {
+                        "call": "5d01f20a9b2dd63baaad70db",
+                        "route": "cudnn_conv_bias_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "60c1612c74cb4ca3fbd18818",
+                        "route": "cudnn_conv_bias_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "6c843982dcd328be1f2c6956",
+                        "route": "cudnn_conv_bias_add_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "6d17e25a4f8679b7b8f3d445",
+                        "route": "cudnn_conv_bias_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "74b4e07cdc6cf824d4432aa8",
+                        "route": "basic_layer_conv_bias_add_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "98b3d34b58088bc3e54b4269",
+                        "route": "basic_layer_conv_bias_add_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "b92e9ace8737abe290b03c62",
+                        "route": "basic_layer_conv_bias_add_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "babacb997a72996bf303d028",
+                        "route": "triton_maxpool3x3s2",
+                        "count": 2
+                      },
+                      {
+                        "call": "c5121e145e8228f9895df00b",
+                        "route": "cudnn_conv_bias_add_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "c537568c768f9d62c7963b23",
+                        "route": "cudnn_conv_bias_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "cb6b6154a858cd3cb07be445",
+                        "route": "cudnn_conv_bias_add_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "dfb96bb329e6c3859d690b9a",
+                        "route": "basic_layer_conv_bias_add_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "dfff79902eee9ec5e9c45788",
+                        "route": "cudnn_conv_bias_add_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "e3983f1c815a57f6c63d17cb",
+                        "route": "cudnn_conv_bias_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "f386d6ce7891ec8f95d095b4",
+                        "route": "cudnn_conv_bias_add_relu_fused",
+                        "count": 2
+                      },
+                      {
+                        "call": "f3ec7e68beb5e3d3f846d2fa",
+                        "route": "basic_layer_conv_bias_add_relu_fused",
+                        "count": 2
+                      }
+                    ],
+                    "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                  }
+                },
+                "setup": [
+                  {
+                    "bundle": "trial-c7e622b52b-param-31ad5eae",
+                    "binding": {
+                      "requested": "legacy",
+                      "effective": "direct",
+                      "reason": "no functional replacements"
+                    },
+                    "elapsed_ms": 2266.581403,
+                    "allocated_bytes": 113465856,
+                    "reserved_bytes": 769654784,
+                    "peak_allocated_bytes": 601043456,
+                    "scope": "installation after model prepare; separate from the declared warm-model score"
+                  }
+                ],
+                "samples": [
+                  {
+                    "latency_ms": 3.363373,
+                    "images_per_second": 9514.258454236267,
+                    "peak_allocated_bytes": 250602496,
+                    "batch": 32,
+                    "framework.elapsed_ms": 3.363373,
+                    "framework.peak_allocated_bytes": 250602496.0,
+                    "framework.peak_reserved_bytes": 769654784.0,
+                    "framework.allocated_bytes": 122279936.0,
+                    "framework.reserved_bytes": 769654784.0,
+                    "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                    "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                  },
+                  {
+                    "latency_ms": 3.409603,
+                    "images_per_second": 9385.256875947141,
+                    "peak_allocated_bytes": 250602496,
+                    "batch": 32,
+                    "framework.elapsed_ms": 3.409603,
+                    "framework.peak_allocated_bytes": 250602496.0,
+                    "framework.peak_reserved_bytes": 769654784.0,
+                    "framework.allocated_bytes": 122279936.0,
+                    "framework.reserved_bytes": 769654784.0,
+                    "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                    "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                  },
+                  {
+                    "latency_ms": 3.345763,
+                    "images_per_second": 9564.335549170697,
+                    "peak_allocated_bytes": 250602496,
+                    "batch": 32,
+                    "framework.elapsed_ms": 3.345763,
+                    "framework.peak_allocated_bytes": 250602496.0,
+                    "framework.peak_reserved_bytes": 769654784.0,
+                    "framework.allocated_bytes": 122279936.0,
+                    "framework.reserved_bytes": 769654784.0,
+                    "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                    "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                  },
+                  {
+                    "latency_ms": 3.375944,
+                    "images_per_second": 9478.83021756285,
+                    "peak_allocated_bytes": 250602496,
+                    "batch": 32,
+                    "framework.elapsed_ms": 3.375944,
+                    "framework.peak_allocated_bytes": 250602496.0,
+                    "framework.peak_reserved_bytes": 769654784.0,
+                    "framework.allocated_bytes": 122279936.0,
+                    "framework.reserved_bytes": 769654784.0,
+                    "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                    "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                  },
+                  {
+                    "latency_ms": 3.376141,
+                    "images_per_second": 9478.277121719739,
+                    "peak_allocated_bytes": 250602496,
+                    "batch": 32,
+                    "framework.elapsed_ms": 3.376141,
+                    "framework.peak_allocated_bytes": 250602496.0,
+                    "framework.peak_reserved_bytes": 769654784.0,
+                    "framework.allocated_bytes": 122279936.0,
+                    "framework.reserved_bytes": 769654784.0,
+                    "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                    "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                  }
+                ],
+                "metrics": {
+                  "latency_ms": 3.375944,
+                  "images_per_second": 9478.83021756285,
+                  "peak_allocated_bytes": 250602496,
+                  "batch": 32,
+                  "framework.elapsed_ms": 3.375944,
+                  "framework.peak_allocated_bytes": 250602496.0,
+                  "framework.peak_reserved_bytes": 769654784.0,
+                  "framework.allocated_bytes": 122279936.0,
+                  "framework.reserved_bytes": 769654784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 601043456.0,
+                  "framework.lifecycle_peak_reserved_bytes": 769654784.0
+                },
+                "diagnostics": {},
+                "metric_samples": {}
+              }
+            }
+          ]
+        },
+        "diagnostic": null,
+        "candidate_diagnostics": null
+      }
+    ]
+  }
+}

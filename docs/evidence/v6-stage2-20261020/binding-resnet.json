@@ -1,0 +1,2597 @@
+{
+  "protocol": {
+    "source": {
+      "sha256": "c3b48d19b3d111b0dfb3968444f599ab1a67259493ae21c9278f546775bebd49",
+      "files": 154,
+      "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+    },
+    "source_run": "/root/autodl-tmp/dev/v6-work/p6-version-positive-a",
+    "parent": "23047e229126ee10dd44567a79f74f299d607993941d576540aaff8930aacb4c",
+    "candidate": "112764701c83bd93cd277d5c6dadbf912db15fcc684166aef02b95ea539a6774",
+    "accepted_at_start": "b8a2793ea46cc5e7ac74f5fc9fea5f70b8d404aeb5f7e859c2e5fd16f127c2f9",
+    "pairs": 2,
+    "request": {
+      "schema_version": "project-request.v1",
+      "source_root": "/root/autodl-tmp/dev/opop-v6/examples/v6_validation",
+      "entry": "resnet_inference.py",
+      "files": [
+        "resnet_inference.py",
+        "common.py",
+        "workloads.json"
+      ],
+      "goal": "Minimize latency of the fixed single-image ResNet inference workload while preserving all logits and exact top-1.",
+      "objective": {
+        "name": "latency_ms",
+        "unit": "ms",
+        "direction": "minimize"
+      },
+      "workload": {
+        "id": "online",
+        "batch": 1,
+        "goals": [
+          {
+            "id": "latency",
+            "metric": "latency_ms",
+            "direction": "min"
+          }
+        ]
+      },
+      "quality": {
+        "atol": 0.0001,
+        "rtol": 0.0001,
+        "exact_top1": true
+      },
+      "assets": {
+        "assets": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18"
+      },
+      "devices": [
+        "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+      ],
+      "distributed_backend": null,
+      "communication": "auto",
+      "required_observations": [],
+      "tools": {},
+      "profiling": {},
+      "binding_backend": "legacy",
+      "warmup": 2,
+      "repeats": 5,
+      "continuous_steps": 2,
+      "worker_timeout_s": 600.0,
+      "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+      "notes": [
+        "Keep all source numerical policies, including FP32, TF32 disabled and the real preprocessed image fixtures."
+      ]
+    },
+    "scope": "Developer-started unchanged-candidate backend comparison; no publication"
+  },
+  "runs": [
+    {
+      "arm": "parent",
+      "pair": 0,
+      "backend": "legacy",
+      "status": "passed",
+      "failure": null,
+      "ranks": [
+        {
+          "rank": 0,
+          "valid": true,
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            }
+          ],
+          "samples": [
+            {
+              "latency_ms": 1.344255,
+              "batch": 1.0,
+              "images_per_second": 743.9064760778275,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.344255,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 1.403893,
+              "batch": 1.0,
+              "images_per_second": 712.3049976030936,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.403893,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 1.316131,
+              "batch": 1.0,
+              "images_per_second": 759.8027855889726,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.316131,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 1.296991,
+              "batch": 1.0,
+              "images_per_second": 771.0153732755277,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.296991,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 1.311143,
+              "batch": 1.0,
+              "images_per_second": 762.6933141541389,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.311143,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            }
+          ],
+          "metrics": {
+            "latency_ms": 1.316131,
+            "batch": 1.0,
+            "images_per_second": 759.8027855889726,
+            "parameter_count": 11689512.0,
+            "peak_allocated_bytes": 132884480.0,
+            "framework.elapsed_ms": 1.316131,
+            "framework.peak_allocated_bytes": 132884480.0,
+            "framework.peak_reserved_bytes": 159383552.0,
+            "framework.allocated_bytes": 104321024.0,
+            "framework.reserved_bytes": 159383552.0,
+            "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+            "framework.lifecycle_peak_reserved_bytes": 159383552.0
+          },
+          "setup": [
+            {
+              "bundle": "trial-paired-repair-a",
+              "binding": {
+                "requested": "legacy",
+                "effective": "direct",
+                "reason": "no functional replacements"
+              },
+              "elapsed_ms": 62.078498,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 119436800,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            }
+          ],
+          "coverage": {
+            "trial-paired-repair-a": {
+              "counts": {
+                "679ccfe137094282d25350c1": 2,
+                "1a6b0ac798b8d65631087d57": 2,
+                "e1dd538873e2f8c8c254f775": 2,
+                "805446b6ca2f2d58cb2ac54d": 2,
+                "cb9be0b8a2da4fa24d5f4928": 2,
+                "6489b69b8e5ced6cfa1d2cb7": 2,
+                "71c4859868af1ef73c2db3c3": 2,
+                "6802ebe0f043024a3ddc5fa2": 2,
+                "ed8b62e8520f512f2daff0b9": 2,
+                "331270da6b3d7705e5d811ef": 2,
+                "4dbe179ff990714f37f0d969": 2,
+                "cd7109c81fe339ed4d60fade": 2,
+                "6077a1d100e23c0dc29bd7f6": 2,
+                "8e0945e6c447be9973407a18": 2,
+                "07f3b14085aadf1f529bc962": 2,
+                "6214ff32dc254755c8d920f5": 2,
+                "04eda7f194ab41d3b5de937e": 2,
+                "f7c72942f175f2356428df6b": 2,
+                "2977089a784978fef6c6a098": 2,
+                "bc892d2d7abb686d8f8eee37": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "04eda7f194ab41d3b5de937e",
+                "07f3b14085aadf1f529bc962",
+                "1a6b0ac798b8d65631087d57",
+                "2977089a784978fef6c6a098",
+                "331270da6b3d7705e5d811ef",
+                "4dbe179ff990714f37f0d969",
+                "6077a1d100e23c0dc29bd7f6",
+                "6214ff32dc254755c8d920f5",
+                "6489b69b8e5ced6cfa1d2cb7",
+                "679ccfe137094282d25350c1",
+                "6802ebe0f043024a3ddc5fa2",
+                "71c4859868af1ef73c2db3c3",
+                "805446b6ca2f2d58cb2ac54d",
+                "8e0945e6c447be9973407a18",
+                "bc892d2d7abb686d8f8eee37",
+                "cb9be0b8a2da4fa24d5f4928",
+                "cd7109c81fe339ed4d60fade",
+                "e1dd538873e2f8c8c254f775",
+                "ed8b62e8520f512f2daff0b9",
+                "f7c72942f175f2356428df6b"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "framework_source": {
+            "sha256": "c3b48d19b3d111b0dfb3968444f599ab1a67259493ae21c9278f546775bebd49",
+            "files": 154,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "arm": "parent",
+      "pair": 0,
+      "backend": "scoped",
+      "status": "passed",
+      "failure": null,
+      "ranks": [
+        {
+          "rank": 0,
+          "valid": true,
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            }
+          ],
+          "samples": [
+            {
+              "latency_ms": 1.371013,
+              "batch": 1.0,
+              "images_per_second": 729.3876863312018,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.371013,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 1.394112,
+              "batch": 1.0,
+              "images_per_second": 717.3024835881191,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.394112,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 1.322793,
+              "batch": 1.0,
+              "images_per_second": 755.9761807024984,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.322793,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 1.378004,
+              "batch": 1.0,
+              "images_per_second": 725.6872984403528,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.378004,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 1.456175,
+              "batch": 1.0,
+              "images_per_second": 686.7306470719521,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.456175,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            }
+          ],
+          "metrics": {
+            "latency_ms": 1.378004,
+            "batch": 1.0,
+            "images_per_second": 725.6872984403528,
+            "parameter_count": 11689512.0,
+            "peak_allocated_bytes": 132884480.0,
+            "framework.elapsed_ms": 1.378004,
+            "framework.peak_allocated_bytes": 132884480.0,
+            "framework.peak_reserved_bytes": 159383552.0,
+            "framework.allocated_bytes": 104321024.0,
+            "framework.reserved_bytes": 159383552.0,
+            "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+            "framework.lifecycle_peak_reserved_bytes": 159383552.0
+          },
+          "setup": [
+            {
+              "bundle": "trial-paired-repair-a",
+              "binding": {
+                "requested": "scoped",
+                "effective": "direct",
+                "reason": "no functional replacements"
+              },
+              "elapsed_ms": 74.526826,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 119436800,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            }
+          ],
+          "coverage": {
+            "trial-paired-repair-a": {
+              "counts": {
+                "679ccfe137094282d25350c1": 2,
+                "1a6b0ac798b8d65631087d57": 2,
+                "e1dd538873e2f8c8c254f775": 2,
+                "805446b6ca2f2d58cb2ac54d": 2,
+                "cb9be0b8a2da4fa24d5f4928": 2,
+                "6489b69b8e5ced6cfa1d2cb7": 2,
+                "71c4859868af1ef73c2db3c3": 2,
+                "6802ebe0f043024a3ddc5fa2": 2,
+                "ed8b62e8520f512f2daff0b9": 2,
+                "331270da6b3d7705e5d811ef": 2,
+                "4dbe179ff990714f37f0d969": 2,
+                "cd7109c81fe339ed4d60fade": 2,
+                "6077a1d100e23c0dc29bd7f6": 2,
+                "8e0945e6c447be9973407a18": 2,
+                "07f3b14085aadf1f529bc962": 2,
+                "6214ff32dc254755c8d920f5": 2,
+                "04eda7f194ab41d3b5de937e": 2,
+                "f7c72942f175f2356428df6b": 2,
+                "2977089a784978fef6c6a098": 2,
+                "bc892d2d7abb686d8f8eee37": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "04eda7f194ab41d3b5de937e",
+                "07f3b14085aadf1f529bc962",
+                "1a6b0ac798b8d65631087d57",
+                "2977089a784978fef6c6a098",
+                "331270da6b3d7705e5d811ef",
+                "4dbe179ff990714f37f0d969",
+                "6077a1d100e23c0dc29bd7f6",
+                "6214ff32dc254755c8d920f5",
+                "6489b69b8e5ced6cfa1d2cb7",
+                "679ccfe137094282d25350c1",
+                "6802ebe0f043024a3ddc5fa2",
+                "71c4859868af1ef73c2db3c3",
+                "805446b6ca2f2d58cb2ac54d",
+                "8e0945e6c447be9973407a18",
+                "bc892d2d7abb686d8f8eee37",
+                "cb9be0b8a2da4fa24d5f4928",
+                "cd7109c81fe339ed4d60fade",
+                "e1dd538873e2f8c8c254f775",
+                "ed8b62e8520f512f2daff0b9",
+                "f7c72942f175f2356428df6b"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "framework_source": {
+            "sha256": "c3b48d19b3d111b0dfb3968444f599ab1a67259493ae21c9278f546775bebd49",
+            "files": 154,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "arm": "parent",
+      "pair": 1,
+      "backend": "scoped",
+      "status": "passed",
+      "failure": null,
+      "ranks": [
+        {
+          "rank": 0,
+          "valid": true,
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            }
+          ],
+          "samples": [
+            {
+              "latency_ms": 1.297323,
+              "batch": 1.0,
+              "images_per_second": 770.8180615004899,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.297323,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 1.324394,
+              "batch": 1.0,
+              "images_per_second": 755.0623152928811,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.324394,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 1.270521,
+              "batch": 1.0,
+              "images_per_second": 787.0786866175372,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.270521,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 1.233033,
+              "batch": 1.0,
+              "images_per_second": 811.0083022919905,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.233033,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 1.377662,
+              "batch": 1.0,
+              "images_per_second": 725.8674478936052,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.377662,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            }
+          ],
+          "metrics": {
+            "latency_ms": 1.297323,
+            "batch": 1.0,
+            "images_per_second": 770.8180615004899,
+            "parameter_count": 11689512.0,
+            "peak_allocated_bytes": 132884480.0,
+            "framework.elapsed_ms": 1.297323,
+            "framework.peak_allocated_bytes": 132884480.0,
+            "framework.peak_reserved_bytes": 159383552.0,
+            "framework.allocated_bytes": 104321024.0,
+            "framework.reserved_bytes": 159383552.0,
+            "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+            "framework.lifecycle_peak_reserved_bytes": 159383552.0
+          },
+          "setup": [
+            {
+              "bundle": "trial-paired-repair-a",
+              "binding": {
+                "requested": "scoped",
+                "effective": "direct",
+                "reason": "no functional replacements"
+              },
+              "elapsed_ms": 62.422827,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 119436800,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            }
+          ],
+          "coverage": {
+            "trial-paired-repair-a": {
+              "counts": {
+                "679ccfe137094282d25350c1": 2,
+                "1a6b0ac798b8d65631087d57": 2,
+                "e1dd538873e2f8c8c254f775": 2,
+                "805446b6ca2f2d58cb2ac54d": 2,
+                "cb9be0b8a2da4fa24d5f4928": 2,
+                "6489b69b8e5ced6cfa1d2cb7": 2,
+                "71c4859868af1ef73c2db3c3": 2,
+                "6802ebe0f043024a3ddc5fa2": 2,
+                "ed8b62e8520f512f2daff0b9": 2,
+                "331270da6b3d7705e5d811ef": 2,
+                "4dbe179ff990714f37f0d969": 2,
+                "cd7109c81fe339ed4d60fade": 2,
+                "6077a1d100e23c0dc29bd7f6": 2,
+                "8e0945e6c447be9973407a18": 2,
+                "07f3b14085aadf1f529bc962": 2,
+                "6214ff32dc254755c8d920f5": 2,
+                "04eda7f194ab41d3b5de937e": 2,
+                "f7c72942f175f2356428df6b": 2,
+                "2977089a784978fef6c6a098": 2,
+                "bc892d2d7abb686d8f8eee37": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "04eda7f194ab41d3b5de937e",
+                "07f3b14085aadf1f529bc962",
+                "1a6b0ac798b8d65631087d57",
+                "2977089a784978fef6c6a098",
+                "331270da6b3d7705e5d811ef",
+                "4dbe179ff990714f37f0d969",
+                "6077a1d100e23c0dc29bd7f6",
+                "6214ff32dc254755c8d920f5",
+                "6489b69b8e5ced6cfa1d2cb7",
+                "679ccfe137094282d25350c1",
+                "6802ebe0f043024a3ddc5fa2",
+                "71c4859868af1ef73c2db3c3",
+                "805446b6ca2f2d58cb2ac54d",
+                "8e0945e6c447be9973407a18",
+                "bc892d2d7abb686d8f8eee37",
+                "cb9be0b8a2da4fa24d5f4928",
+                "cd7109c81fe339ed4d60fade",
+                "e1dd538873e2f8c8c254f775",
+                "ed8b62e8520f512f2daff0b9",
+                "f7c72942f175f2356428df6b"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "framework_source": {
+            "sha256": "c3b48d19b3d111b0dfb3968444f599ab1a67259493ae21c9278f546775bebd49",
+            "files": 154,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "arm": "parent",
+      "pair": 1,
+      "backend": "legacy",
+      "status": "passed",
+      "failure": null,
+      "ranks": [
+        {
+          "rank": 0,
+          "valid": true,
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            }
+          ],
+          "samples": [
+            {
+              "latency_ms": 1.57606,
+              "batch": 1.0,
+              "images_per_second": 634.4936106493408,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.57606,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 1.706202,
+              "batch": 1.0,
+              "images_per_second": 586.0970740861867,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.706202,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 1.625625,
+              "batch": 1.0,
+              "images_per_second": 615.1480199923107,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.625625,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 1.563794,
+              "batch": 1.0,
+              "images_per_second": 639.4704161801363,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.563794,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 1.7719,
+              "batch": 1.0,
+              "images_per_second": 564.3659348721711,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 1.7719,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            }
+          ],
+          "metrics": {
+            "latency_ms": 1.625625,
+            "batch": 1.0,
+            "images_per_second": 615.1480199923107,
+            "parameter_count": 11689512.0,
+            "peak_allocated_bytes": 132884480.0,
+            "framework.elapsed_ms": 1.625625,
+            "framework.peak_allocated_bytes": 132884480.0,
+            "framework.peak_reserved_bytes": 159383552.0,
+            "framework.allocated_bytes": 104321024.0,
+            "framework.reserved_bytes": 159383552.0,
+            "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+            "framework.lifecycle_peak_reserved_bytes": 159383552.0
+          },
+          "setup": [
+            {
+              "bundle": "trial-paired-repair-a",
+              "binding": {
+                "requested": "legacy",
+                "effective": "direct",
+                "reason": "no functional replacements"
+              },
+              "elapsed_ms": 86.009409,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 119436800,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            }
+          ],
+          "coverage": {
+            "trial-paired-repair-a": {
+              "counts": {
+                "679ccfe137094282d25350c1": 2,
+                "1a6b0ac798b8d65631087d57": 2,
+                "e1dd538873e2f8c8c254f775": 2,
+                "805446b6ca2f2d58cb2ac54d": 2,
+                "cb9be0b8a2da4fa24d5f4928": 2,
+                "6489b69b8e5ced6cfa1d2cb7": 2,
+                "71c4859868af1ef73c2db3c3": 2,
+                "6802ebe0f043024a3ddc5fa2": 2,
+                "ed8b62e8520f512f2daff0b9": 2,
+                "331270da6b3d7705e5d811ef": 2,
+                "4dbe179ff990714f37f0d969": 2,
+                "cd7109c81fe339ed4d60fade": 2,
+                "6077a1d100e23c0dc29bd7f6": 2,
+                "8e0945e6c447be9973407a18": 2,
+                "07f3b14085aadf1f529bc962": 2,
+                "6214ff32dc254755c8d920f5": 2,
+                "04eda7f194ab41d3b5de937e": 2,
+                "f7c72942f175f2356428df6b": 2,
+                "2977089a784978fef6c6a098": 2,
+                "bc892d2d7abb686d8f8eee37": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "04eda7f194ab41d3b5de937e",
+                "07f3b14085aadf1f529bc962",
+                "1a6b0ac798b8d65631087d57",
+                "2977089a784978fef6c6a098",
+                "331270da6b3d7705e5d811ef",
+                "4dbe179ff990714f37f0d969",
+                "6077a1d100e23c0dc29bd7f6",
+                "6214ff32dc254755c8d920f5",
+                "6489b69b8e5ced6cfa1d2cb7",
+                "679ccfe137094282d25350c1",
+                "6802ebe0f043024a3ddc5fa2",
+                "71c4859868af1ef73c2db3c3",
+                "805446b6ca2f2d58cb2ac54d",
+                "8e0945e6c447be9973407a18",
+                "bc892d2d7abb686d8f8eee37",
+                "cb9be0b8a2da4fa24d5f4928",
+                "cd7109c81fe339ed4d60fade",
+                "e1dd538873e2f8c8c254f775",
+                "ed8b62e8520f512f2daff0b9",
+                "f7c72942f175f2356428df6b"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "framework_source": {
+            "sha256": "c3b48d19b3d111b0dfb3968444f599ab1a67259493ae21c9278f546775bebd49",
+            "files": 154,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "arm": "passthrough",
+      "pair": 0,
+      "backend": "legacy",
+      "status": "passed",
+      "failure": null,
+      "ranks": [
+        {
+          "rank": 0,
+          "valid": true,
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            }
+          ],
+          "samples": [
+            {
+              "latency_ms": 2.846249,
+              "batch": 1.0,
+              "images_per_second": 351.3396052137392,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 2.846249,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 2.795821,
+              "batch": 1.0,
+              "images_per_second": 357.67668960208823,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 2.795821,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 6.644754,
+              "batch": 1.0,
+              "images_per_second": 150.49466090091522,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 6.644754,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 2.877548,
+              "batch": 1.0,
+              "images_per_second": 347.5180952672206,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 2.877548,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 2.787953,
+              "batch": 1.0,
+              "images_per_second": 358.68610410577224,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 2.787953,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            }
+          ],
+          "metrics": {
+            "latency_ms": 2.846249,
+            "batch": 1.0,
+            "images_per_second": 351.3396052137392,
+            "parameter_count": 11689512.0,
+            "peak_allocated_bytes": 132884480.0,
+            "framework.elapsed_ms": 2.846249,
+            "framework.peak_allocated_bytes": 132884480.0,
+            "framework.peak_reserved_bytes": 159383552.0,
+            "framework.allocated_bytes": 104321024.0,
+            "framework.reserved_bytes": 159383552.0,
+            "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+            "framework.lifecycle_peak_reserved_bytes": 159383552.0
+          },
+          "setup": [
+            {
+              "bundle": "trial-paired-repair-a",
+              "binding": {
+                "requested": "legacy",
+                "effective": "direct",
+                "reason": "no functional replacements"
+              },
+              "elapsed_ms": 67.456045,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 119436800,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            },
+            {
+              "bundle": "trial-14435a0cc3-param-256ad504",
+              "binding": {
+                "requested": "legacy",
+                "effective": "legacy",
+                "reason": "legacy requested",
+                "functional_sites": 3,
+                "scope_ids": [
+                  "04eda7f194ab41d3b5de937e",
+                  "2977089a784978fef6c6a098",
+                  "bc892d2d7abb686d8f8eee37"
+                ]
+              },
+              "elapsed_ms": 4.24909,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 94875648,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            }
+          ],
+          "coverage": {
+            "trial-paired-repair-a": {
+              "counts": {
+                "679ccfe137094282d25350c1": 2,
+                "1a6b0ac798b8d65631087d57": 2,
+                "e1dd538873e2f8c8c254f775": 2,
+                "805446b6ca2f2d58cb2ac54d": 2,
+                "cb9be0b8a2da4fa24d5f4928": 2,
+                "6489b69b8e5ced6cfa1d2cb7": 2,
+                "71c4859868af1ef73c2db3c3": 2,
+                "6802ebe0f043024a3ddc5fa2": 2,
+                "ed8b62e8520f512f2daff0b9": 2,
+                "331270da6b3d7705e5d811ef": 2,
+                "4dbe179ff990714f37f0d969": 2,
+                "cd7109c81fe339ed4d60fade": 2,
+                "6077a1d100e23c0dc29bd7f6": 2,
+                "8e0945e6c447be9973407a18": 2,
+                "07f3b14085aadf1f529bc962": 2,
+                "6214ff32dc254755c8d920f5": 2,
+                "04eda7f194ab41d3b5de937e": 2,
+                "f7c72942f175f2356428df6b": 2,
+                "2977089a784978fef6c6a098": 2,
+                "bc892d2d7abb686d8f8eee37": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "04eda7f194ab41d3b5de937e",
+                "07f3b14085aadf1f529bc962",
+                "1a6b0ac798b8d65631087d57",
+                "2977089a784978fef6c6a098",
+                "331270da6b3d7705e5d811ef",
+                "4dbe179ff990714f37f0d969",
+                "6077a1d100e23c0dc29bd7f6",
+                "6214ff32dc254755c8d920f5",
+                "6489b69b8e5ced6cfa1d2cb7",
+                "679ccfe137094282d25350c1",
+                "6802ebe0f043024a3ddc5fa2",
+                "71c4859868af1ef73c2db3c3",
+                "805446b6ca2f2d58cb2ac54d",
+                "8e0945e6c447be9973407a18",
+                "bc892d2d7abb686d8f8eee37",
+                "cb9be0b8a2da4fa24d5f4928",
+                "cd7109c81fe339ed4d60fade",
+                "e1dd538873e2f8c8c254f775",
+                "ed8b62e8520f512f2daff0b9",
+                "f7c72942f175f2356428df6b"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            },
+            "trial-14435a0cc3-param-256ad504": {
+              "counts": {
+                "20751897973c79a00ee9fdca": 2,
+                "958f42dd68b163e99a8ffc57": 2,
+                "f1efdd73d2cc1202e0d29d0a": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "20751897973c79a00ee9fdca",
+                "958f42dd68b163e99a8ffc57",
+                "f1efdd73d2cc1202e0d29d0a"
+              ],
+              "reference_invocations": {
+                "20751897973c79a00ee9fdca": 2,
+                "958f42dd68b163e99a8ffc57": 2,
+                "f1efdd73d2cc1202e0d29d0a": 2
+              },
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "framework_source": {
+            "sha256": "c3b48d19b3d111b0dfb3968444f599ab1a67259493ae21c9278f546775bebd49",
+            "files": 154,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "arm": "passthrough",
+      "pair": 0,
+      "backend": "scoped",
+      "status": "passed",
+      "failure": null,
+      "ranks": [
+        {
+          "rank": 0,
+          "valid": true,
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            }
+          ],
+          "samples": [
+            {
+              "latency_ms": 2.588239,
+              "batch": 1.0,
+              "images_per_second": 386.3630831619491,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 2.588239,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 2.577284,
+              "batch": 1.0,
+              "images_per_second": 388.0053575779774,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 2.577284,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 2.546418,
+              "batch": 1.0,
+              "images_per_second": 392.7085026888751,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 2.546418,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 3.096614,
+              "batch": 1.0,
+              "images_per_second": 322.93337174087566,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 3.096614,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 2.521416,
+              "batch": 1.0,
+              "images_per_second": 396.60254396735803,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 2.521416,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            }
+          ],
+          "metrics": {
+            "latency_ms": 2.577284,
+            "batch": 1.0,
+            "images_per_second": 388.0053575779774,
+            "parameter_count": 11689512.0,
+            "peak_allocated_bytes": 132884480.0,
+            "framework.elapsed_ms": 2.577284,
+            "framework.peak_allocated_bytes": 132884480.0,
+            "framework.peak_reserved_bytes": 159383552.0,
+            "framework.allocated_bytes": 104321024.0,
+            "framework.reserved_bytes": 159383552.0,
+            "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+            "framework.lifecycle_peak_reserved_bytes": 159383552.0
+          },
+          "setup": [
+            {
+              "bundle": "trial-paired-repair-a",
+              "binding": {
+                "requested": "scoped",
+                "effective": "direct",
+                "reason": "no functional replacements"
+              },
+              "elapsed_ms": 72.97783,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 119436800,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            },
+            {
+              "bundle": "trial-14435a0cc3-param-256ad504",
+              "binding": {
+                "requested": "scoped",
+                "effective": "scoped",
+                "reason": "all functional sites have observed module boundaries",
+                "functional_sites": 3,
+                "scope_ids": [
+                  "04eda7f194ab41d3b5de937e",
+                  "2977089a784978fef6c6a098",
+                  "bc892d2d7abb686d8f8eee37"
+                ]
+              },
+              "elapsed_ms": 2.178095,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 94875648,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            }
+          ],
+          "coverage": {
+            "trial-paired-repair-a": {
+              "counts": {
+                "679ccfe137094282d25350c1": 2,
+                "1a6b0ac798b8d65631087d57": 2,
+                "e1dd538873e2f8c8c254f775": 2,
+                "805446b6ca2f2d58cb2ac54d": 2,
+                "cb9be0b8a2da4fa24d5f4928": 2,
+                "6489b69b8e5ced6cfa1d2cb7": 2,
+                "71c4859868af1ef73c2db3c3": 2,
+                "6802ebe0f043024a3ddc5fa2": 2,
+                "ed8b62e8520f512f2daff0b9": 2,
+                "331270da6b3d7705e5d811ef": 2,
+                "4dbe179ff990714f37f0d969": 2,
+                "cd7109c81fe339ed4d60fade": 2,
+                "6077a1d100e23c0dc29bd7f6": 2,
+                "8e0945e6c447be9973407a18": 2,
+                "07f3b14085aadf1f529bc962": 2,
+                "6214ff32dc254755c8d920f5": 2,
+                "04eda7f194ab41d3b5de937e": 2,
+                "f7c72942f175f2356428df6b": 2,
+                "2977089a784978fef6c6a098": 2,
+                "bc892d2d7abb686d8f8eee37": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "04eda7f194ab41d3b5de937e",
+                "07f3b14085aadf1f529bc962",
+                "1a6b0ac798b8d65631087d57",
+                "2977089a784978fef6c6a098",
+                "331270da6b3d7705e5d811ef",
+                "4dbe179ff990714f37f0d969",
+                "6077a1d100e23c0dc29bd7f6",
+                "6214ff32dc254755c8d920f5",
+                "6489b69b8e5ced6cfa1d2cb7",
+                "679ccfe137094282d25350c1",
+                "6802ebe0f043024a3ddc5fa2",
+                "71c4859868af1ef73c2db3c3",
+                "805446b6ca2f2d58cb2ac54d",
+                "8e0945e6c447be9973407a18",
+                "bc892d2d7abb686d8f8eee37",
+                "cb9be0b8a2da4fa24d5f4928",
+                "cd7109c81fe339ed4d60fade",
+                "e1dd538873e2f8c8c254f775",
+                "ed8b62e8520f512f2daff0b9",
+                "f7c72942f175f2356428df6b"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            },
+            "trial-14435a0cc3-param-256ad504": {
+              "counts": {
+                "20751897973c79a00ee9fdca": 2,
+                "958f42dd68b163e99a8ffc57": 2,
+                "f1efdd73d2cc1202e0d29d0a": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "20751897973c79a00ee9fdca",
+                "958f42dd68b163e99a8ffc57",
+                "f1efdd73d2cc1202e0d29d0a"
+              ],
+              "reference_invocations": {
+                "20751897973c79a00ee9fdca": 2,
+                "958f42dd68b163e99a8ffc57": 2,
+                "f1efdd73d2cc1202e0d29d0a": 2
+              },
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "framework_source": {
+            "sha256": "c3b48d19b3d111b0dfb3968444f599ab1a67259493ae21c9278f546775bebd49",
+            "files": 154,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "arm": "passthrough",
+      "pair": 1,
+      "backend": "scoped",
+      "status": "passed",
+      "failure": null,
+      "ranks": [
+        {
+          "rank": 0,
+          "valid": true,
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            }
+          ],
+          "samples": [
+            {
+              "latency_ms": 2.280844,
+              "batch": 1.0,
+              "images_per_second": 438.4341936581371,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 2.280844,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 2.224324,
+              "batch": 1.0,
+              "images_per_second": 449.57479216157355,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 2.224324,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 2.218464,
+              "batch": 1.0,
+              "images_per_second": 450.7623292512297,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 2.218464,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 2.623474,
+              "batch": 1.0,
+              "images_per_second": 381.1739700869915,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 2.623474,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 2.209931,
+              "batch": 1.0,
+              "images_per_second": 452.5028156987707,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 2.209931,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            }
+          ],
+          "metrics": {
+            "latency_ms": 2.224324,
+            "batch": 1.0,
+            "images_per_second": 449.57479216157355,
+            "parameter_count": 11689512.0,
+            "peak_allocated_bytes": 132884480.0,
+            "framework.elapsed_ms": 2.224324,
+            "framework.peak_allocated_bytes": 132884480.0,
+            "framework.peak_reserved_bytes": 159383552.0,
+            "framework.allocated_bytes": 104321024.0,
+            "framework.reserved_bytes": 159383552.0,
+            "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+            "framework.lifecycle_peak_reserved_bytes": 159383552.0
+          },
+          "setup": [
+            {
+              "bundle": "trial-paired-repair-a",
+              "binding": {
+                "requested": "scoped",
+                "effective": "direct",
+                "reason": "no functional replacements"
+              },
+              "elapsed_ms": 66.788427,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 119436800,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            },
+            {
+              "bundle": "trial-14435a0cc3-param-256ad504",
+              "binding": {
+                "requested": "scoped",
+                "effective": "scoped",
+                "reason": "all functional sites have observed module boundaries",
+                "functional_sites": 3,
+                "scope_ids": [
+                  "04eda7f194ab41d3b5de937e",
+                  "2977089a784978fef6c6a098",
+                  "bc892d2d7abb686d8f8eee37"
+                ]
+              },
+              "elapsed_ms": 2.0412,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 94875648,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            }
+          ],
+          "coverage": {
+            "trial-paired-repair-a": {
+              "counts": {
+                "679ccfe137094282d25350c1": 2,
+                "1a6b0ac798b8d65631087d57": 2,
+                "e1dd538873e2f8c8c254f775": 2,
+                "805446b6ca2f2d58cb2ac54d": 2,
+                "cb9be0b8a2da4fa24d5f4928": 2,
+                "6489b69b8e5ced6cfa1d2cb7": 2,
+                "71c4859868af1ef73c2db3c3": 2,
+                "6802ebe0f043024a3ddc5fa2": 2,
+                "ed8b62e8520f512f2daff0b9": 2,
+                "331270da6b3d7705e5d811ef": 2,
+                "4dbe179ff990714f37f0d969": 2,
+                "cd7109c81fe339ed4d60fade": 2,
+                "6077a1d100e23c0dc29bd7f6": 2,
+                "8e0945e6c447be9973407a18": 2,
+                "07f3b14085aadf1f529bc962": 2,
+                "6214ff32dc254755c8d920f5": 2,
+                "04eda7f194ab41d3b5de937e": 2,
+                "f7c72942f175f2356428df6b": 2,
+                "2977089a784978fef6c6a098": 2,
+                "bc892d2d7abb686d8f8eee37": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "04eda7f194ab41d3b5de937e",
+                "07f3b14085aadf1f529bc962",
+                "1a6b0ac798b8d65631087d57",
+                "2977089a784978fef6c6a098",
+                "331270da6b3d7705e5d811ef",
+                "4dbe179ff990714f37f0d969",
+                "6077a1d100e23c0dc29bd7f6",
+                "6214ff32dc254755c8d920f5",
+                "6489b69b8e5ced6cfa1d2cb7",
+                "679ccfe137094282d25350c1",
+                "6802ebe0f043024a3ddc5fa2",
+                "71c4859868af1ef73c2db3c3",
+                "805446b6ca2f2d58cb2ac54d",
+                "8e0945e6c447be9973407a18",
+                "bc892d2d7abb686d8f8eee37",
+                "cb9be0b8a2da4fa24d5f4928",
+                "cd7109c81fe339ed4d60fade",
+                "e1dd538873e2f8c8c254f775",
+                "ed8b62e8520f512f2daff0b9",
+                "f7c72942f175f2356428df6b"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            },
+            "trial-14435a0cc3-param-256ad504": {
+              "counts": {
+                "20751897973c79a00ee9fdca": 2,
+                "958f42dd68b163e99a8ffc57": 2,
+                "f1efdd73d2cc1202e0d29d0a": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "20751897973c79a00ee9fdca",
+                "958f42dd68b163e99a8ffc57",
+                "f1efdd73d2cc1202e0d29d0a"
+              ],
+              "reference_invocations": {
+                "20751897973c79a00ee9fdca": 2,
+                "958f42dd68b163e99a8ffc57": 2,
+                "f1efdd73d2cc1202e0d29d0a": 2
+              },
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "framework_source": {
+            "sha256": "c3b48d19b3d111b0dfb3968444f599ab1a67259493ae21c9278f546775bebd49",
+            "files": 154,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "arm": "passthrough",
+      "pair": 1,
+      "backend": "legacy",
+      "status": "passed",
+      "failure": null,
+      "ranks": [
+        {
+          "rank": 0,
+          "valid": true,
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.9141387939453125e-06
+            }
+          ],
+          "samples": [
+            {
+              "latency_ms": 3.092959,
+              "batch": 1.0,
+              "images_per_second": 323.31498736323374,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 3.092959,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 3.0811,
+              "batch": 1.0,
+              "images_per_second": 324.5594106001103,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 3.0811,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 3.065269,
+              "batch": 1.0,
+              "images_per_second": 326.23564196160277,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 3.065269,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 3.078144,
+              "batch": 1.0,
+              "images_per_second": 324.8710911510313,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 3.078144,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            },
+            {
+              "latency_ms": 3.063682,
+              "batch": 1.0,
+              "images_per_second": 326.40463337905175,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 132884480.0,
+              "framework.elapsed_ms": 3.063682,
+              "framework.peak_allocated_bytes": 132884480.0,
+              "framework.peak_reserved_bytes": 159383552.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 159383552.0,
+              "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+              "framework.lifecycle_peak_reserved_bytes": 159383552.0
+            }
+          ],
+          "metrics": {
+            "latency_ms": 3.078144,
+            "batch": 1.0,
+            "images_per_second": 324.8710911510313,
+            "parameter_count": 11689512.0,
+            "peak_allocated_bytes": 132884480.0,
+            "framework.elapsed_ms": 3.078144,
+            "framework.peak_allocated_bytes": 132884480.0,
+            "framework.peak_reserved_bytes": 159383552.0,
+            "framework.allocated_bytes": 104321024.0,
+            "framework.reserved_bytes": 159383552.0,
+            "framework.lifecycle_peak_allocated_bytes": 132884480.0,
+            "framework.lifecycle_peak_reserved_bytes": 159383552.0
+          },
+          "setup": [
+            {
+              "bundle": "trial-paired-repair-a",
+              "binding": {
+                "requested": "legacy",
+                "effective": "direct",
+                "reason": "no functional replacements"
+              },
+              "elapsed_ms": 65.661951,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 119436800,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            },
+            {
+              "bundle": "trial-14435a0cc3-param-256ad504",
+              "binding": {
+                "requested": "legacy",
+                "effective": "legacy",
+                "reason": "legacy requested",
+                "functional_sites": 3,
+                "scope_ids": [
+                  "04eda7f194ab41d3b5de937e",
+                  "2977089a784978fef6c6a098",
+                  "bc892d2d7abb686d8f8eee37"
+                ]
+              },
+              "elapsed_ms": 2.282451,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 94875648,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            }
+          ],
+          "coverage": {
+            "trial-paired-repair-a": {
+              "counts": {
+                "679ccfe137094282d25350c1": 2,
+                "1a6b0ac798b8d65631087d57": 2,
+                "e1dd538873e2f8c8c254f775": 2,
+                "805446b6ca2f2d58cb2ac54d": 2,
+                "cb9be0b8a2da4fa24d5f4928": 2,
+                "6489b69b8e5ced6cfa1d2cb7": 2,
+                "71c4859868af1ef73c2db3c3": 2,
+                "6802ebe0f043024a3ddc5fa2": 2,
+                "ed8b62e8520f512f2daff0b9": 2,
+                "331270da6b3d7705e5d811ef": 2,
+                "4dbe179ff990714f37f0d969": 2,
+                "cd7109c81fe339ed4d60fade": 2,
+                "6077a1d100e23c0dc29bd7f6": 2,
+                "8e0945e6c447be9973407a18": 2,
+                "07f3b14085aadf1f529bc962": 2,
+                "6214ff32dc254755c8d920f5": 2,
+                "04eda7f194ab41d3b5de937e": 2,
+                "f7c72942f175f2356428df6b": 2,
+                "2977089a784978fef6c6a098": 2,
+                "bc892d2d7abb686d8f8eee37": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "04eda7f194ab41d3b5de937e",
+                "07f3b14085aadf1f529bc962",
+                "1a6b0ac798b8d65631087d57",
+                "2977089a784978fef6c6a098",
+                "331270da6b3d7705e5d811ef",
+                "4dbe179ff990714f37f0d969",
+                "6077a1d100e23c0dc29bd7f6",
+                "6214ff32dc254755c8d920f5",
+                "6489b69b8e5ced6cfa1d2cb7",
+                "679ccfe137094282d25350c1",
+                "6802ebe0f043024a3ddc5fa2",
+                "71c4859868af1ef73c2db3c3",
+                "805446b6ca2f2d58cb2ac54d",
+                "8e0945e6c447be9973407a18",
+                "bc892d2d7abb686d8f8eee37",
+                "cb9be0b8a2da4fa24d5f4928",
+                "cd7109c81fe339ed4d60fade",
+                "e1dd538873e2f8c8c254f775",
+                "ed8b62e8520f512f2daff0b9",
+                "f7c72942f175f2356428df6b"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            },
+            "trial-14435a0cc3-param-256ad504": {
+              "counts": {
+                "20751897973c79a00ee9fdca": 2,
+                "958f42dd68b163e99a8ffc57": 2,
+                "f1efdd73d2cc1202e0d29d0a": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "20751897973c79a00ee9fdca",
+                "958f42dd68b163e99a8ffc57",
+                "f1efdd73d2cc1202e0d29d0a"
+              ],
+              "reference_invocations": {
+                "20751897973c79a00ee9fdca": 2,
+                "958f42dd68b163e99a8ffc57": 2,
+                "f1efdd73d2cc1202e0d29d0a": 2
+              },
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "framework_source": {
+            "sha256": "c3b48d19b3d111b0dfb3968444f599ab1a67259493ae21c9278f546775bebd49",
+            "files": 154,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "arm": "candidate",
+      "pair": 0,
+      "backend": "legacy",
+      "status": "passed",
+      "failure": null,
+      "ranks": [
+        {
+          "rank": 0,
+          "valid": true,
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.198883056640625e-06
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.198883056640625e-06
+            }
+          ],
+          "samples": [
+            {
+              "latency_ms": 3.196334,
+              "batch": 1.0,
+              "images_per_second": 312.8584184256089,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 3.196334,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            },
+            {
+              "latency_ms": 3.221257,
+              "batch": 1.0,
+              "images_per_second": 310.4378197703567,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 3.221257,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            },
+            {
+              "latency_ms": 3.144295,
+              "batch": 1.0,
+              "images_per_second": 318.0363165669888,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 3.144295,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            },
+            {
+              "latency_ms": 3.221548,
+              "batch": 1.0,
+              "images_per_second": 310.40977815633977,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 3.221548,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            },
+            {
+              "latency_ms": 3.130888,
+              "batch": 1.0,
+              "images_per_second": 319.39820268243386,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 3.130888,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            }
+          ],
+          "metrics": {
+            "latency_ms": 3.196334,
+            "batch": 1.0,
+            "images_per_second": 312.8584184256089,
+            "parameter_count": 11689512.0,
+            "peak_allocated_bytes": 112677888.0,
+            "framework.elapsed_ms": 3.196334,
+            "framework.peak_allocated_bytes": 112677888.0,
+            "framework.peak_reserved_bytes": 132120576.0,
+            "framework.allocated_bytes": 104321024.0,
+            "framework.reserved_bytes": 132120576.0,
+            "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+            "framework.lifecycle_peak_reserved_bytes": 132120576.0
+          },
+          "setup": [
+            {
+              "bundle": "trial-paired-repair-a",
+              "binding": {
+                "requested": "legacy",
+                "effective": "direct",
+                "reason": "no functional replacements"
+              },
+              "elapsed_ms": 63.639884,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 119436800,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            },
+            {
+              "bundle": "trial-14435a0cc3-param-256ad504",
+              "binding": {
+                "requested": "legacy",
+                "effective": "legacy",
+                "reason": "legacy requested",
+                "functional_sites": 3,
+                "scope_ids": [
+                  "04eda7f194ab41d3b5de937e",
+                  "2977089a784978fef6c6a098",
+                  "bc892d2d7abb686d8f8eee37"
+                ]
+              },
+              "elapsed_ms": 3.863571,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 94875648,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            }
+          ],
+          "coverage": {
+            "trial-paired-repair-a": {
+              "counts": {
+                "679ccfe137094282d25350c1": 2,
+                "1a6b0ac798b8d65631087d57": 2,
+                "e1dd538873e2f8c8c254f775": 2,
+                "805446b6ca2f2d58cb2ac54d": 2,
+                "cb9be0b8a2da4fa24d5f4928": 2,
+                "6489b69b8e5ced6cfa1d2cb7": 2,
+                "71c4859868af1ef73c2db3c3": 2,
+                "6802ebe0f043024a3ddc5fa2": 2,
+                "ed8b62e8520f512f2daff0b9": 2,
+                "331270da6b3d7705e5d811ef": 2,
+                "4dbe179ff990714f37f0d969": 2,
+                "cd7109c81fe339ed4d60fade": 2,
+                "6077a1d100e23c0dc29bd7f6": 2,
+                "8e0945e6c447be9973407a18": 2,
+                "07f3b14085aadf1f529bc962": 2,
+                "6214ff32dc254755c8d920f5": 2,
+                "04eda7f194ab41d3b5de937e": 2,
+                "f7c72942f175f2356428df6b": 2,
+                "2977089a784978fef6c6a098": 2,
+                "bc892d2d7abb686d8f8eee37": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "04eda7f194ab41d3b5de937e",
+                "07f3b14085aadf1f529bc962",
+                "1a6b0ac798b8d65631087d57",
+                "2977089a784978fef6c6a098",
+                "331270da6b3d7705e5d811ef",
+                "4dbe179ff990714f37f0d969",
+                "6077a1d100e23c0dc29bd7f6",
+                "6214ff32dc254755c8d920f5",
+                "6489b69b8e5ced6cfa1d2cb7",
+                "679ccfe137094282d25350c1",
+                "6802ebe0f043024a3ddc5fa2",
+                "71c4859868af1ef73c2db3c3",
+                "805446b6ca2f2d58cb2ac54d",
+                "8e0945e6c447be9973407a18",
+                "bc892d2d7abb686d8f8eee37",
+                "cb9be0b8a2da4fa24d5f4928",
+                "cd7109c81fe339ed4d60fade",
+                "e1dd538873e2f8c8c254f775",
+                "ed8b62e8520f512f2daff0b9",
+                "f7c72942f175f2356428df6b"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            },
+            "trial-14435a0cc3-param-256ad504": {
+              "counts": {
+                "20751897973c79a00ee9fdca": 2,
+                "958f42dd68b163e99a8ffc57": 2,
+                "f1efdd73d2cc1202e0d29d0a": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "20751897973c79a00ee9fdca",
+                "958f42dd68b163e99a8ffc57",
+                "f1efdd73d2cc1202e0d29d0a"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "framework_source": {
+            "sha256": "c3b48d19b3d111b0dfb3968444f599ab1a67259493ae21c9278f546775bebd49",
+            "files": 154,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "arm": "candidate",
+      "pair": 0,
+      "backend": "scoped",
+      "status": "passed",
+      "failure": null,
+      "ranks": [
+        {
+          "rank": 0,
+          "valid": true,
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.198883056640625e-06
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.198883056640625e-06
+            }
+          ],
+          "samples": [
+            {
+              "latency_ms": 2.48923,
+              "batch": 1.0,
+              "images_per_second": 401.7306556646031,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 2.48923,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            },
+            {
+              "latency_ms": 2.45145,
+              "batch": 1.0,
+              "images_per_second": 407.9218421750393,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 2.45145,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            },
+            {
+              "latency_ms": 2.393745,
+              "batch": 1.0,
+              "images_per_second": 417.75544178682355,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 2.393745,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            },
+            {
+              "latency_ms": 2.416429,
+              "batch": 1.0,
+              "images_per_second": 413.83380186216937,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 2.416429,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            },
+            {
+              "latency_ms": 2.384438,
+              "batch": 1.0,
+              "images_per_second": 419.38603561929483,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 2.384438,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            }
+          ],
+          "metrics": {
+            "latency_ms": 2.416429,
+            "batch": 1.0,
+            "images_per_second": 413.83380186216937,
+            "parameter_count": 11689512.0,
+            "peak_allocated_bytes": 112677888.0,
+            "framework.elapsed_ms": 2.416429,
+            "framework.peak_allocated_bytes": 112677888.0,
+            "framework.peak_reserved_bytes": 132120576.0,
+            "framework.allocated_bytes": 104321024.0,
+            "framework.reserved_bytes": 132120576.0,
+            "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+            "framework.lifecycle_peak_reserved_bytes": 132120576.0
+          },
+          "setup": [
+            {
+              "bundle": "trial-paired-repair-a",
+              "binding": {
+                "requested": "scoped",
+                "effective": "direct",
+                "reason": "no functional replacements"
+              },
+              "elapsed_ms": 72.099522,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 119436800,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            },
+            {
+              "bundle": "trial-14435a0cc3-param-256ad504",
+              "binding": {
+                "requested": "scoped",
+                "effective": "scoped",
+                "reason": "all functional sites have observed module boundaries",
+                "functional_sites": 3,
+                "scope_ids": [
+                  "04eda7f194ab41d3b5de937e",
+                  "2977089a784978fef6c6a098",
+                  "bc892d2d7abb686d8f8eee37"
+                ]
+              },
+              "elapsed_ms": 4.599964,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 94875648,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            }
+          ],
+          "coverage": {
+            "trial-paired-repair-a": {
+              "counts": {
+                "679ccfe137094282d25350c1": 2,
+                "1a6b0ac798b8d65631087d57": 2,
+                "e1dd538873e2f8c8c254f775": 2,
+                "805446b6ca2f2d58cb2ac54d": 2,
+                "cb9be0b8a2da4fa24d5f4928": 2,
+                "6489b69b8e5ced6cfa1d2cb7": 2,
+                "71c4859868af1ef73c2db3c3": 2,
+                "6802ebe0f043024a3ddc5fa2": 2,
+                "ed8b62e8520f512f2daff0b9": 2,
+                "331270da6b3d7705e5d811ef": 2,
+                "4dbe179ff990714f37f0d969": 2,
+                "cd7109c81fe339ed4d60fade": 2,
+                "6077a1d100e23c0dc29bd7f6": 2,
+                "8e0945e6c447be9973407a18": 2,
+                "07f3b14085aadf1f529bc962": 2,
+                "6214ff32dc254755c8d920f5": 2,
+                "04eda7f194ab41d3b5de937e": 2,
+                "f7c72942f175f2356428df6b": 2,
+                "2977089a784978fef6c6a098": 2,
+                "bc892d2d7abb686d8f8eee37": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "04eda7f194ab41d3b5de937e",
+                "07f3b14085aadf1f529bc962",
+                "1a6b0ac798b8d65631087d57",
+                "2977089a784978fef6c6a098",
+                "331270da6b3d7705e5d811ef",
+                "4dbe179ff990714f37f0d969",
+                "6077a1d100e23c0dc29bd7f6",
+                "6214ff32dc254755c8d920f5",
+                "6489b69b8e5ced6cfa1d2cb7",
+                "679ccfe137094282d25350c1",
+                "6802ebe0f043024a3ddc5fa2",
+                "71c4859868af1ef73c2db3c3",
+                "805446b6ca2f2d58cb2ac54d",
+                "8e0945e6c447be9973407a18",
+                "bc892d2d7abb686d8f8eee37",
+                "cb9be0b8a2da4fa24d5f4928",
+                "cd7109c81fe339ed4d60fade",
+                "e1dd538873e2f8c8c254f775",
+                "ed8b62e8520f512f2daff0b9",
+                "f7c72942f175f2356428df6b"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            },
+            "trial-14435a0cc3-param-256ad504": {
+              "counts": {
+                "20751897973c79a00ee9fdca": 2,
+                "958f42dd68b163e99a8ffc57": 2,
+                "f1efdd73d2cc1202e0d29d0a": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "20751897973c79a00ee9fdca",
+                "958f42dd68b163e99a8ffc57",
+                "f1efdd73d2cc1202e0d29d0a"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "framework_source": {
+            "sha256": "c3b48d19b3d111b0dfb3968444f599ab1a67259493ae21c9278f546775bebd49",
+            "files": 154,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "arm": "candidate",
+      "pair": 1,
+      "backend": "scoped",
+      "status": "passed",
+      "failure": null,
+      "ranks": [
+        {
+          "rank": 0,
+          "valid": true,
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.198883056640625e-06
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.198883056640625e-06
+            }
+          ],
+          "samples": [
+            {
+              "latency_ms": 3.287219,
+              "batch": 1.0,
+              "images_per_second": 304.2085118150023,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 3.287219,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            },
+            {
+              "latency_ms": 2.971085,
+              "batch": 1.0,
+              "images_per_second": 336.57737829782724,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 2.971085,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            },
+            {
+              "latency_ms": 2.913106,
+              "batch": 1.0,
+              "images_per_second": 343.27621445975535,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 2.913106,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            },
+            {
+              "latency_ms": 2.970515,
+              "batch": 1.0,
+              "images_per_second": 336.64196275729967,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 2.970515,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            },
+            {
+              "latency_ms": 2.937778,
+              "batch": 1.0,
+              "images_per_second": 340.3933176707022,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 2.937778,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            }
+          ],
+          "metrics": {
+            "latency_ms": 2.970515,
+            "batch": 1.0,
+            "images_per_second": 336.64196275729967,
+            "parameter_count": 11689512.0,
+            "peak_allocated_bytes": 112677888.0,
+            "framework.elapsed_ms": 2.970515,
+            "framework.peak_allocated_bytes": 112677888.0,
+            "framework.peak_reserved_bytes": 132120576.0,
+            "framework.allocated_bytes": 104321024.0,
+            "framework.reserved_bytes": 132120576.0,
+            "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+            "framework.lifecycle_peak_reserved_bytes": 132120576.0
+          },
+          "setup": [
+            {
+              "bundle": "trial-paired-repair-a",
+              "binding": {
+                "requested": "scoped",
+                "effective": "direct",
+                "reason": "no functional replacements"
+              },
+              "elapsed_ms": 74.255565,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 119436800,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            },
+            {
+              "bundle": "trial-14435a0cc3-param-256ad504",
+              "binding": {
+                "requested": "scoped",
+                "effective": "scoped",
+                "reason": "all functional sites have observed module boundaries",
+                "functional_sites": 3,
+                "scope_ids": [
+                  "04eda7f194ab41d3b5de937e",
+                  "2977089a784978fef6c6a098",
+                  "bc892d2d7abb686d8f8eee37"
+                ]
+              },
+              "elapsed_ms": 5.042549,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 94875648,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            }
+          ],
+          "coverage": {
+            "trial-paired-repair-a": {
+              "counts": {
+                "679ccfe137094282d25350c1": 2,
+                "1a6b0ac798b8d65631087d57": 2,
+                "e1dd538873e2f8c8c254f775": 2,
+                "805446b6ca2f2d58cb2ac54d": 2,
+                "cb9be0b8a2da4fa24d5f4928": 2,
+                "6489b69b8e5ced6cfa1d2cb7": 2,
+                "71c4859868af1ef73c2db3c3": 2,
+                "6802ebe0f043024a3ddc5fa2": 2,
+                "ed8b62e8520f512f2daff0b9": 2,
+                "331270da6b3d7705e5d811ef": 2,
+                "4dbe179ff990714f37f0d969": 2,
+                "cd7109c81fe339ed4d60fade": 2,
+                "6077a1d100e23c0dc29bd7f6": 2,
+                "8e0945e6c447be9973407a18": 2,
+                "07f3b14085aadf1f529bc962": 2,
+                "6214ff32dc254755c8d920f5": 2,
+                "04eda7f194ab41d3b5de937e": 2,
+                "f7c72942f175f2356428df6b": 2,
+                "2977089a784978fef6c6a098": 2,
+                "bc892d2d7abb686d8f8eee37": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "04eda7f194ab41d3b5de937e",
+                "07f3b14085aadf1f529bc962",
+                "1a6b0ac798b8d65631087d57",
+                "2977089a784978fef6c6a098",
+                "331270da6b3d7705e5d811ef",
+                "4dbe179ff990714f37f0d969",
+                "6077a1d100e23c0dc29bd7f6",
+                "6214ff32dc254755c8d920f5",
+                "6489b69b8e5ced6cfa1d2cb7",
+                "679ccfe137094282d25350c1",
+                "6802ebe0f043024a3ddc5fa2",
+                "71c4859868af1ef73c2db3c3",
+                "805446b6ca2f2d58cb2ac54d",
+                "8e0945e6c447be9973407a18",
+                "bc892d2d7abb686d8f8eee37",
+                "cb9be0b8a2da4fa24d5f4928",
+                "cd7109c81fe339ed4d60fade",
+                "e1dd538873e2f8c8c254f775",
+                "ed8b62e8520f512f2daff0b9",
+                "f7c72942f175f2356428df6b"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            },
+            "trial-14435a0cc3-param-256ad504": {
+              "counts": {
+                "20751897973c79a00ee9fdca": 2,
+                "958f42dd68b163e99a8ffc57": 2,
+                "f1efdd73d2cc1202e0d29d0a": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "20751897973c79a00ee9fdca",
+                "958f42dd68b163e99a8ffc57",
+                "f1efdd73d2cc1202e0d29d0a"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "framework_source": {
+            "sha256": "c3b48d19b3d111b0dfb3968444f599ab1a67259493ae21c9278f546775bebd49",
+            "files": 154,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "arm": "candidate",
+      "pair": 1,
+      "backend": "legacy",
+      "status": "passed",
+      "failure": null,
+      "ranks": [
+        {
+          "rank": 0,
+          "valid": true,
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.198883056640625e-06
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 1001,
+              "max_abs_error": 6.198883056640625e-06
+            }
+          ],
+          "samples": [
+            {
+              "latency_ms": 3.066011,
+              "batch": 1.0,
+              "images_per_second": 326.15669024018507,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 3.066011,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            },
+            {
+              "latency_ms": 3.146604,
+              "batch": 1.0,
+              "images_per_second": 317.80293929582496,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 3.146604,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            },
+            {
+              "latency_ms": 3.028345,
+              "batch": 1.0,
+              "images_per_second": 330.2133673673244,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 3.028345,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            },
+            {
+              "latency_ms": 3.096238,
+              "batch": 1.0,
+              "images_per_second": 322.972588024564,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 3.096238,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            },
+            {
+              "latency_ms": 3.012774,
+              "batch": 1.0,
+              "images_per_second": 331.92001789712737,
+              "parameter_count": 11689512.0,
+              "peak_allocated_bytes": 112677888.0,
+              "framework.elapsed_ms": 3.012774,
+              "framework.peak_allocated_bytes": 112677888.0,
+              "framework.peak_reserved_bytes": 132120576.0,
+              "framework.allocated_bytes": 104321024.0,
+              "framework.reserved_bytes": 132120576.0,
+              "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+              "framework.lifecycle_peak_reserved_bytes": 132120576.0
+            }
+          ],
+          "metrics": {
+            "latency_ms": 3.066011,
+            "batch": 1.0,
+            "images_per_second": 326.15669024018507,
+            "parameter_count": 11689512.0,
+            "peak_allocated_bytes": 112677888.0,
+            "framework.elapsed_ms": 3.066011,
+            "framework.peak_allocated_bytes": 112677888.0,
+            "framework.peak_reserved_bytes": 132120576.0,
+            "framework.allocated_bytes": 104321024.0,
+            "framework.reserved_bytes": 132120576.0,
+            "framework.lifecycle_peak_allocated_bytes": 119436800.0,
+            "framework.lifecycle_peak_reserved_bytes": 132120576.0
+          },
+          "setup": [
+            {
+              "bundle": "trial-paired-repair-a",
+              "binding": {
+                "requested": "legacy",
+                "effective": "direct",
+                "reason": "no functional replacements"
+              },
+              "elapsed_ms": 75.975125,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 119436800,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            },
+            {
+              "bundle": "trial-14435a0cc3-param-256ad504",
+              "binding": {
+                "requested": "legacy",
+                "effective": "legacy",
+                "reason": "legacy requested",
+                "functional_sites": 3,
+                "scope_ids": [
+                  "04eda7f194ab41d3b5de937e",
+                  "2977089a784978fef6c6a098",
+                  "bc892d2d7abb686d8f8eee37"
+                ]
+              },
+              "elapsed_ms": 5.369853,
+              "allocated_bytes": 94875648,
+              "reserved_bytes": 130023424,
+              "peak_allocated_bytes": 94875648,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            }
+          ],
+          "coverage": {
+            "trial-paired-repair-a": {
+              "counts": {
+                "679ccfe137094282d25350c1": 2,
+                "1a6b0ac798b8d65631087d57": 2,
+                "e1dd538873e2f8c8c254f775": 2,
+                "805446b6ca2f2d58cb2ac54d": 2,
+                "cb9be0b8a2da4fa24d5f4928": 2,
+                "6489b69b8e5ced6cfa1d2cb7": 2,
+                "71c4859868af1ef73c2db3c3": 2,
+                "6802ebe0f043024a3ddc5fa2": 2,
+                "ed8b62e8520f512f2daff0b9": 2,
+                "331270da6b3d7705e5d811ef": 2,
+                "4dbe179ff990714f37f0d969": 2,
+                "cd7109c81fe339ed4d60fade": 2,
+                "6077a1d100e23c0dc29bd7f6": 2,
+                "8e0945e6c447be9973407a18": 2,
+                "07f3b14085aadf1f529bc962": 2,
+                "6214ff32dc254755c8d920f5": 2,
+                "04eda7f194ab41d3b5de937e": 2,
+                "f7c72942f175f2356428df6b": 2,
+                "2977089a784978fef6c6a098": 2,
+                "bc892d2d7abb686d8f8eee37": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "04eda7f194ab41d3b5de937e",
+                "07f3b14085aadf1f529bc962",
+                "1a6b0ac798b8d65631087d57",
+                "2977089a784978fef6c6a098",
+                "331270da6b3d7705e5d811ef",
+                "4dbe179ff990714f37f0d969",
+                "6077a1d100e23c0dc29bd7f6",
+                "6214ff32dc254755c8d920f5",
+                "6489b69b8e5ced6cfa1d2cb7",
+                "679ccfe137094282d25350c1",
+                "6802ebe0f043024a3ddc5fa2",
+                "71c4859868af1ef73c2db3c3",
+                "805446b6ca2f2d58cb2ac54d",
+                "8e0945e6c447be9973407a18",
+                "bc892d2d7abb686d8f8eee37",
+                "cb9be0b8a2da4fa24d5f4928",
+                "cd7109c81fe339ed4d60fade",
+                "e1dd538873e2f8c8c254f775",
+                "ed8b62e8520f512f2daff0b9",
+                "f7c72942f175f2356428df6b"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            },
+            "trial-14435a0cc3-param-256ad504": {
+              "counts": {
+                "20751897973c79a00ee9fdca": 2,
+                "958f42dd68b163e99a8ffc57": 2,
+                "f1efdd73d2cc1202e0d29d0a": 2
+              },
+              "fallbacks": {},
+              "required": [
+                "20751897973c79a00ee9fdca",
+                "958f42dd68b163e99a8ffc57",
+                "f1efdd73d2cc1202e0d29d0a"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "framework_source": {
+            "sha256": "c3b48d19b3d111b0dfb3968444f599ab1a67259493ae21c9278f546775bebd49",
+            "files": 154,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "error": null
+        }
+      ]
+    }
+  ]
+}

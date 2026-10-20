@@ -1,0 +1,219 @@
+{
+  "revision": "916c72d2f97bf88afd33260b7b6b028da40d1a18da4c6abefa844f0d6081d44a",
+  "plan": "cf3045482528b382bf28b7f106762eff4e2fb09b7a92f6c1171cc91d7b14f143",
+  "registry": "dd1fc1657493b83441ec8406ad533a4afeb65466fa3e8ca8be404c069f9705b1",
+  "collection_plan": {
+    "plan": {
+      "collectors": [
+        "torch",
+        "execution_timeline",
+        "python_runtime",
+        "device_telemetry"
+      ],
+      "requested_fields": [
+        "cuda_kernels",
+        "associated_kernels",
+        "unassociated_kernels",
+        "ambiguous_forward_sequences",
+        "kernel_span_us",
+        "kernel_active_union_us",
+        "gaps_between_kernels_us",
+        "compute_intervals_us",
+        "cuda_synchronization",
+        "copies_and_memsets",
+        "workload_window",
+        "profiled_wall_ms",
+        "by_self_time",
+        "by_cumulative_time",
+        "pcie.tx",
+        "pcie.rx",
+        "device.gpu_utilization",
+        "device.memory_utilization",
+        "device.memory_used"
+      ],
+      "unavailable_fields": {
+        "pcie_bytes": "Cumulative PCIe hardware byte counters remain unknown: they require a successful collector-specific probe; only NVML pcie.tx/pcie.rx rates are observable, as device-wide readings in ~20 ms driver sampling windows not aligned to operator ranges; no traffic is inferred from logical payload or memcpy sizes (model loading is outside the timed boundary and decode traffic is not a counter reading)",
+        "nvlink_bytes": "No NVLink traffic dimension exists in this single-device task: the communication capability is not_applicable with observed reason 'single-device task', no peer or link endpoints are in evidence, per-link counters require reported link IDs and a successful read-only probe, and payload sizes are never converted to wire traffic",
+        "hardware_utilization": "Counter-based hardware utilization is unknown: it requires a successful collector-specific probe; NVML device.gpu_utilization is a device-wide sampling ratio with a device-dependent native window not aligned to operator ranges, not a hardware-counter measurement of per-kernel occupancy",
+        "nccl_kernel_duration": "not_applicable: single-device task (distributed_backend null, one leased device); the discovery trace contains no NCCL/collective kernels, so collective duration, identity, transport and bucket dimensions have nothing to measure and collective_calibration layouts would have no observed source collectives",
+        "gpu_input_ready": "execution_timeline evidences clock alignment bounds for CPU submissions only; GPU producer readiness for the decode chain's consumers is not proven by CPU-side association and remains unknown",
+        "consumer_completion": "no unique data-consumer/event dependency is proven for the single-device stream; downstream kernel start is an enqueue/scheduling-inclusive interval, not an observed completion dependency"
+      },
+      "rationale": "torch already ran and is retained as the attribution baseline for the frozen objective (maximize generated_tokens_per_second, paired_repeats 2, with ttft_ms min and decode_tokens_per_second max on the interactive workload: batch 1, 256 prompt tokens, 32 new tokens): coverage shows 66441/66441 cuda_kernels associated with 0 unassociated, 0 root_only, 0 backward-associated kernels, 0 autograd ranges and 0 ambiguous forward sequences, so per-kernel attribution is complete and no graph-tracing or attribution question remains open. The workload is a pure single-device bf16 sdpa inference loop (qwen_inference.py: 256-token prefill then 31 single-token forward passes with logits_to_keep=1, per-step argmax, and explicit torch.cuda.synchronize at the first-token-ready boundary and at the end), so the tokens/s lever is how step time splits between GPU kernel activity, inter-kernel gaps from host dispatch, synchronization and copies. execution_timeline is selected for its separately captured plain Torch trace per-device intervals (kernel_span_us, kernel_active_union_us, gaps_between_kernels_us, compute_intervals_us), cuda_synchronization and copies_and_memsets within the opop.timeline_workload window: these quantify whether decode is GPU-bound or gap-bound without touching the clean objective run. Its limits are respected: clock alignment bounds apply to CPU submissions only; gpu_input_ready and consumer_completion stay unknown; gaps are observed intervals, not a causal critical path; gradient_readiness is inactive at world_size 1; and it never replaces a communication hook (none exists here) nor determines subsequent search actions. python_runtime is selected for a warmed cProfile call trace (by_self_time, by_cumulative_time, profiled_wall_ms) to rank host dispatch and binding costs in the per-token transformers loop; it perturbs execution, so its inclusive/self times include host waits, are not clean performance scores, not GPU compute durations, and never substitute for the objective's own timing. device_telemetry is selected for workload-window NVML sampling of pcie.tx, pcie.rx, device.gpu_utilization, device.memory_utilization and device.memory_used: these are device-wide readings with native sampling windows (not per-collective or per-op bytes, and PCIe traffic is never derived from payload or memcpy sizes) and give independent device-level occupancy plus memory headroom for later candidate scoping. nsys is not selected: it is optional and justified only for open overlap, graph-tracing or attribution questions, and the evidence closes all three (full association, zero ambiguous sequences, single rank so the no-cross-rank-subtraction clock policy and any wait-vs-wire NCCL separation are moot); torch plus execution_timeline already cover timeline, gaps and sync for this single stream. collective_calibration is not selected: communication is not_applicable with observed reason 'single-device task', the trace contains no collectives, and its synthetic full-world SUM allreduce reference experiment would calibrate nothing this workload executes. candidate_diagnostics is not selected: it traces candidate-installer behavior during the later search and no candidate evidence exists yet. pcie_bytes, nvlink_bytes, hardware_utilization, nccl_kernel_duration, gpu_input_ready and consumer_completion are listed unavailable with their observed reasons; the framework verifies availability and retains missing fields as unknown."
+    },
+    "agent": {
+      "role": "collection-planner",
+      "session": "ses_ea6bfaa6affeZz82DjreFx4EQ5",
+      "message": "msg_1594813ef0010p371WpP6bZZqA",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 12,
+        "reported_cost": 0.13586220331999999,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 225331.0,
+          "input": 34703.0,
+          "output": 2881.0,
+          "reasoning": 6755.0,
+          "cache.read": 180992.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea6bfaa6affeZz82DjreFx4EQ5",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/qwen-throughput/sandboxes/collection-planner-fb3ed840e984",
+      "outputs": [
+        "collection.json"
+      ],
+      "feedback_provided": false,
+      "contract_repairs": 0
+    }
+  },
+  "profiled_wall_ms": [
+    12074.270026
+  ],
+  "groups": 17852,
+  "collectors": {
+    "execution_timeline": {
+      "status": "observed",
+      "provenance": {
+        "revision": "916c72d2f97bf88afd33260b7b6b028da40d1a18da4c6abefa844f0d6081d44a",
+        "parent_revision": "f1caebbf44b09cd912a2507bf025c603c6037e243757042fa6e1c0856155fe2f",
+        "bundles": [],
+        "plan": "sha256:69c5813f58982c172eaf321829e24b2bd74347f1c573adcdafbea52d38c8b9d4",
+        "registry": "sha256:8e47bb289b615a1feccbe5b5ecbdae7118746872ba8e5b5771a950579a08fe69",
+        "request_sha256": "48ec27dcc8dfff32bb198d07c42cff964cfd96e762f5932e5f576d275019095d",
+        "objective": {
+          "name": "generated_tokens_per_second",
+          "direction": "maximize",
+          "unit": "tokens/s",
+          "paired_repeats": 2
+        },
+        "workload": {
+          "id": "interactive",
+          "batch": 1,
+          "prompt_tokens": 256,
+          "new_tokens": 32,
+          "goals": [
+            {
+              "id": "ttft",
+              "metric": "ttft_ms",
+              "direction": "min"
+            },
+            {
+              "id": "decode",
+              "metric": "decode_tokens_per_second",
+              "direction": "max"
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+          "files": 155,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      }
+    },
+    "python_runtime": {
+      "status": "observed",
+      "provenance": {
+        "revision": "916c72d2f97bf88afd33260b7b6b028da40d1a18da4c6abefa844f0d6081d44a",
+        "parent_revision": "f1caebbf44b09cd912a2507bf025c603c6037e243757042fa6e1c0856155fe2f",
+        "bundles": [],
+        "plan": "sha256:69c5813f58982c172eaf321829e24b2bd74347f1c573adcdafbea52d38c8b9d4",
+        "registry": "sha256:8e47bb289b615a1feccbe5b5ecbdae7118746872ba8e5b5771a950579a08fe69",
+        "request_sha256": "48ec27dcc8dfff32bb198d07c42cff964cfd96e762f5932e5f576d275019095d",
+        "objective": {
+          "name": "generated_tokens_per_second",
+          "direction": "maximize",
+          "unit": "tokens/s",
+          "paired_repeats": 2
+        },
+        "workload": {
+          "id": "interactive",
+          "batch": 1,
+          "prompt_tokens": 256,
+          "new_tokens": 32,
+          "goals": [
+            {
+              "id": "ttft",
+              "metric": "ttft_ms",
+              "direction": "min"
+            },
+            {
+              "id": "decode",
+              "metric": "decode_tokens_per_second",
+              "direction": "max"
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+          "files": 155,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      }
+    },
+    "device_telemetry": {
+      "status": "observed",
+      "provenance": {
+        "revision": "916c72d2f97bf88afd33260b7b6b028da40d1a18da4c6abefa844f0d6081d44a",
+        "parent_revision": "f1caebbf44b09cd912a2507bf025c603c6037e243757042fa6e1c0856155fe2f",
+        "bundles": [],
+        "plan": "sha256:69c5813f58982c172eaf321829e24b2bd74347f1c573adcdafbea52d38c8b9d4",
+        "registry": "sha256:8e47bb289b615a1feccbe5b5ecbdae7118746872ba8e5b5771a950579a08fe69",
+        "request_sha256": "48ec27dcc8dfff32bb198d07c42cff964cfd96e762f5932e5f576d275019095d",
+        "objective": {
+          "name": "generated_tokens_per_second",
+          "direction": "maximize",
+          "unit": "tokens/s",
+          "paired_repeats": 2
+        },
+        "workload": {
+          "id": "interactive",
+          "batch": 1,
+          "prompt_tokens": 256,
+          "new_tokens": 32,
+          "goals": [
+            {
+              "id": "ttft",
+              "metric": "ttft_ms",
+              "direction": "min"
+            },
+            {
+              "id": "decode",
+              "metric": "decode_tokens_per_second",
+              "direction": "max"
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+          "files": 155,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      }
+    }
+  }
+}

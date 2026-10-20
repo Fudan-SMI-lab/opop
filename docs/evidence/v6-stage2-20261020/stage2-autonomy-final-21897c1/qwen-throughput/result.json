@@ -1,0 +1,148 @@
+{
+  "status": "completed",
+  "protocol": {
+    "source": {
+      "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+      "files": 155,
+      "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+    },
+    "request_sha256": "ddddf435c1aabaf819d7ad8b4fb03e43304c67c14413ba7b792265d06b4b4723",
+    "source_files": {
+      "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+      "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+      "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+    },
+    "request": {
+      "schema_version": "project-request.v1",
+      "source_root": "/root/autodl-tmp/dev/opop-v6-freezes/21897c111d64/examples/v6_validation",
+      "entry": "qwen_inference.py",
+      "files": [
+        "qwen_inference.py",
+        "common.py",
+        "workloads.json"
+      ],
+      "goal": "maximize generated_tokens_per_second for the complete frozen source workload, preserving source numerical and state semantics",
+      "objective": {
+        "name": "generated_tokens_per_second",
+        "direction": "maximize",
+        "unit": "tokens/s",
+        "paired_repeats": 2
+      },
+      "workload": {
+        "id": "interactive",
+        "batch": 1,
+        "prompt_tokens": 256,
+        "new_tokens": 32,
+        "goals": [
+          {
+            "id": "ttft",
+            "metric": "ttft_ms",
+            "direction": "min"
+          },
+          {
+            "id": "decode",
+            "metric": "decode_tokens_per_second",
+            "direction": "max"
+          }
+        ]
+      },
+      "quality": {
+        "logits_atol": 0.02,
+        "logits_rtol": 0.02,
+        "require_exact_greedy_tokens": true,
+        "atol": 0.02,
+        "rtol": 0.02
+      },
+      "assets": {
+        "assets": "/root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c"
+      },
+      "devices": [
+        "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+      ],
+      "distributed_backend": null,
+      "communication": "auto",
+      "required_observations": [],
+      "tools": {
+        "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys",
+        "ncu": "/usr/local/cuda/bin/ncu"
+      },
+      "profiling": {
+        "agent_plan": true
+      },
+      "binding_backend": "legacy",
+      "warmup": 2,
+      "repeats": 5,
+      "continuous_steps": 2,
+      "worker_timeout_s": 900.0,
+      "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+      "notes": [
+        "Preserve source dtype, TF32 policy, seed, real data and completion boundaries.",
+        "Model loading is outside timing. Generated replacement work and synchronization stay inside the declared workload boundary.",
+        "The required correctness observation schema is {tokens: all generated token IDs, logits: all generation-step logits}, with the same layout as the source reference."
+      ]
+    },
+    "rounds": 2,
+    "oracle": {
+      "case": "qwen",
+      "reference": "/root/autodl-tmp/dev/v6-work/validation-runs/readiness-20261020-a/qwen_inference/interactive-reference.pt"
+    },
+    "scope": "Fresh evaluator/discovery/selection/candidates; no imported prepared run or candidate; no human messages during this run",
+    "usage": "Observe only; rounds specify the experiment, not an API/request/token quota"
+  },
+  "rounds": [
+    {
+      "round": 0,
+      "trial": "trial-5af74ce3b2",
+      "decision": {
+        "accepted": false,
+        "reasons": [
+          "no_valid_parameter_candidate"
+        ]
+      },
+      "measurement": null,
+      "revision": "e5b664c4086eab2e1e2b6a495cd330fd242e6c252d5e9c8cadeb2434dc4a3a31"
+    },
+    {
+      "round": 1,
+      "trial": "trial-6fbe9313aa",
+      "decision": {
+        "state": "evaluated",
+        "revision": "c72f362d46adebbf596b4fc25033968f0a75755ee9539fc0cf467bfd3672c570",
+        "parent": "e5b664c4086eab2e1e2b6a495cd330fd242e6c252d5e9c8cadeb2434dc4a3a31",
+        "bundle": "trial-6fbe9313aa-param-d16c222e",
+        "accepted": true,
+        "reasons": [],
+        "report_ref": "sha256:b4e61eacd1eae874059289d2608658209a36b6de9b3f9d9c1834d67557bb763f"
+      },
+      "measurement": {
+        "valid": true,
+        "objective": 46.06673434270802,
+        "reference": 44.6742886308001,
+        "parent_values": [
+          43.88774239095546,
+          45.46083487064474
+        ],
+        "candidate_values": [
+          46.05815285683624,
+          46.075315828579804
+        ],
+        "paired_gains": [
+          2.170410465880778,
+          0.614480957935065
+        ],
+        "noise_bounds": [
+          0.6388989679210084,
+          0.3734383748467991
+        ],
+        "constraints": [],
+        "reasons": [],
+        "framework_source": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+        "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+      },
+      "revision": "c72f362d46adebbf596b4fc25033968f0a75755ee9539fc0cf467bfd3672c570"
+    }
+  ],
+  "accepted_revision": "c72f362d46adebbf596b4fc25033968f0a75755ee9539fc0cf467bfd3672c570",
+  "framework_unchanged": true,
+  "human_interventions_during_run": []
+}

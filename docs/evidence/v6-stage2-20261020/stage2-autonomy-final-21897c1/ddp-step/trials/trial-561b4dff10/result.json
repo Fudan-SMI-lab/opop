@@ -1,0 +1,728 @@
+{
+  "trial": "trial-561b4dff10",
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-561b4dff10",
+    "parent_revision": "a920ced0052cce147735d374edabf3e31b9d068717d9fe595d1936a2a7488981",
+    "contract_ref": "sha256:52b6c322ad026e49dbf6edbf2106b2df20ef393fe471f67cb56fd3a0e55bb34d",
+    "scope": "joint",
+    "implementation": "distributed",
+    "groups": [
+      "f833b57a373d8262a384",
+      "8525af72c631b94e3dd0"
+    ],
+    "calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-561b4dff10.py",
+        "before_sha256": null,
+        "content_ref": "sha256:49fcc74587aa8c0bb9c205996daed84655c40dbdb9af77825a31af3178f422c0"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-561b4dff10.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+      }
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Model architecture is fixed: GPT2LMHeadModel with n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, float32, attn_implementation='eager', resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False.",
+      "torch.manual_seed(20261020) is set immediately before model construction; weights are seeded synthetic fixtures, not pretrained GPT-2, and request assets are empty by design.",
+      "Training data is seeded synthetic token ids: a CPU torch.Generator seeded 31000 + rank produces accumulation_steps=4 tensors of shape (micro_batch=1, sequence_length=128) with values in [0, 50257).",
+      "Numerics policy is fixed: allow_tf32=False for cuda.matmul and cudnn, cudnn.benchmark=False, float32_matmul_precision('highest'), torch.set_num_threads(4), torch.set_num_interop_threads(1).",
+      "Optimizer is SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) stepping exactly once per workload on the DDP-averaged accumulated gradient.",
+      "DDP configuration is broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True; no_sync wraps the first 3 of 4 micro backward passes and the gradient all-reduce happens on the 4th backward; no communication hook is installed in the measured path.",
+      "Each micro-step backward uses model(input_ids=tokens, labels=tokens, use_cache=False).loss / accumulation_steps; the reported workload loss is the sum of the four scaled micro-losses.",
+      "Workload shape is frozen: world_size=2 ranks x micro_batch=1 x accumulation_steps=4 gives effective_batch=8 and tokens_per_step=2*1*128*4=1024.",
+      "Correctness observation schema is {loss: scalar loss, gradients: full unwrapped-parameter-name to gradient mapping, parameters: full unwrapped-parameter-name to updated tensor mapping}; all returned as detached tensors, not hashes or samples.",
+      "reset() restores the exact initial parameters from the CPU snapshot taken in prepare, clears gradients and optimizer state and restores RNG state so every timed repeat starts from identical state on all ranks.",
+      "The timed boundary encloses zero_grad, all four forward/backward passes with their accumulation semantics, the optimizer step and the closing torch.cuda.synchronize(); no part of the frozen work is skipped, reshaped or moved out of timing.",
+      "Quality thresholds are reference-fidelity only: grad and parameter comparisons at atol=1e-6, rtol=1e-4 per request['quality']; no downstream accuracy or convergence is claimed."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-561b4dff10.py",
+    "parameters": {},
+    "affected_calls_count": 2,
+    "read_set_count": 2,
+    "write_set_count": 4
+  },
+  "selection": {
+    "scope": "joint",
+    "groups": [
+      "f833b57a373d8262a384",
+      "8525af72c631b94e3dd0"
+    ],
+    "rationale": "The step's dominant, measured, non-compute cost is the DDP gradient allreduce family executed on the 4th backward: 13 c10d::allreduce_ bucket invocations (12 x 7,087,872 fp32 elements = 28,351,488 bytes each, one x 39,385,344 elements = 157,541,376 bytes; 497,759,232 bytes/rank/step, exactly the bucket ownership recorded in communication-ownership.json). On this exact host the isolated collective calibration gives 3.60-3.68 ms per 28.35 MB bucket and 19.64-19.83 ms for the 157.5 MB bucket, i.e. ~62.9 ms serialized NCCL time against a clean baseline step_ms of 133.0/133.3 ms (~47%). The separate nsys run shows all 13 collectives are ncclDevKernel_AllReduce_Sum_f32_RING_LL on one stream; on the non-waiting rank NCCL busy is 63.7 ms versus 46.1 ms of compute kernels with only 18.7 ms overlap, so ~45 ms of allreduce time is exposed on the critical path after compute drains. peer_access.0.1=0 and peer_access.1.0=0 with no evidenced NVLink carriage (SHM/direct transport), and the LL protocol carries ~50% flag overhead on multi-MB payloads, which is why logical bandwidth is only ~7.9-8.0 GB/s while the same host path can move bulk data faster. The two groups share one dispatch site (c10d.allreduce_.default) and one serialized stream: replacing only the 12 small buckets or only the 157.5 MB bucket leaves the other on the LL path sharing the same wire, so they are one coherent joint edit boundary. Scope is limited to these observed allreduce groups; DDP structure (no_sync pattern, bucketCap), workload and quality thresholds stay frozen, and the secondary communication goal's step_ms<=1.05*baseline constraint is respected because the change targets wire efficiency, not added work.",
+    "hypothesis": "Replacing the execution of both observed allreduce_ bucket shapes with a higher-throughput reduction path for the same in-place SUM semantics - for example a lazily constructed NCCL process group whose tuner is forced to a bulk/SIMPLE protocol for these payload sizes, or an equivalent explicitly chunked/pipelined exchange sized to 28,351,488 and 157,541,376 byte payloads over the observed SHM path - will cut per-step NCCL wire time from ~63 ms toward ~32-40 ms and reduce step_ms by roughly 15-25% (about 20-30 ms of the 133 ms baseline), with diagnostic.max_rank_nccl_kernel_sum_ms falling proportionally. Numerical semantics are expected to hold: a 2-rank allreduce is one pairwise add per element plus exact power-of-two averaging, so algorithm/protocol changes only reorder additions already covered by grad/param atol=1e-6, rtol=1e-4, and the async Work contract of the dispatch site is preserved so DDP bucket readiness and the no_sync accumulation schedule are unchanged. Treated as a hypothesis to be tested with paired clean repeats: the LL-protocol bandwidth penalty is measured, but the achievable SIMPLE/bulk throughput on this host and any lazy-setup cost of a replacement group are unknowns, and the rank-skew wait inflation seen under discovery hooks (244.90 ms vs 58.96 ms NCCL sums) must not be read as clean wall time.",
+    "affected_calls_count": 2
+  },
+  "proposal": {
+    "implementation": "distributed",
+    "replacement_calls": [
+      "b8ade439d7b8bd5fb5c1029b",
+      "d0938de87369efd500322679"
+    ],
+    "rationale": "Measured facts (inputs/observations on this host): the step's dominant non-compute cost is the DDP gradient allreduce family executed at the end of the 4th backward - 13 c10d::allreduce_ bucket calls on one NCCL stream, all observed as ncclDevKernel_AllReduce_Sum_f32_RING_LL (12 x 7,087,872 fp32 elements = 28,351,488 B each, one x 39,385,344 elements = 157,541,376 B; 497,759,232 B/rank/step, exactly the ownership recorded in communication-ownership.json). Isolated paired calibration gives 3.60-3.68 ms per 28.35 MB bucket and 19.54-19.83 ms for the 157.5 MB bucket, i.e. ~7.9-8.0 GB/s logical payload rate - the LL protocol carries ~50% flag overhead on multi-MB payloads over the observed non-P2P SHM path (peer_access.0.1 = peer_access.1.0 = 0). This candidate reroutes exactly those two declared call sites through a dedicated ProcessGroupNCCL created over a prefixed view of the default store, so its communicator is produced by an independent ncclCommInitRank - never a split of the parent communicator - while NCCL_PROTO names a bulk protocol (default SIMPLE) and Options.config.max_ctas caps its channel count. The replacement calls group.allreduce with the received reduce op (SUM semantics of DDP buckets; explicit ReduceOp.SUM options if the scripting-class holder cannot marshal through pybind), performs the same in-place reduction on the same tensor list, and returns the same (tensors, Work) contract, so DDP bucket readiness, the no_sync accumulation schedule and gradient/parameter updates are unchanged: a 2-rank allreduce is one pairwise fp32 add per element under any NCCL algorithm/protocol, so results stay bitwise identical and well inside grad/param atol=1e-6, rtol=1e-4. Guards fall back to the parent reference on setup failure (group is None: 'parent_fallback_setup') or on any non-observed signature (shape/stride/dtype/device/numel/sparse_indices, 'parent_fallback_signature'); both decision points are deterministic and symmetric across ranks, and an error raised after a collective is enqueued is propagated rather than converted to a divergent per-rank fallback. Expected effect: NCCL wire time for ~497.75 MB/rank/step moves from the LL rate toward the bulk-protocol rate (hypothesis: ~63 ms toward ~32-40 ms), reducing step_ms (~133 ms clean baseline) by roughly 15-25% and lowering diagnostic.max_rank_nccl_kernel_sum_ms proportionally without adding work, keeping the communication goal's step_ms <= 1.05x baseline constraint. No previous-candidate directory or previous-feedback.txt exists; this is the first attempt for this selection, so the achievable SIMPLE throughput on this host remains the tested unknown.",
+    "setup_work": {
+      "timing": "All setup runs once inside build() (installation, before validation, quality tracking off, adapter invocation not started); it is outside every timed step.",
+      "actions": [
+        "Construct a dedicated ProcessGroupNCCL(store, rank, world_size, Options) over PrefixStore('opop_bulk_nccl:<build>:<proto>:<ctas>', default store) - an independent communicator rendezvous, collective across both ranks and therefore symmetric.",
+        "While NCCL_PROTO is temporarily set (restored immediately afterwards), run a one-element fp32 probe allreduce plus work.wait() and torch.cuda.synchronize() to force lazy ncclCommInitRank under the intended protocol and to verify the alternative executor end to end before any replacement can select it.",
+        "Set Options.config.max_ctas from the nccl_max_ctas parameter (per-communicator channel cap); no model parameter, gradient, optimizer state, bucket layout, no_sync pattern or workload input is touched."
+      ],
+      "memory": "The probe tensor is one fp32 element. The new NCCL communicator allocates its own channel buffers and staging memory through the CUDA driver (order tens of MB depending on the channel cap); this is outside the caching allocator, so framework.peak_allocated_bytes / lifecycle peak_allocated do not see it and PyTorch reserved memory is not reduced - reported as added driver-side memory, not a saving. One alternative communicator exists per process for the current parameterization; a torn-down/reinstalled bundle creates another (build counter keeps store prefixes unique).",
+      "fallback": "If any setup step fails, group stays None and every replacement call routes to the parent reference with the 'parent_fallback_setup' label; the candidate then measures like the parent."
+    },
+    "quality_risks": [
+      "The dispatcher receives the reduce op and process group as scripting-class holders; the pybind group.allreduce call with such a holder raises TypeError before anything is enqueued, which is handled symmetrically on both ranks by re-issuing with explicit ReduceOp.SUM options (DDP bucket reduction is SUM). If the sum of zeros probe or an allreduce enqueue fails at runtime, the exception propagates loudly rather than falling back per rank, because a post-enqueue per-rank fallback could desynchronize the collective.",
+      "Forcing NCCL_PROTO=SIMPLE (or LL) on the alternative communicator is a protocol/algo change only; for 2-rank SUM it cannot reorder any addition beyond the single pairwise add per element, so gradients and updated parameters are expected to be bitwise identical to the parent - verified by the framework's paired grad/param checks rather than assumed here.",
+      "The achievable bulk-protocol throughput over the SHM path and the best channel cap are the tested unknowns; the secondary communication goal keeps the step_ms <= 1.05x baseline constraint, and the LL choice in the parameter space reproduces the parent's protocol as a no-regression arm.",
+      "The alternative group uses its default watchdog timeout (Options.timeout is not pybind-exposed); the collectives carry identical work, so a hang would surface as a loud worker timeout, never as silent divergence.",
+      "NCCL_PROTO is set only around the alternative communicator's initialization (restored in a finally block); the default group's communicator already exists from prepare (DDP construction broadcasts), so parent-path collectives keep their original tuner behavior."
+    ],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {
+      "params": [
+        {
+          "name": "nccl_proto",
+          "kind": "str",
+          "choices": [
+            "SIMPLE",
+            "LL"
+          ],
+          "description": "Protocol forced on the dedicated bucket-allreduce communicator at its ncclCommInitRank (read from NCCL_PROTO while it initializes). SIMPLE is the bulk-protocol hypothesis; LL reproduces the parent's observed RING_LL protocol as a control arm."
+        },
+        {
+          "name": "nccl_max_ctas",
+          "kind": "int",
+          "choices": [
+            2,
+            4,
+            8,
+            16
+          ],
+          "description": "Per-communicator channel cap (ProcessGroupNCCL Options.config.max_ctas) for the dedicated bucket-allreduce communicator; the parent's LL kernels ran with 2 channels (grid 2 x block 544)."
+        }
+      ],
+      "constraints": []
+    },
+    "eliminated_calls_count": 0
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea6a25eceffegm6UoPBUAaPcdR",
+    "message": "msg_159668a83001WsQ0Kky5UADDPI",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 24,
+      "reported_cost": 0.65355770892,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 1562948.0,
+        "input": 85162.0,
+        "output": 6963.0,
+        "reasoning": 21415.0,
+        "cache.read": 1449408.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea6a25eceffegm6UoPBUAaPcdR",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/ddp-step/sandboxes/selection-6bc5abb032d4",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea6995482ffeO0rvYjUVk24IHw",
+    "message": "msg_1597cb3370012pn4iqpjV6pUIg",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 50,
+      "reported_cost": 1.86411017456,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 5054200.0,
+        "input": 143936.0,
+        "output": 12139.0,
+        "reasoning": 45773.0,
+        "cache.read": 4852352.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea6995482ffeO0rvYjUVk24IHw",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/ddp-step/sandboxes/candidate-ecfd97d2d9c5",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0
+  },
+  "measurement": null,
+  "decision": {
+    "accepted": false,
+    "reasons": [
+      "no_valid_parameter_candidate"
+    ]
+  },
+  "evaluation": null,
+  "publication": null,
+  "missing_coverage": null,
+  "evaluation_attempt": null,
+  "pairs": [],
+  "resources": {
+    "status": null,
+    "reason": null,
+    "evidence": null,
+    "raw_discovery": null,
+    "extra_collectors": {}
+  },
+  "native_replacement_summary": [],
+  "raw_trial_scope": "Full resource arrays, affected-call closures, eliminated-call lists, and read/write sets remain in the hashed original server receipt. Public counted fields summarize these lists; actual replacement sites, parameters, quality, measurements, and decision are retained.",
+  "parameter_search": {
+    "engine": "existing TaskSearch + OptunaTPETuner",
+    "measurement_scope": "complete project",
+    "parameter_trials": 3,
+    "space": {
+      "params": [
+        {
+          "name": "nccl_proto",
+          "kind": "str",
+          "choices": [
+            "SIMPLE",
+            "LL"
+          ],
+          "description": "Protocol forced on the dedicated bucket-allreduce communicator at its ncclCommInitRank (read from NCCL_PROTO while it initializes). SIMPLE is the bulk-protocol hypothesis; LL reproduces the parent's observed RING_LL protocol as a control arm."
+        },
+        {
+          "name": "nccl_max_ctas",
+          "kind": "int",
+          "choices": [
+            2,
+            4,
+            8,
+            16
+          ],
+          "description": "Per-communicator channel cap (ProcessGroupNCCL Options.config.max_ctas) for the dedicated bucket-allreduce communicator; the parent's LL kernels ran with 2 channels (grid 2 x block 544)."
+        }
+      ],
+      "constraints": []
+    },
+    "selected": null,
+    "stats": [
+      {
+        "candidate_id": "cand-46b8fd3b",
+        "space_id": "space-cand-46b8fd3b",
+        "n_complete": 0,
+        "n_fail": 3,
+        "best": null,
+        "param_stats": [
+          {
+            "name": "nccl_proto",
+            "best_value": "SIMPLE",
+            "best_trial_value": null,
+            "at_boundary": false,
+            "boundary_direction": null,
+            "effect_pct": 0.0,
+            "latency_by_value": {},
+            "objective_by_value": {},
+            "effect_absolute": null,
+            "failure_rate_by_value": {
+              "'LL'": 1.0
+            }
+          },
+          {
+            "name": "nccl_max_ctas",
+            "best_value": 2,
+            "best_trial_value": null,
+            "at_boundary": false,
+            "boundary_direction": null,
+            "effect_pct": 0.0,
+            "latency_by_value": {},
+            "objective_by_value": {},
+            "effect_absolute": null,
+            "failure_rate_by_value": {
+              "2": 1.0,
+              "4": 1.0,
+              "16": 1.0
+            }
+          }
+        ],
+        "resource_at_best": null,
+        "failure_clusters": []
+      }
+    ],
+    "responses": [
+      {
+        "candidate_id": "trial-561b4dff10",
+        "axis": "nccl_max_ctas",
+        "a_params": {
+          "values": {
+            "nccl_proto": "LL",
+            "nccl_max_ctas": 16
+          }
+        },
+        "b_params": {
+          "values": {
+            "nccl_proto": "LL",
+            "nccl_max_ctas": 2
+          }
+        },
+        "a": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "b": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "delta_j": null,
+        "gain": null,
+        "parameter_slope": null,
+        "resource_deltas": {},
+        "resource_slopes": {},
+        "unknown_resources": [
+          "framework.allocated_bytes",
+          "framework.lifecycle_peak_allocated_bytes",
+          "framework.lifecycle_peak_reserved_bytes",
+          "framework.peak_allocated_bytes",
+          "framework.peak_reserved_bytes",
+          "framework.reserved_bytes",
+          "replacement.diagnostic_kernel_sum_us",
+          "replacement.kernel_launches",
+          "replacement.max_registers_per_thread",
+          "replacement.max_shared_memory_bytes"
+        ],
+        "resource_status": "unknown",
+        "reason": "invalid_endpoint"
+      },
+      {
+        "candidate_id": "trial-561b4dff10",
+        "axis": "nccl_max_ctas",
+        "a_params": {
+          "values": {
+            "nccl_proto": "LL",
+            "nccl_max_ctas": 2
+          }
+        },
+        "b_params": {
+          "values": {
+            "nccl_proto": "LL",
+            "nccl_max_ctas": 4
+          }
+        },
+        "a": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "b": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "delta_j": null,
+        "gain": null,
+        "parameter_slope": null,
+        "resource_deltas": {},
+        "resource_slopes": {},
+        "unknown_resources": [
+          "framework.allocated_bytes",
+          "framework.lifecycle_peak_allocated_bytes",
+          "framework.lifecycle_peak_reserved_bytes",
+          "framework.peak_allocated_bytes",
+          "framework.peak_reserved_bytes",
+          "framework.reserved_bytes",
+          "replacement.diagnostic_kernel_sum_us",
+          "replacement.kernel_launches",
+          "replacement.max_registers_per_thread",
+          "replacement.max_shared_memory_bytes"
+        ],
+        "resource_status": "unknown",
+        "reason": "invalid_endpoint"
+      }
+    ],
+    "response_interpretation": "Finite differences of observed screening endpoints, not independent causal sensitivities or acceptance evidence. Objective/throughput/workload constants are not automatically labelled resources. Zero resource change is observed, not missing. Kernel counters require separately available diagnostic evidence.",
+    "observations": [
+      {
+        "bundle": {
+          "schema_version": "project.v2",
+          "id": "trial-561b4dff10-param-cdcf9073",
+          "parent_revision": "a920ced0052cce147735d374edabf3e31b9d068717d9fe595d1936a2a7488981",
+          "contract_ref": "sha256:52b6c322ad026e49dbf6edbf2106b2df20ef393fe471f67cb56fd3a0e55bb34d",
+          "scope": "joint",
+          "implementation": "distributed",
+          "groups": [
+            "f833b57a373d8262a384",
+            "8525af72c631b94e3dd0"
+          ],
+          "calls": [
+            "b8ade439d7b8bd5fb5c1029b",
+            "d0938de87369efd500322679"
+          ],
+          "edits": [
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-561b4dff10.py",
+              "before_sha256": null,
+              "content_ref": "sha256:49fcc74587aa8c0bb9c205996daed84655c40dbdb9af77825a31af3178f422c0"
+            },
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-561b4dff10.targets.json",
+              "before_sha256": null,
+              "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+            }
+          ],
+          "requires": [],
+          "replaces": [],
+          "external_invariants": [
+            "Model architecture is fixed: GPT2LMHeadModel with n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, float32, attn_implementation='eager', resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False.",
+            "torch.manual_seed(20261020) is set immediately before model construction; weights are seeded synthetic fixtures, not pretrained GPT-2, and request assets are empty by design.",
+            "Training data is seeded synthetic token ids: a CPU torch.Generator seeded 31000 + rank produces accumulation_steps=4 tensors of shape (micro_batch=1, sequence_length=128) with values in [0, 50257).",
+            "Numerics policy is fixed: allow_tf32=False for cuda.matmul and cudnn, cudnn.benchmark=False, float32_matmul_precision('highest'), torch.set_num_threads(4), torch.set_num_interop_threads(1).",
+            "Optimizer is SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) stepping exactly once per workload on the DDP-averaged accumulated gradient.",
+            "DDP configuration is broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True; no_sync wraps the first 3 of 4 micro backward passes and the gradient all-reduce happens on the 4th backward; no communication hook is installed in the measured path.",
+            "Each micro-step backward uses model(input_ids=tokens, labels=tokens, use_cache=False).loss / accumulation_steps; the reported workload loss is the sum of the four scaled micro-losses.",
+            "Workload shape is frozen: world_size=2 ranks x micro_batch=1 x accumulation_steps=4 gives effective_batch=8 and tokens_per_step=2*1*128*4=1024.",
+            "Correctness observation schema is {loss: scalar loss, gradients: full unwrapped-parameter-name to gradient mapping, parameters: full unwrapped-parameter-name to updated tensor mapping}; all returned as detached tensors, not hashes or samples.",
+            "reset() restores the exact initial parameters from the CPU snapshot taken in prepare, clears gradients and optimizer state and restores RNG state so every timed repeat starts from identical state on all ranks.",
+            "The timed boundary encloses zero_grad, all four forward/backward passes with their accumulation semantics, the optimizer step and the closing torch.cuda.synchronize(); no part of the frozen work is skipped, reshaped or moved out of timing.",
+            "Quality thresholds are reference-fidelity only: grad and parameter comparisons at atol=1e-6, rtol=1e-4 per request['quality']; no downstream accuracy or convergence is claimed."
+          ],
+          "plan_ref": null,
+          "registry_ref": null,
+          "installer": "opop_candidates/trial-561b4dff10.py",
+          "parameters": {
+            "nccl_proto": "LL",
+            "nccl_max_ctas": 16
+          },
+          "affected_calls_count": 2,
+          "read_set_count": 2,
+          "write_set_count": 4
+        },
+        "revision": "2fb7d8db42a84a1443a28837db68fa174877bb66f80621f66cb3ac228d738b87",
+        "result": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "constraints": [],
+        "run": {
+          "status": "failed",
+          "failure": "rank_failed",
+          "ranks": [
+            {
+              "rank": 0,
+              "status": "failed",
+              "error": "Tried to cast object to type __torch__.torch.classes.c10d.Work (of Python compilation unit at: 0) but object was missing attribute capsule",
+              "framework_source": {
+                "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": null,
+                "checks": null,
+                "coverage": null,
+                "setup": null,
+                "samples": null,
+                "metrics": null,
+                "diagnostics": null,
+                "metric_samples": null
+              }
+            },
+            {
+              "rank": 1,
+              "status": "failed",
+              "error": "Tried to cast object to type __torch__.torch.classes.c10d.Work (of Python compilation unit at: 0) but object was missing attribute capsule",
+              "framework_source": {
+                "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": null,
+                "checks": null,
+                "coverage": null,
+                "setup": null,
+                "samples": null,
+                "metrics": null,
+                "diagnostics": null,
+                "metric_samples": null
+              }
+            }
+          ]
+        },
+        "diagnostic": null,
+        "candidate_diagnostics": null
+      },
+      {
+        "bundle": {
+          "schema_version": "project.v2",
+          "id": "trial-561b4dff10-param-7a4f5506",
+          "parent_revision": "a920ced0052cce147735d374edabf3e31b9d068717d9fe595d1936a2a7488981",
+          "contract_ref": "sha256:52b6c322ad026e49dbf6edbf2106b2df20ef393fe471f67cb56fd3a0e55bb34d",
+          "scope": "joint",
+          "implementation": "distributed",
+          "groups": [
+            "f833b57a373d8262a384",
+            "8525af72c631b94e3dd0"
+          ],
+          "calls": [
+            "b8ade439d7b8bd5fb5c1029b",
+            "d0938de87369efd500322679"
+          ],
+          "edits": [
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-561b4dff10.py",
+              "before_sha256": null,
+              "content_ref": "sha256:49fcc74587aa8c0bb9c205996daed84655c40dbdb9af77825a31af3178f422c0"
+            },
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-561b4dff10.targets.json",
+              "before_sha256": null,
+              "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+            }
+          ],
+          "requires": [],
+          "replaces": [],
+          "external_invariants": [
+            "Model architecture is fixed: GPT2LMHeadModel with n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, float32, attn_implementation='eager', resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False.",
+            "torch.manual_seed(20261020) is set immediately before model construction; weights are seeded synthetic fixtures, not pretrained GPT-2, and request assets are empty by design.",
+            "Training data is seeded synthetic token ids: a CPU torch.Generator seeded 31000 + rank produces accumulation_steps=4 tensors of shape (micro_batch=1, sequence_length=128) with values in [0, 50257).",
+            "Numerics policy is fixed: allow_tf32=False for cuda.matmul and cudnn, cudnn.benchmark=False, float32_matmul_precision('highest'), torch.set_num_threads(4), torch.set_num_interop_threads(1).",
+            "Optimizer is SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) stepping exactly once per workload on the DDP-averaged accumulated gradient.",
+            "DDP configuration is broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True; no_sync wraps the first 3 of 4 micro backward passes and the gradient all-reduce happens on the 4th backward; no communication hook is installed in the measured path.",
+            "Each micro-step backward uses model(input_ids=tokens, labels=tokens, use_cache=False).loss / accumulation_steps; the reported workload loss is the sum of the four scaled micro-losses.",
+            "Workload shape is frozen: world_size=2 ranks x micro_batch=1 x accumulation_steps=4 gives effective_batch=8 and tokens_per_step=2*1*128*4=1024.",
+            "Correctness observation schema is {loss: scalar loss, gradients: full unwrapped-parameter-name to gradient mapping, parameters: full unwrapped-parameter-name to updated tensor mapping}; all returned as detached tensors, not hashes or samples.",
+            "reset() restores the exact initial parameters from the CPU snapshot taken in prepare, clears gradients and optimizer state and restores RNG state so every timed repeat starts from identical state on all ranks.",
+            "The timed boundary encloses zero_grad, all four forward/backward passes with their accumulation semantics, the optimizer step and the closing torch.cuda.synchronize(); no part of the frozen work is skipped, reshaped or moved out of timing.",
+            "Quality thresholds are reference-fidelity only: grad and parameter comparisons at atol=1e-6, rtol=1e-4 per request['quality']; no downstream accuracy or convergence is claimed."
+          ],
+          "plan_ref": null,
+          "registry_ref": null,
+          "installer": "opop_candidates/trial-561b4dff10.py",
+          "parameters": {
+            "nccl_proto": "LL",
+            "nccl_max_ctas": 2
+          },
+          "affected_calls_count": 2,
+          "read_set_count": 2,
+          "write_set_count": 4
+        },
+        "revision": "3c8954201e9bfaeaff813b89dc71323b9ae6a126687f2722b6f96733ad372581",
+        "result": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "constraints": [],
+        "run": {
+          "status": "failed",
+          "failure": "rank_failed",
+          "ranks": [
+            {
+              "rank": 0,
+              "status": "failed",
+              "error": "Tried to cast object to type __torch__.torch.classes.c10d.Work (of Python compilation unit at: 0) but object was missing attribute capsule",
+              "framework_source": {
+                "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": null,
+                "checks": null,
+                "coverage": null,
+                "setup": null,
+                "samples": null,
+                "metrics": null,
+                "diagnostics": null,
+                "metric_samples": null
+              }
+            },
+            {
+              "rank": 1,
+              "status": "failed",
+              "error": "Tried to cast object to type __torch__.torch.classes.c10d.Work (of Python compilation unit at: 0) but object was missing attribute capsule",
+              "framework_source": {
+                "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": null,
+                "checks": null,
+                "coverage": null,
+                "setup": null,
+                "samples": null,
+                "metrics": null,
+                "diagnostics": null,
+                "metric_samples": null
+              }
+            }
+          ]
+        },
+        "diagnostic": null,
+        "candidate_diagnostics": null
+      },
+      {
+        "bundle": {
+          "schema_version": "project.v2",
+          "id": "trial-561b4dff10-param-d879a139",
+          "parent_revision": "a920ced0052cce147735d374edabf3e31b9d068717d9fe595d1936a2a7488981",
+          "contract_ref": "sha256:52b6c322ad026e49dbf6edbf2106b2df20ef393fe471f67cb56fd3a0e55bb34d",
+          "scope": "joint",
+          "implementation": "distributed",
+          "groups": [
+            "f833b57a373d8262a384",
+            "8525af72c631b94e3dd0"
+          ],
+          "calls": [
+            "b8ade439d7b8bd5fb5c1029b",
+            "d0938de87369efd500322679"
+          ],
+          "edits": [
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-561b4dff10.py",
+              "before_sha256": null,
+              "content_ref": "sha256:49fcc74587aa8c0bb9c205996daed84655c40dbdb9af77825a31af3178f422c0"
+            },
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-561b4dff10.targets.json",
+              "before_sha256": null,
+              "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340"
+            }
+          ],
+          "requires": [],
+          "replaces": [],
+          "external_invariants": [
+            "Model architecture is fixed: GPT2LMHeadModel with n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, float32, attn_implementation='eager', resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False.",
+            "torch.manual_seed(20261020) is set immediately before model construction; weights are seeded synthetic fixtures, not pretrained GPT-2, and request assets are empty by design.",
+            "Training data is seeded synthetic token ids: a CPU torch.Generator seeded 31000 + rank produces accumulation_steps=4 tensors of shape (micro_batch=1, sequence_length=128) with values in [0, 50257).",
+            "Numerics policy is fixed: allow_tf32=False for cuda.matmul and cudnn, cudnn.benchmark=False, float32_matmul_precision('highest'), torch.set_num_threads(4), torch.set_num_interop_threads(1).",
+            "Optimizer is SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) stepping exactly once per workload on the DDP-averaged accumulated gradient.",
+            "DDP configuration is broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True; no_sync wraps the first 3 of 4 micro backward passes and the gradient all-reduce happens on the 4th backward; no communication hook is installed in the measured path.",
+            "Each micro-step backward uses model(input_ids=tokens, labels=tokens, use_cache=False).loss / accumulation_steps; the reported workload loss is the sum of the four scaled micro-losses.",
+            "Workload shape is frozen: world_size=2 ranks x micro_batch=1 x accumulation_steps=4 gives effective_batch=8 and tokens_per_step=2*1*128*4=1024.",
+            "Correctness observation schema is {loss: scalar loss, gradients: full unwrapped-parameter-name to gradient mapping, parameters: full unwrapped-parameter-name to updated tensor mapping}; all returned as detached tensors, not hashes or samples.",
+            "reset() restores the exact initial parameters from the CPU snapshot taken in prepare, clears gradients and optimizer state and restores RNG state so every timed repeat starts from identical state on all ranks.",
+            "The timed boundary encloses zero_grad, all four forward/backward passes with their accumulation semantics, the optimizer step and the closing torch.cuda.synchronize(); no part of the frozen work is skipped, reshaped or moved out of timing.",
+            "Quality thresholds are reference-fidelity only: grad and parameter comparisons at atol=1e-6, rtol=1e-4 per request['quality']; no downstream accuracy or convergence is claimed."
+          ],
+          "plan_ref": null,
+          "registry_ref": null,
+          "installer": "opop_candidates/trial-561b4dff10.py",
+          "parameters": {
+            "nccl_proto": "LL",
+            "nccl_max_ctas": 4
+          },
+          "affected_calls_count": 2,
+          "read_set_count": 2,
+          "write_set_count": 4
+        },
+        "revision": "f4e1123c6a3f429b513e3c5b81fa179276bf32766db5d7dccd050c01cd0620aa",
+        "result": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "constraints": [],
+        "run": {
+          "status": "failed",
+          "failure": "rank_failed",
+          "ranks": [
+            {
+              "rank": 0,
+              "status": "failed",
+              "error": "Tried to cast object to type __torch__.torch.classes.c10d.Work (of Python compilation unit at: 0) but object was missing attribute capsule",
+              "framework_source": {
+                "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": null,
+                "checks": null,
+                "coverage": null,
+                "setup": null,
+                "samples": null,
+                "metrics": null,
+                "diagnostics": null,
+                "metric_samples": null
+              }
+            },
+            {
+              "rank": 1,
+              "status": "failed",
+              "error": "Tried to cast object to type __torch__.torch.classes.c10d.Work (of Python compilation unit at: 0) but object was missing attribute capsule",
+              "framework_source": {
+                "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": null,
+                "checks": null,
+                "coverage": null,
+                "setup": null,
+                "samples": null,
+                "metrics": null,
+                "diagnostics": null,
+                "metric_samples": null
+              }
+            }
+          ]
+        },
+        "diagnostic": null,
+        "candidate_diagnostics": null
+      }
+    ]
+  }
+}

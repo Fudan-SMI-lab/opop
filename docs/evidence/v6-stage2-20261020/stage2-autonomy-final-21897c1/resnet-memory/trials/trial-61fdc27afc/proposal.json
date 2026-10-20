@@ -1,0 +1,52 @@
+{
+  "implementation": "composite",
+  "replacement_calls": [
+    "66593cf97d10975485c87e23"
+  ],
+  "rationale": "Whole-bundle rewrite of the selected stem region, replacing model.resnet.embedder (ResNetEmbeddings) with one callable so the memory that owns the peak is produced inside a single coherent boundary. Measured facts: baseline peak_allocated_bytes is 282,103,808 B over a standing 76,710,912 B allocation (project.json), i.e. a transient of 205,392,896 B = exactly two [32,64,112,112] fp32 tensors; those are the stem conv output plus the out-of-place cudnn BN output (bn_fw_inf_1C11_kernel_NCHW, 227.654 us) and then the BN output plus the out-of-place relu/clamp output (216.070 us) inside ResNetConvLayer.forward, with max_pool2d (198.853 us) consuming the result (target-resources.json). Every post-stem activation is <= 25,690,112 B and the largest later transient is ~3 x 25,690,112 B in stage 1 (selection rationale), so the stem is the only place where two ~98 MiB buffers coexist. Mechanism: (1) the eval-mode BatchNorm affine (scale = gamma*rsqrt(running_var+eps), shift = beta - running_mean*scale) is folded into a private conv weight/bias copy built once at install, so the conv output is already BN-affine and the separate 98 MiB BN pass disappears; (2) conv + max-pool run on batch slices of size stem_chunk (default 8), each pooled slice being written with clamp(min=0) directly into one preallocated [32,64,56,56] output, so the largest transient is one slice-sized conv buffer (25,690,112 B at chunk 8) plus its pooled slice (6,422,528 B) instead of two full stem buffers; (3) ReLU is commuted through the max-pool, which is exact because clamp_min is monotone non-decreasing and max-pool returns one of its inputs - verified bit-exact on CPU - so the out-of-place relu buffer and its 216 us pass are removed without changing values. The parent forward is used verbatim for setup failures, unsupported signatures (rank/dtype/device/channels/contiguity/training) and runtime errors, each with a distinct route label; the input tensor and all module state are never mutated, so fallback is exact. Expected effect on the frozen metric: the stem instant becomes standing 76,710,912 + output 25,690,112 + conv slice 25,690,112 + pool slice 6,422,528 = 134,513,664 B, below the stage-1 transient of ~76,710,912 + 3 x 25,690,112 = 153,781,248 B, which becomes the new global peak: expected peak_allocated_bytes ~ 153.8 MB, about -45% versus 282,103,808 B. Even if stage 1 is smaller than estimated, the stem instant (~134.5 MB at chunk 8) still bounds the peak, so the improvement holds either way. Throughput: the rewrite removes the 227.7 us BN kernel and the 216.1 us full-tensor relu pass and adds four slice convs (~+40-140 us), four slice pools (~+20 us) and clamp fused into the output writes; net GPU time is expected flat to negative against the 4.414 ms baseline, keeping images_per_second above the 0.95 x 7,249 floor. CPU-side sanity evidence: against the real transformers 5.16.1 ResNetEmbeddings parent on CPU, the chunked and single-slice paths match the parent logits-input tensor to 2.9e-06 max abs diff (atol/rtol gate is 1e-4), the relu/pool commutation is bit-exact, the non-contiguous fallback returns exactly the parent tensor, and the module state_dict is bit-identical after execution. No inputs/previous-candidate or inputs/previous-feedback.txt exists for this revision (observation record: 'revision has no candidate installers'), so this is a first attempt built only on the measured records cited above.",
+  "setup_work": {
+    "description": "Installation-time only work in build(): introspect the ResNetEmbeddings/ResNetConvLayer/Conv2d/BatchNorm2d/MaxPool2d attributes (raising setup-failure, reported per call, on any unexpected structure), then compute the folded conv weight/bias copies: scale = gamma*rsqrt(running_var+eps), shift = beta - running_mean*scale, folded_weight = conv.weight*scale per output channel, folded_bias = shift (conv is bias-free here). Computed under torch.inference_mode(False)/no_grad so the copies are normal tensors usable in any later execution mode.",
+    "allocations": "One folded weight [64,3,7,7] fp32 = 37,632 B plus one folded bias [64] fp32 = 256 B; total retained setup allocation ~37.9 KB on device, held for the module lifetime. No module parameters or running buffers are mutated (verified bit-identical state_dict), no fixture-dependent output is cached, and every invocation recomputes the full stem on the current input.",
+    "gpu_side_effects": "A handful of tiny (<=64-element) elementwise kernels execute once during build inside the framework's install flow; nothing runs at build from the agent shell. Per-run extra CPU work is a Python loop of stem_chunk-slice iterations issuing conv/pool/clamp kernels."
+  },
+  "quality_risks": [
+    "Numerical reassociation: folding BN into the conv weight applies the per-channel scale before conv accumulation, and slicing the batch may make cudnn choose a different conv algorithm per slice than for batch 32; both change rounding relative to the parent's conv + cudnn bn_fw_inf path. CPU evidence shows 2.9e-06 max abs diff vs the parent for the folded stem; GPU drift must still pass the frozen logits gate (atol=rtol=1e-4) and require_exact_top1, validated by the framework's paired check.",
+    "The ReLU-through-max-pool commutation is exact only for monotone elementwise transforms on finite values; the workload uses finite normalized image fixtures, so NaN propagation differences cannot arise here.",
+    "Throughput floor: four slice-sized convs and pools replace one full conv/pool; if per-slice conv efficiency is much worse than estimated, images_per_second could approach the 0.95 baseline-ratio floor. stem_chunk is exposed as a tunable so the search loop can trade launch count against transient size (chunk 32 takes the single-slice path).",
+    "The new peak is expected to be set by stage-1 transients (~153.8 MB), outside the selected region; the stem rewrite cannot reduce the metric below that without touching stage 1, so the measured gain may cap near -45% rather than the stem-instant -52%.",
+    "Fallback paths (setup failure, unsupported signature, runtime failure) route to the parent and would forfeit the memory improvement while preserving outputs; route labels distinguish them, and setup failure is never silently hidden.",
+    "peak_reserved_bytes may not fall: the allocator retains cached blocks for the new slice-sized allocations, and lifecycle counters include the ~38 KB setup copies; only the declared peak_allocated_bytes metric is claimed to improve."
+  ],
+  "eliminated_calls": [
+    "67989a7d327ae1a8f8544219",
+    "cad5e53772a5210f0d66e7bb",
+    "5b83be6e95a06bb111267408",
+    "1d462da933973a294c8633b5",
+    "114de24d4be40812ca7d17fb",
+    "4475c96ec0259893075963c8",
+    "a40136a02a36d7ee4f730923",
+    "0bca4f2d5b101b2ad6a0e2ef",
+    "315494c4a38d2b09f3edd02d",
+    "1b4f5bea171d82bb3b1f743f",
+    "5f9cbe711f813c821c4cc030",
+    "9ce363618d13b8058cd3bc65",
+    "ba72a5b2578593eff138081e",
+    "bb72ee849ce7f6d24d4cbfdd",
+    "b254b054d3bd5a571d465608",
+    "f68728527ee555fa0524a202"
+  ],
+  "requires": [],
+  "replaces": [],
+  "parameter_space": {
+    "params": [
+      {
+        "name": "stem_chunk",
+        "kind": "int",
+        "choices": [2, 4, 8, 16, 32],
+        "description": "Batch slice for the chunked stem conv/pool loop; default 8 when the coordinator supplies no value. Smaller slices shrink the conv transient (2 or 4 reach the same stage-1-bounded peak with more launches), 16 keeps one 51.4 MB conv slice, and 32 takes the single-slice path (peak set by the full 102,760,448 B conv buffer). Does not change batch, data, sampling or any frozen task semantics; partial last slices are handled."
+      }
+    ],
+    "constraints": []
+  },
+  "eliminated_calls_rationale": "The inner stem calls are subsumed by the whole-bundle replacement of model.resnet.embedder, per the selected region covering the entire stem bundle: the Conv2d/batch_norm/relu/max_pool2d work is recomputed inside the replacement as folded slice convs, slice max-pools and clamp-on-write, on every invocation. Consumers remain valid because the replacement returns exactly the parent interface - a fresh contiguous fp32 [32,64,56,56] pooled embedding tensor on the same device - which stage 1 consumes unchanged; module parameters and buffers are untouched. The profiler record_function enter/exit pairs (opop::8/10/14/18/23 markers) are discovery instrumentation attached to the now-bypassed inner boundaries, not semantic work. The framework should recapture the plan with the stem as one boundary."
+}

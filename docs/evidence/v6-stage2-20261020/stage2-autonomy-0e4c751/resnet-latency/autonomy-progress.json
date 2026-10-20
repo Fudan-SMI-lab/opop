@@ -1,0 +1,172 @@
+{
+  "protocol": {
+    "source": {
+      "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+      "files": 155,
+      "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+    },
+    "request_sha256": "f5189cc004c62dae8ed4238d5531b15b3594c90458a68170b1a45717d3a1bf00",
+    "source_files": {
+      "resnet_inference.py": "b98cd81b4aa6fb8211be6382d9870bbf433eb352c248a4b2aaf8f5fde2b50997",
+      "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+      "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+    },
+    "request": {
+      "schema_version": "project-request.v1",
+      "source_root": "/root/autodl-tmp/dev/opop-v6-freezes/0e4c751bf0a6/examples/v6_validation",
+      "entry": "resnet_inference.py",
+      "files": [
+        "resnet_inference.py",
+        "common.py",
+        "workloads.json"
+      ],
+      "goal": "minimize latency_ms for the complete frozen source workload, preserving source numerical and state semantics",
+      "objective": {
+        "name": "latency_ms",
+        "direction": "minimize",
+        "unit": "ms",
+        "paired_repeats": 2
+      },
+      "workload": {
+        "id": "offline",
+        "batch": 32,
+        "goals": [
+          {
+            "id": "throughput",
+            "metric": "images_per_second",
+            "direction": "max"
+          },
+          {
+            "id": "memory",
+            "metric": "peak_allocated_bytes",
+            "direction": "min",
+            "constraints": {
+              "images_per_second_min_baseline_ratio": 0.95
+            }
+          }
+        ]
+      },
+      "quality": {
+        "logits_atol": 0.0001,
+        "logits_rtol": 0.0001,
+        "require_exact_top1": true,
+        "atol": 0.0001,
+        "rtol": 0.0001
+      },
+      "assets": {
+        "assets": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18"
+      },
+      "devices": [
+        "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+      ],
+      "distributed_backend": null,
+      "communication": "auto",
+      "required_observations": [],
+      "tools": {
+        "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys",
+        "ncu": "/usr/local/cuda/bin/ncu"
+      },
+      "profiling": {
+        "agent_plan": true
+      },
+      "binding_backend": "legacy",
+      "warmup": 2,
+      "repeats": 5,
+      "continuous_steps": 2,
+      "worker_timeout_s": 900.0,
+      "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+      "notes": [
+        "Preserve source dtype, TF32 policy, seed, real data and completion boundaries.",
+        "Model loading is outside timing. Generated replacement work and synchronization stay inside the declared workload boundary.",
+        "The required correctness observation schema is {logits: full logits tensor, top1: argmax class indices}."
+      ]
+    },
+    "rounds": 2,
+    "oracle": {
+      "case": "resnet",
+      "reference": "/root/autodl-tmp/dev/v6-work/validation-runs/readiness-20261020-a/resnet_inference/offline-reference.pt"
+    },
+    "scope": "Fresh evaluator/discovery/selection/candidates; no imported prepared run or candidate; no human messages during this run",
+    "usage": "Observe only; rounds specify the experiment, not an API/request/token quota"
+  },
+  "rounds": [
+    {
+      "round": 0,
+      "trial": "trial-25dfd4d7ca",
+      "decision": {
+        "state": "evaluated",
+        "revision": "ee05788936b1b49d465ce3be10816f768f917bbfd77b54b93ce3374dfbf5ab6a",
+        "parent": "b7f55613a4ffc6afaa8f2c0d399b85e518c84faa75b9898306a6b0f197cb4fe5",
+        "bundle": "trial-25dfd4d7ca-param-82f6ef75",
+        "accepted": true,
+        "reasons": [],
+        "report_ref": "sha256:9242f4e9974d830dbb60456f695ebb010bf1a4214768c77fbbc6f24f8f0c4319"
+      },
+      "measurement": {
+        "valid": true,
+        "objective": 3.6331685,
+        "reference": 4.233575,
+        "parent_values": [
+          4.222144,
+          4.245006
+        ],
+        "candidate_values": [
+          3.631159,
+          3.635178
+        ],
+        "paired_gains": [
+          0.5909850000000003,
+          0.6098280000000003
+        ],
+        "noise_bounds": [
+          0.009975999999999985,
+          0.03747200000000017
+        ],
+        "constraints": [],
+        "reasons": [],
+        "framework_source": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+        "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+      },
+      "revision": "ee05788936b1b49d465ce3be10816f768f917bbfd77b54b93ce3374dfbf5ab6a"
+    },
+    {
+      "round": 1,
+      "trial": "trial-c7e622b52b",
+      "decision": {
+        "state": "evaluated",
+        "revision": "d0757bef09263cbf895f19660b318b04b38c6e3531352e12ffd0d64c7ba9ab03",
+        "parent": "ea2c621e0900ecb1b9bdc73afa531d5b80c1ed208cbb424791ce57151c800467",
+        "bundle": "trial-c7e622b52b-param-31ad5eae",
+        "accepted": true,
+        "reasons": [],
+        "report_ref": "sha256:557e1439d6e3214a8768cd302f38dcf102d74d0a994a7067feca67c6a1015aa9"
+      },
+      "measurement": {
+        "valid": true,
+        "objective": 3.3187085,
+        "reference": 3.6303565,
+        "parent_values": [
+          3.622617,
+          3.638096
+        ],
+        "candidate_values": [
+          3.30182,
+          3.335597
+        ],
+        "paired_gains": [
+          0.3207969999999998,
+          0.3024990000000001
+        ],
+        "noise_bounds": [
+          0.02443200000000001,
+          0.014348000000000027
+        ],
+        "constraints": [],
+        "reasons": [],
+        "framework_source": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+        "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+      },
+      "revision": "d0757bef09263cbf895f19660b318b04b38c6e3531352e12ffd0d64c7ba9ab03"
+    }
+  ]
+}

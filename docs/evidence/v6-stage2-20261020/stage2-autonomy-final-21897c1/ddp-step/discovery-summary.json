@@ -1,0 +1,283 @@
+{
+  "revision": "a920ced0052cce147735d374edabf3e31b9d068717d9fe595d1936a2a7488981",
+  "plan": "4f7d15f6154c33214f3c7c714b5ef2329acf04ac36b4db8486c948a6c717e962",
+  "registry": "cf687c8be17e8ef8bbcef2317b69ff0ea2842f163d8e650b884eca9e2ad73ab1",
+  "collection_plan": {
+    "plan": {
+      "collectors": [
+        "collective_calibration",
+        "device_telemetry",
+        "execution_timeline",
+        "nsys"
+      ],
+      "requested_fields": [
+        "collective_calibration.allreduce_sum_f32.elements_7087872.duration_ms",
+        "collective_calibration.allreduce_sum_f32.elements_39385344.duration_ms",
+        "collective_calibration.allreduce_sum_f32.algo_bandwidth",
+        "collective_calibration.allreduce_sum_f32.bus_bandwidth",
+        "collective_calibration.correctness_check",
+        "device_telemetry.pcie.tx",
+        "device_telemetry.pcie.rx",
+        "device_telemetry.device.gpu_utilization",
+        "device_telemetry.device.memory_used",
+        "execution_timeline.cpu_submit_to_cuda_associations",
+        "execution_timeline.synchronization_events",
+        "execution_timeline.per_device_intervals",
+        "execution_timeline.clock_alignment_bounds",
+        "execution_timeline.gradient_post_accumulate_callbacks",
+        "nsys.nccl_kernel_intervals",
+        "nsys.cuda_api_correlation",
+        "nsys.comm_compute_overlap"
+      ],
+      "unavailable_fields": {
+        "pcie_bytes": "Capability probe left this unknown; hardware byte counters require a successful collector-specific probe and topology or logical payload (497759232 bytes per rank per step) does not measure traffic. device_telemetry provides device-wide NVML PCIe rates with native ~20 ms sampling windows and unavailable exact boundaries, not per-collective bytes.",
+        "nvlink_bytes": "Unknown for the same hardware-counter probe reason; additionally the observed NCCL channels use SHM/direct/direct between ranks with peer_access.0.1=0 and peer_access.1.0=0, so no NVLink carriage is evidenced to measure.",
+        "hardware_utilization": "Unknown; hardware counters require a successful collector-specific probe. Only device-wide NVML gpu/memory utilization readings exist, and device_telemetry re-samples those same device-wide readings.",
+        "nccl_wait_vs_wire_split": "Not directly measurable: NCCL kernel durations include waiting (rank 1 sum 244.90 ms vs rank 0 58.96 ms on identical matched collectives), and nsys timelines do not separate NCCL waiting from wire transfer. collective_calibration is a synthetic reference experiment for comparison, not a split measurement or lower bound.",
+        "cross_rank_arrival_skew": "The observed clock policy forbids subtracting timestamps from different rank clocks; execution_timeline reports clock alignment bounds for matching CPU submissions only, so absolute inter-rank kernel arrival offsets remain unknown.",
+        "gpu_readiness_and_consumer_completion": "execution_timeline associates CPU submissions with CUDA launches within reported clock alignment bounds, but GPU-side input readiness and downstream consumer completion may remain unknown; no collector here observes them directly.",
+        "clean_host_dispatch_cost": "python_runtime was not selected: the trace shows no host-dispatch-bound evidence (3999/3999 kernels associated, zero unmatched communication kernels), and its warmed cProfile run perturbs execution with inclusive/self times that are not clean performance scores or GPU compute durations; this dimension is left unknown rather than measured with a distorting tool."
+      },
+      "rationale": "The torch collector already ran with complete coverage: 13 cross-rank matched f32 SUM RING_LL allreduces (12 buckets of 7087872 elements plus one of 39385344), payload observed for 13/13 collectives, every bucket identity attributed via observed gradient-storage membership plus matched parameter inventory, and zero unmatched communication kernels. The open questions for step_ms and diagnostic.max_rank_nccl_kernel_sum_ms are: (1) rank asymmetry - rank 1 communication_kernel_sum_ms 244.90 vs rank 0 58.96 on the same matched collectives (per-bucket ~13.9-16.7 ms vs ~3.2 ms, first bucket 54.7 ms on rank 1; only the final 39385344-element collective is symmetric at ~19.4 ms), which indicates peer-arrival waiting inside NCCL kernels rather than wire time; and (2) exposure - communication_without_compute_ms 55.16 (rank 0) / 235.50 (rank 1) vs compute_overlap_ms 3.81 / 9.40, so communication is mostly exposed, and the submit-side cause (bucket readiness vs CPU/synchronization timing) is unknown. collective_calibration runs a separate synthetic full-world SUM allreduce at the actually observed sizes/dtypes with correctness checks, giving reference context to interpret the in-training kernel inflation; it is a reference experiment, not a performance lower bound or critical-path estimate. device_telemetry samples device-wide NVML PCIe tx/rx, utilization and memory with native windows to corroborate wire activity on the observed SHM/direct/direct host path (no P2P), never per-collective bytes. execution_timeline records a separate plain Torch trace with CPU-to-CUDA submit associations, synchronization, per-device intervals, clock alignment bounds for matching CPU submissions, and passive gradient post-accumulate callbacks to attribute bucket readiness and skew; it replaces no communication hook and determines no subsequent search actions. nsys is available and selected narrowly to corroborate overlap/exposure structure and submit attribution via native correlation; it is explicitly not used to separate NCCL waiting from wire transfer or to prove bucket identity (already observed). Excluded: torch (already ran, complete); python_runtime (no host-dispatch-bound evidence, perturbs execution, times are not clean scores); candidate_diagnostics (no candidates exist at the collection stage; avoids indiscriminate requests)."
+    },
+    "agent": {
+      "role": "collection-planner",
+      "session": "ses_ea6a8a8acffeIgW0D3NM60A2rl",
+      "message": "msg_1595a9a23001VEXDOHaMluinJq",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 10,
+        "reported_cost": 0.18186211898,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 329994.0,
+          "input": 45279.0,
+          "output": 3149.0,
+          "reasoning": 7838.0,
+          "cache.read": 273728.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea6a8a8acffeIgW0D3NM60A2rl",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/ddp-step/sandboxes/collection-planner-9402bf323dfc",
+      "outputs": [
+        "collection.json"
+      ],
+      "feedback_provided": false,
+      "contract_repairs": 0
+    }
+  },
+  "profiled_wall_ms": [
+    1148.81818,
+    1138.361933
+  ],
+  "groups": 860,
+  "collectors": {
+    "collective_calibration": {
+      "status": "observed",
+      "provenance": {
+        "revision": "a920ced0052cce147735d374edabf3e31b9d068717d9fe595d1936a2a7488981",
+        "parent_revision": "e0aa411cfd13a17b0a52028aab7843c0e9c680ff97f1fa8f929d4e431feb5085",
+        "bundles": [],
+        "plan": "sha256:17bf5ba91267350d6037b0720c7235358e8567ec9d4bdffe6025f1b006b3f8f3",
+        "registry": "sha256:b8270759b5dccdc5cf5c447a8c88ae8ceb17223fdf301f3bb522b66e6b0d6ce8",
+        "request_sha256": "8d8a25f7393c45f7a18b547a1cdf10c4978ada14f66a360a82c1e1edeab2feba",
+        "objective": {
+          "name": "step_ms",
+          "direction": "minimize",
+          "unit": "ms",
+          "paired_repeats": 2
+        },
+        "workload": {
+          "id": "accumulated_step",
+          "world_size": 2,
+          "micro_batch": 1,
+          "sequence_length": 128,
+          "accumulation_steps": 4,
+          "goals": [
+            {
+              "id": "step",
+              "metric": "step_ms",
+              "direction": "min"
+            },
+            {
+              "id": "communication",
+              "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+              "direction": "min",
+              "constraints": {
+                "step_ms_max_baseline_ratio": 1.05
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "framework_source": {
+          "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+          "files": 155,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      }
+    },
+    "device_telemetry": {
+      "status": "observed",
+      "provenance": {
+        "revision": "a920ced0052cce147735d374edabf3e31b9d068717d9fe595d1936a2a7488981",
+        "parent_revision": "e0aa411cfd13a17b0a52028aab7843c0e9c680ff97f1fa8f929d4e431feb5085",
+        "bundles": [],
+        "plan": "sha256:17bf5ba91267350d6037b0720c7235358e8567ec9d4bdffe6025f1b006b3f8f3",
+        "registry": "sha256:b8270759b5dccdc5cf5c447a8c88ae8ceb17223fdf301f3bb522b66e6b0d6ce8",
+        "request_sha256": "8d8a25f7393c45f7a18b547a1cdf10c4978ada14f66a360a82c1e1edeab2feba",
+        "objective": {
+          "name": "step_ms",
+          "direction": "minimize",
+          "unit": "ms",
+          "paired_repeats": 2
+        },
+        "workload": {
+          "id": "accumulated_step",
+          "world_size": 2,
+          "micro_batch": 1,
+          "sequence_length": 128,
+          "accumulation_steps": 4,
+          "goals": [
+            {
+              "id": "step",
+              "metric": "step_ms",
+              "direction": "min"
+            },
+            {
+              "id": "communication",
+              "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+              "direction": "min",
+              "constraints": {
+                "step_ms_max_baseline_ratio": 1.05
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "framework_source": {
+          "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+          "files": 155,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      }
+    },
+    "execution_timeline": {
+      "status": "observed",
+      "provenance": {
+        "revision": "a920ced0052cce147735d374edabf3e31b9d068717d9fe595d1936a2a7488981",
+        "parent_revision": "e0aa411cfd13a17b0a52028aab7843c0e9c680ff97f1fa8f929d4e431feb5085",
+        "bundles": [],
+        "plan": "sha256:17bf5ba91267350d6037b0720c7235358e8567ec9d4bdffe6025f1b006b3f8f3",
+        "registry": "sha256:b8270759b5dccdc5cf5c447a8c88ae8ceb17223fdf301f3bb522b66e6b0d6ce8",
+        "request_sha256": "8d8a25f7393c45f7a18b547a1cdf10c4978ada14f66a360a82c1e1edeab2feba",
+        "objective": {
+          "name": "step_ms",
+          "direction": "minimize",
+          "unit": "ms",
+          "paired_repeats": 2
+        },
+        "workload": {
+          "id": "accumulated_step",
+          "world_size": 2,
+          "micro_batch": 1,
+          "sequence_length": 128,
+          "accumulation_steps": 4,
+          "goals": [
+            {
+              "id": "step",
+              "metric": "step_ms",
+              "direction": "min"
+            },
+            {
+              "id": "communication",
+              "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+              "direction": "min",
+              "constraints": {
+                "step_ms_max_baseline_ratio": 1.05
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "framework_source": {
+          "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+          "files": 155,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      }
+    },
+    "nsys": {
+      "status": "observed",
+      "provenance": {
+        "revision": "a920ced0052cce147735d374edabf3e31b9d068717d9fe595d1936a2a7488981",
+        "parent_revision": "e0aa411cfd13a17b0a52028aab7843c0e9c680ff97f1fa8f929d4e431feb5085",
+        "bundles": [],
+        "plan": "sha256:17bf5ba91267350d6037b0720c7235358e8567ec9d4bdffe6025f1b006b3f8f3",
+        "registry": "sha256:b8270759b5dccdc5cf5c447a8c88ae8ceb17223fdf301f3bb522b66e6b0d6ce8",
+        "request_sha256": "8d8a25f7393c45f7a18b547a1cdf10c4978ada14f66a360a82c1e1edeab2feba",
+        "objective": {
+          "name": "step_ms",
+          "direction": "minimize",
+          "unit": "ms",
+          "paired_repeats": 2
+        },
+        "workload": {
+          "id": "accumulated_step",
+          "world_size": 2,
+          "micro_batch": 1,
+          "sequence_length": 128,
+          "accumulation_steps": 4,
+          "goals": [
+            {
+              "id": "step",
+              "metric": "step_ms",
+              "direction": "min"
+            },
+            {
+              "id": "communication",
+              "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+              "direction": "min",
+              "constraints": {
+                "step_ms_max_baseline_ratio": 1.05
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "framework_source": {
+          "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+          "files": 155,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      }
+    }
+  }
+}

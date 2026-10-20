@@ -1,0 +1,70 @@
+{
+  "schema_version": "project-request.v1",
+  "source_root": "/root/autodl-tmp/dev/opop-v6-freezes/0e4c751bf0a6/examples/v6_validation",
+  "entry": "resnet_inference.py",
+  "files": [
+    "resnet_inference.py",
+    "common.py",
+    "workloads.json"
+  ],
+  "goal": "minimize latency_ms for the complete frozen source workload, preserving source numerical and state semantics",
+  "objective": {
+    "name": "latency_ms",
+    "direction": "minimize",
+    "unit": "ms",
+    "paired_repeats": 2
+  },
+  "workload": {
+    "id": "offline",
+    "batch": 32,
+    "goals": [
+      {
+        "id": "throughput",
+        "metric": "images_per_second",
+        "direction": "max"
+      },
+      {
+        "id": "memory",
+        "metric": "peak_allocated_bytes",
+        "direction": "min",
+        "constraints": {
+          "images_per_second_min_baseline_ratio": 0.95
+        }
+      }
+    ]
+  },
+  "quality": {
+    "logits_atol": 0.0001,
+    "logits_rtol": 0.0001,
+    "require_exact_top1": true,
+    "atol": 0.0001,
+    "rtol": 0.0001
+  },
+  "assets": {
+    "assets": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18"
+  },
+  "devices": [
+    "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+  ],
+  "distributed_backend": null,
+  "communication": "auto",
+  "required_observations": [],
+  "tools": {
+    "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys",
+    "ncu": "/usr/local/cuda/bin/ncu"
+  },
+  "profiling": {
+    "agent_plan": true
+  },
+  "binding_backend": "legacy",
+  "warmup": 2,
+  "repeats": 5,
+  "continuous_steps": 2,
+  "worker_timeout_s": 900.0,
+  "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+  "notes": [
+    "Preserve source dtype, TF32 policy, seed, real data and completion boundaries.",
+    "Model loading is outside timing. Generated replacement work and synchronization stay inside the declared workload boundary.",
+    "The required correctness observation schema is {logits: full logits tensor, top1: argmax class indices}."
+  ]
+}

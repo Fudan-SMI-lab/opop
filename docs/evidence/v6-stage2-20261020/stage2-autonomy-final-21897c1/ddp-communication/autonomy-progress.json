@@ -1,0 +1,138 @@
+{
+  "protocol": {
+    "source": {
+      "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+      "files": 155,
+      "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+    },
+    "request_sha256": "fcd2c16292fe2e67c8b81d35403f2fabcd1a00492dc37fd1c829e71a8ef1ca0c",
+    "source_files": {
+      "gpt2_ddp_training.py": "37d1632436c8f927a52401b6d1fb9e63bd7b8d33d643d0f914916bb89b3364fe",
+      "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+      "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+    },
+    "request": {
+      "schema_version": "project-request.v1",
+      "source_root": "/root/autodl-tmp/dev/opop-v6-freezes/21897c111d64/examples/v6_validation",
+      "entry": "gpt2_ddp_training.py",
+      "files": [
+        "gpt2_ddp_training.py",
+        "common.py",
+        "workloads.json"
+      ],
+      "goal": "minimize diagnostic.max_rank_nccl_kernel_sum_ms for the complete frozen source workload, preserving source numerical and state semantics",
+      "objective": {
+        "name": "diagnostic.max_rank_nccl_kernel_sum_ms",
+        "direction": "minimize",
+        "unit": "ms",
+        "paired_repeats": 2,
+        "constraints": [
+          {
+            "metric": "step_ms",
+            "baseline_ratio": 1.05,
+            "op": "le"
+          }
+        ],
+        "source": {
+          "collector": "torch_communication",
+          "field": "communication_kernel_sum_ms"
+        },
+        "rank_aggregation": "max"
+      },
+      "workload": {
+        "id": "accumulated_step",
+        "world_size": 2,
+        "micro_batch": 1,
+        "sequence_length": 128,
+        "accumulation_steps": 4,
+        "goals": [
+          {
+            "id": "step",
+            "metric": "step_ms",
+            "direction": "min"
+          },
+          {
+            "id": "communication",
+            "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+            "direction": "min",
+            "constraints": {
+              "step_ms_max_baseline_ratio": 1.05
+            }
+          }
+        ]
+      },
+      "quality": {
+        "grad_atol": 1e-06,
+        "grad_rtol": 0.0001,
+        "parameter_atol": 1e-06,
+        "parameter_rtol": 0.0001,
+        "atol": 1e-06,
+        "rtol": 0.0001
+      },
+      "assets": {},
+      "devices": [
+        "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+      ],
+      "distributed_backend": "nccl",
+      "communication": "required",
+      "required_observations": [
+        "collective_identity",
+        "logical_payload",
+        "cross_rank_collectives"
+      ],
+      "tools": {
+        "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys",
+        "ncu": "/usr/local/cuda/bin/ncu"
+      },
+      "profiling": {
+        "metric_repeats": 3,
+        "agent_plan": true
+      },
+      "binding_backend": "legacy",
+      "warmup": 2,
+      "repeats": 5,
+      "continuous_steps": 2,
+      "worker_timeout_s": 900.0,
+      "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+      "notes": [
+        "Preserve source dtype, TF32 policy, seed, real data and completion boundaries.",
+        "Model loading is outside timing. Generated replacement work and synchronization stay inside the declared workload boundary.",
+        "The required correctness observation schema is {loss: scalar loss, gradients: full parameter-name to gradient tensor mapping, parameters: full parameter-name to updated tensor mapping}. Parameter names follow the unwrapped source model."
+      ]
+    },
+    "rounds": 2,
+    "oracle": {
+      "case": "ddp",
+      "reference": "None"
+    },
+    "scope": "Fresh evaluator/discovery/selection/candidates; no imported prepared run or candidate; no human messages during this run",
+    "usage": "Observe only; rounds specify the experiment, not an API/request/token quota"
+  },
+  "rounds": [
+    {
+      "round": 0,
+      "trial": "trial-b5a0778f8a",
+      "decision": {
+        "accepted": false,
+        "reasons": [
+          "no_valid_parameter_candidate"
+        ]
+      },
+      "measurement": null,
+      "revision": "a8839126832757267aa123289d04468a213909494717bbcda4751bee94cfc083"
+    },
+    {
+      "round": 1,
+      "trial": "trial-ee3fe9c7e0",
+      "decision": {
+        "accepted": false,
+        "reasons": [
+          "no_valid_parameter_candidate"
+        ]
+      },
+      "measurement": null,
+      "revision": "a8839126832757267aa123289d04468a213909494717bbcda4751bee94cfc083"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "implementation": "distributed",
+  "replacement_calls": [
+    "b8ade439d7b8bd5fb5c1029b",
+    "d0938de87369efd500322679"
+  ],
+  "rationale": "Measured facts (inputs/observations, this host): the step's dominant non-compute cost is the DDP gradient allreduce family at the 4th backward - 13 c10d::allreduce_ bucket calls on one NCCL stream, all observed as ncclDevKernel_AllReduce_Sum_f32_RING_LL (12 x 7,087,872 fp32 elements = 28,351,488 B each, one x 39,385,344 elements = 157,541,376 B; 497,759,232 B/rank/step, exactly the ownership in communication-ownership.json). Isolated calibration gives 3.60-3.68 ms per 28.35 MB bucket and 19.54-19.83 ms for the 157.5 MB bucket (~7.9-8.0 GB/s logical) against a clean baseline step_ms of 133.04/133.31 ms; the nsys run shows the same 13 kernels summing to 63.7 ms on the non-waiting rank with only ~18.7 ms compute overlap. The LL protocol's ~50% flag overhead over the non-P2P SHM path (peer_access.0.1 = peer_access.1.0 = 0) is the measured suspect; both bucket shapes share one dispatch site and one serialized NCCL stream, so they are replaced jointly. HOW THIS ATTEMPT REPAIRS THE PREVIOUS FAILURE: trial-561b4dff10 failed identically on all three parameter arms with a parameter-independent contract bug - the replacement returned the raw pybind Work from ProcessGroupNCCL.allreduce() and the dispatcher raised 'Tried to cast object to type __torch__.torch.classes.c10d.Work ... missing attribute capsule' on the (Tensor[], Work) return path. This candidate follows the pattern torch itself uses in torch.distributed._local_tensor._c10d for exactly these c10d ops: the received holders are consumed with reduce_op_so.op() (real pybind ReduceOp) and the returned Work is converted with Work.boxed(work), producing the required __torch__.torch.classes.c10d.Work custom class. Verified on the measured worker's Python (torch 2.13.0+cu129, CPU-only gloo probe, no GPU lease): the pybind overload ProcessGroupNCCL.allreduce(tensors, op, timeout) executes, Work.boxed(work) of a real backend Work yields qualified name __torch__.torch.classes.c10d.Work, and wait() dispatches through the custom-class trampoline; the eligible replacement path returns (original tensor list, boxed Work) for both bucket shapes, async_op=False waits before returning, and ineligible signatures/world mismatches route to the parent with distinct setup/signature fallback labels. The collective itself is the same in-place fp32 SUM on the same tensor list issued through a dedicated ProcessGroupNCCL over PrefixStore('opop_bulk_nccl:<build>:<proto>:<ctas>', default store) - an independent ncclCommInitRank, never a split of the parent communicator - initialized while NCCL_PROTO names the target protocol (default SIMPLE bulk; LL arm reproduces the parent protocol as control) with Options.config.max_ctas as a per-communicator channel cap (0 = NCCL default). DDP bucket readiness, the no_sync accumulation schedule, gradient views and optimizer updates are unchanged: a 2-rank SUM allreduce is one pairwise fp32 add per element under any NCCL algorithm/protocol, verified by the framework's paired grad/param checks (atol=1e-6, rtol=1e-4) rather than assumed. Expected effect (hypothesis under test): wire time on the 13 exchanges falls from ~63 ms toward ~32-42 ms, cutting step_ms by ~15-25% with diagnostic.max_rank_nccl_kernel_sum_ms falling proportionally and the step_ms <= 1.05x baseline constraint respected; unknowns remain the achievable SIMPLE throughput over this SHM path, the best channel cap, and lazy second-communicator/watchdog behavior.",
+  "setup_work": {
+    "timing": "All setup runs once inside build() (installation, before validation, quality tracking off, adapter invocation not started); it is outside every timed step and outside framework.peak_allocated_bytes windows, but its driver-side allocations do persist into lifecycle metrics as described below.",
+    "actions": [
+      "Construct a dedicated ProcessGroupNCCL(store, rank, world_size, Options) over PrefixStore('opop_bulk_nccl:<build>:<proto>:<ctas>', default store) - an independent communicator rendezvous, collective across both ranks and therefore symmetric; a per-process build counter keeps prefixes unique across reinstalls so both ranks agree within a build.",
+      "Set Options.config.max_ctas from the nccl_max_ctas parameter when positive (0 leaves NCCL's default channel count); no model parameter, gradient, optimizer state, bucket layout, no_sync pattern or workload input is touched.",
+      "While NCCL_PROTO is temporarily set (restored in a finally block), run a one-element fp32 probe allreduce plus work.wait() and torch.cuda.synchronize() to force lazy ncclCommInitRank under the intended protocol and verify the alternative executor end to end before any replacement can select it; the probe's store rendezvous fails loudly on timeout rather than silently diverging."
+    ],
+    "memory": "The probe tensor is one fp32 element through the PyTorch caching allocator (freed after setup). The new NCCL communicator allocates its own channel buffers and staging memory through the CUDA driver (order tens of MB depending on the channel cap); this is outside the caching allocator, so framework.peak_allocated_bytes and lifecycle peak_allocated do not see it and PyTorch reserved memory is not reduced - reported as added driver-side memory, not a saving. One alternative communicator exists per process per installed build; parameter trials that reinstall create another (build counter keeps store prefixes unique).",
+    "fallback": "If any setup step fails (dist uninitialized, world_size != 2, group construction or probe failure), group stays None and every replacement call routes to the parent reference with the 'parent_fallback_setup' label; the candidate then measures like the parent. The decision points are deterministic and symmetric across ranks."
+  },
+  "quality_risks": [
+    "Return-ABI repair is the load-bearing change: the replacement returns Work.boxed(work) - the __torch__.torch.classes.c10d.Work custom class the dispatcher must receive (the exact 'missing attribute capsule' defect of trial-561b4dff10, now repaired following torch.distributed._local_tensor._c10d). Any failure inside Work.boxed or the pybind allreduce enqueue propagates loudly; a post-enqueue per-rank fallback would desynchronize the collective and is never taken.",
+    "The dispatcher hands the reduce op and process group over as scripting-class holders; the replacement resolves the reduce op via holder.op() and falls back to the parent ('parent_fallback_signature') if the op cannot be resolved to a pybind ReduceOp, so no unobserved op is silently rerouted.",
+    "Forcing NCCL_PROTO=SIMPLE (or LL) on the alternative communicator is a protocol/algo change only; for a 2-rank SUM it cannot reorder any addition beyond the single pairwise add per element, so gradients and updated parameters are expected to be bitwise identical to the parent - verified by the framework's paired grad/param checks, not assumed.",
+    "The alternative group's Options.timeout is not pybind-settable; per-call overloads receive an explicit 120 s timedelta mirroring the workload's init_process_group timeout, and a hang would surface as a loud worker timeout, never silent divergence.",
+    "The achievable bulk-protocol throughput over the SHM path and the best channel cap are the tested unknowns; the LL arm reproduces the parent's observed RING_LL protocol as a no-regression control, and the secondary communication goal keeps the step_ms <= 1.05x baseline constraint.",
+    "NCCL_PROTO is set only around the alternative communicator's lazy initialization (restored in a finally block); the default group's communicator already exists from prepare (DDP construction broadcasts), so parent-path collectives keep their original tuner behavior.",
+    "DDP bucket readiness depends on the returned Work; the boxed native Work's wait/events carry the alternative communicator's completion ordering relative to the calling stream, the same contract any ProcessGroupNCCL Work satisfies, so the 4th-backward allreduce and optimizer step observe complete gradients."
+  ],
+  "eliminated_calls": [],
+  "requires": [],
+  "replaces": [],
+  "parameter_space": {
+    "params": [
+      {
+        "name": "nccl_proto",
+        "kind": "str",
+        "choices": [
+          "SIMPLE",
+          "LL"
+        ],
+        "description": "Protocol forced on the dedicated bucket-allreduce communicator at its ncclCommInitRank (read from NCCL_PROTO while it initializes). SIMPLE is the bulk-protocol hypothesis; LL reproduces the parent's observed RING_LL protocol as a control arm."
+      },
+      {
+        "name": "nccl_max_ctas",
+        "kind": "int",
+        "choices": [
+          0,
+          4,
+          8,
+          16,
+          32
+        ],
+        "description": "Per-communicator channel cap (ProcessGroupNCCL Options.config.max_ctas) for the dedicated bucket-allreduce communicator; the parent's LL kernels ran with 2 channels (grid 2 x block 544). 0 leaves NCCL's default channel count unset."
+      }
+    ],
+    "constraints": []
+  }
+}

@@ -1,0 +1,209 @@
+{
+  "source": "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/resnet-latency/sandboxes/candidate-5c62ceb56bbf/inputs/resources.json",
+  "extra_collectors": {
+    "execution_timeline": {
+      "status": "observed",
+      "input": "observations/current/execution_timeline-1221e205.json",
+      "sha256": "be1b50805e8b3b86e378fd367bb937197f79bda8d0785a779fd60e8df8ad655a",
+      "bytes": 15840,
+      "provenance": {
+        "revision": "b7f55613a4ffc6afaa8f2c0d399b85e518c84faa75b9898306a6b0f197cb4fe5",
+        "parent_revision": "f40c3b1e9d685db792539a0379888d47a2380f722991179ecfe18584a4b448d2",
+        "bundles": [],
+        "plan": "sha256:660f4f848115fc29394e89e126e5f3a1a09bbd193916a578d4e1b634b9690055",
+        "registry": "sha256:f2648fb7fca3e9c9c911de3c0f0f56f8694027c2bfbfd29afb3112e2f6d43d6e",
+        "request_sha256": "c008715e3ad55dfcd79496c797231a78d1616eb399aba7d2532bbbc63dcd6680",
+        "objective": {
+          "name": "latency_ms",
+          "direction": "minimize",
+          "unit": "ms",
+          "paired_repeats": 2
+        },
+        "workload": {
+          "id": "offline",
+          "batch": 32,
+          "goals": [
+            {
+              "id": "throughput",
+              "metric": "images_per_second",
+              "direction": "max"
+            },
+            {
+              "id": "memory",
+              "metric": "peak_allocated_bytes",
+              "direction": "min",
+              "constraints": {
+                "images_per_second_min_baseline_ratio": 0.95
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+          "files": 155,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "scope": "Separate diagnostic capture, never the clean project objective",
+          "workload_window": {
+            "start_us": 1641811164630.817,
+            "end_us": 1641811169141.4219,
+            "scope": "explicit workload including final completion synchronization; excludes profiler preparation"
+          },
+          "profiled_wall_ms": 4.544848,
+          "clock": {
+            "status": "observed",
+            "offset_bounds_us": [
+              18956226440731.48,
+              18956226443353.824
+            ],
+            "anchor_bounds_us": [
+              [
+                18956226440731.48,
+                18956226443353.824
+              ],
+              [
+                18956226441397.438,
+                18956226441454.36
+              ]
+            ],
+            "domain": {
+              "host": "autodl-container-e8e84ea25b-cffd5c81",
+              "boot_id": "9890bc2b-f323-49ae-b779-8f723299b44a",
+              "clock": "CLOCK_MONOTONIC"
+            },
+            "scope": "CPU trace to host monotonic clock within this capture; excludes unknown GPU clock calibration error"
+          },
+          "gradient_hooks_enabled": false
+        }
+      ],
+      "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+    },
+    "python_runtime": {
+      "status": "observed",
+      "input": "observations/current/python_runtime-aea48e29.json",
+      "sha256": "9bdc3ac33c1a3729f1632eb1fcfe169c05bd47441bacd10436327fe4c82f1951",
+      "bytes": 51917,
+      "provenance": {
+        "revision": "b7f55613a4ffc6afaa8f2c0d399b85e518c84faa75b9898306a6b0f197cb4fe5",
+        "parent_revision": "f40c3b1e9d685db792539a0379888d47a2380f722991179ecfe18584a4b448d2",
+        "bundles": [],
+        "plan": "sha256:660f4f848115fc29394e89e126e5f3a1a09bbd193916a578d4e1b634b9690055",
+        "registry": "sha256:f2648fb7fca3e9c9c911de3c0f0f56f8694027c2bfbfd29afb3112e2f6d43d6e",
+        "request_sha256": "c008715e3ad55dfcd79496c797231a78d1616eb399aba7d2532bbbc63dcd6680",
+        "objective": {
+          "name": "latency_ms",
+          "direction": "minimize",
+          "unit": "ms",
+          "paired_repeats": 2
+        },
+        "workload": {
+          "id": "offline",
+          "batch": 32,
+          "goals": [
+            {
+              "id": "throughput",
+              "metric": "images_per_second",
+              "direction": "max"
+            },
+            {
+              "id": "memory",
+              "metric": "peak_allocated_bytes",
+              "direction": "min",
+              "constraints": {
+                "images_per_second_min_baseline_ratio": 0.95
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+          "files": 155,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "scope": "cProfile perturbs Python dispatch; self/cumulative times include host waits and cannot be added to GPU durations or used for acceptance",
+          "profiled_wall_ms": 6.660061
+        }
+      ],
+      "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+    }
+  },
+  "collection_plan": {
+    "plan": {
+      "collectors": [
+        "execution_timeline",
+        "python_runtime"
+      ],
+      "requested_fields": [
+        "execution_timeline.cpu_to_cuda_submit_associations",
+        "execution_timeline.synchronization_events",
+        "execution_timeline.per_device_intervals",
+        "execution_timeline.clock_alignment_bounds",
+        "python_runtime.warmed_cprofile_call_trace",
+        "python_runtime.host_dispatch_hotspots",
+        "python_runtime.binding_self_time"
+      ],
+      "unavailable_fields": {
+        "communication.per_collective_bytes": "Single-device task: distributed_backend is null and observations.json reports the communication capability as not_applicable ('single-device task'); no collectives execute, so no per-collective byte measurement can exist.",
+        "communication.wire_time_vs_wait_split": "No NCCL activity exists on this single device; nsys timelines alone cannot separate NCCL waiting from wire transfer, and inventing PCIe/NVLink traffic from logical payload or memcpy sizes is prohibited.",
+        "communication.gradient_bucket_identity": "Workload runs under torch.inference_mode; coverage.json shows 0 autograd ranges and 0 backward-associated kernels, so no gradient storage or bucket membership exists for native correlation; exact bucket links would otherwise require native correlation plus observed gradient-storage membership, with ambiguous candidates retained.",
+        "device.pcie_nvlink_transfer_bytes": "device_telemetry exposes only device-wide NVML PCIe/utilization/memory rates over native sampling windows, not per-kernel or per-transfer bytes; no available collector attributes PCIe/NVLink bytes to individual kernels or collectives.",
+        "timing.gpu_ready_and_consumer_completion_bounds": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown and are retained as unknown rather than inferred.",
+        "python_runtime.clean_gpu_compute_durations": "python_runtime runs a separate warmed cProfile that perturbs execution; its inclusive/self times are host-side diagnostics, not clean performance scores and not GPU compute durations."
+      },
+      "rationale": "Frozen objective is latency_ms for the complete offline (batch 32) ResNet-18 FP32 inference workload on one leased GPU with semantics preserved (exact top1, tight logits tolerances, TF32 disabled); the timed boundary spans host submission of the transformers-wrapped forward through torch.cuda.synchronize. Trace evidence: the torch collector already ran, producing 88 CUDA kernels with 0 unassociated, 0 ambiguous forward sequences, 0 autograd ranges and 0 backward kernels (coverage.json), and observations.json confirms a single-device task with communication not_applicable and distributed_backend null. Selected: (1) execution_timeline, because the open diagnostic question for latency is the split between host dispatch, CPU-to-CUDA submit lag, per-device kernel intervals and synchronization stalls inside the timed boundary; it supplies CPU-to-CUDA submit associations, synchronization events, per-device intervals and clock alignment bounds for CPU submissions. Its optional passive CPU gradient post-accumulate callbacks are not requested since the workload is inference-only under torch.inference_mode, and it never replaces a communication hook or by itself determines subsequent search actions. (2) python_runtime, because the forward dispatches ~88 CUDA ops per step through Python module wrappers; if the timeline shows launch-bound gaps, the warmed cProfile call trace localizes host dispatch and binding hotspots, treated strictly as a perturbing diagnostic. Excluded: torch (already ran; its kernel/op attribution and allocator peak samples are in hand); nsys (kernel attribution is already complete with 0 unassociated and 0 ambiguous events, no CUDA-graph tracing is used by the source, and no overlap question is open); collective_calibration (no allreduce exists on this single device and a synthetic full-world SUM allreduce reference experiment would not inform this latency objective); device_telemetry (the timed region is pure single-GPU compute with GPU-resident inputs, no timed H2D/D2H and no collectives, so device-wide NVML utilization/PCIe/memory samples at native windows add no attribution beyond per-device intervals, and the memory goal metric is the torch allocator peak already sampled); candidate_diagnostics (no candidate transform exists to diagnose at this collection stage)."
+    },
+    "agent": {
+      "role": "collection-planner",
+      "session": "ses_ea6c13a40ffeXHwoLMOJLD54nc",
+      "message": "msg_1594122d3001SEL0oBP5tArUTv",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 8,
+        "reported_cost": 0.0920153684,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 132102.0,
+          "input": 18198.0,
+          "output": 1901.0,
+          "reasoning": 7427.0,
+          "cache.read": 104576.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea6c13a40ffeXHwoLMOJLD54nc",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/autodl-tmp/dev/v6-work/stage2-autonomy-0e4c751/resnet-latency/sandboxes/collection-planner-7b9ac97078f3",
+      "outputs": [
+        "collection.json"
+      ],
+      "feedback_provided": false,
+      "contract_repairs": 0
+    }
+  },
+  "scope": "Index extracted from exact candidate input; full collector payloads remain on box4-2."
+}

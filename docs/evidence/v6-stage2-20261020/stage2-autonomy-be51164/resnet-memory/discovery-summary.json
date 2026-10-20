@@ -1,0 +1,126 @@
+{
+  "revision": "e4ada3026cb73621e9c9b252cf332f6f79f0c526db124bb9f021e625bd63195c",
+  "plan": "449cd3507bf7c7bef2f4765676e0fa7f2d1b918ee46f6d0b8a1e8ed9bc442394",
+  "registry": "fdefdd67b973afd0da5902f417a5d5c4adc7d4e0a36937360c6f85e8356f18b7",
+  "collection_plan": {
+    "plan": {
+      "collectors": [
+        "candidate_diagnostics"
+      ],
+      "requested_fields": [
+        "peak_allocated_bytes",
+        "images_per_second",
+        "logits_max_abs_error",
+        "exact_top1_match",
+        "parameter_resident_bytes",
+        "peak_transient_activation_bytes"
+      ],
+      "unavailable_fields": {
+        "per_operator_peak_allocation_attribution": "The torch collector already ran and coverage.json shows only cpu_op/kernel association evidence (124/124 kernels associated, 0 unassociated) with no allocator memory events captured; no re-run is requested and no available collector reports per-op caching-allocator bytes, so the op that sets max_memory_allocated stays unattributed.",
+        "gpu_consumer_release_bounds": "execution_timeline reports clock alignment bounds for matching CPU submissions only and GPU readiness and consumer completion may remain unknown, so GPU-side release timing of activation scratch cannot be bounded; the source already brackets every timed repeat with explicit torch.cuda.synchronize() and reset_peak_memory_stats(), so it is not selected for this single-device workload.",
+        "device_wide_memory_attribution": "device_telemetry NVML memory samples are device-wide readings (context plus reserved plus allocated) in native sampling windows and cannot resolve the caching-allocator peak inside one ~ms-scale forward measured by torch.cuda.max_memory_allocated(); they are not per-op or per-candidate bytes, so the dimension stays unknown.",
+        "pcie_nvlink_wire_bytes": "Single-device task (observations.json marks communication not_applicable, distributed_backend null) with no NCCL activity; device_telemetry exposes device-wide NVML PCIe rates in native windows, not per-transfer bytes, and traffic must not be inferred from logical payload or memcpy sizes.",
+        "nccl_wait_vs_wire_separation": "No NCCL kernels exist in this inference workload, and nsys timelines alone do not separate NCCL waiting from wire transfer; dimension not applicable.",
+        "gradient_bucket_identity": "Inference-only workload under torch.inference_mode (coverage.json shows 0 autograd ranges and 0 backward-associated kernels) with no gradients or DDP buckets; exact bucket links would require native correlation and observed gradient-storage membership, neither of which exists here.",
+        "cuda_graph_attribution": "binding_backend is legacy and coverage.json shows 0 ambiguous forward sequences, 0 unassociated kernels and 0 autograd ranges, so no overlap, graph-tracing or attribution question remains for nsys to resolve."
+      },
+      "rationale": "Frozen objective is peak_allocated_bytes for single-GPU fp32 ResNet-18 inference (offline, batch 32) under images_per_second >= 0.95x baseline and logits/exact-top1 fidelity. The torch collector already ran and coverage.json shows 124/124 kernels associated with 0 unassociated, 0 autograd ranges and 0 ambiguous forward sequences, so no overlap, graph-tracing or attribution gap justifies nsys or execution_timeline. observations.json marks communication not_applicable (single-device, distributed_backend null), so collective_calibration and per-collective telemetry dimensions are excluded, and device_telemetry's device-wide NVML readings in native windows cannot resolve allocator-internal peaks within one ~ms-scale forward. python_runtime perturbs execution and its inclusive/self times are not clean scores for the throughput constraint. The actionable lever is candidate evaluation, so candidate_diagnostics alone is selected to measure per candidate the objective (peak_allocated_bytes), the constraint (images_per_second), fidelity (logits_max_abs_error, exact_top1_match) and peak composition (parameter_resident_bytes, the fixed 46,758,048 B fp32 floor of 11,689,512 params, versus peak_transient_activation_bytes, the reducible activation scratch above the 19,267,584 B batch input that dominates the remaining 205,033,472 B peak after the accepted chunked-stem revision). Unavailable dimensions and the observed reasons for each are listed in unavailable_fields."
+    },
+    "agent": {
+      "role": "collection-planner",
+      "session": "ses_ea6a213acffeQO2AenvbMzWnH6",
+      "message": "msg_15960a489001jE5SMQ9WVBpsqX",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 18,
+        "reported_cost": 0.23356055752,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 536009.0,
+          "input": 40007.0,
+          "output": 2984.0,
+          "reasoning": 6682.0,
+          "cache.read": 486336.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea6a213acffeQO2AenvbMzWnH6",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/autodl-tmp/dev/v6-work/stage2-autonomy-be51164/resnet-memory/sandboxes/collection-planner-08a0f895a605",
+      "outputs": [
+        "collection.json"
+      ],
+      "feedback_provided": false,
+      "contract_repairs": 0
+    }
+  },
+  "profiled_wall_ms": [
+    56.258934
+  ],
+  "groups": 231,
+  "collectors": {
+    "candidate_diagnostics": {
+      "status": "observed",
+      "provenance": {
+        "revision": "e4ada3026cb73621e9c9b252cf332f6f79f0c526db124bb9f021e625bd63195c",
+        "parent_revision": "0510b821d94726e3fec1a689ca85fa8d2b1b58bd6fb497efee4b9168fa3a0b1f",
+        "bundles": [
+          "trial-80e1dd9d82-param-2d5ce665"
+        ],
+        "plan": "sha256:084e7d6b38268cfdff7e17a4354ebc4847e6b9aa90289bbf85569ee89cc4fb71",
+        "registry": "sha256:8068dca23491617fa242f76e600a4f7f7adca8a0809e752c5965173ef00f6098",
+        "request_sha256": "699ea79956c11cccfdde19702c67ce4e3171629e07a74aa2a2a52df4230d021d",
+        "objective": {
+          "name": "peak_allocated_bytes",
+          "direction": "minimize",
+          "unit": "bytes",
+          "paired_repeats": 2,
+          "constraints": [
+            {
+              "metric": "images_per_second",
+              "baseline_ratio": 0.95,
+              "op": "ge"
+            }
+          ]
+        },
+        "workload": {
+          "id": "offline",
+          "batch": 32,
+          "goals": [
+            {
+              "id": "throughput",
+              "metric": "images_per_second",
+              "direction": "max"
+            },
+            {
+              "id": "memory",
+              "metric": "peak_allocated_bytes",
+              "direction": "min",
+              "constraints": {
+                "images_per_second_min_baseline_ratio": 0.95
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "33bfba04634e523c9fc4933923eb9572b58638928db6a287f299395a53011090",
+          "files": 155,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      }
+    }
+  }
+}

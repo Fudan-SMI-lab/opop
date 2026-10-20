@@ -1,0 +1,205 @@
+{
+  "status": "completed",
+  "protocol": {
+    "source": {
+      "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+      "files": 155,
+      "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+    },
+    "request_sha256": "1771cdbcb3ed4775960f312233846763df87ef6fe426b9723174f659785d8919",
+    "source_files": {
+      "resnet_inference.py": "b98cd81b4aa6fb8211be6382d9870bbf433eb352c248a4b2aaf8f5fde2b50997",
+      "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+      "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+    },
+    "request": {
+      "schema_version": "project-request.v1",
+      "source_root": "/root/autodl-tmp/dev/opop-v6-freezes/21897c111d64/examples/v6_validation",
+      "entry": "resnet_inference.py",
+      "files": [
+        "resnet_inference.py",
+        "common.py",
+        "workloads.json"
+      ],
+      "goal": "minimize peak_allocated_bytes for the complete frozen source workload, preserving source numerical and state semantics",
+      "objective": {
+        "name": "peak_allocated_bytes",
+        "direction": "minimize",
+        "unit": "bytes",
+        "paired_repeats": 2,
+        "constraints": [
+          {
+            "metric": "images_per_second",
+            "baseline_ratio": 0.95,
+            "op": "ge"
+          }
+        ]
+      },
+      "workload": {
+        "id": "offline",
+        "batch": 32,
+        "goals": [
+          {
+            "id": "throughput",
+            "metric": "images_per_second",
+            "direction": "max"
+          },
+          {
+            "id": "memory",
+            "metric": "peak_allocated_bytes",
+            "direction": "min",
+            "constraints": {
+              "images_per_second_min_baseline_ratio": 0.95
+            }
+          }
+        ]
+      },
+      "quality": {
+        "logits_atol": 0.0001,
+        "logits_rtol": 0.0001,
+        "require_exact_top1": true,
+        "atol": 0.0001,
+        "rtol": 0.0001
+      },
+      "assets": {
+        "assets": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18"
+      },
+      "devices": [
+        "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+      ],
+      "distributed_backend": null,
+      "communication": "auto",
+      "required_observations": [],
+      "tools": {
+        "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys",
+        "ncu": "/usr/local/cuda/bin/ncu"
+      },
+      "profiling": {
+        "agent_plan": true
+      },
+      "binding_backend": "legacy",
+      "warmup": 2,
+      "repeats": 5,
+      "continuous_steps": 2,
+      "worker_timeout_s": 900.0,
+      "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+      "notes": [
+        "Preserve source dtype, TF32 policy, seed, real data and completion boundaries.",
+        "Model loading is outside timing. Generated replacement work and synchronization stay inside the declared workload boundary.",
+        "The required correctness observation schema is {logits: full logits tensor, top1: argmax class indices}."
+      ]
+    },
+    "rounds": 2,
+    "oracle": {
+      "case": "resnet",
+      "reference": "/root/autodl-tmp/dev/v6-work/validation-runs/readiness-20261020-a/resnet_inference/offline-reference.pt"
+    },
+    "scope": "Fresh evaluator/discovery/selection/candidates; no imported prepared run or candidate; no human messages during this run",
+    "usage": "Observe only; rounds specify the experiment, not an API/request/token quota"
+  },
+  "rounds": [
+    {
+      "round": 0,
+      "trial": "trial-61fdc27afc",
+      "decision": {
+        "state": "evaluated",
+        "revision": "e15f133c2f6970d9a7eb6431de2997920e6d1b70a2f82526f53fe100587e6af8",
+        "parent": "3e29f5aef4e43cfeb986434ed86145ec284eed730ec6f7b335691ccb883f7b92",
+        "bundle": "trial-61fdc27afc-param-cc83352f",
+        "accepted": true,
+        "reasons": [],
+        "report_ref": "sha256:6474bfba1e7f18206be5de9faa7f53bfc34c0146c30c3cf27b6a5231fc4cfc0f"
+      },
+      "measurement": {
+        "valid": true,
+        "objective": 205071872.0,
+        "reference": 282103808.0,
+        "parent_values": [
+          282103808.0,
+          282103808.0
+        ],
+        "candidate_values": [
+          205071872.0,
+          205071872.0
+        ],
+        "paired_gains": [
+          77031936.0,
+          77031936.0
+        ],
+        "noise_bounds": [
+          0.0,
+          0.0
+        ],
+        "constraints": [
+          {
+            "metric": "images_per_second",
+            "values": [
+              7592.021828960764,
+              7603.350321277192
+            ],
+            "limit": 6886.567139159172,
+            "original_reference": 7249.018041220182,
+            "passed": true
+          }
+        ],
+        "reasons": [],
+        "framework_source": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+        "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+      },
+      "revision": "e15f133c2f6970d9a7eb6431de2997920e6d1b70a2f82526f53fe100587e6af8"
+    },
+    {
+      "round": 1,
+      "trial": "trial-e3e197b753",
+      "decision": {
+        "state": "evaluated",
+        "revision": "f7e7f0d76b3b2a780cf2db5ea0e8d6cd4c328d004901c416b8969025baeffd72",
+        "parent": "a72bba2ff07085dd7cf747a1e6d146931bb9609ba8fffc01c9740bb6d8652748",
+        "bundle": "trial-e3e197b753-param-0988c208",
+        "accepted": true,
+        "reasons": [],
+        "report_ref": "sha256:97dd406e70e382e8f75f478efc3218079118057d62c786b1180c9343884fd0ba"
+      },
+      "measurement": {
+        "valid": true,
+        "objective": 170932224.0,
+        "reference": 205071872.0,
+        "parent_values": [
+          205071872.0,
+          205071872.0
+        ],
+        "candidate_values": [
+          170932224.0,
+          170932224.0
+        ],
+        "paired_gains": [
+          34139648.0,
+          34139648.0
+        ],
+        "noise_bounds": [
+          0.0,
+          0.0
+        ],
+        "constraints": [
+          {
+            "metric": "images_per_second",
+            "values": [
+              8329.277148888432,
+              8034.520316540014
+            ],
+            "limit": 6886.567139159172,
+            "original_reference": 7249.018041220182,
+            "passed": true
+          }
+        ],
+        "reasons": [],
+        "framework_source": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+        "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+      },
+      "revision": "f7e7f0d76b3b2a780cf2db5ea0e8d6cd4c328d004901c416b8969025baeffd72"
+    }
+  ],
+  "accepted_revision": "f7e7f0d76b3b2a780cf2db5ea0e8d6cd4c328d004901c416b8969025baeffd72",
+  "framework_unchanged": true,
+  "human_interventions_during_run": []
+}

@@ -1,0 +1,193 @@
+{
+  "source": "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/resnet-memory/sandboxes/candidate-7caa5333c10b/inputs/resources.json",
+  "extra_collectors": {
+    "candidate_diagnostics": {
+      "status": "observed",
+      "input": "observations/current/candidate_diagnostics-4123e6d6.json",
+      "sha256": "f691163bd372274d766d50d8a378e570525faf22e834e90c854bc4f3a9dbc97d",
+      "bytes": 5640,
+      "provenance": {
+        "revision": "a72bba2ff07085dd7cf747a1e6d146931bb9609ba8fffc01c9740bb6d8652748",
+        "parent_revision": "e15f133c2f6970d9a7eb6431de2997920e6d1b70a2f82526f53fe100587e6af8",
+        "bundles": [
+          "trial-61fdc27afc-param-cc83352f"
+        ],
+        "plan": "sha256:18960aad38135d07aea1f26daba02e8dc58d1ee71e26d744793d419ef675ee9e",
+        "registry": "sha256:33492752f023a90a3d54d573bee8992b1356509dc94d65af0f8a55c601f318f6",
+        "request_sha256": "fe51835b4a63a957fa4513b317a857723d2a01583445b535043c5238c3e05c0e",
+        "objective": {
+          "name": "peak_allocated_bytes",
+          "direction": "minimize",
+          "unit": "bytes",
+          "paired_repeats": 2,
+          "constraints": [
+            {
+              "metric": "images_per_second",
+              "baseline_ratio": 0.95,
+              "op": "ge"
+            }
+          ]
+        },
+        "workload": {
+          "id": "offline",
+          "batch": 32,
+          "goals": [
+            {
+              "id": "throughput",
+              "metric": "images_per_second",
+              "direction": "max"
+            },
+            {
+              "id": "memory",
+              "metric": "peak_allocated_bytes",
+              "direction": "min",
+              "constraints": {
+                "images_per_second_min_baseline_ratio": 0.95
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+          "files": 155,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {}
+      ],
+      "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+    },
+    "device_telemetry": {
+      "status": "observed",
+      "input": "observations/current/device_telemetry-8bfe9ee7.json",
+      "sha256": "fd96e273b1144821ad1bb1106e7cb0008ec3acae8302c0f153153275b12bb1db",
+      "bytes": 35632,
+      "provenance": {
+        "revision": "a72bba2ff07085dd7cf747a1e6d146931bb9609ba8fffc01c9740bb6d8652748",
+        "parent_revision": "e15f133c2f6970d9a7eb6431de2997920e6d1b70a2f82526f53fe100587e6af8",
+        "bundles": [
+          "trial-61fdc27afc-param-cc83352f"
+        ],
+        "plan": "sha256:18960aad38135d07aea1f26daba02e8dc58d1ee71e26d744793d419ef675ee9e",
+        "registry": "sha256:33492752f023a90a3d54d573bee8992b1356509dc94d65af0f8a55c601f318f6",
+        "request_sha256": "fe51835b4a63a957fa4513b317a857723d2a01583445b535043c5238c3e05c0e",
+        "objective": {
+          "name": "peak_allocated_bytes",
+          "direction": "minimize",
+          "unit": "bytes",
+          "paired_repeats": 2,
+          "constraints": [
+            {
+              "metric": "images_per_second",
+              "baseline_ratio": 0.95,
+              "op": "ge"
+            }
+          ]
+        },
+        "workload": {
+          "id": "offline",
+          "batch": 32,
+          "goals": [
+            {
+              "id": "throughput",
+              "metric": "images_per_second",
+              "direction": "max"
+            },
+            {
+              "id": "memory",
+              "metric": "peak_allocated_bytes",
+              "direction": "min",
+              "constraints": {
+                "images_per_second_min_baseline_ratio": 0.95
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+          "files": 155,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0
+        }
+      ],
+      "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+    }
+  },
+  "collection_plan": {
+    "plan": {
+      "collectors": [
+        "candidate_diagnostics",
+        "device_telemetry"
+      ],
+      "requested_fields": [
+        "peak_allocated_bytes",
+        "images_per_second",
+        "latency_ms",
+        "logits",
+        "top1",
+        "max_abs_error",
+        "device_memory_used_bytes",
+        "device_utilization_percent"
+      ],
+      "unavailable_fields": {
+        "communication": "observations.json marks the capability field 'communication' not_applicable with reason 'single-device task' (devices=[], cross_rank matched=[]); there is no collective communication to measure.",
+        "per_collective_comm_bytes_and_wire_time": "Single-device inference runs no collectives; device_telemetry exposes only device-wide NVML PCIe rates with native sampling windows, not per-collective bytes; PCIe/NVLink traffic must not be inferred from logical payload or memcpy sizes.",
+        "gradient_bucket_links": "coverage.json reports 0 backward_associated_kernels and 0 autograd_ranges for this inference-only workload; exact bucket links require native correlation plus observed gradient-storage membership, so no bucket candidates exist to confirm or disambiguate.",
+        "peak_reserved_bytes_and_allocator_segments": "No collector in available-collectors.json exposes torch caching-allocator reserved/segment snapshots; the frozen objective is peak_allocated_bytes, which the source already measures directly via torch.cuda.max_memory_allocated() after reset_peak_memory_stats().",
+        "clean_host_dispatch_costs": "python_runtime runs a separate warmed cProfile that perturbs execution; its inclusive/self times are not clean performance scores or GPU compute durations, and host dispatch is outside the frozen memory objective (the throughput constraint is measured cleanly by the paired-repeat harness).",
+        "gpu_readiness_and_consumer_completion_bounds": "execution_timeline reports clock alignment bounds for matching CPU submissions only, and GPU readiness/consumer completion may remain unknown; not selected because kernel-to-op association is already complete (123/123) and it never determines subsequent search actions."
+      },
+      "rationale": "Single-device ResNet-18 FP32 inference; frozen objective is minimize peak_allocated_bytes subject to images_per_second >= 0.95x baseline with logits/top1 fidelity (atol/rtol 1e-4, exact top1). The source measures the objective directly (torch.cuda.reset_peak_memory_stats + max_memory_allocated around a synchronized infer), so the remaining diagnostic need is candidate evaluation plus device-level corroboration, not new attribution. torch already ran and coverage is complete (coverage.json: 123/123 cuda_kernels associated, 0 unassociated, 0 root_only, 0 backward_associated, 0 autograd_ranges, 0 ambiguous_forward_sequences), and the workload is plain eager inference with no CUDA graphs, so no overlap, graph-tracing or attribution question remains for which nsys would add value. candidate_diagnostics is selected as the primary collector: it runs candidate memory reductions (preserving source dtype, TF32 policy, seed, real data and completion boundaries) in the leased worker and reports their peak_allocated_bytes, images_per_second and logits/top1 against the constraint. device_telemetry is selected narrowly for NVML memory and utilization samples to corroborate that allocated-byte reductions appear at the device level and that candidates do not leave the device idle; these are device-wide readings with native windows, carry no per-op or per-collective byte attribution, and PCIe rates are deliberately not requested because inputs are GPU-resident and model loading is outside the declared workload boundary. Excluded: nsys (no remaining attribution/overlap/graph question; it cannot by itself separate NCCL waiting from wire transfer or prove bucket identity, and there is no NCCL here); collective_calibration (communication capability is not_applicable for a single-device task; a synthetic full-world SUM allreduce reference experiment with correctness checks has no bearing on this objective and is not a performance lower bound or critical-path estimate); execution_timeline (no CPU-submit/synchronization attribution gaps, inference has no gradient post-accumulate callbacks, and it is passive evidence that never replaces a communication hook or determines search actions); python_runtime (host dispatch/binding costs are not the objective, cProfile perturbs execution, and its times are not clean performance scores or GPU compute durations); torch (already ran with full kernel association, so re-running adds nothing)."
+    },
+    "agent": {
+      "role": "collection-planner",
+      "session": "ses_ea69570d2ffe5F6xUOyPJi9T1Y",
+      "message": "msg_1596d2de7001zZxJZRZ3sLp8No",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 9,
+        "reported_cost": 0.09998648802,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 143432.0,
+          "input": 19661.0,
+          "output": 2129.0,
+          "reasoning": 8042.0,
+          "cache.read": 113600.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea69570d2ffe5F6xUOyPJi9T1Y",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/resnet-memory/sandboxes/collection-planner-924a196226ff",
+      "outputs": [
+        "collection.json"
+      ],
+      "feedback_provided": false,
+      "contract_repairs": 0
+    }
+  },
+  "scope": "Index extracted from exact candidate input; full collector payloads remain on box4-2."
+}

@@ -1,0 +1,148 @@
+{
+  "protocol": {
+    "source": {
+      "sha256": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+      "files": 155,
+      "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+    },
+    "request_sha256": "5c7429fa9727972d8e36fafe04970e7f9184f0b4d3d922fcfb5fa9412434aa5e",
+    "source_files": {
+      "gpt2_ddp_training.py": "37d1632436c8f927a52401b6d1fb9e63bd7b8d33d643d0f914916bb89b3364fe",
+      "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+      "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+    },
+    "request": {
+      "schema_version": "project-request.v1",
+      "source_root": "/root/autodl-tmp/dev/opop-v6-freezes/0e4c751bf0a6/examples/v6_validation",
+      "entry": "gpt2_ddp_training.py",
+      "files": [
+        "gpt2_ddp_training.py",
+        "common.py",
+        "workloads.json"
+      ],
+      "goal": "minimize step_ms for the complete frozen source workload, preserving source numerical and state semantics",
+      "objective": {
+        "name": "step_ms",
+        "direction": "minimize",
+        "unit": "ms",
+        "paired_repeats": 2
+      },
+      "workload": {
+        "id": "accumulated_step",
+        "world_size": 2,
+        "micro_batch": 1,
+        "sequence_length": 128,
+        "accumulation_steps": 4,
+        "goals": [
+          {
+            "id": "step",
+            "metric": "step_ms",
+            "direction": "min"
+          },
+          {
+            "id": "communication",
+            "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+            "direction": "min",
+            "constraints": {
+              "step_ms_max_baseline_ratio": 1.05
+            }
+          }
+        ]
+      },
+      "quality": {
+        "grad_atol": 1e-06,
+        "grad_rtol": 0.0001,
+        "parameter_atol": 1e-06,
+        "parameter_rtol": 0.0001,
+        "atol": 1e-06,
+        "rtol": 0.0001
+      },
+      "assets": {},
+      "devices": [
+        "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+      ],
+      "distributed_backend": "nccl",
+      "communication": "auto",
+      "required_observations": [],
+      "tools": {
+        "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys",
+        "ncu": "/usr/local/cuda/bin/ncu"
+      },
+      "profiling": {
+        "agent_plan": true
+      },
+      "binding_backend": "legacy",
+      "warmup": 2,
+      "repeats": 5,
+      "continuous_steps": 2,
+      "worker_timeout_s": 900.0,
+      "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+      "notes": [
+        "Preserve source dtype, TF32 policy, seed, real data and completion boundaries.",
+        "Model loading is outside timing. Generated replacement work and synchronization stay inside the declared workload boundary.",
+        "The required correctness observation schema is {loss: scalar loss, gradients: full parameter-name to gradient tensor mapping, parameters: full parameter-name to updated tensor mapping}. Parameter names follow the unwrapped source model."
+      ]
+    },
+    "rounds": 2,
+    "oracle": {
+      "case": "ddp",
+      "reference": "None"
+    },
+    "scope": "Fresh evaluator/discovery/selection/candidates; no imported prepared run or candidate; no human messages during this run",
+    "usage": "Observe only; rounds specify the experiment, not an API/request/token quota"
+  },
+  "rounds": [
+    {
+      "round": 0,
+      "trial": "trial-fdeb45db0b",
+      "decision": {
+        "accepted": false,
+        "reasons": [
+          "no_valid_parameter_candidate"
+        ]
+      },
+      "measurement": null,
+      "revision": "3b2492569e35a37e812ab23938167ced8dfd4c62b6660d41db32c2363d0b82d2"
+    },
+    {
+      "round": 1,
+      "trial": "trial-7d78e2ade4",
+      "decision": {
+        "state": "evaluated",
+        "revision": "88500e24a88f803d628810d615fe8b9c5d558f515b9a6a233de0b48a4c59b2b3",
+        "parent": "3b2492569e35a37e812ab23938167ced8dfd4c62b6660d41db32c2363d0b82d2",
+        "bundle": "trial-7d78e2ade4-param-38a11ad8",
+        "accepted": true,
+        "reasons": [],
+        "report_ref": "sha256:8b3d94ed4c873a0e73030df5595cdcdc8aa3c4730633a79dfbb5ed4767a06935"
+      },
+      "measurement": {
+        "valid": true,
+        "objective": 120.13074,
+        "reference": 141.6943495,
+        "parent_values": [
+          145.785125,
+          137.603574
+        ],
+        "candidate_values": [
+          119.289817,
+          120.971663
+        ],
+        "paired_gains": [
+          26.495307999999994,
+          16.631911000000002
+        ],
+        "noise_bounds": [
+          3.731108000000006,
+          1.412932000000012
+        ],
+        "constraints": [],
+        "reasons": [],
+        "framework_source": "a91c85a95df0dde349a835899b2dad1ef38d455d51af01edc049a9f3e4f454ab",
+        "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+      },
+      "revision": "88500e24a88f803d628810d615fe8b9c5d558f515b9a6a233de0b48a4c59b2b3"
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "implementation": "composite",
+  "replacement_calls": [
+    "f2cf62caf57ad09f5d2f36aa"
+  ],
+  "rationale": "Whole-region replacement of the frozen ResNet-18 classifier forward (group eca3643289778aea5af3, module call f2cf62caf57ad09f5d2f36aa = models(state)['model']). Measured composition of the 4.489 ms baseline boundary (clean diagnostic kernel sum 4.148 ms / 88 kernels): the 20 eval-mode aten::batch_norm kernels total 426.6 us of device time (target-resources.json; 19 of them cost 6.7-17.5 us each, the [32,64,112,112] stem BN shows 226.7 us in that trace and may be partly a first-iteration effect, so the warm-run device saving is bounded by ~200-427 us), and batch_norm plus module dispatch rank high in the perturbed python_runtime host trace against a ~0.34 ms wall-minus-kernel gap, so ~20 removed aten dispatches also trim exposed host time. The numerics policy (no TF32, no cudnn.benchmark, FP32) leaves no legal conv-algorithm headroom, but eval-mode BatchNorm is algebraically foldable into the preceding bias-free conv: scale = gamma/sqrt(running_var+eps), weight' = weight*scale per output channel, bias' = beta - running_mean*scale. The forward consumes no RNG and weights are invariant after prepare (eval, inference_mode, no optimizer), so folding at build time preserves state semantics; the fold is computed in float64 and rounded once to float32, and is exact for any input shape (guards therefore only check the observed signature class: 4-D float32 on the model device with channel dim 3, pixel_values positional or keyword, all other parent kwargs None). The replacement replays the identical op sequence - conv7x7/relu/maxpool, then per block conv(+relu)/conv, folded shortcut conv where present, the parent's in-place residual add_, post-relu, adaptive_avg_pool2d(1,1), flatten, linear with the classifier's own Parameter objects - and returns the parent's exact result type (ImageClassifierOutputWithNoAttention, loss=None, hidden_states=None). relu runs in place (aten.relu_ instead of aten.relu.default); this is observably equivalent because every relu input is a fresh intermediate allocated inside the composite with no external alias, and it removes one full activation write (the stem tensor alone is 102.8 MB) plus its allocation. Original parameters, buffers and modules are never mutated: folded weights are separate tensors built once at install, so the captured parent forward in context['references'] stays exactly valid and every unmatched call (labels, return_dict=False, output_hidden_states, wrong dtype/channels/dims, train-mode switch, parameter replacement) falls back to it and is reported via record_route ('folded_bn_composite' / 'parent_signature_or_state_fallback' / 'setup_failure_parent_forward' when the tree does not match the observed HF structure). Because the folded path removes the inherited aten::batch_norm and aten.relu.default sites entirely, this is an explicit whole-bundle replacement of the earlier region bundle per the binding contract, not per-module edits that would orphan mandatory inherited calls; consumers of the eliminated calls remain valid because the folded conv output is bit-for-bit the tensor the BN+ReLU chain would have produced (within FP reordering) and feeds the same downstream add/pool sites, which still execute identically (add_, max_pool2d, adaptive_avg_pool2d, flatten, and linear reuse the same weight objects). CPU validation with the worker's interpreter against the real frozen assets (ResNetForImageClassification, real pixels.npy fixtures, batch 4 and random batch 1): max |logits delta| = 5.5e-06 with exact top-1 equality, far inside atol=rtol=1e-4; a randomized-BN CPU model shows 1.9e-06. Expected effect: latency_ms ~4.49 -> ~4.05-4.25 ms (8-10%), with ~20 fewer device kernels and ~40 fewer Python frame transitions; peak_allocated_bytes per run is expected to RISE by the ~44.7 MB of retained folded weights (see setup_work) partially offset by the removed stem transient, which is honest accounting, not a physical saving claim; the throughput goal constraint (>=0.95x baseline) is unaffected since latency improves. No previous-feedback.txt or previous-candidate inputs exist for this attempt. GPU confirmation of the latency and quality claims is left to the framework's paired measurement; no ad hoc GPU runs were performed.",
+  "setup_work": {
+    "when": "build(context) at installation; one-time, before any timed invocation",
+    "steps": [
+      "Verify the module tree matches the observed transformers 5.16.1 ResNetForImageClassification structure (eval mode, return_dict=True, output_hidden_states=False, num_labels>0, 20 bias-free Conv2d each directly followed by an affine eval-mode BatchNorm2d with running stats, MaxPool2d(3,2,1) stem pooler, AdaptiveAvgPool2d(1,1), Sequential(Flatten, Linear) head); any mismatch installs a setup-failure shim that routes to the parent and reports 'setup_failure_parent_forward'.",
+      "Fold each BatchNorm into its preceding Conv2d in float64 (inv_std = rsqrt(running_var+eps), scale = gamma*inv_std, weight' = weight*scale viewed per output channel, bias' = beta - running_mean*scale) and round once to float32 contiguous tensors on the model device under no_grad.",
+      "Capture guard references (root module, per-BN training flag, per-conv weight Parameter identity, Identity-shortcut module identity, classifier Linear weight/bias identity) for the call-time state check; capture the parent forward from context['references']."
+    ],
+    "allocations": "Retained setup allocation on the model device: 44,667,648 bytes folded conv weights + 19,200 bytes folded biases = ~44.69 MB for the warm-model lifecycle (11.17M folded weight elements). No CUDA Graph pools, no extra arenas, no capture streams. Original parameters/buffers are not mutated, duplicated or freed, so steady-state allocated_bytes rises by ~44.69 MB and per-run peak_allocated_bytes (baseline 280,297,472) is expected to rise by roughly the retained folded weights minus the removed ~102.8 MB stem relu/BN transient pattern change; framework.lifecycle_peak_allocated_bytes will include this setup allocation. No fixture-dependent outputs are cached; the plan is purely weight-derived and input-independent.",
+    "host_cost": "20 rsqrt/mul over <=11.7M elements in float64 plus structure verification: one-time, milliseconds-scale, entirely outside the timed boundary."
+  },
+  "quality_risks": [
+    "FP reordering: the fold multiplies weights before accumulation instead of normalizing after it, so logits drift by O(1e-6..1e-5) relative; measured on CPU with the real frozen assets at max 5.5e-06 absolute with exact top-1, inside atol=rtol=1e-4, but the GPU conv kernels' summation order differs and the paired measurement is the acceptance gate.",
+    "cudnn algorithm selection may change when the convs carry a fused bias (previously bias=None), which could shift conv kernel time up or down; the identity of the remaining ops (add_, max_pool2d, adaptive_avg_pool2d, flatten, linear) is unchanged.",
+    "Part of the cited 426.6 us batch_norm device time is a 226.7 us stem outlier in the diagnostic trace that may not recur in warm steady state, so the realized latency saving may sit at the low end (~0.2 ms) rather than the high end.",
+    "peak_allocated_bytes increases by the ~44.69 MB retained folded weights (memory goal direction is min); the throughput constraint (images_per_second >= 0.95x baseline) is unaffected because latency improves.",
+    "The replacement eliminates the observed aten.relu.default sites in favor of in-place relu_ on freshly allocated intermediates; equivalence relies on those intermediates having no external alias, which holds because every rewritten tensor is created inside the replacement from the caller's read-only pixel_values.",
+    "If the framework probes with signatures outside the observed class (different dtype/device/extra kwargs) the replacement routes to the captured parent forward, whose parameters were never mutated, so probe results stay correct."
+  ],
+  "eliminated_calls": [
+    "013eeadd234965480748c13f",
+    "042ac61d92422fdc4fc91834",
+    "2743e487182d96cef02239b9",
+    "29ee40e0947eeb9039c9fbe4",
+    "3a2ad08e7ac21ad8f038eef4",
+    "3ed371865874dd003973ef30",
+    "4529cf594d1da89461bd9f90",
+    "4cd47aeb2954d35601a9ee57",
+    "6073def15630ca83b0fa7416",
+    "676fbdb9f1b64a0d53921081",
+    "6e0698b461722017c7b34b0f",
+    "89bc7485bcb9aeaa62c7d28b",
+    "98b9a8eb1b7561f975610f02",
+    "b05973afdd3024b06d823eeb",
+    "bc65d5b388369d3040d18c6f",
+    "cea956bf9012c4410f4b30f8",
+    "d822faa7a06ed2c7aa54573f",
+    "ecb7faf10f62f364a9a8ca02",
+    "eee99d07f250494d6cdb10f2",
+    "f6b0ccf5b7ae11352441d478",
+    "0216674971a5b836a999945d",
+    "1d4d69ca555d2a7f570c36fd",
+    "26fe32de6f89e29e5848acd6",
+    "307c22fdca28029f286c3b89",
+    "36ef01a8b27e69d58d78a709",
+    "42421d27240c30720dcc0863",
+    "453f2a281d2e8754017a58e6",
+    "5488005b7d0670c133ccd331",
+    "77611ebca79b698454ee66d8",
+    "87ff5f11b9431aba2e7d2693",
+    "89ac1f0557ceebf94bd891da",
+    "89f968d79a78e013c08bd56c",
+    "8c5e33d99697b235debc58a2",
+    "b660c4114fa105b873dffbd9",
+    "df2c27a4e6c2d0e6339d3fa1",
+    "eeb82a5ca68e6e78098137cb",
+    "f6bba3ab0e51c8d06823a513"
+  ],
+  "requires": [],
+  "replaces": [],
+  "parameter_space": {}
+}

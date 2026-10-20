@@ -1,0 +1,2700 @@
+{
+  "trial": "trial-61fdc27afc",
+  "bundle": {
+    "schema_version": "project.v2",
+    "id": "trial-61fdc27afc-param-cc83352f",
+    "parent_revision": "3e29f5aef4e43cfeb986434ed86145ec284eed730ec6f7b335691ccb883f7b92",
+    "contract_ref": "sha256:99a69f249318a8a624fb238b6403f8161c18751fa689b0bce523c3163fbf6314",
+    "scope": "region",
+    "implementation": "composite",
+    "groups": [
+      "3821cceac23fa97e5a55",
+      "0022893ec8c1ceea869f",
+      "95d8eead897036452c64",
+      "7e7c01e2bf7e30a42280",
+      "c671bb65e86ad614e3f6",
+      "c0af3909ba0a106672d5",
+      "c97c8dfae7e5def85428",
+      "3412952b9279e41b1709",
+      "8bffcf00b7bd20c935a5",
+      "5d6060b158cac3430090"
+    ],
+    "calls": [
+      "66593cf97d10975485c87e23"
+    ],
+    "edits": [
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-61fdc27afc.py",
+        "before_sha256": null,
+        "content_ref": "sha256:3a8beaaff217363c1ba5eb3b1a8897b8fa5afe4a7be183307fae08b8d01afc1f"
+      },
+      {
+        "schema_version": "project.v1",
+        "path": "opop_candidates/trial-61fdc27afc.targets.json",
+        "before_sha256": null,
+        "content_ref": "sha256:2d05438a309a06062e828fa051c95da04c374a93f58e12be5c9f25fd1ac070e9"
+      }
+    ],
+    "requires": [],
+    "replaces": [],
+    "external_invariants": [
+      "Model must be the pretrained microsoft/resnet-18 safetensors from the frozen assets directory, loaded in float32 with local_files_only=True, in eval() mode.",
+      "Numerical policies are fixed: torch.manual_seed(20261020), TF32 disabled for both cuda.matmul and cudnn, cudnn.benchmark=False, set_float32_matmul_precision('highest').",
+      "Input is the real preprocessed fixture pixels.npy (3 images, float32, 3x224x224, ImageNet-normalized); the batch-32 workload input is images[arange(32) % 3].contiguous(), unchanged in shape, dtype and values.",
+      "The workload is exactly one batch-32 forward producing full [32, 1000] float32 logits under torch.inference_mode(); no work may be added, removed or reordered.",
+      "The timing boundary is the source's own: CUDA synchronize immediately before the timed forward, forward, CUDA synchronize at completion, then latency and peak_allocated_bytes are recorded.",
+      "peak_allocated_bytes is torch.cuda.max_memory_allocated() read after reset_peak_memory_stats() at the start of the workload and the completion synchronize; model weights and GPU-resident fixtures count as standing allocation exactly as in the source.",
+      "Correctness observations are the full logits tensor and the exact argmax top1 class indices; require_exact_top1 with atol/rtol 1e-4 per the frozen quality block.",
+      "images_per_second is derived from the unchanged work amount: 32 images divided by the measured elapsed time of the full workload.",
+      "The 0.95 images_per_second baseline-ratio constraint is enforced by the framework against its baseline; the adapter only reports the measured metrics and changes neither throughput nor memory by altering the frozen work.",
+      "No second reference model may be allocated on the GPU and no accuracy or convergence claim beyond the source's reference-fidelity checks may be made."
+    ],
+    "plan_ref": null,
+    "registry_ref": null,
+    "installer": "opop_candidates/trial-61fdc27afc.py",
+    "parameters": {
+      "stem_chunk": 4
+    },
+    "affected_calls_count": 17,
+    "read_set_count": 17,
+    "write_set_count": 3
+  },
+  "selection": {
+    "scope": "region",
+    "groups": [
+      "3821cceac23fa97e5a55",
+      "0022893ec8c1ceea869f",
+      "95d8eead897036452c64",
+      "7e7c01e2bf7e30a42280",
+      "c671bb65e86ad614e3f6",
+      "c0af3909ba0a106672d5",
+      "c97c8dfae7e5def85428",
+      "3412952b9279e41b1709",
+      "8bffcf00b7bd20c935a5",
+      "5d6060b158cac3430090"
+    ],
+    "rationale": "The objective is peak_allocated_bytes, and the measured evidence localizes the entire peak inside the ResNet embedding stem. Measured facts: original baseline peak is 282,103,808 B with standing allocated 76,710,912 B (project.json), so the transient at the peak moment is 205,392,896 B, which is 2 x 102,760,448 B - exactly two [32,64,112,112] fp32 tensors. The only activations of that size in the whole network are the stem's conv output, its out-of-place cudnn batch_norm output (cudnn::bn_fw_inf_1C11_kernel_NCHW, 227.7 us) and the out-of-place ReLU/clamp output (216.1 us) inside model.resnet.embedder.embedder (ResNetConvLayer.forward: convolution -> normalization -> activation, transformers 5.16.1); every post-stem activation is <= 25,690,112 B ([32,64,56,56]) and the largest later transient (stage-1 main path plus live input) is ~3 x 24.5 MiB, well below one stem buffer. The stem is therefore a self-contained, contiguous region that owns the peak: it reads the standing pixels tensor and produces the [32,64,56,56] embedding consumed by stage 1, with an unchanged interface. The region boundary covers the whole bundle (ResNetEmbeddings 66593..., stem ResNetConvLayer 67989a..., its Conv2d/BatchNorm2d/ReLU child modules and the stem-site aten::conv2d/batch_norm/relu/max_pool2d calls) so the stem conv layer can be rewritten as one whole-bundle replacement per the binding contract, replacing the stem-site batch_norm and out-of-place relu dispatch while leaving conv2d and max_pool2d work, the frozen workload, the timing/synchronization boundaries and the adapter's peak-memory reads untouched.",
+    "hypothesis": "Rewriting the stem ResNetConvLayer so the eval-mode BatchNorm affine (per-channel scale = gamma*rsqrt(running_var+eps), shift = beta - running_mean*scale, applied to the conv output without mutating module state, e.g. in-place x.mul_(scale).add_(shift), or equivalently a lazily built folded conv weight/bias copy) and the subsequent ReLU (in-place clamp_min_/relu_) both operate on the single 98 MiB conv output will eliminate the simultaneous conv-output + BN-output (and BN-output + relu-output) pair. Expected effect, to be tested by the framework: peak_allocated_bytes drops from 282,103,808 B to approximately standing 76,710,912 B + one stem buffer 102,760,448 B ~ 179.5 MB (about -36%), with the stem's single buffer becoming the new global peak since stage-1 transients (~77 MB) stay below it. Throughput is expected to be preserved or slightly improved (the out-of-place path's extra 98 MiB write and allocator churn are removed; the folded variant also removes the separate BN pass), keeping images_per_second above the 0.95 baseline-ratio floor of the 7,249 img/s baseline. Numerical risk is bounded but must be validated: the reassociated per-channel affine and in-place ReLU re-order floating-point rounding relative to cudnn bn_fw_inf + out-of-place clamp, so logits must stay within atol=rtol=1e-4 and top1 must remain exactly equal; if the reassociated form exceeds tolerance, the folded-weight variant changes conv accumulation inputs instead and is the fallback to test. Unknowns: exact allocator block rounding at the new peak, and the measured (not estimated) throughput delta of replacing the cudnn BN kernel with in-place elementwise kernels.",
+    "affected_calls_count": 17
+  },
+  "proposal": {
+    "implementation": "composite",
+    "replacement_calls": [
+      "66593cf97d10975485c87e23"
+    ],
+    "rationale": "Whole-bundle rewrite of the selected stem region, replacing model.resnet.embedder (ResNetEmbeddings) with one callable so the memory that owns the peak is produced inside a single coherent boundary. Measured facts: baseline peak_allocated_bytes is 282,103,808 B over a standing 76,710,912 B allocation (project.json), i.e. a transient of 205,392,896 B = exactly two [32,64,112,112] fp32 tensors; those are the stem conv output plus the out-of-place cudnn BN output (bn_fw_inf_1C11_kernel_NCHW, 227.654 us) and then the BN output plus the out-of-place relu/clamp output (216.070 us) inside ResNetConvLayer.forward, with max_pool2d (198.853 us) consuming the result (target-resources.json). Every post-stem activation is <= 25,690,112 B and the largest later transient is ~3 x 25,690,112 B in stage 1 (selection rationale), so the stem is the only place where two ~98 MiB buffers coexist. Mechanism: (1) the eval-mode BatchNorm affine (scale = gamma*rsqrt(running_var+eps), shift = beta - running_mean*scale) is folded into a private conv weight/bias copy built once at install, so the conv output is already BN-affine and the separate 98 MiB BN pass disappears; (2) conv + max-pool run on batch slices of size stem_chunk (default 8), each pooled slice being written with clamp(min=0) directly into one preallocated [32,64,56,56] output, so the largest transient is one slice-sized conv buffer (25,690,112 B at chunk 8) plus its pooled slice (6,422,528 B) instead of two full stem buffers; (3) ReLU is commuted through the max-pool, which is exact because clamp_min is monotone non-decreasing and max-pool returns one of its inputs - verified bit-exact on CPU - so the out-of-place relu buffer and its 216 us pass are removed without changing values. The parent forward is used verbatim for setup failures, unsupported signatures (rank/dtype/device/channels/contiguity/training) and runtime errors, each with a distinct route label; the input tensor and all module state are never mutated, so fallback is exact. Expected effect on the frozen metric: the stem instant becomes standing 76,710,912 + output 25,690,112 + conv slice 25,690,112 + pool slice 6,422,528 = 134,513,664 B, below the stage-1 transient of ~76,710,912 + 3 x 25,690,112 = 153,781,248 B, which becomes the new global peak: expected peak_allocated_bytes ~ 153.8 MB, about -45% versus 282,103,808 B. Even if stage 1 is smaller than estimated, the stem instant (~134.5 MB at chunk 8) still bounds the peak, so the improvement holds either way. Throughput: the rewrite removes the 227.7 us BN kernel and the 216.1 us full-tensor relu pass and adds four slice convs (~+40-140 us), four slice pools (~+20 us) and clamp fused into the output writes; net GPU time is expected flat to negative against the 4.414 ms baseline, keeping images_per_second above the 0.95 x 7,249 floor. CPU-side sanity evidence: against the real transformers 5.16.1 ResNetEmbeddings parent on CPU, the chunked and single-slice paths match the parent logits-input tensor to 2.9e-06 max abs diff (atol/rtol gate is 1e-4), the relu/pool commutation is bit-exact, the non-contiguous fallback returns exactly the parent tensor, and the module state_dict is bit-identical after execution. No inputs/previous-candidate or inputs/previous-feedback.txt exists for this revision (observation record: 'revision has no candidate installers'), so this is a first attempt built only on the measured records cited above.",
+    "setup_work": {
+      "description": "Installation-time only work in build(): introspect the ResNetEmbeddings/ResNetConvLayer/Conv2d/BatchNorm2d/MaxPool2d attributes (raising setup-failure, reported per call, on any unexpected structure), then compute the folded conv weight/bias copies: scale = gamma*rsqrt(running_var+eps), shift = beta - running_mean*scale, folded_weight = conv.weight*scale per output channel, folded_bias = shift (conv is bias-free here). Computed under torch.inference_mode(False)/no_grad so the copies are normal tensors usable in any later execution mode.",
+      "allocations": "One folded weight [64,3,7,7] fp32 = 37,632 B plus one folded bias [64] fp32 = 256 B; total retained setup allocation ~37.9 KB on device, held for the module lifetime. No module parameters or running buffers are mutated (verified bit-identical state_dict), no fixture-dependent output is cached, and every invocation recomputes the full stem on the current input.",
+      "gpu_side_effects": "A handful of tiny (<=64-element) elementwise kernels execute once during build inside the framework's install flow; nothing runs at build from the agent shell. Per-run extra CPU work is a Python loop of stem_chunk-slice iterations issuing conv/pool/clamp kernels."
+    },
+    "quality_risks": [
+      "Numerical reassociation: folding BN into the conv weight applies the per-channel scale before conv accumulation, and slicing the batch may make cudnn choose a different conv algorithm per slice than for batch 32; both change rounding relative to the parent's conv + cudnn bn_fw_inf path. CPU evidence shows 2.9e-06 max abs diff vs the parent for the folded stem; GPU drift must still pass the frozen logits gate (atol=rtol=1e-4) and require_exact_top1, validated by the framework's paired check.",
+      "The ReLU-through-max-pool commutation is exact only for monotone elementwise transforms on finite values; the workload uses finite normalized image fixtures, so NaN propagation differences cannot arise here.",
+      "Throughput floor: four slice-sized convs and pools replace one full conv/pool; if per-slice conv efficiency is much worse than estimated, images_per_second could approach the 0.95 baseline-ratio floor. stem_chunk is exposed as a tunable so the search loop can trade launch count against transient size (chunk 32 takes the single-slice path).",
+      "The new peak is expected to be set by stage-1 transients (~153.8 MB), outside the selected region; the stem rewrite cannot reduce the metric below that without touching stage 1, so the measured gain may cap near -45% rather than the stem-instant -52%.",
+      "Fallback paths (setup failure, unsupported signature, runtime failure) route to the parent and would forfeit the memory improvement while preserving outputs; route labels distinguish them, and setup failure is never silently hidden.",
+      "peak_reserved_bytes may not fall: the allocator retains cached blocks for the new slice-sized allocations, and lifecycle counters include the ~38 KB setup copies; only the declared peak_allocated_bytes metric is claimed to improve."
+    ],
+    "requires": [],
+    "replaces": [],
+    "parameter_space": {
+      "params": [
+        {
+          "name": "stem_chunk",
+          "kind": "int",
+          "choices": [
+            2,
+            4,
+            8,
+            16,
+            32
+          ],
+          "description": "Batch slice for the chunked stem conv/pool loop; default 8 when the coordinator supplies no value. Smaller slices shrink the conv transient (2 or 4 reach the same stage-1-bounded peak with more launches), 16 keeps one 51.4 MB conv slice, and 32 takes the single-slice path (peak set by the full 102,760,448 B conv buffer). Does not change batch, data, sampling or any frozen task semantics; partial last slices are handled."
+        }
+      ],
+      "constraints": []
+    },
+    "eliminated_calls_rationale": "The inner stem calls are subsumed by the whole-bundle replacement of model.resnet.embedder, per the selected region covering the entire stem bundle: the Conv2d/batch_norm/relu/max_pool2d work is recomputed inside the replacement as folded slice convs, slice max-pools and clamp-on-write, on every invocation. Consumers remain valid because the replacement returns exactly the parent interface - a fresh contiguous fp32 [32,64,56,56] pooled embedding tensor on the same device - which stage 1 consumes unchanged; module parameters and buffers are untouched. The profiler record_function enter/exit pairs (opop::8/10/14/18/23 markers) are discovery instrumentation attached to the now-bypassed inner boundaries, not semantic work. The framework should recapture the plan with the stem as one boundary.",
+    "eliminated_calls_count": 16
+  },
+  "selection_agent": {
+    "role": "selection",
+    "session": "ses_ea6a616edffePhtKiUtoyNz5tC",
+    "message": "msg_1595f03cc001x3L3eRy0LQSFvu",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 23,
+      "reported_cost": 0.44821129352,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 1046730.0,
+        "input": 60258.0,
+        "output": 5071.0,
+        "reasoning": 15897.0,
+        "cache.read": 965504.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea6a616edffePhtKiUtoyNz5tC",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/resnet-memory/sandboxes/selection-8667707b4f36",
+    "outputs": [
+      "selection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0
+  },
+  "candidate_agent": {
+    "role": "candidate",
+    "session": "ses_ea6a0def3ffem2r2XHEYL80OYT",
+    "message": "msg_159685e5b001ISnG3d8xTuT509",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 14,
+      "reported_cost": 0.46645959398,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 730855.0,
+        "input": 109628.0,
+        "output": 7082.0,
+        "reasoning": 31489.0,
+        "cache.read": 582656.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea6a0def3ffem2r2XHEYL80OYT",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/resnet-memory/sandboxes/candidate-cb571db08787",
+    "outputs": [
+      "candidate.py",
+      "proposal.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0
+  },
+  "measurement": {
+    "valid": true,
+    "objective": 205071872.0,
+    "reference": 282103808.0,
+    "parent_values": [
+      282103808.0,
+      282103808.0
+    ],
+    "candidate_values": [
+      205071872.0,
+      205071872.0
+    ],
+    "paired_gains": [
+      77031936.0,
+      77031936.0
+    ],
+    "noise_bounds": [
+      0.0,
+      0.0
+    ],
+    "constraints": [
+      {
+        "metric": "images_per_second",
+        "values": [
+          7592.021828960764,
+          7603.350321277192
+        ],
+        "limit": 6886.567139159172,
+        "original_reference": 7249.018041220182,
+        "passed": true
+      }
+    ],
+    "reasons": [],
+    "framework_source": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+    "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+  },
+  "decision": {
+    "state": "evaluated",
+    "revision": "e15f133c2f6970d9a7eb6431de2997920e6d1b70a2f82526f53fe100587e6af8",
+    "parent": "3e29f5aef4e43cfeb986434ed86145ec284eed730ec6f7b335691ccb883f7b92",
+    "bundle": "trial-61fdc27afc-param-cc83352f",
+    "accepted": true,
+    "reasons": [],
+    "report_ref": "sha256:6474bfba1e7f18206be5de9faa7f53bfc34c0146c30c3cf27b6a5231fc4cfc0f"
+  },
+  "evaluation": {
+    "schema_version": "project.v1",
+    "id": "trial-61fdc27afc",
+    "revision_id": "e15f133c2f6970d9a7eb6431de2997920e6d1b70a2f82526f53fe100587e6af8",
+    "parent_id": "3e29f5aef4e43cfeb986434ed86145ec284eed730ec6f7b335691ccb883f7b92",
+    "contract_ref": "sha256:99a69f249318a8a624fb238b6403f8161c18751fa689b0bce523c3163fbf6314",
+    "bundle_id": "trial-61fdc27afc-param-cc83352f",
+    "quality": "pass",
+    "feasible": true,
+    "objective": 205071872.0,
+    "reference_objective": 282103808.0,
+    "metrics": {
+      "valid": true,
+      "objective": 205071872.0,
+      "reference": 282103808.0,
+      "parent_values": [
+        282103808.0,
+        282103808.0
+      ],
+      "candidate_values": [
+        205071872.0,
+        205071872.0
+      ],
+      "paired_gains": [
+        77031936.0,
+        77031936.0
+      ],
+      "noise_bounds": [
+        0.0,
+        0.0
+      ],
+      "constraints": [
+        {
+          "metric": "images_per_second",
+          "values": [
+            7592.021828960764,
+            7603.350321277192
+          ],
+          "limit": 6886.567139159172,
+          "original_reference": 7249.018041220182,
+          "passed": true
+        }
+      ],
+      "reasons": [],
+      "framework_source": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+      "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+    },
+    "required_ranks": [
+      0
+    ],
+    "rank_bundle_hashes": {
+      "0": "6e5c204fb3a2904730f24a0ac04559c64d0b038d4518854d092b7cab584bd519"
+    },
+    "required_calls": [
+      "66593cf97d10975485c87e23"
+    ],
+    "executed_calls": [
+      "66593cf97d10975485c87e23"
+    ],
+    "rank_executed_calls": {
+      "0": [
+        "66593cf97d10975485c87e23"
+      ]
+    },
+    "evidence": [
+      "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/resnet-memory/jobs/trial-61fdc27afc-evaluation-ffbbe2f4-pair-0-parent/run/receipt.json",
+      "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/resnet-memory/jobs/trial-61fdc27afc-evaluation-ffbbe2f4-pair-0-candidate/run/receipt.json",
+      "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/resnet-memory/jobs/trial-61fdc27afc-evaluation-ffbbe2f4-pair-1-candidate/run/receipt.json",
+      "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/resnet-memory/jobs/trial-61fdc27afc-evaluation-ffbbe2f4-pair-1-parent/run/receipt.json"
+    ],
+    "reasons": []
+  },
+  "publication": "committed",
+  "missing_coverage": [],
+  "evaluation_attempt": "trial-61fdc27afc-evaluation-ffbbe2f4",
+  "pairs": [
+    {
+      "parent": {
+        "status": "passed",
+        "failure": null,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "error": null,
+            "framework_source": {
+              "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {},
+              "setup": [],
+              "samples": [
+                {
+                  "images_per_second": 7156.382386085488,
+                  "latency_ms": 4.471533,
+                  "peak_allocated_bytes": 282103808.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.471533,
+                  "framework.peak_allocated_bytes": 282103808.0,
+                  "framework.peak_reserved_bytes": 396361728.0,
+                  "framework.allocated_bytes": 76710912.0,
+                  "framework.reserved_bytes": 396361728.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282103808.0,
+                  "framework.lifecycle_peak_reserved_bytes": 396361728.0
+                },
+                {
+                  "images_per_second": 7181.198007845907,
+                  "latency_ms": 4.456081,
+                  "peak_allocated_bytes": 282103808.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.456081,
+                  "framework.peak_allocated_bytes": 282103808.0,
+                  "framework.peak_reserved_bytes": 396361728.0,
+                  "framework.allocated_bytes": 76710912.0,
+                  "framework.reserved_bytes": 396361728.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282103808.0,
+                  "framework.lifecycle_peak_reserved_bytes": 396361728.0
+                },
+                {
+                  "images_per_second": 7198.15439321358,
+                  "latency_ms": 4.445584,
+                  "peak_allocated_bytes": 282103808.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.445584,
+                  "framework.peak_allocated_bytes": 282103808.0,
+                  "framework.peak_reserved_bytes": 396361728.0,
+                  "framework.allocated_bytes": 76710912.0,
+                  "framework.reserved_bytes": 396361728.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282103808.0,
+                  "framework.lifecycle_peak_reserved_bytes": 396361728.0
+                },
+                {
+                  "images_per_second": 7159.571866551844,
+                  "latency_ms": 4.469541,
+                  "peak_allocated_bytes": 282103808.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.469541,
+                  "framework.peak_allocated_bytes": 282103808.0,
+                  "framework.peak_reserved_bytes": 396361728.0,
+                  "framework.allocated_bytes": 76710912.0,
+                  "framework.reserved_bytes": 396361728.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282103808.0,
+                  "framework.lifecycle_peak_reserved_bytes": 396361728.0
+                },
+                {
+                  "images_per_second": 7144.011666171052,
+                  "latency_ms": 4.479276,
+                  "peak_allocated_bytes": 282103808.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.479276,
+                  "framework.peak_allocated_bytes": 282103808.0,
+                  "framework.peak_reserved_bytes": 396361728.0,
+                  "framework.allocated_bytes": 76710912.0,
+                  "framework.reserved_bytes": 396361728.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282103808.0,
+                  "framework.lifecycle_peak_reserved_bytes": 396361728.0
+                }
+              ],
+              "metrics": {
+                "images_per_second": 7159.571866551844,
+                "latency_ms": 4.469541,
+                "peak_allocated_bytes": 282103808.0,
+                "batch_images": 32.0,
+                "framework.elapsed_ms": 4.469541,
+                "framework.peak_allocated_bytes": 282103808.0,
+                "framework.peak_reserved_bytes": 396361728.0,
+                "framework.allocated_bytes": 76710912.0,
+                "framework.reserved_bytes": 396361728.0,
+                "framework.lifecycle_peak_allocated_bytes": 282103808.0,
+                "framework.lifecycle_peak_reserved_bytes": 396361728.0
+              },
+              "diagnostics": {},
+              "metric_samples": {}
+            }
+          }
+        ]
+      },
+      "candidate": {
+        "status": "passed",
+        "failure": null,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "error": null,
+            "framework_source": {
+              "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 7.3909759521484375e-06
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 7.3909759521484375e-06
+                }
+              ],
+              "coverage": {
+                "trial-61fdc27afc-param-cc83352f": {
+                  "counts": {
+                    "66593cf97d10975485c87e23": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "66593cf97d10975485c87e23"
+                  ],
+                  "reference_invocations": {},
+                  "candidate_declared_routes": [
+                    {
+                      "call": "66593cf97d10975485c87e23",
+                      "route": "stem:folded-chunked",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "setup": [
+                {
+                  "bundle": "trial-61fdc27afc-param-cc83352f",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "direct",
+                    "reason": "no functional replacements"
+                  },
+                  "elapsed_ms": 43.430443,
+                  "allocated_bytes": 67973632,
+                  "reserved_bytes": 88080384,
+                  "peak_allocated_bytes": 67974144,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "images_per_second": 6900.03594487475,
+                  "latency_ms": 4.637657,
+                  "peak_allocated_bytes": 205071872.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.637657,
+                  "framework.peak_allocated_bytes": 205071872.0,
+                  "framework.peak_reserved_bytes": 253755392.0,
+                  "framework.allocated_bytes": 76749312.0,
+                  "framework.reserved_bytes": 253755392.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                  "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                },
+                {
+                  "images_per_second": 7617.398996264856,
+                  "latency_ms": 4.200909,
+                  "peak_allocated_bytes": 205071872.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.200909,
+                  "framework.peak_allocated_bytes": 205071872.0,
+                  "framework.peak_reserved_bytes": 253755392.0,
+                  "framework.allocated_bytes": 76749312.0,
+                  "framework.reserved_bytes": 253755392.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                  "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                },
+                {
+                  "images_per_second": 7592.021828960764,
+                  "latency_ms": 4.214951,
+                  "peak_allocated_bytes": 205071872.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.214951,
+                  "framework.peak_allocated_bytes": 205071872.0,
+                  "framework.peak_reserved_bytes": 253755392.0,
+                  "framework.allocated_bytes": 76749312.0,
+                  "framework.reserved_bytes": 253755392.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                  "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                },
+                {
+                  "images_per_second": 7559.595004147146,
+                  "latency_ms": 4.233031,
+                  "peak_allocated_bytes": 205071872.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.233031,
+                  "framework.peak_allocated_bytes": 205071872.0,
+                  "framework.peak_reserved_bytes": 253755392.0,
+                  "framework.allocated_bytes": 76749312.0,
+                  "framework.reserved_bytes": 253755392.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                  "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                },
+                {
+                  "images_per_second": 7602.606078331077,
+                  "latency_ms": 4.209083,
+                  "peak_allocated_bytes": 205071872.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.209083,
+                  "framework.peak_allocated_bytes": 205071872.0,
+                  "framework.peak_reserved_bytes": 253755392.0,
+                  "framework.allocated_bytes": 76749312.0,
+                  "framework.reserved_bytes": 253755392.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                  "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                }
+              ],
+              "metrics": {
+                "images_per_second": 7592.021828960764,
+                "latency_ms": 4.214951,
+                "peak_allocated_bytes": 205071872.0,
+                "batch_images": 32.0,
+                "framework.elapsed_ms": 4.214951,
+                "framework.peak_allocated_bytes": 205071872.0,
+                "framework.peak_reserved_bytes": 253755392.0,
+                "framework.allocated_bytes": 76749312.0,
+                "framework.reserved_bytes": 253755392.0,
+                "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                "framework.lifecycle_peak_reserved_bytes": 253755392.0
+              },
+              "diagnostics": {},
+              "metric_samples": {}
+            }
+          }
+        ]
+      }
+    },
+    {
+      "candidate": {
+        "status": "passed",
+        "failure": null,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "error": null,
+            "framework_source": {
+              "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 7.3909759521484375e-06
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 7.3909759521484375e-06
+                }
+              ],
+              "coverage": {
+                "trial-61fdc27afc-param-cc83352f": {
+                  "counts": {
+                    "66593cf97d10975485c87e23": 2
+                  },
+                  "fallbacks": {},
+                  "required": [
+                    "66593cf97d10975485c87e23"
+                  ],
+                  "reference_invocations": {},
+                  "candidate_declared_routes": [
+                    {
+                      "call": "66593cf97d10975485c87e23",
+                      "route": "stem:folded-chunked",
+                      "count": 2
+                    }
+                  ],
+                  "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                }
+              },
+              "setup": [
+                {
+                  "bundle": "trial-61fdc27afc-param-cc83352f",
+                  "binding": {
+                    "requested": "legacy",
+                    "effective": "direct",
+                    "reason": "no functional replacements"
+                  },
+                  "elapsed_ms": 43.469437,
+                  "allocated_bytes": 67973632,
+                  "reserved_bytes": 88080384,
+                  "peak_allocated_bytes": 67974144,
+                  "scope": "installation after model prepare; separate from the declared warm-model score"
+                }
+              ],
+              "samples": [
+                {
+                  "images_per_second": 6859.0413417999625,
+                  "latency_ms": 4.665375,
+                  "peak_allocated_bytes": 205071872.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.665375,
+                  "framework.peak_allocated_bytes": 205071872.0,
+                  "framework.peak_reserved_bytes": 253755392.0,
+                  "framework.allocated_bytes": 76749312.0,
+                  "framework.reserved_bytes": 253755392.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                  "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                },
+                {
+                  "images_per_second": 7641.940689943062,
+                  "latency_ms": 4.187418,
+                  "peak_allocated_bytes": 205071872.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.187418,
+                  "framework.peak_allocated_bytes": 205071872.0,
+                  "framework.peak_reserved_bytes": 253755392.0,
+                  "framework.allocated_bytes": 76749312.0,
+                  "framework.reserved_bytes": 253755392.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                  "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                },
+                {
+                  "images_per_second": 7603.350321277192,
+                  "latency_ms": 4.208671,
+                  "peak_allocated_bytes": 205071872.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.208671,
+                  "framework.peak_allocated_bytes": 205071872.0,
+                  "framework.peak_reserved_bytes": 253755392.0,
+                  "framework.allocated_bytes": 76749312.0,
+                  "framework.reserved_bytes": 253755392.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                  "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                },
+                {
+                  "images_per_second": 7649.708378773398,
+                  "latency_ms": 4.183166,
+                  "peak_allocated_bytes": 205071872.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.183166,
+                  "framework.peak_allocated_bytes": 205071872.0,
+                  "framework.peak_reserved_bytes": 253755392.0,
+                  "framework.allocated_bytes": 76749312.0,
+                  "framework.reserved_bytes": 253755392.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                  "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                },
+                {
+                  "images_per_second": 7589.63597259762,
+                  "latency_ms": 4.216276,
+                  "peak_allocated_bytes": 205071872.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.216276,
+                  "framework.peak_allocated_bytes": 205071872.0,
+                  "framework.peak_reserved_bytes": 253755392.0,
+                  "framework.allocated_bytes": 76749312.0,
+                  "framework.reserved_bytes": 253755392.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                  "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                }
+              ],
+              "metrics": {
+                "images_per_second": 7603.350321277192,
+                "latency_ms": 4.208671,
+                "peak_allocated_bytes": 205071872.0,
+                "batch_images": 32.0,
+                "framework.elapsed_ms": 4.208671,
+                "framework.peak_allocated_bytes": 205071872.0,
+                "framework.peak_reserved_bytes": 253755392.0,
+                "framework.allocated_bytes": 76749312.0,
+                "framework.reserved_bytes": 253755392.0,
+                "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                "framework.lifecycle_peak_reserved_bytes": 253755392.0
+              },
+              "diagnostics": {},
+              "metric_samples": {}
+            }
+          }
+        ]
+      },
+      "parent": {
+        "status": "passed",
+        "failure": null,
+        "ranks": [
+          {
+            "rank": 0,
+            "status": "passed",
+            "error": null,
+            "framework_source": {
+              "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "continuous_step": 0,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "continuous_step": 1,
+                  "passed": true,
+                  "compared_elements": 32032,
+                  "max_abs_error": 0.0
+                }
+              ],
+              "coverage": {},
+              "setup": [],
+              "samples": [
+                {
+                  "images_per_second": 7249.114928374214,
+                  "latency_ms": 4.414332,
+                  "peak_allocated_bytes": 282103808.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.414332,
+                  "framework.peak_allocated_bytes": 282103808.0,
+                  "framework.peak_reserved_bytes": 396361728.0,
+                  "framework.allocated_bytes": 76710912.0,
+                  "framework.reserved_bytes": 396361728.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282103808.0,
+                  "framework.lifecycle_peak_reserved_bytes": 396361728.0
+                },
+                {
+                  "images_per_second": 7236.7671190249175,
+                  "latency_ms": 4.421864,
+                  "peak_allocated_bytes": 282103808.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.421864,
+                  "framework.peak_allocated_bytes": 282103808.0,
+                  "framework.peak_reserved_bytes": 396361728.0,
+                  "framework.allocated_bytes": 76710912.0,
+                  "framework.reserved_bytes": 396361728.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282103808.0,
+                  "framework.lifecycle_peak_reserved_bytes": 396361728.0
+                },
+                {
+                  "images_per_second": 7275.455568565485,
+                  "latency_ms": 4.39835,
+                  "peak_allocated_bytes": 282103808.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.39835,
+                  "framework.peak_allocated_bytes": 282103808.0,
+                  "framework.peak_reserved_bytes": 396361728.0,
+                  "framework.allocated_bytes": 76710912.0,
+                  "framework.reserved_bytes": 396361728.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282103808.0,
+                  "framework.lifecycle_peak_reserved_bytes": 396361728.0
+                },
+                {
+                  "images_per_second": 7253.255578433532,
+                  "latency_ms": 4.411812,
+                  "peak_allocated_bytes": 282103808.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.411812,
+                  "framework.peak_allocated_bytes": 282103808.0,
+                  "framework.peak_reserved_bytes": 396361728.0,
+                  "framework.allocated_bytes": 76710912.0,
+                  "framework.reserved_bytes": 396361728.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282103808.0,
+                  "framework.lifecycle_peak_reserved_bytes": 396361728.0
+                },
+                {
+                  "images_per_second": 7241.849016047711,
+                  "latency_ms": 4.418761,
+                  "peak_allocated_bytes": 282103808.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.418761,
+                  "framework.peak_allocated_bytes": 282103808.0,
+                  "framework.peak_reserved_bytes": 396361728.0,
+                  "framework.allocated_bytes": 76710912.0,
+                  "framework.reserved_bytes": 396361728.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282103808.0,
+                  "framework.lifecycle_peak_reserved_bytes": 396361728.0
+                }
+              ],
+              "metrics": {
+                "images_per_second": 7249.114928374214,
+                "latency_ms": 4.414332,
+                "peak_allocated_bytes": 282103808.0,
+                "batch_images": 32.0,
+                "framework.elapsed_ms": 4.414332,
+                "framework.peak_allocated_bytes": 282103808.0,
+                "framework.peak_reserved_bytes": 396361728.0,
+                "framework.allocated_bytes": 76710912.0,
+                "framework.reserved_bytes": 396361728.0,
+                "framework.lifecycle_peak_allocated_bytes": 282103808.0,
+                "framework.lifecycle_peak_reserved_bytes": 396361728.0
+              },
+              "diagnostics": {},
+              "metric_samples": {}
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "resources": {
+    "status": "observed",
+    "reason": null,
+    "evidence": [
+      "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/resnet-memory/jobs/trial-61fdc27afc-evaluation-ffbbe2f4-profile/run/trace-rank-0.json"
+    ],
+    "raw_discovery": [
+      "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/resnet-memory/jobs/trial-61fdc27afc-evaluation-ffbbe2f4-profile/run/discovery-rank-0.json"
+    ],
+    "extra_collectors": {
+      "before": {
+        "candidate_diagnostics": {
+          "status": "not_applicable",
+          "reason": "revision has no candidate installers",
+          "provenance": {
+            "revision": "3e29f5aef4e43cfeb986434ed86145ec284eed730ec6f7b335691ccb883f7b92",
+            "parent_revision": "d6bf48f000006e0df96c241a8eb3c01b8d500307d7af5490492e9c828c7a89e7",
+            "bundles": [],
+            "plan": "sha256:f0b795405ac55ba8559bb177646a4e3425d03d6fba97cce5967a26f52ce9bdd1",
+            "registry": "sha256:0dad7b7eb94dbfbeb477ae848fc96564276d39803c16d7c0d2a95fbfae2ef05c",
+            "request_sha256": "fe51835b4a63a957fa4513b317a857723d2a01583445b535043c5238c3e05c0e",
+            "objective": {
+              "name": "peak_allocated_bytes",
+              "direction": "minimize",
+              "unit": "bytes",
+              "paired_repeats": 2,
+              "constraints": [
+                {
+                  "metric": "images_per_second",
+                  "baseline_ratio": 0.95,
+                  "op": "ge"
+                }
+              ]
+            },
+            "workload": {
+              "id": "offline",
+              "batch": 32,
+              "goals": [
+                {
+                  "id": "throughput",
+                  "metric": "images_per_second",
+                  "direction": "max"
+                },
+                {
+                  "id": "memory",
+                  "metric": "peak_allocated_bytes",
+                  "direction": "min",
+                  "constraints": {
+                    "images_per_second_min_baseline_ratio": 0.95
+                  }
+                }
+              ]
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "scope": null,
+          "ranks": []
+        },
+        "execution_timeline": {
+          "status": "observed",
+          "reason": null,
+          "provenance": {
+            "revision": "3e29f5aef4e43cfeb986434ed86145ec284eed730ec6f7b335691ccb883f7b92",
+            "parent_revision": "d6bf48f000006e0df96c241a8eb3c01b8d500307d7af5490492e9c828c7a89e7",
+            "bundles": [],
+            "plan": "sha256:f0b795405ac55ba8559bb177646a4e3425d03d6fba97cce5967a26f52ce9bdd1",
+            "registry": "sha256:0dad7b7eb94dbfbeb477ae848fc96564276d39803c16d7c0d2a95fbfae2ef05c",
+            "request_sha256": "fe51835b4a63a957fa4513b317a857723d2a01583445b535043c5238c3e05c0e",
+            "objective": {
+              "name": "peak_allocated_bytes",
+              "direction": "minimize",
+              "unit": "bytes",
+              "paired_repeats": 2,
+              "constraints": [
+                {
+                  "metric": "images_per_second",
+                  "baseline_ratio": 0.95,
+                  "op": "ge"
+                }
+              ]
+            },
+            "workload": {
+              "id": "offline",
+              "batch": 32,
+              "goals": [
+                {
+                  "id": "throughput",
+                  "metric": "images_per_second",
+                  "direction": "max"
+                },
+                {
+                  "id": "memory",
+                  "metric": "peak_allocated_bytes",
+                  "direction": "min",
+                  "constraints": {
+                    "images_per_second_min_baseline_ratio": 0.95
+                  }
+                }
+              ]
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "scope": null,
+          "ranks": [
+            {
+              "rank": 0,
+              "scope": "Separate diagnostic capture, never the clean project objective",
+              "profiled_wall_ms": 5.105638,
+              "workload_window": {
+                "start_us": 1643316038372.659,
+                "end_us": 1643316043448.5798,
+                "scope": "explicit workload including final completion synchronization; excludes profiler preparation"
+              },
+              "clock": {
+                "status": "observed",
+                "offset_bounds_us": [
+                  18956226440973.77,
+                  18956226442682.883
+                ],
+                "anchor_bounds_us": [
+                  [
+                    18956226440973.77,
+                    18956226442682.883
+                  ],
+                  [
+                    18956226441400.656,
+                    18956226441444.75
+                  ]
+                ],
+                "domain": {
+                  "host": "autodl-container-e8e84ea25b-cffd5c81",
+                  "boot_id": "9890bc2b-f323-49ae-b779-8f723299b44a",
+                  "clock": "CLOCK_MONOTONIC"
+                },
+                "scope": "CPU trace to host monotonic clock within this capture; excludes unknown GPU clock calibration error"
+              },
+              "trace": "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/resnet-memory/jobs/timeline-ba570e3fd5/run/timeline-rank-0-0.json",
+              "trace_sha256": "e4cb7020f6370b6bc42ce0a5fe5f011a8823bcf6d85db9bacbbcd215f2e8f1b9",
+              "communication_status": "not_observed",
+              "collective_count": 0,
+              "logical_input_bytes_sum": null,
+              "communication_kernel_sum_ms": 0.0,
+              "gradient_callbacks": 0,
+              "buckets": 0
+            }
+          ]
+        },
+        "python_runtime": {
+          "status": "observed",
+          "reason": null,
+          "provenance": {
+            "revision": "3e29f5aef4e43cfeb986434ed86145ec284eed730ec6f7b335691ccb883f7b92",
+            "parent_revision": "d6bf48f000006e0df96c241a8eb3c01b8d500307d7af5490492e9c828c7a89e7",
+            "bundles": [],
+            "plan": "sha256:f0b795405ac55ba8559bb177646a4e3425d03d6fba97cce5967a26f52ce9bdd1",
+            "registry": "sha256:0dad7b7eb94dbfbeb477ae848fc96564276d39803c16d7c0d2a95fbfae2ef05c",
+            "request_sha256": "fe51835b4a63a957fa4513b317a857723d2a01583445b535043c5238c3e05c0e",
+            "objective": {
+              "name": "peak_allocated_bytes",
+              "direction": "minimize",
+              "unit": "bytes",
+              "paired_repeats": 2,
+              "constraints": [
+                {
+                  "metric": "images_per_second",
+                  "baseline_ratio": 0.95,
+                  "op": "ge"
+                }
+              ]
+            },
+            "workload": {
+              "id": "offline",
+              "batch": 32,
+              "goals": [
+                {
+                  "id": "throughput",
+                  "metric": "images_per_second",
+                  "direction": "max"
+                },
+                {
+                  "id": "memory",
+                  "metric": "peak_allocated_bytes",
+                  "direction": "min",
+                  "constraints": {
+                    "images_per_second_min_baseline_ratio": 0.95
+                  }
+                }
+              ]
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "scope": null,
+          "ranks": [
+            {
+              "rank": 0,
+              "scope": "cProfile perturbs Python dispatch; self/cumulative times include host waits and cannot be added to GPU durations or used for acceptance",
+              "profiled_wall_ms": 5.278465,
+              "workload_window": null,
+              "clock": null,
+              "trace": null,
+              "trace_sha256": null,
+              "communication_status": null,
+              "collective_count": null,
+              "logical_input_bytes_sum": null,
+              "communication_kernel_sum_ms": null,
+              "gradient_callbacks": null,
+              "buckets": null
+            }
+          ]
+        },
+        "device_telemetry": {
+          "status": "observed",
+          "reason": null,
+          "provenance": {
+            "revision": "3e29f5aef4e43cfeb986434ed86145ec284eed730ec6f7b335691ccb883f7b92",
+            "parent_revision": "d6bf48f000006e0df96c241a8eb3c01b8d500307d7af5490492e9c828c7a89e7",
+            "bundles": [],
+            "plan": "sha256:f0b795405ac55ba8559bb177646a4e3425d03d6fba97cce5967a26f52ce9bdd1",
+            "registry": "sha256:0dad7b7eb94dbfbeb477ae848fc96564276d39803c16d7c0d2a95fbfae2ef05c",
+            "request_sha256": "fe51835b4a63a957fa4513b317a857723d2a01583445b535043c5238c3e05c0e",
+            "objective": {
+              "name": "peak_allocated_bytes",
+              "direction": "minimize",
+              "unit": "bytes",
+              "paired_repeats": 2,
+              "constraints": [
+                {
+                  "metric": "images_per_second",
+                  "baseline_ratio": 0.95,
+                  "op": "ge"
+                }
+              ]
+            },
+            "workload": {
+              "id": "offline",
+              "batch": 32,
+              "goals": [
+                {
+                  "id": "throughput",
+                  "metric": "images_per_second",
+                  "direction": "max"
+                },
+                {
+                  "id": "memory",
+                  "metric": "peak_allocated_bytes",
+                  "direction": "min",
+                  "constraints": {
+                    "images_per_second_min_baseline_ratio": 0.95
+                  }
+                }
+              ]
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "scope": null,
+          "ranks": [
+            {
+              "rank": 0,
+              "scope": null,
+              "profiled_wall_ms": null,
+              "workload_window": null,
+              "clock": null,
+              "trace": null,
+              "trace_sha256": null,
+              "communication_status": null,
+              "collective_count": null,
+              "logical_input_bytes_sum": null,
+              "communication_kernel_sum_ms": null,
+              "gradient_callbacks": null,
+              "buckets": null
+            }
+          ]
+        }
+      },
+      "after": {
+        "candidate_diagnostics": {
+          "status": "observed",
+          "reason": null,
+          "provenance": {
+            "revision": "e15f133c2f6970d9a7eb6431de2997920e6d1b70a2f82526f53fe100587e6af8",
+            "parent_revision": "3e29f5aef4e43cfeb986434ed86145ec284eed730ec6f7b335691ccb883f7b92",
+            "bundles": [
+              "trial-61fdc27afc-param-cc83352f"
+            ],
+            "plan": "sha256:f0b795405ac55ba8559bb177646a4e3425d03d6fba97cce5967a26f52ce9bdd1",
+            "registry": "sha256:0dad7b7eb94dbfbeb477ae848fc96564276d39803c16d7c0d2a95fbfae2ef05c",
+            "request_sha256": "fe51835b4a63a957fa4513b317a857723d2a01583445b535043c5238c3e05c0e",
+            "objective": {
+              "name": "peak_allocated_bytes",
+              "direction": "minimize",
+              "unit": "bytes",
+              "paired_repeats": 2,
+              "constraints": [
+                {
+                  "metric": "images_per_second",
+                  "baseline_ratio": 0.95,
+                  "op": "ge"
+                }
+              ]
+            },
+            "workload": {
+              "id": "offline",
+              "batch": 32,
+              "goals": [
+                {
+                  "id": "throughput",
+                  "metric": "images_per_second",
+                  "direction": "max"
+                },
+                {
+                  "id": "memory",
+                  "metric": "peak_allocated_bytes",
+                  "direction": "min",
+                  "constraints": {
+                    "images_per_second_min_baseline_ratio": 0.95
+                  }
+                }
+              ]
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "scope": null,
+          "ranks": [
+            {
+              "rank": null,
+              "scope": null,
+              "profiled_wall_ms": null,
+              "workload_window": null,
+              "clock": null,
+              "trace": null,
+              "trace_sha256": null,
+              "communication_status": null,
+              "collective_count": null,
+              "logical_input_bytes_sum": null,
+              "communication_kernel_sum_ms": null,
+              "gradient_callbacks": null,
+              "buckets": null
+            }
+          ]
+        },
+        "execution_timeline": {
+          "status": "observed",
+          "reason": null,
+          "provenance": {
+            "revision": "e15f133c2f6970d9a7eb6431de2997920e6d1b70a2f82526f53fe100587e6af8",
+            "parent_revision": "3e29f5aef4e43cfeb986434ed86145ec284eed730ec6f7b335691ccb883f7b92",
+            "bundles": [
+              "trial-61fdc27afc-param-cc83352f"
+            ],
+            "plan": "sha256:f0b795405ac55ba8559bb177646a4e3425d03d6fba97cce5967a26f52ce9bdd1",
+            "registry": "sha256:0dad7b7eb94dbfbeb477ae848fc96564276d39803c16d7c0d2a95fbfae2ef05c",
+            "request_sha256": "fe51835b4a63a957fa4513b317a857723d2a01583445b535043c5238c3e05c0e",
+            "objective": {
+              "name": "peak_allocated_bytes",
+              "direction": "minimize",
+              "unit": "bytes",
+              "paired_repeats": 2,
+              "constraints": [
+                {
+                  "metric": "images_per_second",
+                  "baseline_ratio": 0.95,
+                  "op": "ge"
+                }
+              ]
+            },
+            "workload": {
+              "id": "offline",
+              "batch": 32,
+              "goals": [
+                {
+                  "id": "throughput",
+                  "metric": "images_per_second",
+                  "direction": "max"
+                },
+                {
+                  "id": "memory",
+                  "metric": "peak_allocated_bytes",
+                  "direction": "min",
+                  "constraints": {
+                    "images_per_second_min_baseline_ratio": 0.95
+                  }
+                }
+              ]
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "scope": null,
+          "ranks": [
+            {
+              "rank": 0,
+              "scope": "Separate diagnostic capture, never the clean project objective",
+              "profiled_wall_ms": 5.97379,
+              "workload_window": {
+                "start_us": 1644466714249.556,
+                "end_us": 1644466720192.2,
+                "scope": "explicit workload including final completion synchronization; excludes profiler preparation"
+              },
+              "clock": {
+                "status": "observed",
+                "offset_bounds_us": [
+                  18956226440987.57,
+                  18956226442647.867
+                ],
+                "anchor_bounds_us": [
+                  [
+                    18956226440987.57,
+                    18956226442647.867
+                  ],
+                  [
+                    18956226441396.934,
+                    18956226441445.215
+                  ]
+                ],
+                "domain": {
+                  "host": "autodl-container-e8e84ea25b-cffd5c81",
+                  "boot_id": "9890bc2b-f323-49ae-b779-8f723299b44a",
+                  "clock": "CLOCK_MONOTONIC"
+                },
+                "scope": "CPU trace to host monotonic clock within this capture; excludes unknown GPU clock calibration error"
+              },
+              "trace": "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/resnet-memory/jobs/timeline-5dbcb9ad48/run/timeline-rank-0-0.json",
+              "trace_sha256": "2a1425a59d7095c879cc3a88aaac8f3630172f147ff7e9ba1ebeec0de80cda2d",
+              "communication_status": "not_observed",
+              "collective_count": 0,
+              "logical_input_bytes_sum": null,
+              "communication_kernel_sum_ms": 0.0,
+              "gradient_callbacks": 0,
+              "buckets": 0
+            }
+          ]
+        },
+        "python_runtime": {
+          "status": "observed",
+          "reason": null,
+          "provenance": {
+            "revision": "e15f133c2f6970d9a7eb6431de2997920e6d1b70a2f82526f53fe100587e6af8",
+            "parent_revision": "3e29f5aef4e43cfeb986434ed86145ec284eed730ec6f7b335691ccb883f7b92",
+            "bundles": [
+              "trial-61fdc27afc-param-cc83352f"
+            ],
+            "plan": "sha256:f0b795405ac55ba8559bb177646a4e3425d03d6fba97cce5967a26f52ce9bdd1",
+            "registry": "sha256:0dad7b7eb94dbfbeb477ae848fc96564276d39803c16d7c0d2a95fbfae2ef05c",
+            "request_sha256": "fe51835b4a63a957fa4513b317a857723d2a01583445b535043c5238c3e05c0e",
+            "objective": {
+              "name": "peak_allocated_bytes",
+              "direction": "minimize",
+              "unit": "bytes",
+              "paired_repeats": 2,
+              "constraints": [
+                {
+                  "metric": "images_per_second",
+                  "baseline_ratio": 0.95,
+                  "op": "ge"
+                }
+              ]
+            },
+            "workload": {
+              "id": "offline",
+              "batch": 32,
+              "goals": [
+                {
+                  "id": "throughput",
+                  "metric": "images_per_second",
+                  "direction": "max"
+                },
+                {
+                  "id": "memory",
+                  "metric": "peak_allocated_bytes",
+                  "direction": "min",
+                  "constraints": {
+                    "images_per_second_min_baseline_ratio": 0.95
+                  }
+                }
+              ]
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "scope": null,
+          "ranks": [
+            {
+              "rank": 0,
+              "scope": "cProfile perturbs Python dispatch; self/cumulative times include host waits and cannot be added to GPU durations or used for acceptance",
+              "profiled_wall_ms": 5.205863,
+              "workload_window": null,
+              "clock": null,
+              "trace": null,
+              "trace_sha256": null,
+              "communication_status": null,
+              "collective_count": null,
+              "logical_input_bytes_sum": null,
+              "communication_kernel_sum_ms": null,
+              "gradient_callbacks": null,
+              "buckets": null
+            }
+          ]
+        },
+        "device_telemetry": {
+          "status": "observed",
+          "reason": null,
+          "provenance": {
+            "revision": "e15f133c2f6970d9a7eb6431de2997920e6d1b70a2f82526f53fe100587e6af8",
+            "parent_revision": "3e29f5aef4e43cfeb986434ed86145ec284eed730ec6f7b335691ccb883f7b92",
+            "bundles": [
+              "trial-61fdc27afc-param-cc83352f"
+            ],
+            "plan": "sha256:f0b795405ac55ba8559bb177646a4e3425d03d6fba97cce5967a26f52ce9bdd1",
+            "registry": "sha256:0dad7b7eb94dbfbeb477ae848fc96564276d39803c16d7c0d2a95fbfae2ef05c",
+            "request_sha256": "fe51835b4a63a957fa4513b317a857723d2a01583445b535043c5238c3e05c0e",
+            "objective": {
+              "name": "peak_allocated_bytes",
+              "direction": "minimize",
+              "unit": "bytes",
+              "paired_repeats": 2,
+              "constraints": [
+                {
+                  "metric": "images_per_second",
+                  "baseline_ratio": 0.95,
+                  "op": "ge"
+                }
+              ]
+            },
+            "workload": {
+              "id": "offline",
+              "batch": 32,
+              "goals": [
+                {
+                  "id": "throughput",
+                  "metric": "images_per_second",
+                  "direction": "max"
+                },
+                {
+                  "id": "memory",
+                  "metric": "peak_allocated_bytes",
+                  "direction": "min",
+                  "constraints": {
+                    "images_per_second_min_baseline_ratio": 0.95
+                  }
+                }
+              ]
+            },
+            "devices": [
+              "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+            ],
+            "framework_source": {
+              "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+              "files": 155,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+          },
+          "scope": null,
+          "ranks": [
+            {
+              "rank": 0,
+              "scope": null,
+              "profiled_wall_ms": null,
+              "workload_window": null,
+              "clock": null,
+              "trace": null,
+              "trace_sha256": null,
+              "communication_status": null,
+              "collective_count": null,
+              "logical_input_bytes_sum": null,
+              "communication_kernel_sum_ms": null,
+              "gradient_callbacks": null,
+              "buckets": null
+            }
+          ]
+        }
+      }
+    }
+  },
+  "native_replacement_summary": [
+    {
+      "rank": 0,
+      "bundle": "trial-61fdc27afc-param-cc83352f",
+      "raw_discovery": "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/resnet-memory/jobs/trial-61fdc27afc-evaluation-ffbbe2f4-profile/run/discovery-rank-0.json",
+      "launches": 40,
+      "kernel_names": {
+        "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)": 8,
+        "_5x_cudnn_ampere_scudnn_128x64_relu_medium_nn_v1": 8,
+        "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native::CUDAFunctor_add<float> >(at::TensorIteratorBase&, at::native::CUDAFunctor_add<float> const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::CUDAFunctor_add<float> >(at::TensorIteratorBase&, at::native::CUDAFunctor_add<float> const&)::{lambda(int)#1})": 8,
+        "void at::native::(anonymous namespace)::max_pool_forward_nchw<float, int>(int, float const*, long, long, long, int, int, int, int, int, int, int, int, int, int, float*, long*)": 8,
+        "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::launch_clamp_scalar(at::TensorIteratorBase&, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)": 8
+      },
+      "launches_by_bundle": {
+        "trial-61fdc27afc-param-cc83352f": 40
+      },
+      "scope": "Native launches associated with this bundle's replacement ranges, including any parent calls; separate diagnostic capture, not clean timing."
+    }
+  ],
+  "raw_trial_scope": "Full resource arrays, affected-call closures, eliminated-call lists, and read/write sets remain in the hashed original server receipt. Public counted fields summarize these lists; actual replacement sites, parameters, quality, measurements, and decision are retained.",
+  "parameter_search": {
+    "engine": "existing TaskSearch + OptunaTPETuner",
+    "measurement_scope": "complete project",
+    "parameter_trials": 3,
+    "space": {
+      "params": [
+        {
+          "name": "stem_chunk",
+          "kind": "int",
+          "choices": [
+            2,
+            4,
+            8,
+            16,
+            32
+          ],
+          "description": "Batch slice for the chunked stem conv/pool loop; default 8 when the coordinator supplies no value. Smaller slices shrink the conv transient (2 or 4 reach the same stage-1-bounded peak with more launches), 16 keeps one 51.4 MB conv slice, and 32 takes the single-slice path (peak set by the full 102,760,448 B conv buffer). Does not change batch, data, sampling or any frozen task semantics; partial last slices are handled."
+        }
+      ],
+      "constraints": []
+    },
+    "selected": "trial-61fdc27afc-param-cc83352f",
+    "stats": [
+      {
+        "candidate_id": "cand-bda83c8e",
+        "space_id": "space-cand-bda83c8e",
+        "n_complete": 3,
+        "n_fail": 0,
+        "best": {
+          "trial_id": "tr-70ef3e5a",
+          "candidate_id": "cand-bda83c8e",
+          "space_id": "space-cand-bda83c8e",
+          "params": {
+            "values": {
+              "stem_chunk": 4
+            }
+          },
+          "status": "complete",
+          "failure_kind": null,
+          "failure_detail": "",
+          "latency_ms": null,
+          "task_evaluation": {
+            "score": 205071872.0,
+            "valid": true,
+            "metrics": {
+              "images_per_second": 7296.161215978228,
+              "latency_ms": 4.385868,
+              "peak_allocated_bytes": 205071872.0,
+              "batch_images": 32.0,
+              "framework.elapsed_ms": 4.385868,
+              "framework.peak_allocated_bytes": 205071872.0,
+              "framework.peak_reserved_bytes": 253755392.0,
+              "framework.allocated_bytes": 76749312.0,
+              "framework.reserved_bytes": 253755392.0,
+              "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+              "framework.lifecycle_peak_reserved_bytes": 253755392.0,
+              "replacement.kernel_launches": 40.0,
+              "replacement.diagnostic_kernel_sum_us": 527.419,
+              "replacement.max_shared_memory_bytes": 16384.0,
+              "replacement.max_registers_per_thread": 128.0
+            },
+            "detail": null
+          },
+          "profile": null,
+          "fp64_rescued_trials": null,
+          "job_wall_s": null,
+          "job_timed_out": null
+        },
+        "param_stats": [
+          {
+            "name": "stem_chunk",
+            "best_value": 4,
+            "best_trial_value": 4,
+            "at_boundary": true,
+            "boundary_direction": "min",
+            "effect_pct": 0.0,
+            "latency_by_value": {},
+            "objective_by_value": {
+              "4": 205071872.0,
+              "16": 220089856.0,
+              "32": 257500672.0
+            },
+            "effect_absolute": 52428800.0,
+            "failure_rate_by_value": {
+              "4": 0.0,
+              "16": 0.0,
+              "32": 0.0
+            }
+          }
+        ],
+        "resource_at_best": null,
+        "failure_clusters": []
+      }
+    ],
+    "responses": [
+      {
+        "candidate_id": "trial-61fdc27afc",
+        "axis": "stem_chunk",
+        "a_params": {
+          "values": {
+            "stem_chunk": 4
+          }
+        },
+        "b_params": {
+          "values": {
+            "stem_chunk": 16
+          }
+        },
+        "a": {
+          "score": 205071872.0,
+          "valid": true,
+          "metrics": {
+            "images_per_second": 7296.161215978228,
+            "latency_ms": 4.385868,
+            "peak_allocated_bytes": 205071872.0,
+            "batch_images": 32.0,
+            "framework.elapsed_ms": 4.385868,
+            "framework.peak_allocated_bytes": 205071872.0,
+            "framework.peak_reserved_bytes": 253755392.0,
+            "framework.allocated_bytes": 76749312.0,
+            "framework.reserved_bytes": 253755392.0,
+            "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+            "framework.lifecycle_peak_reserved_bytes": 253755392.0,
+            "replacement.kernel_launches": 40.0,
+            "replacement.diagnostic_kernel_sum_us": 527.419,
+            "replacement.max_shared_memory_bytes": 16384.0,
+            "replacement.max_registers_per_thread": 128.0
+          },
+          "detail": null
+        },
+        "b": {
+          "score": 220089856.0,
+          "valid": true,
+          "metrics": {
+            "images_per_second": 7927.683669566216,
+            "latency_ms": 4.036488,
+            "peak_allocated_bytes": 220089856.0,
+            "batch_images": 32.0,
+            "framework.elapsed_ms": 4.036488,
+            "framework.peak_allocated_bytes": 220089856.0,
+            "framework.peak_reserved_bytes": 234881024.0,
+            "framework.allocated_bytes": 76749312.0,
+            "framework.reserved_bytes": 234881024.0,
+            "framework.lifecycle_peak_allocated_bytes": 220089856.0,
+            "framework.lifecycle_peak_reserved_bytes": 234881024.0,
+            "replacement.kernel_launches": 10.0,
+            "replacement.diagnostic_kernel_sum_us": 469.435,
+            "replacement.max_shared_memory_bytes": 16384.0,
+            "replacement.max_registers_per_thread": 128.0
+          },
+          "detail": null
+        },
+        "delta_j": 15017984.0,
+        "gain": -15017984.0,
+        "parameter_slope": 1251498.6666666667,
+        "resource_deltas": {
+          "framework.allocated_bytes": 0.0,
+          "framework.lifecycle_peak_allocated_bytes": 15017984.0,
+          "framework.lifecycle_peak_reserved_bytes": -18874368.0,
+          "framework.peak_allocated_bytes": 15017984.0,
+          "framework.peak_reserved_bytes": -18874368.0,
+          "framework.reserved_bytes": -18874368.0,
+          "replacement.diagnostic_kernel_sum_us": -57.98399999999998,
+          "replacement.kernel_launches": -30.0,
+          "replacement.max_registers_per_thread": 0.0,
+          "replacement.max_shared_memory_bytes": 0.0
+        },
+        "resource_slopes": {
+          "framework.lifecycle_peak_allocated_bytes": 1.0,
+          "framework.lifecycle_peak_reserved_bytes": -0.7956814236111112,
+          "framework.peak_allocated_bytes": 1.0,
+          "framework.peak_reserved_bytes": -0.7956814236111112,
+          "framework.reserved_bytes": -0.7956814236111112,
+          "replacement.diagnostic_kernel_sum_us": -259002.20750551886,
+          "replacement.kernel_launches": -500599.4666666667
+        },
+        "unknown_resources": [],
+        "resource_status": "observed",
+        "reason": null
+      },
+      {
+        "candidate_id": "trial-61fdc27afc",
+        "axis": "stem_chunk",
+        "a_params": {
+          "values": {
+            "stem_chunk": 16
+          }
+        },
+        "b_params": {
+          "values": {
+            "stem_chunk": 32
+          }
+        },
+        "a": {
+          "score": 220089856.0,
+          "valid": true,
+          "metrics": {
+            "images_per_second": 7927.683669566216,
+            "latency_ms": 4.036488,
+            "peak_allocated_bytes": 220089856.0,
+            "batch_images": 32.0,
+            "framework.elapsed_ms": 4.036488,
+            "framework.peak_allocated_bytes": 220089856.0,
+            "framework.peak_reserved_bytes": 234881024.0,
+            "framework.allocated_bytes": 76749312.0,
+            "framework.reserved_bytes": 234881024.0,
+            "framework.lifecycle_peak_allocated_bytes": 220089856.0,
+            "framework.lifecycle_peak_reserved_bytes": 234881024.0,
+            "replacement.kernel_launches": 10.0,
+            "replacement.diagnostic_kernel_sum_us": 469.435,
+            "replacement.max_shared_memory_bytes": 16384.0,
+            "replacement.max_registers_per_thread": 128.0
+          },
+          "detail": null
+        },
+        "b": {
+          "score": 257500672.0,
+          "valid": true,
+          "metrics": {
+            "images_per_second": 7437.173316351787,
+            "latency_ms": 4.30271,
+            "peak_allocated_bytes": 257500672.0,
+            "batch_images": 32.0,
+            "framework.elapsed_ms": 4.30271,
+            "framework.peak_allocated_bytes": 257500672.0,
+            "framework.peak_reserved_bytes": 322961408.0,
+            "framework.allocated_bytes": 76749312.0,
+            "framework.reserved_bytes": 322961408.0,
+            "framework.lifecycle_peak_allocated_bytes": 257500672.0,
+            "framework.lifecycle_peak_reserved_bytes": 322961408.0,
+            "replacement.kernel_launches": 5.0,
+            "replacement.diagnostic_kernel_sum_us": 706.615,
+            "replacement.max_shared_memory_bytes": 16384.0,
+            "replacement.max_registers_per_thread": 128.0
+          },
+          "detail": null
+        },
+        "delta_j": 37410816.0,
+        "gain": -37410816.0,
+        "parameter_slope": 2338176.0,
+        "resource_deltas": {
+          "framework.allocated_bytes": 0.0,
+          "framework.lifecycle_peak_allocated_bytes": 37410816.0,
+          "framework.lifecycle_peak_reserved_bytes": 88080384.0,
+          "framework.peak_allocated_bytes": 37410816.0,
+          "framework.peak_reserved_bytes": 88080384.0,
+          "framework.reserved_bytes": 88080384.0,
+          "replacement.diagnostic_kernel_sum_us": 237.18,
+          "replacement.kernel_launches": -5.0,
+          "replacement.max_registers_per_thread": 0.0,
+          "replacement.max_shared_memory_bytes": 0.0
+        },
+        "resource_slopes": {
+          "framework.lifecycle_peak_allocated_bytes": 1.0,
+          "framework.lifecycle_peak_reserved_bytes": 0.4247349330357143,
+          "framework.peak_allocated_bytes": 1.0,
+          "framework.peak_reserved_bytes": 0.4247349330357143,
+          "framework.reserved_bytes": 0.4247349330357143,
+          "replacement.diagnostic_kernel_sum_us": 157731.74803946368,
+          "replacement.kernel_launches": -7482163.2
+        },
+        "unknown_resources": [],
+        "resource_status": "observed",
+        "reason": null
+      }
+    ],
+    "response_interpretation": "Finite differences of observed screening endpoints, not independent causal sensitivities or acceptance evidence. Objective/throughput/workload constants are not automatically labelled resources. Zero resource change is observed, not missing. Kernel counters require separately available diagnostic evidence.",
+    "observations": [
+      {
+        "bundle": {
+          "schema_version": "project.v2",
+          "id": "trial-61fdc27afc-param-cc83352f",
+          "parent_revision": "3e29f5aef4e43cfeb986434ed86145ec284eed730ec6f7b335691ccb883f7b92",
+          "contract_ref": "sha256:99a69f249318a8a624fb238b6403f8161c18751fa689b0bce523c3163fbf6314",
+          "scope": "region",
+          "implementation": "composite",
+          "groups": [
+            "3821cceac23fa97e5a55",
+            "0022893ec8c1ceea869f",
+            "95d8eead897036452c64",
+            "7e7c01e2bf7e30a42280",
+            "c671bb65e86ad614e3f6",
+            "c0af3909ba0a106672d5",
+            "c97c8dfae7e5def85428",
+            "3412952b9279e41b1709",
+            "8bffcf00b7bd20c935a5",
+            "5d6060b158cac3430090"
+          ],
+          "calls": [
+            "66593cf97d10975485c87e23"
+          ],
+          "edits": [
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-61fdc27afc.py",
+              "before_sha256": null,
+              "content_ref": "sha256:3a8beaaff217363c1ba5eb3b1a8897b8fa5afe4a7be183307fae08b8d01afc1f"
+            },
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-61fdc27afc.targets.json",
+              "before_sha256": null,
+              "content_ref": "sha256:2d05438a309a06062e828fa051c95da04c374a93f58e12be5c9f25fd1ac070e9"
+            }
+          ],
+          "requires": [],
+          "replaces": [],
+          "external_invariants": [
+            "Model must be the pretrained microsoft/resnet-18 safetensors from the frozen assets directory, loaded in float32 with local_files_only=True, in eval() mode.",
+            "Numerical policies are fixed: torch.manual_seed(20261020), TF32 disabled for both cuda.matmul and cudnn, cudnn.benchmark=False, set_float32_matmul_precision('highest').",
+            "Input is the real preprocessed fixture pixels.npy (3 images, float32, 3x224x224, ImageNet-normalized); the batch-32 workload input is images[arange(32) % 3].contiguous(), unchanged in shape, dtype and values.",
+            "The workload is exactly one batch-32 forward producing full [32, 1000] float32 logits under torch.inference_mode(); no work may be added, removed or reordered.",
+            "The timing boundary is the source's own: CUDA synchronize immediately before the timed forward, forward, CUDA synchronize at completion, then latency and peak_allocated_bytes are recorded.",
+            "peak_allocated_bytes is torch.cuda.max_memory_allocated() read after reset_peak_memory_stats() at the start of the workload and the completion synchronize; model weights and GPU-resident fixtures count as standing allocation exactly as in the source.",
+            "Correctness observations are the full logits tensor and the exact argmax top1 class indices; require_exact_top1 with atol/rtol 1e-4 per the frozen quality block.",
+            "images_per_second is derived from the unchanged work amount: 32 images divided by the measured elapsed time of the full workload.",
+            "The 0.95 images_per_second baseline-ratio constraint is enforced by the framework against its baseline; the adapter only reports the measured metrics and changes neither throughput nor memory by altering the frozen work.",
+            "No second reference model may be allocated on the GPU and no accuracy or convergence claim beyond the source's reference-fidelity checks may be made."
+          ],
+          "plan_ref": null,
+          "registry_ref": null,
+          "installer": "opop_candidates/trial-61fdc27afc.py",
+          "parameters": {
+            "stem_chunk": 4
+          },
+          "affected_calls_count": 17,
+          "read_set_count": 17,
+          "write_set_count": 3
+        },
+        "revision": "e15f133c2f6970d9a7eb6431de2997920e6d1b70a2f82526f53fe100587e6af8",
+        "result": {
+          "score": 205071872.0,
+          "valid": true,
+          "metrics": {
+            "images_per_second": 7296.161215978228,
+            "latency_ms": 4.385868,
+            "peak_allocated_bytes": 205071872.0,
+            "batch_images": 32.0,
+            "framework.elapsed_ms": 4.385868,
+            "framework.peak_allocated_bytes": 205071872.0,
+            "framework.peak_reserved_bytes": 253755392.0,
+            "framework.allocated_bytes": 76749312.0,
+            "framework.reserved_bytes": 253755392.0,
+            "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+            "framework.lifecycle_peak_reserved_bytes": 253755392.0,
+            "replacement.kernel_launches": 40.0,
+            "replacement.diagnostic_kernel_sum_us": 527.419,
+            "replacement.max_shared_memory_bytes": 16384.0,
+            "replacement.max_registers_per_thread": 128.0
+          },
+          "detail": null
+        },
+        "constraints": [
+          {
+            "metric": "images_per_second",
+            "values": [
+              7296.161215978228
+            ],
+            "limit": 6886.567139159172,
+            "original_reference": 7249.018041220182,
+            "passed": true
+          }
+        ],
+        "run": {
+          "status": "passed",
+          "failure": null,
+          "ranks": [
+            {
+              "rank": 0,
+              "status": "passed",
+              "error": null,
+              "framework_source": {
+                "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": true,
+                "checks": [
+                  {
+                    "continuous_step": 0,
+                    "passed": true,
+                    "compared_elements": 32032,
+                    "max_abs_error": 7.3909759521484375e-06
+                  },
+                  {
+                    "continuous_step": 1,
+                    "passed": true,
+                    "compared_elements": 32032,
+                    "max_abs_error": 7.3909759521484375e-06
+                  }
+                ],
+                "coverage": {
+                  "trial-61fdc27afc-param-cc83352f": {
+                    "counts": {
+                      "66593cf97d10975485c87e23": 2
+                    },
+                    "fallbacks": {},
+                    "required": [
+                      "66593cf97d10975485c87e23"
+                    ],
+                    "reference_invocations": {},
+                    "candidate_declared_routes": [
+                      {
+                        "call": "66593cf97d10975485c87e23",
+                        "route": "stem:folded-chunked",
+                        "count": 2
+                      }
+                    ],
+                    "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                  }
+                },
+                "setup": [
+                  {
+                    "bundle": "trial-61fdc27afc-param-cc83352f",
+                    "binding": {
+                      "requested": "legacy",
+                      "effective": "direct",
+                      "reason": "no functional replacements"
+                    },
+                    "elapsed_ms": 43.086133,
+                    "allocated_bytes": 67973632,
+                    "reserved_bytes": 88080384,
+                    "peak_allocated_bytes": 67974144,
+                    "scope": "installation after model prepare; separate from the declared warm-model score"
+                  }
+                ],
+                "samples": [
+                  {
+                    "images_per_second": 4308.292237386364,
+                    "latency_ms": 7.427537,
+                    "peak_allocated_bytes": 205071872.0,
+                    "batch_images": 32.0,
+                    "framework.elapsed_ms": 7.427537,
+                    "framework.peak_allocated_bytes": 205071872.0,
+                    "framework.peak_reserved_bytes": 253755392.0,
+                    "framework.allocated_bytes": 76749312.0,
+                    "framework.reserved_bytes": 253755392.0,
+                    "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                    "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                  },
+                  {
+                    "images_per_second": 7199.185952048472,
+                    "latency_ms": 4.444947,
+                    "peak_allocated_bytes": 205071872.0,
+                    "batch_images": 32.0,
+                    "framework.elapsed_ms": 4.444947,
+                    "framework.peak_allocated_bytes": 205071872.0,
+                    "framework.peak_reserved_bytes": 253755392.0,
+                    "framework.allocated_bytes": 76749312.0,
+                    "framework.reserved_bytes": 253755392.0,
+                    "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                    "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                  },
+                  {
+                    "images_per_second": 7517.82193662852,
+                    "latency_ms": 4.256552,
+                    "peak_allocated_bytes": 205071872.0,
+                    "batch_images": 32.0,
+                    "framework.elapsed_ms": 4.256552,
+                    "framework.peak_allocated_bytes": 205071872.0,
+                    "framework.peak_reserved_bytes": 253755392.0,
+                    "framework.allocated_bytes": 76749312.0,
+                    "framework.reserved_bytes": 253755392.0,
+                    "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                    "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                  },
+                  {
+                    "images_per_second": 7321.806674101352,
+                    "latency_ms": 4.370506,
+                    "peak_allocated_bytes": 205071872.0,
+                    "batch_images": 32.0,
+                    "framework.elapsed_ms": 4.370506,
+                    "framework.peak_allocated_bytes": 205071872.0,
+                    "framework.peak_reserved_bytes": 253755392.0,
+                    "framework.allocated_bytes": 76749312.0,
+                    "framework.reserved_bytes": 253755392.0,
+                    "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                    "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                  },
+                  {
+                    "images_per_second": 7296.161215978228,
+                    "latency_ms": 4.385868,
+                    "peak_allocated_bytes": 205071872.0,
+                    "batch_images": 32.0,
+                    "framework.elapsed_ms": 4.385868,
+                    "framework.peak_allocated_bytes": 205071872.0,
+                    "framework.peak_reserved_bytes": 253755392.0,
+                    "framework.allocated_bytes": 76749312.0,
+                    "framework.reserved_bytes": 253755392.0,
+                    "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                    "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                  }
+                ],
+                "metrics": {
+                  "images_per_second": 7296.161215978228,
+                  "latency_ms": 4.385868,
+                  "peak_allocated_bytes": 205071872.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.385868,
+                  "framework.peak_allocated_bytes": 205071872.0,
+                  "framework.peak_reserved_bytes": 253755392.0,
+                  "framework.allocated_bytes": 76749312.0,
+                  "framework.reserved_bytes": 253755392.0,
+                  "framework.lifecycle_peak_allocated_bytes": 205071872.0,
+                  "framework.lifecycle_peak_reserved_bytes": 253755392.0
+                },
+                "diagnostics": {},
+                "metric_samples": {}
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "schema_version": 1,
+          "status": "passed",
+          "failure": null,
+          "wall_s": 7.617071487009525,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 734068,
+              "exit_code": 0,
+              "status": "passed",
+              "binding": {
+                "pid": 734068,
+                "status": "verified",
+                "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 12,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.07078970968723297,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "framework_source": {
+                "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": true,
+                "discovery": "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/resnet-memory/jobs/trial-61fdc27afc-param-cc83352f-resources/run/discovery-rank-0.json",
+                "coverage": {
+                  "cuda_kernels": 123,
+                  "associated_kernels": 123,
+                  "unassociated_kernels": 0,
+                  "associated_below_project": 123,
+                  "root_only_kernels": 0,
+                  "backward_associated_kernels": 0,
+                  "autograd_ranges": 0,
+                  "forward_linked_autograd_ranges": 0,
+                  "ambiguous_forward_sequences": 0
+                },
+                "call_sites": 362,
+                "groups": 211
+              }
+            }
+          ],
+          "lease_wait_s": 0.00012768059968948364,
+          "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+          "devices": [
+            "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+          ],
+          "worker_pids_reaped": true
+        },
+        "candidate_diagnostics": null
+      },
+      {
+        "bundle": {
+          "schema_version": "project.v2",
+          "id": "trial-61fdc27afc-param-9e958343",
+          "parent_revision": "3e29f5aef4e43cfeb986434ed86145ec284eed730ec6f7b335691ccb883f7b92",
+          "contract_ref": "sha256:99a69f249318a8a624fb238b6403f8161c18751fa689b0bce523c3163fbf6314",
+          "scope": "region",
+          "implementation": "composite",
+          "groups": [
+            "3821cceac23fa97e5a55",
+            "0022893ec8c1ceea869f",
+            "95d8eead897036452c64",
+            "7e7c01e2bf7e30a42280",
+            "c671bb65e86ad614e3f6",
+            "c0af3909ba0a106672d5",
+            "c97c8dfae7e5def85428",
+            "3412952b9279e41b1709",
+            "8bffcf00b7bd20c935a5",
+            "5d6060b158cac3430090"
+          ],
+          "calls": [
+            "66593cf97d10975485c87e23"
+          ],
+          "edits": [
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-61fdc27afc.py",
+              "before_sha256": null,
+              "content_ref": "sha256:3a8beaaff217363c1ba5eb3b1a8897b8fa5afe4a7be183307fae08b8d01afc1f"
+            },
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-61fdc27afc.targets.json",
+              "before_sha256": null,
+              "content_ref": "sha256:2d05438a309a06062e828fa051c95da04c374a93f58e12be5c9f25fd1ac070e9"
+            }
+          ],
+          "requires": [],
+          "replaces": [],
+          "external_invariants": [
+            "Model must be the pretrained microsoft/resnet-18 safetensors from the frozen assets directory, loaded in float32 with local_files_only=True, in eval() mode.",
+            "Numerical policies are fixed: torch.manual_seed(20261020), TF32 disabled for both cuda.matmul and cudnn, cudnn.benchmark=False, set_float32_matmul_precision('highest').",
+            "Input is the real preprocessed fixture pixels.npy (3 images, float32, 3x224x224, ImageNet-normalized); the batch-32 workload input is images[arange(32) % 3].contiguous(), unchanged in shape, dtype and values.",
+            "The workload is exactly one batch-32 forward producing full [32, 1000] float32 logits under torch.inference_mode(); no work may be added, removed or reordered.",
+            "The timing boundary is the source's own: CUDA synchronize immediately before the timed forward, forward, CUDA synchronize at completion, then latency and peak_allocated_bytes are recorded.",
+            "peak_allocated_bytes is torch.cuda.max_memory_allocated() read after reset_peak_memory_stats() at the start of the workload and the completion synchronize; model weights and GPU-resident fixtures count as standing allocation exactly as in the source.",
+            "Correctness observations are the full logits tensor and the exact argmax top1 class indices; require_exact_top1 with atol/rtol 1e-4 per the frozen quality block.",
+            "images_per_second is derived from the unchanged work amount: 32 images divided by the measured elapsed time of the full workload.",
+            "The 0.95 images_per_second baseline-ratio constraint is enforced by the framework against its baseline; the adapter only reports the measured metrics and changes neither throughput nor memory by altering the frozen work.",
+            "No second reference model may be allocated on the GPU and no accuracy or convergence claim beyond the source's reference-fidelity checks may be made."
+          ],
+          "plan_ref": null,
+          "registry_ref": null,
+          "installer": "opop_candidates/trial-61fdc27afc.py",
+          "parameters": {
+            "stem_chunk": 16
+          },
+          "affected_calls_count": 17,
+          "read_set_count": 17,
+          "write_set_count": 3
+        },
+        "revision": "e6d6e41df8874e3f346dbb38fb7dabe24e6b0b214a0c0e5f1d6079f0ba0c6746",
+        "result": {
+          "score": 220089856.0,
+          "valid": true,
+          "metrics": {
+            "images_per_second": 7927.683669566216,
+            "latency_ms": 4.036488,
+            "peak_allocated_bytes": 220089856.0,
+            "batch_images": 32.0,
+            "framework.elapsed_ms": 4.036488,
+            "framework.peak_allocated_bytes": 220089856.0,
+            "framework.peak_reserved_bytes": 234881024.0,
+            "framework.allocated_bytes": 76749312.0,
+            "framework.reserved_bytes": 234881024.0,
+            "framework.lifecycle_peak_allocated_bytes": 220089856.0,
+            "framework.lifecycle_peak_reserved_bytes": 234881024.0,
+            "replacement.kernel_launches": 10.0,
+            "replacement.diagnostic_kernel_sum_us": 469.435,
+            "replacement.max_shared_memory_bytes": 16384.0,
+            "replacement.max_registers_per_thread": 128.0
+          },
+          "detail": null
+        },
+        "constraints": [
+          {
+            "metric": "images_per_second",
+            "values": [
+              7927.683669566216
+            ],
+            "limit": 6886.567139159172,
+            "original_reference": 7249.018041220182,
+            "passed": true
+          }
+        ],
+        "run": {
+          "status": "passed",
+          "failure": null,
+          "ranks": [
+            {
+              "rank": 0,
+              "status": "passed",
+              "error": null,
+              "framework_source": {
+                "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": true,
+                "checks": [
+                  {
+                    "continuous_step": 0,
+                    "passed": true,
+                    "compared_elements": 32032,
+                    "max_abs_error": 7.3909759521484375e-06
+                  },
+                  {
+                    "continuous_step": 1,
+                    "passed": true,
+                    "compared_elements": 32032,
+                    "max_abs_error": 7.3909759521484375e-06
+                  }
+                ],
+                "coverage": {
+                  "trial-61fdc27afc-param-9e958343": {
+                    "counts": {
+                      "66593cf97d10975485c87e23": 2
+                    },
+                    "fallbacks": {},
+                    "required": [
+                      "66593cf97d10975485c87e23"
+                    ],
+                    "reference_invocations": {},
+                    "candidate_declared_routes": [
+                      {
+                        "call": "66593cf97d10975485c87e23",
+                        "route": "stem:folded-chunked",
+                        "count": 2
+                      }
+                    ],
+                    "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                  }
+                },
+                "setup": [
+                  {
+                    "bundle": "trial-61fdc27afc-param-9e958343",
+                    "binding": {
+                      "requested": "legacy",
+                      "effective": "direct",
+                      "reason": "no functional replacements"
+                    },
+                    "elapsed_ms": 41.298711,
+                    "allocated_bytes": 67973632,
+                    "reserved_bytes": 88080384,
+                    "peak_allocated_bytes": 67974144,
+                    "scope": "installation after model prepare; separate from the declared warm-model score"
+                  }
+                ],
+                "samples": [
+                  {
+                    "images_per_second": 7352.542463230394,
+                    "latency_ms": 4.352236,
+                    "peak_allocated_bytes": 220089856.0,
+                    "batch_images": 32.0,
+                    "framework.elapsed_ms": 4.352236,
+                    "framework.peak_allocated_bytes": 220089856.0,
+                    "framework.peak_reserved_bytes": 234881024.0,
+                    "framework.allocated_bytes": 76749312.0,
+                    "framework.reserved_bytes": 234881024.0,
+                    "framework.lifecycle_peak_allocated_bytes": 220089856.0,
+                    "framework.lifecycle_peak_reserved_bytes": 234881024.0
+                  },
+                  {
+                    "images_per_second": 7959.933673852664,
+                    "latency_ms": 4.020134,
+                    "peak_allocated_bytes": 220089856.0,
+                    "batch_images": 32.0,
+                    "framework.elapsed_ms": 4.020134,
+                    "framework.peak_allocated_bytes": 220089856.0,
+                    "framework.peak_reserved_bytes": 234881024.0,
+                    "framework.allocated_bytes": 76749312.0,
+                    "framework.reserved_bytes": 234881024.0,
+                    "framework.lifecycle_peak_allocated_bytes": 220089856.0,
+                    "framework.lifecycle_peak_reserved_bytes": 234881024.0
+                  },
+                  {
+                    "images_per_second": 7906.017220293757,
+                    "latency_ms": 4.04755,
+                    "peak_allocated_bytes": 220089856.0,
+                    "batch_images": 32.0,
+                    "framework.elapsed_ms": 4.04755,
+                    "framework.peak_allocated_bytes": 220089856.0,
+                    "framework.peak_reserved_bytes": 234881024.0,
+                    "framework.allocated_bytes": 76749312.0,
+                    "framework.reserved_bytes": 234881024.0,
+                    "framework.lifecycle_peak_allocated_bytes": 220089856.0,
+                    "framework.lifecycle_peak_reserved_bytes": 234881024.0
+                  },
+                  {
+                    "images_per_second": 7948.06535396088,
+                    "latency_ms": 4.026137,
+                    "peak_allocated_bytes": 220089856.0,
+                    "batch_images": 32.0,
+                    "framework.elapsed_ms": 4.026137,
+                    "framework.peak_allocated_bytes": 220089856.0,
+                    "framework.peak_reserved_bytes": 234881024.0,
+                    "framework.allocated_bytes": 76749312.0,
+                    "framework.reserved_bytes": 234881024.0,
+                    "framework.lifecycle_peak_allocated_bytes": 220089856.0,
+                    "framework.lifecycle_peak_reserved_bytes": 234881024.0
+                  },
+                  {
+                    "images_per_second": 7927.683669566216,
+                    "latency_ms": 4.036488,
+                    "peak_allocated_bytes": 220089856.0,
+                    "batch_images": 32.0,
+                    "framework.elapsed_ms": 4.036488,
+                    "framework.peak_allocated_bytes": 220089856.0,
+                    "framework.peak_reserved_bytes": 234881024.0,
+                    "framework.allocated_bytes": 76749312.0,
+                    "framework.reserved_bytes": 234881024.0,
+                    "framework.lifecycle_peak_allocated_bytes": 220089856.0,
+                    "framework.lifecycle_peak_reserved_bytes": 234881024.0
+                  }
+                ],
+                "metrics": {
+                  "images_per_second": 7927.683669566216,
+                  "latency_ms": 4.036488,
+                  "peak_allocated_bytes": 220089856.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.036488,
+                  "framework.peak_allocated_bytes": 220089856.0,
+                  "framework.peak_reserved_bytes": 234881024.0,
+                  "framework.allocated_bytes": 76749312.0,
+                  "framework.reserved_bytes": 234881024.0,
+                  "framework.lifecycle_peak_allocated_bytes": 220089856.0,
+                  "framework.lifecycle_peak_reserved_bytes": 234881024.0
+                },
+                "diagnostics": {},
+                "metric_samples": {}
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "schema_version": 1,
+          "status": "passed",
+          "failure": null,
+          "wall_s": 7.76764240860939,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 734913,
+              "exit_code": 0,
+              "status": "passed",
+              "binding": {
+                "pid": 734913,
+                "status": "verified",
+                "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 12,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.09250569343566895,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "framework_source": {
+                "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": true,
+                "discovery": "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/resnet-memory/jobs/trial-61fdc27afc-param-9e958343-resources/run/discovery-rank-0.json",
+                "coverage": {
+                  "cuda_kernels": 93,
+                  "associated_kernels": 93,
+                  "unassociated_kernels": 0,
+                  "associated_below_project": 93,
+                  "root_only_kernels": 0,
+                  "backward_associated_kernels": 0,
+                  "autograd_ranges": 0,
+                  "forward_linked_autograd_ranges": 0,
+                  "ambiguous_forward_sequences": 0
+                },
+                "call_sites": 350,
+                "groups": 199
+              }
+            }
+          ],
+          "lease_wait_s": 0.00015131011605262756,
+          "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+          "devices": [
+            "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+          ],
+          "worker_pids_reaped": true
+        },
+        "candidate_diagnostics": null
+      },
+      {
+        "bundle": {
+          "schema_version": "project.v2",
+          "id": "trial-61fdc27afc-param-d1e0df0e",
+          "parent_revision": "3e29f5aef4e43cfeb986434ed86145ec284eed730ec6f7b335691ccb883f7b92",
+          "contract_ref": "sha256:99a69f249318a8a624fb238b6403f8161c18751fa689b0bce523c3163fbf6314",
+          "scope": "region",
+          "implementation": "composite",
+          "groups": [
+            "3821cceac23fa97e5a55",
+            "0022893ec8c1ceea869f",
+            "95d8eead897036452c64",
+            "7e7c01e2bf7e30a42280",
+            "c671bb65e86ad614e3f6",
+            "c0af3909ba0a106672d5",
+            "c97c8dfae7e5def85428",
+            "3412952b9279e41b1709",
+            "8bffcf00b7bd20c935a5",
+            "5d6060b158cac3430090"
+          ],
+          "calls": [
+            "66593cf97d10975485c87e23"
+          ],
+          "edits": [
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-61fdc27afc.py",
+              "before_sha256": null,
+              "content_ref": "sha256:3a8beaaff217363c1ba5eb3b1a8897b8fa5afe4a7be183307fae08b8d01afc1f"
+            },
+            {
+              "schema_version": "project.v1",
+              "path": "opop_candidates/trial-61fdc27afc.targets.json",
+              "before_sha256": null,
+              "content_ref": "sha256:2d05438a309a06062e828fa051c95da04c374a93f58e12be5c9f25fd1ac070e9"
+            }
+          ],
+          "requires": [],
+          "replaces": [],
+          "external_invariants": [
+            "Model must be the pretrained microsoft/resnet-18 safetensors from the frozen assets directory, loaded in float32 with local_files_only=True, in eval() mode.",
+            "Numerical policies are fixed: torch.manual_seed(20261020), TF32 disabled for both cuda.matmul and cudnn, cudnn.benchmark=False, set_float32_matmul_precision('highest').",
+            "Input is the real preprocessed fixture pixels.npy (3 images, float32, 3x224x224, ImageNet-normalized); the batch-32 workload input is images[arange(32) % 3].contiguous(), unchanged in shape, dtype and values.",
+            "The workload is exactly one batch-32 forward producing full [32, 1000] float32 logits under torch.inference_mode(); no work may be added, removed or reordered.",
+            "The timing boundary is the source's own: CUDA synchronize immediately before the timed forward, forward, CUDA synchronize at completion, then latency and peak_allocated_bytes are recorded.",
+            "peak_allocated_bytes is torch.cuda.max_memory_allocated() read after reset_peak_memory_stats() at the start of the workload and the completion synchronize; model weights and GPU-resident fixtures count as standing allocation exactly as in the source.",
+            "Correctness observations are the full logits tensor and the exact argmax top1 class indices; require_exact_top1 with atol/rtol 1e-4 per the frozen quality block.",
+            "images_per_second is derived from the unchanged work amount: 32 images divided by the measured elapsed time of the full workload.",
+            "The 0.95 images_per_second baseline-ratio constraint is enforced by the framework against its baseline; the adapter only reports the measured metrics and changes neither throughput nor memory by altering the frozen work.",
+            "No second reference model may be allocated on the GPU and no accuracy or convergence claim beyond the source's reference-fidelity checks may be made."
+          ],
+          "plan_ref": null,
+          "registry_ref": null,
+          "installer": "opop_candidates/trial-61fdc27afc.py",
+          "parameters": {
+            "stem_chunk": 32
+          },
+          "affected_calls_count": 17,
+          "read_set_count": 17,
+          "write_set_count": 3
+        },
+        "revision": "3894c8f323bdc7bd1f60f252f9c949151b101256002b4c374ece0dc0cf0d591b",
+        "result": {
+          "score": 257500672.0,
+          "valid": true,
+          "metrics": {
+            "images_per_second": 7437.173316351787,
+            "latency_ms": 4.30271,
+            "peak_allocated_bytes": 257500672.0,
+            "batch_images": 32.0,
+            "framework.elapsed_ms": 4.30271,
+            "framework.peak_allocated_bytes": 257500672.0,
+            "framework.peak_reserved_bytes": 322961408.0,
+            "framework.allocated_bytes": 76749312.0,
+            "framework.reserved_bytes": 322961408.0,
+            "framework.lifecycle_peak_allocated_bytes": 257500672.0,
+            "framework.lifecycle_peak_reserved_bytes": 322961408.0,
+            "replacement.kernel_launches": 5.0,
+            "replacement.diagnostic_kernel_sum_us": 706.615,
+            "replacement.max_shared_memory_bytes": 16384.0,
+            "replacement.max_registers_per_thread": 128.0
+          },
+          "detail": null
+        },
+        "constraints": [
+          {
+            "metric": "images_per_second",
+            "values": [
+              7437.173316351787
+            ],
+            "limit": 6886.567139159172,
+            "original_reference": 7249.018041220182,
+            "passed": true
+          }
+        ],
+        "run": {
+          "status": "passed",
+          "failure": null,
+          "ranks": [
+            {
+              "rank": 0,
+              "status": "passed",
+              "error": null,
+              "framework_source": {
+                "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": true,
+                "checks": [
+                  {
+                    "continuous_step": 0,
+                    "passed": true,
+                    "compared_elements": 32032,
+                    "max_abs_error": 7.3909759521484375e-06
+                  },
+                  {
+                    "continuous_step": 1,
+                    "passed": true,
+                    "compared_elements": 32032,
+                    "max_abs_error": 7.3909759521484375e-06
+                  }
+                ],
+                "coverage": {
+                  "trial-61fdc27afc-param-d1e0df0e": {
+                    "counts": {
+                      "66593cf97d10975485c87e23": 2
+                    },
+                    "fallbacks": {},
+                    "required": [
+                      "66593cf97d10975485c87e23"
+                    ],
+                    "reference_invocations": {},
+                    "candidate_declared_routes": [
+                      {
+                        "call": "66593cf97d10975485c87e23",
+                        "route": "stem:folded-single-slice",
+                        "count": 2
+                      }
+                    ],
+                    "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+                  }
+                },
+                "setup": [
+                  {
+                    "bundle": "trial-61fdc27afc-param-d1e0df0e",
+                    "binding": {
+                      "requested": "legacy",
+                      "effective": "direct",
+                      "reason": "no functional replacements"
+                    },
+                    "elapsed_ms": 41.861219,
+                    "allocated_bytes": 67973632,
+                    "reserved_bytes": 88080384,
+                    "peak_allocated_bytes": 67974144,
+                    "scope": "installation after model prepare; separate from the declared warm-model score"
+                  }
+                ],
+                "samples": [
+                  {
+                    "images_per_second": 7418.256607696163,
+                    "latency_ms": 4.313682,
+                    "peak_allocated_bytes": 257500672.0,
+                    "batch_images": 32.0,
+                    "framework.elapsed_ms": 4.313682,
+                    "framework.peak_allocated_bytes": 257500672.0,
+                    "framework.peak_reserved_bytes": 322961408.0,
+                    "framework.allocated_bytes": 76749312.0,
+                    "framework.reserved_bytes": 322961408.0,
+                    "framework.lifecycle_peak_allocated_bytes": 257500672.0,
+                    "framework.lifecycle_peak_reserved_bytes": 322961408.0
+                  },
+                  {
+                    "images_per_second": 7442.777830755883,
+                    "latency_ms": 4.29947,
+                    "peak_allocated_bytes": 257500672.0,
+                    "batch_images": 32.0,
+                    "framework.elapsed_ms": 4.29947,
+                    "framework.peak_allocated_bytes": 257500672.0,
+                    "framework.peak_reserved_bytes": 322961408.0,
+                    "framework.allocated_bytes": 76749312.0,
+                    "framework.reserved_bytes": 322961408.0,
+                    "framework.lifecycle_peak_allocated_bytes": 257500672.0,
+                    "framework.lifecycle_peak_reserved_bytes": 322961408.0
+                  },
+                  {
+                    "images_per_second": 7437.173316351787,
+                    "latency_ms": 4.30271,
+                    "peak_allocated_bytes": 257500672.0,
+                    "batch_images": 32.0,
+                    "framework.elapsed_ms": 4.30271,
+                    "framework.peak_allocated_bytes": 257500672.0,
+                    "framework.peak_reserved_bytes": 322961408.0,
+                    "framework.allocated_bytes": 76749312.0,
+                    "framework.reserved_bytes": 322961408.0,
+                    "framework.lifecycle_peak_allocated_bytes": 257500672.0,
+                    "framework.lifecycle_peak_reserved_bytes": 322961408.0
+                  },
+                  {
+                    "images_per_second": 7435.607637856166,
+                    "latency_ms": 4.303616,
+                    "peak_allocated_bytes": 257500672.0,
+                    "batch_images": 32.0,
+                    "framework.elapsed_ms": 4.303616,
+                    "framework.peak_allocated_bytes": 257500672.0,
+                    "framework.peak_reserved_bytes": 322961408.0,
+                    "framework.allocated_bytes": 76749312.0,
+                    "framework.reserved_bytes": 322961408.0,
+                    "framework.lifecycle_peak_allocated_bytes": 257500672.0,
+                    "framework.lifecycle_peak_reserved_bytes": 322961408.0
+                  },
+                  {
+                    "images_per_second": 7463.967695947811,
+                    "latency_ms": 4.287264,
+                    "peak_allocated_bytes": 257500672.0,
+                    "batch_images": 32.0,
+                    "framework.elapsed_ms": 4.287264,
+                    "framework.peak_allocated_bytes": 257500672.0,
+                    "framework.peak_reserved_bytes": 322961408.0,
+                    "framework.allocated_bytes": 76749312.0,
+                    "framework.reserved_bytes": 322961408.0,
+                    "framework.lifecycle_peak_allocated_bytes": 257500672.0,
+                    "framework.lifecycle_peak_reserved_bytes": 322961408.0
+                  }
+                ],
+                "metrics": {
+                  "images_per_second": 7437.173316351787,
+                  "latency_ms": 4.30271,
+                  "peak_allocated_bytes": 257500672.0,
+                  "batch_images": 32.0,
+                  "framework.elapsed_ms": 4.30271,
+                  "framework.peak_allocated_bytes": 257500672.0,
+                  "framework.peak_reserved_bytes": 322961408.0,
+                  "framework.allocated_bytes": 76749312.0,
+                  "framework.reserved_bytes": 322961408.0,
+                  "framework.lifecycle_peak_allocated_bytes": 257500672.0,
+                  "framework.lifecycle_peak_reserved_bytes": 322961408.0
+                },
+                "diagnostics": {},
+                "metric_samples": {}
+              }
+            }
+          ]
+        },
+        "diagnostic": {
+          "schema_version": 1,
+          "status": "passed",
+          "failure": null,
+          "wall_s": 7.538590021431446,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 735490,
+              "exit_code": 0,
+              "status": "passed",
+              "binding": {
+                "pid": 735490,
+                "status": "verified",
+                "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 11,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.09559108316898346,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "framework_source": {
+                "sha256": "c21f4933a170e24ef433bd4fa79791e84958e5be370d0edd4baec177a03bbc60",
+                "files": 155,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "valid": true,
+                "discovery": "/root/opop-v6-stage2/stage2-autonomy-final-21897c1/resnet-memory/jobs/trial-61fdc27afc-param-d1e0df0e-resources/run/discovery-rank-0.json",
+                "coverage": {
+                  "cuda_kernels": 88,
+                  "associated_kernels": 88,
+                  "unassociated_kernels": 0,
+                  "associated_below_project": 88,
+                  "root_only_kernels": 0,
+                  "backward_associated_kernels": 0,
+                  "autograd_ranges": 0,
+                  "forward_linked_autograd_ranges": 0,
+                  "ambiguous_forward_sequences": 0
+                },
+                "call_sites": 345,
+                "groups": 194
+              }
+            }
+          ],
+          "lease_wait_s": 0.00014070793986320496,
+          "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+          "devices": [
+            "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+          ],
+          "worker_pids_reaped": true
+        },
+        "candidate_diagnostics": null
+      }
+    ]
+  }
+}
