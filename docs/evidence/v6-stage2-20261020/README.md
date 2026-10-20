@@ -43,8 +43,12 @@ Qwen 全回退案例的每个配对候选端点记录62次替换入口调用、1
 本轮没有增加新的接受门槛、失败类型路由或信息获取限制。
 见[原决策与实际路径](stage2-autonomy-final-21897c1/qwen-throughput/trials/trial-6fbe9313aa/result.json)。
 
-DDP 整步候选的参数写为 `SIMPLE`，但前后原生 trace 均显示 `RING_LL`；
-不能声称协议切换已经发生。它的四个配对端点、每 rank 两个连续步骤均比较
+DDP 整步候选的参数写为 `SIMPLE`，前后原生 trace 的 kernel 入口名均显示
+`RING_LL`。**2026-10-21 核实修正：入口名不能证明实际算法/协议，因而不能
+用名称不变判断切换未生效。** 新的独立进程实验中，调优日志明确选择 SIMPLE，
+trace 名称仍为 RING_LL；NVIDIA 也说明了这一点，见
+[维护者解释](https://github.com/NVIDIA/nccl/issues/1595)。
+历史候选的协议仍需对应调优日志核实。它的四个配对端点、每 rank 两个连续步骤均比较
 248,879,617个元素，误差为零，仍因整步变慢而拒绝。
 通信 kernel 累计时长包含等待，不是物理传输时间。
 
