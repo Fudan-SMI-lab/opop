@@ -36,10 +36,40 @@ class Nsys:
                 "ranks": rows, "run": run, "counter_probe": counter_probe}
 
 
+class DeviceTelemetry:
+    def collect(self, search, revision):
+        if search.request.communication == "off":
+            return {"status": "not_applicable", "reason": "communication diagnostics disabled"}
+        run = search.execute(revision, "telemetry-"+uuid4().hex[:10], "telemetry_profile")
+        rows = [r.get("result", {}).get("telemetry", {"status": "unavailable"}) for r in run.get("ranks", [])]
+        return {"status": "observed" if run["status"] == "passed" and rows and all(r["status"] == "observed" for r in rows) else "unavailable",
+                "ranks": rows, "run": run, "attribution": "device diagnostic window; no per-group traffic attribution"}
+
+
+class CollectiveCalibration:
+    def collect(self, search, revision):
+        import json
+        from kernel_optimizer.project.calibration import layouts
+        if search.request.communication == "off":
+            return {"status": "not_applicable", "reason": "communication diagnostics disabled"}
+        discovery = json.loads((search.output/"discovery.json").read_text())
+        options = layouts(discovery, len(search.request.devices))
+        if not options["layouts"]:
+            return {"status": "unavailable", **options}
+        options.update(warmup=search.request.profiling.get("calibration_warmup", 2),
+                       repeats=search.request.profiling.get("calibration_repeats", 5))
+        run = search.execute(revision, "calibration-"+uuid4().hex[:10], "collective_calibration", collector_options=options)
+        rows = [r.get("result", {}).get("calibration", {"status": "unavailable"}) for r in run.get("ranks", [])]
+        return {"status": "observed" if run["status"] == "passed" and rows and all(r["status"] == "observed" for r in rows) else "unavailable",
+                "ranks": rows, "run": run, "protocol": options}
+
+
 def configured(profiling):
     registry = Registry()
     registry.register("torch_communication", TorchCommunication())
     registry.register("nsys", Nsys())
+    registry.register("device_telemetry", DeviceTelemetry())
+    registry.register("collective_calibration", CollectiveCalibration())
     for name, factory in profiling.get("collector_plugins", {}).items():
         module, attribute = factory.split(":", 1)
         registry.register(name, getattr(importlib.import_module(module), attribute)())
@@ -47,7 +77,7 @@ def configured(profiling):
 
 
 def diagnostic_names(profiling):
-    return ["torch", "nsys", *profiling.get("collector_plugins", {})]
+    return ["torch", "nsys", "device_telemetry", "collective_calibration", *profiling.get("collector_plugins", {})]
 
 
 def collect(search, revision, names):

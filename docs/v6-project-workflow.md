@@ -56,6 +56,10 @@ Torch module 与 functional 调用由实际执行发现，记录阶段、shape�
 
 目标参数空间交给原有 TaskSearch/Optuna TPE；项目适配器执行完整项目并检查原始基线约束。候选筛选后，新的进程运行 AB/BA；每一对收益都须超过其 MAD 噪声界限。约束固定相对原始参考，不随较差父版本漂移。比较的是完整版本，逐组独立因果收益在未做子项对照时保持 unknown。
 
+有参数空间时默认另跑诊断，使用框架生成的替换范围和原生 launch correlation 采集实际内核、寄存器／线程、共享内存、启动数及诊断时长。`profiling.parameter_resources: false` 可关闭这项额外采集。资源响应只使用带单位、类型与范围的资源字段；不把目标分数、吞吐量或 workload 常量自动标成资源。附加指标通过 `profiling.resource_metrics` 声明元数据。响应是筛选端点的有限差分，不能直接当作因果敏感度或接受证据；完整版本仍须独立 AB/BA。
+
+每个 bundle 的原始站点与实际替换内核保留单独映射；记录不会把已退休 functional 调用重新伪装成当前执行节点。嵌套工作、父实现回退、异步延后执行和缺少关联的 backward 分别说明；没有观测到的归属保持 unknown。Torch/Kineto 某些版本不能正确转义 range 名称中的引号，框架使用可逆编码的标签，原始解析失败回执仍保留。
+
 ## 冻结候选、变体和探索分支
 
 `--reuse-evaluator ORIGINAL_RUN` 创建目标／workload 变体：评测代码和源文件保持冻结；真实 Agent 只更新契约中的维度、目标、指标口径和约束描述，然后重新生成参考并执行控制。它不会为了通过保留集而修补 evaluator。
@@ -77,6 +81,10 @@ Torch module 与 functional 调用由实际执行发现，记录阶段、shape�
 `communication=auto` 仅在当前任务包含多卡时启用通信维度；`off` 关闭额外通信采集；`required` 配合 `required_observations` 声明缺失时必须失败的字段。设备数由任务实际绑定决定，机器有两张卡但任务只用一张时不应声称发生跨卡通信。
 
 采集层提供可替换 registry，`profiling.collector_plugins` 使用 `name -> module:factory` 注册实现。内置 Torch 通信采样与 Nsys 分离运行；工具路径由配置／环境探测提供。真实 Collector Agent 根据已观察能力选择采集，硬件计数器不可用时记录原因，仍可获取基础 CUDA/NVTX trace。缺失值不填零。
+
+`device_telemetry` 通过只读 NVML API 探测当前 UUID 上可用的 PCIe TX/RX、设备活动比例与设备显存，并在单独的 workload 窗口采样。PCIe 返回原生 KB/s，属于约 20 ms 窗口的速率，不能再次差分；每次 API 读取可能阻塞，保存实际读取起止时间而不假定精确固定采样频率。NVLink 仅读取可发现链路的单位／过滤器和已有累计计数，不配置或重置计数器，API 缺失／不支持时保留原因。[NVML 设备查询语义](https://docs.nvidia.com/deploy/nvml-api/latest/api/group__nvmlDeviceQueries.html)
+
+`collective_calibration` 从真实 trace 提取完整参与者的 SUM allreduce 消息大小／dtype，在独立诊断作业验证合成数据归约并测量完成时间。其他 collective、未知 reduction 或子组保持不支持，插件可扩展。逻辑 payload 除以完成时间只是有效逻辑速率，不是物理链路吞吐或模型调度的性能下界。
 
 | 字段 | 可解释范围 |
 |---|---|

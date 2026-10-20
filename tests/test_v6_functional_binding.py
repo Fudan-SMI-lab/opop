@@ -35,6 +35,13 @@ def run(context):
     binding.install(candidate,{})
     assert binding.invoke().tolist()==[7.,11.]
     assert dict(binding.counts)=={sites[0]["id"]:1}
+    assert binding.path_telemetry()["reference_invocations"]=={sites[0]["id"]:1}
+    binding.record_route(sites[0]["id"],"reference_plus_add")
+    binding.tracking=False
+    assert binding.invoke().tolist()==[7.,11.]
+    binding.record_route(sites[0]["id"],"setup_or_timing_must_not_count")
+    assert binding.path_telemetry()["reference_invocations"]=={sites[0]["id"]:1}
+    assert binding.path_telemetry()["candidate_declared_routes"]==[{"call":sites[0]["id"],"route":"reference_plus_add","count":1}]
     binding.close()
     assert adapter.run(None).tolist()==[0.,4.]
     return {"sites":2,"group_size":2,"covered":dict(binding.counts),"restored":True}

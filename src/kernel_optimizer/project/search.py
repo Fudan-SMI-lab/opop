@@ -67,6 +67,7 @@ class ProjectSearch:
             lease_dir=request.lease_dir, worker_timeout_s=request.worker_timeout_s,
             env=env, launcher=launcher, wait_for_devices=True,
             parameters={"request": request.portable(), "adapter": str(source/"opop_adapter.py"), "action": action,
+                        "collector_options": collector_options or {},
                         "reference_dir": self.prepared.get("controls_path", str(self.output/"controls")), "bundles": bundles}))
 
     def discover(self):
@@ -148,6 +149,8 @@ class ProjectSearch:
         prompt = ("Choose useful diagnostic collectors for the frozen task objective from actual capability and trace evidence. "
             "Write collection.json following collection.schema.json and use names from available-collectors.json. The torch collector already ran. Nsys is optional and runs separately; "
             "select it when available and useful to resolve overlap, graph tracing or attribution questions. "
+            "device_telemetry samples available NVML PCIe rates, utilization and memory separately; these are device-wide readings with native windows, not per-collective bytes. "
+            "collective_calibration runs a separate synthetic full-world SUM allreduce at actually observed sizes/dtypes, with correctness checks; it is a reference experiment, not a performance lower bound or model critical-path estimate. "
             "Never invent PCIe/NVLink traffic from logical payload or memcpy sizes. Nsys timelines alone do not separate NCCL waiting from wire transfer or prove bucket identity. "
             "Exact bucket links require native correlation and observed gradient-storage membership; otherwise retain ambiguous candidates. List unavailable dimensions with observed reasons. "
             "Do not request every counter indiscriminately, change the task, or run tools yourself. "
@@ -438,6 +441,7 @@ class ProjectSearch:
                 groups.append({"group": group["id"], "bundle": bundle.id, "attribution_status": "joint_only",
                     "calls": [{"id": call, "ranks": [{"rank": a["rank"],
                         "before": b["call_resources"].get(call), "after": a["call_resources"].get(call),
+                        "replacement_range": a.get("bundle_resources", {}).get(bundle.id, {}).get(call),
                         "after_status": "observed" if call in a["call_resources"] else "absent_or_unassociated"}
                         for b, a in zip(before, after, strict=True)]} for call in group["calls"]]})
         from kernel_optimizer.project.communication import match_ranks

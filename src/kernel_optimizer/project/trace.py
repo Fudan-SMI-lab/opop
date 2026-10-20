@@ -8,6 +8,7 @@ def associate(trace, events, calls=None):
     labels = {"opop::"+str(event["sequence"]): event["call_id"] for event in events}
     payload_labels = {"opop::"+str(event["sequence"]): event["payload_ownership"] for event in events if "payload_ownership" in event}
     payload_ranges = {}
+    replacement_ranges = {}
     timelines = defaultdict(list)
     roots, backward, kernels = [], [], []
     for row in trace.get("traceEvents", []):
@@ -23,6 +24,11 @@ def associate(trace, events, calls=None):
                                    (row["ts"]+row.get("dur", 0), 0, id(row), None)))
             if calls.get(ident, {}).get("kind") == "project":
                 roots.append((row.get("pid"), row["ts"], row["ts"]+row.get("dur", 0), ident))
+        if name.startswith("opop_candidate::"):
+            replacement = json.loads(bytes.fromhex(name.removeprefix("opop_candidate::")))
+            replacement_ranges[id(row)] = replacement
+            timelines[key].extend(((row["ts"], 1, id(row), ((), False)),
+                                   (row["ts"]+row.get("dur", 0), 0, id(row), None)))
         if row.get("cat") in {"cuda_runtime", "cuda_driver"} and "correlation" in args:
             timelines[key].append((row["ts"], 2, args["correlation"], None))
         if name.startswith("autograd::engine::evaluate_function:"):
@@ -78,13 +84,24 @@ def associate(trace, events, calls=None):
                     if root_pid == pid and start <= timestamp <= end and ident not in owners:
                         owners.insert(0, ident)
                 phase = "backward" if is_backward else next((calls[c]["phase"] for c in reversed(owners) if c in calls), "unknown")
-                launches[token] = (owners, phase, [payload_ranges[key] for key in active if key in payload_ranges])
+                launches[token] = (owners, phase, [payload_ranges[key] for key in active if key in payload_ranges],
+                                   [replacement_ranges[key] for key in active if key in replacement_ranges])
     totals = defaultdict(lambda: {"cuda_us": 0.0, "kernels": 0, "communication_us": 0.0, "phase_cuda_us": {}})
     launches_by_call = defaultdict(dict)
+    bundle_resources = {}
     matched, detailed, backward_kernels = 0, 0, 0
     for kernel in kernels:
-        owners, phase, payload = launches.get(kernel["correlation"], ([], "unknown", []))
+        owners, phase, payload, replacements = launches.get(kernel["correlation"], ([], "unknown", [], []))
+        replacements = list({(r["bundle"], r["call"]): r for r in replacements}.values())
         kernel["calls"], kernel["phase"] = owners, phase
+        kernel["replacement_sites"] = replacements
+        for replacement in replacements:
+            record = bundle_resources.setdefault(replacement["bundle"], {}).setdefault(replacement["call"],
+                {"cuda_us": 0.0, "kernels": 0, "launch_configurations": {}})
+            record["cuda_us"] += kernel["duration_us"]; record["kernels"] += 1
+            launch = {"kernel": kernel["name"], **kernel["launch_resources"]}
+            config = record["launch_configurations"].setdefault(json.dumps(launch, sort_keys=True), {**launch, "invocations": 0})
+            config["invocations"] += 1
         if payload:
             kernel["payload_ownership"] = payload
         matched += bool(owners)
@@ -102,7 +119,11 @@ def associate(trace, events, calls=None):
             row["invocations"] += 1; row["cuda_us"] += kernel["duration_us"]
     for ident, total in totals.items():
         total["launch_configurations"] = list(launches_by_call[ident].values())
-    return {"kernels": kernels, "call_resources": dict(totals),
+    for records in bundle_resources.values():
+        for record in records.values():
+            record["launch_configurations"] = list(record["launch_configurations"].values())
+    return {"kernels": kernels, "call_resources": dict(totals), "bundle_resources": bundle_resources,
+        "replacement_attribution": "Native launch correlation inside framework replacement ranges. Includes nested work and reference fallback; does not resurrect retired operator identities. Deferred backward launches outside the range remain unassigned to the replacement unless separately observed.",
         "coverage": {"cuda_kernels": len(kernels), "associated_kernels": matched,
             "unassociated_kernels": len(kernels)-matched, "associated_below_project": detailed,
             "root_only_kernels": matched-detailed, "backward_associated_kernels": backward_kernels,

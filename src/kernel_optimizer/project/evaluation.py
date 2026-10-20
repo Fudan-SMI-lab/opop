@@ -140,7 +140,7 @@ def worker_entry(context: dict) -> dict:
         if cuda:
             torch.cuda.synchronize(); torch.cuda.reset_peak_memory_stats()
         started = time.perf_counter_ns()
-        binding = BindingSession(adapter, state, bundle["specs"], rank=context["rank"], world_size=context["world_size"])
+        binding = BindingSession(adapter, state, bundle["specs"], rank=context["rank"], world_size=context["world_size"], bundle_id=bundle["id"])
         binding.tracking = False
         installed = binding.install(Path(bundle["file"]), bundle.get("parameters", {}))
         expected = bundle.get("expected_calls_by_rank", {}).get(str(context["rank"]), bundle["expected_calls"])
@@ -241,6 +241,15 @@ def worker_entry(context: dict) -> dict:
         return {"metrics": metrics, "metric_samples": metric_samples, "diagnostics": diagnostics}
 
     action = parameters.get("action", "controls")
+    if action == "collective_calibration":
+        from kernel_optimizer.project.calibration import capture as calibrate
+        return calibrate(context, parameters["collector_options"])
+    if action == "telemetry_profile":
+        from kernel_optimizer.project.telemetry import capture as telemetry_capture
+        mode("profile")
+        for _ in range(request["warmup"]):
+            adapter.reset(state); invoke()
+        return telemetry_capture(adapter, state, operation, synchronize, context, request)
     if action == "nsys_profile":
         from kernel_optimizer.project.nsys import capture as nsys_capture
         mode("profile")
@@ -257,7 +266,13 @@ def worker_entry(context: dict) -> dict:
             binding.tracking = False
         for _ in range(request["warmup"]):
             adapter.reset(state); invoke()
-        observed = capture(adapter, state, Path(context["output"]), context["rank"], operation, synchronize)
+        try:
+            for _, binding in bindings:
+                binding.diagnostic = True
+            observed = capture(adapter, state, Path(context["output"]), context["rank"], operation, synchronize)
+        finally:
+            for _, binding in bindings:
+                binding.diagnostic = False
         from kernel_optimizer.project.communication import probe, normalize, transports, available_fields
         import json
         policy = request.get("communication", "auto")
@@ -288,7 +303,7 @@ def worker_entry(context: dict) -> dict:
             result, _ = invoke(track=True)
             checks.append({"continuous_step": index, **compare(adapter.observe(state, result), reference[index], quality)})
         coverage = {bundle["id"]: {"counts": dict(binding.counts), "fallbacks": dict(binding.fallbacks),
-                                  "required": bundle["expected_calls"]} for bundle, binding in bindings}
+                                  "required": bundle["expected_calls"], **binding.path_telemetry()} for bundle, binding in bindings}
         covered = all(set(bundle["expected_calls"]) <= set(binding.counts) for bundle, binding in bindings)
         unchanged = policies == (torch.backends.cuda.matmul.allow_tf32, torch.backends.cudnn.allow_tf32, torch.get_default_dtype())
         valid = consensus(all(check["passed"] for check in checks) and covered and unchanged)

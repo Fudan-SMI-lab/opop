@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 from uuid import uuid4
 
 from kernel_optimizer.control.direct_task import TaskSearch, TaskSpace
@@ -14,8 +15,9 @@ from kernel_optimizer.tuning.objective import Objective
 
 
 class ProjectTaskEvaluator:
-    def __init__(self, coordinator, template):
+    def __init__(self, coordinator, template, *, collect_resources=False):
         self.coordinator, self.template = coordinator, template
+        self.collect_resources = collect_resources
         self.observations = []
 
     def evaluate(self, candidate_path, params, context):
@@ -26,17 +28,40 @@ class ProjectTaskEvaluator:
         objective = request.objective
         valid = valid_run(run)
         reducer = objective.get("rank_aggregation", "max" if objective["direction"] == "minimize" else "min")
-        metrics = {name: metric(run, name, reducer) for name in run["ranks"][0]["result"]["metrics"]} if valid else {}
+        metrics = {name: metric(run, name, "max" if name.startswith("framework.") and name.endswith("_bytes") else reducer)
+                   for name in run["ranks"][0]["result"]["metrics"]} if valid else {}
         constraints = constraints_for_runs([run], objective, self.coordinator.prepared["evaluation"]) if valid else []
         feasible = valid and all(row["passed"] for row in constraints)
+        diagnostic = None
+        if feasible and self.collect_resources:
+            diagnostic = self.coordinator.execute(revision, bundle.id+"-resources", "profile")
+            resources = []
+            if diagnostic["status"] == "passed":
+                for rank in diagnostic["ranks"]:
+                    raw = json.loads(Path(rank["result"]["discovery"]).read_text())
+                    kernels = [k for k in raw["kernels"] if any(r["bundle"] == bundle.id for r in k.get("replacement_sites", []))]
+                    if not kernels:
+                        resources.append({})
+                        continue
+                    values = {"replacement.kernel_launches": float(len(kernels)),
+                              "replacement.diagnostic_kernel_sum_us": sum(k["duration_us"] for k in kernels)}
+                    for field, metric_name in (("registers per thread", "replacement.max_registers_per_thread"),
+                                               ("shared memory", "replacement.max_shared_memory_bytes")):
+                        if all(field in k["launch_resources"] for k in kernels):
+                            values[metric_name] = float(max(k["launch_resources"][field] for k in kernels))
+                    resources.append(values)
+                if resources:
+                    for name in set.intersection(*(set(r) for r in resources)):
+                        metrics[name] = max(r[name] for r in resources)
         result = TaskEvaluation(valid=feasible, score=metrics.get(objective["name"]), metrics=metrics,
                                 detail=None if feasible else "project quality/coverage/worker or original-baseline constraint failure; see raw observation")
-        self.observations.append({"bundle": bundle, "revision": revision, "run": run, "result": result, "constraints": constraints})
+        self.observations.append({"bundle": bundle, "revision": revision, "run": run, "result": result, "constraints": constraints, "diagnostic": diagnostic})
         return result
 
 
 def tune(coordinator, template, path: Path, space: dict, trials: int):
-    evaluator = ProjectTaskEvaluator(coordinator, template)
+    collect_resources = bool(space.get("params")) and coordinator.request.profiling.get("parameter_resources", True)
+    evaluator = ProjectTaskEvaluator(coordinator, template, collect_resources=collect_resources)
     objective = Objective(direction=coordinator.request.objective["direction"],
                           label=coordinator.request.objective["name"], unit=coordinator.request.objective["unit"])
     # This is an explicit GPU parameter experiment. It makes no provider calls and
@@ -49,6 +74,20 @@ def tune(coordinator, template, path: Path, space: dict, trials: int):
         selected = next(item for item in evaluator.observations if item["bundle"].parameters == winner.params.values
                         and item["result"].valid and item["result"].score == winner.task_evaluation.score)
     responses = []
+    resource_fields = {"framework."+name: {"unit": "bytes", "kind": "gauge", "scope": "project allocator"}
+        for name in ("allocated_bytes", "reserved_bytes", "peak_allocated_bytes", "peak_reserved_bytes",
+                     "lifecycle_peak_allocated_bytes", "lifecycle_peak_reserved_bytes")}
+    resource_fields.update(coordinator.request.profiling.get("resource_metrics", {}))
+    if collect_resources:
+        resource_fields.update({"replacement."+name: {"unit": unit, "kind": kind,
+            "scope": "native launches inside this bundle's observed replacement ranges", "rank_aggregation": "max",
+            "interpretation": "separate intrusive diagnostic run; nested work and fallback included; launch metadata is not dynamic utilization"}
+            for name, unit, kind in (("kernel_launches", "count", "count"), ("diagnostic_kernel_sum_us", "us", "duration"),
+                                    ("max_registers_per_thread", "count", "launch_metadata"), ("max_shared_memory_bytes", "bytes", "launch_metadata"))})
+    for name, spec in resource_fields.items():
+        if not isinstance(spec, dict) or not all(spec.get(key) for key in ("unit", "kind", "scope")):
+            raise ValueError(f"resource metric {name} needs explicit unit, kind and scope")
+    resource_fields.pop(coordinator.request.objective["name"], None)
     for left, right in zip(evaluator.observations, evaluator.observations[1:]):
         a, b = left["bundle"].parameters, right["bundle"].parameters
         axes = [name for name in a if a[name] != b.get(name)]
@@ -56,15 +95,18 @@ def tune(coordinator, template, path: Path, space: dict, trials: int):
             axis = axes[0]
             response = complete_response(TaskResponse(candidate_id=template.id, axis=axis,
                 a_params=ParamSet(values=a), b_params=ParamSet(values=b), a=left["result"], b=right["result"],
-                unknown_resources=sorted(set(left["result"].metrics)|set(right["result"].metrics))), objective,
+                unknown_resources=sorted(resource_fields)), objective,
                 isinstance(a[axis], (float, int)) and isinstance(b[axis], (float, int)))
             responses.append(response.model_dump(mode="json"))
     for item in evaluator.observations:
         if item is not selected:
             coordinator.revisions.abort(item["revision"].id, "parameter screening only; not the selected validation candidate")
     receipt = {"engine": "existing TaskSearch + OptunaTPETuner", "measurement_scope": "complete project",
+        "resource_fields": resource_fields,
+        "response_interpretation": "Finite differences of observed screening endpoints, not independent causal sensitivities or acceptance evidence. Objective/throughput/workload constants are not automatically labelled resources. Zero resource change is observed, not missing. Kernel counters require separately available diagnostic evidence.",
         "parameter_trials": trials, "space": space, "selected": selected["bundle"].id if selected else None,
         "stats": [s.model_dump(mode="json") for s in search.stats], "responses": responses,
         "observations": [{"bundle": x["bundle"].model_dump(mode="json"), "revision": x["revision"].id,
-                          "result": x["result"].model_dump(mode="json"), "constraints": x["constraints"], "run": x["run"]} for x in evaluator.observations]}
+                          "result": x["result"].model_dump(mode="json"), "constraints": x["constraints"], "run": x["run"],
+                          "diagnostic": x["diagnostic"]} for x in evaluator.observations]}
     return selected, receipt

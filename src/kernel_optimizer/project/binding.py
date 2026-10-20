@@ -11,7 +11,7 @@ from kernel_optimizer.project.discovery import _phase, tensor_description
 
 
 class BindingSession:
-    def __init__(self, adapter, state, specs: list[dict], *, rank=0, world_size=1):
+    def __init__(self, adapter, state, specs: list[dict], *, rank=0, world_size=1, bundle_id=None):
         self.adapter, self.state = adapter, state
         self.rank, self.world_size = rank, world_size
         self.all_specs = {spec["id"]: spec for spec in specs}
@@ -21,7 +21,11 @@ class BindingSession:
         self.references, self.modules = {}, {}
         self.counts = Counter()
         self.fallbacks = Counter()
+        self.reference_calls = Counter()
+        self.routes = Counter()
         self.tracking = True
+        self.diagnostic = False
+        self.bundle_id = bundle_id
         self.restores = []
         self.functionals = {}
         self.handles = []
@@ -45,9 +49,17 @@ class BindingSession:
     def install(self, file: Path, parameters: dict) -> list[str]:
         loader = importlib.util.spec_from_file_location("opop_candidate_" + str(len(self.restores)), file)
         module = importlib.util.module_from_spec(loader); loader.loader.exec_module(module)
+        observed_references = {}
+        for ident, function in self.references.items():
+            def reference(*args, _function=function, _ident=ident, **kwargs):
+                if self.tracking:
+                    self.reference_calls[_ident] += 1
+                return _function(*args, **kwargs)
+            observed_references[ident] = reference
         replacements = module.build({"state": self.state, "models": self.models, "modules": self.modules,
-                                     "references": self.references, "targets": self.specs, "parameters": parameters,
-                                     "rank": self.rank, "world_size": self.world_size, "all_targets": self.all_specs})
+                                     "references": observed_references, "targets": self.specs, "parameters": parameters,
+                                     "rank": self.rank, "world_size": self.world_size, "all_targets": self.all_specs,
+                                     "record_route": self.record_route})
         if not isinstance(replacements, dict):
             raise ValueError("build(context) must return a call_id -> callable mapping")
         if set(replacements) - set(self.specs):
@@ -60,6 +72,14 @@ class BindingSession:
             def wrapped(*args, _function=function, _ident=ident, **kwargs):
                 if self.tracking:
                     self.counts[_ident] += 1
+                if self.diagnostic:
+                    import json
+                    import torch
+                    # Kineto versions may write range names into JSON without
+                    # escaping embedded quotes. A hex payload preserves exact IDs.
+                    label = "opop_candidate::"+json.dumps({"bundle": self.bundle_id, "call": _ident, "phase": _phase.get()}, separators=(",", ":")).encode().hex()
+                    with torch.profiler.record_function(label):
+                        return _function(*args, **kwargs)
                 return _function(*args, **kwargs)
             if spec["kind"] == "functional":
                 self.functionals[ident] = wrapped
@@ -89,6 +109,19 @@ class BindingSession:
         if self.functionals:
             self._create_dispatch_mode()
         return list(replacements)
+
+    def record_route(self, call_id, route):
+        """Optional candidate-declared path telemetry; independent coverage stays mandatory."""
+        if not self.tracking:
+            return
+        if call_id not in self.specs or not isinstance(route, str) or not route:
+            raise ValueError("route telemetry requires a declared call and a nonempty path label")
+        self.routes[(call_id, route)] += 1
+
+    def path_telemetry(self):
+        return {"reference_invocations": dict(self.reference_calls),
+                "candidate_declared_routes": [{"call": c, "route": r, "count": n} for (c, r), n in sorted(self.routes.items())],
+                "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."}
 
     def _create_dispatch_mode(self):
         from torch.utils._python_dispatch import TorchDispatchMode

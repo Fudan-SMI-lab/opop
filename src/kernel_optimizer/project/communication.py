@@ -43,6 +43,17 @@ def probe(context, policy="auto", tool_paths=None):
         for name in ("nsys", "ncu"):
             path = (tool_paths or {}).get(name) or shutil.which(name)
             tools[name] = {"path": path, "status": "available" if path else "unavailable"}
+        from kernel_optimizer.project.telemetry import probe as probe_telemetry
+        from kernel_optimizer.runtime.execution import write_json
+        device_observations = probe_telemetry(context["binding"]["requested_uuid"])
+        telemetry_path = output/f"capability-telemetry-rank-{context['rank']}.json"
+        write_json(telemetry_path, device_observations)
+        tools["device_telemetry"] = {**device_observations, "evidence": str(telemetry_path)}
+        for reading in device_observations.get("fields", []):
+            measured = reading["status"] == "observed"
+            fields.append(Observation(name=reading["name"], status="observed" if measured else "unavailable",
+                value=reading.get("value") if measured else None, unit=reading["unit"], entity=reading["entity"],
+                reason=None if measured else reading.get("reason", reading["status"]), evidence=(str(telemetry_path),)))
         for name in ("pcie_bytes", "nvlink_bytes", "hardware_utilization"):
             fields.append(Observation(name=name, status="unknown", unit="bytes" if name.endswith("bytes") else "fraction",
                 reason="Hardware counters require a successful collector-specific probe; topology and logical payload do not measure traffic"))
