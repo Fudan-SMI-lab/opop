@@ -8,7 +8,14 @@ from kernel_optimizer.project.workflow import ProjectWorkflow
 
 
 def add_project_parser(parser):
-    parser.add_argument("--request", required=True, type=Path)
+    entry = parser.add_mutually_exclusive_group(required=True)
+    entry.add_argument("--request", type=Path)
+    entry.add_argument("--project", help="local project directory or Git repository URL")
+    parser.add_argument("--goal", help="natural-language goal for --project")
+    parser.add_argument("--command", help="existing project launch command, when known")
+    parser.add_argument("--context", action="append", default=[], help="data paths or necessary task constraints")
+    parser.add_argument("--project-ref", help="branch/tag when cloning a repository")
+    parser.add_argument("--intake-only", action="store_true", help="resolve project input without running optimization")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--prepare-only", action="store_true", help="generate and validate the project evaluator")
     parser.add_argument("--feedback", type=Path, help="actual failure evidence from a previous preparation")
@@ -36,6 +43,18 @@ def add_project_parser(parser):
 
 def cmd_optimize_project(args):
     config = load_config(Path(args.config) if args.config else None, args.override)
+    if getattr(args, "project", None):
+        if not args.goal:
+            raise ValueError("--project requires a natural-language --goal")
+        from kernel_optimizer.project.intake import prepare_request
+        resolved = prepare_request(config, project=args.project, goal=args.goal, command=args.command,
+            context=args.context, output=args.output, project_ref=args.project_ref)
+        if resolved["status"] != "ready" or args.intake_only:
+            print(json.dumps(resolved))
+            return 0 if resolved["status"] == "ready" else 2
+        args.request = Path(resolved["request"])
+    elif getattr(args, "intake_only", False):
+        raise ValueError("--intake-only requires --project")
     request = ProjectRequest.model_validate_json(args.request.read_bytes())
     if args.rounds < 1:
         raise ValueError("experiment rounds must be positive")

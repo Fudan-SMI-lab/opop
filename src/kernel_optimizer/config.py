@@ -772,7 +772,17 @@ class UsageConfig(StrictConfig):
     path: Path | None = None
 
 
+class ProjectDefaults(StrictConfig):
+    """Reusable deployment settings for the optional plain-project entry."""
+    devices: list[str] = Field(default_factory=list)
+    lease_dir: Path = Path("~/.cache/opop/device-leases")
+    tools: dict[str, str] = Field(default_factory=dict)
+    profiling: dict[str, Any] = Field(default_factory=dict)
+    worker_timeout_s: float | None = 600.0
+
+
 class AppConfig(StrictConfig):
+    project_defaults: ProjectDefaults = ProjectDefaults()
     usage: UsageConfig = UsageConfig()
     run: RunConfig = RunConfig()
     opencode: OpencodeConfig = OpencodeConfig()
