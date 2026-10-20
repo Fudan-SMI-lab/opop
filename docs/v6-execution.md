@@ -24,7 +24,7 @@
 | 本次真实调用 | `zhipuai/glm-5.3` 成功读取 ResNet 源码并生成分析，51.01 秒；4 条 assistant 消息，完整会话报告成本 $0.0269474；[回执](evidence/v6-development-20261020/provider-receipt.json) |
 | 必要回归 | 203 passed；包括旧入口、资源反馈、worker/store、配置和本次变更 |
 | 完整会话用量 | P0 已实现按 session/message 去重的只统计账本；[P0 证据](evidence/v6-p0-20261020/README.md) |
-| 通用项目工作流 | 三项目自动评测已通过；跨目标／保留集、整版回传、可行探索分支、真实限流恢复已接入，P3–P6 的剩余矩阵继续运行 |
+| 通用项目工作流 | 三项目自动评测、跨目标／保留集、自动整版推广、通信闭环和正式对照已完成；剩余 Qwen 有效多候选组合继续验证，见[逐项验收](v6-acceptance.md) |
 
 本次测试删除与取舍：
 
@@ -45,7 +45,7 @@
 | P3，自动探索通过 | module／functional 自动发现、依赖与包含闭包、真实选组与联合候选、schema 自动修复、AB／BA 评价及逐组反馈；可行非贪心前沿完成四轮，整版推广接受 | [真实联合候选](evidence/v6-p3-20261020/README.md)；[分支与整版评价](evidence/v6-p6-branches-20261020/README.md)；[自动推广结果](evidence/v6-post-recovery-20261020/README.md) |
 | P4，组合、整版回传与资源响应通过 | 旧 TaskSearch/TPE 项目适配；多候选完整回装、质量／覆盖分离、整版独立比较与 CAS；提交后重分组 | ResNet 两个 bundle 同时执行但组合变慢，拒绝；另一个 Graph 版本整版复测后提交；外层 Graph 绕过旧 bundle 的案例输出正确但覆盖失败，已单独归因；[组合证据](evidence/v6-p6-branches-20261020/README.md)与[资源反馈后接受版本](evidence/v6-feedback-closure-20261020/README.md) |
 | P5，当前硬件闭环通过 | 通信能力发现、Torch/Nsys、实际 transport；13/13 collective 跨 rank 匹配及 bucket／组关联；权限不足实测降级；真实通信策略通过两步完整质量后被整步约束拒绝 | [采集证据](evidence/v6-p5-20261020/README.md)；[最新负例](evidence/v6-post-recovery-20261020/README.md)，没有可靠通信加速结论 |
-| P6，进行中 | 八目标均已进入真实优化；新纯函数入口和保留 shape/seed 已验证；11 条正式对照已完成，继续分支恢复及有效多候选验收 | [目标切换及保留集](evidence/v6-p6-branches-20261020/README.md)；[正式 B 组 22 轮结果](evidence/v6-resumed-20261020/README.md)，失败和无改善均保留 |
+| P6，进行中 | 八目标均已进入真实优化；新纯函数入口和保留 shape/seed 已验证；11 条正式对照已完成，继续 Qwen 有效多候选验收 | [目标切换及保留集](evidence/v6-p6-branches-20261020/README.md)；[正式 B 组 22 轮结果](evidence/v6-resumed-20261020/README.md)，失败和无改善均保留 |
 
 P1 的分布式执行设施与 P5 的通信采集共用数据模型；可提前做真实双 rank 探针，但不能把探针成功当作自动优化闭环成功。先贯通 ResNet，再接入 Qwen；DDP 为首个通信主案例。Qwen TP2 对单卡质量不一致仍是扩展案例的待解决问题，不阻塞前述三项目主线。
 
@@ -84,6 +84,12 @@ DDP 两个有效 bundle 在双 rank 共同执行并通过完整质量，但组�
 随后完成 DDP 成功候选的独立复测（146.083→125.422 ms，通过）、保留形状（质量通过但收益未过噪声）及通信目标交叉评价（整步约束通过但通信收益不稳定，拒绝）。同一父版本的 A、B、A+B 全部通过质量；交互范围跨零，不虚构逐组贡献。新增 driver `649f16b` 将合法子项和整版分别实测，详见[独立复核与交互](evidence/v6-post-recovery-20261020/README.md)。
 
 真实角色检查还发现系统 Python 与 worker 的 Torch／Transformers 版本不同。项目模式新增实际 worker 环境信息及解释器优先 PATH；真实 Agent 已确认默认／显式 Python 均对应开发环境。该更正只影响检查环境，不改变质量标准或将历史失败追认成功；四个正在运行的开发会话已收到事实更正。
+
+**15:40（UTC+8）的进展：** 四轮 ResNet 自动探索完成，并从可行非贪心分支自动推广整版，0.730554→0.668637 ms。DDP 最新通信候选两步完整质量精确通过，但 261.574 ms 的整步超过 161.422 ms 原始约束，因此拒绝；通信闭环已验证，没有可靠通信加速结论。
+
+Qwen batch=8 在四次 Graph 质量失败后生成 eager 解码候选，完整质量精确一致，62 次调用无父实现回退；配对生成吞吐 307.644→349.959 token/s，接受并提交。interactive 多候选 Graph 则仍因 KV 守卫回退且收益未过噪声；该失败没有计作有效共存。当前从已接受的 batch=8 版本开展互补组验证，保留原 decoder bundle，由真实 Selection Agent 自行选组，使用独立冻结实现 `790286a`。
+
+`6d71a3c` 与 `790286a` 已推送并同步 box4-2。新增通用候选异常／False 条件诊断，经真实 TaskSearch 自动触发验证；组合执行契约进入新生成、修复和恢复请求，补足安装阶段与实际 phase／dispatch 的语义。4 项初次诊断检查及后续 7 项角色／恢复相关检查分别记录，不重复相加。完整产物见[恢复后的验收证据](evidence/v6-post-recovery-20261020/README.md)。
 
 ## 命令与运行位置
 

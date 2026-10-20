@@ -52,7 +52,23 @@ Qwen `trial-023e79293c` 在旧冻结实现下数值及配对计时通过，69.51
 
 新增通用 `candidate_diagnostics` 采集器对原候选字节做独立诊断。第一次追踪发现 `_try_build_graph` 返回 False，但 Python 报告的行号处于 `with` 清理语句；补充最近执行行后，第二次明确定位到 226–229 行：捕获、replay 和同步成功之后，`torch.equal(static_out.logits, warm.logits)` 不成立而回退。这不证明差异超过原质量阈值，也不证明可以忽略差异；后续 Agent 必须读取实际源码和原契约修复。诊断还保留父候选自测中的异常，未将其混为新候选失败原因。4 项相关检查在 box4-2 通过，真实诊断分别保留源码哈希和 worker 回执。
 
-Qwen 有效多候选组合和仍在生成的吞吐候选尚需完成。本目录暂不代表 P6 全部完成。
+## 批量 Qwen 吞吐的有效新候选
+
+前四次 Graph 候选都未通过完整质量检查；第五次 `trial-0b17ae710c` 改为 eager 解码、复用 KV 工作区及 RoPE 数据。框架使用原冻结实现 `d750162`、原 batch=8／prompt=256／生成32 token 契约重新测量：两个连续步骤各比较 38,895,872 个元素，最大误差为0；62 次 decode 根调用全部执行 `eager_flat_decode_ws`，`context.references` 调用为0。
+
+独立 AB/BA 的生成吞吐为父版本 307.644→候选 349.959 token/s，提升约13.8%。两对收益分别为 50.139／34.491 token/s，超过对应噪声 8.664／5.349，接受并提交 revision `ccfeeb296e5581c30d9e23a96750f209f9212e0cb166eeb5735dda3bdf13fe69`。这是同一固定 workload 的结果；不能与 batch=1 TTFT 的数值相减，推导纯粹的目标选择效应。
+
+失败反馈实际促成了不同实现，并经真实 GPU 检验成立；Agent 对历史失败根因的推断仍是候选分析，不因新方案通过就追认全部因果解释。原四次失败和相应成本继续保留。
+
+## Qwen 组合验证的实际调整
+
+`trial-fa955139a3` 将 Graph 初始化移至真实 prefill 调用，使用当时已启用的父版本 dispatch，代码也加入完整 greedy 自检，但本次在更早的 KV 守卫已经退出。筛查和 AB/BA 的外部质量均通过，但新路径仍为 `prefill_init_verify_parent`。自动诊断定位到 `_pairs_close` 的 key tensor `torch.allclose` 失败，随后 `_lazy_init` 禁用 Graph；这不能推导所有 logits 检查也失败，更不能证明内部 KV 差异的具体数值来源。
+
+其配对 TTFT 65.866→65.338 ms，收益 −1.621／2.676 ms，均未超过各自噪声规则，因此拒绝，未计作有效共存。原候选、诊断、全部调用与实际失败成本保留。
+
+接下来在独立目录 `p6-qwen-throughput-composition-c` 从已经接受的 batch=8 eager 解码版本验证互补候选。此控制实验让 Selection Agent 自行在真实 groups 中选 group/joint 范围，并要求保留已有 decoder bundle；没有人工指定算子组，也没有改变该任务的 workload、目标、质量或采样协议。默认工作流仍支持四种 scope。这个调整验证的是同一 Qwen 项目的另一个明确负载，不能将结果补写成此前 interactive Graph 已通过。
+
+Qwen 有效多候选组合仍需完成。本目录暂不代表 P6 全部完成。
 
 自动触发另经真实 TaskSearch 验证：`p6-qwen-automatic-diagnostics-c` 使用原候选字节和参数，筛查观察到全部经过原实现后自行运行诊断，再次定位上述 logits 条件。筛查和诊断的源码哈希均为 `cc2c1b9634d05a488ceda558a96641b79c3583c93245dad79aa9c9a98098334f`；结果保存进参数反馈，接受指针未改变，不计作新优化收益。
 
