@@ -77,6 +77,19 @@ class CandidateDiagnostics:
                 "ranks": [{"file": str(p), **json.loads(p.read_text())} for p in files]}
 
 
+class ExecutionTimeline:
+    def collect(self, search, revision):
+        import json
+        from pathlib import Path
+        from kernel_optimizer.project.timeline import cross_rank
+        run = search.execute(revision, "timeline-"+uuid4().hex[:10], "execution_timeline")
+        ranks = []
+        for rank in run.get("ranks", []):
+            ranks.extend(json.loads(Path(p).read_text()) for p in rank.get("result", {}).get("reports", []))
+        return {"status": "observed" if run["status"] == "passed" and ranks else "unavailable",
+                "ranks": ranks, "cross_rank": cross_rank(ranks), "run": run}
+
+
 def configured(profiling):
     registry = Registry()
     registry.register("torch_communication", TorchCommunication())
@@ -84,6 +97,7 @@ def configured(profiling):
     registry.register("device_telemetry", DeviceTelemetry())
     registry.register("collective_calibration", CollectiveCalibration())
     registry.register("candidate_diagnostics", CandidateDiagnostics())
+    registry.register("execution_timeline", ExecutionTimeline())
     for name, factory in profiling.get("collector_plugins", {}).items():
         module, attribute = factory.split(":", 1)
         registry.register(name, getattr(importlib.import_module(module), attribute)())
@@ -91,7 +105,7 @@ def configured(profiling):
 
 
 def diagnostic_names(profiling):
-    return ["torch", "nsys", "device_telemetry", "collective_calibration", "candidate_diagnostics",
+    return ["torch", "nsys", "device_telemetry", "collective_calibration", "candidate_diagnostics", "execution_timeline",
             *profiling.get("collector_plugins", {})]
 
 

@@ -140,6 +140,13 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
     import torch
     parameters = context["parameters"]
     request = parameters["request"]
+    action = parameters.get("action", "controls")
+    ablation = parameters.get("collector_options", {}) if action == "binding_ablation" else {}
+    passthrough = set(ablation.get("passthrough_bundles", []))
+    if passthrough - {b["id"] for b in parameters.get("bundles", [])}:
+        raise ValueError("diagnostic passthrough references an absent bundle")
+    if ablation.get("direct") and parameters.get("bundles"):
+        raise ValueError("direct adapter ablation requires an unmodified revision")
     adapter = load_adapter(Path(parameters["adapter"]))
     state = adapter.prepare(context, request)
     cuda = str(context["device"]).startswith("cuda")
@@ -156,7 +163,8 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
         started = time.perf_counter_ns()
         binding = BindingSession(adapter, state, bundle["specs"], rank=context["rank"], world_size=context["world_size"], bundle_id=bundle["id"])
         binding.tracking = False
-        installed = binding.install(Path(bundle["file"]), bundle.get("parameters", {}))
+        installed = binding.install(Path(bundle["file"]), bundle.get("parameters", {}),
+                                    diagnostic_passthrough=bundle["id"] in passthrough)
         expected = bundle.get("expected_calls_by_rank", {}).get(str(context["rank"]), bundle["expected_calls"])
         bundle = {**bundle, "expected_calls": expected}
         if set(installed) != set(expected):
@@ -199,6 +207,8 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
         return bool(flag.item())
 
     def operation(*, track=False):
+        if ablation.get("direct"):
+            return adapter.run(state)
         try:
             with ExitStack() as stack:
                 for _, binding in bindings:
@@ -256,7 +266,6 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
             raise ValueError(f"evaluator omitted objective {request['objective']['name']}")
         return {"metrics": metrics, "metric_samples": metric_samples, "diagnostics": diagnostics}
 
-    action = parameters.get("action", "controls")
     if action == "candidate_diagnostics":
         adapter.reset(state)
         for _ in range(request["continuous_steps"]):
@@ -282,6 +291,12 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
         for _ in range(request["warmup"]):
             adapter.reset(state); invoke()
         return nsys_capture(adapter, state, operation, synchronize)
+    if action == "execution_timeline":
+        from kernel_optimizer.project.timeline import capture
+        mode("measure")
+        for _ in range(request["warmup"]):
+            adapter.reset(state); invoke()
+        return capture(adapter, state, operation, synchronize, context)
     if action == "profile":
         mode("profile")
         from kernel_optimizer.project.discovery import capture
@@ -319,7 +334,7 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
         write_json(destination, observed)
         return {"valid": True, "discovery": str(destination), "coverage": observed["coverage"],
                 "call_sites": len(observed["calls"]), "groups": len(observed["groups"])}
-    if action == "evaluate":
+    if action in {"evaluate", "binding_ablation"}:
         reference = torch.load(reference_path, map_location="cpu", weights_only=True)
         adapter.reset(state)
         checks = []
@@ -343,6 +358,9 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
         return {"valid": valid, "checks": checks, "coverage": coverage, "math_policy_unchanged": unchanged,
                 "setup": setup,
                 "samples": samples, **(summarize(samples) if samples else {"metrics": {}}),
+                **({"diagnostic_ablation": {"options": ablation, "scope":
+                    "Quality-checked diagnostic; no candidate acceptance. Passthrough omits candidate build and computation; measures site binding, not a deployable candidate."}}
+                   if action == "binding_ablation" else {}),
                 "bundle_hashes": context.get("revision", {}).get("bundle_hashes", {})}
     if action != "controls":
         raise ValueError(f"unsupported evaluator action: {action}")

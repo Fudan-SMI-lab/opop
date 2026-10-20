@@ -46,9 +46,7 @@ class BindingSession:
                     function = getattr(function, part)
                 self.references[ident] = function
 
-    def install(self, file: Path, parameters: dict) -> list[str]:
-        loader = importlib.util.spec_from_file_location("opop_candidate_" + str(len(self.restores)), file)
-        module = importlib.util.module_from_spec(loader); loader.loader.exec_module(module)
+    def install(self, file: Path, parameters: dict, *, diagnostic_passthrough=False) -> list[str]:
         observed_references = {}
         for ident, function in self.references.items():
             def reference(*args, _function=function, _ident=ident, **kwargs):
@@ -56,7 +54,14 @@ class BindingSession:
                     self.reference_calls[_ident] += 1
                 return _function(*args, **kwargs)
             observed_references[ident] = reference
-        replacements = module.build({"state": self.state, "models": self.models, "modules": self.modules,
+        if diagnostic_passthrough:
+            # Explicit ablation only: preserve the binding sites but omit the
+            # candidate installer and computation. This cannot publish a version.
+            replacements = observed_references
+        else:
+            loader = importlib.util.spec_from_file_location("opop_candidate_" + str(len(self.restores)), file)
+            module = importlib.util.module_from_spec(loader); loader.loader.exec_module(module)
+            replacements = module.build({"state": self.state, "models": self.models, "modules": self.modules,
                                      "references": observed_references, "targets": self.specs, "parameters": parameters,
                                      "rank": self.rank, "world_size": self.world_size, "all_targets": self.all_specs,
                                      "record_route": self.record_route})

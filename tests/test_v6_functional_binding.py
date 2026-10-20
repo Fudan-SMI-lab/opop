@@ -83,3 +83,34 @@ def run(context):
     receipt = LocalExecutor().run(ExecutionRequest(entry=entry, cwd=tmp_path, output=tmp_path/"run",
         lease_dir=tmp_path/"leases", worker_timeout_s=30))
     assert receipt["status"] == "passed", receipt
+
+
+def test_passthrough_retains_parent_replacement_and_skips_candidate_build(tmp_path):
+    entry = tmp_path/"passthrough.py"
+    entry.write_text('''
+from pathlib import Path
+from types import SimpleNamespace
+import torch
+from kernel_optimizer.project.discovery import capture
+from kernel_optimizer.project.binding import BindingSession
+
+def run(context):
+    model=torch.nn.ReLU(); x=torch.tensor([-1.,2.])
+    adapter=SimpleNamespace(models=lambda state:{"model":model}, reset=lambda state:None, run=lambda state:model(x))
+    observed=capture(adapter,None,Path(context["output"]),0)
+    sites=[c for c in observed["calls"] if c["kind"]=="module"]
+    parent_file=Path(context["output"])/"parent.py"
+    parent_file.write_text("def build(c):\\n return {k:lambda x,ref=c['references'][k]:ref(x)+3 for k in c['targets']}\\n")
+    parent=BindingSession(adapter,None,sites); parent.install(parent_file,{})
+    unused=Path(context["output"])/"candidate.py"; unused.write_text("raise RuntimeError('must not load')\\n")
+    child=BindingSession(adapter,None,sites); child.install(unused,{},diagnostic_passthrough=True)
+    assert adapter.run(None).tolist()==[3.,5.]
+    assert sum(parent.counts.values())==sum(child.counts.values())==1
+    assert sum(child.reference_calls.values())==1
+    child.close(); parent.close()
+    assert adapter.run(None).tolist()==[0.,2.]
+    return {"retained_parent":True}
+''')
+    receipt = LocalExecutor().run(ExecutionRequest(entry=entry, cwd=tmp_path, output=tmp_path/"run",
+        lease_dir=tmp_path/"leases", worker_timeout_s=30))
+    assert receipt["status"] == "passed", receipt
