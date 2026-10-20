@@ -20,9 +20,9 @@ class BindingSession:
         self.execution_plan = {"requested": backend, "effective": "direct",
                                "reason": "no functional replacements"}
         self.scope_enabled = False
-        self._invoking = False
-        self._scope_depth = 0
-        self._scope_frames = []
+        self._invoking = ContextVar("binding_invoking", default=False)
+        self._scope_depth = ContextVar("binding_scope_depth", default=0)
+        self._scope_frames = ContextVar("binding_scope_frames", default=())
         self.adapter, self.state = adapter, state
         self.rank, self.world_size = rank, world_size
         self.all_specs = {spec["id"]: spec for spec in specs}
@@ -173,18 +173,25 @@ class BindingSession:
                     def before(mod, args, target=target):
                         ident = hashlib.sha256((target+"|"+_phase.get()).encode()).hexdigest()[:24]
                         binding.active_modules.set((*binding.active_modules.get(), ident))
-                        entered = binding.scope_enabled and binding._invoking and ident in parents and binding._scope_depth == 0
+                        if not binding.scope_enabled:
+                            return
+                        entered = binding._invoking.get() and ident in parents and binding._scope_depth.get() == 0
                         if entered:
                             binding._mode.__enter__()
-                            binding._scope_depth += 1
-                        binding._scope_frames.append((id(mod), entered))
+                            binding._scope_depth.set(binding._scope_depth.get()+1)
+                        binding._scope_frames.set((*binding._scope_frames.get(), (id(mod), entered)))
                     def after(mod, args, result):
-                        # Another pre-hook can fail before ours is called.
-                        if not binding._scope_frames or binding._scope_frames[-1][0] != id(mod):
+                        if not binding.scope_enabled:
+                            binding.active_modules.set(binding.active_modules.get()[:-1])
                             return
-                        _, entered = binding._scope_frames.pop()
+                        # Another pre-hook can fail before ours is called.
+                        frames = binding._scope_frames.get()
+                        if not frames or frames[-1][0] != id(mod):
+                            return
+                        _, entered = frames[-1]
+                        binding._scope_frames.set(frames[:-1])
                         if entered:
-                            binding._scope_depth -= 1
+                            binding._scope_depth.set(binding._scope_depth.get()-1)
                             binding._mode.__exit__(None, None, None)
                         binding.active_modules.set(binding.active_modules.get()[:-1])
                     self.handles.append(module.register_forward_pre_hook(before))
@@ -213,8 +220,7 @@ class BindingSession:
 
     @contextmanager
     def activate(self):
-        previous = self._invoking
-        self._invoking = True
+        token = self._invoking.set(True)
         try:
             if self._mode is not None and not self.scope_enabled:
                 with self._mode:
@@ -222,7 +228,7 @@ class BindingSession:
             else:
                 yield
         finally:
-            self._invoking = previous
+            self._invoking.reset(token)
 
     def invoke(self):
         with self.activate():

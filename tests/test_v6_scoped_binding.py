@@ -64,12 +64,21 @@ def run(context):
         raise AssertionError("exception missing")
     except RuntimeError as exc:
         assert str(exc) == "intentional"
-    assert binding._scope_depth == 0
-    assert not binding._scope_frames
+    assert binding._scope_depth.get() == 0
+    assert not binding._scope_frames.get()
     assert binding.active_modules.get() == ()
     state["fail"] = False
     state["x"] = torch.tensor([-1., 2.])
     assert binding.invoke().tolist() == [7., 19.]
+    from concurrent.futures import ThreadPoolExecutor
+    def threaded(_):
+        result = binding.invoke().tolist()
+        assert binding.active_modules.get() == ()
+        assert binding._scope_depth.get() == 0
+        assert not binding._scope_frames.get()
+        return result
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert list(pool.map(threaded, range(4))) == [[7., 19.]] * 4
     binding.close()
     assert adapter.run(state).tolist() == [0., 12.]
     return {"plan": binding.execution_plan, "relu_dispatches": relus, "restored": True}
