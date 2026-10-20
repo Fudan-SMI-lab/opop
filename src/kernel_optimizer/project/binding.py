@@ -57,7 +57,8 @@ class BindingSession:
                     function = getattr(function, part)
                 self.references[ident] = function
 
-    def install(self, file: Path, parameters: dict, *, diagnostic_passthrough=False) -> list[str]:
+    def install(self, file: Path, parameters: dict, *, diagnostic_passthrough=False,
+                passthrough_calls=None) -> list[str]:
         observed_references = {}
         for ident, function in self.references.items():
             def reference(*args, _function=function, _ident=ident, **kwargs):
@@ -68,7 +69,10 @@ class BindingSession:
         if diagnostic_passthrough:
             # Explicit ablation only: preserve the binding sites but omit the
             # candidate installer and computation. This cannot publish a version.
-            replacements = observed_references
+            calls = set(observed_references) if passthrough_calls is None else set(passthrough_calls)
+            if calls - observed_references.keys():
+                raise ValueError("passthrough references an undeclared local replacement site")
+            replacements = {ident: observed_references[ident] for ident in calls}
         else:
             loader = importlib.util.spec_from_file_location("opop_candidate_" + str(len(self.restores)), file)
             module = importlib.util.module_from_spec(loader); loader.loader.exec_module(module)

@@ -48,3 +48,31 @@ def test_cost_preserves_reverse_order_and_rank_maxima(tmp_path):
     assert result['status'] == 'observed'
     assert result['elapsed_pairs'] == [{'pair': 0, 'parent': 13, 'passthrough': 29},
                                        {'pair': 1, 'parent': 14, 'passthrough': 31}]
+
+
+def test_passthrough_does_not_install_every_affected_descendant(tmp_path):
+    import torch
+    from kernel_optimizer.project.binding import BindingSession
+    from kernel_optimizer.project.discovery import tensor_description
+
+    model = torch.nn.Sequential(torch.nn.Linear(2, 2), torch.nn.ReLU())
+    x = torch.tensor([[1., -2.]])
+    expected = model(x).detach().clone()
+    adapter = SimpleNamespace(models=lambda state: {'model': model}, run=lambda state: model(state))
+    specs = [{'id': 'root', 'kind': 'module', 'target': 'model', 'phase': 'run',
+              'signatures': [{'args': tensor_description((x,)), 'kwargs': {}}]},
+             {'id': 'child', 'kind': 'functional', 'target': 'aten.relu.default', 'phase': 'run',
+              'signatures': []}]
+    binding = BindingSession(adapter, x, specs)
+    # The affected closure contains a functional descendant; the candidate only
+    # replaces its enclosing module. The ablation must not create global dispatch.
+    installed = binding.install(tmp_path/'not-executed.py', {}, diagnostic_passthrough=True,
+                                passthrough_calls=['root'])
+    try:
+        assert installed == ['root']
+        assert binding._mode is None
+        torch.testing.assert_close(binding.invoke(), expected)
+        assert dict(binding.counts) == {'root': 1}
+    finally:
+        binding.close()
+    torch.testing.assert_close(adapter.run(x), expected)

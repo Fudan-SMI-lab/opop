@@ -162,13 +162,14 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
         if cuda:
             torch.cuda.synchronize(); torch.cuda.reset_peak_memory_stats()
         started = time.perf_counter_ns()
+        expected = bundle.get("expected_calls_by_rank", {}).get(str(context["rank"]), bundle["expected_calls"])
         binding = BindingSession(adapter, state, bundle["specs"], rank=context["rank"], world_size=context["world_size"],
                                  bundle_id=bundle["id"],
                                  backend=ablation.get("binding_backend", request.get("binding_backend", "legacy")))
         binding.tracking = False
         installed = binding.install(Path(bundle["file"]), bundle.get("parameters", {}),
-                                    diagnostic_passthrough=bundle["id"] in passthrough)
-        expected = bundle.get("expected_calls_by_rank", {}).get(str(context["rank"]), bundle["expected_calls"])
+                                    diagnostic_passthrough=bundle["id"] in passthrough,
+                                    passthrough_calls=expected)
         bundle = {**bundle, "expected_calls": expected}
         if set(installed) != set(expected):
             raise ValueError("installed candidate sites differ from the declared bundle")
