@@ -141,7 +141,7 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
     parameters = context["parameters"]
     request = parameters["request"]
     action = parameters.get("action", "controls")
-    ablation = parameters.get("collector_options", {}) if action == "binding_ablation" else {}
+    ablation = parameters.get("collector_options", {}) if action in {"binding_ablation", "python_runtime_profile"} else {}
     passthrough = set(ablation.get("passthrough_bundles", []))
     if passthrough - {b["id"] for b in parameters.get("bundles", [])}:
         raise ValueError("diagnostic passthrough references an absent bundle")
@@ -293,6 +293,12 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
         return nsys_capture(adapter, state, operation, synchronize)
     if action == "execution_timeline":
         from kernel_optimizer.project.timeline import capture
+        mode("measure")
+        for _ in range(request["warmup"]):
+            adapter.reset(state); invoke()
+        return capture(adapter, state, operation, synchronize, context)
+    if action == "python_runtime_profile":
+        from kernel_optimizer.project.python_profile import capture
         mode("measure")
         for _ in range(request["warmup"]):
             adapter.reset(state); invoke()

@@ -54,16 +54,32 @@ def test_cross_rank_requires_shared_domain_and_unique_submission():
         return {"rank": rank, "clock": {"status": "observed", "offset_bounds_us": [100, 104],
                                        "domain": {"host": "a", "boot_id": "boot", "clock": "CLOCK_MONOTONIC"}},
                 "communication": {"collectives": [{"process_group": "0", "sequence": 1, "operation": "allreduce",
-                    "participants": "[0, 1]", "cpu_ranges": [{"name": "c10d::allreduce_", "start_us": start}]}]}}
+                    "participants": "[0, 1]", "cpu_submission": {"status": "observed", "name": "c10d::allreduce_", "start_us": start}}]}}
     rows = [report(0, 10), report(1, 20)]
     assert cross_rank(rows)["collectives"][0]["cpu_submit_spread_bounds_us"] == [6, 14]
     invalid = deepcopy(rows)
     invalid[1]["clock"]["domain"]["boot_id"] = "other-host-boot"
     assert cross_rank(invalid)["collectives"][0]["status"] == "unknown"
     invalid = deepcopy(rows)
-    invalid[1]["communication"]["collectives"][0]["cpu_ranges"] *= 2
+    invalid[1]["communication"]["collectives"][0]["cpu_submission"]["status"] = "unknown"
     assert cross_rank(invalid)["collectives"][0]["status"] == "unknown"
     assert cross_rank(rows[:1])["collectives"][0]["status"] == "unknown"
+
+
+def test_nested_c10d_wrappers_use_unique_innermost_submission():
+    trace = {"traceEvents": [
+        event("c10d::allreduce_", 0, 30),
+        event("c10d::allreduce_", 10, 10),
+        event("cudaLaunchKernel", 12, 1, "cuda_runtime", correlation=4),
+        event("nccl", 25, 10, "kernel", device=0, correlation=4,
+              **{"Seq": 1, "Process Group Name": "0", "Process Group Ranks": "[0, 1]",
+                 "Collective name": "allreduce"})]}
+    c = analyze(trace, rank=0)["communication"]["collectives"][0]
+    assert len(c["cpu_ranges"]) == 2
+    assert c["cpu_submission"]["start_us"] == 10
+    trace["traceEvents"].insert(0, event("c10d::different_overlap", 11, 30))
+    c = analyze(trace, rank=0)["communication"]["collectives"][0]
+    assert c["cpu_submission"]["status"] == "unknown"
 
 
 def test_repeated_gradient_callbacks_are_kept_without_guessing_microstep():

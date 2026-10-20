@@ -20,13 +20,14 @@ def summarize(report):
             "gradient_hooks_enabled": report["gradient_hooks_enabled"], "clock": report["clock"],
             "communication": {k: communication[k] for k in keys},
             "collectives": [{k: c[k] for k in ("sequence", "operation", "logical_input_bytes", "cpu_ranges",
-                                              "cuda_launches", "launch_links", "gpu_input_ready", "consumer_completion")}
+                                              "cuda_launches", "cpu_submission", "launch_links", "gpu_input_ready", "consumer_completion")}
                             for c in communication["collectives"]],
             "devices": {d: {k: v for k, v in data.items() if not k.endswith("intervals_us")}
                         for d, data in report["devices"].items()},
             "cuda_synchronization": report["cuda_synchronization"],
             "copies_and_memsets": {"count": len(report["copies_and_memsets"]),
                                   "inclusive_duration_us": sum(v["duration_us"] for v in report["copies_and_memsets"])},
+            "gradient_stream_markers": report.get("gradient_stream_markers"),
             "gradient_readiness": {"events": len(report["gradient_readiness"]["events"]),
                 "buckets": [{k: v for k, v in bucket.items() if k != "cpu_post_accumulate_times_us"}
                             for bucket in report["gradient_readiness"]["buckets"]]}}

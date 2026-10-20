@@ -82,12 +82,25 @@ class ExecutionTimeline:
         import json
         from pathlib import Path
         from kernel_optimizer.project.timeline import cross_rank
-        run = search.execute(revision, "timeline-"+uuid4().hex[:10], "execution_timeline")
+        options = search.request.profiling.get("execution_timeline", {})
+        run = search.execute(revision, "timeline-"+uuid4().hex[:10], "execution_timeline",
+                             collector_options=options)
         ranks = []
         for rank in run.get("ranks", []):
             ranks.extend(json.loads(Path(p).read_text()) for p in rank.get("result", {}).get("reports", []))
         return {"status": "observed" if run["status"] == "passed" and ranks else "unavailable",
                 "ranks": ranks, "cross_rank": cross_rank(ranks), "run": run}
+
+
+class PythonRuntime:
+    def collect(self, search, revision):
+        import json
+        from pathlib import Path
+        run = search.execute(revision, "python-runtime-"+uuid4().hex[:10], "python_runtime_profile")
+        ranks = [json.loads(Path(r["result"]["report"]).read_text()) for r in run.get("ranks", [])
+                 if r.get("result", {}).get("report")]
+        return {"status": "observed" if run["status"] == "passed" and ranks else "unavailable",
+                "ranks": ranks, "run": run}
 
 
 def configured(profiling):
@@ -98,6 +111,7 @@ def configured(profiling):
     registry.register("collective_calibration", CollectiveCalibration())
     registry.register("candidate_diagnostics", CandidateDiagnostics())
     registry.register("execution_timeline", ExecutionTimeline())
+    registry.register("python_runtime", PythonRuntime())
     for name, factory in profiling.get("collector_plugins", {}).items():
         module, attribute = factory.split(":", 1)
         registry.register(name, getattr(importlib.import_module(module), attribute)())
@@ -105,7 +119,7 @@ def configured(profiling):
 
 
 def diagnostic_names(profiling):
-    return ["torch", "nsys", "device_telemetry", "collective_calibration", "candidate_diagnostics", "execution_timeline",
+    return ["torch", "nsys", "device_telemetry", "collective_calibration", "candidate_diagnostics", "execution_timeline", "python_runtime",
             *profiling.get("collector_plugins", {})]
 
 

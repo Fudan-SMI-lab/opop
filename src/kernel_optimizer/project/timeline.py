@@ -87,6 +87,20 @@ def analyze(trace, *, rank, anchors=(), domain=None, gradients=None, inventory=N
                           "interpretation": "enqueue-to-start interval includes scheduling/dependencies; not pure transport or GPU input readiness"})
         collective["cpu_ranges"] = sorted(submit.values(), key=lambda r: r["start_us"])
         collective["cuda_launches"] = sorted(api.values(), key=lambda r: r["start_us"])
+        scopes = [r for r in collective["cpu_ranges"] if "wait" not in r["name"].lower()]
+        # Native dispatch can produce nested ranges with the same c10d name.
+        # Select a uniquely innermost enclosing submission, retaining all raw
+        # wrappers. Crossing ranges or several launches with distinct submits
+        # remain ambiguous.
+        inner = [r for r in scopes if not any(
+            q is not r and q["pid"] == r["pid"] and q["tid"] == r["tid"]
+            and r["start_us"] <= q["start_us"]
+            and q["start_us"]+q["duration_us"] <= r["start_us"]+r["duration_us"]
+            and (q["start_us"], q["duration_us"]) != (r["start_us"], r["duration_us"])
+            for q in scopes)]
+        collective["cpu_submission"] = (
+            {"status": "observed", **inner[0], "method": "unique innermost c10d range enclosing correlated CUDA launch"}
+            if len(inner) == 1 else {"status": "unknown", "reason": "no unique enclosing CPU submission"})
         collective["launch_links"] = links
         collective["gpu_input_ready"] = {"status": "unknown", "reason": "CPU submission does not establish GPU producer completion"}
         collective["consumer_completion"] = {"status": "unknown", "reason": "no unique data-consumer/event dependency proven"}
@@ -162,11 +176,10 @@ def cross_rank(reports):
             continue
         bounds = {}
         for report, item in members:
-            candidates = [v for v in item["cpu_ranges"] if "wait" not in v["name"].lower()]
-            # Several distinct c10d scopes are not a unique submit timestamp.
-            if len(candidates) != 1:
+            submission = item.get("cpu_submission", {})
+            if submission.get("status") != "observed":
                 break
-            ts = candidates[0]["start_us"]
+            ts = submission["start_us"]
             bounds[str(report["rank"])] = [ts+offset for offset in report["clock"]["offset_bounds_us"]]
         if len(bounds) != len(participants):
             continue
@@ -187,7 +200,9 @@ def capture(adapter, state, operation, synchronize, context):
     if repetitions < 1:
         raise ValueError("timeline repeats must be positive")
     hook_gradients = bool(options.get("gradient_readiness", True)) and context["world_size"] > 1
+    gpu_markers = bool(options.get("gpu_gradient_markers", False)) and hook_gradients and torch.cuda.is_available()
     labels, parameters, handles, missing = {}, {}, [], []
+    marker_records, origin_events = [], {}
     if hook_gradients:
         for root, model in adapter.models(state).items():
             for name, parameter in model.named_parameters(remove_duplicate=False):
@@ -204,7 +219,10 @@ def capture(adapter, state, operation, synchronize, context):
                 continue
             def ready(parameter, label=label):
                 with torch.profiler.record_function(label):
-                    pass
+                    if gpu_markers and parameter.device.type == "cuda":
+                        event = torch.cuda.Event(enable_timing=True)
+                        event.record(torch.cuda.current_stream(parameter.device))
+                        marker_records.append((label, str(parameter.device), event))
             handles.append(register(ready))
     boot = Path("/proc/sys/kernel/random/boot_id")
     domain = {"host": platform.node(), "boot_id": boot.read_text().strip() if boot.exists() else None,
@@ -218,6 +236,14 @@ def capture(adapter, state, operation, synchronize, context):
             elif torch.distributed.is_initialized():
                 torch.distributed.barrier()
             synchronize()
+            marker_records.clear()
+            origin_events.clear()
+            if gpu_markers:
+                for parameter, _ in parameters.values():
+                    if parameter.device.type == "cuda" and str(parameter.device) not in origin_events:
+                        origin = torch.cuda.Event(enable_timing=True)
+                        origin.record(torch.cuda.current_stream(parameter.device))
+                        origin_events[str(parameter.device)] = origin
             anchors = []
             def anchor(suffix):
                 name = f"opop.clock::{index}:{suffix}"
@@ -242,6 +268,12 @@ def capture(adapter, state, operation, synchronize, context):
             inventory = bucket_inventory(adapter, state, {"calls": []}) if hook_gradients else None
             report = analyze(trace, rank=context["rank"], anchors=anchors, domain=domain,
                              gradients=labels, inventory=inventory)
+            report["gradient_stream_markers"] = {
+                "status": "observed" if marker_records else "not_collected",
+                "events": [{"parameters": labels[label], "device": device,
+                            "elapsed_from_origin_ms": origin_events[device].elapsed_time(event)}
+                           for label, device, event in marker_records],
+                "scope": "Optional CUDA event recorded on each gradient callback's current stream; time relative to a rank-local GPU origin. No per-parameter synchronize. Adds event-record overhead; does not prove reducer bucket readiness, unique consumption, or cross-rank GPU clock alignment."}
             report.update(trace=str(path), trace_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
                           profiled_wall_ms=elapsed, gradient_hook_missing=missing,
                           gradient_hooks_enabled=hook_gradients,
