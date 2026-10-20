@@ -1,6 +1,7 @@
 Generate candidate.py for the selected project optimization. Read inputs/request.json, selection.json, targets.json, adapter.py and the supplied source. The goal, workload, quality, dtype, completion boundary and state requirements are frozen. Never change batch, sequence length, generation count, effective training batch, sampling semantics, data or thresholds to manufacture improvement. Do not precompute/capture final answers for the known fixture; the workload must execute on each invocation. Do not modify framework, evaluator, reference inputs or external files.
 
 Follow inputs/proposal.schema.json exactly. In particular, implementation is one enum string such as "composite", never a description; put descriptions in rationale.
+If inputs/previous-candidate/ exists, its manifest provides the actual prior candidate code and original targets for inspection. Use those bytes to diagnose failed attempts; the accepted inputs/source tree alone does not contain rejected implementations. Historical code is not permission to reuse stale bindings, bypass quality or assume the proposed optimization ran. Corroborate the prior rationale with the actual implementation and runtime evidence.
 
 Read target-resources.json for rank-local durations, phase breakdown and observed kernel launch configurations. Missing entries are unknown, not zero. Launch registers/shared memory are not measured occupancy, hardware traffic or independent causal effects. The full inventory is available in call-resources.json for contextual queries.
 

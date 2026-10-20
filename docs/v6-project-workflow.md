@@ -2,6 +2,35 @@
 
 本页说明已经实现的接口。阶段验收和实际结果见 [执行记录](v6-execution.md)、[验证矩阵](v6-validation-projects.md) 与各阶段 `docs/evidence/`。正式对照正在运行；支持某个接口不等于所有模型和目标已经获得加速。
 
+## 模块与迭代位置
+
+```mermaid
+flowchart LR
+  R[项目入口与目标] --> E[生成并验证 evaluator]
+  E --> D[执行发现与分组]
+  D --> S[按目标选择范围]
+  S --> C[生成完整候选]
+  C --> T[参数搜索与资源诊断]
+  T --> V[完整项目质量与 AB/BA]
+  V --> F[组级与联合反馈]
+  F --> S
+  V --> P[版本提交或拒绝]
+  P --> D
+```
+
+| 调整内容 | 实际实现与扩展方式 |
+|---|---|
+| 项目语义、状态、质量与目标 | `request.py` 和生成的六函数 adapter；`workflow.py`／`variants.py` 验证并冻结。案例源码及资产在框架外。 |
+| 理解、选组与候选生成 | `agents.py` 连接真实 provider；`adapter_prompt.md`、`selection_prompt.md`、`candidate_prompt.md` 分开维护；`generated.py` 校验产物。当前 Agent transport 为 OpenCode，替换 transport 仍需实现对应 client 接口。 |
+| 发现与归属 | `discovery.py` 捕获 module／functional；`trace.py` 解析原生关联；`aggregation.py` 合并 rank；`communication.py` 处理 collective 和能力探测。 |
+| 额外采集后端 | `collectors.py` 的 registry 与 `profiling.collector_plugins`；诊断 collector 提供 `collect(search, revision)`，返回状态、rank 结果和原始证据。目标通信采样单独提供 `metric(...)`，不会把额外诊断当作干净 J。 |
+| 参数与资源响应 | `inner_loop.py` 适配旧 TaskSearch/TPE；新增资源字段声明单位、类型与范围，原单算子搜索无需改写。 |
+| 接受与约束 | `measurement.py`／`constraints.py`／`quality_report.py`；统一检查完整项目、原始参考约束、噪声与活动 bundle 覆盖。 |
+| 多候选和整版生命周期 | `transactions.py`、`binding.py`、`branches.py`、`versioning.py`；候选声明依赖／替换，整版导入后重新评价。 |
+| 搜索策略与恢复 | `search.py` 顺序协调，`experiment.py` 管理可行分支，`experiment_policy.py` 定义对照策略，`recovery.py` 恢复真实会话与已生成制品。 |
+
+采集器可以按配置注册；搜索策略和 Agent transport 目前通过独立 Python 模块替换，不宣称所有模块都已有动态插件加载。调整共同接受规则后，应冻结新代码版本重新测量，避免把新旧规则混入同一对照。
+
 ## 从项目入口开始
 
 旧单算子命令保留原默认路径。项目任务使用独立的 `optimize-project`，输入项目源码清单、入口、实际资产、workload、目标、质量标准和设备 UUID，不需要提供算子组或目标算子列表。框架调用实际配置的 Agent 生成 evaluator，再执行完整输出、状态重置、连续步骤及负控制；通过后才发布原始参考。
@@ -59,6 +88,8 @@ Torch module 与 functional 调用由实际执行发现，记录阶段、shape�
 有参数空间时默认另跑诊断，使用框架生成的替换范围和原生 launch correlation 采集实际内核、寄存器／线程、共享内存、启动数及诊断时长。`profiling.parameter_resources: false` 可关闭这项额外采集。资源响应只使用带单位、类型与范围的资源字段；不把目标分数、吞吐量或 workload 常量自动标成资源。附加指标通过 `profiling.resource_metrics` 声明元数据。响应是筛选端点的有限差分，不能直接当作因果敏感度或接受证据；完整版本仍须独立 AB/BA。
 
 每个 bundle 的原始站点与实际替换内核保留单独映射；记录不会把已退休 functional 调用重新伪装成当前执行节点。嵌套工作、父实现回退、异步延后执行和缺少关联的 backward 分别说明；没有观测到的归属保持 unknown。Torch/Kineto 某些版本不能正确转义 range 名称中的引号，框架使用可逆编码的标签，原始解析失败回执仍保留。
+
+上一轮失败的实现并不位于已接受版本源码中。框架从已保存的制品读取原候选和原始 targets，作为 `inputs/previous-candidate/` 附件传入选组／候选角色；manifest 记录原身份、用途和不可获取的文件。当前组仍以新 discovery 为准。外部补充事实放在反馈的 `supplemental_evidence` 字段，连同来源与不确定性保存；完整反馈视图保留该字段，仅项目分数对照视图不包含它。
 
 ## 冻结候选、变体和探索分支
 

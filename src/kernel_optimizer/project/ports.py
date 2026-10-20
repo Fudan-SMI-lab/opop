@@ -1,8 +1,11 @@
 """Small replaceable interfaces; project-specific semantics belong in adapters."""
 from __future__ import annotations
 
-from typing import Any, Protocol
-from kernel_optimizer.models.project import CapabilityManifest
+from typing import Any, Protocol, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from kernel_optimizer.models.project import ProjectRevision
+    from kernel_optimizer.project.search import ProjectSearch
 
 
 class ProjectAdapter(Protocol):
@@ -21,10 +24,18 @@ class CandidateInstaller(Protocol):
 
 
 class Collector(Protocol):
-    def probe(self, context: dict) -> CapabilityManifest: ...
-    def collect(self, operation: Any, context: dict) -> dict: ...
-    def normalize(self, raw: dict, context: dict) -> dict: ...
-    def validate(self, observation: dict) -> tuple[str, ...]: ...
+    """A separate diagnostic job; it never supplies clean objective samples.
+
+    Probe/normalization/validation are owned by each backend. The coordinator's
+    actual plugin boundary is this method, shared by Nsys, telemetry and calibration.
+    """
+    def collect(self, search: ProjectSearch, revision: ProjectRevision) -> dict: ...
+
+
+class MetricCollector(Protocol):
+    """Explicitly declared diagnostic objective sampling inside a project worker."""
+    def metric(self, adapter: ProjectAdapter, state: Any, operation: Any,
+               synchronize: Any, context: dict, source: dict, repeats: int) -> dict: ...
 
 
 class Registry:

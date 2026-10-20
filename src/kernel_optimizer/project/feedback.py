@@ -2,6 +2,53 @@
 import json
 
 
+def candidate_artifacts(raw, store):
+    """Make prior implementation bytes available, not just opaque blob IDs.
+
+    A rejected candidate is absent from the accepted parent's source snapshot.
+    Keep its exact code and original binding metadata separately for repair.
+    Unavailable externally supplied references are explicit in the manifest.
+    """
+    if raw is None:
+        return {}
+    try:
+        value = json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(value, dict):
+        return {}
+    if "previous_result" in value:
+        value = value["previous_result"]
+    if not isinstance(value, dict):
+        return {}
+    bundle = value.get("bundle") or value.get("previous_bundle")
+    if not isinstance(bundle, dict) or not bundle.get("installer"):
+        return {}
+    from pathlib import PurePosixPath
+    installer = bundle["installer"]
+    targets = str(PurePosixPath(installer).with_suffix(".targets.json"))
+    names = {installer: "candidate.py", targets: "targets.json"}
+    inputs = {"previous-candidate/bundle.json": json.dumps(bundle, indent=2)}
+    manifest = {"bundle": bundle["id"], "parent_revision": bundle.get("parent_revision"),
+                "purpose": "Historical implementation for inspection/repair; not installed or accepted automatically",
+                "files": []}
+    for edit in bundle.get("edits", []):
+        name = names.get(edit["path"])
+        if name is None:
+            continue
+        row = {"original_path": edit["path"], "content_ref": edit.get("content_ref"), "input": name}
+        try:
+            if not edit.get("content_ref"):
+                raise ValueError("prior edit deletes this file")
+            inputs["previous-candidate/"+name] = store.get_artifact(edit["content_ref"])
+            row["status"] = "available"
+        except (FileNotFoundError, ValueError, KeyError) as exc:
+            row.update(status="unavailable", reason=f"{type(exc).__name__}: {exc}")
+        manifest["files"].append(row)
+    inputs["previous-candidate/manifest.json"] = json.dumps(manifest, indent=2)
+    return inputs
+
+
 def route(raw, *, current_revision, registry=None, selected_groups=None, plan=None):
     if raw is None:
         return None
@@ -35,6 +82,7 @@ def route(raw, *, current_revision, registry=None, selected_groups=None, plan=No
     result = {"current_revision": current_revision, "previous_trial": value.get("trial"),
         "previous_bundle": value.get("bundle"), "previous_selection": value.get("selection"),
         "previous_proposal": value.get("proposal"), "decision": value["decision"],
+        "supplemental_evidence": value.get("supplemental_evidence"),
         "project_measurement": value.get("measurement"), "evaluation": value.get("evaluation"),
         "parameter_search": value.get("parameter_search"),
         "missing_coverage": value.get("missing_coverage"),

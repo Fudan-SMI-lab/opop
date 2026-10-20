@@ -43,7 +43,7 @@
 | P1，完成 | 版本化四种 scope、执行计划、组注册表、完整候选与事务；rank 生命周期 | [真实 Agent 联合编辑、质量负控制、提交及恢复](evidence/v6-p1-20261020/README.md)；提交 `bc7a61e`；属于基础设施控制实验 |
 | P2，三项目适配通过 | `optimize-project` 入口及真实项目理解／评测生成；输入、状态和测量协议 | [ResNet 独立输出一致](evidence/v6-p2-20261020/README.md)；[Qwen 全 logits/token 与 DDP 两步完整梯度/参数独立校验](evidence/v6-p5-20261020/README.md)；不等于三项目优化全部完成 |
 | P3，自动探索验证中 | module／functional 自动发现、依赖与包含闭包、真实选组与联合候选、schema 自动修复、AB／BA 评价及逐组反馈；新增可行非贪心前沿和四轮真实试验 | [真实联合候选](evidence/v6-p3-20261020/README.md)；[分支与整版评价](evidence/v6-p6-branches-20261020/README.md)；核心初始提交 `589144f`，分支提交 `7936d90` |
-| P4，组合与整版回传通过，资源响应继续验证 | 旧 TaskSearch/TPE 项目适配；多候选完整回装、质量／覆盖分离、整版独立比较与 CAS；提交后重分组 | ResNet 两个 bundle 同时执行但组合变慢，拒绝；另一个 Graph 版本整版复测后提交；外层 Graph 绕过旧 bundle 的案例输出正确但覆盖失败，已单独归因；[证据](evidence/v6-p6-branches-20261020/README.md) |
+| P4，组合、整版回传与资源响应通过 | 旧 TaskSearch/TPE 项目适配；多候选完整回装、质量／覆盖分离、整版独立比较与 CAS；提交后重分组 | ResNet 两个 bundle 同时执行但组合变慢，拒绝；另一个 Graph 版本整版复测后提交；外层 Graph 绕过旧 bundle 的案例输出正确但覆盖失败，已单独归因；[组合证据](evidence/v6-p6-branches-20261020/README.md)与[资源反馈后接受版本](evidence/v6-feedback-closure-20261020/README.md) |
 | P5，采集与归属通过，优化继续 | 通信能力发现、Torch/Nsys、实际 transport；13/13 collective 的跨 rank 匹配及梯度存储/bucket/组多对多关联；硬件计数器权限不足时实测降级 | [真实中间证据](evidence/v6-p5-20261020/README.md)；DDP 自动候选仍在运行，不能以采集成功替代完整优化闭环 |
 | P6，进行中 | 八目标均已进入真实优化；新纯函数入口和保留 shape/seed 已验证；跨目标、组合、策略与反馈对照继续 | [目标切换及保留集的中间结果](evidence/v6-p6-branches-20261020/README.md)；正式策略对照 B 使用独立冻结代码，尚未全部结束 |
 
@@ -53,7 +53,7 @@ P1 的分布式执行设施与 P5 的通信采集共用数据模型；可提前�
 
 ## 最新实际运行与调整
 
-`7936d90` 已推送 GitHub 并同步 box4-2。使用方式、模块接口、恢复入口及实验策略见 [项目工作流说明](v6-project-workflow.md)。新增阶段的相关 28 项检查通过，统计不与之前重复用例相加。
+资源采集检查点 `3c0ea60` 已推送 GitHub 并同步 box4-2。使用方式、模块接口、恢复入口及实验策略见 [项目工作流说明](v6-project-workflow.md)。整版回传阶段 28 项、后续资源阶段 36 项相关检查通过，统计不与之前重复用例相加。
 
 正式比较固定在 `/root/autodl-tmp/dev/opop-v6-freezes/7936d902b88b`，源码哈希 `cae6cc6e6591fba0d0262db4bfe03575167fed086547483768348a9e9d3ed8e4`。工作路径继续在 `v6`；冻结目录为该提交的 detached 实验副本，不随开发修改。对照包含 ResNet 的 whole/leaf/score_only/local_time、Qwen 与 DDP 的 whole/leaf/score_only，以及 DDP 关闭额外通信观测的两轮协议。各路径共享原始参考和采样规则，实际 API／GPU 消耗单独记录，不声称消耗完全相同。此前 A 组中的 HTTP 429、参数表达式错误及源码变化均保留，不冒充完成的正式对照。
 
@@ -64,6 +64,10 @@ Qwen 一个 decode 候选虽然质量通过，其 62 次调用全部经过父实
 通信采集新增实际可读取的 NVML PCIe TX/RX 速率、设备活动比例和设备显存读数；双 rank DDP 已完成三个独立诊断窗口。实际 Collector Agent 选择了 `torch/nsys/device_telemetry`，NVLink API 返回不支持并明确保留。PCIe 原生采样窗口和每次读取区间分别保存，不把速率再次差分或换算成逐算子 wire bytes。匹配两种实际 payload 的独立 SUM allreduce 参考校准已在双 rank 通过；它不表示模型关键路径或性能下界。详见[新增资源与通信证据](evidence/v6-resources-20261020/README.md)。
 
 TaskSearch 的参数响应现在带有实际替换内核的启动数、诊断时长、寄存器／线程和共享内存，目标 J／吞吐／workload 常量不再自动标成资源。真实三档 `num_warps` 实验得到非零资源差分，完整质量通过但配对收益仍未超过噪声，继续拒绝。下一轮真实 Selection Agent 已消费这些字段并改变启动策略；最终候选仍须测量。本阶段 36 项相关检查通过。
+
+该下一轮候选随后完成配对验收：纯函数项目的融合核 Graph replay 将父版本 0.0792845 ms 降至 0.0498955 ms，已提交；保留形状走普通 Graph 回退且未获可靠收益。Qwen 的真实 decoder-layer 候选在独立固定实现下通过复测，TTFT 27.384616→22.3693795 ms，完成提交及重分组，不补写为中断的 A 组正式比较。详见[反馈闭环与复核](evidence/v6-feedback-closure-20261020/README.md)。
+
+大图重分组新增调用索引：同一真实 Qwen trace 的 15,059 个组与旧算法全部一致，索引及全部查询约 0.313 秒。失败候选源码另作为独立历史附件提供给下一轮，避免只回传 artifact ID；新附件的实际消费回执继续验证。正式 B 组继续使用原冻结实现，不混入这些协调器调整。
 
 剩余交付重点：完成自动探索前沿和各项目多候选共存的真实验证，汇总稳定协议的对照／消融，补齐最终逐项验收与可复现证据。未完成项不会因部分案例已经加速而自动标为完成。
 

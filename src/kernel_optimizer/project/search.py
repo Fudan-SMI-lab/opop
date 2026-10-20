@@ -93,20 +93,16 @@ class ProjectSearch:
         previous = self.revisions.load(parent.registry_ref, GroupRegistry)
         previous_plan = self.revisions.load(parent.plan_ref, ExecutionPlan)
         call_lookup = {c["id"]: c for c in primary["calls"]}
-        def lineage(member_ids):
-            related = {old.id for old in previous.groups if set(old.calls) & set(member_ids)}
-            boundaries = set(member_ids) | {p for ident in member_ids for p in call_lookup[ident]["parents"]}
-            for ident in parent.bundles:
-                installed = self.revisions.bundle(ident)
-                if set(installed.calls) & boundaries:
-                    related.update(set(installed.groups) & {old.id for old in previous.groups})
-            return tuple(sorted(related))
+        from kernel_optimizer.project.aggregation import lineage_resolver
+        lineage = lineage_resolver(previous, call_lookup,
+            [self.revisions.bundle(ident) for ident in parent.bundles])
         groups = tuple(GroupSpec(id=g["id"], calls=tuple(g["calls"]),
                                 semantics=call_lookup[g["calls"][0]]["semantics"],
                                 resource_refs=tuple(primary["traces"]),
                                 lineage=lineage(g["calls"])) for g in primary["groups"])
+        group_ids = {item.id for item in groups}
         registry = GroupRegistry(id=identity({"plan": plan.id, "groups": groups}), plan_id=plan.id, groups=groups,
-            parent_id=previous.id, retired=tuple(g.id for g in previous.groups if g.id not in {item.id for item in groups}),
+            parent_id=previous.id, retired=tuple(g.id for g in previous.groups if g.id not in group_ids),
             invalidated_evidence=tuple(sorted({ref for g in previous.groups for ref in g.resource_refs} |
                                               {ref for c in previous_plan.calls for ref in c.evidence})))
         revision = self.revisions.attach_discovery(parent, plan, registry)
@@ -226,6 +222,8 @@ class ProjectSearch:
         from kernel_optimizer.project.aggregation import index
         common["index.json"] = json.dumps(index(discovery), indent=2)
         common.update({"source/"+name: data for name, data in sources.items()})
+        from kernel_optimizer.project.feedback import candidate_artifacts
+        common.update(candidate_artifacts(feedback, self.store))
         prompt_root = Path(__file__).parent
         trial_id = "trial-"+uuid4().hex[:10]
         trial_root = self.output/"trials"/trial_id; trial_root.mkdir(parents=True)
@@ -436,8 +434,9 @@ class ProjectSearch:
         before = [json.loads(Path(path).read_text()) for path in discovery["raw_discovery"]]
         after = [json.loads(Path(rank["result"]["discovery"]).read_text()) for rank in run["ranks"]]
         groups = []
+        affected = set(bundle.affected_calls or bundle.calls)
         for group in discovery["groups"]:
-            if set(group["calls"]) & set(bundle.affected_calls or bundle.calls):
+            if set(group["calls"]) & affected:
                 groups.append({"group": group["id"], "bundle": bundle.id, "attribution_status": "joint_only",
                     "calls": [{"id": call, "ranks": [{"rank": a["rank"],
                         "before": b["call_resources"].get(call), "after": a["call_resources"].get(call),

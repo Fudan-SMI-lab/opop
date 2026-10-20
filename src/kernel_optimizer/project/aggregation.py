@@ -36,6 +36,33 @@ def rank_requirements(bundle, plan, world_size):
             for rank in range(world_size)}
 
 
+def lineage_resolver(previous, calls, bundles):
+    """Index prior memberships and installed boundaries once per discovery.
+
+    Lineage means surviving identity or observed containment, not independent
+    contribution. A large dynamic trace must not scan all prior groups for each
+    new group, nor reload every installed bundle for each membership query.
+    """
+    memberships, boundaries = defaultdict(set), defaultdict(set)
+    previous_ids = {g.id for g in previous.groups}
+    for group in previous.groups:
+        for call in group.calls:
+            memberships[call].add(group.id)
+    for bundle in bundles:
+        related = set(bundle.groups) & previous_ids
+        for call in bundle.calls:
+            boundaries[call].update(related)
+
+    def resolve(member_ids):
+        related = set()
+        for call in member_ids:
+            related.update(memberships.get(call, ()))
+            for boundary in (call, *calls[call]["parents"]):
+                related.update(boundaries.get(boundary, ()))
+        return tuple(sorted(related))
+    return resolve
+
+
 def index(discovery):
     """An addressable semantic index; keep full calls/groups as the authority."""
     families = {}

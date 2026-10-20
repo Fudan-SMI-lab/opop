@@ -1,4 +1,21 @@
-# kernel-optimizer (v2)
+# kernel-optimizer
+
+## v6 project optimization
+
+The `v6` branch adds `optimize-project`: start from a Python/PyTorch project,
+workload and objective; generate and validate an evaluator, discover module and
+functional calls, select groups or larger regions, install generated candidates,
+and evaluate the complete project. Multiple bundles and complete execution-plan
+changes share versioned installation, quality checks, paired measurements and
+feedback. Communication collectors are optional and selected from actual device
+capabilities.
+
+See the [project workflow](docs/v6-project-workflow.md) for commands and extension
+interfaces, the [execution record](docs/v6-execution.md) for current progress, and
+the [real validation projects](examples/v6_validation/README.md) for workloads.
+Experiments use real configured Agents and GPU workers; results include rejected
+candidates and unresolved cases. Project mode retains the existing single-task
+entry points and defaults.
 
 ## v5 direct task entry
 

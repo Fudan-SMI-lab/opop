@@ -1,0 +1,255 @@
+[
+  {
+    "trial": "trial-dc003915a6",
+    "decision": {
+      "accepted": false,
+      "reasons": [
+        "no_valid_parameter_candidate"
+      ]
+    },
+    "measurement": null,
+    "evaluation": null,
+    "publication": null,
+    "replay": null,
+    "selection_agent": {
+      "role": "selection",
+      "session": "ses_ea958120effei4SfUYeGQZVJiC",
+      "message": "msg_156b22200001ETiDfGehOeGMPW",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 20,
+        "reported_cost": 0.54387356,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 1410838.0,
+          "input": 87623.0,
+          "output": 5650.0,
+          "reasoning": 12989.0,
+          "cache.read": 1304576.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea958120effei4SfUYeGQZVJiC",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/autodl-tmp/dev/v6-work/p6-qwen-composition-a/sandboxes/selection-3fe027d5c3de",
+      "outputs": [
+        "selection.json"
+      ],
+      "feedback_provided": true,
+      "contract_repairs": 0
+    },
+    "candidate_agent": {
+      "role": "candidate",
+      "session": "ses_ea94dbd17ffeohQDZoUhsRGg5u",
+      "message": "msg_156d3178c001TN1OiIWoTs1xfD",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 61,
+        "reported_cost": 2.69773724,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 7863472.0,
+          "input": 306059.0,
+          "output": 15063.0,
+          "reasoning": 58446.0,
+          "cache.read": 7483904.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea94dbd17ffeohQDZoUhsRGg5u",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/autodl-tmp/dev/v6-work/p6-qwen-composition-a/sandboxes/candidate-451bf67cba4b",
+      "outputs": [
+        "candidate.py",
+        "proposal.json"
+      ],
+      "feedback_provided": true,
+      "contract_repairs": 0
+    },
+    "missing_coverage": null,
+    "raw_result": {
+      "path": "/root/autodl-tmp/dev/v6-work/p6-qwen-composition-a/trials/trial-dc003915a6/result.json",
+      "sha256": "60f969af495e6581f6819aa078562508b1e62cf4e98917fbfad9be6ccc0536ed",
+      "bytes": 5276455
+    },
+    "bundle": {
+      "id": "trial-dc003915a6",
+      "parent_revision": "35f901bf3f539c6b00af481803e4ffebbc5b964f137cb9b506418f3f0e7b8d0c",
+      "scope": "region",
+      "implementation": "composite",
+      "groups": [
+        "3e293c00b1fb98fbe29f"
+      ],
+      "parameters": {},
+      "requires": [],
+      "replaces": [
+        "trial-d9a82b8e2b-param-469305c5"
+      ]
+    },
+    "replacement_calls": 1,
+    "affected_calls": 23226,
+    "selection": {
+      "scope": "region",
+      "groups": [
+        "3e293c00b1fb98fbe29f"
+      ],
+      "rationale": "Objective is decode_tokens_per_second over 31 greedy decode steps of the frozen interactive workload (batch=1, 256 prompt, 32 new tokens), so only per-step decode wall time matters. Measured evidence: the clean decode wall is 729.8 ms baseline / 31 = 23.5 ms per step (parent re-measurement 654-875 ms across machine states, median 44.58 tok/s), while the separately collected decode-phase diagnostic CUDA time under Qwen3ForCausalLM is 373.8 ms = 12.1 ms per step, all kernels associated (66441/66441). About 11.5 ms per step (49% of wall) is therefore launch/dispatch gap on the single eager stream, not GPU work: roughly 200 sub-10us kernel launches plus per-layer Python module dispatch cannot overlap. The previous candidate trial-d9a82b8e2b proved the converse: its fused Triton / packed-GEMV / static-KV composite removed measurable GPU-side non-GEMV time yet decode stayed at 650-737 ms (best stabilized run 650.3 ms = 21.0 ms per step, still dispatch-bound), giving paired gains -3.75 and +0.57 against MAD noise bounds 2.58 and 0.76 and failing paired_gain_not_above_noise and objective_not_improved. GPU-microsecond savings are absorbed by the CPU dispatch gaps; the binding constraint is the per-step execution mode itself. I therefore select the coherent editable boundary of one full decode step: the decode-phase Qwen3ForCausalLM region (group 3e293c00b1fb98fbe29f, module call 323bcbe006b343648b346af9, 31 invocations, 373.8 ms diagnostic, embedding through 36 layers to final norm and lm_head). The proposal is to keep the exact same kernel sequence but change how it is issued: capture the step once into a CUDA graph over static shapes (static [1,1] int64 input token buffer written per step, static preallocated KV with the fresh per-run prefill cache imported once at the first decode step, static logits output), capture during the untimed warmup runs that precede measurement, and issue one graph replay per decode call; the surrounding greedy loop, argmax and synchronize boundaries live in the frozen adapter and are untouched. Prefill (group e0861b46dbeeb562f67f) stays original so ttft is unaffected. This composes with, not replaces, the installed quality-passing Qwen3Model decode bundle: its call e7df98b905ed8aa688d5227a executes inside the capture (and eagerly on capture and fallback paths), so every active bundle still executes the full quality workload. The wrapper edits (static cache, input/output buffers, capture, replay, signature fallback) need one another and land as one region candidate. affected_calls lists the region call plus every additional observed call under it, mirroring the coverage of the previously accepted-shape region one level higher to include lm_head.",
+      "hypothesis": "CUDA-graph replay replaces about 200 eager launches and the per-layer Python dispatch of each decode step with one replay plus one token copy, attacking the measured 11.5 ms/step wall-vs-GPU-busy gap that the previous fused kernel candidate could not touch (its decode floor stayed at 21.0 ms/step against a 12.1 ms/step GPU floor). Because replay re-executes the identical captured kernel sequence with identical buffers, logits are bit-identical and exact greedy token equality plus the 0.02 logits tolerance hold by construction; no dtype, TF32, seed, workload or boundary change is involved. Expected decode wall drops from about 730 ms toward the 380-500 ms range (12-16 ms per step including residual per-step token copy, replay launch, eager argmax and adapter loop), i.e. decode_tokens_per_second from the 42.5-47 measured band toward roughly 62-78 tok/s. Even a conservative capture that removes only a quarter of the gap yields about +5 tok/s, more than 3x the largest observed MAD-derived noise bound (2.58 tok/s), so the paired AB/BA protocol should separate the effect from machine-state variance (parent samples ranged 654-875 ms). This is a hypothesis to be tested: if replay is prevented by an unstatic shape or capture-legality issue, the candidate must fall back to the original forward and will show no gain rather than a regression."
+    },
+    "proposal": {
+      "implementation": "composite",
+      "rationale": "Objective is decode_tokens_per_second over the 31 greedy decode steps of the frozen interactive workload (batch=1, 256 prompt, 32 new tokens, BF16 SDPA Qwen3-4B), so only per-step decode wall time matters. Measured evidence for the selected boundary (decode-phase Qwen3ForCausalLM, module call 323bcbe006b343648b346af9, 31 invocations): target-resources.json attributes 373,760 us of diagnostic CUDA time and 64,263 kernel launches to this call (12.06 ms GPU busy and ~2,073 launches per step, all kernels associated), while the clean decode wall is 729.8 ms baseline / 31 = 23.5 ms per step (parent re-measurement 654-875 ms across machine states, median 44.58 tok/s). About 11.4 ms per step (49% of wall) is therefore CPU-side launch/dispatch gap between small kernels on the single eager stream, not GPU work. inputs/previous-feedback.txt changes this attempt decisively: the prior quality-passing candidate trial-d9a82b8e2b (fused Triton / packed-GEMV / static-KV composite on the inner decode Qwen3Model call) removed measurable GPU-side non-GEMV time yet decode stayed at 650-737 ms and the trial was rejected for paired_gain_not_above_noise and objective_not_improved (paired gains -3.75 and +0.57 against MAD noise bounds 2.58 and 0.76). GPU-microsecond savings are absorbed by the dispatch gaps, so the binding constraint is the per-step execution mode itself. This candidate therefore replaces the whole decode-phase Qwen3ForCausalLM forward with a CUDA-graph engine that keeps the parent's kernel sequence and changes only how it is issued: during the untimed first quality run each of the 31 decode positions is warmed on a side stream and captured into its own CUDA graph sharing one graph-private pool (per-position graphs are required because RoPE rows, cache slice bounds and cat lengths are host constants baked at capture); the capture records the parent's exact op sequence against static buffers (a [1,1] int64 token buffer written per step and a static [2,36,1,8,256,128] prefill-KV import buffer filled by 72 stream-ordered copies at the first decode call of every run, so each run's fresh cache enters the graph chain and nothing crosses runs). Every subsequent invocation of the workload executes it in full: eager prefill, then one replay per decode step re-executing all ~2,073 kernels per step on the current buffer contents, with the adapter's greedy argmax outside the graph unchanged; only the kernel sequence and buffer addresses are captured, never any fixture answer. Per step the adapter receives a fresh clone of that step's logits plus a DynamicCache-compatible object (qualname kept 'DynamicCache' so the observed call signature keeps matching) whose layers view the step's graph-pool KV chain, which it passes back to drive the step counter. Because replay re-executes the identical captured kernel sequence with identical shapes, strides, dtypes and addresses, logits are bit-identical to the eager parent by construction: exact greedy token equality and the 0.02 logits tolerance hold with zero numerical slack (the parent reference itself verified max_abs_error 0.0 in the previous pairing). Expected decode wall drops from ~730 ms toward the 380-420 ms range (12-13.5 ms per step: 12.06 ms replay GPU floor plus token copy, replay launch, logits clone and dispatch), i.e. decode_tokens_per_second from the 42.5-47 measured band toward roughly 74-82 tok/s - an order of magnitude above the largest observed MAD-derived noise bound (2.58 tok/s), so the AB/BA paired protocol should separate the effect from machine-state variance. Failure containment: any guard mismatch (training, masks, position ids, wrong shapes/dtypes/devices, foreign or mid-run caches, step index outside the frozen 31) or any exception reverts permanently to the original bound forward, costing the speedup but never correctness; if CUDA graph capture is refused by the runtime the candidate degrades to exact baseline behavior rather than a regression. This proposal declares replaces: [trial-d9a82b8e2b-param-469305c5] because the replaced outer call subsumes that bundle's site (the inner decode Qwen3Model call e7df98b905ed8aa688d5227a): with the outer forward replaced by replay the inner site is eliminated and the bundle could never execute in the quality workload, while replay already preserves the parent behavior the bundle optimized (its measured contribution to wall time was nil, which is why it was retired rather than composed).",
+      "setup_work": "All setup happens lazily inside the first untimed quality run, inside build()'s installed replacement; build() itself only reads module configuration (layers=36, kv_heads=8, head_dim=128, BF16 check), allocates one graph pool handle and one side stream. At the first decode call of the first quality run the static import buffer is allocated (2 x 36 x 1 x 8 x 256 x 128 BF16 = 37,748,736 bytes = 36 MiB) plus a 16-byte static token buffer, and receives that run's prefill KV via 72 stream-ordered copies (repeated at the first decode call of every run, inside the timed decode region, ~0.2-0.3 ms). Then, per decode position s=0..30: two side-stream warmup executions of the parent forward (lazy-init and kernel-selection insurance), one torch.cuda.graph capture sharing the single pool, and one immediate replay so the capture run itself produces correct outputs. Capture-time host cost is dominated by the graph context manager's synchronize + gc.collect + empty_cache per capture (~tens of ms x 31) plus warmups (~2 x 12 ms x 31): roughly 1-3 s one-time, all inside the untimed quality phase; the 2 warmup runs and 5 measured repeats then perform pure replays. Memory, reported per the lifecycle semantics: retained after setup are the 36 MiB static import buffer, 31 captured graphs with their per-step KV concatenation chains in the shared graph pool (sum of lengths 257..287 tokens at 147,456 bytes/token = about 1.24 GiB of graph-pool allocations kept referenced so no later capture reuses a block a replay still reads, plus roughly 9.4 MB of per-step logits pool tensors and one step of transients), so framework.lifecycle_peak_allocated_bytes rises to roughly 9.4-9.5 GB versus the 8.18 GB baseline and reserved memory grows by the pool; per-run framework.peak_allocated_bytes stays near baseline (+36 MiB static + 0.3 MiB logits clone). This retained-pool increase is a setup cost of the execution-mode change on a 24 GB device, not a general memory saving, and no peak counter decrease is claimed.",
+      "quality_risks": [
+        "CUDA graph capture could fail on this stack (capture-illegal operation, lazy module load); any exception during capture or advance permanently reverts the engine to the original bound forward, so the risk is loss of speedup, not wrong output.",
+        "Numerical fidelity is by construction rather than tolerance: replays re-execute the parent's own captured kernel sequence on identical buffers, so logits are bit-identical to the eager parent and greedy tokens are exactly equal; the residual risk is a capture-time divergence from eager (for example a data-dependent branch), which the per-step clone-and-compare quality gate would catch as a hard failure, never as silent degradation.",
+        "Graph-pool block reuse is ordered: each replay writes its step's KV chain strictly after the previous replay consumed it on the same stream, all 31 chains stay referenced, and the import buffer addresses are stable across runs; a violation would surface as a quality mismatch, and the guards revert to eager before any output is produced if the run-local state ever looks stale.",
+        "Alias semantics: the returned past_key_values is a DynamicCache subclass (qualname 'DynamicCache') whose layers view graph-pool tensors; the adapter only feeds it back and never reads its contents, and it remains a functional DynamicCache if the eager parent ever runs with it. Logits are cloned per step, so no consumer can observe a later replay overwriting an earlier step's logits.",
+        "The parent reference for this evaluation was produced with trial-d9a82b8e2b-param-469305c5 active (it verified max_abs_error 0.0 against eager in its own pairing); this candidate reproduces the eager kernel sequence exactly, so the comparison is within the same bit-exact equivalence class, comfortably inside atol=rtol=0.02 with require_exact_greedy_tokens satisfied.",
+        "The full frozen workload executes on every invocation (prefill forward, 31 replays, per-step argmax, final synchronize); capture stores only the kernel sequence and buffer addresses, never fixture outputs, so no invocation can short-circuit the measured work."
+      ],
+      "requires": [],
+      "replaces": [
+        "trial-d9a82b8e2b-param-469305c5"
+      ],
+      "parameter_space": {}
+    },
+    "pairs": [],
+    "parameter_search": {
+      "engine": "existing TaskSearch + OptunaTPETuner",
+      "space": {},
+      "selected": null,
+      "stats": [
+        {
+          "candidate_id": "cand-4948a819",
+          "space_id": "space-cand-4948a819",
+          "n_complete": 0,
+          "n_fail": 1,
+          "best": null,
+          "param_stats": [],
+          "resource_at_best": null,
+          "failure_clusters": []
+        }
+      ],
+      "responses": [],
+      "resource_fields": null,
+      "response_interpretation": null
+    },
+    "screening": [
+      {
+        "parameters": {},
+        "bundle": "trial-dc003915a6-param-1ecf5c91",
+        "revision": "7a9f2091de4644d9eb8e48e659d50be1d80f77ec72de9dd7548d101b2f7a3139",
+        "result": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "constraints": [],
+        "run": {
+          "status": "passed",
+          "failure": null,
+          "wall_s": 18.2072249725461,
+          "lease_wait_s": 0.00027526170015335083,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 341932,
+              "status": "passed",
+              "framework_source": {
+                "sha256": "cae6cc6e6591fba0d0262db4bfe03575167fed086547483768348a9e9d3ed8e4",
+                "files": 148,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "binding": {
+                "pid": 341932,
+                "status": "verified",
+                "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 25,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.0968409925699234,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "result": {
+                "valid": false,
+                "checks": [
+                  {
+                    "continuous_step": 0,
+                    "passed": false,
+                    "compared_elements": 4861984,
+                    "max_abs_error": 1.0,
+                    "observation_path": "output.logits",
+                    "atol": 0.02,
+                    "rtol": 0.02,
+                    "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+                    "error": "Tensor-likes are not close!\n\nMismatched elements: 1131606 / 4861952 (23.3%)\nGreatest absolute difference: 1.0 at index (0, 6, 50898) (up to 0.02 allowed)\nGreatest relative difference: 40704.0 at index (0, 23, 82333) (up to 0.02 allowed)"
+                  },
+                  {
+                    "continuous_step": 1,
+                    "passed": false,
+                    "compared_elements": 4861984,
+                    "max_abs_error": 1.0,
+                    "observation_path": "output.logits",
+                    "atol": 0.02,
+                    "rtol": 0.02,
+                    "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+                    "error": "Tensor-likes are not close!\n\nMismatched elements: 1131606 / 4861952 (23.3%)\nGreatest absolute difference: 1.0 at index (0, 6, 50898) (up to 0.02 allowed)\nGreatest relative difference: 40704.0 at index (0, 23, 82333) (up to 0.02 allowed)"
+                  }
+                ],
+                "coverage": {
+                  "trial-dc003915a6-param-1ecf5c91": {
+                    "counts": {
+                      "323bcbe006b343648b346af9": 62
+                    },
+                    "fallbacks": {},
+                    "required": [
+                      "323bcbe006b343648b346af9"
+                    ]
+                  }
+                },
+                "math_policy_unchanged": true,
+                "samples": [],
+                "metrics": {},
+                "bundle_hashes": {
+                  "trial-dc003915a6-param-1ecf5c91": "c6d19aa74530fe76d6a1a7ffd16aaaca4379d50c055b10bd535b17f679d96502"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "native_replacement_kernels": [],
+    "resource_evidence": []
+  }
+]
