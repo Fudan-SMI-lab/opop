@@ -12,6 +12,10 @@
 
 本阶段相关局部检查：Python 3.12.7，`test_v6_provider_recovery.py`、`test_v6_usage.py`、`test_opencode_port_reservation.py`，**21 passed**。恢复时间解析还读取了上述真实 provider 错误并实际更新共享队列，不只验证合成数据。
 
+检查点 `d750162` 已推送 GitHub，并在 box4-2 的 `/root/autodl-tmp/dev/opop-v6-freezes/d75016235585` 独立部署；相同 21 项检查在服务器通过。09:59（UTC+8）的[续跑状态](p6-continuation-status-20261020.json)再次核对 17 个原控制进程身份全部仍存活。11 条正式比较已结束 7/22 轮（包括拒绝／失败轮次）；自动探索结束 2/4 轮并保留一个可行分支。它们仍由原控制器持有，不要同时启动第二个恢复控制器。
+
+原控制器若退出，应先核对保存的 PID 起始身份、run 的 `events.jsonl`、`generated.json` 和原 session，再选择工作流说明中的 `--resume-trial`／`--resume-generation`；有界探索复用原 `experiment-id`。正式比较使用 `7936d902b88b`，其中断恢复不能换成最新 core 后继续声称相同协议。主目录仍为 `3c0ea60`，新反馈组合实验使用 `4753bbd77d07`；不同来源的实验分别报告。恢复完成后仍需核查输出与协议，不能仅按进程退出码补写验收成功。
+
 截至 09:47（UTC+8）的[账本快照](p6-provider-wait-usage.json)：135 个 OpenCode session、3,321 条 assistant 消息、provider 报告费用约 **$100.81**，包括失败调用。通过本地 OpenCode API 刷新消息记录没有新增模型请求。tokens 保留 total／input／output／reasoning／cache 分项，不能将 total 与其分项再次相加。此统计不含外层 Codex 的费用，也不是已核对账单。
 
 P6 尚未完成：正式比较的剩余轮次、自动分支的后续探索／推广，以及 Qwen／DDP 的有效多候选共存仍需真实调用结果。账户恢复后可以继续这些原会话；不得将外部等待、局部测试或已经完成的正收益案例替代这些验收。
