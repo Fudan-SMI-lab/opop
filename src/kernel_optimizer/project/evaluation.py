@@ -141,7 +141,8 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
     parameters = context["parameters"]
     request = parameters["request"]
     action = parameters.get("action", "controls")
-    ablation = parameters.get("collector_options", {}) if action in {"binding_ablation", "python_runtime_profile"} else {}
+    ablation = parameters.get("collector_options", {}) if action in {
+        "binding_ablation", "python_runtime_profile", "execution_timeline"} else {}
     passthrough = set(ablation.get("passthrough_bundles", []))
     if passthrough - {b["id"] for b in parameters.get("bundles", [])}:
         raise ValueError("diagnostic passthrough references an absent bundle")

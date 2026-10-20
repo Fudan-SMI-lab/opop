@@ -24,6 +24,7 @@ flowchart LR
 | 理解、选组与候选生成 | `agents.py` 连接真实 provider；`adapter_prompt.md`、`selection_prompt.md`、`candidate_prompt.md` 分开维护；`generated.py` 校验产物。当前 Agent transport 为 OpenCode，替换 transport 仍需实现对应 client 接口。 |
 | 发现与归属 | `discovery.py` 捕获 module／functional；`trace.py` 解析原生关联；`aggregation.py` 合并 rank；`communication.py` 处理 collective 和能力探测。 |
 | 额外采集后端 | `collectors.py` 的 registry 与 `profiling.collector_plugins`；诊断 collector 提供 `collect(search, revision)`，返回状态、rank 结果和原始证据。目标通信采样单独提供 `metric(...)`，不会把额外诊断当作干净 J。 |
+| 执行时序与绑定诊断 | `timeline.py` 提供独立 CPU/CUDA 关联、被动梯度回调、可选 CUDA stream marker 和有界 CPU 时钟对齐；`python_profile.py` 提供独立 cProfile。均通过采集器注册，不增加失败路由或搜索状态机。 |
 | 参数与资源响应 | `inner_loop.py` 适配旧 TaskSearch/TPE；新增资源字段声明单位、类型与范围，原单算子搜索无需改写。 |
 | 接受与约束 | `measurement.py`／`constraints.py`／`quality_report.py`；统一检查完整项目、原始参考约束、噪声与活动 bundle 覆盖。 |
 | 多候选和整版生命周期 | `transactions.py`、`binding.py`、`branches.py`、`versioning.py`；候选声明依赖／替换，整版导入后重新评价。 |
@@ -142,6 +143,12 @@ box4-2 实测为无 P2P、无 NVLink 的双 4090，NCCL 使用 SHM/direct/direct
 已生成的两个候选可以用 `examples/v6_validation/run_interaction.py` 单独做组合归因实验。输入原始 run、A/B 的 run 与 bundle、完整组合 run 与 revision，以及新的输出目录；脚本检查子项没有未满足依赖、替换或写冲突，保留原代码与参数，分别将 A、B、A+B 和同一个冻结父版本做独立 AB/BA。质量失败、源码不同或缺少测量时，交互保持不可解释。`gain(A+B)-gain(A)-gain(B)` 只描述已测组合，极值与 MAD 扩展范围不是统计置信区间，也不将共享效果分给某个组。默认不提交这些诊断版本；依赖另一子项才能合法运行的组合返回不可独立拆分，不强行制造单项收益。
 
 ## 当前验证边界
+
+后续组合退化调查增加了 `execution_timeline` 和 `python_runtime` 两个可选采集器。前者在 profiler 初始化后、标记的 workload 开始前完成 rank 准备；只统计 workload 窗口内的操作。CPU 提交时间通过本机 monotonic 时钟锚点给出区间，不将其解释为 GPU 到达时间。梯度 post-accumulate 回调同样是 CPU 证据；`profiling.execution_timeline.gpu_gradient_markers=true` 可在诊断中额外记录当前 CUDA stream 的事件，不添加逐参数 synchronize。事件本身有扰动，且并不独自证明 bucket 输入就绪或消费完成。后者的累计 CPU 时间包含等待，也不能与 GPU 时间相加。
+
+`examples/v6_validation/run_binding_ablation.py` 对已有候选执行不发布的完整质量和 AB/BA 诊断：原始 revision 的直接/框架空载对照，以及相同父版本的新增站点透传/实际候选对照。透传保持站点绑定但跳过新增候选 build 和计算；它测得的是“接入绑定路径”的差异，不能假设底层 kernel 图完全不变。Qwen 实测透传出现原阈值内的数值差异，因此不能把全部退化称为纯 Python 开销。
+
+`examples/v6_validation/run_timeline_comparison.py` 在相同原始候选上分别采集无梯度回调及有回调的时间线，保留 profiler 扰动和所有未知项。这些诊断是显式发起的验证工作，不计为新自主搜索或候选收益。具体结果及此前自动化证据范围见 [复核记录](v6-autonomy-audit-and-followup.md)。
 
 `candidate_diagnostics` 采集器在独立 worker 中跟踪候选安装和连续执行，记录被吞掉的 Python 异常、返回 False 的条件及最近源代码行，不读取局部变量或保留 tensor。它可以通过 `collect_extra` 显式调用，也会在参数筛查观察到任一 rank 上该 bundle 的任一活动站点全部经过 `context.references` 时自动采集，并进入下一轮完整反馈。触发回执列出对应 rank、bundle、call 和调用数，因此联合候选中部分融合成功、另一部分始终回退也能进入诊断。`profiling.candidate_diagnostics` 可设为 `off`、默认的 `on_reference` 或 `always`。引用原实现也可能是合法组合的一部分，触发诊断不等于判定候选无效；异常和 False 条件也必须结合源代码解释。追踪范围为当前 Python 线程的候选安装文件，不覆盖 native kernel、其他线程或导入的辅助文件；其计时不参与接受规则。
 
