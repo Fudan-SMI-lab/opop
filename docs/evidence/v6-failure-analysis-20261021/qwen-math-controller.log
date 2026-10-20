@@ -1,0 +1,36 @@
+Loading weights:   0%|          | 0/398 [00:00<?, ?it/s]Loading weights: 100%|██████████| 398/398 [00:00<00:00, 6906.49it/s]
+Traceback (most recent call last):
+  File "/root/autodl-tmp/dev/v6-work/qwen_math_probe.py", line 82, in <module>
+    report['prefill_graph_modules']={k:cmp(v,baseline_records[k]) for k,v in records.items() if k in baseline_records}
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/dev/v6-work/qwen_math_probe.py", line 32, in cmp
+    err=(a-b).abs();bad=err>(.02+.02*b.abs())
+         ~^~
+RuntimeError: The size of tensor a (32) must match the size of tensor b (8) at non-singleton dimension 1
+Loading weights:   0%|          | 0/398 [00:00<?, ?it/s]Loading weights: 100%|██████████| 398/398 [00:00<00:00, 6641.12it/s]
+prefill graph {'shape': [1, 1, 151936], 'max_abs': 0.3125, 'different': 120029, 'bad': 14321, 'elements': 151936}
+static decode {'shape': [1, 1, 151936], 'max_abs': 0.1875, 'different': 107273, 'bad': 7069, 'elements': 151936}
+/root/autodl-tmp/dev/v6-work/qwen_math_probe.py:122: UserWarning: Memory efficient kernel not used because: (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:1104.)
+  p=original_sdpa(q,kp,vp,attn_mask=mask,enable_gqa=True)
+/root/autodl-tmp/dev/v6-work/qwen_math_probe.py:122: UserWarning: Memory Efficient attention has been runtime disabled. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:571.)
+  p=original_sdpa(q,kp,vp,attn_mask=mask,enable_gqa=True)
+/root/autodl-tmp/dev/v6-work/qwen_math_probe.py:122: UserWarning: Flash attention kernel not used because: (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:1106.)
+  p=original_sdpa(q,kp,vp,attn_mask=mask,enable_gqa=True)
+/root/autodl-tmp/dev/v6-work/qwen_math_probe.py:122: UserWarning: Flash Attention does not support non-null attn_mask. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:262.)
+  p=original_sdpa(q,kp,vp,attn_mask=mask,enable_gqa=True)
+/root/autodl-tmp/dev/v6-work/qwen_math_probe.py:122: UserWarning: cuDNN attention kernel not used because: (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:1108.)
+  p=original_sdpa(q,kp,vp,attn_mask=mask,enable_gqa=True)
+/root/autodl-tmp/dev/v6-work/qwen_math_probe.py:122: UserWarning: cuDNN attention has been runtime disabled. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:831.)
+  p=original_sdpa(q,kp,vp,attn_mask=mask,enable_gqa=True)
+/root/autodl-tmp/dev/v6-work/qwen_math_probe.py:121: UserWarning: Memory efficient kernel not used because: (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:1104.)
+  r=original_sdpa(q,k,v,enable_gqa=True)
+/root/autodl-tmp/dev/v6-work/qwen_math_probe.py:121: UserWarning: For dense input, both fused kernels require query, key and value to have the same num_heads. Query.sizes(): [1, 32, 1, 128], Key sizes(): [1, 8, 257, 128], Value sizes(): [1, 8, 257, 128] instead. To broadcast dense inputs, try using unsqueeze and expand_to before passing them into the kernel. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:437.)
+  r=original_sdpa(q,k,v,enable_gqa=True)
+/root/autodl-tmp/dev/v6-work/qwen_math_probe.py:121: UserWarning: Flash attention kernel not used because: (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:1106.)
+  r=original_sdpa(q,k,v,enable_gqa=True)
+/root/autodl-tmp/dev/v6-work/qwen_math_probe.py:121: UserWarning: Flash attention has been runtime disabled. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:559.)
+  r=original_sdpa(q,k,v,enable_gqa=True)
+/root/autodl-tmp/dev/v6-work/qwen_math_probe.py:121: UserWarning: cuDNN attention kernel not used because: (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:1108.)
+  r=original_sdpa(q,k,v,enable_gqa=True)
+/root/autodl-tmp/dev/v6-work/qwen_math_probe.py:121: UserWarning: cuDNN attention has been runtime disabled. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:831.)
+  r=original_sdpa(q,k,v,enable_gqa=True)
