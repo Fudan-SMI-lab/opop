@@ -58,9 +58,11 @@ class ProjectAgents:
                 response = self.runtime.client.prompt(session, prompt, model=self.runtime.cfg.agents.default_model,
                                                    directory=sb.root, agent=self.runtime.cfg.opencode.agent)
             if response.error:
-                status = retryable_status(response.error)
+                failure = response.provider_failure
+                status = failure.get("status") if failure else retryable_status(response.error)
+                status = status if status in {408, 429, 500, 502, 503, 504} else None
                 if status:
-                    scheduling = queue.overloaded(status)
+                    scheduling = queue.overloaded(status, failure)
                     self.store.append("PROJECT_PROVIDER_RETRY", {"session": session, "role": role, **scheduling})
                     prompt = ("The provider interrupted the previous response with a temporary service/rate error. "
                               "Continue the same requested task from this session and saved files. Preserve all original "

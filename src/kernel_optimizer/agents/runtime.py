@@ -33,10 +33,31 @@ class PromptResult(BaseModel):
     session_id: str
     message_id: str | None = None
     error: str | None = None
+    # Keep scheduling facts separate from the legacy shortened display error.
+    # No credentials, arbitrary response headers or response body are retained.
+    provider_failure: dict | None = None
     # Why the model stopped, verbatim from the server ("stop", "tool-calls", "length", ...).
     # `length` means the answer was CUT OFF, which is a different failure from a badly
     # formatted answer and needs different feedback -- see AgentModule.invoke.
     finish: str | None = None
+
+
+def provider_failure(error):
+    """Public scheduling fields from an actual provider error, without headers/body dumps."""
+    if not isinstance(error, dict) or not isinstance(error.get("data"), dict):
+        return None
+    data = error["data"]
+    raw_headers = data.get("responseHeaders")
+    headers = {str(k).lower(): v for k, v in raw_headers.items()} if isinstance(raw_headers, dict) else {}
+    code = None
+    try:
+        body = json.loads(data.get("responseBody") or "{}")
+        detail = body.get("error", body) if isinstance(body, dict) else None
+        code = detail.get("code") if isinstance(detail, dict) else None
+    except (ValueError, TypeError):
+        pass
+    return {"status": data.get("statusCode"), "message": data.get("message"),
+            "provider_code": code, "retry_after": headers.get("retry-after"), "response_date": headers.get("date")}
 
 
 def _free_port(preferred: int) -> tuple[int, socket.socket]:
@@ -798,6 +819,7 @@ class OpencodeClient:
             session_id=session_id,
             message_id=info.get("id"),
             error=json.dumps(error)[:500] if error else None,
+            provider_failure=provider_failure(error),
             finish=info.get("finish") if isinstance(info.get("finish"), str) else None,
         )
 
