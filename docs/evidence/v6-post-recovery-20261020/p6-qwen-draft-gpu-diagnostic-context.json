@@ -1,0 +1,18 @@
+{
+  "raw_result": {
+    "path": "/root/autodl-tmp/dev/v6-work/p6-qwen-draft-gpu-diagnostic-context.json",
+    "bytes": 1380,
+    "sha256": "993fb9da4d5e07ae829e12d260987d28d086ecfaada80f5214733dfa10423d6d"
+  },
+  "result": {
+    "time": "2026-10-20T08:43:34.932648+00:00",
+    "session": "ses_ea7afae8dffe6mbqZZy7Y78MEe",
+    "message": "msg_1587af284001Ca85SUGOxnTiSV",
+    "text": "During the external provider window wait we ran a leased GPU diagnostic on a frozen copy of your current unsubmitted draft, SHA256 c4707569b110cc756ba4f4d55df987af454e8f33396b8dac99ae1af2186d2127. It did NOT edit your candidate, guards, verification constants or kernels. See inputs/draft-cuda-probe.json and inputs/draft-cuda-probe.py. Synthetic current-input chains completed the original 1200/2300 verification windows plus 3 calls: normQ/K/H and silu reached active fused paths with exact final values on the 3 repeated random inputs. RoPE Q/K were ALL fallback: CandidateTrace caught CompilationError in _k_rope1 at h = D // 2; tl.arange(0,h) requires tl.constexpr. This is actual CUDA compiler evidence, not CPU emulation. Fix and inspect as appropriate. Native CUDA parent final-add stride in this probe was (4096,128,128,1)/(1024,128,128,1), while qc keeps transposed stride; do not assume their metadata identical. These standalone probes are NOT whole-Qwen correctness/performance or effective coexistence acceptance; full framework checks still required. Original candidate in sandbox is untouched.",
+    "inputs": [
+      "inputs/draft-cuda-probe.json",
+      "inputs/draft-cuda-probe.py"
+    ],
+    "provider_requests": 0
+  }
+}

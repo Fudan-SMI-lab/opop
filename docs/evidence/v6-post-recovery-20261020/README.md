@@ -68,10 +68,24 @@ Qwen `trial-023e79293c` 在旧冻结实现下数值及配对计时通过，69.51
 
 接下来在独立目录 `p6-qwen-throughput-composition-c` 从已经接受的 batch=8 eager 解码版本验证互补候选。此控制实验让 Selection Agent 自行在真实 groups 中选 group/joint 范围，并要求保留已有 decoder bundle；没有人工指定算子组，也没有改变该任务的 workload、目标、质量或采样协议。默认工作流仍支持四种 scope。这个调整验证的是同一 Qwen 项目的另一个明确负载，不能将结果补写成此前 interactive Graph 已通过。
 
-Qwen 有效多候选组合仍需完成。本目录暂不代表 P6 全部完成。
+Qwen 有效多候选组合仍需完成。本目录暂不代表 P6 全部完成；下述草稿诊断不替代 Agent 正式提交和独立组合评价。
 
 自动触发另经真实 TaskSearch 验证：`p6-qwen-automatic-diagnostics-c` 使用原候选字节和参数，筛查观察到全部经过原实现后自行运行诊断，再次定位上述 logits 条件。筛查和诊断的源码哈希均为 `cc2c1b9634d05a488ceda558a96641b79c3583c93245dad79aa9c9a98098334f`；结果保存进参数反馈，接受指针未改变，不计作新优化收益。
 
 后续源码检查还发现组合提案中的一个未验证假设：安装阶段直接调用 parent forward，并不会自动进入旧 functional 候选的 dispatch mode，也没有自动建立 adapter 的 prefill/decode phase。已将真实执行语义补充给正在运行的候选会话，并作为通用 `inputs/binding-contract.md` 自动提供给以后选组、生成和恢复角色。Graph 的原生执行与 Python 调用计数分别解释，不允许通过无用调用填充计数。此轮 7 项诊断、角色环境和恢复检查通过；新的候选仍由冻结版本独立运行。
+
+## 联合候选中的局部回退
+
+16:37 左右 provider 再次返回账户窗口 HTTP 429，明确恢复时间为 17:12:49（UTC+8）。[实际重试回执](p6-qwen-provider-window.json)保留原会话和服务端时间；框架未增加费用、调用或时长额度。等待期间没有修改原 Agent 草稿，而是冻结副本 `c4707569b110cc756ba4f4d55df987af454e8f33396b8dac99ae1af2186d2127` 做独立诊断。
+
+[局部 GPU 回执](p6-qwen-draft-gpu-diagnostics.json)使用真实 worker、原候选字节、原 1200／2300 次验证窗口和三个重复随机输入。归一化与 SiLU 链最终进入融合路径并逐位通过这些局部输出检查；两类 RoPE 始终回退。单独追踪发现 `_k_rope1` 编译时 `tl.arange(0, h)` 的 `h` 没有声明为 `tl.constexpr`。这是被异常处理隐藏的真实编译错误，不能把正确的父实现输出算成 RoPE 融合成功。探针源码和冻结草稿位于 `p6-qwen-draft-diagnostic-d/`。
+
+旧自动条件要求整个 bundle 的所有站点都调用父实现，因而会漏掉这种部分融合、部分回退。当前实现改为任一活动站点全部通过 `context.references` 就运行独立诊断，回执记录触发的 rank／bundle／call 和次数；合法委托也可能触发，因此它不改变质量、约束或接受规则。[4 项检查](p6-partial-fallback-tests.json)在 box4-2 通过。
+
+[完整 Qwen 草稿筛查](p6-qwen-draft-project-d-result.json)随后通过真实 TaskSearch 自动触发新诊断，定位到同一个编译错误。此实验使用开发者为诊断构造的临时 proposal、原自动 selection 和未改动的 Agent 代码，**不是 Agent 正式提交，也没有 AB/BA 接受或发布**。两个连续步骤各比较 38,895,872 个元素，原质量阈值通过，但最大绝对误差为 0.125，不能称为全模型逐位一致。父 decoder 执行 62 次、无父实现引用；新增 `norm_fused_mp` 4,290 次、`silu_fused` 1,032 次，RoPE 两类仍回退。单次筛查吞吐 102.398 token/s 仅是未配对的观测，不能据此计算可靠收益。原已接受指针保持不变。
+
+该自动诊断的核心源码哈希为 `f7fe40118f9ef8ec5cc4e94653c7e716496dd1ca542d3cab66b8265bd647a85f`。仍在等待恢复的正式候选使用原冻结 `790286a`，没有在途中混换实现。[局部探针输入回执](p6-qwen-draft-gpu-diagnostic-context.json)和[完整筛查输入回执](p6-qwen-draft-project-context.json)证明真实资料已送入原会话，是否被读取由后续工具记录另行确认。
+
+历史 packing 失败、草稿静态检查及上述诊断是开发期间显式提供的补充上下文，不宣称框架已经自动检索所有跨 run 历史。正常上一轮候选／反馈、worker 环境和 binding contract 则由框架自动注入。[工具访问记录](p6-qwen-composition-context-consumption.json)区分这些来源；文件名匹配只能证明对应访问或搜索，不能证明候选的因果推断成立。
 
 [用量快照](p6-resumed-final-usage.json)截至 15:03（UTC+8）包含 157 个会话、4,312 条 assistant 消息，provider 报告费用 $138.3096818128。包含嵌套探索分支，按 session/message 去重；不含外层 Codex 对话，不是账单，两个角色尚在运行，后续还会增加。费用没有用于设置调用额度。

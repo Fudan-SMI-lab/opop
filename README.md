@@ -13,6 +13,8 @@ capabilities.
 See the [project workflow](docs/v6-project-workflow.md) for commands and extension
 interfaces, the [execution record](docs/v6-execution.md) for current progress, and
 the [real validation projects](examples/v6_validation/README.md) for workloads.
+The [acceptance matrix](docs/v6-acceptance.md) separates implemented behavior,
+measured results and remaining validation boundaries.
 Experiments use real configured Agents and GPU workers; results include rejected
 candidates and unresolved cases. Project mode retains the existing single-task
 entry points and defaults.

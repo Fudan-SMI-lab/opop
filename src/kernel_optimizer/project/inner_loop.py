@@ -32,10 +32,17 @@ class ProjectTaskEvaluator:
                    for name in run["ranks"][0]["result"]["metrics"]} if valid else {}
         constraints = constraints_for_runs([run], objective, self.coordinator.prepared["evaluation"]) if valid else []
         feasible = valid and all(row["passed"] for row in constraints)
-        from kernel_optimizer.project.candidate_diagnostics import should_trace
+        from kernel_optimizer.project.candidate_diagnostics import reference_sites, should_trace
         candidate_diagnostics = None
         if should_trace(run, bundle.id, request.profiling):
             candidate_diagnostics = self.coordinator.collect_extra(revision, ["candidate_diagnostics"])["candidate_diagnostics"]
+            candidate_diagnostics["trigger"] = {
+                "policy": request.profiling.get("candidate_diagnostics", "on_reference"),
+                "reference_sites": reference_sites(run, bundle.id),
+                "interpretation": "Any fully referenced site can expose a hidden fallback in a joint bundle. "
+                                  "References can also implement legitimate composition or verification; "
+                                  "this trigger does not change quality, feasibility or acceptance.",
+            }
         diagnostic = None
         if feasible and self.collect_resources:
             diagnostic = self.coordinator.execute(revision, bundle.id+"-resources", "profile")

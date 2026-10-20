@@ -75,6 +75,19 @@ class CandidateTrace(AbstractContextManager):
         }
 
 
+def reference_sites(run, bundle_id):
+    """Locate fully referenced sites, including partial fallback inside a joint bundle."""
+    sites = []
+    for rank in run.get("ranks", []):
+        coverage = rank.get("result", {}).get("coverage", {}).get(bundle_id, {})
+        references = coverage.get("reference_invocations", {})
+        for call, count in coverage.get("counts", {}).items():
+            if references.get(call, 0) >= count > 0:
+                sites.append({"rank": rank.get("rank"), "bundle": bundle_id, "call": call,
+                              "invocations": count, "reference_invocations": references[call]})
+    return sites
+
+
 def should_trace(run, bundle_id, profiling):
     """Reference use is a diagnostic trigger, not a correctness/acceptance rule."""
     policy = profiling.get("candidate_diagnostics", "on_reference")
@@ -84,10 +97,4 @@ def should_trace(run, bundle_id, profiling):
         return True
     if policy == "off":
         return False
-    for rank in run.get("ranks", []):
-        coverage = rank.get("result", {}).get("coverage", {}).get(bundle_id, {})
-        counts = coverage.get("counts", {})
-        references = coverage.get("reference_invocations", {})
-        if counts and all(references.get(call, 0) >= count > 0 for call, count in counts.items()):
-            return True
-    return False
+    return bool(reference_sites(run, bundle_id))

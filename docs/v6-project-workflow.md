@@ -1,6 +1,6 @@
 # v6 项目工作流：运行、扩展与结果解释
 
-本页说明已经实现的接口。阶段验收和实际结果见 [执行记录](v6-execution.md)、[验证矩阵](v6-validation-projects.md) 与各阶段 `docs/evidence/`。正式对照正在运行；支持某个接口不等于所有模型和目标已经获得加速。
+本页说明已经实现的接口。阶段验收和实际结果见 [验收与边界](v6-acceptance.md)、[执行记录](v6-execution.md)、[验证矩阵](v6-validation-projects.md) 与各阶段 `docs/evidence/`。正式对照的 11 条路径、22 轮已完成；支持某个接口不等于所有模型和目标已经获得加速。
 
 ## 模块与迭代位置
 
@@ -143,7 +143,7 @@ box4-2 实测为无 P2P、无 NVLink 的双 4090，NCCL 使用 SHM/direct/direct
 
 ## 当前验证边界
 
-`candidate_diagnostics` 采集器在独立 worker 中跟踪候选安装和连续执行，记录被吞掉的 Python 异常、返回 False 的条件及最近源代码行，不读取局部变量或保留 tensor。它可以通过 `collect_extra` 显式调用，也会在参数筛查观察到一个 rank 上该 bundle 的全部调用都经过 `context.references` 时自动采集，并进入下一轮完整反馈。`profiling.candidate_diagnostics` 可设为 `off`、默认的 `on_reference` 或 `always`。引用原实现也可能是合法组合的一部分，触发诊断不等于判定候选无效；异常和 False 条件也必须结合源代码解释。追踪范围为当前 Python 线程的候选安装文件，不覆盖 native kernel、其他线程或导入的辅助文件；其计时不参与接受规则。
+`candidate_diagnostics` 采集器在独立 worker 中跟踪候选安装和连续执行，记录被吞掉的 Python 异常、返回 False 的条件及最近源代码行，不读取局部变量或保留 tensor。它可以通过 `collect_extra` 显式调用，也会在参数筛查观察到任一 rank 上该 bundle 的任一活动站点全部经过 `context.references` 时自动采集，并进入下一轮完整反馈。触发回执列出对应 rank、bundle、call 和调用数，因此联合候选中部分融合成功、另一部分始终回退也能进入诊断。`profiling.candidate_diagnostics` 可设为 `off`、默认的 `on_reference` 或 `always`。引用原实现也可能是合法组合的一部分，触发诊断不等于判定候选无效；异常和 False 条件也必须结合源代码解释。追踪范围为当前 Python 线程的候选安装文件，不覆盖 native kernel、其他线程或导入的辅助文件；其计时不参与接受规则。
 
 选组／候选角色同时获得 `inputs/binding-contract.md`，说明安装阶段与实际 adapter 调用的 phase／dispatch 区别，以及 Graph 原生执行不能直接用 Python hook 数量解释。完整定义保存在 [组合执行契约](../src/kernel_optimizer/project/binding_contract.md)；它覆盖新生成、同会话修复和恢复，不要求每个任务自行添加这一上下文。
 

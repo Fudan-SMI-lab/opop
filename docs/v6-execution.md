@@ -91,6 +91,8 @@ Qwen batch=8 在四次 Graph 质量失败后生成 eager 解码候选，完整�
 
 `6d71a3c` 与 `790286a` 已推送并同步 box4-2。新增通用候选异常／False 条件诊断，经真实 TaskSearch 自动触发验证；组合执行契约进入新生成、修复和恢复请求，补足安装阶段与实际 phase／dispatch 的语义。4 项初次诊断检查及后续 7 项角色／恢复相关检查分别记录，不重复相加。完整产物见[恢复后的验收证据](evidence/v6-post-recovery-20261020/README.md)。
 
+**16:52（UTC+8）的进展：** provider 再次返回账户窗口 429，提示 17:12:49 后恢复；原正式会话继续保留。等待期间，未提交草稿的真实 GPU 诊断发现 RoPE 编译错误被父实现回退掩盖。框架将自动诊断从“整个 bundle 回退”细化到“任一活动站点全部调用父实现”，并保留触发的 rank／call。4 项检查通过；隔离的完整 Qwen 筛查实际自动捕获了该编译错误，两个连续步骤通过原质量阈值，原接受指针未变。该诊断使用临时手工 proposal 包装原 Agent 草稿，不计作正式多候选验收；P6 仍待原 Agent 提交和完整组合评价。代码、实际请求与回执见[局部回退证据](evidence/v6-post-recovery-20261020/README.md#联合候选中的局部回退)。
+
 ## 命令与运行位置
 
 本地仓库：`D:\Pyhon_projects\opop\v6`。服务器仓库：`/root/autodl-tmp/dev/opop-v6`。服务器工作目录：`/root/autodl-tmp/dev/v6-work`。Python：`/root/autodl-tmp/dev-venv/bin/python`。

@@ -3,7 +3,7 @@ import sys
 
 import pytest
 
-from kernel_optimizer.project.candidate_diagnostics import CandidateTrace, should_trace
+from kernel_optimizer.project.candidate_diagnostics import CandidateTrace, reference_sites, should_trace
 
 
 def test_caught_exception_and_guard_reported_without_changing_behavior(tmp_path):
@@ -66,7 +66,23 @@ def test_reference_trigger_is_optional_and_not_an_acceptance_rule():
     assert not should_trace(run, "b", {"candidate_diagnostics": "off"})
     assert not should_trace(run, "missing", {})
     run["ranks"][0]["result"]["coverage"]["b"]["reference_invocations"]["y"] = 1
+    assert should_trace(run, "b", {})
+    run["ranks"][0]["result"]["coverage"]["b"]["reference_invocations"]["x"] = 1
     assert not should_trace(run, "b", {})
     assert should_trace(run, "b", {"candidate_diagnostics": "always"})
     with pytest.raises(ValueError):
         should_trace(run, "b", {"candidate_diagnostics": "invalid"})
+
+
+def test_joint_bundle_partial_fallback_reports_only_observed_reference_sites():
+    run = {"ranks": [{"rank": 1, "result": {"coverage": {
+        "joint": {"counts": {"norm": 1203, "rope": 1203, "unseen": 0},
+                  "reference_invocations": {"norm": 1200, "rope": 1203, "unseen": 0}},
+        "parent": {"counts": {"decode": 62}, "reference_invocations": {}},
+    }}}]}
+    assert should_trace(run, "joint", {})
+    assert not should_trace(run, "parent", {})
+    assert reference_sites(run, "joint") == [
+        {"rank": 1, "bundle": "joint", "call": "rope", "invocations": 1203,
+         "reference_invocations": 1203}
+    ]
