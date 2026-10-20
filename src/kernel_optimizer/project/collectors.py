@@ -24,6 +24,17 @@ class TorchCommunication:
         return sample_metric(adapter, state, operation, synchronize, context, source, repeats)
 
 
+class NcclTuning:
+    def collect(self, search, revision):
+        from kernel_optimizer.project.nccl_tuning import read_logs
+        if search.request.communication == "off" or len(search.request.devices) < 2:
+            return {"status": "not_applicable", "reason": "communication disabled or single-device task"}
+        name = "nccl-tuning-" + uuid4().hex[:10]
+        run = search.execute(revision, name, "nccl_tuning")
+        result = read_logs((search.output/"jobs"/name/"run").glob("nccl.*.log"))
+        return {**result, "run": run, "status": result["status"] if run["status"] == "passed" else "unavailable"}
+
+
 class Nsys:
     def collect(self, search, revision):
         from kernel_optimizer.project.nsys import export
@@ -117,6 +128,7 @@ class PythonRuntime:
 def configured(profiling):
     registry = Registry()
     registry.register("torch_communication", TorchCommunication())
+    registry.register("nccl_tuning", NcclTuning())
     registry.register("nsys", Nsys())
     registry.register("device_telemetry", DeviceTelemetry())
     registry.register("collective_calibration", CollectiveCalibration())
@@ -130,7 +142,7 @@ def configured(profiling):
 
 
 def diagnostic_names(profiling):
-    return ["torch", "nsys", "device_telemetry", "collective_calibration", "candidate_diagnostics", "execution_timeline", "python_runtime",
+    return ["torch", "nsys", "nccl_tuning", "device_telemetry", "collective_calibration", "candidate_diagnostics", "execution_timeline", "python_runtime",
             *profiling.get("collector_plugins", {})]
 
 

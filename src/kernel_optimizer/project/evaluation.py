@@ -292,6 +292,12 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
     if action == "collective_calibration":
         from kernel_optimizer.project.calibration import capture as calibrate
         return calibrate(context, parameters["collector_options"])
+    if action == "nccl_tuning":
+        mode("profile")
+        for _ in range(request["warmup"] + 1):
+            adapter.reset(state)
+            invoke()
+        return {"valid": True, "scope": "Tuning-log diagnostic only; no quality or performance acceptance"}
     if action == "telemetry_profile":
         from kernel_optimizer.project.telemetry import capture as telemetry_capture
         mode("profile")

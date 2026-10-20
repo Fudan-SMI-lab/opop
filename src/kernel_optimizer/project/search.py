@@ -62,6 +62,9 @@ class ProjectSearch:
         if action in {"profile", "nsys_profile"} and request.communication != "off" and len(request.devices) > 1:
             env = {"NCCL_DEBUG": "INFO", "NCCL_DEBUG_SUBSYS": "INIT,GRAPH,COLL",
                    "NCCL_DEBUG_FILE": str(job_root/"run"/"nccl.%h.%p.log")}
+        if action == "nccl_tuning":
+            env = {"NCCL_DEBUG": "INFO", "NCCL_DEBUG_SUBSYS": "INIT,ENV,TUNING",
+                   "NCCL_DEBUG_FILE": str(job_root/"run"/"nccl.%h.%p.log")}
         return LocalExecutor().run(ExecutionRequest(entry=source/"opop_evaluate.py", cwd=source,
             devices=request.devices, distributed_backend=request.distributed_backend, output=job_root/"run",
             lease_dir=request.lease_dir, worker_timeout_s=request.worker_timeout_s,
@@ -145,6 +148,7 @@ class ProjectSearch:
         prompt = ("Choose useful diagnostic collectors for the frozen task objective from actual capability and trace evidence. "
             "Write collection.json following collection.schema.json and use names from available-collectors.json. The torch collector already ran. Nsys is optional and runs separately; "
             "select it when available and useful to resolve overlap, graph tracing or attribution questions. "
+            "nccl_tuning captures actual NCCL algorithm/protocol/channel decisions in a separate warmed worker; kernel entry names alone do not identify the protocol. It does not join payload-size matches to operator groups or supply clean timing. "
             "device_telemetry samples available NVML PCIe rates, utilization and memory separately; these are device-wide readings with native windows, not per-collective bytes. "
             "collective_calibration runs a separate synthetic full-world SUM allreduce at actually observed sizes/dtypes, with correctness checks; it is a reference experiment, not a performance lower bound or model critical-path estimate. "
             "execution_timeline records a separate plain Torch trace, CPU-to-CUDA submit associations, synchronization, per-device intervals, and optional passive CPU gradient post-accumulate callbacks. It reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown. It never replaces a communication hook or determines subsequent search actions. "
