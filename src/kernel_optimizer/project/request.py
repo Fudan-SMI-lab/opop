@@ -22,6 +22,7 @@ class ProjectRequest(BaseModel):
     required_observations: list[str] = Field(default_factory=list)
     tools: dict[str, str] = Field(default_factory=dict)
     profiling: dict[str, Any] = Field(default_factory=dict)
+    binding_backend: Literal["legacy", "scoped"] = "legacy"
     warmup: int = Field(default=2, ge=0)
     repeats: int = Field(default=5, ge=3)
     continuous_steps: int = Field(default=2, ge=2)

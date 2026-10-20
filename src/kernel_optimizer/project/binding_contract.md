@@ -1,6 +1,15 @@
 Candidate composition and execution contract
 
 The evaluator calls adapter.prepare(), then installs bundles in revision order.
+
+The request's optional `binding_backend` defaults to `legacy`. The experimental
+`scoped` backend activates functional dispatch only inside observed module
+boundaries when every installed functional site has a resolvable boundary.
+Unscoped sites and multiple functional bundles retain the existing global
+dispatch path and precedence. The setup receipt records the effective backend
+and reason. Candidate call interfaces, live signatures, phases, quality and
+coverage requirements are unchanged; backend selection does not route search
+decisions. A diagnostic backend comparison never publishes a candidate.
 build(context) is installation: the default project phase is "run", quality
 tracking is off, and the adapter's normal invocation has not started.
 context.references contains the current callable at each declared boundary.

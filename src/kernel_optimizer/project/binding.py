@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from contextlib import contextmanager
 from contextvars import ContextVar
 import hashlib
 import importlib.util
@@ -11,7 +12,17 @@ from kernel_optimizer.project.discovery import _phase, tensor_description
 
 
 class BindingSession:
-    def __init__(self, adapter, state, specs: list[dict], *, rank=0, world_size=1, bundle_id=None):
+    def __init__(self, adapter, state, specs: list[dict], *, rank=0, world_size=1, bundle_id=None,
+                 backend="legacy"):
+        if backend not in {"legacy", "scoped"}:
+            raise ValueError(f"unknown binding backend: {backend}")
+        self.backend = backend
+        self.execution_plan = {"requested": backend, "effective": "direct",
+                               "reason": "no functional replacements"}
+        self.scope_enabled = False
+        self._invoking = False
+        self._scope_depth = 0
+        self._scope_frames = []
         self.adapter, self.state = adapter, state
         self.rank, self.world_size = rank, world_size
         self.all_specs = {spec["id"]: spec for spec in specs}
@@ -139,6 +150,18 @@ class BindingSession:
             spec = self.specs[ident]
             key = (spec["target"], spec["phase"], spec.get("site_parent"))
             indexed.setdefault(key, []).append((spec, replacement))
+        parents = {self.specs[ident].get("site_parent") for ident in self.functionals}
+        phases = {self.specs[ident]["phase"] for ident in self.functionals}
+        available = {hashlib.sha256((root + ("."+path if path else "")+"|"+phase).encode()).hexdigest()[:24]
+                     for root, model in self.models.items() for path, _ in model.named_modules()
+                     for phase in phases}
+        self.scope_enabled = self.backend == "scoped" and bool(parents) and parents <= available
+        self.execution_plan.update(
+            effective="scoped" if self.scope_enabled else "legacy",
+            reason="all functional sites have observed module boundaries" if self.scope_enabled else
+                   "legacy requested" if self.backend == "legacy" else
+                   "functional sites include an unscoped or unresolved boundary",
+            functional_sites=len(self.functionals), scope_ids=sorted(p for p in parents if p))
         if any(spec.get("site_parent") for spec in self.specs.values() if spec["id"] in self.functionals):
             seen = set()
             for root, model in self.models.items():
@@ -150,7 +173,19 @@ class BindingSession:
                     def before(mod, args, target=target):
                         ident = hashlib.sha256((target+"|"+_phase.get()).encode()).hexdigest()[:24]
                         binding.active_modules.set((*binding.active_modules.get(), ident))
+                        entered = binding.scope_enabled and binding._invoking and ident in parents and binding._scope_depth == 0
+                        if entered:
+                            binding._mode.__enter__()
+                            binding._scope_depth += 1
+                        binding._scope_frames.append((id(mod), entered))
                     def after(mod, args, result):
+                        # Another pre-hook can fail before ours is called.
+                        if not binding._scope_frames or binding._scope_frames[-1][0] != id(mod):
+                            return
+                        _, entered = binding._scope_frames.pop()
+                        if entered:
+                            binding._scope_depth -= 1
+                            binding._mode.__exit__(None, None, None)
                         binding.active_modules.set(binding.active_modules.get()[:-1])
                     self.handles.append(module.register_forward_pre_hook(before))
                     self.handles.append(module.register_forward_hook(after, always_call=True))
@@ -170,10 +205,27 @@ class BindingSession:
                 return func(*args, **(kwargs or {}))
         self._mode = ReplacementMode()
 
+    def use_legacy(self, reason):
+        """Preserve global mode ordering when several functional bundles coexist."""
+        self.scope_enabled = False
+        if self._mode is not None:
+            self.execution_plan.update(effective="legacy", reason=reason)
+
+    @contextmanager
+    def activate(self):
+        previous = self._invoking
+        self._invoking = True
+        try:
+            if self._mode is not None and not self.scope_enabled:
+                with self._mode:
+                    yield
+            else:
+                yield
+        finally:
+            self._invoking = previous
+
     def invoke(self):
-        if self._mode is None:
-            return self.adapter.run(self.state)
-        with self._mode:
+        with self.activate():
             return self.adapter.run(self.state)
 
     def close(self):

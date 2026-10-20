@@ -162,7 +162,9 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
         if cuda:
             torch.cuda.synchronize(); torch.cuda.reset_peak_memory_stats()
         started = time.perf_counter_ns()
-        binding = BindingSession(adapter, state, bundle["specs"], rank=context["rank"], world_size=context["world_size"], bundle_id=bundle["id"])
+        binding = BindingSession(adapter, state, bundle["specs"], rank=context["rank"], world_size=context["world_size"],
+                                 bundle_id=bundle["id"],
+                                 backend=ablation.get("binding_backend", request.get("binding_backend", "legacy")))
         binding.tracking = False
         installed = binding.install(Path(bundle["file"]), bundle.get("parameters", {}),
                                     diagnostic_passthrough=bundle["id"] in passthrough)
@@ -172,7 +174,8 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
             raise ValueError("installed candidate sites differ from the declared bundle")
         if cuda:
             torch.cuda.synchronize()
-        setup.append({"bundle": bundle["id"], "elapsed_ms": (time.perf_counter_ns()-started)/1e6,
+        setup.append({"bundle": bundle["id"], "binding": binding.execution_plan,
+                      "elapsed_ms": (time.perf_counter_ns()-started)/1e6,
                       "allocated_bytes": torch.cuda.memory_allocated() if cuda else None,
                       "reserved_bytes": torch.cuda.memory_reserved() if cuda else None,
                       "peak_allocated_bytes": torch.cuda.max_memory_allocated() if cuda else None,
@@ -181,6 +184,9 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
             lifecycle_allocated_peak = max(lifecycle_allocated_peak, torch.cuda.max_memory_allocated())
             lifecycle_reserved_peak = max(lifecycle_reserved_peak, torch.cuda.max_memory_reserved())
         bindings.append((bundle, binding))
+    if sum(binding._mode is not None for _, binding in bindings) > 1:
+        for _, binding in bindings:
+            binding.use_legacy("multiple functional bundles require existing global dispatch precedence")
     if candidate_trace is not None:
         candidate_trace.phase = "run"
     quality = request["quality"]
@@ -214,8 +220,7 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
             with ExitStack() as stack:
                 for _, binding in bindings:
                     binding.tracking = track
-                    if binding._mode is not None:
-                        stack.enter_context(binding._mode)
+                    stack.enter_context(binding.activate())
                 return adapter.run(state)
         finally:
             for _, binding in bindings:
