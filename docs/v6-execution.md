@@ -81,6 +81,10 @@ DDP 两个有效 bundle 在双 rank 共同执行并通过完整质量，但组�
 
 自动分支第 4 轮暴露新分支缺少 discovery 的准备错误，修复 `a1b4ae1` 已推送并在 box4-2 通过 10 项相关检查。原失败及旧源码结果保留，修复后在独立冻结目录继续功能验收，不混入上述正式对照。服务器主目录已同步到该实现；正在运行的实验各自引用冻结目录。
 
+随后完成 DDP 成功候选的独立复测（146.083→125.422 ms，通过）、保留形状（质量通过但收益未过噪声）及通信目标交叉评价（整步约束通过但通信收益不稳定，拒绝）。同一父版本的 A、B、A+B 全部通过质量；交互范围跨零，不虚构逐组贡献。新增 driver `649f16b` 将合法子项和整版分别实测，详见[独立复核与交互](evidence/v6-post-recovery-20261020/README.md)。
+
+真实角色检查还发现系统 Python 与 worker 的 Torch／Transformers 版本不同。项目模式新增实际 worker 环境信息及解释器优先 PATH；真实 Agent 已确认默认／显式 Python 均对应开发环境。该更正只影响检查环境，不改变质量标准或将历史失败追认成功；四个正在运行的开发会话已收到事实更正。
+
 ## 命令与运行位置
 
 本地仓库：`D:\Pyhon_projects\opop\v6`。服务器仓库：`/root/autodl-tmp/dev/opop-v6`。服务器工作目录：`/root/autodl-tmp/dev/v6-work`。Python：`/root/autodl-tmp/dev-venv/bin/python`。

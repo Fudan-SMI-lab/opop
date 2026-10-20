@@ -68,6 +68,8 @@ def main():
     joint = sources["AB"].revision(args.joint_revision)
     protocol = {"arguments": {k: str(v) for k, v in vars(args).items()},
                 "base": base.revisions.current().id, "anchor": base.prepared["revision"],
+                "objective": base.request.objective, "workload": base.request.workload,
+                "request_sha256": hashlib.sha256((args.base_run/"request.json").read_bytes()).hexdigest(),
                 "framework_source": framework_source(),
                 "driver_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                 "order": ["A", "B", "AB"], "reference": "same frozen parent; AB/BA in fresh workers per arm"}

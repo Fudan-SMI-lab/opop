@@ -59,6 +59,8 @@ flowchart LR
 
 所有并行实验必须使用同一设备 lease 目录。`worker_timeout_s` 是 GPU 作业故障处理条件，不是 Agent/API 使用时限。开发配置可使用 `opencode.request_timeout_s: null`、`idle_abort_frac: 0` 和 `usage.mode: observe_only`；费用、tokens 和请求数只统计。
 
+项目角色的默认 PATH 优先使用 LocalExecutor 的实际 Python 环境；`inputs/worker-environment.json` 提供该解释器、Python 与安装包版本，修复／恢复请求也保留这一事实。Agent 的 CPU/API 检查应使用这里的解释器，避免从另一个 Conda 环境推断实际 worker 的接口。该调整仅作用于项目模式，不修改旧单算子配置或系统安装包。
+
 box4-2 的示例运行方式：
 
 ```sh

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 from typing import Callable
 from uuid import uuid4
 
@@ -50,6 +51,13 @@ class ProjectAgents:
 
     def _complete(self, role, sb, session, prompt, outputs, validator, feedback_provided, repairs=0):
         from kernel_optimizer.project.provider_queue import ProviderQueue, retryable_status
+        from kernel_optimizer.project.runtime_config import worker_environment
+        environment = worker_environment()
+        sb.write_input("inputs/worker-environment.json", json.dumps(environment, indent=2))
+        environment_note = (" Read inputs/worker-environment.json before library/API inspection. "
+            f"The measured worker uses Python {environment['python']}; use that executable for CPU checks. "
+            "Other system/Conda environments may have different library versions. GPU work remains in leased framework workers.")
+        prompt += environment_note
         queue = ProviderQueue(self.runtime.cfg)
         self.store.append("PROJECT_AGENT_STARTED", {"role": role, "session": session, "sandbox": str(sb.root),
                                                      "feedback_provided": feedback_provided})
@@ -66,7 +74,8 @@ class ProjectAgents:
                     self.store.append("PROJECT_PROVIDER_RETRY", {"session": session, "role": role, **scheduling})
                     prompt = ("The provider interrupted the previous response with a temporary service/rate error. "
                               "Continue the same requested task from this session and saved files. Preserve all original "
-                              "instructions, frozen inputs and output schemas; do not restart completed work or run ad hoc GPU tests.")
+                              "instructions, frozen inputs and output schemas; do not restart completed work or run ad hoc GPU tests."
+                              + environment_note)
                     continue
                 raise RuntimeError(response.error)
             queue.succeeded()
@@ -80,7 +89,7 @@ class ProjectAgents:
             except (ValueError, SyntaxError) as exc:
                 error = f"{type(exc).__name__}: {exc}"[:6000]
                 self._save_rejection(role, sb, session, outputs, error)
-                prompt = self._repair_prompt(error)
+                prompt = self._repair_prompt(error) + environment_note
                 repairs += 1
         receipt = {"role": role, "session": session, "message": response.message_id,
                    "model": self.runtime.cfg.agents.default_model,
