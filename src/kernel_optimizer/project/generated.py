@@ -33,6 +33,7 @@ class CollectionPlan(BaseModel):
     requested_fields: list[str]
     unavailable_fields: dict[str, str]
     rationale: str
+    revision: str | None = None
 
 
 def validate_proposal(directory: Path):

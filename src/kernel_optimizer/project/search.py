@@ -137,7 +137,7 @@ class ProjectSearch:
             write_json(self.output/"discovery.json", result)
         return result
 
-    def plan_collectors(self, discovery):
+    def plan_collectors(self, discovery, *, evaluation=None, revisions=None):
         from kernel_optimizer.project.collectors import diagnostic_names
         names = diagnostic_names(self.request.profiling)
         inputs = {"request.json": json.dumps(self.request.portable(), indent=2),
@@ -145,6 +145,11 @@ class ProjectSearch:
                   "observations.json": json.dumps(discovery["communication"], indent=2),
                   "coverage.json": json.dumps(discovery["coverage"], indent=2),
                   "collection.schema.json": json.dumps(CollectionPlan.model_json_schema(), indent=2)}
+        if evaluation is not None:
+            inputs["evaluation.json"] = json.dumps(evaluation, indent=2)
+            inputs["revisions.json"] = json.dumps({"candidates": [
+                {"revision": r.id, "parent": r.parent_id, "bundles": list(r.bundles)} for r in revisions],
+                "discovery_revision": discovery["revision"]}, indent=2)
         prompt = ("Choose useful diagnostic collectors for the frozen task objective from actual capability and trace evidence. "
             "Write collection.json following collection.schema.json and use names from available-collectors.json. The torch collector already ran. Nsys is optional and runs separately; "
             "select it when available and useful to resolve overlap, graph tracing or attribution questions. "
@@ -158,11 +163,25 @@ class ProjectSearch:
             "Exact bucket links require native correlation and observed gradient-storage membership; otherwise retain ambiguous candidates. List unavailable dimensions with observed reasons. "
             "Do not request every counter indiscriminately, change the task, or run tools yourself. "
             "The framework verifies availability and retains missing fields as unknown.")
+        if evaluation is not None:
+            prompt += (" Read evaluation.json and revisions.json: these are the actual candidates' clean project "
+                       "measurements and binding summary; observations.json is its parent's earlier discovery. "
+                       "Choose diagnostics and one listed revision from the observed uncertainty; set the "
+                       "plan's revision field to its exact ID when requesting collection. Do not assume "
+                       "a performance regression is an algorithm cost or that calling a reference is necessarily "
+                       "fallback. The selected collectors run on this exact candidate in separate workers. "
+                       "An empty list is valid when further collection is not useful. No failure-category policy "
+                       "or prescribed optimization action is supplied.")
         directory = self.output/"collector-plans"/uuid4().hex[:10]; directory.mkdir(parents=True)
         def validate(directory):
             plan = CollectionPlan.model_validate_json((directory/"collection.json").read_bytes())
             if set(plan.collectors)-set(names):
                 raise ValueError("collector plan refers to an unregistered collector")
+            choices = {r.id for r in revisions or ()}
+            if plan.revision is not None and plan.revision not in choices:
+                raise ValueError("collection revision must belong to supplied candidates; initial planning uses null")
+            if evaluation is not None and plan.collectors and plan.revision not in choices:
+                raise ValueError("select one supplied revision for post-evaluation collection")
         with Runtime(self.config, log_dir=directory) as runtime:
             generated, receipt = ProjectAgents(runtime, self.store).generate("collection-planner", inputs, prompt,
                 ("collection.json",), validator=validate)
@@ -333,6 +352,21 @@ class ProjectSearch:
         if selected is None:
             result = {**metadata, "bundle": bundle.model_dump(mode="json"), "decision": {
                 "accepted": False, "reasons": ["no_valid_parameter_candidate"]}}
+            if self.request.profiling.get("feedback_agent_plan", False) and tuning["observations"]:
+                from kernel_optimizer.project.diagnostic_planning import endpoint_summary
+                evidence = {"stage": "parameter_screening", "decision": result["decision"],
+                    "observations": [{"revision": item["revision"], "parameters": item["bundle"]["parameters"],
+                        "constraints": item["constraints"], "endpoint": endpoint_summary(item["run"]),
+                        "receipt": str(self.output/"jobs"/(item["bundle"]["id"]+"-screen")/"run"/"receipt.json")}
+                        for item in tuning["observations"]]}
+                candidates = [self.revisions.revision(item["revision"]) for item in tuning["observations"]]
+                plan = self.plan_collectors(discovery, evaluation=evidence, revisions=candidates)
+                extra = self.collect_extra(self.revisions.revision(plan["plan"]["revision"]),
+                    plan["plan"]["collectors"]) if plan["plan"]["collectors"] else {}
+                result["resources"] = {"status": "observed", "collection_plan": plan,
+                    "extra_collectors": {"after": extra},
+                    "interpretation": "Agent-selected diagnostic on the explicitly selected screening revision; "
+                                      "not an accepted candidate or an attribution to all parameter instances."}
             write_json(trial_root/"result.json", result)
             write_json(self.output/"latest-feedback.json", result)
             return result
@@ -430,7 +464,15 @@ class ProjectSearch:
             evidence=tuple(str(self.output/"jobs"/f"{job_tag}-pair-{i}-{role}"/"run"/"receipt.json")
                            for i, pair in enumerate(pairs) for role in pair))
         decision = self.revisions.evaluate(report)
-        resource_feedback = self.resource_feedback(candidate, bundle, discovery, job_tag=job_tag) if valid else {
+        from kernel_optimizer.project.diagnostic_planning import endpoint_summary
+        diagnostic_evidence = {
+            "quality": quality, "decision": decision,
+            "measurement": {key: measurement.get(key) for key in
+                            ("valid", "objective", "reference", "reasons", "constraints")},
+            "endpoint": endpoint_summary(measured),
+            "evidence": list(report.evidence)}
+        resource_feedback = self.resource_feedback(candidate, bundle, discovery, job_tag=job_tag,
+            evaluation=diagnostic_evidence) if valid else {
             "status": "unavailable", "reason": "candidate failed quality or actual-call coverage"}
         if decision["accepted"] and publish:
             self.revisions.commit(candidate.id)
@@ -447,7 +489,7 @@ class ProjectSearch:
         write_json(self.output/"latest-feedback.json", result)
         return result
 
-    def resource_feedback(self, candidate, bundle, discovery, *, job_tag=None):
+    def resource_feedback(self, candidate, bundle, discovery, *, job_tag=None, evaluation=None):
         run = self.execute(candidate, (job_tag or bundle.id)+"-profile", "profile")
         if run["status"] != "passed":
             return {"status": "unavailable", "reason": "diagnostic execution failed", "run": run}
@@ -465,8 +507,13 @@ class ProjectSearch:
                         for b, a in zip(before, after, strict=True)]} for call in group["calls"]]})
         from kernel_optimizer.project.communication import match_ranks
         selected_collectors = discovery.get("collection_plan", {}).get("plan", {}).get("collectors", [])
+        feedback_plan = None
+        if self.request.profiling.get("feedback_agent_plan", False) and evaluation is not None:
+            feedback_plan = self.plan_collectors(discovery, evaluation=evaluation, revisions=[candidate])
+            selected_collectors = feedback_plan["plan"]["collectors"]
         extra = self.collect_extra(candidate, selected_collectors) if selected_collectors else {}
         return {"status": "observed", "groups": groups, "coverage": [a["coverage"] for a in after],
+                **({"collection_plan": feedback_plan} if feedback_plan is not None else {}),
                 "extra_collectors": {"before": discovery.get("extra_collectors", {}), "after": extra},
                 "communication": {"before": [b.get("communication") for b in before],
                                   "after": [a.get("communication") for a in after],
