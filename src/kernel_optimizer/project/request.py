@@ -3,6 +3,21 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from kernel_optimizer.models.contract_common import Name
+
+
+class ProjectUnderstanding(BaseModel):
+    """Agent output types are checked before leaving the existing repair loop."""
+    goal: Name
+    entrypoint: Name
+    completion: Name
+    state_protocol: Name
+    invariants: list[Name] = Field(min_length=1)
+    objective: dict[str, Any]
+    workload: dict[str, Any]
+    quality: dict[str, Any]
+    missing_information: list[Name]
+    assumptions: list[Name]
 
 
 class ProjectRequest(BaseModel):

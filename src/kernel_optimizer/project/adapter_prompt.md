@@ -1,5 +1,10 @@
 Read inputs/request.json and the project source under inputs/source/. Generate adapter.py and understanding.json.
 
+Follow inputs/understanding.schema.json exactly. In particular, completion and
+state_protocol are nonempty strings, and invariants, assumptions and
+missing_information are arrays of strings. Structured explanatory objects must
+not replace fields whose declared type is string.
+
 The request freezes the workload, objective, quality and assets. Preserve those values exactly. Do not change batch, sequence/generation length, effective training batch, model architecture, precision, data, output requirements or measurement completion to improve a score. The original source is a working reference. Use its semantics and local assets, without downloading models. Do not run GPU jobs here; the framework runs and diagnoses the adapter in a bound worker. Explain any missing task semantics in understanding.json instead of inventing them.
 
 adapter.py must implement these functions:
