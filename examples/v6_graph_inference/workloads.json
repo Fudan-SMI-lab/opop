@@ -1,0 +1,17 @@
+{
+  "model": {"input_features": 128, "hidden_features": 256, "output_features": 64},
+  "workloads": [
+    {"id": "standard", "nodes": 4096, "edges": 65536}
+  ],
+  "held_out_workloads": [
+    {"id": "unseen_graph", "nodes": 7168, "edges": 143360}
+  ],
+  "quality": {"atol": 0.00001, "rtol": 0.0001},
+  "seed": 20261021,
+  "dtype": "float32",
+  "goals": [
+    {"metric": "latency_ms", "direction": "minimize", "unit": "ms"},
+    {"metric": "peak_allocated_bytes", "direction": "minimize", "unit": "bytes",
+     "constraints": [{"metric": "graphs_per_second", "op": "ge", "baseline_ratio": 0.95}]}
+  ]
+}

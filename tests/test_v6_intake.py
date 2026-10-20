@@ -18,7 +18,7 @@ def test_plain_entry_and_original_request_are_separate(tmp_path):
 def test_resolved_description_keeps_task_semantics_and_uses_deployment(tmp_path):
     (tmp_path/"entry.py").write_text("def run(): return 1\n")
     proposal = IntakeProposal(status="ready", description={
-        "entry": "entry.py", "files": ["entry.py"],
+        "entry": "entry.py", "files": ["entry.py"], "invocation": "one complete entry call",
         "objective": {"name": "elapsed_ms", "unit": "ms", "direction": "minimize"},
         "workload": {"items": 12}, "quality": {"atol": 0, "rtol": 0}, "device_count": 1,
     }, evidence={"workload": ["entry.py"]}, assumptions=[], questions=[])

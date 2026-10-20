@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import statistics
+import re
 
 from kernel_optimizer.runtime.execution import ExecutionRequest, LocalExecutor, write_json
 
@@ -71,22 +72,26 @@ def main():
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--arms", type=Path, help="JSON list of {name, env}; explicit manual experiment controls")
     args = parser.parse_args()
     request = json.loads((args.archive / "request.json").read_text())
     request["repeats"] = 15
     prepared = json.loads((args.baseline / "prepared.json").read_text())
     args.output.mkdir(parents=True, exist_ok=False)
     rows = []
+    choices = json.loads(args.arms.read_text()) if args.arms else [
+        {"name": "auto", "env": {}}, {"name": "Simple", "env": {"NCCL_PROTO": "Simple"}},
+        {"name": "LL", "env": {"NCCL_PROTO": "LL"}}]
     # No deliberate weakening of the auto baseline. LL is a diagnostic control.
-    for block, order in enumerate((["auto", "Simple", "LL"], ["LL", "Simple", "auto"])):
-        for arm in order:
+    for block, order in enumerate((choices, list(reversed(choices)))):
+        for choice in order:
+            arm = choice["name"]
             if arm == "auto" and "NCCL_PROTO" in os.environ:
                 raise ValueError("auto baseline requires an unforced controller environment")
             destination = args.output / f"{block}-{arm}"
             env = {"NCCL_DEBUG": "INFO", "NCCL_DEBUG_SUBSYS": "INIT,ENV,GRAPH,TUNING",
                    "NCCL_DEBUG_FILE": str(destination / "nccl.%h.%p.log")}
-            if arm != "auto":
-                env["NCCL_PROTO"] = arm
+            env.update(choice["env"])
             result = LocalExecutor().run(ExecutionRequest(
                 entry=Path(__file__), cwd=args.archive, output=destination,
                 devices=request["devices"], distributed_backend=request["distributed_backend"],
@@ -96,6 +101,15 @@ def main():
                             "request": request, "reference_dir": prepared["controls_path"],
                             "action": "evaluate"}))
             row = {"block": block, "arm": arm, "result": result}
+            decisions = {}
+            for log in destination.glob("nccl.*.log"):
+                for line in log.read_text(errors="replace").splitlines():
+                    match = re.search(r"(\w+): (\d+) Bytes -> Algo (\S+) proto (\S+) channel\{Lo\.\.Hi\}=\{(\d+)\.\.(\d+)\}", line)
+                    if match:
+                        key = match.group(0)
+                        decisions[key] = decisions.get(key, 0) + 1
+            row["tuning_log_decisions"] = decisions
+            row["protocol_evidence"] = "NCCL tuning log, full worker scope including preparation/quality. Kernel entry names alone do not identify the selected algorithm/protocol."
             if result["status"] == "passed":
                 rank_data = [rank["result"] for rank in result["ranks"]]
                 row["quality_passed"] = all(rank["evaluation"]["valid"] for rank in rank_data)

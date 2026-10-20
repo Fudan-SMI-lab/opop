@@ -54,3 +54,12 @@ questions list and description=null if unresolved semantics prevent a valid
 request. Otherwise use status=ready with description, evidence, assumptions and
 an empty questions list. Report existing project behavior; do not add proposed
 optimizations or model-specific framework rules.
+
+State the measured invocation explicitly. Distinguish the project's work from
+its benchmark harness: statistical warmup/repeats, reference construction,
+correctness checks and report writing belong to measurement infrastructure,
+not to the work repeated by adapter.run(). Put statistical warmup/repeats in
+their dedicated fields. Keep genuine internal iterations such as generation,
+solver iterations or training accumulation inside the workload. Preserve the
+selected source workload row and its field names instead of wrapping it in a
+new workload envelope. Use notes for explanations and command provenance.

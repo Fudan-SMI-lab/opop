@@ -50,13 +50,22 @@ class ObjectiveDescription(BaseModel):
         return self
 
 
+class QualityDescription(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    atol: float = Field(ge=0, description="Source-grounded absolute tolerance used by the fixed tensor comparator; zero for exact comparison")
+    rtol: float = Field(ge=0, description="Source-grounded relative tolerance used by the fixed tensor comparator")
+
+
 class Description(BaseModel):
     model_config = ConfigDict(extra="forbid")
     entry: str
     files: list[str] = Field(min_length=1)
+    invocation: str = Field(min_length=1, description="One complete unit of project work, excluding the benchmark harness's statistical repetitions and quality checks")
     objective: ObjectiveDescription
     workload: dict[str, Any]
-    quality: dict[str, Any]
+    quality: QualityDescription
+    warmup: int = Field(default=2, ge=0)
+    repeats: int = Field(default=5, ge=3)
     assets: dict[str, str] = Field(default_factory=dict)
     device_count: int = Field(ge=0)
     distributed_backend: str | None = None
@@ -126,9 +135,11 @@ def resolve_request(proposal, source, goal, environment):
         raise ValueError("this distributed executor requires at least two bound GPUs")
     return ProjectRequest(source_root=source, entry=d.entry, files=list(dict.fromkeys(d.files)), goal=goal,
         objective=d.objective.model_dump(exclude_none=True, exclude_unset=True),
-        workload=d.workload, quality=d.quality, assets=d.assets,
+        workload=d.workload, quality=d.quality.model_dump(exclude_none=True, exclude_unset=True), assets=d.assets,
+        warmup=d.warmup, repeats=d.repeats,
         devices=environment["devices"][:d.device_count], distributed_backend=d.distributed_backend,
-        communication=d.communication, required_observations=d.required_observations, notes=d.notes,
+        communication=d.communication, required_observations=d.required_observations,
+        notes=[*d.notes, "One measured invocation: " + d.invocation],
         lease_dir=Path(environment["lease_dir"]), tools=environment["tools"],
         profiling=environment["profiling"], worker_timeout_s=environment["worker_timeout_s"])
 
