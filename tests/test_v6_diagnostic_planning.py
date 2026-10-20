@@ -46,10 +46,13 @@ def test_screening_rejection_can_collect_an_agent_selected_revision(tmp_path, mo
 
 def test_summary_does_not_infer_fallback_from_parent_calls():
     from kernel_optimizer.project.diagnostic_planning import endpoint_summary
+    routes = [{'call': 'site', 'route': 'parent_fallback_setup_failure', 'count': 13}]
     summary = endpoint_summary({'status': 'passed', 'ranks': [{'rank': 0, 'result': {'valid': True,
         'coverage': {'bundle': {'counts': {'site': 13}, 'reference_invocations': {'site': 13},
-                                'fallbacks': {}}}}}]})
+                                'fallbacks': {}, 'candidate_declared_routes': routes}}}}]})
     assert summary['quality_and_coverage_valid']
     counts = summary['ranks'][0]['coverage']['bundle']
     assert counts['reference_invocations'] == 13
     assert counts['framework_fallbacks'] == 0
+    assert counts['candidate_declared_routes'] == routes
+    assert 'not independent native proof' in summary['interpretation']

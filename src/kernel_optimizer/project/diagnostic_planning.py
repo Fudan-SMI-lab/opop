@@ -11,8 +11,11 @@ def endpoint_summary(run):
                     for setup in row.get("result", {}).get("setup", [])],
                 "coverage": {ident: {"candidate_invocations": sum(values.get("counts", {}).values()),
                     "framework_fallbacks": sum(values.get("fallbacks", {}).values()),
-                    "reference_invocations": sum(values.get("reference_invocations", {}).values())}
+                    "reference_invocations": sum(values.get("reference_invocations", {}).values()),
+                    **({"candidate_declared_routes": values["candidate_declared_routes"]}
+                       if values.get("candidate_declared_routes") else {})}
                     for ident, values in row.get("result", {}).get("coverage", {}).items()}}
                 for row in run.get("ranks", [])],
-            "interpretation": "Reference invocations may implement fallback, verification or composition; "
-                              "these totals do not identify an optimization's native execution path."}
+            "interpretation": "Reference invocations may implement fallback, verification or composition. "
+                              "Route labels are candidate-reported telemetry, not independent native proof; "
+                              "corroborate them with traces or actual exception evidence."}
