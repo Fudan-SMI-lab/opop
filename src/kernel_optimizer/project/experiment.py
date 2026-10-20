@@ -47,6 +47,8 @@ def bounded_experiment(search, *, rounds, frontier_width=2, trial_options=None, 
                         if inflight else min(state["frontier"], key=lambda row: (row["visits"], row["priority"]))
                         if index % 2 and state["frontier"] else None)
         active = ProjectSearch(search.config, Path(branch_entry["output"])) if branch_entry else search
+        if inflight and Path(inflight["output"]).resolve() != active.output.resolve():
+            raise ValueError("interrupted round no longer identifies an available branch")
         if branch_entry and not inflight:
             branch_entry["visits"] += 1
         previous = active.output/"latest-feedback.json"
@@ -55,8 +57,11 @@ def bounded_experiment(search, *, rounds, frontier_width=2, trial_options=None, 
             feedback = json.dumps({"experiment_context": "This is an isolated feasible exploratory branch. Its first candidate may be locally slower. Seek complementary changes and explicitly retain or replace installed bundles. The complete resulting project will be independently compared against main before publication.",
                                    "previous_result": json.loads(feedback) if feedback else None})
         if inflight:
-            result = resume_round(active, inflight)
+            result = resume_round(active, inflight, feedback=feedback, trial_options=options)
         else:
+            # Discovery may attach a new plan/revision. Record the generation
+            # parent only after this preparation, including on a fresh branch.
+            active.current_discovery()
             state["inflight"] = {"round": index, "output": str(active.output), "parent": active.revisions.current().id,
                 "known_trials": [p.name for p in (active.output/"trials").glob("*")],
                 "known_sandboxes": [p.name for p in (active.output/"sandboxes").glob("*")]}
@@ -94,7 +99,7 @@ def bounded_experiment(search, *, rounds, frontier_width=2, trial_options=None, 
     return state
 
 
-def resume_round(search, inflight):
+def resume_round(search, inflight, *, feedback=None, trial_options=None):
     """Recover persisted work rather than silently spend another candidate round."""
     if inflight.get("trial"):
         return search.resume_trial(inflight["trial"])
@@ -107,4 +112,12 @@ def resume_round(search, inflight):
                        key=lambda p: p.stat().st_mtime)
     if not trials and sandboxes:
         return search.resume_generation(sandboxes[-1])
+    new_trials = [p for p in (search.output/"trials").glob("*") if p.name not in inflight["known_trials"]]
+    new_sandboxes = [p for p in (search.output/"sandboxes").glob("*") if p.name not in inflight["known_sandboxes"]]
+    if not new_trials and not new_sandboxes and search.revisions.current().id == inflight.get("parent"):
+        # The recorded round failed before any role/session or trial was
+        # created (e.g. missing branch discovery). No proposal is repeated.
+        search.store.append("PROJECT_ROUND_PREPARATION_RECOVERED", {"parent": inflight["parent"],
+            "round": inflight.get("round"), "reason": "no new trial or generation artifacts"})
+        return search.trial(feedback=feedback, **(trial_options or {}))
     raise ValueError("interrupted experiment has ambiguous or absent generation evidence; inspect the saved inflight record")

@@ -168,6 +168,14 @@ class ProjectSearch:
         from kernel_optimizer.project.collectors import collect
         return collect(self, revision, collectors)
 
+    def current_discovery(self):
+        """A feasible branch can begin at a version that has never been profiled."""
+        path = self.output / "discovery.json"
+        discovery = json.loads(path.read_text()) if path.exists() else None
+        if discovery is None or discovery["revision"] != self.revisions.current().id:
+            return self.discover()
+        return discovery
+
     def trial(self, *, allowed_scopes=("group", "joint", "region", "execution_plan"), feedback=None,
               leaf_groups_only=False, selection_strategy="agent", feedback_view="full"):
         try:
@@ -181,10 +189,8 @@ class ProjectSearch:
             raise
 
     def _trial(self, *, allowed_scopes, feedback, leaf_groups_only=False, selection_strategy="agent", feedback_view="full"):
-        discovery = json.loads((self.output/"discovery.json").read_text())
+        discovery = self.current_discovery()
         parent = self.revisions.current()
-        if discovery["revision"] != parent.id:
-            discovery = self.discover(); parent = self.revisions.current()
         contract = self.revisions.load(parent.contract_ref, ProjectContract)
         call_lookup = {c["id"]: c for c in discovery["calls"]}
         group_lookup = {g["id"]: g for g in discovery["groups"]}

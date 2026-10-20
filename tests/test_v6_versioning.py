@@ -90,3 +90,29 @@ def test_interrupted_round_reuses_artifact_instead_of_empty_trial_directory(tmp_
     (tmp_path/"sandboxes/candidate-real-session").mkdir(parents=True)
     search = SimpleNamespace(output=tmp_path, resume_generation=lambda path: ("same_session", path.name))
     assert resume_round(search, {"known_trials": [], "known_sandboxes": []}) == ("same_session", "candidate-real-session")
+
+
+def test_unprofiled_branch_prepares_discovery_and_recovers_before_generation(tmp_path):
+    from kernel_optimizer.project.search import ProjectSearch
+    search = ProjectSearch.__new__(ProjectSearch)
+    search.output = tmp_path
+    parent = SimpleNamespace(id="branch-with-unmeasured-plan")
+    search.revisions = SimpleNamespace(current=lambda: parent)
+    observed = []
+    def discover():
+        observed.append(parent.id)
+        parent.id = "branch-with-current-plan"
+        result = {"revision": parent.id, "groups": ["observed-group"]}
+        (tmp_path/"discovery.json").write_text(json.dumps(result))
+        return result
+    search.discover = discover
+    search.store = SimpleNamespace(append=lambda *args: None)
+    search.trial = lambda **options: {"discovery": search.current_discovery(), "options": options}
+    inflight = {"parent": parent.id, "known_trials": [], "known_sandboxes": [], "round": 3}
+    result = resume_round(search, inflight, feedback="retained feedback", trial_options={"allowed_scopes": ("joint",)})
+    assert result["discovery"]["groups"] == ["observed-group"]
+    assert result["options"] == {"feedback": "retained feedback", "allowed_scopes": ("joint",)}
+    assert search.current_discovery() == result["discovery"] and len(observed) == 1
+    # Preparation recovery cannot silently start another proposal at a new parent.
+    with pytest.raises(ValueError, match="ambiguous or absent"):
+        resume_round(search, inflight)
