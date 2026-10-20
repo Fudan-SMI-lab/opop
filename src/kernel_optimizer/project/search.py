@@ -147,6 +147,7 @@ class ProjectSearch:
                   "collection.schema.json": json.dumps(CollectionPlan.model_json_schema(), indent=2)}
         if evaluation is not None:
             reference = {"revision": self.prepared["revision"],
+                "bundles": list(self.revisions.revision(self.prepared["revision"]).bundles),
                 "ranks": [{"rank": row["rank"], "metrics": row.get("result", {}).get("metrics", {})}
                           for row in self.prepared["evaluation"].get("ranks", [])],
                 "interpretation": "Original independently measured reference, not necessarily the candidate's "

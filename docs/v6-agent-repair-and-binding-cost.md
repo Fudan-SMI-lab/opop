@@ -36,6 +36,17 @@ DDP 的约 100 ms 增量主要来自框架安装的 functional 绑定，不是 a
   使用独立真实会话比较单项 `supplemental_evidence` 增补，再交给原参数搜索与配对 GPU 验证。
   结果仅发布到隔离实验分支。新版本按已有机制将完整 collector 记录放到索引附件中。
 
+原项目入口可在部署配置中启用候选后采集规划，采集项仍由 Agent 根据实际端点和现有证据选择：
+
+```yaml
+project_defaults:
+  profiling:
+    feedback_agent_plan: true
+```
+
+已有显式 project request 则在自身 `profiling` 中设置同名字段。省略时默认关闭。
+`binding_cost` 属于可选诊断，不改变真实候选的绑定策略、质量阈值或配对验收标准。
+
 ## 当前验证记录
 
 第一批 collector、snapshot、observation 和 binding 相关测试在 box4-2 通过 14 项。
@@ -105,6 +116,8 @@ Qwen TTFT 的两个新会话均恢复了完整质量。各自的 AB/BA 配对结
 | 分支 | 原路径 TTFT（ms） | 候选 TTFT（ms） | 判定及实际路径 |
 |---|---:|---:|---|
 | control | 24.2007365 | 23.5309945 | 通过；保持原数值路径的 eager composite |
+| control 同代码独立复测 | 24.6940765 | 23.4476975 | 通过；不重新生成或改参数 |
+| control held-out：batch=2、prompt=768 | 100.5099285 | 100.653433 | 质量通过，性能拒绝 |
 | treatment | 26.261408 | 21.3507085 | 通过；保留 eager mask/GQA 分支后进行 Graph capture/replay |
 | treatment 同代码独立复测 | 26.0657465 | 21.485022 | 通过；不重新生成或改参数 |
 | treatment held-out：batch=2、prompt=768 | 100.660126 | 100.5209 | 质量通过，性能拒绝；候选签名保护回退原实现 |
@@ -122,12 +135,28 @@ Qwen decode treatment 在两个完整生成上均达到零误差，62 次目标�
 复查表明现有 `candidate_diagnostics` 已在参数筛查后自动捕获同一异常；打印副本只是开发者复核，
 不应把它描述成框架原本没有的异常采集能力。
 
+DDP step treatment 修复 boxed ReduceOp 判断后，Agent 在真实 CPU Gloo 自检中遇到多次 P2P
+匹配超时，最终改用 `reduce_scatter_single` 加 `all_gather_single`。这不是原 P2P 实现成功。
+真实双卡连续质量检查零误差，每 rank 的 13 次目标调用均进入候选，没有框架 fallback；
+候选自报 `split_allreduce`，与生成代码一致。完整步由 141.1253735 增至 255.8519155 ms，
+因此被拒绝。该候选仍安装两个 functional 站点；修正 guard 没有消除绑定层开销。
+执行路径被修复与获得性能优化是两个独立结果。
+control 也独立生成了 reduce-scatter/all-gather 路径，完整步 146.284576 → 265.7569635 ms，
+同样被拒绝。两个分支的原生时间线均在每个 rank 记录 13 个 ReduceScatter 和 13 个 AllGather
+kernel，证明新通信实现实际运行；不从 kernel 名称推断实际 NCCL protocol。
+因此单次对照不能证明额外 ABI 证据是修复的必要条件，两者都没有解决 functional 绑定的性能障碍。
+
 DDP communication treatment 的 selection Agent 在看到透传成本后自主改选 `model.lm_head`
 module 边界，candidate 只安装该 module 替换。三个参数实例均质量通过且满足整步约束：
 step_ms 为 144.675915、145.303522、138.327063，原限制为 151.86385935 ms。
 正式配对通信目标为 71.2905145 → 63.9656575 ms；两对收益 10.286786、4.362928 ms，
 对应噪声界 3.438766、11.268976 ms。第二对没有越过噪声界，框架拒绝该候选。
 正式候选整步 140.960518、142.44106 ms，均满足约束。
+
+对 Agent 实际选择的 DDP module 边界另做纯透传探针，四个双 rank 端点质量均通过。
+AB 的 parent/passthrough 为 149.690369/136.490750 ms，BA 为 140.377092/143.108565 ms。
+没有重现 functional 绑定约 100 ms 的大额增量；两对差值方向不同，不能将其中一个当作固定成本，
+更不能据此宣称绑定本身带来加速。
 
 这支持“现有 module 绑定可消除阻断该候选的主要全局 dispatch 开销”，但不支持
 “已经获得稳定通信收益”或“PCIe 传输变快”。候选仍调用原 collective，主要改变 host 到达等待。
@@ -139,8 +168,34 @@ nccl_tuning、collective_calibration；其候选选择和结果来源均保留�
 另从原项目、命令和目标启动 Qwen TTFT、ResNet latency、DDP communication 三种新任务，
 框架固定为 `88b9651`，启用可选 `profiling.feedback_agent_plan`；未提供 adapter、分组、候选或人工诊断。
 Qwen 与 ResNet 的新 adapter 已通过原项目模型／输入构造及完整输出的独立人工核验。
-新入口结果与上述诊断辅助修复分开统计；各任务的两轮优化、完整最终版本独立 AB/BA 和 DDP
-新 adapter 核验仍在执行，后续据终态记录补齐。
+新入口结果与上述诊断辅助修复分开统计。
+
+ResNet 已完成两轮自主优化。第一轮 BN folding 的干净配对延迟为 4.227431 → 4.181138 ms；
+第二轮根据实际反馈重新选择 12 个组、28 个 module 站点，以 joint bundle 替换第一轮 bundle，
+将 conv+bias+ReLU 以及残差 epilogue 融合，配对延迟为 4.1503545 → 3.455310 ms。
+连续完整 logits 与 top-1 检查通过，最大绝对误差 9.06e-6；未改变原质量阈值。
+已有自动时间线记录 9 次 `aten::cudnn_convolution_relu` 和 8 次 `_add_bias_relu_kernel`，
+为实际原生融合执行提供证据，而不只依赖候选自报路径。
+
+最终完整版本再由开发者启动独立 AB/BA，与其自身原始项目比较：4.225842 → 3.4788785 ms，
+延迟降低约 17.7%，质量通过、coverage 无误、两对收益均越过噪声界，验收通过。
+独立复测没有重新生成或修改候选，也没有发布到其他任务；这一结果针对当前 batch=32 workload，
+没有追加新形状泛化结论。新入口搜索本身没有接收人工诊断。
+
+Qwen 新入口也已完成两轮。第一轮 Graph 自检失败后全部回退原路径，24.8862215 → 24.755876 ms，
+配对拒绝。第二轮改为 Triton elementwise fusion，框架配对记录 26.191631 → 24.694290 ms 并通过；
+但两个质量调用都自报 `parent_fallback_validation`，执行的是原父路径，不能计为融合优化成功。
+完整版本独立复测 23.9387035 → 26.1267055 ms，质量通过但性能被拒绝。
+
+既有 candidate_diagnostics 自动捕获第二轮 `_close()` 返回 False。生成代码将内部容差设为
+0.01，严格于冻结的 0.02。为核实差别，开发者诊断副本只在原比较处输出误差统计，保持计算、
+返回值、阈值及回退控制不变，也不发布候选：prefill logits 最大绝对误差 0.28125，
+超出内部 0.01 的元素 50,297 个，超出正式 0.02 的元素仍有 15,511 个。
+因此这次自检确实阻止了不满足正式容差的 prefill 输出，不能靠放宽自检解决。
+这个诊断只覆盖早退处实际比较的张量，不冒充完成了后续被跳过的 decode 数值检查。
+
+该新入口仍使用冻结的 `88b9651`，尚不含后文 `6ed684c` 的路径摘要修正。
+采集规划的空计划及对第一次“Graph 收益”的误述均保留为真实失败证据；实际第一次 Graph 没有生效。
 
 ### 新入口发现并修复的可用性接口问题
 
@@ -159,6 +214,8 @@ Qwen 与 ResNet 的新 adapter 已通过原项目模型／输入构造及完整�
 完整梯度、参数和 loss，同时检查两 rank 的梯度完全相等。生成 observer 使用 `state_dict()`
 包含 tied-weight 别名，人工核验的期望值也采用原模型的完整 `state_dict()`；未改 adapter 输出。
 另在 `e16e80f` 从原项目／命令／目标重新启动 DDP，先前失败的新入口运行仍保留。
+重跑生成的新 adapter 也通过原项目独立核验：除了完整参数、梯度、loss 和完全相同的 replica
+梯度，还逐项检查了它额外输出的每个 rank 的 normalized micro-batch loss；没有删去额外输出。
 
 ### 根据真实信息缺口保留候选路径记录
 
@@ -172,3 +229,24 @@ Agent 选择 binding_cost、execution_timeline、python_runtime，主要讨论�
 Agent 转而指出两个调用都声明 setup fallback，选择 candidate_diagnostics 和 execution_timeline，
 将问题收敛到实际 setup 异常和执行路径。代码因此只保留该既有路径字段及来源说明，
 不根据标签推断故障类别、改写搜索动作或改变验收。此单次规划对照不证明性能收益。
+
+在第二轮“形式验收通过但全部回退”的真实现场又做一次相同类型的冻结重放：原规划选择空列表；
+仅补回实际路径记录后，Agent 明确指出 26.192 → 24.694 ms 的表面收益与两次
+`parent_fallback_validation` 的矛盾，改选 candidate_diagnostics、execution_timeline、nsys。
+这次仍只验证规划生成变化，未把它算作新优化实验，也未按候选自报标签直接修改验收。
+
+### 原始基线的绑定身份
+
+新 DDP 第一轮三个参数实例的 step_ms 为 253.862262、295.482941、289.416067 ms，
+均超过原始 137.907823 ms 的 1.05 倍限制 144.80321415 ms。后续规划错误地认为父子版本
+具有相同 legacy 绑定，因而排除 binding_cost；实际上原始 revision 的 bundle 列表为空，
+而候选安装了两个 functional 替换。零 framework fallback 也不能排除 dispatch 成本。
+
+冻结该生成前快照，仅在 `original_reference` 加入其真实 revision 的 `bundles` 列表，
+新真实会话改为选择 binding_cost、execution_timeline、nsys、nccl_tuning、collective_calibration，
+指出整步约增加 116 ms 而通信只增加约 25 ms，不能直接归因于 NCCL 参数算法。
+代码据此只保留这份原始 bundle 身份，不填充缺失的 endpoint setup，也不规定必须选哪个采集器。
+单次重放证明本次规划选择发生变化，不证明这些额外诊断一定使下一轮优化成功。
+
+一个先行探索重放曾将缺失 setup 归一化为空列表；它的输入、会话和费用均保留，另附来源复核，
+不作为代码修改的验证依据。有效对照使用上面的真实 revision bundle 列表。
