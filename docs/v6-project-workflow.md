@@ -154,6 +154,26 @@ box4-2 实测为无 P2P、无 NVLink 的双 4090，NCCL 使用 SHM/direct/direct
 
 选组／候选角色同时获得 `inputs/binding-contract.md`，说明安装阶段与实际 adapter 调用的 phase／dispatch 区别，以及 Graph 原生执行不能直接用 Python hook 数量解释。完整定义保存在 [组合执行契约](../src/kernel_optimizer/project/binding_contract.md)；它覆盖新生成、同会话修复和恢复，不要求每个任务自行添加这一上下文。
 
+项目请求可设置 `binding_backend: scoped`，默认仍为 `legacy`。只有所有实际安装的
+functional 站点都有可解析模块边界时，scoped 才在相应模块内启用分派；缺少边界或
+存在多个 functional bundle 时沿用 legacy。安装回执和下一轮 `binding_execution`
+反馈包含请求后端、实际后端和原因。它不是无条件加速开关：整个模型都属于同一
+作用域时仍可能承担大部分分派开销。`run_binding_backends.py` 可在相同候选上做
+不发布的交替后端比较。
+
+额外 Collector 输出现在作为 `inputs/observations/current/` 的完整 JSON 附件提供，
+索引记录内容哈希、revision、目标、设备和采样窗口。进入配对评价且通过质量与覆盖的候选还会重跑
+Collector Agent 已选择的采集器；下一轮在 `observations/previous-before/` 和
+`observations/previous-after/` 获取前后观测。共享参数和 bucket 的所属关系另提供
+导航索引，保留多对多关联，不把共享通信时间直接分摊为逐组贡献。完整附件可由 Agent
+自行查询，没有新增按失败类型限制信息获取的规则。
+
+`examples/v6_validation/run_autonomous.py` 用全新输出目录验证完整入口：生成 evaluator、
+独立源程序输出核对、发现和采集选择、至少两轮真实搜索及反馈。独立 oracle 位于验证
+示例中，不是核心框架对模型的特化。脚本的 `completed` 表示实验轮次结束；仍需检查
+每轮错误、质量、覆盖、约束、接受结果和源码一致性，不能把它直接计为优化成功。
+冻结六任务的协议和开发失败见 [本阶段记录](v6-stage2-binding-and-autonomy.md)。
+
 真实任务包含 ResNet-18、Qwen3-4B、GPT-2 DDP，以及在核心初版后接入的纯函数信号项目。DDP 的随机权重和合成 token 是明确声明的工作负载，只验证参考计算一致性，不声称训练收敛或语言能力。具体成功、失败、无改善、shape 守卫回退和未测硬件分别报告。
 
 框架不承诺任意项目自动获得加速。当前重点是实测闭环：真实理解与生成、自动发现、按目标选择、完整回装、质量与状态校验、资源反馈、拒绝与恢复，以及明确的证据归属。进一步训练时序、不同 rank 上同路径不同语义、特殊自定义 runtime 和更复杂别名关系需要扩展对应适配／采集能力。

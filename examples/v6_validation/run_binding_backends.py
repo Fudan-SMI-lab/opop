@@ -1,5 +1,6 @@
 """Interleave binding backends on identical candidate bytes without publishing."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -16,10 +17,11 @@ def compare(search, parent, candidate, output, *, pairs=2):
     if not child or set(parent.bundles) - set(candidate.bundles):
         raise ValueError("additive candidate required")
     source = framework_source()
+    job_prefix = "binding-" + hashlib.sha256(str(output.resolve()).encode()).hexdigest()[:16]
     accepted = search.revisions.current().id
     protocol = {"source": source, "source_run": str(search.output), "parent": parent.id,
                 "candidate": candidate.id, "accepted_at_start": accepted, "pairs": pairs,
-                "request": search.request.portable(),
+                "request": search.request.portable(), "job_prefix": job_prefix,
                 "scope": "Developer-started unchanged-candidate backend comparison; no publication"}
     write_json(output / "protocol.json", protocol)
     rows = []
@@ -32,7 +34,7 @@ def compare(search, parent, candidate, output, *, pairs=2):
                 options = {"binding_backend": backend}
                 if arm == "passthrough":
                     options["passthrough_bundles"] = sorted(child)
-                run = search.execute(revision, output.name+"-"+name, "binding_ablation", collector_options=options)
+                run = search.execute(revision, job_prefix+"-"+name, "binding_ablation", collector_options=options)
                 write_json(output / (name+".json"), run)
                 row = {"arm": arm, "pair": pair, "backend": backend, **compact(run)}
                 rows.append(row)
