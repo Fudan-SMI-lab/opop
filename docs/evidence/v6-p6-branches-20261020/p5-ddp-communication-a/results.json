@@ -1,0 +1,881 @@
+[
+  {
+    "trial": "trial-8d996f8aa8",
+    "decision": {
+      "accepted": false,
+      "reasons": [
+        "no_valid_parameter_candidate"
+      ]
+    },
+    "measurement": null,
+    "publication": null,
+    "missing_coverage": null,
+    "quality": null,
+    "coverage_errors": null,
+    "bundles": null,
+    "source_revision": null,
+    "source_output": null,
+    "generation_recovery": null,
+    "selection_agent": {
+      "role": "selection",
+      "session": "ses_ea9b5bae9ffewbua5XUOCH5EbF",
+      "message": "msg_1564ddb5f001gKN0jDPpYqCP06",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 19,
+        "reported_cost": 0.36206968,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 891812.0,
+          "input": 59278.0,
+          "output": 4532.0,
+          "reasoning": 10594.0,
+          "cache.read": 817408.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea9b5bae9ffewbua5XUOCH5EbF",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/autodl-tmp/dev/v6-work/p5-ddp-communication-a/sandboxes/selection-44801f7ae086",
+      "outputs": [
+        "selection.json"
+      ],
+      "feedback_provided": false,
+      "contract_repairs": 0
+    },
+    "candidate_agent": {
+      "role": "candidate",
+      "session": "ses_ea9b1ec05ffe5GTAExNYbLUSp6",
+      "message": "msg_1565d2900001Zf4b6NrosdAVZ0",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 25,
+        "reported_cost": 0.7904954,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 1658422.0,
+          "input": 83177.0,
+          "output": 7781.0,
+          "reasoning": 56104.0,
+          "cache.read": 1511360.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea9b1ec05ffe5GTAExNYbLUSp6",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/autodl-tmp/dev/v6-work/p5-ddp-communication-a/sandboxes/candidate-bc23b0a76836",
+      "outputs": [
+        "candidate.py",
+        "proposal.json"
+      ],
+      "feedback_provided": false,
+      "contract_repairs": 0
+    },
+    "raw_result": {
+      "path": "/root/autodl-tmp/dev/v6-work/p5-ddp-communication-a/trials/trial-8d996f8aa8/result.json",
+      "sha256": "37093d4103e15c4b129fb48428894418007a4232fe1bd66598621ba6ed24b606",
+      "bytes": 45448
+    },
+    "evaluation": {},
+    "bundle": {
+      "id": "trial-8d996f8aa8",
+      "parent_revision": "3ef4223d6fff4e1cd92267e182c21b3204345c0ff7bcadd3b2dce3ec33b938f2",
+      "scope": "joint",
+      "implementation": "distributed",
+      "groups": [
+        "f833b57a373d8262a384",
+        "8525af72c631b94e3dd0"
+      ],
+      "parameters": {},
+      "requires": [],
+      "replaces": []
+    },
+    "replacement_calls": 2,
+    "affected_calls": 2,
+    "pairs": [],
+    "parameter_search": {
+      "engine": "existing TaskSearch + OptunaTPETuner",
+      "space": {
+        "params": [
+          {
+            "name": "trigger_mode",
+            "kind": "str",
+            "choices": [
+              "single",
+              "split_small_large"
+            ],
+            "description": "single: consolidate all 13 buckets into one fused NCCL allreduce over the full 497,759,232-byte payload (one skew window, one launch). split_small_large: fuse the 12 x 27MiB transformer buckets into one allreduce and keep the 150MiB embedding bucket as a second allreduce (two collectives), trading one extra window for smaller mega-message and protocol risk. Both preserve elementwise SUM semantics, the full logical payload and real cross-rank NCCL collectives; read from context['parameters'] with default 'single'."
+          }
+        ],
+        "constraints": []
+      },
+      "selected": null,
+      "stats": [
+        {
+          "candidate_id": "cand-62f90445",
+          "space_id": "space-cand-62f90445",
+          "n_complete": 0,
+          "n_fail": 2,
+          "best": null,
+          "param_stats": [
+            {
+              "name": "trigger_mode",
+              "best_value": "single",
+              "best_trial_value": null,
+              "at_boundary": false,
+              "boundary_direction": null,
+              "effect_pct": 0.0,
+              "latency_by_value": {},
+              "objective_by_value": {},
+              "effect_absolute": null,
+              "failure_rate_by_value": {
+                "'single'": 1.0,
+                "'split_small_large'": 1.0
+              }
+            }
+          ],
+          "resource_at_best": null,
+          "failure_clusters": []
+        }
+      ],
+      "responses": [
+        {
+          "candidate_id": "trial-8d996f8aa8",
+          "axis": "trigger_mode",
+          "a_params": {
+            "values": {
+              "trigger_mode": "split_small_large"
+            }
+          },
+          "b_params": {
+            "values": {
+              "trigger_mode": "single"
+            }
+          },
+          "a": {
+            "score": null,
+            "valid": false,
+            "metrics": {},
+            "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+          },
+          "b": {
+            "score": null,
+            "valid": false,
+            "metrics": {},
+            "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+          },
+          "delta_j": null,
+          "gain": null,
+          "parameter_slope": null,
+          "resource_deltas": {},
+          "resource_slopes": {},
+          "unknown_resources": [],
+          "resource_status": "unknown",
+          "reason": "invalid_endpoint"
+        }
+      ]
+    },
+    "screening": [
+      {
+        "parameters": {
+          "trigger_mode": "split_small_large"
+        },
+        "bundle": "trial-8d996f8aa8-param-5f647741",
+        "revision": "0a2b964d25dfc26574297f734e6a65231e4974cdf33e0d2773be0d00f10608a3",
+        "result": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "constraints": [],
+        "run": {
+          "status": "failed",
+          "failure": "rank_failed",
+          "wall_s": 17.310949575155973,
+          "lease_wait_s": 0.00018857046961784363,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 102602,
+              "status": "failed",
+              "error": "Tried to cast object to type __torch__.torch.classes.c10d.Work (of Python compilation unit at: 0) but object was missing attribute capsule",
+              "binding": {
+                "pid": 102602,
+                "status": "verified",
+                "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+                ],
+                "pid_query_status": "observed"
+              },
+              "result": {
+                "valid": null,
+                "checks": null,
+                "math_policy_unchanged": null,
+                "metrics": null,
+                "samples": null,
+                "metric_samples": null,
+                "diagnostics": null,
+                "bundle_hashes": null,
+                "coverage": null,
+                "installation": null
+              }
+            },
+            {
+              "rank": 1,
+              "pid": 102603,
+              "status": "failed",
+              "error": "Tried to cast object to type __torch__.torch.classes.c10d.Work (of Python compilation unit at: 0) but object was missing attribute capsule",
+              "binding": {
+                "pid": 102603,
+                "status": "verified",
+                "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "logical_device": 1,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                ],
+                "pid_query_status": "observed"
+              },
+              "result": {
+                "valid": null,
+                "checks": null,
+                "math_policy_unchanged": null,
+                "metrics": null,
+                "samples": null,
+                "metric_samples": null,
+                "diagnostics": null,
+                "bundle_hashes": null,
+                "coverage": null,
+                "installation": null
+              }
+            }
+          ]
+        }
+      },
+      {
+        "parameters": {
+          "trigger_mode": "single"
+        },
+        "bundle": "trial-8d996f8aa8-param-3ad1970c",
+        "revision": "dfed59f4f7317eea2cda177adf045b5771a611f351fe707646b3ac54a6e090a8",
+        "result": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "constraints": [],
+        "run": {
+          "status": "failed",
+          "failure": "rank_failed",
+          "wall_s": 15.63264437392354,
+          "lease_wait_s": 3.173818439245224,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 103352,
+              "status": "failed",
+              "error": "Tried to cast object to type __torch__.torch.classes.c10d.Work (of Python compilation unit at: 0) but object was missing attribute capsule",
+              "binding": {
+                "pid": 103352,
+                "status": "verified",
+                "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+                ],
+                "pid_query_status": "observed"
+              },
+              "result": {
+                "valid": null,
+                "checks": null,
+                "math_policy_unchanged": null,
+                "metrics": null,
+                "samples": null,
+                "metric_samples": null,
+                "diagnostics": null,
+                "bundle_hashes": null,
+                "coverage": null,
+                "installation": null
+              }
+            },
+            {
+              "rank": 1,
+              "pid": 103353,
+              "status": "failed",
+              "error": "Tried to cast object to type __torch__.torch.classes.c10d.Work (of Python compilation unit at: 0) but object was missing attribute capsule",
+              "binding": {
+                "pid": 103353,
+                "status": "verified",
+                "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "logical_device": 1,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                ],
+                "pid_query_status": "observed"
+              },
+              "result": {
+                "valid": null,
+                "checks": null,
+                "math_policy_unchanged": null,
+                "metrics": null,
+                "samples": null,
+                "metric_samples": null,
+                "diagnostics": null,
+                "bundle_hashes": null,
+                "coverage": null,
+                "installation": null
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "trial": "trial-recovered-8bd2944447",
+    "decision": {
+      "accepted": false,
+      "reasons": [
+        "no_valid_parameter_candidate"
+      ]
+    },
+    "measurement": null,
+    "publication": null,
+    "missing_coverage": null,
+    "quality": null,
+    "coverage_errors": null,
+    "bundles": null,
+    "source_revision": null,
+    "source_output": null,
+    "generation_recovery": {
+      "sandbox": "/root/autodl-tmp/dev/v6-work/p5-ddp-communication-a/sandboxes/candidate-ee66aae8441b",
+      "session": "ses_ea998a159ffeC901p8r1jvqlVy",
+      "role": "candidate",
+      "same_parent": "3ef4223d6fff4e1cd92267e182c21b3204345c0ff7bcadd3b2dce3ec33b938f2"
+    },
+    "selection_agent": {
+      "role": "selection",
+      "session": "ses_ea99c5870ffe0r44RCYGlZtZhN",
+      "message": "msg_156673515001H3EjgtGSz3od8r",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 19,
+        "reported_cost": 0.45539964,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 1169304.0,
+          "input": 81523.0,
+          "output": 5095.0,
+          "reasoning": 9022.0,
+          "cache.read": 1073664.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea99c5870ffe0r44RCYGlZtZhN",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/autodl-tmp/dev/v6-work/p5-ddp-communication-a/sandboxes/selection-3f8cfbe8e2d9",
+      "outputs": [
+        "selection.json"
+      ],
+      "feedback_provided": true,
+      "contract_repairs": 0
+    },
+    "candidate_agent": {
+      "role": "candidate",
+      "session": "ses_ea998a159ffeC901p8r1jvqlVy",
+      "message": "msg_1569274ca001G3H0pBgH70Ojoo",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 83,
+        "reported_cost": 2.61064636,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 7761953.0,
+          "input": 158109.0,
+          "output": 30729.0,
+          "reasoning": 68859.0,
+          "cache.read": 7504256.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea998a159ffeC901p8r1jvqlVy",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/autodl-tmp/dev/v6-work/p5-ddp-communication-a/sandboxes/candidate-ee66aae8441b",
+      "outputs": [
+        "candidate.py",
+        "proposal.json"
+      ],
+      "feedback_provided": true,
+      "contract_repairs": 0
+    },
+    "raw_result": {
+      "path": "/root/autodl-tmp/dev/v6-work/p5-ddp-communication-a/trials/trial-recovered-8bd2944447/result.json",
+      "sha256": "196c680b980a8f23cce255de46ffcfeacf9bb2c5337c73c2fb5d7eb57258773c",
+      "bytes": 50900
+    },
+    "evaluation": {},
+    "bundle": {
+      "id": "trial-recovered-8bd2944447",
+      "parent_revision": "3ef4223d6fff4e1cd92267e182c21b3204345c0ff7bcadd3b2dce3ec33b938f2",
+      "scope": "joint",
+      "implementation": "distributed",
+      "groups": [
+        "f833b57a373d8262a384",
+        "8525af72c631b94e3dd0"
+      ],
+      "parameters": {},
+      "requires": [],
+      "replaces": []
+    },
+    "replacement_calls": 2,
+    "affected_calls": 2,
+    "pairs": [],
+    "parameter_search": {
+      "engine": "existing TaskSearch + OptunaTPETuner",
+      "space": {
+        "params": [
+          {
+            "name": "trigger_mode",
+            "kind": "str",
+            "choices": [
+              "grouped",
+              "split_small_large"
+            ],
+            "description": "grouped: issue all 13 reducer allreduce_ calls of a gradient round inside one NCCL coalescing group (single fused launch, one arrival window). split_small_large: same coalescing for buckets below 16,000,000 elements (the 12 x 27MiB transformer buckets) while each bucket at or above that threshold (the 150MiB embedding bucket) runs in its own single-member group, trading one extra launch/window for homogeneous group shapes. Both preserve per-bucket in-place SUM semantics, the full 497,759,232-byte logical payload, real cross-rank NCCL collectives and the parent op's own Work objects; read from context['parameters'] with default 'grouped'."
+          }
+        ],
+        "constraints": []
+      },
+      "selected": null,
+      "stats": [
+        {
+          "candidate_id": "cand-04714f14",
+          "space_id": "space-cand-04714f14",
+          "n_complete": 0,
+          "n_fail": 2,
+          "best": null,
+          "param_stats": [
+            {
+              "name": "trigger_mode",
+              "best_value": "grouped",
+              "best_trial_value": null,
+              "at_boundary": false,
+              "boundary_direction": null,
+              "effect_pct": 0.0,
+              "latency_by_value": {},
+              "objective_by_value": {},
+              "effect_absolute": null,
+              "failure_rate_by_value": {
+                "'grouped'": 1.0,
+                "'split_small_large'": 1.0
+              }
+            }
+          ],
+          "resource_at_best": null,
+          "failure_clusters": []
+        }
+      ],
+      "responses": [
+        {
+          "candidate_id": "trial-recovered-8bd2944447",
+          "axis": "trigger_mode",
+          "a_params": {
+            "values": {
+              "trigger_mode": "split_small_large"
+            }
+          },
+          "b_params": {
+            "values": {
+              "trigger_mode": "grouped"
+            }
+          },
+          "a": {
+            "score": null,
+            "valid": false,
+            "metrics": {},
+            "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+          },
+          "b": {
+            "score": null,
+            "valid": false,
+            "metrics": {},
+            "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+          },
+          "delta_j": null,
+          "gain": null,
+          "parameter_slope": null,
+          "resource_deltas": {},
+          "resource_slopes": {},
+          "unknown_resources": [],
+          "resource_status": "unknown",
+          "reason": "invalid_endpoint"
+        }
+      ]
+    },
+    "screening": [
+      {
+        "parameters": {
+          "trigger_mode": "split_small_large"
+        },
+        "bundle": "trial-recovered-8bd2944447-param-602f2748",
+        "revision": "eca56e726155f89249e8de0a6a8b740e78991167124311e34c3bcf9ae827fe2f",
+        "result": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "constraints": [],
+        "run": {
+          "status": "passed",
+          "failure": null,
+          "wall_s": 19.717529475688934,
+          "lease_wait_s": 0.00019560381770133972,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 205453,
+              "status": "passed",
+              "framework_source": {
+                "sha256": "c6a968834459772479bf0c52f918ee9055c5537c75116b564bbccf5cbbe65053",
+                "files": 146,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "binding": {
+                "pid": 205453,
+                "status": "verified",
+                "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 31,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.10232942178845406,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "result": {
+                "valid": false,
+                "checks": [
+                  {
+                    "passed": true,
+                    "compared_elements": 248879623,
+                    "max_abs_error": 0.0
+                  },
+                  {
+                    "passed": false,
+                    "compared_elements": 163037191,
+                    "max_abs_error": 8.799135684967041e-06,
+                    "error": "Tensor-likes are not close!\n\nMismatched elements: 36760 / 38597376 (0.1%)\nGreatest absolute difference: 8.799135684967041e-06 at index (36129, 565) (up to 1e-06 allowed)\nGreatest relative difference: 38.15296173095703 at index (32430, 492) (up to 0.0001 allowed)"
+                  }
+                ],
+                "math_policy_unchanged": true,
+                "metrics": {},
+                "samples": [],
+                "metric_samples": null,
+                "diagnostics": null,
+                "bundle_hashes": {
+                  "trial-recovered-8bd2944447-param-602f2748": "008ee46f1e4107c79deceb4e57b18fe607dbaa17610a565918b87812040cf8b2"
+                },
+                "coverage": {
+                  "trial-recovered-8bd2944447-param-602f2748": {
+                    "counts": {
+                      "d0938de87369efd500322679": 12,
+                      "b8ade439d7b8bd5fb5c1029b": 1
+                    },
+                    "fallbacks": {},
+                    "required": [
+                      "b8ade439d7b8bd5fb5c1029b",
+                      "d0938de87369efd500322679"
+                    ]
+                  }
+                },
+                "installation": null
+              }
+            },
+            {
+              "rank": 1,
+              "pid": 205454,
+              "status": "passed",
+              "framework_source": {
+                "sha256": "c6a968834459772479bf0c52f918ee9055c5537c75116b564bbccf5cbbe65053",
+                "files": 146,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "binding": {
+                "pid": 205454,
+                "status": "verified",
+                "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "logical_device": 1,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 31,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.07607967779040337,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "result": {
+                "valid": false,
+                "checks": [
+                  {
+                    "passed": true,
+                    "compared_elements": 248879623,
+                    "max_abs_error": 0.0
+                  },
+                  {
+                    "passed": false,
+                    "compared_elements": 163037191,
+                    "max_abs_error": 1.0369345545768738e-05,
+                    "error": "Tensor-likes are not close!\n\nMismatched elements: 37158 / 38597376 (0.1%)\nGreatest absolute difference: 1.0369345545768738e-05 at index (4929, 455) (up to 1e-06 allowed)\nGreatest relative difference: 6.783692836761475 at index (17562, 759) (up to 0.0001 allowed)"
+                  }
+                ],
+                "math_policy_unchanged": true,
+                "metrics": {},
+                "samples": [],
+                "metric_samples": null,
+                "diagnostics": null,
+                "bundle_hashes": {
+                  "trial-recovered-8bd2944447-param-602f2748": "008ee46f1e4107c79deceb4e57b18fe607dbaa17610a565918b87812040cf8b2"
+                },
+                "coverage": {
+                  "trial-recovered-8bd2944447-param-602f2748": {
+                    "counts": {
+                      "d0938de87369efd500322679": 12,
+                      "b8ade439d7b8bd5fb5c1029b": 1
+                    },
+                    "fallbacks": {},
+                    "required": [
+                      "b8ade439d7b8bd5fb5c1029b",
+                      "d0938de87369efd500322679"
+                    ]
+                  }
+                },
+                "installation": null
+              }
+            }
+          ]
+        }
+      },
+      {
+        "parameters": {
+          "trigger_mode": "grouped"
+        },
+        "bundle": "trial-recovered-8bd2944447-param-f28d7cac",
+        "revision": "06d2b09e0ebbda642163b1ca168e82cd1614c48dc351d67b439306ac9f1035a6",
+        "result": {
+          "score": null,
+          "valid": false,
+          "metrics": {},
+          "detail": "project quality/coverage/worker or original-baseline constraint failure; see raw observation"
+        },
+        "constraints": [],
+        "run": {
+          "status": "passed",
+          "failure": null,
+          "wall_s": 18.25212947651744,
+          "lease_wait_s": 0.00025754794478416443,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 206434,
+              "status": "passed",
+              "framework_source": {
+                "sha256": "c6a968834459772479bf0c52f918ee9055c5537c75116b564bbccf5cbbe65053",
+                "files": 146,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "binding": {
+                "pid": 206434,
+                "status": "verified",
+                "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 29,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.09091504290699959,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "result": {
+                "valid": false,
+                "checks": [
+                  {
+                    "passed": true,
+                    "compared_elements": 248879623,
+                    "max_abs_error": 0.0
+                  },
+                  {
+                    "passed": false,
+                    "compared_elements": 163037191,
+                    "max_abs_error": 8.799135684967041e-06,
+                    "error": "Tensor-likes are not close!\n\nMismatched elements: 37470 / 38597376 (0.1%)\nGreatest absolute difference: 8.799135684967041e-06 at index (36129, 565) (up to 1e-06 allowed)\nGreatest relative difference: 38.15296173095703 at index (32430, 492) (up to 0.0001 allowed)"
+                  }
+                ],
+                "math_policy_unchanged": true,
+                "metrics": {},
+                "samples": [],
+                "metric_samples": null,
+                "diagnostics": null,
+                "bundle_hashes": {
+                  "trial-recovered-8bd2944447-param-f28d7cac": "6fa5e3c86709c72872538a77dfdebe5b1d245f8d92f943b25bc9d317243a7e16"
+                },
+                "coverage": {
+                  "trial-recovered-8bd2944447-param-f28d7cac": {
+                    "counts": {
+                      "d0938de87369efd500322679": 12,
+                      "b8ade439d7b8bd5fb5c1029b": 1
+                    },
+                    "fallbacks": {},
+                    "required": [
+                      "b8ade439d7b8bd5fb5c1029b",
+                      "d0938de87369efd500322679"
+                    ]
+                  }
+                },
+                "installation": null
+              }
+            },
+            {
+              "rank": 1,
+              "pid": 206435,
+              "status": "passed",
+              "framework_source": {
+                "sha256": "c6a968834459772479bf0c52f918ee9055c5537c75116b564bbccf5cbbe65053",
+                "files": 146,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "binding": {
+                "pid": 206435,
+                "status": "verified",
+                "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+                "logical_device": 1,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 30,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.09921826422214508,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "result": {
+                "valid": false,
+                "checks": [
+                  {
+                    "passed": true,
+                    "compared_elements": 248879623,
+                    "max_abs_error": 0.0
+                  },
+                  {
+                    "passed": false,
+                    "compared_elements": 163037191,
+                    "max_abs_error": 1.0369345545768738e-05,
+                    "error": "Tensor-likes are not close!\n\nMismatched elements: 37906 / 38597376 (0.1%)\nGreatest absolute difference: 1.0369345545768738e-05 at index (4929, 455) (up to 1e-06 allowed)\nGreatest relative difference: 6.783692836761475 at index (17562, 759) (up to 0.0001 allowed)"
+                  }
+                ],
+                "math_policy_unchanged": true,
+                "metrics": {},
+                "samples": [],
+                "metric_samples": null,
+                "diagnostics": null,
+                "bundle_hashes": {
+                  "trial-recovered-8bd2944447-param-f28d7cac": "6fa5e3c86709c72872538a77dfdebe5b1d245f8d92f943b25bc9d317243a7e16"
+                },
+                "coverage": {
+                  "trial-recovered-8bd2944447-param-f28d7cac": {
+                    "counts": {
+                      "d0938de87369efd500322679": 12,
+                      "b8ade439d7b8bd5fb5c1029b": 1
+                    },
+                    "fallbacks": {},
+                    "required": [
+                      "b8ade439d7b8bd5fb5c1029b",
+                      "d0938de87369efd500322679"
+                    ]
+                  }
+                },
+                "installation": null
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

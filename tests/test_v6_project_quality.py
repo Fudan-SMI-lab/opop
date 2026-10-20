@@ -55,3 +55,11 @@ def run(context):
     receipt = LocalExecutor().run(ExecutionRequest(entry=entry, cwd=tmp_path, output=tmp_path/"run",
         lease_dir=tmp_path/"leases", worker_timeout_s=30))
     assert receipt["status"] == "passed", receipt
+def test_failure_identifies_observation_without_claiming_first_execution_error():
+    import torch
+    from kernel_optimizer.project.evaluation import compare
+    result = compare({"gradients": {"weight": torch.tensor([1., 2.])}},
+                     {"gradients": {"weight": torch.tensor([1., 3.])}}, {"atol": 1e-6, "rtol": 1e-4})
+    assert result["observation_path"] == "output.gradients.weight"
+    assert result["atol"] == 1e-6
+    assert "not earliest execution" in result["failure_scope"]

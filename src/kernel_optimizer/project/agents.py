@@ -49,13 +49,25 @@ class ProjectAgents:
         self.store.append("PROJECT_OUTPUT_REJECTED", {"role": role, "session": session, "error": error, "artifacts": refs})
 
     def _complete(self, role, sb, session, prompt, outputs, validator, feedback_provided, repairs=0):
+        from kernel_optimizer.project.provider_queue import ProviderQueue, retryable_status
+        queue = ProviderQueue(self.runtime.cfg)
         self.store.append("PROJECT_AGENT_STARTED", {"role": role, "session": session, "sandbox": str(sb.root),
                                                      "feedback_provided": feedback_provided})
         while True:
-            response = self.runtime.client.prompt(session, prompt, model=self.runtime.cfg.agents.default_model,
-                                               directory=sb.root, agent=self.runtime.cfg.opencode.agent)
+            with queue.admit():
+                response = self.runtime.client.prompt(session, prompt, model=self.runtime.cfg.agents.default_model,
+                                                   directory=sb.root, agent=self.runtime.cfg.opencode.agent)
             if response.error:
+                status = retryable_status(response.error)
+                if status:
+                    scheduling = queue.overloaded(status)
+                    self.store.append("PROJECT_PROVIDER_RETRY", {"session": session, "role": role, **scheduling})
+                    prompt = ("The provider interrupted the previous response with a temporary service/rate error. "
+                              "Continue the same requested task from this session and saved files. Preserve all original "
+                              "instructions, frozen inputs and output schemas; do not restart completed work or run ad hoc GPU tests.")
+                    continue
                 raise RuntimeError(response.error)
+            queue.succeeded()
             try:
                 missing = [name for name in outputs if not (sb.root/name).is_file()]
                 if missing:

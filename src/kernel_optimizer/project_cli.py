@@ -15,6 +15,7 @@ def add_project_parser(parser):
     parser.add_argument("--resume", action="store_true", help="resume the identical frozen project request")
     parser.add_argument("--reuse-evaluator", type=Path, help="revalidate a frozen generated evaluator for a goal/workload variant without regenerating code")
     parser.add_argument("--resume-trial", help="resume one saved generated trial without another generation request; implies --resume")
+    parser.add_argument("--resume-generation", type=Path, help="continue an interrupted selection/candidate sandbox in its original provider session; implies --resume")
     parser.add_argument("--replay-from", type=Path, help="source run for frozen-candidate cross-goal/held-out evaluation")
     parser.add_argument("--replay-bundle", help="exact stored bundle ID to replay without code/parameter changes")
     parser.add_argument("--publish-replay", action="store_true", help="publish a replay only if its independent paired evaluation passes")
@@ -23,6 +24,11 @@ def add_project_parser(parser):
     parser.add_argument("--leaf-groups-only", action="store_true", help="restrict eligible groups to observed leaves; use with --scope group for operator-only comparison")
     parser.add_argument("--selection-strategy", choices=["agent", "local_time"], default="agent")
     parser.add_argument("--feedback-view", choices=["full", "project"], default="full")
+    parser.add_argument("--search-strategy", choices=["sequential", "bounded_joint"], default="sequential")
+    parser.add_argument("--frontier-width", type=int, default=2, help="number of retained feasible exploratory branches")
+    parser.add_argument("--experiment-id", help="persisted bounded_joint experiment identity to create or resume")
+    parser.add_argument("--promote-from", type=Path, help="independently compare and publish a complete branch version against current")
+    parser.add_argument("--promote-revision", help="explicit complete branch revision, otherwise its current version")
     parser.add_argument("--discover-only", action="store_true")
     parser.add_argument("--rounds", type=int, default=2, help="candidate rounds in this experiment, not an API usage quota")
     parser.add_argument("--scope", action="append", choices=["group", "joint", "region", "execution_plan"])
@@ -35,6 +41,18 @@ def cmd_optimize_project(args):
         raise ValueError("experiment rounds must be positive")
     feedback = args.feedback.read_text(encoding="utf-8") if args.feedback else None
     replay = getattr(args, "replay_bundle", None)
+    promote = getattr(args, "promote_from", None)
+    if getattr(args, "promote_revision", None) and not promote:
+        raise ValueError("promote-revision requires promote-from")
+    if promote:
+        if args.prepare_only or args.discover_only or args.resume_trial or replay or getattr(args, "resume_generation", None):
+            raise ValueError("complete version promotion cannot be combined with other execution modes")
+        args.resume = True
+    resume_generation = getattr(args, "resume_generation", None)
+    if resume_generation:
+        if args.prepare_only or args.discover_only or args.resume_trial or replay:
+            raise ValueError("resume-generation cannot be combined with other preparation/replay modes")
+        args.resume = True
     if bool(getattr(args, "replay_from", None)) != bool(replay):
         raise ValueError("replay-from and replay-bundle must be supplied together")
     if replay and (args.prepare_only or args.discover_only or args.resume_trial):
@@ -72,15 +90,27 @@ def cmd_optimize_project(args):
         if args.resume:
             search.revisions.recover()
         discovery_path = args.output/"discovery.json"
-        if not args.resume_trial and (not discovery_path.exists() or json.loads(discovery_path.read_text())["revision"] != search.revisions.current().id):
+        if not args.resume_trial and not resume_generation and (not discovery_path.exists() or json.loads(discovery_path.read_text())["revision"] != search.revisions.current().id):
             search.discover()
         if not args.discover_only:
-            if replay:
+            if promote:
+                from kernel_optimizer.project.versioning import promote_version
+                promote_version(search, promote, getattr(args, "promote_revision", None))
+            elif resume_generation:
+                search.resume_generation(resume_generation)
+            elif replay:
                 from kernel_optimizer.project.replay import transfer_bundle
                 bundle, metadata = transfer_bundle(args.replay_from, replay, search)
                 search.validate_bundle(bundle, metadata, publish=getattr(args, "publish_replay", False))
             elif args.resume_trial:
                 search.resume_trial(args.resume_trial)
+            elif getattr(args, "search_strategy", "sequential") == "bounded_joint":
+                from kernel_optimizer.project.experiment import bounded_experiment
+                bounded_experiment(search, rounds=args.rounds, frontier_width=args.frontier_width,
+                    experiment_id=args.experiment_id,
+                    trial_options={"allowed_scopes": tuple(args.scope or ("group", "joint", "region", "execution_plan")),
+                        "leaf_groups_only": args.leaf_groups_only, "selection_strategy": args.selection_strategy,
+                        "feedback_view": args.feedback_view})
             else:
                 for _ in range(args.rounds):
                     previous = args.output/"latest-feedback.json"

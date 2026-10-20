@@ -274,6 +274,11 @@ class ProjectSearch:
         root = self.output/"trials"/trial_id
         if (root/"result.json").exists():
             return json.loads((root/"result.json").read_text())
+        from kernel_optimizer.project.recovery import committed_trial
+        recovered = committed_trial(self, trial_id)
+        if recovered is not None:
+            write_json(root/"result.json", recovered)
+            return recovered
         saved = json.loads((root/"generated.json").read_text())
         bundle = CandidateBundle.model_validate_json(json.dumps(saved.pop("bundle")))
         if bundle.parent_revision != self.revisions.current().id:
@@ -283,9 +288,18 @@ class ProjectSearch:
                                                    "generation_reused": True})
         return self._evaluate_generated(bundle, saved, discovery)
 
+    def resume_generation(self, directory):
+        from kernel_optimizer.project.recovery import resume_generation
+        return resume_generation(self, directory)
+
     def _evaluate_generated(self, bundle, metadata, discovery):
         trial_id = metadata["trial"]
         trial_root = self.output/"trials"/trial_id
+        previous_search = trial_root/"parameter-search.json"
+        if previous_search.exists():
+            archive = trial_root/"prior-attempts"/uuid4().hex
+            archive.mkdir(parents=True)
+            (archive/previous_search.name).write_bytes(previous_search.read_bytes())
         proposal = metadata["proposal"]
         code = next(edit for edit in bundle.edits if edit.path == bundle.installer)
         candidate_path = trial_root/"submitted-candidate.py"
@@ -347,6 +361,9 @@ class ProjectSearch:
         trial_id = metadata["trial"]
         trial_root = self.output/"trials"/trial_id
         trial_root.mkdir(parents=True, exist_ok=True)
+        if (trial_root/"result.json").exists():
+            raise ValueError("completed trial is immutable; use a new trial identity for an independent repeat")
+        job_tag = trial_id+"-evaluation-"+uuid4().hex[:8]
         parent = self.revisions.revision(bundle.parent_revision)
         contract = self.revisions.load(parent.contract_ref, ProjectContract)
         discovery = discovery or json.loads((self.output/"discovery.json").read_text())
@@ -361,7 +378,7 @@ class ProjectSearch:
             pair = {}
             order = (("parent", parent), ("candidate", candidate))
             for role, revision in order if index % 2 == 0 else reversed(order):
-                pair[role] = self.execute(revision, f"{trial_id}-pair-{index}-{role}", "evaluate")
+                pair[role] = self.execute(revision, f"{job_tag}-pair-{index}-{role}", "evaluate")
                 if not valid_run(pair[role]):
                     break
             pairs.append(pair)
@@ -374,28 +391,33 @@ class ProjectSearch:
         anchor = json.loads((self.output/"prepared.json").read_text())["evaluation"]
         measurement = paired_decision(pairs, self.request.objective, anchor) if complete else {
             "valid": False, "objective": None, "reference": None, "reasons": ["paired_endpoint_failed"]}
-        rank_executed = {str(r["rank"]): tuple(r["result"].get("coverage", {}).get(bundle.id, {}).get("counts", {}))
-                        for r in measured["ranks"]} if valid else {}
+        from kernel_optimizer.project.quality_report import quality_and_coverage
+        quality, missing_coverage = quality_and_coverage([p["candidate"] for p in pairs if "candidate" in p])
+        rank_executed = {str(r["rank"]): tuple(c for c, n in r.get("result", {}).get("coverage", {}).get(bundle.id, {}).get("counts", {}).items() if n > 0)
+                        for r in measured["ranks"]}
         executed = set().union(*map(set, rank_executed.values()))
         report = ProjectEvaluation(id=trial_id, revision_id=candidate.id, parent_id=parent.id,
-            contract_ref=parent.contract_ref, bundle_id=bundle.id, quality="pass" if valid else "fail",
+            contract_ref=parent.contract_ref, bundle_id=bundle.id, quality=quality,
             feasible=valid and measurement["valid"] and all(c["passed"] for c in measurement.get("constraints", [])),
             objective=measurement["objective"], reference_objective=measurement["reference"],
-            metrics=measurement, reasons=tuple(measurement["reasons"]),
+            metrics=measurement, reasons=tuple(measurement["reasons"]) + tuple(sorted({
+                "candidate_coverage_missing" if row["bundle"] == bundle.id else "inherited_candidate_coverage_missing" for row in missing_coverage})),
             required_ranks=tuple(range(contract.world_size)), rank_bundle_hashes={str(r["rank"]):
                 r.get("result", {}).get("bundle_hashes", {}).get(bundle.id, "missing") for r in measured["ranks"]},
             required_calls=bundle.calls, executed_calls=tuple(sorted(executed)),
             rank_executed_calls=rank_executed,
-            evidence=tuple(str(self.output/"jobs"/f"{trial_id}-pair-{i}-{role}"/"run"/"receipt.json")
+            evidence=tuple(str(self.output/"jobs"/f"{job_tag}-pair-{i}-{role}"/"run"/"receipt.json")
                            for i, pair in enumerate(pairs) for role in pair))
         decision = self.revisions.evaluate(report)
-        resource_feedback = self.resource_feedback(candidate, bundle, discovery) if valid else {
+        resource_feedback = self.resource_feedback(candidate, bundle, discovery, job_tag=job_tag) if valid else {
             "status": "unavailable", "reason": "candidate failed quality or actual-call coverage"}
         if decision["accepted"] and publish:
             self.revisions.commit(candidate.id)
         elif not decision["accepted"]:
             self.revisions.abort(candidate.id, "; ".join(decision["reasons"]))
         result = {**metadata, "bundle": bundle.model_dump(mode="json"),
+                  "evaluation_attempt": job_tag,
+                  "missing_coverage": missing_coverage,
                   "publication": "committed" if decision["accepted"] and publish else "exploration" if decision["accepted"] else "rejected",
                   "baseline": baseline, "candidate": measured, "pairs": pairs, "measurement": measurement,
                   "evaluation": report.model_dump(mode="json"),
@@ -404,8 +426,8 @@ class ProjectSearch:
         write_json(self.output/"latest-feedback.json", result)
         return result
 
-    def resource_feedback(self, candidate, bundle, discovery):
-        run = self.execute(candidate, bundle.id+"-profile", "profile")
+    def resource_feedback(self, candidate, bundle, discovery, *, job_tag=None):
+        run = self.execute(candidate, (job_tag or bundle.id)+"-profile", "profile")
         if run["status"] != "passed":
             return {"status": "unavailable", "reason": "diagnostic execution failed", "run": run}
         before = [json.loads(Path(path).read_text()) for path in discovery["raw_discovery"]]

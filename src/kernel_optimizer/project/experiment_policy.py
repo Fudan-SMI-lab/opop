@@ -56,7 +56,7 @@ def feedback_view(raw, view):
         return raw
     # Keep failure semantics so this control does not suppress correctness repair.
     result = {key: value.get(key) for key in ("current_revision", "previous_trial", "decision",
-        "project_measurement", "evaluation", "quality_and_coverage")}
+        "project_measurement", "evaluation", "quality_and_coverage", "missing_coverage")}
     search = value.get("parameter_search") or {}
     result["parameter_observations"] = [{"parameters": o["bundle"]["parameters"],
         "score": o["result"].get("score"), "valid": o["result"].get("valid"),

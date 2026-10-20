@@ -39,9 +39,11 @@ def compare(actual: Any, expected: Any, quality: dict, path: str = "output") -> 
     import torch
     maximum = 0.0
     count = 0
+    current_path = path
 
     def visit(a, b, name):
-        nonlocal maximum, count
+        nonlocal maximum, count, current_path
+        current_path = name
         if isinstance(b, torch.Tensor):
             if not isinstance(a, torch.Tensor):
                 raise AssertionError(f"{name}: tensor structure changed")
@@ -80,7 +82,10 @@ def compare(actual: Any, expected: Any, quality: dict, path: str = "output") -> 
         visit(actual, expected, path)
         return {"passed": True, "compared_elements": count, "max_abs_error": maximum}
     except AssertionError as exc:
-        return {"passed": False, "compared_elements": count, "max_abs_error": maximum, "error": str(exc)[:2000]}
+        return {"passed": False, "compared_elements": count, "max_abs_error": maximum,
+                "observation_path": current_path, "atol": quality.get("atol", 0), "rtol": quality.get("rtol", 0),
+                "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+                "error": str(exc)[:2000]}
 
 
 def corrupt(value: Any) -> Any:
@@ -281,7 +286,7 @@ def worker_entry(context: dict) -> dict:
         checks = []
         for index in range(request["continuous_steps"]):
             result, _ = invoke(track=True)
-            checks.append(compare(adapter.observe(state, result), reference[index], quality))
+            checks.append({"continuous_step": index, **compare(adapter.observe(state, result), reference[index], quality)})
         coverage = {bundle["id"]: {"counts": dict(binding.counts), "fallbacks": dict(binding.fallbacks),
                                   "required": bundle["expected_calls"]} for bundle, binding in bindings}
         covered = all(set(bundle["expected_calls"]) <= set(binding.counts) for bundle, binding in bindings)

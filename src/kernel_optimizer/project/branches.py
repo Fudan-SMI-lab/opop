@@ -23,9 +23,15 @@ def fork_run(source_output, output, *, revision_id=None):
         state = json.loads(state_path.read_text()) if state_path.exists() else {}
         if not state.get("report_ref"):
             raise ValueError("exploratory candidate has no project quality evaluation")
-        report = revisions.load(state["report_ref"], ProjectEvaluation)
-        if report.quality != "pass" or not report.feasible or "original_baseline_constraint_failed" in report.reasons:
-            raise ValueError("exploration requires a quality-passing feasible complete project")
+        if state.get("kind") == "complete_version":
+            report = json.loads(source.get_artifact(state["report_ref"]))
+            if (report["quality"] != "pass" or not report["measurement"]["valid"] or report["coverage_errors"]
+                    or any(not c["passed"] for c in report["measurement"].get("constraints", []))):
+                raise ValueError("exploration requires a quality-passing feasible complete project")
+        else:
+            report = revisions.load(state["report_ref"], ProjectEvaluation)
+            if report.quality != "pass" or not report.feasible or "original_baseline_constraint_failed" in report.reasons:
+                raise ValueError("exploration requires a quality-passing feasible complete project")
     # A branch may begin at a quality-passing non-improving candidate. This does
     # not publish that candidate in the source run or claim a global improvement.
     store = RunStore.create(output.parent, output.name, {"kind": "project_experiment_branch",
@@ -49,7 +55,8 @@ def fork_run(source_output, output, *, revision_id=None):
         if (source_output / name).exists():
             shutil.copyfile(source_output / name, output / name)
     if parent.bundles and parent.id != revisions.current().id:
-        feedback = source_output / "trials" / report.id / "result.json"
+        feedback = (source_output / "version-trials" / report["id"] / "result.json" if isinstance(report, dict)
+                    else source_output / "trials" / report.id / "result.json")
         if feedback.exists():
             shutil.copyfile(feedback, output / "latest-feedback.json")
     # References are read-only in evaluate/profile, avoiding multi-GB duplication.

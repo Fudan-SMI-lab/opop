@@ -37,6 +37,10 @@ def route(raw, *, current_revision, registry=None, selected_groups=None, plan=No
         "previous_proposal": value.get("proposal"), "decision": value["decision"],
         "project_measurement": value.get("measurement"), "evaluation": value.get("evaluation"),
         "parameter_search": value.get("parameter_search"),
+        "missing_coverage": value.get("missing_coverage"),
+        "complete_version": {key: value.get(key) for key in ("bundles", "revision", "parent", "quality",
+            "coverage_errors", "source_revision", "source_output", "attribution_status")}
+            if value.get("schema_version") == "project.version-evaluation.v1" else None,
         "quality_and_coverage": [{"rank": r["rank"], "status": r.get("status"), "error": r.get("error"),
             "checks": r.get("result", {}).get("checks"), "coverage": r.get("result", {}).get("coverage")}
             for r in value.get("candidate", {}).get("ranks", [])],
