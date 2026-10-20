@@ -66,6 +66,14 @@ project_defaults:
 Generated descriptions select a workload's GPU count. Merely having two GPUs
 does not turn a single-GPU project into a distributed task.
 
+New intake uses `measurement_lifetime: invocation`: evaluator-owned outputs from
+quality checks and previous timed invocations are released before the next
+measurement. Adapter-owned state is unchanged. Structured requests default to
+`legacy`, retaining historical behavior; the option is explicit in the saved
+request. This addresses measured-output lifetime, not the search or acceptance
+policy. Installed diagnostic metric interfaces are described by the collector
+registry, with actual hardware availability checked in workers.
+
 Project-role records are written to `generation-snapshots/`. They preserve input
 bytes in the run's content-addressed store and record model, tool settings and
 framework hash. External assets and the entire tool-visible filesystem are not

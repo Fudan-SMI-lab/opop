@@ -147,7 +147,7 @@ def resolve_request(proposal, source, goal, environment):
     return ProjectRequest(source_root=source, entry=d.entry, files=list(dict.fromkeys(d.files)), goal=goal,
         objective=d.objective.model_dump(exclude_none=True, exclude_unset=True),
         workload=d.workload, quality=d.quality.model_dump(exclude_none=True, exclude_unset=True), assets=d.assets,
-        warmup=d.warmup, repeats=d.repeats,
+        warmup=d.warmup, repeats=d.repeats, measurement_lifetime="invocation",
         devices=environment["devices"][:d.device_count], distributed_backend=d.distributed_backend,
         communication=d.communication, required_observations=d.required_observations,
         notes=[*d.notes, "One measured invocation: " + d.invocation],

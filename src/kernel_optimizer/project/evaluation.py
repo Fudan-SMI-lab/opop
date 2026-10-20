@@ -272,6 +272,15 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
             raise ValueError(f"evaluator omitted objective {request['objective']['name']}")
         return {"metrics": metrics, "metric_samples": metric_samples, "diagnostics": diagnostics}
 
+    def measure_once():
+        # Keep the current result alive through metrics(), then release the
+        # evaluator's reference before the next invocation. Adapter-owned state
+        # is untouched. Legacy requests retain their original lifetime below.
+        result, metrics = invoke()
+        return metrics
+
+    invocation_lifetime = request.get("measurement_lifetime", "legacy") == "invocation"
+
     if action == "candidate_diagnostics":
         adapter.reset(state)
         for _ in range(request["continuous_steps"]):
@@ -360,13 +369,20 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
         valid = consensus(all(check["passed"] for check in checks) and covered and unchanged)
         samples = []
         if valid:
+            if invocation_lifetime:
+                result = None
             mode("measure")
             for _, binding in bindings:
                 binding.tracking = False
             for _ in range(request["warmup"]):
                 adapter.reset(state); invoke()
             for _ in range(request["repeats"]):
-                adapter.reset(state); _, metrics = invoke(); samples.append(metrics)
+                adapter.reset(state)
+                if invocation_lifetime:
+                    samples.append(measure_once())
+                else:
+                    _, metrics = invoke()
+                    samples.append(metrics)
         return {"valid": valid, "checks": checks, "coverage": coverage, "math_policy_unchanged": unchanged,
                 "setup": setup,
                 "samples": samples, **(summarize(samples) if samples else {"metrics": {}}),
@@ -412,13 +428,18 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
     if not controls_valid:
         return {"valid": False, "failure": "identity_or_negative_control_failed_on_a_rank",
                 "identity": identity_check, "wrong_output": wrong_output, "coverage": missing_coverage_rejected}
+    if invocation_lifetime:
+        result = None
     mode("measure")
     for _ in range(request["warmup"]):
         adapter.reset(state); invoke()
     samples = []
     for _ in range(request["repeats"]):
         adapter.reset(state)
-        _, metrics = invoke()
+        if invocation_lifetime:
+            metrics = measure_once()
+        else:
+            _, metrics = invoke()
         samples.append(metrics)
     metric_names = set(samples[0])
     if any(set(sample) != metric_names for sample in samples):
