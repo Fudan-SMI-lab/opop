@@ -145,6 +145,8 @@ box4-2 实测为无 P2P、无 NVLink 的双 4090，NCCL 使用 SHM/direct/direct
 
 `candidate_diagnostics` 采集器在独立 worker 中跟踪候选安装和连续执行，记录被吞掉的 Python 异常、返回 False 的条件及最近源代码行，不读取局部变量或保留 tensor。它可以通过 `collect_extra` 显式调用，也会在参数筛查观察到一个 rank 上该 bundle 的全部调用都经过 `context.references` 时自动采集，并进入下一轮完整反馈。`profiling.candidate_diagnostics` 可设为 `off`、默认的 `on_reference` 或 `always`。引用原实现也可能是合法组合的一部分，触发诊断不等于判定候选无效；异常和 False 条件也必须结合源代码解释。追踪范围为当前 Python 线程的候选安装文件，不覆盖 native kernel、其他线程或导入的辅助文件；其计时不参与接受规则。
 
+选组／候选角色同时获得 `inputs/binding-contract.md`，说明安装阶段与实际 adapter 调用的 phase／dispatch 区别，以及 Graph 原生执行不能直接用 Python hook 数量解释。完整定义保存在 [组合执行契约](../src/kernel_optimizer/project/binding_contract.md)；它覆盖新生成、同会话修复和恢复，不要求每个任务自行添加这一上下文。
+
 真实任务包含 ResNet-18、Qwen3-4B、GPT-2 DDP，以及在核心初版后接入的纯函数信号项目。DDP 的随机权重和合成 token 是明确声明的工作负载，只验证参考计算一致性，不声称训练收敛或语言能力。具体成功、失败、无改善、shape 守卫回退和未测硬件分别报告。
 
 框架不承诺任意项目自动获得加速。当前重点是实测闭环：真实理解与生成、自动发现、按目标选择、完整回装、质量与状态校验、资源反馈、拒绝与恢复，以及明确的证据归属。进一步训练时序、不同 rank 上同路径不同语义、特殊自定义 runtime 和更复杂别名关系需要扩展对应适配／采集能力。

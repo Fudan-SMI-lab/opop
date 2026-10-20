@@ -1,4 +1,5 @@
 Read inputs/request.json, inputs/index.json, inputs/groups.json, inputs/calls.json and the source/adapter. Use index.json to navigate large traces by phase and semantics, then query the full artifacts for relevant IDs and signatures; do not dump all large JSON files into the conversation. The index is a navigation aid, not a claim that all shapes in one family share an implementation. Select a scope and optimization opportunity for this exact project objective.
+Read inputs/binding-contract.md when supplied. Proposals that compose inherited candidates must account for actual phase, dispatch and capture behavior; installed file lists alone do not establish execution.
 
 Groups and call IDs come from actual execution. CUDA durations are diagnostic, nested/inclusive and can overlap; do not add parent and child times. Unknown dependencies are not permission to reorder. A faster local kernel need not improve the requested project metric. Use the frozen workload, complete project goal and observed resources to justify the selection. Treat expected benefits as hypotheses to be tested.
 

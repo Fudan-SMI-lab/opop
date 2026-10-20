@@ -53,3 +53,9 @@ Qwen `trial-023e79293c` 在旧冻结实现下数值及配对计时通过，69.51
 新增通用 `candidate_diagnostics` 采集器对原候选字节做独立诊断。第一次追踪发现 `_try_build_graph` 返回 False，但 Python 报告的行号处于 `with` 清理语句；补充最近执行行后，第二次明确定位到 226–229 行：捕获、replay 和同步成功之后，`torch.equal(static_out.logits, warm.logits)` 不成立而回退。这不证明差异超过原质量阈值，也不证明可以忽略差异；后续 Agent 必须读取实际源码和原契约修复。诊断还保留父候选自测中的异常，未将其混为新候选失败原因。4 项相关检查在 box4-2 通过，真实诊断分别保留源码哈希和 worker 回执。
 
 Qwen 有效多候选组合和仍在生成的吞吐候选尚需完成。本目录暂不代表 P6 全部完成。
+
+自动触发另经真实 TaskSearch 验证：`p6-qwen-automatic-diagnostics-c` 使用原候选字节和参数，筛查观察到全部经过原实现后自行运行诊断，再次定位上述 logits 条件。筛查和诊断的源码哈希均为 `cc2c1b9634d05a488ceda558a96641b79c3583c93245dad79aa9c9a98098334f`；结果保存进参数反馈，接受指针未改变，不计作新优化收益。
+
+后续源码检查还发现组合提案中的一个未验证假设：安装阶段直接调用 parent forward，并不会自动进入旧 functional 候选的 dispatch mode，也没有自动建立 adapter 的 prefill/decode phase。已将真实执行语义补充给正在运行的候选会话，并作为通用 `inputs/binding-contract.md` 自动提供给以后选组、生成和恢复角色。Graph 的原生执行与 Python 调用计数分别解释，不允许通过无用调用填充计数。此轮 7 项诊断、角色环境和恢复检查通过；新的候选仍由冻结版本独立运行。
+
+[用量快照](p6-resumed-final-usage.json)截至 15:03（UTC+8）包含 157 个会话、4,312 条 assistant 消息，provider 报告费用 $138.3096818128。包含嵌套探索分支，按 session/message 去重；不含外层 Codex 对话，不是账单，两个角色尚在运行，后续还会增加。费用没有用于设置调用额度。

@@ -57,6 +57,9 @@ class ProjectAgents:
         environment_note = (" Read inputs/worker-environment.json before library/API inspection. "
             f"The measured worker uses Python {environment['python']}; use that executable for CPU checks. "
             "Other system/Conda environments may have different library versions. GPU work remains in leased framework workers.")
+        if role in {"selection", "candidate"}:
+            sb.write_input("inputs/binding-contract.md", Path(__file__).with_name("binding_contract.md").read_text())
+            environment_note += " Read inputs/binding-contract.md before choosing or composing replacements and capture policies."
         prompt += environment_note
         queue = ProviderQueue(self.runtime.cfg)
         self.store.append("PROJECT_AGENT_STARTED", {"role": role, "session": session, "sandbox": str(sb.root),
