@@ -79,12 +79,20 @@ def route(raw, *, current_revision, registry=None, selected_groups=None, plan=No
     groups = resources.get("groups", [])
     if selected:
         groups = [g for g in groups if g["group"] in relevant]
+    setup = {}
+    for arm in ("baseline", "candidate"):
+        run = value.get(arm)
+        if isinstance(run, dict):
+            setup[arm] = [{"rank": rank["rank"], "setup": rank.get("result", {}).get("setup"),
+                           "framework_source": rank.get("framework_source")}
+                          for rank in run.get("ranks", [])]
     result = {"current_revision": current_revision, "previous_trial": value.get("trial"),
         "previous_bundle": value.get("bundle"), "previous_selection": value.get("selection"),
         "previous_proposal": value.get("proposal"), "decision": value["decision"],
         "supplemental_evidence": value.get("supplemental_evidence"),
         "project_measurement": value.get("measurement"), "evaluation": value.get("evaluation"),
         "parameter_search": value.get("parameter_search"),
+        "binding_execution": setup,
         "missing_coverage": value.get("missing_coverage"),
         "complete_version": {key: value.get(key) for key in ("bundles", "revision", "parent", "quality",
             "coverage_errors", "source_revision", "source_output", "attribution_status")}
