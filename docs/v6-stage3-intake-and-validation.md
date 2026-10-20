@@ -96,18 +96,23 @@ as reconstructed, never as contemporaneous snapshots.
 
 The seven-case raw-entry cohort is frozen at
 `187617ce316403ea627c0d33392cc020bca2cb63`. A separate graph followup uses
-`8fd2123` after an actual held-out adapter failure. Six original cases and the
-graph followup have completed both autonomous rounds; the DDP step case is
-generating its final candidate. No developer messages or candidate edits were
-injected into these complete pipelines.
+`8fd2123` after an actual held-out adapter failure. All seven original cases and
+the graph followup completed both autonomous rounds: 16 rounds, with 5 accepted
+in the original cohort and 2 in the graph followup. No developer messages or
+candidate edits were injected into these complete pipelines.
 
 Source-fidelity checks passed for all seven original adapters, with timing and
 allocation-history differences explicitly retained. The original graph adapter
 failed held-out dimensions; that failure remains in its original cohort. The
 followup graph adapter passed both sizes. Frozen-candidate replay found positive
-graph held-out results and negative ResNet memory/latency transfers, while an
-independent ResNet final-version repeat confirmed the standard-workload memory
-gain. See the [complete-run evidence and limitations](evidence/v6-stage3-20261021/final/README.md)
+graph and DDP held-out results and negative ResNet memory/latency transfers,
+while independent final-version repeats confirmed ResNet memory and graph
+latency gains. Both Qwen goals failed full-logit checks; neither autonomous
+communication round satisfied its complete-step constraint.
+The DDP compute candidate initially passed a frozen communication-goal replay,
+but an additional independent AB/BA did not reproduce the metric gain; both
+outcomes are retained. All planned followups and that repeat have finished.
+See the [complete-run evidence and limitations](evidence/v6-stage3-20261021/final/README.md)
 and [source audit](evidence/v6-stage3-20261021/source-audit/README.md).
 
 `744c93c` adds an explicit option for replaying a final replacement bundle onto

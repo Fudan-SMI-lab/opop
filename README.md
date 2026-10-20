@@ -26,6 +26,9 @@ Use `--context` for necessary data or constraints, and `--intake-only` to inspec
 the resolved request. Existing `--request` inputs remain supported. See the
 [intake and validation record](docs/v6-stage3-intake-and-validation.md) for
 generation snapshots, controlled replay and the current evidence boundaries.
+The [raw-entry experiments](docs/evidence/v6-stage3-20261021/final/README.md)
+record eight complete two-round runs, independent source audits, frozen-candidate
+transfers, successful optimizations and unresolved Qwen/communication cases.
 
 See the [project workflow](docs/v6-project-workflow.md) for commands and extension
 interfaces, the [execution record](docs/v6-execution.md) for current progress, and
