@@ -1,12 +1,13 @@
 # v6 项目工作流：运行、扩展与结果解释
 
-本页说明已经实现的接口。阶段验收和实际结果见 [验收与边界](v6-acceptance.md)、[执行记录](v6-execution.md)、[验证矩阵](v6-validation-projects.md) 与各阶段 `docs/evidence/`。正式对照的 11 条路径、22 轮已完成；支持某个接口不等于所有模型和目标已经获得加速。
+本页说明已经实现的接口。阶段验收和实际结果见 [验收与边界](v6-acceptance.md)、[执行记录](v6-execution.md)、[验证矩阵](v6-validation-projects.md) 与各阶段 `docs/evidence/`。早期正式对照的 11 条路径、22 轮已完成；后续原项目入口与新批次记录见 [stage 3](v6-stage3-intake-and-validation.md)。支持某个接口不等于所有模型和目标已经获得加速。
 
 ## 模块与迭代位置
 
 ```mermaid
 flowchart LR
-  R[项目入口与目标] --> E[生成并验证 evaluator]
+  R[项目与自然语言目标] --> I[Agent 生成任务请求]
+  I --> E[生成并验证 evaluator]
   E --> D[执行发现与分组]
   D --> S[按目标选择范围]
   S --> C[生成完整候选]
@@ -20,6 +21,7 @@ flowchart LR
 
 | 调整内容 | 实际实现与扩展方式 |
 |---|---|
+| 原项目与自然语言入口 | `intake.py`／`intake_prompt.md` 调用真实 Agent，选择源文件并形成既有 `ProjectRequest`；部署配置提供设备、工具和 lease 目录，不要求用户先写 adapter 或算子分组。 |
 | 项目语义、状态、质量与目标 | `request.py` 和生成的六函数 adapter；`workflow.py`／`variants.py` 验证并冻结。案例源码及资产在框架外。 |
 | 理解、选组与候选生成 | `agents.py` 连接真实 provider；`adapter_prompt.md`、`selection_prompt.md`、`candidate_prompt.md` 分开维护；`generated.py` 校验产物。当前 Agent transport 为 OpenCode，替换 transport 仍需实现对应 client 接口。 |
 | 发现与归属 | `discovery.py` 捕获 module／functional；`trace.py` 解析原生关联；`aggregation.py` 合并 rank；`communication.py` 处理 collective 和能力探测。 |
@@ -29,14 +31,27 @@ flowchart LR
 | 接受与约束 | `measurement.py`／`constraints.py`／`quality_report.py`；统一检查完整项目、原始参考约束、噪声与活动 bundle 覆盖。 |
 | 多候选和整版生命周期 | `transactions.py`、`binding.py`、`branches.py`、`versioning.py`；候选声明依赖／替换，整版导入后重新评价。 |
 | 搜索策略与恢复 | `search.py` 顺序协调，`experiment.py` 管理可行分支，`experiment_policy.py` 定义对照策略，`recovery.py` 恢复真实会话与已生成制品。 |
+| 生成前快照与小幅对照 | `generation_snapshot.py` 保存 prompt、声明输入字节和模型／工具／源码标识；`generation_experiment.py` 用新会话重放并替换一个明确输入片段。外部资产和整个文件系统不在快照范围内，生成成功不等于实测通过。 |
 
 采集器可以按配置注册；搜索策略和 Agent transport 目前通过独立 Python 模块替换，不宣称所有模块都已有动态插件加载。调整共同接受规则后，应冻结新代码版本重新测量，避免把新旧规则混入同一对照。
 
 ## 从项目入口开始
 
-旧单算子命令保留原默认路径。项目任务使用独立的 `optimize-project`，输入项目源码清单、入口、实际资产、workload、目标、质量标准和设备 UUID，不需要提供算子组或目标算子列表。框架调用实际配置的 Agent 生成 evaluator，再执行完整输出、状态重置、连续步骤及负控制；通过后才发布原始参考。
+旧单算子命令保留原默认路径。项目任务使用独立的 `optimize-project`，可以先提供项目目录或 Git 仓库 URL、自然语言目标，以及已有的启动命令：
 
-最小请求结构如下，路径、设备和目标按项目实际填写：
+```sh
+kernel-opt --config deployment.yaml optimize-project \
+  --project /path/to/project \
+  --goal "降低完整推理请求的延迟，保留源项目的质量检查" \
+  --command "python inference.py --weights /path/to/weights" \
+  --output /path/to/run
+```
+
+`--command` 可省略；`--context` 可重复提供必要的数据路径和约束。真实 intake Agent 从项目中识别入口、源文件、实际资产、单次工作负载、指标和质量要求，生成既有 `ProjectRequest`；部署配置中的 `project_defaults` 提供设备、工具和 lease 目录。`--intake-only` 只生成并保存请求，缺少不可推断的任务语义时返回 `needs_input`。不要求用户提供 adapter、算子组或优化目标算子列表。
+
+随后框架生成 evaluator，并检查完整输出、状态重置、连续步骤及负控制。这里的自控制检查不自动证明 adapter 与原项目语义完全一致；当前实际案例的独立核验和发现的边界差异见 [stage 3 证据](evidence/v6-stage3-20261021/source-audit/README.md)。
+
+新入口使用显式的 `measurement_lifetime: invocation`，在下一次测量前释放 evaluator 持有的上次输出；adapter 自己持有的状态仍由 adapter 管理。旧 `--request` 默认保留 `legacy` 行为。也可直接提供下列结构化请求，路径、设备和目标按项目实际填写：
 
 ```json
 {
@@ -113,6 +128,8 @@ Torch module 与 functional 调用由实际执行发现，记录阶段、shape�
 429 也可能是 provider 账户窗口耗尽。运行时保留可用于调度的完整错误字段，队列遵循实际 `Retry-After` 或明确恢复时间；未带时区的消息会记录采用的宿主时区。该等待来自服务端可用性，不能与开发费用／调用额度混同。已有会话保留；若账户设置已改变，应先核实服务端状态再重新检查队列，不能将外部限制当成已完成的候选轮次。
 
 ## 通信和其他资源
+
+`nccl_tuning` 是可选诊断采集器，在独立 worker 中读取真实 NCCL 算法、协议及通道决策日志。未识别的日志格式保留原文件并标记不可用；不能从 kernel 入口名称推断实际协议。当前解析范围涵盖该诊断进程的初始化和预热，尚不表示逐 kernel、逐算子组的精确关联。Agent 自行选择是否采集，单卡或关闭通信的任务不启用。
 
 `communication=auto` 仅在当前任务包含多卡时启用通信维度；`off` 关闭额外通信采集；`required` 配合 `required_observations` 声明缺失时必须失败的字段。设备数由任务实际绑定决定，机器有两张卡但任务只用一张时不应声称发生跨卡通信。
 

@@ -10,6 +10,23 @@ changes share versioned installation, quality checks, paired measurements and
 feedback. Communication collectors are optional and selected from actual device
 capabilities.
 
+The optional plain-project entry lets a real intake Agent resolve source files,
+workload, metrics and quality requirements from the project and an existing
+launch command:
+
+```sh
+kernel-opt --config deployment.yaml optimize-project \
+  --project /path/to/project \
+  --goal "Reduce complete inference latency while preserving the source checks" \
+  --command "python infer.py --weights /path/to/weights" \
+  --output /path/to/run
+```
+
+Use `--context` for necessary data or constraints, and `--intake-only` to inspect
+the resolved request. Existing `--request` inputs remain supported. See the
+[intake and validation record](docs/v6-stage3-intake-and-validation.md) for
+generation snapshots, controlled replay and the current evidence boundaries.
+
 See the [project workflow](docs/v6-project-workflow.md) for commands and extension
 interfaces, the [execution record](docs/v6-execution.md) for current progress, and
 the [real validation projects](examples/v6_validation/README.md) for workloads.
