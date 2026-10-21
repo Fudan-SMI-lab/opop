@@ -27,6 +27,8 @@ The framework synchronizes before and after run and resets CUDA peak stats immed
 
 understanding.json must contain goal, entrypoint, completion, state_protocol, invariants (a nonempty array of strings), objective (copied from request), workload (copied from request), quality (copied from request), missing_information (an array of strings), and assumptions (an array of strings). If a required fact cannot be determined, list it in missing_information.
 
+The baseline adapter must reproduce the source implementation. In understanding.invariants, distinguish required task semantics from source implementation choices: preserve request constraints and source-defined correctness, but do not freeze a choice solely because it appears in the reference. Describe such choices in assumptions; for a genuine invariant, cite the request/source requirement that makes it necessary.
+
 Write the two files directly, then return their filenames.
 The worker supplies context['rank'], context['world_size'] and context['device'] after device binding and process-group initialization. Do not initialize another default process group. Model roots and tensors must use this actual local device. Required communication observations are collected and validated by the framework; their absence is not missing task semantics for the adapter. Passive bucket inventory belongs to diagnostics; do not install a communication hook merely to inventory buckets. A held-out workload in the source is not part of the current frozen request. Seeded random inputs/weights are valid task data when the source explicitly declares them; empty assets does not mean pretrained weights must be invented.
 

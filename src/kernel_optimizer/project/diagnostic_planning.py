@@ -1,6 +1,19 @@
 """Small measured summaries for optional post-evaluation collection planning."""
 
 
+def objective_reference(run, objective):
+    from kernel_optimizer.project.measurement import metric
+    reducer = objective.get("rank_aggregation", "max" if objective["direction"] == "minimize" else "min")
+    result = {"metric": objective["name"], "unit": objective["unit"], "rank_aggregation": reducer,
+              "scope": "Original reference objective reduced from the per-rank metrics above using the frozen request; "
+                       "not a paired improvement or candidate score."}
+    try:
+        result["value"] = metric(run, objective["name"], reducer)
+    except (KeyError, TypeError, ValueError):
+        result.update(value=None, reason="Original reference objective unavailable")
+    return result
+
+
 def endpoint_summary(run):
     from kernel_optimizer.project.measurement import valid_run
     return {"status": run.get("status"), "failure": run.get("failure"),

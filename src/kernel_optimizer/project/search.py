@@ -146,6 +146,7 @@ class ProjectSearch:
                   "coverage.json": json.dumps(discovery["coverage"], indent=2),
                   "collection.schema.json": json.dumps(CollectionPlan.model_json_schema(), indent=2)}
         if evaluation is not None:
+            from kernel_optimizer.project.diagnostic_planning import objective_reference
             reference = {"revision": self.prepared["revision"],
                 "bundles": list(self.revisions.revision(self.prepared["revision"]).bundles),
                 "ranks": [{"rank": row["rank"], "metrics": row.get("result", {}).get("metrics", {})}
@@ -154,6 +155,7 @@ class ProjectSearch:
                                   "current parent. Parent discovery in observations.json is intrusive profiling "
                                   "and must not be substituted for this clean score. Paired parent values, when "
                                   "available, are reported separately in evaluation.measurement."}
+            reference["objective_aggregate"] = objective_reference(self.prepared["evaluation"], self.request.objective)
             inputs["evaluation.json"] = json.dumps({**evaluation, "original_reference": reference}, indent=2)
             inputs["revisions.json"] = json.dumps({"candidates": [
                 {"revision": r.id, "parent": r.parent_id, "bundles": list(r.bundles)} for r in revisions],
@@ -166,7 +168,8 @@ class ProjectSearch:
             "collective_calibration runs a separate synthetic full-world SUM allreduce at actually observed sizes/dtypes, with correctness checks; it is a reference experiment, not a performance lower bound or model critical-path estimate. "
             "execution_timeline records a separate plain Torch trace, CPU-to-CUDA submit associations, synchronization, per-device intervals, and optional passive CPU gradient post-accumulate callbacks. It reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown. It never replaces a communication hook or determines subsequent search actions. "
             "python_runtime runs a separate warmed cProfile call trace to investigate host dispatch and binding costs. It perturbs execution, and its inclusive/self times are not clean performance scores or GPU compute durations. "
-            "binding_cost compares an additive candidate's parent and binding-only passthrough in clean AB/BA workers with full quality checks. It omits candidate build/computation and reports whole-invocation cost, not per-group effects. It is not applicable before any candidate exists or when bundles replace the parent; if selected, it also runs in subsequent candidate resource feedback. "
+            "candidate_diagnostics records executed candidate Python calls, handled exceptions with propagated library traceback locations, and limited scalar returns in a separate instrumented run. It does not compare intermediate tensors, measure per-site numerical errors, or locate the first numerical divergence. Those observations remain unavailable unless another actual collector supplies them. "
+            "binding_cost compares an additive candidate's parent and binding-only passthrough in clean AB/BA workers with full quality checks. It omits candidate build/computation and reports whole-invocation cost, not per-group effects. Additive means the candidate retains all installed parent bundles and adds new bundles, not that the replacement adds mathematical work. Direct module/project bindings are eligible under this condition; no functional replacements does not imply zero binding overhead. It is not applicable before any candidate exists or when the candidate removes/replaces an installed parent bundle; if selected, it also runs in subsequent candidate resource feedback. "
             "Never invent PCIe/NVLink traffic from logical payload or memcpy sizes. Nsys timelines alone do not separate NCCL waiting from wire transfer or prove bucket identity. "
             "Exact bucket links require native correlation and observed gradient-storage membership; otherwise retain ambiguous candidates. List unavailable dimensions with observed reasons. "
             "Do not request every counter indiscriminately, change the task, or run tools yourself. "

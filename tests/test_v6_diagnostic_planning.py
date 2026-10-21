@@ -56,3 +56,27 @@ def test_summary_does_not_infer_fallback_from_parent_calls():
     assert counts['framework_fallbacks'] == 0
     assert counts['candidate_declared_routes'] == routes
     assert 'not independent native proof' in summary['interpretation']
+
+
+@pytest.mark.parametrize('direction,aggregation,expected', [
+    ('minimize', None, 74.676), ('maximize', None, 64.149),
+    ('minimize', 'mean', (74.676 + 64.149) / 2),
+])
+def test_reference_objective_uses_the_requested_rank_reduction(direction, aggregation, expected):
+    from kernel_optimizer.project.diagnostic_planning import objective_reference
+    run = {'ranks': [{'result': {'metrics': {'duration': value}}} for value in [74.676, 64.149]]}
+    objective = {'name': 'duration', 'unit': 'ms', 'direction': direction}
+    if aggregation is not None:
+        objective['rank_aggregation'] = aggregation
+    result = objective_reference(run, objective)
+    assert result['value'] == expected
+    assert result['metric'] == 'duration'
+    assert 'not a paired improvement' in result['scope']
+
+
+def test_reference_objective_remains_unknown_if_a_rank_has_no_measurement():
+    from kernel_optimizer.project.diagnostic_planning import objective_reference
+    run = {'ranks': [{'result': {'metrics': {'duration': 7}}}, {'result': {'metrics': {}}}]}
+    result = objective_reference(run, {'name': 'duration', 'unit': 'ms', 'direction': 'minimize'})
+    assert result['value'] is None
+    assert result['reason']
