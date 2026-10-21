@@ -4,6 +4,7 @@ from contextlib import AbstractContextManager
 import linecache
 from pathlib import Path
 import sys
+import traceback
 
 
 class CandidateTrace(AbstractContextManager):
@@ -32,17 +33,20 @@ class CandidateTrace(AbstractContextManager):
         if event == "return":
             self.recent.pop(ident, None)
         if event == "exception":
-            kind, error, _ = arg
+            kind, error, exception_tb = arg
             try:
                 message = str(error)
             except Exception:
                 message = "<exception message unavailable>"
             detail = (kind.__name__, message)
+            stack = tuple((entry.filename, entry.name, entry.lineno, entry.line or "")
+                          for entry in traceback.extract_tb(exception_tb))
         elif event == "return" and arg is False:
             detail = ("bool", "False")
+            stack = ()
         else:
             return self._trace
-        self.events[(self.phase, filename, frame.f_code.co_name, frame.f_lineno, event, *detail, history)] += 1
+        self.events[(self.phase, filename, frame.f_code.co_name, frame.f_lineno, event, *detail, history, stack)] += 1
         return self._trace
 
     def __enter__(self):
@@ -62,15 +66,18 @@ class CandidateTrace(AbstractContextManager):
                 {"phase": phase, "bundle": self.files[file], "file": file,
                  "function": function, "line": line, "source": linecache.getline(file, line).strip(),
                  "recent_lines": [{"line": n, "source": linecache.getline(file, n).strip()} for n in history],
-                 "event": event, "type": kind, "message": message, "count": count}
-                for (phase, file, function, line, event, kind, message, history), count in self.events.items()
+                 "event": event, "type": kind, "message": message, "count": count,
+                 **({"traceback": [{"file": f, "function": fn, "line": n, "source": src}
+                                   for f, fn, n, src in stack]} if stack else {})}
+                for (phase, file, function, line, event, kind, message, history, stack), count in self.events.items()
             ],
             "interpretation": (
                 "Separate intrusive Python diagnostic, including candidate installation and continuous runs. "
                 "Exceptions may be intentionally handled; False returns may be normal predicates. "
                 "These are source locations for investigation, not proof of failure or causal attribution. "
                 "Only candidate installer files on the worker's current Python thread are traced; "
-                "native code, other threads and imported helper files are outside this observation."
+                "native code and other threads are outside this observation. Propagated exception tracebacks "
+                "can locate imported helpers without tracing their execution or retaining frames/locals."
             ),
         }
 

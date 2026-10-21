@@ -59,6 +59,25 @@ def test_false_return_keeps_guard_location_across_context_manager_cleanup(tmp_pa
     assert not trace.recent
 
 
+def test_swallowed_library_exception_keeps_origin_without_tracing_library(tmp_path):
+    helper = tmp_path / "library.py"
+    helper.write_text("def operation():\n    raise RuntimeError('copy failed')\n")
+    library = {}
+    exec(compile(helper.read_text(), str(helper), "exec"), library)
+    candidate = tmp_path / "candidate.py"
+    candidate.write_text("def run():\n    try:\n        operation()\n    except RuntimeError:\n        return 'parent'\n")
+    namespace = {"operation": library["operation"]}
+    exec(compile(candidate.read_text(), str(candidate), "exec"), namespace)
+    with CandidateTrace([{"file": str(candidate), "id": "b"}]) as trace:
+        assert namespace["run"]() == "parent"
+    events = trace.report()["events"]
+    assert len(events) == 1
+    assert events[0]["file"] == str(candidate)
+    assert [(row["file"], row["line"]) for row in events[0]["traceback"]] == [
+        (str(candidate), 3), (str(helper), 2)]
+    assert events[0]["traceback"][-1]["source"] == "raise RuntimeError('copy failed')"
+
+
 def test_reference_trigger_is_optional_and_not_an_acceptance_rule():
     run = {"ranks": [{"result": {"coverage": {"b": {
         "counts": {"x": 2, "y": 2}, "reference_invocations": {"x": 2, "y": 2}}}}}]}
