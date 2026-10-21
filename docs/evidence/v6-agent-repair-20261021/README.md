@@ -50,6 +50,11 @@ Qwen/ResNet 冻结为 `88b9651`；修正可用性接口后另行重启的 DDP �
 原始两轮结束后，开发者又启动一轮隔离续跑，使用完全相同的原始框架反馈，没有加入人工诊断、
 分组或候选。见 [续跑启动记录](ddp-automatic-continuation-launch.json)；它单独统计，
 不与原始两轮混称为一次无人触发续跑的三轮新入口运行。
+该轮已完成：[终态结果](ddp-automatic-continuation-result.json)。Agent 自主改选整个 project
+调用边界，实际使用 `direct`，纯绑定对照不再出现约 100 ms 增量。Graph capture 因 CPU→CUDA
+拷贝的 CPU tensor 未固定内存而失败，随后回退父路径；两个 rank 的原异常均由现有诊断自动捕获。
+正式通信指标 66.547669 → 73.144745 ms，一组整步超过原限制，最终拒绝。
+后续 Agent 自主选择的六项诊断均完成；没有已接受候选，未启动独立版本复测。
 
 [Qwen/ResNet 最终完整版本独立结果](fresh-final-independent-result.json)；
 [重启 DDP 的独立结果](fresh-fixed-independent-result.json)。
@@ -87,3 +92,5 @@ Provider 配置和 reference tensor 本体也不在公开导出中。
 
 [会话统计](usage-snapshot.json) 包含中断和探索性会话，仅观察费用和 token，不限制真实 API 使用。
 数值是 provider 报告估算，排除外层 Codex 对话，不等同于账单。
+最终快照含 63 个真实框架会话、1,615 条 assistant message，`reported_cost=52.54925979724`；
+其中 2 条历史中断 message 没有完成标记，保留在统计中，不代表本轮仍有实验运行。

@@ -220,6 +220,8 @@ Qwen 新入口也已完成两轮。第一轮 Graph 自检失败后全部回退�
 另在 `e16e80f` 从原项目／命令／目标重新启动 DDP，先前失败的新入口运行仍保留。
 重跑生成的新 adapter 也通过原项目独立核验：除了完整参数、梯度、loss 和完全相同的 replica
 梯度，还逐项检查了它额外输出的每个 rank 的 normalized micro-batch loss；没有删去额外输出。
+源码复核也确认 micro-loss 的 detach 累积原项目本就存在，额外 CPU 转换在 `observe` 中；
+训练计时主体仍保留相同累积、SGD 更新和 synchronize，不能据此解释约 100 ms 的绑定增量。
 
 该新入口两轮候选均未通过整步约束。第一轮在两个 functional 通信站点创建第二个 NCCL group，
 尝试三组 channel/protocol 参数，质量均通过，但整步 253.862262–295.482941 ms，超过
@@ -239,6 +241,29 @@ nccl_tuning、collective_calibration，五项均实际完成。纯绑定对照�
 字节与原 `latest-feedback.json` 完全相同（SHA-256
 `5c7eaa68bc4ec3f0975c31c851d444357487f425a4348eaf91c0283a3849c59f`），未指定分组、算法或参数。
 它与原始两轮新入口分开记录，不能称为一次从入口开始、无人触发续跑的三轮实验。
+
+这轮续跑已经完成。selection Agent 根据自动获得的 92–101 ms 绑定诊断，选择 project-kind
+整体调用组；candidate 只替换整个 invocation，实际 worker 记录为 `effective=direct`、
+`reason=no functional replacements`。虽然 selection 的 scope 字段是 `group`，该组覆盖的是
+整个项目调用，不能仅根据 scope 名称将其理解为局部算子优化。
+
+Agent 尝试将前三个 no_sync micro-batch 的计算录入 CUDA Graph，保留最后一次 eager DDP
+backward、默认 process group、reducer、SGD 和同步。但 capture 失败，候选随后回退父实现。
+既有 candidate_diagnostics 在两个 rank 都自动捕获 `_capture_segments` 内 `raw_model(...)`
+调用处的 RuntimeError：Graph capture 中的 CPU→CUDA 拷贝要求 CPU tensor 为 pinned memory。
+当前诊断没有定位到被调用库内部究竟哪个张量产生这次拷贝，不能将某个 mask/loss 常量认定为根因。
+
+筛查整步为 137.209215 ms，质量通过且满足约束；正式 AB/BA 的通信目标为
+66.547669 → 73.144745 ms，两个候选整步为 145.554415、144.248580 ms，其中一组超过
+144.80321415 ms 限制。两组通信收益均未越过各自噪声界，最终拒绝，未产生可供独立版本复测的
+已接受候选。连续质量检查零误差对应的是内部父路径回退，不能用来证明 Graph 计算正确或优化生效。
+
+本轮后续规划识别了 capture failure 与表面计时的区别，自主请求六项诊断，均已执行：
+candidate_diagnostics、execution_timeline、nsys、nccl_tuning、collective_calibration、binding_cost。
+项目级纯绑定对照为 parent/passthrough 142.288805/148.414764 ms 和
+139.560733/142.112600 ms，没有重现约 100 ms 的 functional 增量，但仍包含若干毫秒的波动／开销，
+不能称为零成本。证据支持“自动成本反馈促使 Agent 改选更合适的绑定边界”，不支持
+“已经获得稳定通信收益”或“Graph 已成功执行”。
 
 ### 根据真实信息缺口保留候选路径记录
 

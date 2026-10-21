@@ -1,0 +1,74 @@
+{
+  "plan": {
+    "collectors": [
+      "candidate_diagnostics",
+      "execution_timeline",
+      "nsys",
+      "nccl_tuning",
+      "collective_calibration",
+      "binding_cost"
+    ],
+    "requested_fields": [
+      "candidate_diagnostics.route_exception_evidence.capture_failed_RuntimeError_call_5d7d6bb13691b02f533f62b0",
+      "candidate_diagnostics.fallback_parent_equivalence.comm_hook_bucket_count_sizes_streams",
+      "execution_timeline.cpu_to_cuda_submit_associations.per_collective",
+      "execution_timeline.per_device_intervals_and_synchronization",
+      "execution_timeline.clock_alignment_bounds_cpu_submissions",
+      "execution_timeline.passive_post_accumulate_cpu_callbacks",
+      "nsys.candidate_profiled_run.nccl_kernel_rows_launch_gaps_compute_overlap",
+      "nsys.candidate_profiled_run.fallback_invocation_launch_correlation",
+      "nccl_tuning.algorithm_protocol_channel_decisions.f32_allreduce_28351488B_and_157541376B",
+      "collective_calibration.warmed_full_world_sum_allreduce_reference.observed_sizes_dtypes",
+      "binding_cost.parent_vs_binding_only_passthrough.whole_invocation_ms"
+    ],
+    "unavailable_fields": {
+      "per_collective_wire_time_vs_device_wait_split": "communication_kernel_sum_ms includes device waiting; neither nsys timelines nor execution_timeline (clock alignment bounds for CPU submissions only, GPU readiness possibly unknown) separate NCCL waiting from wire transfer, and no available collector reports per-collective wire time.",
+      "per_bucket_pcie_or_nvlink_bytes": "device_telemetry samples device-wide PCIe rates, utilization and memory in native windows and cannot attribute bytes to specific collectives or buckets; PCIe/NVLink traffic must not be derived from logical payload sizes (28351488 B and 157541376 B).",
+      "exact_bucket_identity_on_candidate_profiled_run": "exact bucket links require native correlation plus observed gradient-storage membership; without native correlation on this candidate run, payload-size matches to operator groups remain ambiguous candidates.",
+      "objective_lower_bound_or_critical_path_estimate": "collective_calibration is a warmed synthetic reference experiment with correctness checks, not a performance lower bound or model critical-path estimate.",
+      "per_group_candidate_cost": "binding_cost omits candidate build/computation and reports whole-invocation cost only, not per-group effects; the candidate's own capture/exception host cost is not isolated by any selected collector.",
+      "clean_host_dispatch_self_times": "python_runtime cProfile perturbs execution and its inclusive/self times are not clean performance scores or GPU compute durations; not selected."
+    },
+    "rationale": "Observed uncertainty on candidate 43b0f4467b409aeb157ae0eb9d27d99858cf1ab209166a841bac919831f1c326: the profiled diagnostic objective regressed (communication_kernel_sum_ms 73.144745 vs paired parent 66.547669) and the step_ms<=1.05x baseline constraint failed (145.554415/144.248580 vs limit 144.80321415), while clean endpoint comm sums stayed near parent levels (63.74657/65.189588) and the bundle declared routes eager:parent:first_invocation then fallback:parent:capture_failed:RuntimeError on comm-hook call 5d7d6bb13691b02f533f62b0. Declared routes are candidate-reported telemetry, so candidate_diagnostics is selected to corroborate the capture failure with actual exception evidence and check fallback-to-parent equivalence. execution_timeline is selected for CPU-to-CUDA submit associations, per-device intervals, synchronization and passive post-accumulate callbacks to test whether inflated profiled kernel durations follow late or skewed submissions rather than assuming the regression is an algorithm cost. nsys (available, runs separately) is selected for native trace corroboration of the fallback invocations, inter-bucket launch gaps and compute overlap, and any graph-tracing context behind the capture failure. nccl_tuning is selected because kernel entry names alone do not identify the protocol; it captures actual NCCL algorithm/protocol/channel decisions at the observed f32 allreduce sizes (28351488 B x12 buckets, 157541376 B final bucket). collective_calibration provides a warmed full-world SUM allreduce reference at exactly those sizes/dtypes with correctness checks to separate inherent collective cost from DDP-context waiting; it is treated as a reference, not a lower bound. binding_cost is applicable now that an additive candidate exists under legacy binding (parent not replaced) and bounds wrapper overhead against the ~0.75 ms step overrun via clean AB/BA whole-invocation comparison. torch already ran and is not repeated; device_telemetry is excluded because device-wide native-window readings cannot be attributed per collective; python_runtime is excluded because it perturbs execution and yields no clean scores. No failure-category policy or optimization action is presumed; requesting collection against the listed candidate revision.",
+    "revision": "43b0f4467b409aeb157ae0eb9d27d99858cf1ab209166a841bac919831f1c326"
+  },
+  "agent": {
+    "role": "collection-planner",
+    "session": "ses_ea442e7e7ffek9lBIYMBI8g1On",
+    "message": "msg_15bbf858b001ExRDu6nNS9K0HG",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 11,
+      "reported_cost": 0.22073947862,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 376393.0,
+        "input": 63114.0,
+        "output": 2700.0,
+        "reasoning": 10611.0,
+        "cache.read": 299968.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea442e7e7ffek9lBIYMBI8g1On",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/ddp-automatic-continuation/sandboxes/collection-planner-1ed0c7e95aff",
+    "outputs": [
+      "collection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/ddp-automatic-continuation/generation-snapshots/generation-766653fba5da.json"
+    ]
+  }
+}
