@@ -1,0 +1,27 @@
+{
+  "collectors": [
+    "nsys",
+    "execution_timeline",
+    "candidate_diagnostics"
+  ],
+  "requested_fields": [
+    "nsys.cuda_graph_capture_events_call_2441f10600ba127de5cb753c",
+    "nsys.cuda_graph_replay_events_call_2441f10600ba127de5cb753c",
+    "nsys.native_kernel_timeline_first_token_boundary",
+    "execution_timeline.cpu_submit_to_cuda_associations",
+    "execution_timeline.synchronization_events",
+    "execution_timeline.per_device_intervals",
+    "candidate_diagnostics.route_evidence_call_2441f10600ba127de5cb753c",
+    "candidate_diagnostics.exception_or_fallback_evidence",
+    "candidate_diagnostics.quality_and_coverage_invalid_reason",
+    "candidate_diagnostics.candidate_ttft_ms"
+  ],
+  "unavailable_fields": {
+    "communication.nccl_algorithm_protocol_channels": "Single-device task: request.json has distributed_backend=null and one leased GPU; observations.json capability 'communication' is not_applicable with reason 'single-device task'. No NCCL collectives exist for nccl_tuning to observe; kernel entry names alone would not identify protocol anyway.",
+    "communication.collective_calibration_reference": "No collectives in this single-GPU BF16 inference workload; a synthetic full-world SUM allreduce reference has nothing to calibrate against.",
+    "communication.per_collective_pcie_nvlink_bytes": "Not derivable: there is no communication to attribute, and device_telemetry reports device-wide NVML rates in native windows rather than per-collective bytes; PCIe/NVLink traffic must not be invented from logical payload or memcpy sizes.",
+    "binding.binding_only_overhead": "evaluation.json setup shows binding requested 'legacy' but effective 'direct' with reason 'no functional replacements' and functional_sites=null; with no binding path to compare against the parent, a binding_cost AB/BA would isolate nothing."
+  },
+  "rationale": "Torch already ran (coverage.json: 66441/66441 CUDA kernels associated below project, 0 unassociated, 0 ambiguous forward sequences), so kernel-to-project association is complete and torch is not re-requested. The observed uncertainty is candidate-specific: revision 664cbcfc755dbda47d5bf7fd89f2a57de3838492a677031b5a7da9441db217af (bundle trial-57b13527f6-param-795208ea) passed the endpoint, yet quality_and_coverage_valid=false with decision 'no_valid_parameter_candidate' and empty rank metrics, and it declares cuda-graph-capture (count 1) and cuda-graph-replay (count 2) routes for call 2441f10600ba127de5cb753c, which evaluation.json explicitly flags as candidate-reported telemetry needing trace or actual-exception corroboration. That is a graph-tracing and attribution question on a single-GPU task, so: nsys (available at tools.nsys) for native timeline evidence of the declared graph capture/replay; execution_timeline for CPU-to-CUDA submit associations, synchronization events around the explicit first-token-ready boundary, and per-device intervals on this exact candidate; candidate_diagnostics for direct route/exception evidence on the same call, the reason metrics are empty and quality/coverage invalid, and any clean candidate ttft_ms. The 4 reference invocations alongside 2 candidate invocations are not presumed to be fallback (they may be verification or composition). Excluded: nccl_tuning and collective_calibration (communication not applicable, single device); device_telemetry (device-wide NVML utilization/PCIe/memory rates cannot attribute per-invocation TTFT structure, and inputs are GPU-resident); python_runtime (perturbs execution and host dispatch/binding cost is not implicated by the evidence); binding_cost (effective binding is 'direct' with no functional replacements). No optimization action or failure category is presumed from the unaccepted screening decision.",
+  "revision": "664cbcfc755dbda47d5bf7fd89f2a57de3838492a677031b5a7da9441db217af"
+}

@@ -1,0 +1,98 @@
+{
+  "current_revision": "8c0ae9787990aae5df7dec2e760f1923195e206cb5edebcef806a417977f4906",
+  "contract": {
+    "schema_version": "project.v2",
+    "id": "task",
+    "goal": "Reduce latency for one complete offline batch=32 image inference, preserving the source quality checks.",
+    "objective": {
+      "name": "latency_ms",
+      "unit": "ms",
+      "direction": "minimize",
+      "required_metrics": [
+        {
+          "name": "latency_ms",
+          "unit": "ms"
+        }
+      ],
+      "aggregation": {
+        "kind": "sum",
+        "case_weights": {},
+        "callable": null
+      },
+      "improvement_threshold": 0.0
+    },
+    "workload": {
+      "batch": 32,
+      "goals": [
+        {
+          "direction": "max",
+          "id": "throughput",
+          "metric": "images_per_second"
+        },
+        {
+          "constraints": {
+            "images_per_second_min_baseline_ratio": 0.95
+          },
+          "direction": "min",
+          "id": "memory",
+          "metric": "peak_allocated_bytes"
+        }
+      ],
+      "id": "offline"
+    },
+    "quality": {
+      "atol": 0.0001,
+      "logits_atol": 0.0001,
+      "logits_rtol": 0.0001,
+      "require_exact_top1": true,
+      "rtol": 0.0001
+    },
+    "completion": "The measured unit is exactly one complete offline forward: infer(model, pixels) = model(pixel_values=pixels).logits under torch.inference_mode(), where pixels is the GPU-resident contiguous [batch,3,224,224] FP32 input built once as images[torch.arange(batch, device='cuda') % len(images)] from pixels.npy. The source bounds this single forward with torch.cuda.synchronize() on both sides and records latency_ms via time.perf_counter_ns; the framework's timer provides the same boundary, so run() contains only the one forward call. Model loading (ResNetForImageClassification.from_pretrained(assets, local_files_only=True, dtype=torch.float32).cuda().eval()), host input construction and transfer, reference generation, close_check/negative_check/top1 verification, reference .pt/result.json writing and --profile diagnostics are all measurement infrastructure outside the completion boundary. warmup(2)/repeats(5) are statistical harness fields; the batch=32 forward itself has no hidden internal iteration.",
+    "invariants": [
+      "FP32 everywhere: weights loaded with dtype=torch.float32 and compute kept in FP32; torch.backends.cuda.matmul.allow_tf32=False, torch.backends.cudnn.allow_tf32=False, torch.set_float32_matmul_precision('highest'), torch.backends.cudnn.benchmark=False.",
+      "Deterministic seed policy from common.configure(): torch.manual_seed(20261020), 4 CPU threads, 1 inter-op thread.",
+      "Model identity and mode unchanged: ResNetForImageClassification initialized from the frozen request assets dir (local_files_only=True, microsoft/resnet-18 weights, num_params=11689512) and kept in eval() on context['device'].",
+      "Input construction is frozen: pixels.npy (3 preprocessed FP32 NCHW 224x224 real images) extended to the workload batch via arange(batch) % 3 then .contiguous(), transferred to GPU once outside timing.",
+      "Work amount is one full batch forward per measured invocation with no internal iteration, no caching between repeats, and no change to batch (32), architecture, precision, data or output requirements.",
+      "Outputs are the full [batch,1000] logits and argmax class ids; quality requires require_exact_top1 (torch.equal on argmax over all 1000 classes) plus torch.testing.assert_close at logits_atol=logits_rtol=1e-4, and the source's negative control must reject a +1 corruption of the reference.",
+      "Metric semantics preserved: latency_ms is the wall time of the single synchronized forward; images_per_second = batch*1000/latency_ms is the reciprocal of the same boundary; peak_allocated_bytes is torch.cuda.max_memory_allocated() for the measured invocation.",
+      "The offline workload row is preserved verbatim, including the memory goal's images_per_second_min_baseline_ratio 0.95 guard, which is scoped to the memory goal and not to the latency objective (which carries no constraints)."
+    ],
+    "frozen_files": [
+      "opop_adapter.py",
+      "opop_evaluate.py"
+    ],
+    "task_definition": null,
+    "state_protocol": "prepare(context, request) mirrors common.configure() (torch.set_num_threads(4), set_num_interop_threads(1), torch.manual_seed(20261020), torch.cuda.set_device(context['device']), TF32 disabled for matmul and cudnn, cudnn.benchmark=False, float32_matmul_precision 'highest'), loads the ResNet-18 classification model from request['assets']['assets_dir'] with dtype=torch.float32 onto context['device'], sets eval(), loads pixels.npy, and builds the workload input pixels = images[torch.arange(batch, device=device) % len(images)].contiguous() with batch read from request['workload']['batch']. Model, images and pixels are kept in state; initialization is outside timing. reset(state) only re-asserts model.eval(): the workload is stateless single-forward inference, the input tensor is immutable and GPU-resident, and the source performs no per-repeat clearing (it just drops the previous output), so there is no mutable state to restore and no process-group teardown. run(state) executes the entire frozen workload (one forward) under torch.inference_mode() and returns {'logits': [batch,1000] tensor}; the framework synchronizes CUDA before and after this call. observe(state, result) returns the detached full logits tensor and the argmax(-1) predicted class-id integers for the exact-top1 check. metrics(state, result, elapsed_ms) returns latency_ms=elapsed_ms (the frozen objective), images_per_second=batch*1000/elapsed_ms (the source's images_per_second = batch*1e9/elapsed_ns in native units), and peak_allocated_bytes=torch.cuda.max_memory_allocated() queried outside the timer, matching the source's per-sample query after its reset_peak_memory_stats (the framework resets peak stats immediately before its timer). models(state) exposes the loaded root model as {'model': model} for discovery and controlled replacement. No set_mode/before_run behavior is needed: full logits are always returned, there is no separate correctness-capture path, and the single-GPU source defines no pre-run coordination.",
+    "world_size": 1,
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ]
+  },
+  "original_reference_revision": "4a7124148172adc318e1e8202fd93e399e4bbd89e0bd7645ad5817265c927c2a",
+  "original_baseline": [
+    {
+      "rank": 0,
+      "metrics": {
+        "latency_ms": 4.224596,
+        "images_per_second": 7574.688798644888,
+        "peak_allocated_bytes": 281975808.0,
+        "framework.elapsed_ms": 4.224596,
+        "framework.peak_allocated_bytes": 281975808.0,
+        "framework.peak_reserved_bytes": 396361728.0,
+        "framework.allocated_bytes": 76582912.0,
+        "framework.reserved_bytes": 396361728.0,
+        "framework.lifecycle_peak_allocated_bytes": 282103808.0,
+        "framework.lifecycle_peak_reserved_bytes": 396361728.0
+      },
+      "diagnostics": {}
+    }
+  ],
+  "profiled_wall_ms": [
+    35.038452
+  ],
+  "measurement_policy": "Original baseline belongs to its immutable reference. Discovery uses intrusive hooks and is separate from clean timing and plain diagnostic objective samples. Profiled rank skew and kernel time can be heavily perturbed; they are not project J or wire time."
+}

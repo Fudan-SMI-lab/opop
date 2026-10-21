@@ -1,0 +1,49 @@
+{
+  "scope": "Developer manual source review and independent original-source numerical checks; validation harness uses explicit case observation mappings, never passed to optimizer Agents or production routing. Performance timings are not used from these checks.",
+  "framework": "a6f2b6e88ec31f169acd888601fcbb32cc2c1f9c",
+  "runs": [
+    {
+      "case": "qwen-ttft",
+      "adapter_sha256": "93a9866384b29be6a7d357b954ff89bd74455ef1d17c4227a9aa7874e1a0334e",
+      "source_hashes": {
+        "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+        "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+        "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+      },
+      "request_sha256": "fcaf9ce9db3c9996891f0290f6c88d400c21c24ea9c94fca476cf8210b61c52c",
+      "result": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/source-audit/qwen-ttft.json",
+      "status": "passed",
+      "valid": true,
+      "coverage": "Original source model/tokenizer/input construction and infer(capture=True): complete input_ids, 32 exact greedy tokens and all logits; both continuous reference invocations. Prefill argmax and CUDA synchronization boundary retained."
+    },
+    {
+      "case": "ddp-communication",
+      "adapter_sha256": "6d6d5799353e2e8bedd6892b971416246a67b32122c6f38ab24552fa1a17c603",
+      "source_hashes": {
+        "gpt2_ddp_training.py": "37d1632436c8f927a52401b6d1fb9e63bd7b8d33d643d0f914916bb89b3364fe",
+        "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+        "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba",
+        "README.md": "97dbce99c0065e87f4accf1bbe6d52aa4438a289d7eaec1c85a9c6b1cb25f68d"
+      },
+      "request_sha256": "914eeecca697e89829e3a7ff53d566dabc5445ab695b78cc6edc7b9dea787915",
+      "result": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/source-audit/ddp-communication.json",
+      "status": "passed",
+      "valid": true,
+      "coverage": "Original source serial global-batch accumulation for two consecutive SGD updates: all 124439808 unique parameters and gradients, global loss, each rank normalized microbatch_losses; rank gradients compared exactly. Original no_sync accumulation, DDP settings, SGD and source precision retained."
+    },
+    {
+      "case": "resnet-latency",
+      "adapter_sha256": "413ea6e9e1f4fb3b7d824d2a9c070861efe92c1e12a6269ba8a71f6936b2d72b",
+      "source_hashes": {
+        "resnet_inference.py": "b98cd81b4aa6fb8211be6382d9870bbf433eb352c248a4b2aaf8f5fde2b50997",
+        "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+        "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+      },
+      "request_sha256": "1eae078cebdf9f18079e3c393ff0f0db7db6e5f91fccd062e1ad4a90d4fc1135",
+      "result": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/source-audit/resnet-latency.json",
+      "status": "passed",
+      "valid": true,
+      "coverage": "Original source model/input construction and infer(): full batch32 logits and exact predicted class IDs; both continuous references. FP32/TF32 policy preserved."
+    }
+  ]
+}

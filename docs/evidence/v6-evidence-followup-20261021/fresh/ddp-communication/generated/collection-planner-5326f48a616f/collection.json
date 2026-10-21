@@ -1,0 +1,32 @@
+{
+  "collectors": [
+    "nccl_tuning",
+    "collective_calibration",
+    "execution_timeline"
+  ],
+  "requested_fields": [
+    "communication_kernel_sum_ms",
+    "nccl_tuning.algorithm",
+    "nccl_tuning.protocol",
+    "nccl_tuning.channels",
+    "nccl_tuning.decisions.size_28351488_f32_sum",
+    "nccl_tuning.decisions.size_157541376_f32_sum",
+    "collective_calibration.allreduce_sum_f32_28351488B.duration_ms",
+    "collective_calibration.allreduce_sum_f32_157541376B.duration_ms",
+    "collective_calibration.correctness",
+    "execution_timeline.cpu_submit_associations",
+    "execution_timeline.per_device_intervals",
+    "execution_timeline.synchronization_events",
+    "execution_timeline.clock_alignment_bounds"
+  ],
+  "unavailable_fields": {
+    "nvlink_bytes": "Not measurable: nvmlDeviceGetNvLinkState returned NVML status 3 (not supported) on both leased GPUs; observed NCCL channels use SHM/direct/direct, so no NVLink fabric counters exist to read.",
+    "pcie_bytes": "Not measurable per collective: only device-wide NVML PCIe rates with ~20 ms native driver windows (unaligned to operators) are available; cumulative hardware byte counters require a successful collector-specific probe, which the capability probe reports as unavailable. Logical payload or memcpy sizes must not be substituted.",
+    "hardware_utilization": "No hardware-counter probe available; NVML device-wide utilization windows are not aligned to collective ranges and cannot attribute per-collective utilization.",
+    "nccl_waiting_vs_wire_ms": "No collector separates in-kernel NCCL spin-wait from wire transfer for the in-step collectives: kernel durations include device waiting (rank 1 sum 200.62 ms vs rank 0 58.90 ms), and nsys timelines alone cannot split the two. Only the synthetic collective_calibration reference at observed sizes/dtypes is obtainable.",
+    "cross_rank_arrival_skew_ms": "Cross-rank timestamp subtraction is prohibited by the observed clock policy; only clock-alignment bounds for matching CPU submissions (execution_timeline) are obtainable, and GPU readiness/consumer completion may remain unknown, so skew stays bounded rather than exact.",
+    "bucket_identity": "Not an open dimension: already resolved by the torch collector via native correlation and observed gradient-storage membership (all 13 collectives matched, 0 unmatched communication kernels, bucket attribution recorded per sequence 21-33); retaining no ambiguous candidates."
+  },
+  "rationale": "Objective is max-rank summed NCCL kernel duration for the accumulated step; torch_communication already ran and supplies the objective (rank 0: 58.90 ms, rank 1: 200.62 ms; 13 allreduces = 12 buckets of 28,351,488 B + last bucket of 157,541,376 B, fp32 SUM, all ncclDevKernel_AllReduce_Sum_f32_RING_LL on stream 17, transport SHM/direct/direct with 2 channels, NCCL 2.29.7, peer access disabled). Three questions gate any candidate: (1) what algorithm/protocol/channel decisions NCCL actually makes for these sizes/dtypes in a warmed worker - kernel entry names alone do not identify the protocol, so nccl_tuning is selected to capture the real tuner choices and alternatives (e.g., RING vs TREE, LL vs SIMPLE, channel count) at 28,351,488 B and 157,541,376 B fp32 SUM; (2) how much of each kernel duration is inherent collective cost versus in-kernel waiting - collective_calibration is selected as a synthetic full-world SUM allreduce reference at the observed sizes/dtypes with correctness checks (treated strictly as a reference experiment, not a performance lower bound or critical-path estimate) to size the headroom implied by the rank-1 inflation (about 14.4 ms per 28 MB bucket and 22.7 ms first kernel vs 3.2 ms on rank 0); (3) whether the rank-1 wait originates in host submission ordering/synchronization - execution_timeline is selected for its separate plain Torch trace with CPU-to-CUDA submit associations, synchronization events, per-device intervals and clock-alignment bounds for matching CPU submissions, accepting its limits (GPU readiness and consumer completion may remain unknown; it never replaces a communication hook). Excluded: torch (already ran; supplies objective and bucket attribution), nsys (attribution is complete - 0 unmatched communication kernels, observed bucket identity, no CUDA graphs, overlap already measured at 4.37/10.58 ms - and timelines alone cannot separate NCCL waiting from wire transfer), device_telemetry (device-wide NVML rates/utilization/memory with native windows, not per-collective bytes; NVLink unsupported; adds nothing to protocol or skew resolution), python_runtime (perturbs execution and its inclusive/self times are not clean scores or GPU durations; host ordering is covered by execution_timeline submit associations), binding_cost (no candidate exists yet, so parent-vs-passthrough comparison is inapplicable; would run in later candidate feedback if selected then), candidate_diagnostics (no candidate to diagnose). Selection is deliberately focused on the frozen objective; no workload, quality threshold, or provider configuration is changed.",
+  "revision": null
+}

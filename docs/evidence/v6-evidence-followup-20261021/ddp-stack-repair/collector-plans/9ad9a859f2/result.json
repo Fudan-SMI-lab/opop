@@ -1,0 +1,75 @@
+{
+  "plan": {
+    "collectors": [
+      "candidate_diagnostics",
+      "nsys",
+      "nccl_tuning",
+      "collective_calibration",
+      "binding_cost"
+    ],
+    "requested_fields": [
+      "candidate_diagnostics.route_evidence.5d7d6bb13691b02f533f62b0",
+      "candidate_diagnostics.capture_failure_exception",
+      "candidate_diagnostics.effective_comm_path_vs_parent",
+      "nsys.graph_capture_events",
+      "nsys.nccl_kernel_timeline",
+      "nccl_tuning.algorithm",
+      "nccl_tuning.protocol",
+      "nccl_tuning.channel_count",
+      "nccl_tuning.size_table",
+      "collective_calibration.allreduce_sum_f32.duration_ms.size_28351488",
+      "collective_calibration.allreduce_sum_f32.duration_ms.size_157541376",
+      "collective_calibration.correctness",
+      "binding_cost.invocation_ms.parent_vs_passthrough"
+    ],
+    "unavailable_fields": {
+      "pcie_bytes": "Hardware byte counters require a successful collector-specific probe; the observed NVML device_telemetry supplies only device-wide KB/s rates in native ~20 ms driver windows, and topology or logical payload (497,759,232 B per rank per step) do not measure traffic.",
+      "nvlink_bytes": "nvmlDeviceGetNvLinkState returned NVML status 3 (not supported) on both GPUs and NCCL channels are SHM/direct/direct, so no NVLink traffic dimension exists on these devices.",
+      "hardware_utilization": "Requires a hardware-counter probe that has not succeeded; NVML read-only telemetry does not expose it; retained as unknown.",
+      "per_collective_pcie_nvlink_bytes": "device_telemetry readings are device-wide with native sampling windows not aligned to the 13 allreduces; per-collective traffic attribution is unobtainable and must not be inferred from logical payload or memcpy sizes.",
+      "nccl_kernel_wait_vs_wire_decomposition": "NCCL kernel durations include device waiting and Nsys timelines cannot separate waiting from wire transfer; collective_calibration provides only a separate warmed synthetic reference experiment, not an in-step decomposition.",
+      "candidate_bucket_links": "Exact bucket-to-collective links require native correlation plus observed gradient-storage membership (as the parent's torch observations provided); Nsys alone cannot prove bucket identity for the candidate, so ambiguous candidates are retained rather than resolved."
+    },
+    "rationale": "Revision 2fd746031d56ce8af8e227f7a7c954ef804fdf830c2b3f9cd5a7fc4db26d42c2 is the single listed candidate (bundle trial-93aa5d5fc1-param-4fabdd0b) and matches evaluation.decision.revision; collection runs on it. Clean evaluation: quality pass, objective 66.368 ms vs paired parent 73.045 ms, rejected only for paired_gain_not_above_noise; step_ms max 143.730 against limit 144.803 (0.7% headroom). (1) The only reported behavior change is candidate-declared routing for call 5d7d6bb13691b02f533f62b0: eager:parent:first_invocation then fallback:parent:capture_failed:RuntimeError; route labels are candidate-reported telemetry, so candidate_diagnostics is selected for actual exception and route evidence and nsys (available in this environment) for native corroboration of the failed capture attempt and timeline attribution of the comm kernels. (2) Parent observations show every step issues 13 SUM f32 allreduces (12 x 28,351,488 B buckets plus the 157,541,376 B last bucket) with entry name ncclDevKernel_AllReduce_Sum_f32_RING_LL over SHM/direct/direct with peer access disabled; kernel entry names alone do not identify the protocol, so nccl_tuning is selected to capture the actual algorithm/protocol/channel decisions at the observed sizes. (3) Kernel durations include waiting (parent discovery trace: ~13.4-14.3 ms vs ~3.6 ms per 28 MB bucket on the two ranks and a 156 ms first bucket on rank 0), so collective_calibration is selected to run the separate synthetic full-world SUM allreduce at exactly the observed sizes/dtypes as a clean reference experiment separating intrinsic service time from waiting; it is treated as reference, not a lower bound or critical-path estimate. (4) With step headroom at 0.7% and the bundle wrapping parent routes, binding_cost is selected to compare parent vs binding-only passthrough whole-invocation cost in clean AB/BA workers and quantify whether the binding itself consumes the remaining constraint margin; it reports whole-invocation cost, not per-group effects. Excluded: torch already ran; device_telemetry is device-wide with native windows and cannot attribute per-collective traffic; execution_timeline adds only CPU-submission clock-alignment bounds with GPU readiness possibly unknown and never determines subsequent search actions, while the existing torch trace already reports overlap and intervals; python_runtime perturbs execution and its cProfile times are not clean performance scores, and host dispatch is not the observed uncertainty. No PCIe/NVLink traffic is inferred from logical payload sizes, and no failure-category policy or optimization action is prescribed by this plan.",
+    "revision": "2fd746031d56ce8af8e227f7a7c954ef804fdf830c2b3f9cd5a7fc4db26d42c2"
+  },
+  "agent": {
+    "role": "collection-planner",
+    "session": "ses_ea3dbae9fffeoS6xnPjcQYNXKx",
+    "message": "msg_15c294229001eoWK9AqqG4hvFK",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 12,
+      "reported_cost": 0.24592687804,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 453254.0,
+        "input": 64696.0,
+        "output": 2814.0,
+        "reasoning": 10704.0,
+        "cache.read": 375040.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea3dbae9fffeoS6xnPjcQYNXKx",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/ddp-stack-repair/sandboxes/collection-planner-30d9ead2ee8a",
+    "outputs": [
+      "collection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/ddp-stack-repair/generation-snapshots/generation-076454d21d61.json"
+    ]
+  }
+}

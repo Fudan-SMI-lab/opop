@@ -1,0 +1,114 @@
+{
+  "rank": 0,
+  "world_size": 1,
+  "device": "cuda:0",
+  "output": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/jobs/timeline-7298731c65/run",
+  "parameters": {
+    "request": {
+      "schema_version": "project-request.v1",
+      "source_root": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft.intake/source",
+      "entry": "qwen_inference.py",
+      "files": [
+        "qwen_inference.py",
+        "common.py",
+        "workloads.json"
+      ],
+      "goal": "Reduce first-token latency for the interactive workload, preserving the full generation workload and the source correctness checks.",
+      "objective": {
+        "name": "ttft_ms",
+        "unit": "ms",
+        "direction": "minimize",
+        "constraints": []
+      },
+      "workload": {
+        "id": "interactive",
+        "batch": 1,
+        "prompt_tokens": 256,
+        "new_tokens": 32,
+        "goals": [
+          {
+            "id": "ttft",
+            "metric": "ttft_ms",
+            "direction": "min"
+          },
+          {
+            "id": "decode",
+            "metric": "decode_tokens_per_second",
+            "direction": "max"
+          }
+        ]
+      },
+      "quality": {
+        "atol": 0.02,
+        "rtol": 0.02,
+        "logits_atol": 0.02,
+        "logits_rtol": 0.02,
+        "require_exact_greedy_tokens": true
+      },
+      "assets": {
+        "assets": "/root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c"
+      },
+      "devices": [
+        "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+      ],
+      "distributed_backend": null,
+      "communication": "auto",
+      "required_observations": [],
+      "tools": {
+        "ncu": "/usr/local/cuda/bin/ncu",
+        "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+      },
+      "profiling": {
+        "agent_plan": true,
+        "feedback_agent_plan": true
+      },
+      "binding_backend": "legacy",
+      "measurement_lifetime": "invocation",
+      "warmup": 2,
+      "repeats": 5,
+      "continuous_steps": 2,
+      "worker_timeout_s": 900.0,
+      "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+      "notes": [
+        "Command provenance: python qwen_inference.py --assets /root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c --output /tmp/original-qwen. The command passes no --workloads/--warmup/--repeats/--profile, so defaults apply: repository workloads.json, warmup=2, repeats=5, no profiling.",
+        "TTFT completion boundary (qwen_inference.py:16-24,37): sync -> t0; prefill forward + first-token argmax -> explicit torch.cuda.synchronize 'first-token-ready' -> t1; ttft_ms=(t1-t0)/1e6. It is model-execution latency, not a service SLA with queuing or network.",
+        "Input construction (qwen_inference.py:55-58): the fixed prompt from workloads.json qwen_inference.prompt is rendered with the chat template (enable_thinking=False, add_generation_prompt=True), encoded without special tokens, repeated/truncated to exactly prompt_tokens=256, and replicated to batch=1 as a CUDA tensor before timing.",
+        "Discrete outputs needing exact comparison: greedy generated tokens must equal the reference token sequence (torch.equal at qwen_inference.py:62); per-step last-token logits compared with torch.testing.assert_close at atol=rtol=0.02 (common.py:74-76); negative control must reject +1-corrupted logits (common.py:79-84). Reference tensors are saved as <workload.id>-reference.pt.",
+        "The script's reference construction (capture run plus teacher-forced re-run), correctness checks, warmup/repeats, saving and optional profiling are measurement infrastructure outside the repeated unit; the internal 31 cached decode iterations are genuine workload iterations and remain inside adapter.run(). The full generation workload (prefill + all decode steps) is preserved even though the objective only scores the first-token boundary.",
+        "Numerical/state policy preserved: Qwen3ForCausalLM pretrained weights in torch.bfloat16, attn_implementation='sdpa', local_files_only, .eval() under torch.inference_mode, KV cache via use_cache, TF32 disabled, float32 matmul precision 'highest', cudnn.benchmark off, seed 20261020 (common.py:34-42).",
+        "Single-GPU task on the one leased RTX 4090; no distributed backend and no communication collector fields required. ttft_ms is an ordinary end-to-end evaluator metric, not a diagnostic kernel-time objective.",
+        "workloads.json declares a second goal (decode_tokens_per_second, max) for this same interactive row and a separate offline batch=8 row; both are distinct source goals, not constraints on this request.",
+        "One measured invocation: One greedy generation call infer(model, inputs, new_tokens=32) on the interactive workload (batch=1, prompt_tokens=256): BF16 SDPA Qwen3-4B prefill over the 256-token GPU-resident prompt (use_cache=True, logits_to_keep=1), argmax first token, explicit first-token-ready synchronize, then new_tokens-1=31 KV-cached decode steps with per-step argmax for a fixed total of 32 generated tokens (EOS early stop disabled by the explicit loop). Excludes model loading, tokenization, host input construction/transfer, reference construction (capture and teacher-forced runs), correctness checks, warmup/repeats, reference tensor saving, result writing and profiling."
+      ]
+    },
+    "adapter": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/jobs/timeline-7298731c65/source/opop_adapter.py",
+    "action": "execution_timeline",
+    "collector_options": {},
+    "reference_dir": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/preparation/9b24a8596f35/controls",
+    "bundles": []
+  },
+  "binding": {
+    "pid": 515337,
+    "status": "verified",
+    "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "logical_device": 0,
+    "nvidia_smi_pid_uuids": [
+      "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+    ],
+    "pid_query_status": "observed"
+  },
+  "revision": {
+    "revision": "071bc24ea375281d5ed1d8c688e877e418ba6526dbef83be99588ec401e6c75a",
+    "bundles": [],
+    "bundle_hashes": {},
+    "files": {
+      "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+      "opop_adapter.py": "93a9866384b29be6a7d357b954ff89bd74455ef1d17c4227a9aa7874e1a0334e",
+      "opop_evaluate.py": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+      "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+      "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+    }
+  }
+}

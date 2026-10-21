@@ -12,7 +12,13 @@
 - `framework-traceback-probe`：新框架在未修改原 DDP 候选上自动捕获同一库内异常。
 - `qwen-index-ab`：冻结候选生成的已有证据索引 A/B；两个候选均被拒绝，均回退。
 - `ddp-stack-repair`、`qwen-numerical-repair`：开发者诊断辅助的真实 Agent 修复，与自主原入口运行分开。
+- `ddp-feedback-continuation`：诊断辅助 DDP 分支的一轮续跑，仅使用上一轮框架产生的实际反馈。
 - `fresh`：同一 `a6f2b6e` 框架下的原项目／命令／目标入口，未注入上述人工诊断。
+- `source-audit`、`source-audit-summary.json`：三个新 adapter 的原项目独立 GPU 核验，均通过。
+
+当前阶段：DDP mask 修复越过 forward 障碍，但因 backward 的 stale stream 异常回退，性能拒绝；
+新 ResNet 第一轮通过（约 12.7%），新 Qwen 第一轮完整输出检查失败。三轮新入口实验和完整最终版本
+独立验证尚未全部结束。`usage-snapshot.json` 是仅统计的时点费用记录，未完成会话不会当作终态费用。
 
 `manifest.json` 中 `exports` 记录逐字节导出原件的路径、大小和 SHA-256；`derived_exports`
 是明确标记的字段摘要。大 trace／反馈文件只索引哈希，原件保留在 box4-2。

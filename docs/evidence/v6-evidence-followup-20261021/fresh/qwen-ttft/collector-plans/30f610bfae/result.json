@@ -1,0 +1,68 @@
+{
+  "plan": {
+    "collectors": [
+      "execution_timeline",
+      "python_runtime"
+    ],
+    "requested_fields": [
+      "execution_timeline.cpu_submit_to_cuda_associations",
+      "execution_timeline.per_device_intervals",
+      "execution_timeline.synchronization_intervals",
+      "execution_timeline.first_token_ready_sync_wait",
+      "execution_timeline.gpu_idle_gaps_within_prefill",
+      "python_runtime.host_dispatch_self_times",
+      "python_runtime.binding_call_costs"
+    ],
+    "unavailable_fields": {
+      "communication": "Not applicable: single-device task on one leased RTX 4090; observations.json records communication capability as not_applicable (single-device task) and no distributed backend is configured.",
+      "nccl_algorithm_protocol": "Not applicable: no NCCL collectives exist in this workload; nccl_tuning has nothing to observe.",
+      "per_collective_bytes": "Not applicable: no collectives; no communication payload dimension exists for this task.",
+      "cross_rank_clock_alignment": "Not applicable: single-device task; there are no rank clocks to align (observations.json cross_rank policy).",
+      "pcie_nvlink_transfer_bytes": "Not derivable: weights and the 256-token prompt are GPU-resident inside the measured region; device_telemetry only samples device-wide NVML rates in native windows and cannot attribute bytes to the prefill interval, and PCIe/NVLink traffic must not be inferred from logical payload or memcpy sizes.",
+      "gradient_bucket_membership": "Not applicable: inference-only run under torch.inference_mode; coverage shows 0 backward_associated_kernels and 0 autograd_ranges, so no gradient buckets exist to correlate.",
+      "candidate_binding_cost": "Not applicable: no additive candidate exists yet; binding_cost is defined only once a candidate and its parent passthrough exist, and would run in subsequent candidate resource feedback rather than this plan.",
+      "kernel_attribution_gaps": "No open question: the already-completed torch trace associated 66441/66441 CUDA kernels with 0 unassociated, 0 root-only, and 0 ambiguous forward sequences, so no additional attribution or overlap resolution (nsys) is required."
+    },
+    "rationale": "Objective is ttft_ms for the interactive workload: the t0->t1 interval is prefill forward + first-token argmax + explicit 'first-token-ready' synchronize on a single leased RTX 4090. The torch collector already ran and resolved attribution completely (66441/66441 kernels associated, 0 unassociated, 0 ambiguous forward sequences), so nsys adds nothing: no overlap, graph-tracing, or attribution question remains open. The single remaining diagnostic question for TTFT is how the t0->t1 interval decomposes into GPU compute, host dispatch/launch gaps, and synchronization wait for an eager batch=1 BF16 SDPA Qwen3-4B forward over 36 layers. execution_timeline supplies exactly the missing dimensions: a separate plain Torch trace with CPU-to-CUDA submit associations, per-device intervals, and synchronization boundaries, which reveals whether the GPU idles between layer submissions and how long the explicit first-token-ready sync actually waits (acknowledging that GPU readiness/consumer completion may remain unknown and clock alignment bounds apply only to matched CPU submissions). python_runtime adds a warmed cProfile view of host dispatch and binding costs to attribute Python-side overhead in the eager forward loop, accepted as perturbing and not a clean performance score or GPU duration. nccl_tuning, collective_calibration, and device_telemetry are excluded: no communication exists (single device), the workload is GPU-resident so device-wide NVML rate samples cannot attribute TTFT, and collective_calibration is only a reference experiment for comms. candidate_diagnostics and binding_cost are excluded because no candidate exists yet; binding_cost also reports only whole-invocation parent-vs-passthrough cost and belongs in later candidate resource feedback. All GPU measurements remain in the framework's leased workers; any CPU-side inspection uses /root/autodl-tmp/dev-venv/bin/python per worker-environment.json.",
+    "revision": null
+  },
+  "agent": {
+    "role": "collection-planner",
+    "session": "ses_ea3ecd9e2ffe2SWAp5fDOI7Lyl",
+    "message": "msg_15c14ef25001Nhjeg2bYsp78bG",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 7,
+      "reported_cost": 0.06581925394,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 98367.0,
+        "input": 12434.0,
+        "output": 1715.0,
+        "reasoning": 4794.0,
+        "cache.read": 79424.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea3ecd9e2ffe2SWAp5fDOI7Lyl",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/sandboxes/collection-planner-bdc3d0c81fd6",
+    "outputs": [
+      "collection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/generation-snapshots/generation-16affd4b5c48.json"
+    ]
+  }
+}

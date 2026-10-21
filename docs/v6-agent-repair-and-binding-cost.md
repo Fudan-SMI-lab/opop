@@ -377,3 +377,49 @@ CPU 拷贝和 hooks 会干扰运行时间，这些读数只用于定位，不作
 
 第二批原始证据、生成代码、输入快照和哈希索引见
 [后续验证证据目录](evidence/v6-evidence-followup-20261021/README.md)。
+
+### 同版新入口的原项目一致性核验
+
+三类任务均从 `a6f2b6e` 的原项目／命令／自然语言目标重新启动，未提供现成 adapter、算子组或
+人工失败诊断。部署配置启用已有 `feedback_agent_plan`，实验各运行三轮；不设置 API／token 费用额度。
+独立完整版本 AB/BA 在搜索结束后运行，不重新生成候选，也不发布到原运行。
+
+人工阅读新生成 adapter 后，使用原项目函数和模型／输入构造执行独立 GPU 核验，三者均通过：
+
+| 任务 | 原项目比较范围 | 结果 |
+|---|---|---|
+| Qwen TTFT | 完整 input IDs、32 个 greedy token、所有 logits；两次连续 reference | 通过；prefill＋argmax＋同步的 TTFT 边界保留 |
+| ResNet latency | batch=32 全部 logits、精确分类 ID；两次 reference | 通过；FP32／TF32 策略保留 |
+| DDP communication | 两次连续 SGD 更新，每步 124,439,808 个唯一参数及其完整梯度、全局 loss、各 rank 的 micro-batch loss | 通过；两个 rank 的梯度逐项相同 |
+
+DDP 与原项目串行 global batch 的最大梯度误差分别为 `7.45e-9`、`6.80e-8`，最大参数误差
+`3.73e-9`；符合原容差。逐 rank 的额外 micro-batch loss 输出也完整核验，没有删除不方便比较的输出。
+这些手工审计脚本仅映射本次观察字段，未作为优化 Agent 输入或加入框架路由。
+当前没有发现这三个 adapter 偏离原项目计算的问题，不能由此推断任意未来 adapter 自动保持一致。
+
+### 第二批运行的阶段结果
+
+诊断辅助 DDP 候选 `trial-93aa5d5fc1` 自主在 capture 外构造 4D causal mask，实际双卡运行越过
+原 forward 异常，但在 `segment_loss.backward()` 遇到新错误：`AccumulateGrad` 保留 warmup
+的默认 stream 引用，导致 capture 无法成立。两个 rank 的异常均由现有 collector 自动记录。
+返回输出的零误差依然对应父路径回退，不能称为 Graph 修复成功。
+
+本轮通信指标配对为 parent `68.825828 / 77.264248 ms`、candidate `68.415853 / 64.320512 ms`。
+第一对收益仅 `0.409975 ms`，小于 `6.665428 ms` 噪声界，因此拒绝；两次完整 step 均满足原约束。
+均值下降并不是有效优化证据。后续 `ddp-feedback-continuation` 使用上一轮框架原样产生的反馈，
+没有添加开发者修法；它属于原诊断辅助分支的续跑，不是全新无人工输入的原入口实验。
+
+全新 ResNet 第一轮 `trial-9c6f5280d7` 选择整个模型 forward，生成 BN folding、逐点融合和
+Graph 候选，完整 AB/BA 为 `4.210417 → 3.6742565 ms`，约降低 12.7%，正式接受。
+全部 logits 最大误差 `9.536743e-6`，分类 ID 一致；路径自报 capture／replay／eager_fused。
+这仍是第一轮结果，尚须以完整最终版本独立复测和原生 trace 判断最终收益与执行路径。
+
+全新 Qwen 第一轮 `trial-57b13527f6` 的 Graph 候选没有通过完整 32 步输出检查：
+`2,017,208 / 4,861,952` 个 logits 元素违反正式容差，最大绝对误差 `5.0625`；两次连续调用同样失败。
+框架拦截该候选，后续轮次继续使用实际反馈。三类原入口运行各三轮的最终结论将在全部结束后补齐。
+
+本轮额外冷归档 `p6-ddp-heldout-a`、`p6-qwen-cross-goals-a`：完整压缩包为 3,912,092,311 字节，
+本地 `E:/opop-cold-archive/v6-cold-heldout-crossgoals-20261021.tar.gz` 的 SHA-256 与远端一致：
+`027066ca92fbf61f1640a2281a5dd91b1a416a57d2fa1ef1c7b51212e3887daa`。
+再次核对源文件元数据且确认无进程引用后，用恢复记录替代远端展开副本，释放约 5.62 GiB。
+当前运行所需的 reference 和 provider 数据未参与此归档。

@@ -1,0 +1,63 @@
+{
+  "goal": "Reduce first-token latency for the interactive workload, preserving the full generation workload and the source correctness checks.",
+  "entrypoint": "qwen_inference.py::infer (source reference), executed one invocation per call by adapter.run; adapter entry module adapter.py",
+  "completion": "One run() performs exactly the source's infer(model, inputs, new_tokens=32) for the interactive workload: under torch.inference_mode, CUDA synchronize then t0, BF16 SDPA prefill forward over the batch=1, 256-token GPU-resident prompt (use_cache=True, logits_to_keep=1), argmax of the last-position logits as the first token, explicit torch.cuda.synchronize at the first-token-ready boundary then t1 (ttft_ms = (t1-t0)/1e6, the frozen objective; model-execution latency, no queuing/network), then new_tokens-1 = 31 KV-cached greedy decode steps each feeding its argmax token back, final torch.cat of the 32 generated tokens and a closing synchronize before t2. The workload is complete only when all 32 tokens exist (EOS early stop disabled by the explicit loop); the objective scores just the internal first-token boundary while the full generation remains inside run().",
+  "state_protocol": "prepare(context, request): applies common.configure() numerics (torch.manual_seed(20261020), TF32 off for matmul and cudnn, cudnn.benchmark off, float32_matmul_precision 'highest', 4 torch threads / 1 interop), sets the CUDA device from context['device'], loads AutoTokenizer and Qwen3ForCausalLM (dtype=bfloat16, attn_implementation='sdpa', local_files_only=True) from request['assets']['assets'] onto that device in eval mode, reads batch/prompt_tokens/new_tokens from request['workload'], and builds the exact source input (chat template with enable_thinking=False, add_generation_prompt=True; encode add_special_tokens=False; repeat/truncate to prompt_tokens; replicate batch times) as a GPU tensor kept in state. Model loading, tokenization and host input construction are outside timed execution. reset(state): no-op for caches by design - each run() creates its own fresh KV cache inside the timed invocation exactly as the source's first prefill forward does, and weights are never mutated - it only re-seeds torch.manual_seed(20261020) and drops the last result; the process group is untouched. run(state): the full frozen generation described under completion, returning generated tokens, optional per-step last-token logits, and the (t0, t1, t2) nanosecond timings. observe(state, result): detached CPU copies of input_ids, the 32 greedy token ids and, in quality mode, the stacked per-step last-token logits [batch, new_tokens, vocab]; never timings or counters. metrics(state, result, elapsed_ms): ttft_ms, decode_ms, end_to_end_ms, decode_tokens_per_second, generated_tokens_per_second from the source's internal completion boundaries, plus wall-clock derived throughput and torch.cuda.max_memory_allocated() queried outside timing (framework resets peak stats immediately before its timer). models(state): {'model': <loaded Qwen3ForCausalLM>}. set_mode(state, mode): 'quality' retains per-step logits (the source capture path used for its reference); 'measure'/'profile' use the source's clean non-capture timing path; forward work is identical.",
+  "invariants": [
+    "Pretrained Qwen3-4B weights loaded from the frozen assets path with dtype=torch.bfloat16, attn_implementation='sdpa', local_files_only=True, .eval(); no weight modification, fine-tuning or second reference model on GPU.",
+    "Numerical policy from common.configure(): torch.manual_seed(20261020), torch.backends.cuda.matmul.allow_tf32=False, torch.backends.cudnn.allow_tf32=False, torch.backends.cudnn.benchmark=False, torch.set_float32_matmul_precision('highest'), torch.set_num_threads(4), torch.set_num_interop_threads(1).",
+    "Whole generation executes under @torch.inference_mode() with greedy argmax decoding over the last-position logits; logits_to_keep=1 and use_cache=True on every forward, KV cache threaded through the decode loop.",
+    "Input construction is exact: workloads.json qwen_inference.prompt rendered with the chat template (enable_thinking=False, add_generation_prompt=True), encoded without special tokens, repeated/truncated to exactly prompt_tokens=256, replicated to batch=1, resident on the context device before timing.",
+    "Exactly new_tokens=32 tokens are generated per invocation; EOS early stopping is disabled by the explicit decode loop.",
+    "The KV cache is created fresh inside the timed run() (by the prefill forward), never pre-built or pre-warmed in reset(); source-local references (output, cache, generated, logits) stay live through the measured region.",
+    "ttft_ms uses the source's internal boundary: sync -> t0, prefill forward + first-token argmax -> explicit 'first-token-ready' torch.cuda.synchronize -> t1; the remaining 31 decode steps and final synchronize still execute inside run().",
+    "Correctness scope is reference fidelity only: generated tokens must equal the reference greedy sequence (torch.equal), per-step last-token logits must satisfy assert_close at atol=rtol=0.02, and a +1-corrupted logits negative control must be rejected; no broader accuracy or convergence claim.",
+    "Workload dimensions (batch, prompt_tokens, new_tokens) are read from request['workload'] in prepare(), not embedded as constants; the frozen values here are batch=1, prompt_tokens=256, new_tokens=32.",
+    "Correctness observations contain only tensors/scalars (input_ids, tokens, per-step logits), never elapsed times or performance counters.",
+    "Observations are returned as detached tensors (CPU copies), not hashes or sampled subsets; the framework stores references on CPU."
+  ],
+  "objective": {
+    "name": "ttft_ms",
+    "unit": "ms",
+    "direction": "minimize",
+    "constraints": []
+  },
+  "workload": {
+    "id": "interactive",
+    "batch": 1,
+    "prompt_tokens": 256,
+    "new_tokens": 32,
+    "goals": [
+      {
+        "id": "ttft",
+        "metric": "ttft_ms",
+        "direction": "min"
+      },
+      {
+        "id": "decode",
+        "metric": "decode_tokens_per_second",
+        "direction": "max"
+      }
+    ]
+  },
+  "quality": {
+    "atol": 0.02,
+    "rtol": 0.02,
+    "logits_atol": 0.02,
+    "logits_rtol": 0.02,
+    "require_exact_greedy_tokens": true
+  },
+  "missing_information": [],
+  "assumptions": [
+    "The frozen prompt text is task data read from workloads.json; the adapter locates it next to the module (inputs/source/workloads.json or request['source_root']), with the identical literal string as a last-resort fallback, so input ids match the source byte-for-byte.",
+    "Default mode after prepare is 'quality' (full observations available if set_mode is never called); set_mode('measure'/'profile') switches run() to the source's clean non-capture timing path - capture only retains already-computed logits slices and the final stack, it does not change forward work.",
+    "peak_allocated_bytes in metrics() reads torch.cuda.max_memory_allocated() outside the timer, matching the source's per-sample metric given the framework resets peak stats immediately before its run timer.",
+    "The source's reference construction (capture run plus teacher-forced re-run), close/negative checks, warmup=2/repeats=5 loop, reference .pt saving and optional profiling are measurement infrastructure performed by the framework; adapter.run() performs exactly one infer-equivalent invocation.",
+    "decode_tokens_per_second (the second goal declared for this interactive row) is exposed as an additional metric using the source's own definition: batch*(new_tokens-1)/decode window, decode window measured between the first-token-ready and final synchronizes.",
+    "The offline (batch=8) row and the held-out long_prompt row are separate source goals/cases outside this frozen request; the adapter is dimension-parametric via request['workload'] so a validated variant can reuse it unchanged.",
+    "Single-GPU non-distributed task: no process group is created or destroyed by the adapter, and context['device'] is used for all placements instead of .cuda() defaults.",
+    "kernel_optimizer.project.discovery.phase is not present in the inspected worker environment, so the optional prefill/decode phase annotations are guarded no-ops; if the API exists in the measured worker they activate automatically.",
+    "The leading and trailing torch.cuda.synchronize() calls of infer() are kept inside run() because the source defines its timing window around them and requires the internal first-token-ready synchronize for the ttft_ms objective; they are idempotent with the framework's own boundary syncs.",
+    "No sampling or speculative decoding is introduced; decoding remains pure greedy argmax so token-level equality with the reference is reproducible across workers via the fixed seed and frozen weights."
+  ]
+}

@@ -1,0 +1,186 @@
+{
+  "status": "passed",
+  "binding": {
+    "pid": 531004,
+    "status": "verified",
+    "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+    "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+    "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+    "logical_device": 0,
+    "nvidia_smi_pid_uuids": [
+      "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+    ],
+    "pid_query_status": "observed",
+    "occupancy": {
+      "status": "sampled_clear",
+      "samples": 26,
+      "unavailable_samples": 0,
+      "wait_s": 0.05216636508703232,
+      "external_clients": [],
+      "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+    }
+  },
+  "framework_source": {
+    "sha256": "196767b08015b3fdb9a6cdd8b1320e60f621af50612a6d85c11054168b642ae3",
+    "files": 162,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "result": {
+    "valid": true,
+    "coverage": {
+      "trial-93aa5d5fc1-param-4fabdd0b": {
+        "counts": {
+          "5d7d6bb13691b02f533f62b0": 2
+        },
+        "fallbacks": {},
+        "reference_invocations": {
+          "5d7d6bb13691b02f533f62b0": 2
+        },
+        "candidate_declared_routes": [
+          {
+            "call": "5d7d6bb13691b02f533f62b0",
+            "route": "eager:parent:first_invocation",
+            "count": 1
+          },
+          {
+            "call": "5d7d6bb13691b02f533f62b0",
+            "route": "fallback:parent:capture_failed:RuntimeError",
+            "count": 1
+          }
+        ],
+        "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+      }
+    },
+    "scope": "Diagnostic execution only; no quality or performance acceptance",
+    "candidate_diagnostics": {
+      "schema_version": "project.candidate-diagnostics.v1",
+      "events": [
+        {
+          "phase": "run",
+          "bundle": "trial-93aa5d5fc1-param-4fabdd0b",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/ddp-stack-repair/jobs/candidate-diagnostics-2daf5302be/source/opop_candidates/trial-93aa5d5fc1.py",
+          "function": "_capture_segments",
+          "line": 262,
+          "source": "segment_loss.backward()",
+          "recent_lines": [
+            {
+              "line": 251,
+              "source": "pool = torch.cuda.graph_pool_handle()"
+            },
+            {
+              "line": 252,
+              "source": "for index in range(segments):"
+            },
+            {
+              "line": 253,
+              "source": "graph = torch.cuda.CUDAGraph()"
+            },
+            {
+              "line": 254,
+              "source": "with torch.cuda.graph(graph, pool=pool):"
+            },
+            {
+              "line": 255,
+              "source": "output = raw_model("
+            },
+            {
+              "line": 256,
+              "source": "input_ids=static_inputs[index],"
+            },
+            {
+              "line": 257,
+              "source": "labels=static_inputs[index],"
+            },
+            {
+              "line": 258,
+              "source": "use_cache=False,"
+            },
+            {
+              "line": 259,
+              "source": "attention_mask=static_masks[index],"
+            },
+            {
+              "line": 255,
+              "source": "output = raw_model("
+            },
+            {
+              "line": 261,
+              "source": "segment_loss = output.loss / total"
+            },
+            {
+              "line": 262,
+              "source": "segment_loss.backward()"
+            }
+          ],
+          "event": "exception",
+          "type": "RuntimeError",
+          "message": "During CUDA graph capture, autograd node 'torch::autograd::AccumulateGrad' has a stale reference to the default stream (stream 0) from warmup. This will invalidate the capture because cudaStreamWaitEvent on the default stream pulls a non-capturing stream into the graph.\n\nTo fix, either:\n  (a) Run warmup on the same stream that capture will use, or\n  (b) Delete references to the loss / autograd graph (e.g. `del loss`) before capture, or\n  (c) Call torch.autograd.graph.set_override_stale_capture_stream(True) to automatically redirect stale nodes to the capturing stream.",
+          "count": 1
+        },
+        {
+          "phase": "run",
+          "bundle": "trial-93aa5d5fc1-param-4fabdd0b",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/ddp-stack-repair/jobs/candidate-diagnostics-2daf5302be/source/opop_candidates/trial-93aa5d5fc1.py",
+          "function": "replacement",
+          "line": 347,
+          "source": "losses = _capture_segments(raw_model, optimizer, inputs)",
+          "recent_lines": [
+            {
+              "line": 303,
+              "source": "not isinstance(model, DDP)"
+            },
+            {
+              "line": 304,
+              "source": "or not isinstance(raw_model, torch.nn.Module)"
+            },
+            {
+              "line": 305,
+              "source": "or optimizer is None"
+            },
+            {
+              "line": 306,
+              "source": "or not isinstance(inputs, (list, tuple))"
+            },
+            {
+              "line": 307,
+              "source": "or len(inputs) < 2"
+            },
+            {
+              "line": 311,
+              "source": "if book[\"params\"] is None:"
+            },
+            {
+              "line": 322,
+              "source": "if model is not book[\"model\"] or raw_model is not book[\"raw_model\"]:"
+            },
+            {
+              "line": 325,
+              "source": "if book[\"graphs\"] is not None:"
+            },
+            {
+              "line": 344,
+              "source": "failure = None"
+            },
+            {
+              "line": 345,
+              "source": "with phase(\"gradient_accumulation\"):"
+            },
+            {
+              "line": 346,
+              "source": "try:"
+            },
+            {
+              "line": 347,
+              "source": "losses = _capture_segments(raw_model, optimizer, inputs)"
+            }
+          ],
+          "event": "exception",
+          "type": "RuntimeError",
+          "message": "During CUDA graph capture, autograd node 'torch::autograd::AccumulateGrad' has a stale reference to the default stream (stream 0) from warmup. This will invalidate the capture because cudaStreamWaitEvent on the default stream pulls a non-capturing stream into the graph.\n\nTo fix, either:\n  (a) Run warmup on the same stream that capture will use, or\n  (b) Delete references to the loss / autograd graph (e.g. `del loss`) before capture, or\n  (c) Call torch.autograd.graph.set_override_stale_capture_stream(True) to automatically redirect stale nodes to the capturing stream.",
+          "count": 1
+        }
+      ],
+      "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+    }
+  }
+}

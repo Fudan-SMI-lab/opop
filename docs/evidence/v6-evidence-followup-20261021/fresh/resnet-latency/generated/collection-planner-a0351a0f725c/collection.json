@@ -1,0 +1,23 @@
+{
+  "collectors": [
+    "nsys",
+    "execution_timeline"
+  ],
+  "requested_fields": [
+    "nsys.cuda_graph_launch_events_for_call_f2cf62caf57ad09f5d2f36aa",
+    "nsys.eager_kernel_launches_for_call_f2cf62caf57ad09f5d2f36aa",
+    "nsys.gpu_kernel_intervals_and_inter_kernel_gaps",
+    "execution_timeline.cpu_to_cuda_submit_associations",
+    "execution_timeline.synchronization_intervals",
+    "execution_timeline.per_device_intervals"
+  ],
+  "unavailable_fields": {
+    "nccl_algorithm_protocol_decision": "Single-device task: distributed_backend is null and observations.json capability 'communication' is not_applicable, so nccl_tuning has no collectives to observe; kernel entry names alone cannot identify protocol here regardless.",
+    "collective_calibration_reference": "No allreduce or other collectives exist in this single-GPU forward pass; collective_calibration is inapplicable.",
+    "per_collective_pcie_nvlink_bytes": "No collectives to attribute; device_telemetry only provides device-wide NVML rate/utilization/memory windows and traffic must not be inferred from logical payload or memcpy sizes.",
+    "cross_rank_clock_alignment": "Single rank; observations.cross_rank matched and incomplete lists are empty and rank status is not_applicable (single-device task).",
+    "cpu_gradient_post_accumulate_callbacks": "Inference-only workload under torch.inference_mode(); no backward pass or gradient accumulation exists."
+  },
+  "rationale": "Single-GPU FP32 batch=32 ResNet-18 inference, so all communication-oriented dimensions are out of scope (communication capability not_applicable per observations.json). The torch collector already ran (coverage.json: 88/88 kernels associated, 0 unassociated, 0 ambiguous forward sequences) and is not re-requested. The open uncertainty in evaluation.json is attribution: the accepted candidate (3.674 ms vs parent 4.210 ms, binding effective 'direct' with no functional replacements) self-declares three routes for call f2cf62caf57ad09f5d2f36aa (captured, cuda_graph_replay, eager_fused) across only two candidate invocations, and the endpoint interpretation explicitly flags route labels as candidate-reported telemetry needing native corroboration. nsys is selected to independently prove graph replay versus eager kernel execution for that call and to give GPU-side kernel intervals and gaps inside the synchronized forward. execution_timeline is selected to associate CPU submissions with CUDA execution and locate the boundary synchronizations and per-device intervals, distinguishing GPU-busy time from host submit/sync gaps in the remaining 3.67 ms. python_runtime is rejected because it perturbs execution and host dispatch is not implicated (all kernels associated, direct binding); binding_cost is rejected because effective binding is direct with no functional replacements, leaving no binding overhead relevant to this latency objective; nccl_tuning, collective_calibration and device_telemetry are inapplicable to a single-device task with no collectives.",
+  "revision": "3b3893f3789424335a46fd1881824543e77b56b533de8e7afbe4ddccb5af5783"
+}
