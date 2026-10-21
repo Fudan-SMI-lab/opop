@@ -1,0 +1,23 @@
+{
+  "collectors": [
+    "candidate_diagnostics",
+    "nsys"
+  ],
+  "requested_fields": [
+    "candidate_diagnostics.executed_calls",
+    "candidate_diagnostics.handled_exceptions.traceback_locations",
+    "candidate_diagnostics.scalar_returns",
+    "nsys.cuda_kernel_names",
+    "nsys.cuda_api_sync_events"
+  ],
+  "unavailable_fields": {
+    "communication.nccl_algorithm_protocol_channels": "Single-device task: observations.json records the communication capability as not_applicable (single-device task) and request.json has distributed_backend=null, so no NCCL collectives exist for nccl_tuning or collective_calibration to observe.",
+    "communication.per_collective_pcie_nvlink_bytes": "No distributed backend; device_telemetry exposes only device-wide NVML rate/utilization/memory windows, not per-collective byte counts, and traffic must not be inferred from logical payload or memcpy sizes.",
+    "candidate_metrics.ttft_ms": "evaluation.json at stage parameter_screening reports decision no_valid_parameter_candidate with empty rank metrics; clean candidate objective values are not yet available.",
+    "numerical.per_site_error": "No available collector measures per-site numerical error; candidate_diagnostics records only executed calls, handled exceptions with traceback locations, and limited scalar returns.",
+    "numerical.first_divergence_site": "No available collector compares intermediate tensors or locates the first numerical divergence; candidate_diagnostics explicitly does not supply it.",
+    "binding.passthrough_cost_ms": "Both bundles bound with effective=direct and reason 'no functional replacements' (evaluation.json setup), so there is no binding layer to compare against the parent for binding_cost."
+  },
+  "rationale": "Frozen objective is single-GPU TTFT for Qwen3-4B interactive inference; the torch collector already ran and coverage.json shows complete attribution (66441/66441 kernels associated, 0 unassociated, 0 ambiguous). The remaining observed uncertainty in evaluation.json is candidate-declared routing on revision f5a797fab6e3796855819951a220124f9d6305b3152f9de9304b60b3a17d4030: bundle trial-fc57bca7b9-param-f71a7c8a declares route parent-fallback:setup-failure:flash-dispatch-refused (call 2441f10600ba127de5cb753c, count 2) alongside 62 parent-delegates, and bundle trial-recovered-19ccfe875f-param-44a0e934 declares fused-rms-norm/fused-rms-norm-gated routes across ~145 call sites (728 candidate invocations), while the endpoint passed with quality_and_coverage_valid=false and empty metrics (decision: no_valid_parameter_candidate). The evaluation interpretation states these route labels are candidate-reported telemetry, not independent native proof, and should be corroborated with traces or actual exception evidence. candidate_diagnostics directly supplies executed candidate calls, handled exceptions with propagated library traceback locations (identifying where the flash-dispatch-refused setup failure originates), and limited scalar returns for the fused-rms-norm sites. nsys adds an independent native CUDA timeline to corroborate that fused RMSNorm kernel entries actually run for the recovered bundle and that no flash-dispatch kernels appear for the refused site, an attribution question the completed torch coverage does not answer per-route. Communication collectors (nccl_tuning, collective_calibration) are inapplicable to a single-device task; device_telemetry is device-wide and does not speak to routing validity; binding_cost is inapplicable because binding was effective=direct with no functional replacements; python_runtime perturbs execution and addresses host dispatch costs, and execution_timeline would add another plain trace, neither resolving the routing corroboration question, so both are left unselected.",
+  "revision": "f5a797fab6e3796855819951a220124f9d6305b3152f9de9304b60b3a17d4030"
+}

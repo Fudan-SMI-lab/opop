@@ -1,0 +1,73 @@
+{
+  "scope": "Developer read-only source/contract audit; original generated contract and decisions untouched.",
+  "sources": [
+    {
+      "path": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication.intake/source/gpt2_ddp_training.py",
+      "sha256": "37d1632436c8f927a52401b6d1fb9e63bd7b8d33d643d0f914916bb89b3364fe",
+      "selected_lines": [
+        {
+          "line": 59,
+          "text": "    model = DDP(raw_model, device_ids=[rank], broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True)"
+        }
+      ]
+    },
+    {
+      "path": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication.intake/source/workloads.json",
+      "sha256": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba",
+      "selected_lines": []
+    },
+    {
+      "path": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication.intake/source/README.md",
+      "sha256": "97dbce99c0065e87f4accf1bbe6d52aa4438a289d7eaec1c85a9c6b1cb25f68d",
+      "selected_lines": []
+    },
+    {
+      "path": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication/request.json",
+      "sha256": "914eeecca697e89829e3a7ff53d566dabc5445ab695b78cc6edc7b9dea787915",
+      "selected_lines": [
+        {
+          "line": 92,
+          "text": "    \"Precision/state: FP32 model, TF32 disabled, matmul precision 'highest', cudnn.benchmark off (common.configure); deterministic seeds 20261020 (weights) and 31000+rank (token ids); DDP(bucket_cap_mb=25, gradient_as_bucket_view=True, broadcast_buffers=False); effective batch 8 = world_size 2 x micro_batch 1 x accumulation_steps 4, 1024 tokens per step.\","
+        }
+      ]
+    },
+    {
+      "path": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication/artifacts/6937d5ba852f909f45e555f2908a6b5e208b2cb9bfee16d55d408ff6218bccf5",
+      "sha256": "6937d5ba852f909f45e555f2908a6b5e208b2cb9bfee16d55d408ff6218bccf5",
+      "selected_lines": [
+        {
+          "line": 1,
+          "text": "{\"allowed_scopes\":[\"group\",\"joint\",\"region\",\"execution_plan\"],\"completion\":\"One measured invocation completes when the full accumulated DDP training step finishes: optimizer.zero_grad(set_to_none=True) inside the timed region, accumulation_steps=4 microbatches of token ids shaped (micro_batch=1, sequence_length=128) where the first 3 run under DDP.no_sync() and the final backward performs the DDP gradient allreduce (each microbatch loss divided by accumulation_steps), followed by optimizer.step() (SGD lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) and the source's end-of-step torch.cuda.synchronize(). Model construction, weight seeding/loading, reference construction, correctness checks, cross-rank gradient-replica broadcast, bucket inventory hook, and the 3 separate profiler diagnostics are outside this completion boundary. The communication objective (communication_kernel_sum_ms, per-rank NCCL kernel duration sum, max across ranks, median of profiled repeats) is collected by the framework's torch_communication collector in separately profiled diagnostic runs, never inside run()/metrics(); step_ms is the per-repeat local wall time of this same step with max aggregation across ranks.\",\"frozen_files\":[\"opop_adapter.py\",\"opop_evaluate.py\"],\"goal\":\"Reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks.\",\"id\":\"task\",\"invariants\":[\"Model and precision are frozen: GPT-2 124M from source workloads.json gpt2_ddp_training.model (n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024), FP32, attn_implementation='eager', resid/embd/attn dropout 0.0, use_cache=False, weights from torch.manual_seed(20261020); TF32 disabled for matmul and cudnn, cudnn.benchmark False, float32_matmul_precision 'highest'.\",\"Workload dimensions are read from request['workload'] (world_size=2, micro_batch=1, sequence_length=128, accumulation_steps=4; effective batch 8, 1024 tokens per step); token ids per rank are torch.randint(0, 50257, (micro_batch, sequence_length)) from torch.Generator().manual_seed(31000 + rank).\",\"Step semantics: first accumulation_steps-1 microbatches under DDP.no_sync(), final microbatch backward performs the DDP gradient allreduce, each microbatch loss divided by accumulation_steps, optimizer.zero_grad(set_to_none=True) inside the timed step, SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False), step ends with torch.cuda.synchronize().\",\"DDP construction flags are frozen: broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True; no communication hook is registered and no bucket inventory runs in the measured path (passive bucket inventory belongs to framework diagnostics).\",\"Reference fidelity checks: full gradients and post-update parameters are compared against a serial no-DDP accumulation of the exact same global batch using grad_atol=1e-06/grad_rtol=0.0001 and parameter_atol=1e-06/parameter_rtol=0.0001; every rank's gradients must equal rank 0's broadcast replica bit-exactly (atol=rtol=0.0); the negative control must reject a +1 corrupted gradient; no downstream accuracy or convergence claim.\",\"Objective semantics: communication_kernel_sum_ms is the per-rank sum of device NCCL kernel durations (includes device waiting; not wire time, critical path or exposed communication), max across ranks, median over the 3 profiled repeats, collected by the framework's torch_communication collector in separate diagnostic invocations; the adapter must not fabricate, proxy or profile it inside run()/metrics().\",\"Constraint semantics: step_ms is per-repeat max across ranks of local step wall time and must stay <= 1.05x baseline; the gloo control barrier and synchronization sit outside the timed region.\",\"Measurement boundaries: model/reference construction, reset, warmup (2) and clean repeats (5), correctness checks, gradient replica broadcast, bucket inventory hook and the 3 profiler iterations are framework/measurement infrastructure outside the single measured invocation; the measured invocation itself keeps the full work amount (complete accumulation, required allreduce, optimizer update).\"],\"objective\":{\"aggregation\":{\"callable\":null,\"case_weights\":{},\"kind\":\"sum\"},\"direction\":\"minimize\",\"improvement_threshold\":0.0,\"name\":\"communication_kernel_sum_ms\",\"required_metrics\":[{\"name\":\"communication_kernel_sum_ms\",\"unit\":\"ms\"}],\"unit\":\"ms\"},\"quality\":{\"atol\":1e-06,\"grad_atol\":1e-06,\"grad_rtol\":0.0001,\"parameter_atol\":1e-06,\"parameter_rtol\":0.0001,\"rtol\":0.0001},\"schema_version\":\"project.v2\",\"state_protocol\":\"prepare(context, request) configures the source numerics via common.configure semantics (threads 4/1, torch.manual_seed(20261020), TF32 off for matmul and cudnn, cudnn.benchmark off, float32_matmul_precision 'highest', cuda set_device(context['device'])), then builds the GPT-2 124M model (attn_implementation 'eager', all dropouts 0.0, use_cache False, weights re-seeded 20261020) on the worker-provided device, wraps it in DDP(device_ids=[local device index], broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True) on the already-initialized NCCL process group, creates per-rank seeded token inputs (torch.Generator().manual_seed(31000+rank), randint over vocab 50257), creates SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False), snapshots the initial state dict to CPU, and creates the source's separate gloo control group (120s timeout) used only for out-of-timer barriers. reset(state) loads the CPU initial state dict into the raw model (SGD with momentum 0 keeps no optimizer state; no RNG, cache or counters are consumed inside the step); gradient clearing deliberately stays inside run() because the source's accumulate() calls optimizer.zero_grad(set_to_none=True) inside the timed step. before_run(state) performs the source's gloo control-group barrier outside the timer (gloo, so it emits no NCCL kernels that could pollute the communication collector). run(state) executes the full accumulated step and returns the summed scaled loss plus per-microbatch losses. observe(state, result) returns detached loss, per-microbatch losses, every named gradient and every named updated parameter. metrics(state, result, elapsed_ms) reports step_ms from elapsed_ms, derived tokens_per_second from the unchanged 1024-token work amount, and peak_allocated_bytes; the communication objective is intentionally omitted because the framework's collector measures it in separate diagnostic runs. models(state) exposes the raw GPT2LMHeadModel root for discovery/replacement. The adapter never destroys the process group, never registers communication hooks, and never runs a profiler. If executed without an initialized process group (potential single-process framework reference run), prepare reproduces the source's rank-0 serial reference path: no DDP wrapper, global batch = concatenation of every source rank's seeded inputs, accumulated serially with the same loss scaling.\",\"task_definition\":null,\"workload\":{\"accumulation_steps\":4,\"goals\":[{\"direction\":\"min\",\"id\":\"step\",\"metric\":\"step_ms\"},{\"constraints\":{\"step_ms_max_baseline_ratio\":1.05},\"direction\":\"min\",\"id\":\"communication\",\"metric\":\"diagnostic.max_rank_nccl_kernel_sum_ms\"}],\"id\":\"accumulated_step\",\"micro_batch\":1,\"sequence_length\":128,\"world_size\":2},\"world_size\":2}"
+        }
+      ]
+    },
+    {
+      "path": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/workflow.py",
+      "sha256": "1c4f972270fe0f8f2e0392ec8c173f3dbeff630489a569ee21a40236dd845490",
+      "selected_lines": [
+        {
+          "line": 71,
+          "text": "                invariants=tuple(understanding[\"invariants\"]), state_protocol=understanding[\"state_protocol\"],"
+        }
+      ]
+    },
+    {
+      "path": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/adapter_prompt.md",
+      "sha256": "a4cd31e653956e0d0356d53b4721cdbada0aa39e78619155181855c684b49c7a",
+      "selected_lines": [
+        {
+          "line": 31,
+          "text": "The worker supplies context['rank'], context['world_size'] and context['device'] after device binding and process-group initialization. Do not initialize another default process group. Model roots and tensors must use this actual local device. Required communication observations are collected and validated by the framework; their absence is not missing task semantics for the adapter. Passive bucket inventory belongs to diagnostics; do not install a communication hook merely to inventory buckets. A held-out workload in the source is not part of the current frozen request. Seeded random inputs/weights are valid task data when the source explicitly declares them; empty assets does not mean pretrained weights must be invented."
+        }
+      ]
+    }
+  ],
+  "findings": [
+    "The source initializes these DDP constructor values; a faithful baseline adapter must retain them.",
+    "The supplied task README/workload define output fidelity, work amount and measured constraints but do not explicitly prohibit optimizing bucket sizing or communication hooks.",
+    "The evaluator-generated ProjectContract adds the words DDP construction flags are frozen and no communication hook is registered.",
+    "Workflow transfers understanding.invariants directly into ProjectContract; the additional optimization restriction is not a fixed model-specific framework branch.",
+    "The prompt forbids a hook merely for passive inventory; that is distinct from a semantics-preserving optimization hook.",
+    "Whether any proposed change preserves full required semantics must still be validated; this audit does not relax the running contract."
+  ]
+}

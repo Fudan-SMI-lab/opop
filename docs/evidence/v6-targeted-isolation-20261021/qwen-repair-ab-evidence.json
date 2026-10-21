@@ -1,0 +1,123 @@
+{
+  "scope": "Developer-measured diagnostic on this exact rejected candidate; not an autonomous finding. No required repair strategy.",
+  "shadow": {
+    "source_sha256": "9b1f455b8f15a42b0f614d8e891223ba8f9e7bc44bd99db92519e15f23f44427",
+    "method": "At each original first live gate, extra expressions evaluated on the same input; original returned values and gates unchanged. Original complete-model error reproduced exactly. Later norm inputs belong to the candidate trajectory, not the separate original reference trajectory.",
+    "first_site": {
+      "call": "cc693e62b818e72c44487d6f",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "weight_shape": [
+        2560
+      ],
+      "weight_min": -0.08154296875,
+      "weight_max": 0.1923828125,
+      "comparisons_to_parent": {
+        "fused_weighted": {
+          "max_abs_error": 0.0078125,
+          "unequal": 171331,
+          "elements": 655360,
+          "violations_002": 0
+        },
+        "source_expression": {
+          "max_abs_error": 0.0,
+          "unequal": 0,
+          "elements": 655360,
+          "violations_002": 0
+        },
+        "weight_before_round": {
+          "max_abs_error": 0.0078125,
+          "unequal": 171331,
+          "elements": 655360,
+          "violations_002": 0
+        },
+        "native_unweighted_then_weight": {
+          "max_abs_error": 0.0,
+          "unequal": 0,
+          "elements": 655360,
+          "violations_002": 0
+        },
+        "native_fp32_then_round_weight": {
+          "max_abs_error": 0.0,
+          "unequal": 0,
+          "elements": 655360,
+          "violations_002": 0
+        }
+      },
+      "fused_vs_weight_before_round": {
+        "max_abs_error": 0.0,
+        "unequal": 0,
+        "elements": 655360,
+        "violations_002": 0
+      },
+      "native_fp32_vs_source_unweighted": {
+        "max_abs_error": 9.5367431640625e-07,
+        "unequal": 151445,
+        "elements": 655360,
+        "violations_002": 0
+      }
+    },
+    "sites": 145,
+    "all_site_summary": {
+      "fused_weighted": {
+        "exact_sites": 0,
+        "unequal_elements": 24567162,
+        "max_abs_error": 2.0
+      },
+      "source_expression": {
+        "exact_sites": 145,
+        "unequal_elements": 0,
+        "max_abs_error": 0.0
+      },
+      "weight_before_round": {
+        "exact_sites": 0,
+        "unequal_elements": 24567173,
+        "max_abs_error": 2.0
+      },
+      "native_unweighted_then_weight": {
+        "exact_sites": 133,
+        "unequal_elements": 192,
+        "max_abs_error": 0.0625
+      },
+      "native_fp32_then_round_weight": {
+        "exact_sites": 133,
+        "unequal_elements": 192,
+        "max_abs_error": 0.0625
+      }
+    }
+  },
+  "intervention": {
+    "source_sha256": "d9e3c0df0c32bb55c567ca5a5fd37f903373290a1b64a8449391b2feae2181df",
+    "change": "Only at gate and steady norm invocation: weighted native fused RMSNorm -> unweighted native fused BF16 output, then BF16 weight multiplication. Original per-site gate/tolerances/parent bundles unchanged.",
+    "checks": [
+      [
+        {
+          "continuous_step": 0,
+          "passed": false,
+          "compared_elements": 4862240,
+          "max_abs_error": 2.625,
+          "observation_path": "output.logits",
+          "atol": 0.02,
+          "rtol": 0.02,
+          "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+          "error": "Tensor-likes are not close!\n\nMismatched elements: 1189170 / 4861952 (24.5%)\nGreatest absolute difference: 2.625 at index (0, 15, 63521) (up to 0.02 allowed)\nGreatest relative difference: 22784.0 at index (0, 23, 82333) (up to 0.02 allowed)"
+        },
+        {
+          "continuous_step": 1,
+          "passed": false,
+          "compared_elements": 4862240,
+          "max_abs_error": 2.625,
+          "observation_path": "output.logits",
+          "atol": 0.02,
+          "rtol": 0.02,
+          "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+          "error": "Tensor-likes are not close!\n\nMismatched elements: 1189170 / 4861952 (24.5%)\nGreatest absolute difference: 2.625 at index (0, 15, 63521) (up to 0.02 allowed)\nGreatest relative difference: 22784.0 at index (0, 23, 82333) (up to 0.02 allowed)"
+        }
+      ]
+    ],
+    "scope": "Developer counterfactual still fails full quality; no timing/optimization claim."
+  }
+}

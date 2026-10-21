@@ -1,0 +1,60 @@
+{
+  "affected_calls": [
+    "b8ade439d7b8bd5fb5c1029b",
+    "d0938de87369efd500322679"
+  ],
+  "calls": [
+    "d0938de87369efd500322679",
+    "b8ade439d7b8bd5fb5c1029b"
+  ],
+  "contract_ref": "sha256:6937d5ba852f909f45e555f2908a6b5e208b2cb9bfee16d55d408ff6218bccf5",
+  "edits": [
+    {
+      "before_sha256": null,
+      "content_ref": "sha256:548d8539439e6828fd60f79465d5bc38266c72f15a6bb3fe5dd49984890ca7d1",
+      "path": "opop_candidates/trial-b04d1d014e.py",
+      "schema_version": "project.v1"
+    },
+    {
+      "before_sha256": null,
+      "content_ref": "sha256:be87808a7a7cc879641fa10cba039a081ed2ec5a179fdb7b42ab1fe5f5b56340",
+      "path": "opop_candidates/trial-b04d1d014e.targets.json",
+      "schema_version": "project.v1"
+    }
+  ],
+  "external_invariants": [
+    "Model and precision are frozen: GPT-2 124M from source workloads.json gpt2_ddp_training.model (n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024), FP32, attn_implementation='eager', resid/embd/attn dropout 0.0, use_cache=False, weights from torch.manual_seed(20261020); TF32 disabled for matmul and cudnn, cudnn.benchmark False, float32_matmul_precision 'highest'.",
+    "Workload dimensions are read from request['workload'] (world_size=2, micro_batch=1, sequence_length=128, accumulation_steps=4; effective batch 8, 1024 tokens per step); token ids per rank are torch.randint(0, 50257, (micro_batch, sequence_length)) from torch.Generator().manual_seed(31000 + rank).",
+    "Step semantics: first accumulation_steps-1 microbatches under DDP.no_sync(), final microbatch backward performs the DDP gradient allreduce, each microbatch loss divided by accumulation_steps, optimizer.zero_grad(set_to_none=True) inside the timed step, SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False), step ends with torch.cuda.synchronize().",
+    "DDP construction flags are frozen: broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True; no communication hook is registered and no bucket inventory runs in the measured path (passive bucket inventory belongs to framework diagnostics).",
+    "Reference fidelity checks: full gradients and post-update parameters are compared against a serial no-DDP accumulation of the exact same global batch using grad_atol=1e-06/grad_rtol=0.0001 and parameter_atol=1e-06/parameter_rtol=0.0001; every rank's gradients must equal rank 0's broadcast replica bit-exactly (atol=rtol=0.0); the negative control must reject a +1 corrupted gradient; no downstream accuracy or convergence claim.",
+    "Objective semantics: communication_kernel_sum_ms is the per-rank sum of device NCCL kernel durations (includes device waiting; not wire time, critical path or exposed communication), max across ranks, median over the 3 profiled repeats, collected by the framework's torch_communication collector in separate diagnostic invocations; the adapter must not fabricate, proxy or profile it inside run()/metrics().",
+    "Constraint semantics: step_ms is per-repeat max across ranks of local step wall time and must stay <= 1.05x baseline; the gloo control barrier and synchronization sit outside the timed region.",
+    "Measurement boundaries: model/reference construction, reset, warmup (2) and clean repeats (5), correctness checks, gradient replica broadcast, bucket inventory hook and the 3 profiler iterations are framework/measurement infrastructure outside the single measured invocation; the measured invocation itself keeps the full work amount (complete accumulation, required allreduce, optimizer update)."
+  ],
+  "groups": [
+    "f833b57a373d8262a384",
+    "8525af72c631b94e3dd0"
+  ],
+  "id": "trial-b04d1d014e-param-cab8b6e9",
+  "implementation": "distributed",
+  "installer": "opop_candidates/trial-b04d1d014e.py",
+  "parameters": {},
+  "parent_revision": "30c61d369b619ea2ef7756a5f654344ad37e8e99cd3debc69aee3d68613ae531",
+  "plan_ref": null,
+  "read_set": [
+    "call:b8ade439d7b8bd5fb5c1029b",
+    "call:d0938de87369efd500322679"
+  ],
+  "registry_ref": null,
+  "replaces": [],
+  "requires": [],
+  "schema_version": "project.v2",
+  "scope": "joint",
+  "write_set": [
+    "file:opop_candidates/trial-b04d1d014e.py",
+    "file:opop_candidates/trial-b04d1d014e.targets.json",
+    "call:d0938de87369efd500322679",
+    "call:b8ade439d7b8bd5fb5c1029b"
+  ]
+}

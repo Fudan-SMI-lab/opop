@@ -1,0 +1,78 @@
+{
+  "status": "generated",
+  "receipt": {
+    "role": "collection-planner",
+    "session": "ses_ea2317a42ffevvR4OjcOl4PtJ7",
+    "message": "msg_15dd1a99f001uzvklCq7C0NVBa",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 12,
+      "reported_cost": 0.2109367763,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 417317.0,
+        "input": 54050.0,
+        "output": 2900.0,
+        "reasoning": 6831.0,
+        "cache.read": 353536.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea2317a42ffevvR4OjcOl4PtJ7",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/ddp-aggregate-probe/sandboxes/collection-planner-replay-9cf16c6f420b",
+    "outputs": [
+      "collection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/ddp-aggregate-probe/generation-snapshots/generation-14b80e44a387.json"
+    ]
+  },
+  "plan": {
+    "collectors": [
+      "candidate_diagnostics",
+      "binding_cost",
+      "execution_timeline",
+      "nsys",
+      "nccl_tuning",
+      "collective_calibration"
+    ],
+    "requested_fields": [
+      "candidate_diagnostics.executed_candidate_calls",
+      "candidate_diagnostics.handled_exceptions_and_traceback_locations",
+      "candidate_diagnostics.scalar_returns",
+      "binding_cost.parent_vs_binding_only_whole_invocation_ms",
+      "binding_cost.ab_ba_order_and_quality_status",
+      "execution_timeline.cpu_to_cuda_submit_associations",
+      "execution_timeline.synchronization_events",
+      "execution_timeline.per_device_intervals",
+      "execution_timeline.clock_alignment_bounds",
+      "nsys.communication_compute_overlap_and_exposure_ms",
+      "nsys.nccl_kernel_intervals_and_inter_kernel_gaps",
+      "nccl_tuning.algorithm_protocol_channel_decisions",
+      "nccl_tuning.decisions_for_28351488B_and_157541376B_fp32_allreduce",
+      "collective_calibration.reference_full_world_sum_allreduce_ms_at_observed_sizes",
+      "collective_calibration.correctness_checks"
+    ],
+    "unavailable_fields": {
+      "per_collective_wire_bytes": "No available collector measures per-collective wire/PCIe/NVLink bytes; observations.json shows transport SHM/direct/direct, and deriving traffic from logical payload sizes (28351488/157541376 B) or memcpy sizes would be invention; device_telemetry (not selected) only supplies device-wide readings with native windows.",
+      "nccl_wait_vs_wire_transfer_split": "Nsys timelines alone do not separate NCCL waiting from wire transfer; only bounds obtainable from cross-rank aligned entries plus the same-size reference experiment (collective_calibration), not a split.",
+      "gpu_readiness_and_consumer_completion_bounds": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown.",
+      "per_parameter_group_cost_allocation_within_bucket": "observations.json bucket inventory states direct parameter ownership is many-to-many and no collector allocates one timed collective's cost among its member parameter groups.",
+      "first_numerical_divergence_site": "candidate_diagnostics does not compare intermediate tensors or locate first numerical divergence, and no other selected collector supplies it; evaluation.json endpoint already passed full quality checks, so the dimension is not decision-relevant here."
+    },
+    "rationale": "Revision 03c5e5abcdf4f4cf519e4e909e2b48a3d8e54414dd924a31dabd04f5f3878fbb is the only listed candidate and it failed the frozen step_ms constraint (max-rank 144.138 ms vs limit 138.660 ms = 1.05 x 132.057 original reference) while reducing max-rank communication_kernel_sum_ms (64.149 vs 74.676). Parent discovery shows 13 SUM allreduces (12 x 28,351,488 B + 1 x 157,541,376 B, fp32) all running ncclDevKernel_AllReduce_Sum_f32_RING_LL over SHM/direct, with strong rank asymmetry (rank0 kernel sum 58.9 ms vs rank1 200.6 ms; ~3.2 ms vs ~14.4 ms per 28 MB bucket, i.e. device waiting included) and communication almost fully exposed (rank0 compute overlap 4.37 of 58.9 ms). The candidate's equalized per-rank comm (63.4/64.1 ms) matches its declared 'aligned_final_backward_barrier' route (2 invocations), but that label is candidate-reported telemetry. Observed uncertainty: (1) what the candidate actually executed on this exact candidate and whether the route claim and zero fallbacks hold; (2) how much of the ~+12 ms step regression is additive bundle binding overhead (direct binding over a bundle-free parent) versus the alignment barrier itself versus host dispatch/synchronization changes; (3) whether the remaining ~64 ms comm kernel sum is transfer-dominated for RING_LL over SHM at the observed sizes and whether actual NCCL algorithm/protocol/channel decisions differ. Selections: candidate_diagnostics (executed calls, handled exceptions with traceback locations, scalar returns) to corroborate route telemetry with actual call evidence; binding_cost (applicable: candidate is additive over a bundle-free parent with direct binding) to separate binding overhead from algorithm cost in clean AB/BA workers with full quality checks; execution_timeline for CPU-to-CUDA submit associations, synchronization and per-device intervals placing the added wall time; nsys for device-side overlap/exposure and barrier-serialization attribution on the candidate; nccl_tuning because kernel entry names alone do not identify actual protocol/channel decisions at 28,351,488/157,541,376 B; collective_calibration as a same-size full-world SUM allreduce reference with correctness checks to contextualize in-situ kernel durations (reference experiment, not a lower bound). Excluded: torch (already ran); python_runtime (perturbs execution and its inclusive/self times are not clean; host cost is covered by binding_cost and execution_timeline); device_telemetry (device-wide PCIe/utilization windows cannot attribute per-collective time and transport is SHM). No failure-category policy or optimization action is presumed.",
+    "revision": "03c5e5abcdf4f4cf519e4e909e2b48a3d8e54414dd924a31dabd04f5f3878fbb"
+  }
+}

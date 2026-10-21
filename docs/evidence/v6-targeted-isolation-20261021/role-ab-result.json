@@ -1,0 +1,396 @@
+{
+  "runs": [
+    {
+      "experiment": "qwen-planner",
+      "arm": "treatment",
+      "status": "generated",
+      "receipt": {
+        "role": "collection-planner",
+        "session": "ses_ea2425873ffebJwMT4K0pYUURR",
+        "message": "msg_15dbff39c001bw07Psgug6FRAs",
+        "model": "zhipuai/glm-5.3",
+        "usage": {
+          "schema_version": 1,
+          "mode": "observe_only",
+          "messages": 8,
+          "reported_cost": 0.12590233745999999,
+          "messages_without_cost": 0,
+          "unfinished_messages": 0,
+          "tokens": {
+            "total": 209539.0,
+            "input": 33982.0,
+            "output": 2094.0,
+            "reasoning": 6359.0,
+            "cache.read": 167104.0,
+            "cache.write": 0.0
+          },
+          "sessions": [
+            {
+              "id": "ses_ea2425873ffebJwMT4K0pYUURR",
+              "status": "observed",
+              "detail": null
+            }
+          ],
+          "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+        },
+        "sandbox": "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/qwen-planner-ab/treatment/sandboxes/collection-planner-replay-e0e8cd89755f",
+        "outputs": [
+          "collection.json"
+        ],
+        "feedback_provided": false,
+        "contract_repairs": 0,
+        "generation_snapshots": [
+          "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/qwen-planner-ab/treatment/generation-snapshots/generation-2caddd12ddad.json"
+        ]
+      },
+      "outputs": {
+        "collection.json": {
+          "collectors": [
+            "candidate_diagnostics",
+            "nsys"
+          ],
+          "requested_fields": [
+            "candidate_diagnostics.installed_binding_sites",
+            "candidate_diagnostics.exception_evidence.flash_dispatch_refused",
+            "candidate_diagnostics.route_corroboration.fused_rms_norm",
+            "candidate_diagnostics.reference_invocation_roles",
+            "nsys.kernel_entry_names",
+            "nsys.rmsnorm_site_kernel_attribution"
+          ],
+          "unavailable_fields": {
+            "nccl_algorithm_protocol_channels": "Single-device task: distributed_backend is null and the communication capability is not_applicable with reason 'single-device task' (request.json, observations.json); no NCCL collectives exist, so nccl_tuning has nothing to observe and kernel entry names could not identify protocol anyway.",
+            "per_collective_pcie_nvlink_bytes": "No collectives on this single-GPU inference workload; device_telemetry would only supply device-wide NVML PCIe/utilization/memory rates with native sampling windows, not per-collective bytes, and traffic must not be invented from logical payload or memcpy sizes.",
+            "gradient_bucket_identity": "Inference-only workload under torch.inference_mode with no backward pass (request.json numerical/state policy; coverage.json backward_associated_kernels=0, autograd_ranges=0); no gradient buckets exist, so exact bucket links are unavailable in principle.",
+            "clean_candidate_score": "evaluation.json stage parameter_screening decided 'no_valid_parameter_candidate' with rank metrics {} and quality_and_coverage_valid=false although endpoint status passed; no clean per-candidate ttft_ms exists yet and it is retained as unknown rather than substituted by the original reference (ttft_ms=25.111518)."
+          },
+          "rationale": "Frozen objective is single-device TTFT on one RTX 4090 (distributed_backend=null, communication not_applicable), so nccl_tuning, collective_calibration and device-wide device_telemetry readings cannot bear on the open questions, and the torch collector already ran with complete association (coverage.json: 66441/66441 kernels associated, 0 unassociated, 0 ambiguous forward sequences). The observed uncertainty in evaluation.json is attribution of candidate-reported routing, not timing: bundle trial-fc57bca7b9-param-f71a7c8a declares 'parent-fallback:setup-failure:flash-dispatch-refused' (2 of 64 invocations, call 2441f10600ba127de5cb753c) alongside 62 'parent-delegate' routes, and bundle trial-recovered-19ccfe875f-param-44a0e934 declares 728 'fused-rms-norm'/'fused-rms-norm-gated' routes over 145 reference invocations; the endpoint interpretation states these labels are candidate telemetry without independent native proof. The binding reason 'no functional replacements' describes functional dispatch only: with effective=direct binding and functional_sites=null, module/project callable replacement sites are unverified even though 64 and 728 candidate invocations prove candidates did run. Plan: candidate_diagnostics on this exact candidate captures the actual exception evidence behind the flash-dispatch-refused fallback, the true installed direct-binding sites, and the roles of reference invocations (fallback vs verification vs composition); nsys runs separately to supply an independent kernel-entry timeline attributing the rms-norm call sites to actual fused kernels versus parent kernels during the measured invocation window. Excluded: execution_timeline (a second plain trace duplicating the already-associated torch trace; no sync, overlap or graph-tracing question is open), python_runtime (perturbs execution and no host-dispatch or binding-cost uncertainty is observed), binding_cost (no additive-overhead question is raised, bundle 2 replaces parent behavior at routed sites rather than being a clean additive passthrough, and selection would also commit it to subsequent resource feedback), device_telemetry, nccl_tuning, collective_calibration (inapplicable as listed above). No performance regression, algorithm cost, or genuine fallback is assumed from route labels alone; candidates whose routes stay uncorroborated remain ambiguous after collection.",
+          "revision": "f5a797fab6e3796855819951a220124f9d6305b3152f9de9304b60b3a17d4030"
+        }
+      }
+    },
+    {
+      "experiment": "qwen-planner",
+      "arm": "control",
+      "status": "generated",
+      "receipt": {
+        "role": "collection-planner",
+        "session": "ses_ea2424ca6ffeCY7ImGi58BRKqW",
+        "message": "msg_15dc04ea1001ke7QVLFCcxXHID",
+        "model": "zhipuai/glm-5.3",
+        "usage": {
+          "schema_version": 1,
+          "mode": "observe_only",
+          "messages": 12,
+          "reported_cost": 0.2387601011,
+          "messages_without_cost": 0,
+          "unfinished_messages": 0,
+          "tokens": {
+            "total": 494896.0,
+            "input": 61995.0,
+            "output": 2684.0,
+            "reasoning": 6409.0,
+            "cache.read": 423808.0,
+            "cache.write": 0.0
+          },
+          "sessions": [
+            {
+              "id": "ses_ea2424ca6ffeCY7ImGi58BRKqW",
+              "status": "observed",
+              "detail": null
+            }
+          ],
+          "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+        },
+        "sandbox": "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/qwen-planner-ab/control/sandboxes/collection-planner-replay-1b6050e27295",
+        "outputs": [
+          "collection.json"
+        ],
+        "feedback_provided": false,
+        "contract_repairs": 0,
+        "generation_snapshots": [
+          "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/qwen-planner-ab/control/generation-snapshots/generation-fea637c385c5.json"
+        ]
+      },
+      "outputs": {
+        "collection.json": {
+          "collectors": [
+            "candidate_diagnostics",
+            "nsys"
+          ],
+          "requested_fields": [
+            "candidate_diagnostics.per_bundle_output_error",
+            "candidate_diagnostics.earliest_execution_divergence",
+            "candidate_diagnostics.route_corroboration.fused-rms-norm",
+            "candidate_diagnostics.route_corroboration.parent-delegate",
+            "candidate_diagnostics.exception_evidence.flash-dispatch-refused",
+            "nsys.kernel_entries.fused_rms_norm",
+            "nsys.kernel_entries.parent_rms_norm",
+            "nsys.kernel_entries.flash_bundle_absence"
+          ],
+          "unavailable_fields": {
+            "communication.nccl_algorithm_protocol": "Single-device task on one leased RTX 4090; observations.json reports the communication capability not_applicable (single-device) and request.json has distributed_backend null, so there are no NCCL algorithm/protocol/channel decisions to capture.",
+            "communication.collective_calibration_allreduce": "No collective ops in this workload; a synthetic full-world SUM allreduce reference experiment has no collective to calibrate against on a single GPU.",
+            "device_telemetry.per_collective_pcie_bytes": "No collectives exist; device_telemetry provides device-wide NVML PCIe/utilization/memory readings with native windows that cannot be attributed per-operation, and PCIe/NVLink traffic must not be invented from logical payload or memcpy sizes.",
+            "binding_cost.parent_vs_binding_only_passthrough": "Both bundles bound effective 'direct' with reason 'no functional replacements' (evaluation.json setup); the bundles replace the parent rather than adding a legacy binding layer, so there is no additive binding-passthrough dimension to compare.",
+            "candidate_metrics.ttft_ms": "Candidate rank metrics are empty because both continuous-step quality checks failed (output.logits mismatch, 38.8% elements, max_abs_error 4.09); ttft_ms for this candidate is unknown until the correctness divergence is resolved, and the parent's intrusive discovery timing must not be substituted."
+          },
+          "rationale": "The observed uncertainty is a correctness failure, not a measured performance regression: the candidate (revision f5a797fab6e3796855819951a220124f9d6305b3152f9de9304b60b3a17d4030) ran to completion (receipt status passed) but result.valid is false with output.logits mismatches at both continuous steps, so it yielded no metrics and was rejected as no_valid_parameter_candidate. The only route evidence is candidate-declared telemetry, which the receipt explicitly says is not independent proof: bundle trial-recovered-19ccfe875f-param-44a0e934 declares fused-rms-norm/fused-rms-norm-gated on ~144 call sites, and bundle trial-fc57bca7b9-param-f71a7c8a declares parent-delegate plus two parent-fallback:setup-failure:flash-dispatch-refused routes on call 2441f10600ba127de5cb753c. It is unknown which bundle first diverges, whether the declared routes match the kernels that actually executed, and whether the flash-dispatch refusal has real exception evidence. candidate_diagnostics is selected to localize per-bundle/per-call-site output error, identify the earliest execution divergence (the check's failure_scope is only the first failing observation in comparison traversal), and capture actual exception evidence for the flash-dispatch-refused fallback. nsys is selected as independent native trace evidence to corroborate attribution: fused RMSNorm kernel entries where fused-rms-norm routes are declared, parent/native rms_norm entries where parent-delegate/fallback is declared, and absence of flash-bundle kernels, resolving the candidate-reported-vs-actually-executed attribution question that the already-completed torch collection (coverage.json: 66441/66441 kernels associated, 0 unassociated, 0 ambiguous forward sequences) cannot answer by itself. Excluded: torch (already ran with complete association); nccl_tuning, collective_calibration and device_telemetry (single-device task, no communication dimension; telemetry is device-wide, not per-op bytes); execution_timeline (no CPU-submit/synchronization ambiguity is in evidence and torch already associated all kernels, so its clock-alignment bounds add nothing to this correctness question); python_runtime (perturbative host-dispatch profiling, irrelevant to a numerics divergence); binding_cost (binding is effective direct with no functional replacements, so no binding-passthrough comparison exists). No optimization action or failure-category policy is presumed: the quality failure is not assumed to be an algorithm cost of either bundle, and the reference/parent invocations are not assumed to be fallback-caused regression.",
+          "revision": "f5a797fab6e3796855819951a220124f9d6305b3152f9de9304b60b3a17d4030"
+        }
+      }
+    },
+    {
+      "experiment": "ddp-contract",
+      "arm": "treatment",
+      "status": "generated",
+      "receipt": {
+        "role": "project-evaluator",
+        "session": "ses_ea2424cb1ffeLHgoGKmSJUw8VP",
+        "message": "msg_15dc4e353001gTrss6mDnsqPyx",
+        "model": "zhipuai/glm-5.3",
+        "usage": {
+          "schema_version": 1,
+          "mode": "observe_only",
+          "messages": 16,
+          "reported_cost": 0.31696001747999997,
+          "messages_without_cost": 0,
+          "unfinished_messages": 0,
+          "tokens": {
+            "total": 575049.0,
+            "input": 42789.0,
+            "output": 9011.0,
+            "reasoning": 18481.0,
+            "cache.read": 504768.0,
+            "cache.write": 0.0
+          },
+          "sessions": [
+            {
+              "id": "ses_ea2424cb1ffeLHgoGKmSJUw8VP",
+              "status": "observed",
+              "detail": null
+            }
+          ],
+          "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+        },
+        "sandbox": "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/ddp-contract-ab/treatment/sandboxes/project-evaluator-replay-a7c68b38d7a5",
+        "outputs": [
+          "adapter.py",
+          "understanding.json"
+        ],
+        "feedback_provided": false,
+        "contract_repairs": 0,
+        "generation_snapshots": [
+          "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/ddp-contract-ab/treatment/generation-snapshots/generation-4c38edcc0377.json"
+        ]
+      },
+      "outputs": {
+        "understanding.json": {
+          "goal": "Reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks.",
+          "entrypoint": "gpt2_ddp_training.py",
+          "completion": "run() executes exactly the source's timed step(): optimizer.zero_grad(set_to_none=True) first (inside the timed invocation, as the first statement of source accumulate()), then all accumulation_steps forward/backward microbatches of token ids shaped (micro_batch, sequence_length) with each microbatch's mean CE loss divided by accumulation_steps, the first accumulation_steps-1 microbatches under model.no_sync() and the final microbatch performing the DDP gradient allreduce over NCCL, followed by optimizer.step() (SGD lr=0.001, momentum=0.0, weight_decay=0.0) and torch.cuda.synchronize(); that synchronize is the source's completion point and ends the measured invocation. For the frozen request this is 4 microbatches of (1, 128) per rank, effective batch 8, 1024 tokens per step. Everything else in the source is outside the workload: model/reference construction, the rank-0 serial reference and all correctness checks (global-batch gradient check, +1 negative control, exact cross-rank gradient replica broadcast, parameter update check), the bucket inventory comm hook, the 3 separate profile_once NCCL diagnostics, and result/report writing. The communication objective (communication_kernel_sum_ms, max across ranks then median of the profiled repeats) is collected by the framework's torch_communication collector in separate diagnostic runs, so metrics() reports only the source's clean step metrics.",
+          "state_protocol": "prepare(context, request) mirrors the source setup on the worker-supplied device (context['device'], never a self-chosen physical GPU): common.configure's numerical policy (threads 4/1, torch.manual_seed(20261020), TF32 off for matmul and cudnn, float32_matmul_precision 'highest', cudnn.benchmark False), GPT-2 config from workloads.json gpt2_ddp_training.model with dropout 0.0/use_cache=False/eager attention, DDP(raw_model, device_ids=[local device index], broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True), SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False), per-rank seeded inputs (torch.Generator seed 31000+rank over vocab_size, shapes from request['workload']), an initial CPU state-dict snapshot, and a gloo control subgroup (dist.new_group) for the source's pre-step barrier; it refuses a world size different from workload['world_size']. state = {device, rank, world_size, workload, raw_model, model (DDP), optimizer, inputs, initial, control, parameter_count, mode}. reset(state) reproduces the source's reset(): raw_model.load_state_dict(initial) from the CPU snapshot; SGD carries no momentum buffers, the step consumes no RNG (pregenerated inputs, dropout disabled), gradients are recreated by zero_grad(set_to_none=True) at the start of the timed accumulate, DDP reducer/bucket state is left as the source leaves it across repeats, and the process group is never destroyed. run(state) returns {'loss': accumulated loss tensor}; observe(state, result) returns {'loss', 'gradients': every named .grad, 'parameters': every named updated parameter} as detached CPU tensors (CPU copies so correctness capture does not inflate the CUDA peak-allocated statistic); metrics(state, result, elapsed_ms) returns step_ms, tokens_per_second = tokens_per_step*1000/step_ms, peak_allocated_bytes (torch.cuda.max_memory_allocated() queried outside the timer), effective_batch, tokens_per_step and parameter_count, with no fabricated communication objective. models(state) exposes {'model': raw_model} for automatic discovery and controlled replacement. set_mode() only records the mode (execution semantics and work amount are identical in quality/measure/profile); before_run() performs the source's gloo control-group barrier outside the timer. The worker-initialized process group is used as-is; no second default group is created and no CUDA work happens at import time.",
+          "invariants": [
+            "Workload shape is frozen by request['workload'] (accumulated_step: world_size 2, micro_batch 1, sequence_length 128, accumulation_steps 4; effective batch 8, 1024 tokens per step): each run() must perform every microbatch's forward/backward plus exactly one optimizer update (request notes 'One measured invocation'); the adapter reads these dimensions from request['workload'] rather than embedding constants.",
+            "Gradient reference fidelity (source checks['global_batch_gradient_check'] with workloads.json correctness tolerances): the step's full gradients must match a serial single-process pass over the same seeded global batch (all ranks' inputs) within grad_atol=1e-6 and grad_rtol=1e-4.",
+            "Cross-rank gradient exactness (source checks['exact_gradient_replica_check'], torch.testing.assert_close atol=0.0, rtol=0.0): after the step's gradient synchronization every rank's full gradients must be bit-identical to every other rank's.",
+            "Parameter-update fidelity (source checks['parameter_update_check']): updated parameters must match the reference SGD update within parameter_atol=1e-6 and parameter_rtol=1e-4, with SGD lr=0.001, momentum=0.0, weight_decay=0.0 as declared in the request's measured-invocation definition.",
+            "Loss semantics (source accumulate()): each microbatch contributes model(input_ids=tokens, labels=tokens, use_cache=False).loss / accumulation_steps and the step loss is the sum of those terms; any other scaling or reduction changes the gradients and violates the reference-fidelity checks.",
+            "Deterministic fixtures so independent workers reproduce one reference (source make_model/make_inputs): weights from torch.manual_seed(20261020), token ids from a per-rank torch.Generator seeded 31000+rank; request quality relies on these exact seeded fixtures (assets is empty by design).",
+            "Numerical policy from common.configure is required for reference fidelity and frozen by the request (no precision changes): FP32 model, TF32 disabled for matmul and cudnn, float32_matmul_precision 'highest', cudnn.benchmark False.",
+            "Architecture frozen (request: do not change model architecture): GPT-2 124M per workloads.json gpt2_ddp_training.model (n_layer 12, n_embd 768, n_head 12, vocab_size 50257, n_positions 1024) with resid/embd/attn dropout 0.0, use_cache=False, attn_implementation 'eager' (source make_model).",
+            "The source's division between setup and timed work is preserved: optimizer.zero_grad(set_to_none=True) is the first statement of the timed accumulate and stays inside run(); reset() must not pre-clear gradients or otherwise move timed work out of the measured invocation.",
+            "Real inter-rank gradient synchronization over NCCL must occur inside the measured step (baseline: DDP allreduce on the final microbatch); the required observation communication_kernel_sum_ms is collected by the framework's torch_communication collector in separate diagnostic runs and is not fabricated by the adapter.",
+            "Step-time constraint (request objective.constraints): per-repeat max-across-ranks step_ms must remain <= 1.05x the baseline; communication reductions may not be obtained by slowing the clean step.",
+            "Observation completeness for a training workload (adapter contract): loss, all gradients and all updated parameters are returned as full detached tensors, and no accuracy or convergence is claimed beyond the source's reference-fidelity checks."
+          ],
+          "objective": {
+            "name": "communication_kernel_sum_ms",
+            "unit": "ms",
+            "direction": "minimize",
+            "constraints": [
+              {
+                "metric": "step_ms",
+                "op": "le",
+                "baseline_ratio": 1.05,
+                "rank_aggregation": "max"
+              }
+            ],
+            "source": {
+              "collector": "torch_communication",
+              "field": "communication_kernel_sum_ms"
+            },
+            "rank_aggregation": "max"
+          },
+          "workload": {
+            "id": "accumulated_step",
+            "world_size": 2,
+            "micro_batch": 1,
+            "sequence_length": 128,
+            "accumulation_steps": 4,
+            "goals": [
+              {
+                "id": "step",
+                "metric": "step_ms",
+                "direction": "min"
+              },
+              {
+                "id": "communication",
+                "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+                "direction": "min",
+                "constraints": {
+                  "step_ms_max_baseline_ratio": 1.05
+                }
+              }
+            ]
+          },
+          "quality": {
+            "atol": 1e-06,
+            "rtol": 0.0001,
+            "grad_atol": 1e-06,
+            "grad_rtol": 0.0001,
+            "parameter_atol": 1e-06,
+            "parameter_rtol": 0.0001
+          },
+          "missing_information": [],
+          "assumptions": [
+            "Baseline reproduces source implementation choices verbatim for fidelity, not because the task requires them: DDP(broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True, device_ids=[local device]), no_sync() on the first accumulation_steps-1 microbatches, and SGD foreach=False. Alternative synchronization schedules or DDP settings that keep the gradient/parameter checks green and respect the step_ms constraint are permissible for optimized variants; this baseline keeps the source's.",
+            "The adapter does not reconstruct the rank-0 serial reference, run close_check/negative_check, broadcast gradient replicas, or install the bucket inventory comm hook: the source treats these as correctness/measurement infrastructure, and the framework collects and validates observations and the required communication metrics (request required_observations and objective.source collector).",
+            "The gloo control subgroup and before_run() barrier mirror the source's pre-repeat coordination outside the timer; if subgroup creation were unavailable the barrier would be skipped and the framework's own boundary synchronization would apply.",
+            "Architecture constants are read from inputs/source/workloads.json (then the request's source_root) when reachable, with an identical embedded fallback; only workload dimensions (world_size, micro_batch, sequence_length, accumulation_steps) come from request['workload'], so a validated workload variant with different values replays unchanged.",
+            "request['assets'] is intentionally empty: the source declares seeded synthetic weights and token ids rather than pretrained GPT-2, so no pretrained weights are invented or downloaded.",
+            "reset() equals the source's reset() (reload the initial CPU state dict): SGD has no momentum state, the step consumes no RNG, and gradients are re-zeroed inside the timed run, so no additional optimizer/RNG/cache restoration is needed; DDP bucket/reducer internals are intentionally left as the source leaves them across repeats.",
+            "observe() returns CPU copies of the loss, every named gradient and every named updated parameter so correctness capture does not inflate peak_allocated_bytes reported by metrics() after the timer.",
+            "metrics() exposes the source's clean per-invocation project metrics (step_ms, tokens_per_second, peak_allocated_bytes, plus effective_batch, tokens_per_step and parameter_count from the source record); communication_kernel_sum_ms is not computed inside run()/metrics() because the objective has a source collector descriptor and is measured by the framework in separate diagnostic runs.",
+            "warmup=2, repeats=5, continuous_steps=2 and the 3 profiled diagnostic iterations are framework measurement parameters, not adapter work: the adapter performs exactly one accumulated step per run() and supports back-to-back run() calls without reset for the continuous-steps state check.",
+            "The held-out workload longer_sequence (world_size 2, micro_batch 1, sequence_length 256, accumulation_steps 2) is a reserved validation config, not part of this frozen request, and is not executed here.",
+            "Source CLI/runner behavior (argument parsing, output directories, torchrun launch, result.json writing, metadata/nvidia-smi inventory) is runner infrastructure outside the adapter's measured workload."
+          ]
+        }
+      }
+    },
+    {
+      "experiment": "ddp-contract",
+      "arm": "control",
+      "status": "generated",
+      "receipt": {
+        "role": "project-evaluator",
+        "session": "ses_ea2425864ffehz77Hdadc3Fnrq",
+        "message": "msg_15dc5516d001VhbbxYiU63OoZt",
+        "model": "zhipuai/glm-5.3",
+        "usage": {
+          "schema_version": 1,
+          "mode": "observe_only",
+          "messages": 26,
+          "reported_cost": 0.47551352856,
+          "messages_without_cost": 0,
+          "unfinished_messages": 0,
+          "tokens": {
+            "total": 1076082.0,
+            "input": 54690.0,
+            "output": 7903.0,
+            "reasoning": 19121.0,
+            "cache.read": 994368.0,
+            "cache.write": 0.0
+          },
+          "sessions": [
+            {
+              "id": "ses_ea2425864ffehz77Hdadc3Fnrq",
+              "status": "observed",
+              "detail": null
+            }
+          ],
+          "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+        },
+        "sandbox": "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/ddp-contract-ab/control/sandboxes/project-evaluator-replay-5a629790c0fd",
+        "outputs": [
+          "adapter.py",
+          "understanding.json"
+        ],
+        "feedback_provided": false,
+        "contract_repairs": 0,
+        "generation_snapshots": [
+          "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/ddp-contract-ab/control/generation-snapshots/generation-2881ff7d518b.json"
+        ]
+      },
+      "outputs": {
+        "understanding.json": {
+          "goal": "Reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks.",
+          "entrypoint": "gpt2_ddp_training.py",
+          "completion": "One measured invocation is exactly one accumulated DDP training step, matching source step(): optimizer.zero_grad(set_to_none=True), then accumulation_steps forward/backward microbatches of token ids shaped (micro_batch, sequence_length) with the first accumulation_steps-1 under model.no_sync() and the final microbatch running the DDP gradient allreduce through the reducer, each microbatch loss scaled by 1/accumulation_steps and summed; then optimizer.step() with SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) and torch.cuda.synchronize() inside the timed call. Model construction and weight seeding, DDP wrapping, input generation, the initial state-dict snapshot, reset, the gloo control barrier, correctness checks, gradient-replica broadcast, bucket inventory hooks and the separate communication profiler traces are all outside the measured boundary. The communication objective uses the source's separate completion boundary: a framework diagnostic run that profiles the full step and sums device NCCL kernel durations per rank.",
+          "state_protocol": "prepare(context, request) reproduces source setup: common.configure numerics (4 CPU threads, manual_seed(20261020), set_device(context['device']), TF32 off for matmul/cudnn, cudnn.benchmark off, float32 matmul precision 'highest'), builds GPT2LMHeadModel on context['device'] from the frozen architecture config, wraps it in DDP(device_ids=[local device], broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True), creates SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) and the per-rank seeded token inputs, snapshots the initial state dict on CPU, and creates the source's side gloo control group; it uses the worker's existing process group and never initializes another default one. run(state) executes the full step described in completion and returns {'loss', 'microbatch_losses'}; live allocations the source keeps (inputs, initial snapshot, model, optimizer) stay referenced in state. reset(state) reloads the CPU snapshot into the module exactly like source reset(); SGD momentum=0.0 holds no optimizer state and gradients are re-cleared inside the timed accumulate, so no other mutable state exists; the process group is never destroyed. observe(state, result) returns detached CPU tensors: total loss, per-microbatch losses, every named gradient and every post-update named parameter (None only where a gradient is genuinely absent). metrics(state, result, elapsed_ms) returns finite native-unit project metrics (step_ms, loss, tokens_per_step, tokens_per_second, effective_batch, parameter_count, peak_allocated_bytes) with tokens_per_second derived from the unchanged work amount; the communication objective is measured by the framework's torch_communication collector in separate profiled diagnostic runs, so no communication value is fabricated here. models(state) exposes the DDP-wrapped module as {'model': DDP} for discovery and controlled replacement. set_mode(state, mode) records quality/measure/profile with no behavioral change: the identical full step runs in every mode because observations are captured after the same timed work. before_run(state) performs the source's gloo control-group barrier (falling back to the default group barrier if the side group could not be created) outside the timer.",
+          "invariants": [
+            "Numerical policy frozen as source common.configure: FP32 model, TF32 disabled for matmul and cudnn, cudnn.benchmark off, torch.set_float32_matmul_precision('highest'); the framework re-checks these policies around run.",
+            "Deterministic fixtures: torch.manual_seed(20261020) immediately before GPT2LMHeadModel construction (identical initial weights on every rank), token ids from torch.Generator().manual_seed(31000 + rank); assets are empty by design and no pretrained weights or downloads are involved.",
+            "Architecture frozen: GPT2Config(n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, resid_pdrop=0.0, embd_pdrop=0.0, attn_pdrop=0.0, use_cache=False, attn_implementation='eager'), module kept in train() mode with .float() weights.",
+            "DDP wrapper frozen as source: device_ids=[context local device], broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True; the adapter installs no communication hook and no automatic optimization target.",
+            "Accumulation semantics frozen: first accumulation_steps-1 microbatches under model.no_sync(), the final microbatch triggers the DDP gradient allreduce; per-microbatch loss is model(input_ids=tokens, labels=tokens, use_cache=False).loss / accumulation_steps and the step loss is their sum.",
+            "Optimizer frozen: torch.optim.SGD(module.parameters(), lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False); optimizer.zero_grad(set_to_none=True) stays inside the timed invocation exactly as in source accumulate(), never pre-cleared in reset().",
+            "Work amount frozen per request['workload'] (world_size=2, micro_batch=1, sequence_length=128, accumulation_steps=4 -> effective batch 8, 1024 tokens per step); dimensions and counts are read from request['workload'] in prepare(), not embedded as constants, so a validated variant reuses this adapter.",
+            "reset(state) restores the initial CPU state dict before every measured invocation; timed step ends with torch.cuda.synchronize() as in source step(); step time is the per-rank local wall time aggregated by the framework (max across ranks), with control barriers excluded.",
+            "Correctness scope is source reference fidelity only: rank-0 serial no-DDP accumulation of the same global batch compared with grad/parameter tolerances, plus bit-exact cross-rank gradient replicas; observe() therefore exposes the full loss, all gradients and all updated parameters, and no accuracy or convergence claim is made.",
+            "Objective semantics frozen: communication_kernel_sum_ms is the per-rank sum of device NCCL kernel durations over the full step (includes device waiting, not wire/critical-path time), aggregated max across ranks then median over the profiled repeats, collected by the framework's torch_communication collector in separate diagnostic runs under the step_ms <= 1.05x baseline constraint."
+          ],
+          "objective": {
+            "name": "communication_kernel_sum_ms",
+            "unit": "ms",
+            "direction": "minimize",
+            "constraints": [
+              {
+                "metric": "step_ms",
+                "op": "le",
+                "baseline_ratio": 1.05,
+                "rank_aggregation": "max"
+              }
+            ],
+            "source": {
+              "collector": "torch_communication",
+              "field": "communication_kernel_sum_ms"
+            },
+            "rank_aggregation": "max"
+          },
+          "workload": {
+            "id": "accumulated_step",
+            "world_size": 2,
+            "micro_batch": 1,
+            "sequence_length": 128,
+            "accumulation_steps": 4,
+            "goals": [
+              {
+                "id": "step",
+                "metric": "step_ms",
+                "direction": "min"
+              },
+              {
+                "id": "communication",
+                "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+                "direction": "min",
+                "constraints": {
+                  "step_ms_max_baseline_ratio": 1.05
+                }
+              }
+            ]
+          },
+          "quality": {
+            "atol": 1e-06,
+            "rtol": 0.0001,
+            "grad_atol": 1e-06,
+            "grad_rtol": 0.0001,
+            "parameter_atol": 1e-06,
+            "parameter_rtol": 0.0001
+          },
+          "missing_information": [],
+          "assumptions": [
+            "The worker has already bound CUDA and initialized the NCCL process group; the adapter only uses context['device'] (never a hardcoded physical GPU) and creates the source's side gloo control group via dist.new_group for pre-step barriers, destroying nothing.",
+            "inputs/source/workloads.json ships next to the adapter and is read for the frozen GPT-2 architecture dims; if it is absent, identical frozen fallback dims (n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024) are used. Workload dimensions always come from request['workload'].",
+            "SGD momentum=0.0 means the optimizer holds no state between steps, so reloading the initial module state dict is a complete reset, exactly matching source reset(); DDP reducer carries no cross-step numerics.",
+            "Gradients remain valid after optimizer.step() until the next invocation's zero_grad, so observe() run immediately after run() sees the averaged gradients and post-update parameters; observations are detached CPU clones so later resets cannot alias them.",
+            "The framework collects communication_kernel_sum_ms via its torch_communication collector in separate diagnostic runs, performs cross-rank gradient-replica validation and passive bucket inventory itself; the adapter reports no communication value and installs no hook, so those are not missing task semantics.",
+            "Framework measurement fields (warmup=2, repeats=5, continuous_steps=2) are infrastructure: one run() is one accumulated step, and consecutive continuous steps run back-to-back with reset only before the sequence, which the stateless-after-reset design reproduces.",
+            "The source's held-out workload 'longer_sequence' (sequence_length=256, accumulation_steps=2) is a reserved validation configuration, not part of this frozen request, and is not executed.",
+            "set_mode('quality'/'measure'/'profile') does not alter execution or work amount: the source has no separate correctness-capture path, so full gradients and parameters are observable after the identical timed step in every mode."
+          ]
+        }
+      }
+    }
+  ]
+}

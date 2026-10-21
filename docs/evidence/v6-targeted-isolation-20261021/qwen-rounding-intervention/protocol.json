@@ -1,0 +1,7 @@
+{
+  "scope": "Developer arithmetic intervention only, not Agent-generated repair. Replace weighted fused RMSNorm by unweighted fused BF16 output then BF16 weight multiplication at both gate and steady invocation. All thresholds, guards, selected sites and parent bundles unchanged. No publication.",
+  "original_sha256": "5c702066f5ab37b92cd576c648a37e13a9552aaa5c5dd175fa70b8ac205798e5",
+  "changed_sha256": "7348a0057f228b373c7f372f62e223b6561a87922593ad748a4d28199b726adb",
+  "old_expression": "_fused_rms_norm(hidden_states, normalized_shape, weight, eps)[0]",
+  "new_expression": "(_fused_rms_norm(hidden_states, normalized_shape, None, eps)[0] * weight)"
+}

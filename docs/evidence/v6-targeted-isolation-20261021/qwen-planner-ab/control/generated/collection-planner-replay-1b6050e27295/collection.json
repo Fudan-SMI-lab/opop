@@ -1,0 +1,25 @@
+{
+  "collectors": [
+    "candidate_diagnostics",
+    "nsys"
+  ],
+  "requested_fields": [
+    "candidate_diagnostics.per_bundle_output_error",
+    "candidate_diagnostics.earliest_execution_divergence",
+    "candidate_diagnostics.route_corroboration.fused-rms-norm",
+    "candidate_diagnostics.route_corroboration.parent-delegate",
+    "candidate_diagnostics.exception_evidence.flash-dispatch-refused",
+    "nsys.kernel_entries.fused_rms_norm",
+    "nsys.kernel_entries.parent_rms_norm",
+    "nsys.kernel_entries.flash_bundle_absence"
+  ],
+  "unavailable_fields": {
+    "communication.nccl_algorithm_protocol": "Single-device task on one leased RTX 4090; observations.json reports the communication capability not_applicable (single-device) and request.json has distributed_backend null, so there are no NCCL algorithm/protocol/channel decisions to capture.",
+    "communication.collective_calibration_allreduce": "No collective ops in this workload; a synthetic full-world SUM allreduce reference experiment has no collective to calibrate against on a single GPU.",
+    "device_telemetry.per_collective_pcie_bytes": "No collectives exist; device_telemetry provides device-wide NVML PCIe/utilization/memory readings with native windows that cannot be attributed per-operation, and PCIe/NVLink traffic must not be invented from logical payload or memcpy sizes.",
+    "binding_cost.parent_vs_binding_only_passthrough": "Both bundles bound effective 'direct' with reason 'no functional replacements' (evaluation.json setup); the bundles replace the parent rather than adding a legacy binding layer, so there is no additive binding-passthrough dimension to compare.",
+    "candidate_metrics.ttft_ms": "Candidate rank metrics are empty because both continuous-step quality checks failed (output.logits mismatch, 38.8% elements, max_abs_error 4.09); ttft_ms for this candidate is unknown until the correctness divergence is resolved, and the parent's intrusive discovery timing must not be substituted."
+  },
+  "rationale": "The observed uncertainty is a correctness failure, not a measured performance regression: the candidate (revision f5a797fab6e3796855819951a220124f9d6305b3152f9de9304b60b3a17d4030) ran to completion (receipt status passed) but result.valid is false with output.logits mismatches at both continuous steps, so it yielded no metrics and was rejected as no_valid_parameter_candidate. The only route evidence is candidate-declared telemetry, which the receipt explicitly says is not independent proof: bundle trial-recovered-19ccfe875f-param-44a0e934 declares fused-rms-norm/fused-rms-norm-gated on ~144 call sites, and bundle trial-fc57bca7b9-param-f71a7c8a declares parent-delegate plus two parent-fallback:setup-failure:flash-dispatch-refused routes on call 2441f10600ba127de5cb753c. It is unknown which bundle first diverges, whether the declared routes match the kernels that actually executed, and whether the flash-dispatch refusal has real exception evidence. candidate_diagnostics is selected to localize per-bundle/per-call-site output error, identify the earliest execution divergence (the check's failure_scope is only the first failing observation in comparison traversal), and capture actual exception evidence for the flash-dispatch-refused fallback. nsys is selected as independent native trace evidence to corroborate attribution: fused RMSNorm kernel entries where fused-rms-norm routes are declared, parent/native rms_norm entries where parent-delegate/fallback is declared, and absence of flash-bundle kernels, resolving the candidate-reported-vs-actually-executed attribution question that the already-completed torch collection (coverage.json: 66441/66441 kernels associated, 0 unassociated, 0 ambiguous forward sequences) cannot answer by itself. Excluded: torch (already ran with complete association); nccl_tuning, collective_calibration and device_telemetry (single-device task, no communication dimension; telemetry is device-wide, not per-op bytes); execution_timeline (no CPU-submit/synchronization ambiguity is in evidence and torch already associated all kernels, so its clock-alignment bounds add nothing to this correctness question); python_runtime (perturbative host-dispatch profiling, irrelevant to a numerics divergence); binding_cost (binding is effective direct with no functional replacements, so no binding-passthrough comparison exists). No optimization action or failure-category policy is presumed: the quality failure is not assumed to be an algorithm cost of either bundle, and the reference/parent invocations are not assumed to be fallback-caused regression.",
+  "revision": "f5a797fab6e3796855819951a220124f9d6305b3152f9de9304b60b3a17d4030"
+}

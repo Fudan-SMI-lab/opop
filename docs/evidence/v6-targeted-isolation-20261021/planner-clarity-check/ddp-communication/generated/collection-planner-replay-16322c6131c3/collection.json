@@ -1,0 +1,31 @@
+{
+  "collectors": [
+    "binding_cost",
+    "candidate_diagnostics",
+    "execution_timeline",
+    "nsys",
+    "nccl_tuning"
+  ],
+  "requested_fields": [
+    "binding_cost.parent_vs_binding_only_whole_invocation_ms_abba",
+    "candidate_diagnostics.executed_candidate_calls",
+    "candidate_diagnostics.handled_exceptions_traceback_locations",
+    "candidate_diagnostics.scalar_returns",
+    "execution_timeline.cpu_to_cuda_submit_associations",
+    "execution_timeline.synchronization_events",
+    "execution_timeline.per_device_intervals",
+    "execution_timeline.gradient_post_accumulate_callbacks",
+    "nsys.nccl_kernel_intervals_stream_concurrency",
+    "nsys.final_microbatch_overlap_and_gaps",
+    "nccl_tuning.algorithm_protocol_channel_decisions"
+  ],
+  "unavailable_fields": {
+    "nccl_kernel_wait_vs_wire_split_ms": "No available collector separates NCCL kernel waiting from wire transfer; nsys timelines alone cannot, and per-collective link timing does not exist. Parent observations already show the split indirectly (identical 28351488-byte buckets: rank1 ~14.2-22.7ms vs rank0 ~3.2ms), so rank-1 kernel duration is wait-dominated, but a direct wait/wire number is unobtainable.",
+    "per_collective_pcie_nvlink_bytes": "Device-wide NVML windows only (device_telemetry); capability probe already records pcie_bytes/nvlink_bytes as unknown ('Hardware counters require a successful collector-specific probe; topology and logical payload do not measure traffic'). Deriving bytes from logical payload (28351488/157541376) or memcpy sizes is not permitted.",
+    "per_group_binding_overhead_ms": "binding_cost reports whole-invocation parent-vs-binding-passthrough cost in clean AB/BA workers, not per-group or per-site effects.",
+    "gpu_readiness_to_consumer_completion_alignment": "execution_timeline reports clock alignment bounds for CPU submissions only; GPU readiness and consumer completion may remain unknown.",
+    "allreduce_lower_bound_or_critical_path_ms": "collective_calibration is a reference experiment with correctness checks, not a performance lower bound or critical-path estimate, so no defensible bound is available; not requested for this decision."
+  },
+  "rationale": "Candidate 03c5e5... (sole revision in revisions.json; additive bundle trial-recovered-0f41339f0a-param-afbf38f4 over parent 30c61d..., direct binding 'no functional replacements', candidate-declared route 'aligned_final_backward_barrier' invoked 2x per rank with 0 framework fallbacks and 0 reference invocations) failed parameter screening solely on the step_ms constraint: 144.138ms vs limit 138.660ms (original reference 132.057ms), while the objective's max-rank communication_kernel_sum_ms is essentially unchanged (rank1: 64.149 -> 64.149; only rank0 improved 74.676 -> 63.433). The decisive uncertainties are: (1) whether the ~12ms step regression is binding overhead or candidate logic; (2) what the candidate actually executes and whether its candidate-reported route label holds; (3) whether the aligned final-backward barrier serialized/added synchronization around the final microbatch allreduce (parent observations show 13 allreduces, 12x28351488B + 1x157541376B, with rank-1 kernels 14.2-22.7ms vs rank-0 ~3.2ms on identical buckets, i.e. wait/skew-dominated, so kernel-duration reduction hinges on overlap and arrival alignment, not wire speed); (4) the actual NCCL algorithm/protocol/channel decisions at the observed sizes/dtypes, since kernel entry names alone (ncclDevKernel_AllReduce_Sum_f32_RING_LL) do not identify the protocol. Selections: binding_cost (applicable: additive candidate retaining an installed-parent-empty bundle set, direct binding eligible, and 'no functional replacements' does not imply zero overhead) isolates whole-invocation binding overhead in clean AB/BA workers with full quality checks. candidate_diagnostics records executed candidate calls, handled exceptions with propagated library traceback locations, and scalar returns to corroborate the declared route with actual exception evidence rather than candidate-reported telemetry. execution_timeline supplies CPU-to-CUDA submit associations, synchronization events, per-device intervals and passive CPU gradient post-accumulate callbacks to locate the regression host/device-side and detect added synchronization from the barrier route; it does not replace any communication hook. nsys (available in request.tools and listed) resolves the overlap/attribution question from the GPU side: NCCL kernel intervals, stream concurrency with compute, and gaps around the final microbatch; bucket identity is already established by observed gradient-storage membership in observations.json, so nsys is used only for overlap/gap attribution, not bucket proof or waiting/wire separation. nccl_tuning captures actual NCCL algorithm/protocol/channel decisions at the observed sizes (28351488B and 157541376B, fp32 SUM, world 2) in a separate warmed worker to judge whether kernel durations are protocol-limited. Excluded: torch (already ran; it is the source of communication_kernel_sum_ms); device_telemetry (device-wide native-window readings, not per-collective bytes, and link counters are already recorded unknown); collective_calibration (reference experiment, not a lower bound; does not address skew/overlap or the step constraint); python_runtime (perturbs execution with non-clean inclusive/self times; host-side attribution is covered cleanly by binding_cost plus execution_timeline for this decision). The plan requests collection on this exact candidate; revision set to its exact ID.",
+  "revision": "03c5e5abcdf4f4cf519e4e909e2b48a3d8e54414dd924a31dabd04f5f3878fbb"
+}

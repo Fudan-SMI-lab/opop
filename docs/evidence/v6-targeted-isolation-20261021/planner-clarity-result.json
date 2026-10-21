@@ -1,0 +1,150 @@
+{
+  "runs": [
+    {
+      "case": "qwen-ttft",
+      "status": "generated",
+      "receipt": {
+        "role": "collection-planner",
+        "session": "ses_ea2374d62ffedmJhCViw5BCBbI",
+        "message": "msg_15dcb5d39001MAbfVrD02Wurdc",
+        "model": "zhipuai/glm-5.3",
+        "usage": {
+          "schema_version": 1,
+          "mode": "observe_only",
+          "messages": 8,
+          "reported_cost": 0.131079173,
+          "messages_without_cost": 0,
+          "unfinished_messages": 0,
+          "tokens": {
+            "total": 221565.0,
+            "input": 35025.0,
+            "output": 2681.0,
+            "reasoning": 5939.0,
+            "cache.read": 177920.0,
+            "cache.write": 0.0
+          },
+          "sessions": [
+            {
+              "id": "ses_ea2374d62ffedmJhCViw5BCBbI",
+              "status": "observed",
+              "detail": null
+            }
+          ],
+          "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+        },
+        "sandbox": "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/planner-clarity-check/qwen-ttft/sandboxes/collection-planner-replay-4dc56eb95fec",
+        "outputs": [
+          "collection.json"
+        ],
+        "feedback_provided": false,
+        "contract_repairs": 0,
+        "generation_snapshots": [
+          "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/planner-clarity-check/qwen-ttft/generation-snapshots/generation-a0e38ceffc28.json"
+        ]
+      },
+      "plan": {
+        "collectors": [
+          "candidate_diagnostics",
+          "nsys",
+          "binding_cost"
+        ],
+        "requested_fields": [
+          "candidate_diagnostics.handled_exceptions.traceback_locations",
+          "candidate_diagnostics.executed_calls.flash_dispatch_refused_context",
+          "candidate_diagnostics.executed_calls.fused_rms_norm_route_sites",
+          "candidate_diagnostics.scalar_returns",
+          "nsys.cuda_kernel_timeline.prefill_window",
+          "nsys.kernel_entry_names.fused_rms_norm_corroboration",
+          "binding_cost.parent_vs_binding_only_passthrough.whole_invocation_ms",
+          "binding_cost.quality_check_results"
+        ],
+        "unavailable_fields": {
+          "nccl_tuning.algorithm_protocol_channel_decisions": "Not applicable: single-device task, distributed_backend null, communication capability reported not_applicable 'single-device task' in observations.json; there are no NCCL collectives whose tuning decisions could be captured.",
+          "collective_calibration.synthetic_allreduce_reference": "Not applicable: no collective communication exists in this single-GPU inference workload; a warmed full-world synthetic allreduce has no corresponding operator to calibrate against.",
+          "device_telemetry.per_collective_or_per_kernel_pcie_bytes": "No collectives in the workload, and NVML PCIe/utilization/memory readings are device-wide samples with native windows; per-collective or per-prefill byte attribution is not derivable and logical/memcpy sizes must not be converted into inferred traffic.",
+          "candidate_diagnostics.per_site_numerical_error": "candidate_diagnostics does not compare intermediate tensors or measure per-site numerical error; no other available collector supplies this dimension on this candidate, so it remains unknown.",
+          "candidate_diagnostics.first_numerical_divergence_location": "No available collector locates the first numerical divergence between candidate and parent outputs; remains unknown.",
+          "binding_cost.per_group_or_per_site_binding_overhead": "binding_cost reports whole-invocation parent-vs-binding-only-passthrough cost and omits candidate build/computation; per-group/per-route effects are not separable from it.",
+          "python_runtime.clean_host_dispatch_scores": "python_runtime perturbs execution and its cProfile inclusive/self times are not clean performance scores or GPU compute durations; the clean AB/BA binding comparison from binding_cost covers the host binding-cost question, so this dimension stays unmeasured.",
+          "nsys.nccl_wait_vs_wire_separation_and_bucket_identity": "No NCCL traffic or gradient buckets exist in this single-GPU inference task; nsys timelines cannot separate communication phases or prove bucket identity here because there is nothing to separate or identify."
+        },
+        "rationale": "Frozen objective: minimize ttft_ms for the interactive workload (batch=1, prompt_tokens=256, single RTX 4090, BF16 SDPA Qwen3-4B); clean reference ttft_ms=25.11. The only listed revision is f5a797fab6e3796855819951a220124f9d6305b3152f9de9304b60b3a17d4030 (bundles trial-fc57bca7b9-param-f71a7c8a and trial-recovered-19ccfe875f-param-44a0e934), and the framework will run collectors on exactly this candidate. Observed uncertainty from evaluation.json: the screening decision is 'no_valid_parameter_candidate' with quality_and_coverage_valid=false, and all route evidence is candidate-declared telemetry - 728 fused-rms-norm/fused-rms-norm-gated invocations and 2 'parent-fallback:setup-failure:flash-dispatch-refused' routes on call 2441f10600ba127de5cb753c - with the explicit interpretation that such labels must be corroborated by traces or actual exception evidence. (1) candidate_diagnostics: capture the handled exception and propagated library traceback locations behind the flash-dispatch refusal plus executed calls and scalar returns, establishing whether a real library-side setup refusal occurred; no assumption is made that the 2 fallback sites are a performance regression or that reference invocations (68/145 per bundle) are necessarily fallback - they may implement fallback, verification or composition. (2) nsys (available, runs separately): resolve the attribution questions the declared routes raise - confirm fused RMS-norm kernel entries actually executed during the measured prefill window, locate the two refused-dispatch sites' kernel context, and attribute prefill kernel time against the 25.1 ms TTFT budget; torch already ran (coverage.json shows all 66441 kernels associated), so nsys is selected only for route corroboration and prefill attribution, not re-profiling. (3) binding_cost: a candidate exists and is additive (parent 20b69c25... retained, both bundles added; bundle trial-fc57bca7b9 delegates to the parent on 62 of 64 invocations), and the binding summary (requested legacy, effective direct, reason 'no functional replacements', functional_sites null) is exactly the eligible direct-binding case where zero functional replacements does not imply zero binding overhead for ttft-relevant host dispatch; requesting the clean AB/BA whole-invocation passthrough comparison with full quality checks, which will also run in subsequent candidate resource feedback. Excluded: nccl_tuning, collective_calibration and device_telemetry (single-device, no collectives; device-wide NVML readings cannot yield per-kernel attribution), python_runtime (perturbs execution; redundant with the clean binding_cost AB/BA), execution_timeline (torch trace already associated every CPU submission to its CUDA kernel with no unassociated kernels or ambiguous sequences, and the workload's explicit first-token synchronize already bounds GPU completion, so no CPU-submit attribution gap remains).",
+        "revision": "f5a797fab6e3796855819951a220124f9d6305b3152f9de9304b60b3a17d4030"
+      }
+    },
+    {
+      "case": "ddp-communication",
+      "status": "generated",
+      "receipt": {
+        "role": "collection-planner",
+        "session": "ses_ea2374d30ffeOO70VxAh4O9Rsq",
+        "message": "msg_15dcbdeae00123EmpdVa3Uj6Uj",
+        "model": "zhipuai/glm-5.3",
+        "usage": {
+          "schema_version": 1,
+          "mode": "observe_only",
+          "messages": 9,
+          "reported_cost": 0.17358384324,
+          "messages_without_cost": 0,
+          "unfinished_messages": 0,
+          "tokens": {
+            "total": 301680.0,
+            "input": 50426.0,
+            "output": 2724.0,
+            "reasoning": 7122.0,
+            "cache.read": 241408.0,
+            "cache.write": 0.0
+          },
+          "sessions": [
+            {
+              "id": "ses_ea2374d30ffeOO70VxAh4O9Rsq",
+              "status": "observed",
+              "detail": null
+            }
+          ],
+          "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+        },
+        "sandbox": "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/planner-clarity-check/ddp-communication/sandboxes/collection-planner-replay-16322c6131c3",
+        "outputs": [
+          "collection.json"
+        ],
+        "feedback_provided": false,
+        "contract_repairs": 0,
+        "generation_snapshots": [
+          "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/planner-clarity-check/ddp-communication/generation-snapshots/generation-48ba89ca3b74.json"
+        ]
+      },
+      "plan": {
+        "collectors": [
+          "binding_cost",
+          "candidate_diagnostics",
+          "execution_timeline",
+          "nsys",
+          "nccl_tuning"
+        ],
+        "requested_fields": [
+          "binding_cost.parent_vs_binding_only_whole_invocation_ms_abba",
+          "candidate_diagnostics.executed_candidate_calls",
+          "candidate_diagnostics.handled_exceptions_traceback_locations",
+          "candidate_diagnostics.scalar_returns",
+          "execution_timeline.cpu_to_cuda_submit_associations",
+          "execution_timeline.synchronization_events",
+          "execution_timeline.per_device_intervals",
+          "execution_timeline.gradient_post_accumulate_callbacks",
+          "nsys.nccl_kernel_intervals_stream_concurrency",
+          "nsys.final_microbatch_overlap_and_gaps",
+          "nccl_tuning.algorithm_protocol_channel_decisions"
+        ],
+        "unavailable_fields": {
+          "nccl_kernel_wait_vs_wire_split_ms": "No available collector separates NCCL kernel waiting from wire transfer; nsys timelines alone cannot, and per-collective link timing does not exist. Parent observations already show the split indirectly (identical 28351488-byte buckets: rank1 ~14.2-22.7ms vs rank0 ~3.2ms), so rank-1 kernel duration is wait-dominated, but a direct wait/wire number is unobtainable.",
+          "per_collective_pcie_nvlink_bytes": "Device-wide NVML windows only (device_telemetry); capability probe already records pcie_bytes/nvlink_bytes as unknown ('Hardware counters require a successful collector-specific probe; topology and logical payload do not measure traffic'). Deriving bytes from logical payload (28351488/157541376) or memcpy sizes is not permitted.",
+          "per_group_binding_overhead_ms": "binding_cost reports whole-invocation parent-vs-binding-passthrough cost in clean AB/BA workers, not per-group or per-site effects.",
+          "gpu_readiness_to_consumer_completion_alignment": "execution_timeline reports clock alignment bounds for CPU submissions only; GPU readiness and consumer completion may remain unknown.",
+          "allreduce_lower_bound_or_critical_path_ms": "collective_calibration is a reference experiment with correctness checks, not a performance lower bound or critical-path estimate, so no defensible bound is available; not requested for this decision."
+        },
+        "rationale": "Candidate 03c5e5... (sole revision in revisions.json; additive bundle trial-recovered-0f41339f0a-param-afbf38f4 over parent 30c61d..., direct binding 'no functional replacements', candidate-declared route 'aligned_final_backward_barrier' invoked 2x per rank with 0 framework fallbacks and 0 reference invocations) failed parameter screening solely on the step_ms constraint: 144.138ms vs limit 138.660ms (original reference 132.057ms), while the objective's max-rank communication_kernel_sum_ms is essentially unchanged (rank1: 64.149 -> 64.149; only rank0 improved 74.676 -> 63.433). The decisive uncertainties are: (1) whether the ~12ms step regression is binding overhead or candidate logic; (2) what the candidate actually executes and whether its candidate-reported route label holds; (3) whether the aligned final-backward barrier serialized/added synchronization around the final microbatch allreduce (parent observations show 13 allreduces, 12x28351488B + 1x157541376B, with rank-1 kernels 14.2-22.7ms vs rank-0 ~3.2ms on identical buckets, i.e. wait/skew-dominated, so kernel-duration reduction hinges on overlap and arrival alignment, not wire speed); (4) the actual NCCL algorithm/protocol/channel decisions at the observed sizes/dtypes, since kernel entry names alone (ncclDevKernel_AllReduce_Sum_f32_RING_LL) do not identify the protocol. Selections: binding_cost (applicable: additive candidate retaining an installed-parent-empty bundle set, direct binding eligible, and 'no functional replacements' does not imply zero overhead) isolates whole-invocation binding overhead in clean AB/BA workers with full quality checks. candidate_diagnostics records executed candidate calls, handled exceptions with propagated library traceback locations, and scalar returns to corroborate the declared route with actual exception evidence rather than candidate-reported telemetry. execution_timeline supplies CPU-to-CUDA submit associations, synchronization events, per-device intervals and passive CPU gradient post-accumulate callbacks to locate the regression host/device-side and detect added synchronization from the barrier route; it does not replace any communication hook. nsys (available in request.tools and listed) resolves the overlap/attribution question from the GPU side: NCCL kernel intervals, stream concurrency with compute, and gaps around the final microbatch; bucket identity is already established by observed gradient-storage membership in observations.json, so nsys is used only for overlap/gap attribution, not bucket proof or waiting/wire separation. nccl_tuning captures actual NCCL algorithm/protocol/channel decisions at the observed sizes (28351488B and 157541376B, fp32 SUM, world 2) in a separate warmed worker to judge whether kernel durations are protocol-limited. Excluded: torch (already ran; it is the source of communication_kernel_sum_ms); device_telemetry (device-wide native-window readings, not per-collective bytes, and link counters are already recorded unknown); collective_calibration (reference experiment, not a lower bound; does not address skew/overlap or the step constraint); python_runtime (perturbs execution with non-clean inclusive/self times; host-side attribution is covered cleanly by binding_cost plus execution_timeline for this decision). The plan requests collection on this exact candidate; revision set to its exact ID.",
+        "revision": "03c5e5abcdf4f4cf519e4e909e2b48a3d8e54414dd924a31dabd04f5f3878fbb"
+      }
+    }
+  ]
+}

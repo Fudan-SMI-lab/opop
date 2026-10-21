@@ -1,0 +1,45 @@
+from pathlib import Path
+import json, time, traceback, sqlite3, hashlib
+from kernel_optimizer.config import load_config
+from kernel_optimizer.project.branches import fork_run
+from kernel_optimizer.project.search import ProjectSearch
+from kernel_optimizer.project.versioning import promote_version
+from kernel_optimizer.runtime.execution import write_json
+
+root=Path('/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021')
+old=Path('/root/autodl-tmp/dev/v6-work/evidence-followup-20261021')
+while not (root/'qwen-repair-ab-completed.json').exists():time.sleep(5)
+rows=[]
+for item in json.loads((root/'qwen-repair-ab-result.json').read_text())['runs']:
+    if not item.get('decision',{}).get('accepted'):continue
+    row={'arm':item['arm'],'scope':'One valid independent full-version AB/BA with the original launch environment (TMPDIR unset), after the prior developer runner changed TMPDIR to a noexec filesystem and all candidate norm calls fell back. Candidate bytes/contract unchanged; prior invalid-native-path attempt retained. No publication or repetition based on scores.'}
+    try:
+        source=Path(item['output']);config=load_config(old/'qwen-ttft-fresh-private.yaml',[])
+        origin=ProjectSearch(config,source);out=root/'qwen-independent-matched'/item['arm']
+        fork_run(source,out,revision_id=origin.prepared['revision'])
+        search=ProjectSearch(config,out)
+        result=promote_version(search,source,revision_id=item['decision']['revision'],publish=False)
+        row.update(status='evaluated',output=str(out),trial=result['trial'],decision=result['decision'],
+                   measurement=result['measurement'],quality=result['quality'],coverage_errors=result['coverage_errors'],bundles=result['bundles'])
+        write_json(root/'qwen-independent-matched-result.json',{'runs':rows+[row]})
+        if result['quality']=='pass':
+            revision=search.revisions.revision(result['decision']['revision'])
+            native=search.collect_extra(revision,['nsys']);write_json(out/'final-native.json',native)
+            evidence=native['nsys'];ranks=[]
+            for rank,e in enumerate(evidence.get('ranks',[])):
+                if e.get('status')!='observed':
+                    ranks.append({'rank':rank,'status':e.get('status'),'reason':e.get('reason')});continue
+                p=Path(e['evidence']);db=sqlite3.connect('file:'+str(p)+'?mode=ro',uri=True)
+                kernels=db.execute('SELECT s.value,k.graphNodeId FROM CUPTI_ACTIVITY_KIND_KERNEL k JOIN StringIds s ON s.id=k.demangledName').fetchall()
+                selected={}
+                for name,graph in kernels:
+                    if any(term in name.lower() for term in ['square','norm','rms','flash','fmha','tail']):selected[name]=selected.get(name,0)+1
+                ranks.append({'rank':rank,'status':'observed','sqlite':str(p),'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+                              'kernels':len(kernels),'graph_node_kernels':sum(bool(g) for _,g in kernels),'selected_kernels':selected})
+                db.close()
+            row['native']={'status':evidence['status'],'provenance':evidence.get('provenance'),'ranks':ranks,
+                           'scope':'Separate intrusive trace of this exact full revision; not performance scoring.'}
+    except Exception as e:row.update(status='error',error=str(e),traceback=traceback.format_exc())
+    rows.append(row);write_json(root/'qwen-independent-matched-result.json',{'runs':rows})
+    print(json.dumps(row),flush=True)
+write_json(root/'qwen-independent-matched-completed.json',{'completed':True,'runs':len(rows)})

@@ -1,0 +1,22 @@
+{
+  "collectors": [
+    "candidate_diagnostics",
+    "nsys"
+  ],
+  "requested_fields": [
+    "candidate_diagnostics.installed_binding_sites",
+    "candidate_diagnostics.exception_evidence.flash_dispatch_refused",
+    "candidate_diagnostics.route_corroboration.fused_rms_norm",
+    "candidate_diagnostics.reference_invocation_roles",
+    "nsys.kernel_entry_names",
+    "nsys.rmsnorm_site_kernel_attribution"
+  ],
+  "unavailable_fields": {
+    "nccl_algorithm_protocol_channels": "Single-device task: distributed_backend is null and the communication capability is not_applicable with reason 'single-device task' (request.json, observations.json); no NCCL collectives exist, so nccl_tuning has nothing to observe and kernel entry names could not identify protocol anyway.",
+    "per_collective_pcie_nvlink_bytes": "No collectives on this single-GPU inference workload; device_telemetry would only supply device-wide NVML PCIe/utilization/memory rates with native sampling windows, not per-collective bytes, and traffic must not be invented from logical payload or memcpy sizes.",
+    "gradient_bucket_identity": "Inference-only workload under torch.inference_mode with no backward pass (request.json numerical/state policy; coverage.json backward_associated_kernels=0, autograd_ranges=0); no gradient buckets exist, so exact bucket links are unavailable in principle.",
+    "clean_candidate_score": "evaluation.json stage parameter_screening decided 'no_valid_parameter_candidate' with rank metrics {} and quality_and_coverage_valid=false although endpoint status passed; no clean per-candidate ttft_ms exists yet and it is retained as unknown rather than substituted by the original reference (ttft_ms=25.111518)."
+  },
+  "rationale": "Frozen objective is single-device TTFT on one RTX 4090 (distributed_backend=null, communication not_applicable), so nccl_tuning, collective_calibration and device-wide device_telemetry readings cannot bear on the open questions, and the torch collector already ran with complete association (coverage.json: 66441/66441 kernels associated, 0 unassociated, 0 ambiguous forward sequences). The observed uncertainty in evaluation.json is attribution of candidate-reported routing, not timing: bundle trial-fc57bca7b9-param-f71a7c8a declares 'parent-fallback:setup-failure:flash-dispatch-refused' (2 of 64 invocations, call 2441f10600ba127de5cb753c) alongside 62 'parent-delegate' routes, and bundle trial-recovered-19ccfe875f-param-44a0e934 declares 728 'fused-rms-norm'/'fused-rms-norm-gated' routes over 145 reference invocations; the endpoint interpretation states these labels are candidate telemetry without independent native proof. The binding reason 'no functional replacements' describes functional dispatch only: with effective=direct binding and functional_sites=null, module/project callable replacement sites are unverified even though 64 and 728 candidate invocations prove candidates did run. Plan: candidate_diagnostics on this exact candidate captures the actual exception evidence behind the flash-dispatch-refused fallback, the true installed direct-binding sites, and the roles of reference invocations (fallback vs verification vs composition); nsys runs separately to supply an independent kernel-entry timeline attributing the rms-norm call sites to actual fused kernels versus parent kernels during the measured invocation window. Excluded: execution_timeline (a second plain trace duplicating the already-associated torch trace; no sync, overlap or graph-tracing question is open), python_runtime (perturbs execution and no host-dispatch or binding-cost uncertainty is observed), binding_cost (no additive-overhead question is raised, bundle 2 replaces parent behavior at routed sites rather than being a clean additive passthrough, and selection would also commit it to subsequent resource feedback), device_telemetry, nccl_tuning, collective_calibration (inapplicable as listed above). No performance regression, algorithm cost, or genuine fallback is assumed from route labels alone; candidates whose routes stay uncorroborated remain ambiguous after collection.",
+  "revision": "f5a797fab6e3796855819951a220124f9d6305b3152f9de9304b60b3a17d4030"
+}

@@ -1,0 +1,64 @@
+{
+  "plan": {
+    "collectors": [
+      "nsys",
+      "execution_timeline",
+      "candidate_diagnostics"
+    ],
+    "requested_fields": [
+      "nsys.prefill_window_kernel_timeline: independent native kernel entries and ordering within the t0-to-first-token-ready window, to corroborate the candidate-declared bitexact-composite and bitexact-composite-gated routes (728 invocations) with actual executed kernels rather than candidate-reported telemetry",
+      "nsys.prefill_window_gaps_and_sync: GPU idle gaps, serialization and synchronize events inside the ttft window, including any silent parent-fallback execution analogous to the trial bundle's parent-fallback:setup-failure:flash-dispatch-refused route",
+      "execution_timeline.cpu_submit_to_cuda_association: submit-versus-execute intervals for prefill operators to split ttft_ms into host-dispatch and GPU-execution components",
+      "execution_timeline.first_token_sync_bounds: synchronization points and clock-alignment bounds around the explicit first-token-ready torch.cuda.synchronize that closes the ttft window",
+      "candidate_diagnostics.route_and_exception_evidence: actual route decisions and any exception/setup-failure evidence for the candidate's call sites on this exact revision, to confirm or refute the declared composite/gated routing"
+    ],
+    "unavailable_fields": {
+      "nccl_algorithm_protocol_channel_decisions": "Single-device task on one leased RTX 4090; request.json has distributed_backend null and observations.json marks communication not_applicable with reason 'single-device task'; no NCCL communicators exist, so nccl_tuning has no referent and kernel entry names could not identify protocol anyway.",
+      "per_collective_bytes_and_clean_collective_timing": "No collectives occur in the measured invocation; collective_calibration's synthetic full-world allreduce has no counterpart to join to operator groups on this workload.",
+      "per_operation_pcie_nvlink_traffic": "The measured unit starts after the prompt tensor is already GPU-resident; device_telemetry provides only device-wide NVML rates with native windows that cannot be attributed per operation, and PCIe/NVLink traffic must not be invented from logical payload or memcpy sizes.",
+      "binding_layer_overhead_ab": "Both bundles bound with effective 'direct' binding, reason 'no functional replacements' (evaluation setup); no functional binding layer exists to isolate with binding_cost, which in any case reports only whole-invocation cost.",
+      "gpu_readiness_and_consumer_completion_bounds": "execution_timeline reports clock-alignment bounds for CPU submissions only; GPU readiness and consumer completion may remain unknown and are retained as unknown rather than inferred."
+    },
+    "rationale": "The only listed revision is ab9f308cda6860bd102fb93077b9d1414f1d7fadcfbfc7b997cd53131bf09f2d (bundle repair-treatment-param-70a89eea): quality pass, ttft_ms 23.57 vs paired parent 24.83, decode 671 ms at 46.2 tok/s, zero framework fallbacks. Two uncertainties remain in the observed evidence. (1) Route truth: all 728 candidate invocations are labeled bitexact-composite / bitexact-composite-gated, but evaluation.interpretation states these are candidate-reported telemetry, not independent native proof, and the earlier trial bundle on this same code path silently fell back (parent-fallback:setup-failure:flash-dispatch-refused, 2 of 64 invocations), so route drift is demonstrably possible and the source of the ~1.26 ms TTFT improvement is unverified. (2) TTFT attribution: the remaining ~23.6 ms first-token window is not decomposed into GPU kernel execution versus host submission/synchronization stalls; the already-completed torch run (coverage.json: 66441/66441 kernels associated, 0 unassociated, 0 ambiguous) resolves kernel-to-operation attribution but neither corroborates declared routes nor times submit versus execute. Therefore: nsys (binary present in request tools) for an independent native kernel timeline of the prefill/first-token-ready window to corroborate the composite routes and expose idle gaps and any fallback execution; execution_timeline for CPU-to-CUDA submit associations, synchronization and per-device intervals to split ttft_ms between host dispatch and GPU execution; candidate_diagnostics for actual route and exception evidence on this exact candidate. Exclusions: torch already ran with full association; nccl_tuning, collective_calibration and per-collective fields have no referent on this single-GPU, no-communication workload; device_telemetry gives only device-wide readings that cannot attribute a GPU-resident-prompt TTFT window; binding_cost is inapplicable because effective binding is 'direct' with 'no functional replacements'; python_runtime is not selected because its perturbing cProfile drill-down is justified only if execution_timeline shows host-bound submission.",
+    "revision": "ab9f308cda6860bd102fb93077b9d1414f1d7fadcfbfc7b997cd53131bf09f2d"
+  },
+  "agent": {
+    "role": "collection-planner",
+    "session": "ses_ea221d6a9ffeDuyFg70Hul9Qhr",
+    "message": "msg_15de0c8e0001UbvGxMjdond9mS",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 8,
+      "reported_cost": 0.13611796756,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 214335.0,
+        "input": 37527.0,
+        "output": 2336.0,
+        "reasoning": 7560.0,
+        "cache.read": 166912.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea221d6a9ffeDuyFg70Hul9Qhr",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/qwen-repair-ab/treatment/sandboxes/collection-planner-1194a5df5280",
+    "outputs": [
+      "collection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/qwen-repair-ab/treatment/generation-snapshots/generation-bebdaf8b0dc6.json"
+    ]
+  }
+}

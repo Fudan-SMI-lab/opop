@@ -1,0 +1,72 @@
+{
+  "case": "qwen-ttft",
+  "status": "generated",
+  "receipt": {
+    "role": "collection-planner",
+    "session": "ses_ea2374d62ffedmJhCViw5BCBbI",
+    "message": "msg_15dcb5d39001MAbfVrD02Wurdc",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 8,
+      "reported_cost": 0.131079173,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 221565.0,
+        "input": 35025.0,
+        "output": 2681.0,
+        "reasoning": 5939.0,
+        "cache.read": 177920.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea2374d62ffedmJhCViw5BCBbI",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/planner-clarity-check/qwen-ttft/sandboxes/collection-planner-replay-4dc56eb95fec",
+    "outputs": [
+      "collection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/planner-clarity-check/qwen-ttft/generation-snapshots/generation-a0e38ceffc28.json"
+    ]
+  },
+  "plan": {
+    "collectors": [
+      "candidate_diagnostics",
+      "nsys",
+      "binding_cost"
+    ],
+    "requested_fields": [
+      "candidate_diagnostics.handled_exceptions.traceback_locations",
+      "candidate_diagnostics.executed_calls.flash_dispatch_refused_context",
+      "candidate_diagnostics.executed_calls.fused_rms_norm_route_sites",
+      "candidate_diagnostics.scalar_returns",
+      "nsys.cuda_kernel_timeline.prefill_window",
+      "nsys.kernel_entry_names.fused_rms_norm_corroboration",
+      "binding_cost.parent_vs_binding_only_passthrough.whole_invocation_ms",
+      "binding_cost.quality_check_results"
+    ],
+    "unavailable_fields": {
+      "nccl_tuning.algorithm_protocol_channel_decisions": "Not applicable: single-device task, distributed_backend null, communication capability reported not_applicable 'single-device task' in observations.json; there are no NCCL collectives whose tuning decisions could be captured.",
+      "collective_calibration.synthetic_allreduce_reference": "Not applicable: no collective communication exists in this single-GPU inference workload; a warmed full-world synthetic allreduce has no corresponding operator to calibrate against.",
+      "device_telemetry.per_collective_or_per_kernel_pcie_bytes": "No collectives in the workload, and NVML PCIe/utilization/memory readings are device-wide samples with native windows; per-collective or per-prefill byte attribution is not derivable and logical/memcpy sizes must not be converted into inferred traffic.",
+      "candidate_diagnostics.per_site_numerical_error": "candidate_diagnostics does not compare intermediate tensors or measure per-site numerical error; no other available collector supplies this dimension on this candidate, so it remains unknown.",
+      "candidate_diagnostics.first_numerical_divergence_location": "No available collector locates the first numerical divergence between candidate and parent outputs; remains unknown.",
+      "binding_cost.per_group_or_per_site_binding_overhead": "binding_cost reports whole-invocation parent-vs-binding-only-passthrough cost and omits candidate build/computation; per-group/per-route effects are not separable from it.",
+      "python_runtime.clean_host_dispatch_scores": "python_runtime perturbs execution and its cProfile inclusive/self times are not clean performance scores or GPU compute durations; the clean AB/BA binding comparison from binding_cost covers the host binding-cost question, so this dimension stays unmeasured.",
+      "nsys.nccl_wait_vs_wire_separation_and_bucket_identity": "No NCCL traffic or gradient buckets exist in this single-GPU inference task; nsys timelines cannot separate communication phases or prove bucket identity here because there is nothing to separate or identify."
+    },
+    "rationale": "Frozen objective: minimize ttft_ms for the interactive workload (batch=1, prompt_tokens=256, single RTX 4090, BF16 SDPA Qwen3-4B); clean reference ttft_ms=25.11. The only listed revision is f5a797fab6e3796855819951a220124f9d6305b3152f9de9304b60b3a17d4030 (bundles trial-fc57bca7b9-param-f71a7c8a and trial-recovered-19ccfe875f-param-44a0e934), and the framework will run collectors on exactly this candidate. Observed uncertainty from evaluation.json: the screening decision is 'no_valid_parameter_candidate' with quality_and_coverage_valid=false, and all route evidence is candidate-declared telemetry - 728 fused-rms-norm/fused-rms-norm-gated invocations and 2 'parent-fallback:setup-failure:flash-dispatch-refused' routes on call 2441f10600ba127de5cb753c - with the explicit interpretation that such labels must be corroborated by traces or actual exception evidence. (1) candidate_diagnostics: capture the handled exception and propagated library traceback locations behind the flash-dispatch refusal plus executed calls and scalar returns, establishing whether a real library-side setup refusal occurred; no assumption is made that the 2 fallback sites are a performance regression or that reference invocations (68/145 per bundle) are necessarily fallback - they may implement fallback, verification or composition. (2) nsys (available, runs separately): resolve the attribution questions the declared routes raise - confirm fused RMS-norm kernel entries actually executed during the measured prefill window, locate the two refused-dispatch sites' kernel context, and attribute prefill kernel time against the 25.1 ms TTFT budget; torch already ran (coverage.json shows all 66441 kernels associated), so nsys is selected only for route corroboration and prefill attribution, not re-profiling. (3) binding_cost: a candidate exists and is additive (parent 20b69c25... retained, both bundles added; bundle trial-fc57bca7b9 delegates to the parent on 62 of 64 invocations), and the binding summary (requested legacy, effective direct, reason 'no functional replacements', functional_sites null) is exactly the eligible direct-binding case where zero functional replacements does not imply zero binding overhead for ttft-relevant host dispatch; requesting the clean AB/BA whole-invocation passthrough comparison with full quality checks, which will also run in subsequent candidate resource feedback. Excluded: nccl_tuning, collective_calibration and device_telemetry (single-device, no collectives; device-wide NVML readings cannot yield per-kernel attribution), python_runtime (perturbs execution; redundant with the clean binding_cost AB/BA), execution_timeline (torch trace already associated every CPU submission to its CUDA kernel with no unassociated kernels or ambiguous sequences, and the workload's explicit first-token synchronize already bounds GPU completion, so no CPU-submit attribution gap remains).",
+    "revision": "f5a797fab6e3796855819951a220124f9d6305b3152f9de9304b60b3a17d4030"
+  }
+}

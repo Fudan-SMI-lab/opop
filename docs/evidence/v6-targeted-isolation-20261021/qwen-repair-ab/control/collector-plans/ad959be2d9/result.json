@@ -1,0 +1,68 @@
+{
+  "plan": {
+    "collectors": [
+      "candidate_diagnostics",
+      "execution_timeline",
+      "binding_cost"
+    ],
+    "requested_fields": [
+      "candidate_diagnostics.route_corroboration.bitexact-l1",
+      "candidate_diagnostics.route_corroboration.bitexact-l1-gated",
+      "candidate_diagnostics.prefill_route_cost_breakdown",
+      "execution_timeline.prefill.cpu_submit_to_cuda_association",
+      "execution_timeline.prefill.first_token_ready_sync_bounds",
+      "execution_timeline.prefill.device_interval_gaps",
+      "binding_cost.parent_vs_binding_only_passthrough_ms"
+    ],
+    "unavailable_fields": {
+      "nccl_tuning.algorithm_protocol_channel_choices": "Not applicable: single-device task (request.json distributed_backend=null; observations.json marks communication not_applicable, reason 'single-device task'), so there are no NCCL algorithm/protocol/channel decisions to capture; kernel entry names would not identify protocol anyway.",
+      "collective_calibration.synthetic_allreduce_reference": "Not applicable: no collectives exist on this single-GPU workload, so there are no observed sizes/dtypes to calibrate and no communication lower bound to establish.",
+      "device_telemetry.per_operator_pcie_nvlink_bytes": "Unavailable: telemetry samples device-wide NVML rates/utilization/memory in native windows and cannot yield per-collective or per-operator bytes; there is no communication traffic, and PCIe/NVLink traffic must not be invented from logical payload or memcpy sizes.",
+      "execution_timeline.gpu_readiness_and_consumer_completion_bounds": "Collector reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown for the prefill window.",
+      "binding_cost.per_operator_group_overhead": "Collector omits candidate build/computation and reports whole-invocation parent-vs-binding-only cost, not per-group effects across the ~145 routed call sites.",
+      "python_runtime.clean_dispatch_or_gpu_durations": "Not selected: its cProfile trace perturbs execution and inclusive/self times are not clean performance scores or GPU compute durations; host dispatch attribution is covered by execution_timeline submit associations plus binding_cost.",
+      "ttft_service_queue_network_decomposition": "Out of scope: ttft_ms is model-execution latency bounded by an explicit first-token-ready synchronize (request.json notes), not a service SLA; no queuing or network component exists to measure."
+    },
+    "rationale": "Evaluation of revision 514fb091... (bundle repair-control-param-5ef2e2f3) passed all quality checks with zero framework fallbacks, yet was not accepted: paired TTFT regressed from 24.95 ms (parent) to 31.51 ms (~+26%, objective_not_improved, paired_gain_not_above_noise) while decode stayed roughly flat (decode_ms 695.5 vs 710.7 in the original reference measurement), so the added cost concentrates in the prefill/first-token window. Coverage shows the candidate routes ~145 operator groups as bitexact-l1 (count 4) plus bitexact-l1-gated (count 1) with 145 reference invocations, and these route labels are candidate-reported telemetry, not independent proof. The unresolved questions are: (1) whether those declared routes and the 4+1 gating split are real (corroborate with actual route/exception evidence on this exact candidate), (2) whether the ~6.5 ms prefill regression is host-side dispatch/gating overhead or genuinely longer device execution in the prefill window bounded by the explicit first-token-ready synchronize, and (3) how much of the whole invocation the binding layer alone costs, given binding was requested legacy but effective 'direct' (no functional replacements). candidate_diagnostics targets (1) plus per-route behavior within prefill; execution_timeline targets (2) via CPU-to-CUDA submit associations, synchronization and per-device intervals in a separate plain trace; binding_cost targets (3) with clean AB/BA parent-vs-binding-only-passthrough workers on this additive candidate (parent still invoked per coverage, so it is applicable, and it will also run in subsequent candidate resource feedback). Excluded: torch (already ran; coverage.json shows all 66,441 kernels associated with no ambiguity), nsys (no graph-tracing/overlap question and no attribution gap left by the torch trace), nccl_tuning and collective_calibration (single-device task, no collectives), device_telemetry (device-wide NVML windows, nothing communication-related to attribute in a ~32 ms prefill), python_runtime (perturbing host profile; timeline plus binding_cost cover dispatch cost more cleanly). Revision is set to the exact evaluated candidate ID from revisions.json.",
+    "revision": "514fb0914ccdd20f9614cd6f778cd38684fd2a38658c05a84d5962543b546041"
+  },
+  "agent": {
+    "role": "collection-planner",
+    "session": "ses_ea223917effe2EVs7g6ibzWL6R",
+    "message": "msg_15ddeaa6a001BASvbZwotkYMfQ",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 9,
+      "reported_cost": 0.13211418156,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 226070.0,
+        "input": 34496.0,
+        "output": 2117.0,
+        "reasoning": 6545.0,
+        "cache.read": 182912.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea223917effe2EVs7g6ibzWL6R",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/qwen-repair-ab/control/sandboxes/collection-planner-96252ece0e36",
+    "outputs": [
+      "collection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/targeted-isolation-20261021/qwen-repair-ab/control/generation-snapshots/generation-d7bb2b89febc.json"
+    ]
+  }
+}
