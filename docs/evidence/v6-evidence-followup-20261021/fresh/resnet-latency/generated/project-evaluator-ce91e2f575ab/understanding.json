@@ -1,0 +1,59 @@
+{
+  "goal": "Reduce latency for one complete offline batch=32 image inference, preserving the source quality checks.",
+  "entrypoint": "resnet_inference.py",
+  "completion": "The measured unit is exactly one complete offline forward: infer(model, pixels) = model(pixel_values=pixels).logits under torch.inference_mode(), where pixels is the GPU-resident contiguous [batch,3,224,224] FP32 input built once as images[torch.arange(batch, device='cuda') % len(images)] from pixels.npy. The source bounds this single forward with torch.cuda.synchronize() on both sides and records latency_ms via time.perf_counter_ns; the framework's timer provides the same boundary, so run() contains only the one forward call. Model loading (ResNetForImageClassification.from_pretrained(assets, local_files_only=True, dtype=torch.float32).cuda().eval()), host input construction and transfer, reference generation, close_check/negative_check/top1 verification, reference .pt/result.json writing and --profile diagnostics are all measurement infrastructure outside the completion boundary. warmup(2)/repeats(5) are statistical harness fields; the batch=32 forward itself has no hidden internal iteration.",
+  "state_protocol": "prepare(context, request) mirrors common.configure() (torch.set_num_threads(4), set_num_interop_threads(1), torch.manual_seed(20261020), torch.cuda.set_device(context['device']), TF32 disabled for matmul and cudnn, cudnn.benchmark=False, float32_matmul_precision 'highest'), loads the ResNet-18 classification model from request['assets']['assets_dir'] with dtype=torch.float32 onto context['device'], sets eval(), loads pixels.npy, and builds the workload input pixels = images[torch.arange(batch, device=device) % len(images)].contiguous() with batch read from request['workload']['batch']. Model, images and pixels are kept in state; initialization is outside timing. reset(state) only re-asserts model.eval(): the workload is stateless single-forward inference, the input tensor is immutable and GPU-resident, and the source performs no per-repeat clearing (it just drops the previous output), so there is no mutable state to restore and no process-group teardown. run(state) executes the entire frozen workload (one forward) under torch.inference_mode() and returns {'logits': [batch,1000] tensor}; the framework synchronizes CUDA before and after this call. observe(state, result) returns the detached full logits tensor and the argmax(-1) predicted class-id integers for the exact-top1 check. metrics(state, result, elapsed_ms) returns latency_ms=elapsed_ms (the frozen objective), images_per_second=batch*1000/elapsed_ms (the source's images_per_second = batch*1e9/elapsed_ns in native units), and peak_allocated_bytes=torch.cuda.max_memory_allocated() queried outside the timer, matching the source's per-sample query after its reset_peak_memory_stats (the framework resets peak stats immediately before its timer). models(state) exposes the loaded root model as {'model': model} for discovery and controlled replacement. No set_mode/before_run behavior is needed: full logits are always returned, there is no separate correctness-capture path, and the single-GPU source defines no pre-run coordination.",
+  "invariants": [
+    "FP32 everywhere: weights loaded with dtype=torch.float32 and compute kept in FP32; torch.backends.cuda.matmul.allow_tf32=False, torch.backends.cudnn.allow_tf32=False, torch.set_float32_matmul_precision('highest'), torch.backends.cudnn.benchmark=False.",
+    "Deterministic seed policy from common.configure(): torch.manual_seed(20261020), 4 CPU threads, 1 inter-op thread.",
+    "Model identity and mode unchanged: ResNetForImageClassification initialized from the frozen request assets dir (local_files_only=True, microsoft/resnet-18 weights, num_params=11689512) and kept in eval() on context['device'].",
+    "Input construction is frozen: pixels.npy (3 preprocessed FP32 NCHW 224x224 real images) extended to the workload batch via arange(batch) % 3 then .contiguous(), transferred to GPU once outside timing.",
+    "Work amount is one full batch forward per measured invocation with no internal iteration, no caching between repeats, and no change to batch (32), architecture, precision, data or output requirements.",
+    "Outputs are the full [batch,1000] logits and argmax class ids; quality requires require_exact_top1 (torch.equal on argmax over all 1000 classes) plus torch.testing.assert_close at logits_atol=logits_rtol=1e-4, and the source's negative control must reject a +1 corruption of the reference.",
+    "Metric semantics preserved: latency_ms is the wall time of the single synchronized forward; images_per_second = batch*1000/latency_ms is the reciprocal of the same boundary; peak_allocated_bytes is torch.cuda.max_memory_allocated() for the measured invocation.",
+    "The offline workload row is preserved verbatim, including the memory goal's images_per_second_min_baseline_ratio 0.95 guard, which is scoped to the memory goal and not to the latency objective (which carries no constraints)."
+  ],
+  "objective": {
+    "name": "latency_ms",
+    "unit": "ms",
+    "direction": "minimize",
+    "constraints": []
+  },
+  "workload": {
+    "id": "offline",
+    "batch": 32,
+    "goals": [
+      {
+        "id": "throughput",
+        "metric": "images_per_second",
+        "direction": "max"
+      },
+      {
+        "id": "memory",
+        "metric": "peak_allocated_bytes",
+        "direction": "min",
+        "constraints": {
+          "images_per_second_min_baseline_ratio": 0.95
+        }
+      }
+    ]
+  },
+  "quality": {
+    "atol": 0.0001,
+    "rtol": 0.0001,
+    "logits_atol": 0.0001,
+    "logits_rtol": 0.0001,
+    "require_exact_top1": true
+  },
+  "missing_information": [],
+  "assumptions": [
+    "The framework's timer (CUDA synchronization at both boundaries) replaces the source's explicit perf_counter_ns sampling, so run() contains exactly the single infer() call and adds no extra synchronization of its own.",
+    "peak_allocated_bytes is queried in metrics() outside the timer; the framework resets CUDA peak stats immediately before its timer, which reproduces the source's per-sample reset_peak_memory_stats/max_memory_allocated semantics.",
+    "Reference-fidelity validation (assert_close at 1e-4, exact argmax equality, +1-corruption negative control) is performed by the framework against observe() outputs; the adapter returns full logits and top1 ids rather than hashes or samples.",
+    "The worker supplies context['device'] (e.g. cuda:0) after device binding; torch.cuda.set_device(context['device']) is idempotent with the worker's binding and mirrors the source policy without initializing another process group.",
+    "torch.set_num_interop_threads(1) can raise RuntimeError if the worker process already began inter-op parallel work; the adapter guards that single call and keeps every other numerical policy identical.",
+    "The request's objective has no source collector descriptor, so metrics() exposes the clean project metrics (latency_ms, images_per_second, peak_allocated_bytes) with no profiler or fake objective inside run()/metrics().",
+    "The held-out workloads in workloads.json (unseen_batch=7 for resnet, plus the other project families) are not part of this frozen request; the adapter reads batch from request['workload'] so a validated variant would reuse it unchanged.",
+    "Source --profile/ncu/nsys diagnostics are collected by the framework in separate diagnostic runs, not inside the clean timed path."
+  ]
+}

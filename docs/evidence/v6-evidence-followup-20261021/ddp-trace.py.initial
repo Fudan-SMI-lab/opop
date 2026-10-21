@@ -1,0 +1,31 @@
+from pathlib import Path
+import json,hashlib
+from kernel_optimizer.config import load_config
+from kernel_optimizer.models.project import CandidateBundle
+from kernel_optimizer.project.branches import fork_run
+from kernel_optimizer.project.search import ProjectSearch
+from kernel_optimizer.runtime.execution import write_json
+r=Path('/root/autodl-tmp/dev/v6-work/evidence-followup-20261021')
+old=Path('/root/autodl-tmp/dev/v6-work/agent-repair-20261021')
+source=old/'ddp-automatic-continuation'
+d=json.loads((source/'trials/trial-f684195486/parameter-search.json').read_text())
+bundle=CandidateBundle.model_validate(d['observations'][0]['bundle'])
+out=r/'ddp-capture-trace';fork_run(source,out,revision_id=bundle.parent_revision)
+search=ProjectSearch(load_config(old/'ddp-automatic-continuation-private.yaml',[]),out)
+edits=[]
+for edit in bundle.edits:
+ if edit.path==bundle.installer:
+  raw=search.store.get_artifact(edit.content_ref);code=raw.decode()
+  before='losses = _capture_segments(raw_model, optimizer, inputs)\n            except Exception as exc:'
+  after=before+'\n                import traceback\n                print("DEVELOPER_CAPTURE_STACK", traceback.format_exc(), flush=True)'
+  assert code.count(before)==1
+  code=code.replace(before,after)
+  edit=edit.model_copy(update={'content_ref':search.store.put_artifact(code)})
+  (out/'instrumented-candidate.py').write_text(code)
+  write_json(out/'protocol.json',{'scope':'Only print the existing capture exception traceback; identical arithmetic, guards, return and fallback; diagnostic timings are not performance evidence.', 'original_sha256':hashlib.sha256(raw).hexdigest(),'instrumented_sha256':hashlib.sha256(code.encode()).hexdigest()})
+ edits.append(edit)
+bundle=bundle.model_copy(update={'id':'ddp-full-capture-trace','edits':tuple(edits)})
+revision=search.revisions.stage(bundle)
+run=search.execute(revision,'capture-trace','candidate_diagnostics')
+write_json(out/'result.json',{'scope':'Diagnostic only; no publication or performance claim','run':run})
+print(json.dumps({'status':run['status'],'output':str(out)}),flush=True)

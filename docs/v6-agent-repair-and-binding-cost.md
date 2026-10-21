@@ -317,3 +317,63 @@ ResNet 的自主多组联合优化及独立整体收益成立；Qwen 的诊断�
 
 原始记录、候选、生成前快照和哈希索引见
 [本轮证据目录](evidence/v6-agent-repair-20261021/README.md)。
+
+## 失败定位与后续验证（2026-10-21，第二批）
+
+第二批记录位于 `evidence-followup-20261021`。以下首先记录已结束的定位与对照；使用定位信息的
+Agent 修复实验，以及冻结 `a6f2b6e` 的全新 Qwen／DDP／ResNet 原入口运行，另行记录终态。
+两类运行的输入不同，不能将诊断辅助修复称为无人工信息注入的自主成功。
+
+### Qwen：定位到实际 GPU 数值差异
+
+在原失败融合候选上，仅增加边界读数，未改变计算、内部检查或回退。36 层共 470 个边界记录显示：
+第一层 input norm 和 Q/K/V projection 与父实现逐项一致；首个差异出现在融合的 Q/K norm＋rotary，
+Q 最大绝对误差 0.0625、134,052 个元素不同，K 为 0.25、33,908 个元素不同。
+最终 logits 最大误差 0.28125，15,511 个元素违反正式 `atol=rtol=0.02`，复现此前的诊断。
+CPU 拷贝和 hooks 会干扰运行时间，这些读数只用于定位，不作为性能结果。
+
+在同一实际 GPU 张量上进行第一层 shadow 计算：独立 RMSNorm kernel、接原生 BF16 rotary、
+融合 kernel 的 norm-only 变体均逐项一致；原融合 kernel 开启 FP fusion 时出现差异，关闭后逐项一致。
+这证明第一层差异与该编译选项相关，尚未反汇编确认具体指令，也不证明全模型修复。
+
+进一步只修改两个 norm＋rotary launch 的 `enable_fp_fusion=False`，完整候选仍回退。
+边界记录显示前两层一致，第三层 Q rotary 有一个元素相差 0.0078125；最终 logits 最大误差
+0.3125，仍有 14,631 个元素违反正式容差。第三层 shadow 计算进一步发现独立 Q RMSNorm
+已有同一个单元素差异；K norm 也有一个小差异，但经 rotary 后舍入回一致。
+因此还存在归一化计算的数值差异，不能把关闭 FP fusion 或放宽内部检查当作完整修复。
+尚未证明具体 reduction／rsqrt 指令是原因。
+
+两个派生诊断的基础 protocol 曾继承“计算未改变”的描述；各自 `intervention-scope.json`
+明确更正为修改了上述编译选项。原记录和更正同时保留，避免把干预实验误称为纯读数。
+
+### DDP：捕获到库内部的真实异常来源
+
+在原失败候选的既有异常处理处仅打印完整 traceback，两个 rank 均定位到
+`transformers/masking_utils.py:603` 的 `eager_mask`：
+`torch.where(mask, torch.tensor(0.0, device=mask.device, dtype=dtype), min_dtype)`。
+这里创建标量触发 Graph capture 中未 pinned 的 CPU→CUDA 拷贝；实际训练输入已在 GPU 上。
+它是本次第一个已确认的 capture 障碍，不代表消除它后所有后续操作都能捕获。
+
+据此做了一项通用采集修正（`a6f2b6e`）：`CandidateTrace` 在传播到候选的异常上保留 traceback
+的文件、函数、行号与源码文本，包括被调用库的位置。仍只 trace 原候选文件，不持有 frame、locals
+或 tensor，不改变候选计算和验收。相关 8 项测试通过；使用未修改的原 DDP 候选在双卡复测，
+框架自动采集到两个 rank 的同一库内位置，无需开发者插入 print。
+
+### 冻结候选生成的执行证据索引对照
+
+`b6487df` 增加独立实验入口。固定原第二轮候选生成前的快照、模型、prompt、父版本和框架
+`88b9651`，control 保留原始输入，treatment 仅在原反馈开头加入已有路由／异常的紧凑索引，
+原反馈全文保留。两边分别使用新真实会话，随后执行相同参数筛查、完整质量检查和 AB/BA。
+
+| 分支 | 配对父版本 TTFT（ms） | 配对候选 TTFT（ms） | 结果 |
+|---|---|---|---|
+| control | 25.672291 / 24.247710 | 25.309170 / 25.057786 | 拒绝；全部 setup fallback |
+| treatment | 24.843216 / 31.334290 | 27.482147 / 25.919362 | 拒绝；全部 setup fallback |
+
+两个 Agent 都正确识别了旧候选实际回退，control 也自行找到了原反馈中深层的证据。
+两者生成的 Graph 自检仍失败：control 超过正式 0.02 容差，treatment 的最大 logits 差异为
+0.3125，超过其 0.015 内部容差。因而这次对照没有证明索引改善修复结果；索引保持为实验工具，
+不加入默认候选输入，不据一次比较作因果或统计显著性结论。
+
+第二批原始证据、生成代码、输入快照和哈希索引见
+[后续验证证据目录](evidence/v6-evidence-followup-20261021/README.md)。

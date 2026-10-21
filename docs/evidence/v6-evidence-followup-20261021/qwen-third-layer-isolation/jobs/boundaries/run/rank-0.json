@@ -1,0 +1,121 @@
+{
+  "status": "passed",
+  "binding": {
+    "pid": 493828,
+    "status": "verified",
+    "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "logical_device": 0,
+    "nvidia_smi_pid_uuids": [
+      "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+    ],
+    "pid_query_status": "observed",
+    "occupancy": {
+      "status": "sampled_clear",
+      "samples": 32,
+      "unavailable_samples": 0,
+      "wait_s": 0.07037849351763725,
+      "external_clients": [],
+      "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+    }
+  },
+  "framework_source": {
+    "sha256": "3f8440cd0b839b5ae3a384e3af81f5cdf675ba487823733dedf35c80d5610492",
+    "files": 162,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "result": {
+    "valid": true,
+    "coverage": {
+      "qwen-boundary-diagnostic": {
+        "counts": {
+          "c9d14173dd4887d4a4133553": 2
+        },
+        "fallbacks": {},
+        "reference_invocations": {
+          "c9d14173dd4887d4a4133553": 2
+        },
+        "candidate_declared_routes": [
+          {
+            "call": "c9d14173dd4887d4a4133553",
+            "route": "parent_fallback_validation",
+            "count": 2
+          }
+        ],
+        "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+      }
+    },
+    "scope": "Diagnostic execution only; no quality or performance acceptance",
+    "candidate_diagnostics": {
+      "schema_version": "project.candidate-diagnostics.v1",
+      "events": [
+        {
+          "phase": "setup",
+          "bundle": "qwen-boundary-diagnostic",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/qwen-third-layer-isolation/jobs/boundaries/source/opop_candidates/trial-e262267559.py",
+          "function": "<genexpr>",
+          "line": 187,
+          "source": "getattr(m, \"bias\", None) is not None",
+          "recent_lines": [
+            {
+              "line": 186,
+              "source": "if any("
+            },
+            {
+              "line": 188,
+              "source": "for m in (sa.q_proj, sa.k_proj, sa.v_proj, sa.o_proj,"
+            },
+            {
+              "line": 187,
+              "source": "getattr(m, \"bias\", None) is not None"
+            }
+          ],
+          "event": "return",
+          "type": "bool",
+          "message": "False",
+          "count": 252
+        },
+        {
+          "phase": "run",
+          "bundle": "qwen-boundary-diagnostic",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/qwen-third-layer-isolation/jobs/boundaries/source/opop_candidates/trial-e262267559.py",
+          "function": "_close",
+          "line": 267,
+          "source": "return bool(torch.all(diff <= tol).item())",
+          "recent_lines": [
+            {
+              "line": 261,
+              "source": "if a is None or ref is None or a.shape != ref.shape:"
+            },
+            {
+              "line": 263,
+              "source": "af = a.detach().float()"
+            },
+            {
+              "line": 264,
+              "source": "rf = ref.detach().float()"
+            },
+            {
+              "line": 265,
+              "source": "diff = (af - rf).abs()"
+            },
+            {
+              "line": 266,
+              "source": "tol = _VAL_ATOL + _VAL_RTOL * rf.abs()"
+            },
+            {
+              "line": 267,
+              "source": "return bool(torch.all(diff <= tol).item())"
+            }
+          ],
+          "event": "return",
+          "type": "bool",
+          "message": "False",
+          "count": 1
+        }
+      ],
+      "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+    }
+  }
+}

@@ -1,0 +1,340 @@
+{
+  "status": "passed",
+  "binding": {
+    "pid": 497608,
+    "status": "verified",
+    "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+    "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+    "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+    "logical_device": 0,
+    "nvidia_smi_pid_uuids": [
+      "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+    ],
+    "pid_query_status": "observed",
+    "occupancy": {
+      "status": "sampled_clear",
+      "samples": 25,
+      "unavailable_samples": 0,
+      "wait_s": 0.07604977861046791,
+      "external_clients": [],
+      "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+    }
+  },
+  "framework_source": {
+    "sha256": "6346dc694f9d74c23c60f1c75d035a6c602946ac53ba5b2a3c84a68e8df477ba",
+    "files": 162,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "result": {
+    "valid": true,
+    "coverage": {
+      "trial-f684195486-param-9dbbaaad": {
+        "counts": {
+          "5d7d6bb13691b02f533f62b0": 2
+        },
+        "fallbacks": {},
+        "reference_invocations": {
+          "5d7d6bb13691b02f533f62b0": 2
+        },
+        "candidate_declared_routes": [
+          {
+            "call": "5d7d6bb13691b02f533f62b0",
+            "route": "eager:parent:first_invocation",
+            "count": 1
+          },
+          {
+            "call": "5d7d6bb13691b02f533f62b0",
+            "route": "fallback:parent:capture_failed:RuntimeError",
+            "count": 1
+          }
+        ],
+        "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+      }
+    },
+    "scope": "Diagnostic execution only; no quality or performance acceptance",
+    "candidate_diagnostics": {
+      "schema_version": "project.candidate-diagnostics.v1",
+      "events": [
+        {
+          "phase": "run",
+          "bundle": "trial-f684195486-param-9dbbaaad",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/framework-traceback-probe/jobs/original-candidate/source/opop_candidates/trial-f684195486.py",
+          "function": "_capture_segments",
+          "line": 159,
+          "source": "output = raw_model(",
+          "recent_lines": [
+            {
+              "line": 152,
+              "source": "static_inputs = [inputs[index].detach().clone() for index in range(segments)]"
+            },
+            {
+              "line": 153,
+              "source": "static_losses = []"
+            },
+            {
+              "line": 154,
+              "source": "graphs = []"
+            },
+            {
+              "line": 155,
+              "source": "pool = torch.cuda.graph_pool_handle()"
+            },
+            {
+              "line": 156,
+              "source": "for index in range(segments):"
+            },
+            {
+              "line": 157,
+              "source": "graph = torch.cuda.CUDAGraph()"
+            },
+            {
+              "line": 158,
+              "source": "with torch.cuda.graph(graph, pool=pool):"
+            },
+            {
+              "line": 159,
+              "source": "output = raw_model("
+            },
+            {
+              "line": 160,
+              "source": "input_ids=static_inputs[index],"
+            },
+            {
+              "line": 161,
+              "source": "labels=static_inputs[index],"
+            },
+            {
+              "line": 162,
+              "source": "use_cache=False,"
+            },
+            {
+              "line": 159,
+              "source": "output = raw_model("
+            }
+          ],
+          "event": "exception",
+          "type": "RuntimeError",
+          "message": "Cannot copy between CPU and CUDA tensors during CUDA graph capture unless the CPU tensor is pinned. Please use tensor.pin_memory() or allocate the tensor with pin_memory=True.",
+          "count": 1,
+          "traceback": [
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/framework-traceback-probe/jobs/original-candidate/source/opop_candidates/trial-f684195486.py",
+              "function": "_capture_segments",
+              "line": 159,
+              "source": "output = raw_model("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "function": "wrapper",
+              "line": 939,
+              "source": "output = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/gpt2/modeling_gpt2.py",
+              "function": "forward",
+              "line": 682,
+              "source": "transformer_outputs: BaseModelOutputWithPastAndCrossAttentions = self.transformer("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "function": "wrapper",
+              "line": 1068,
+              "source": "output = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/output_capturing.py",
+              "function": "wrapper",
+              "line": 262,
+              "source": "outputs = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/gpt2/modeling_gpt2.py",
+              "function": "forward",
+              "line": 583,
+              "source": "causal_mask = create_causal_mask("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/masking_utils.py",
+              "function": "create_causal_mask",
+              "line": 982,
+              "source": "causal_mask = mask_interface("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/masking_utils.py",
+              "function": "eager_mask",
+              "line": 603,
+              "source": "mask = torch.where(mask, torch.tensor(0.0, device=mask.device, dtype=dtype), min_dtype)"
+            }
+          ]
+        },
+        {
+          "phase": "run",
+          "bundle": "trial-f684195486-param-9dbbaaad",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/framework-traceback-probe/jobs/original-candidate/source/opop_candidates/trial-f684195486.py",
+          "function": "replacement",
+          "line": 243,
+          "source": "losses = _capture_segments(raw_model, optimizer, inputs)",
+          "recent_lines": [
+            {
+              "line": 199,
+              "source": "not isinstance(model, DDP)"
+            },
+            {
+              "line": 200,
+              "source": "or not isinstance(raw_model, torch.nn.Module)"
+            },
+            {
+              "line": 201,
+              "source": "or optimizer is None"
+            },
+            {
+              "line": 202,
+              "source": "or not isinstance(inputs, (list, tuple))"
+            },
+            {
+              "line": 203,
+              "source": "or len(inputs) < 2"
+            },
+            {
+              "line": 207,
+              "source": "if book[\"params\"] is None:"
+            },
+            {
+              "line": 218,
+              "source": "if model is not book[\"model\"] or raw_model is not book[\"raw_model\"]:"
+            },
+            {
+              "line": 221,
+              "source": "if book[\"graphs\"] is not None:"
+            },
+            {
+              "line": 240,
+              "source": "failure = None"
+            },
+            {
+              "line": 241,
+              "source": "with phase(\"gradient_accumulation\"):"
+            },
+            {
+              "line": 242,
+              "source": "try:"
+            },
+            {
+              "line": 243,
+              "source": "losses = _capture_segments(raw_model, optimizer, inputs)"
+            }
+          ],
+          "event": "exception",
+          "type": "RuntimeError",
+          "message": "Cannot copy between CPU and CUDA tensors during CUDA graph capture unless the CPU tensor is pinned. Please use tensor.pin_memory() or allocate the tensor with pin_memory=True.",
+          "count": 1,
+          "traceback": [
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/framework-traceback-probe/jobs/original-candidate/source/opop_candidates/trial-f684195486.py",
+              "function": "replacement",
+              "line": 243,
+              "source": "losses = _capture_segments(raw_model, optimizer, inputs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/framework-traceback-probe/jobs/original-candidate/source/opop_candidates/trial-f684195486.py",
+              "function": "_capture_segments",
+              "line": 159,
+              "source": "output = raw_model("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "function": "wrapper",
+              "line": 939,
+              "source": "output = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/gpt2/modeling_gpt2.py",
+              "function": "forward",
+              "line": 682,
+              "source": "transformer_outputs: BaseModelOutputWithPastAndCrossAttentions = self.transformer("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "function": "wrapper",
+              "line": 1068,
+              "source": "output = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/output_capturing.py",
+              "function": "wrapper",
+              "line": 262,
+              "source": "outputs = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/gpt2/modeling_gpt2.py",
+              "function": "forward",
+              "line": 583,
+              "source": "causal_mask = create_causal_mask("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/masking_utils.py",
+              "function": "create_causal_mask",
+              "line": 982,
+              "source": "causal_mask = mask_interface("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/masking_utils.py",
+              "function": "eager_mask",
+              "line": 603,
+              "source": "mask = torch.where(mask, torch.tensor(0.0, device=mask.device, dtype=dtype), min_dtype)"
+            }
+          ]
+        }
+      ],
+      "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code and other threads are outside this observation. Propagated exception tracebacks can locate imported helpers without tracing their execution or retaining frames/locals."
+    }
+  }
+}

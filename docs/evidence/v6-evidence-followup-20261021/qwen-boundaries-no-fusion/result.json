@@ -1,0 +1,6507 @@
+{
+  "scope": "Readout only; no code repair or performance claim",
+  "run": {
+    "schema_version": 1,
+    "status": "passed",
+    "failure": null,
+    "wall_s": 20.387573037296534,
+    "ranks": [
+      {
+        "rank": 0,
+        "pid": 492865,
+        "exit_code": 0,
+        "status": "passed",
+        "binding": {
+          "pid": 492865,
+          "status": "verified",
+          "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+          "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+          "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+          "logical_device": 0,
+          "nvidia_smi_pid_uuids": [
+            "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+          ],
+          "pid_query_status": "observed",
+          "occupancy": {
+            "status": "sampled_clear",
+            "samples": 32,
+            "unavailable_samples": 0,
+            "wait_s": 0.07228442654013634,
+            "external_clients": [],
+            "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+          }
+        },
+        "framework_source": {
+          "sha256": "3f8440cd0b839b5ae3a384e3af81f5cdf675ba487823733dedf35c80d5610492",
+          "files": 162,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "result": {
+          "valid": true,
+          "coverage": {
+            "qwen-boundary-diagnostic": {
+              "counts": {
+                "c9d14173dd4887d4a4133553": 2
+              },
+              "fallbacks": {},
+              "reference_invocations": {
+                "c9d14173dd4887d4a4133553": 2
+              },
+              "candidate_declared_routes": [
+                {
+                  "call": "c9d14173dd4887d4a4133553",
+                  "route": "parent_fallback_validation",
+                  "count": 2
+                }
+              ],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "scope": "Diagnostic execution only; no quality or performance acceptance",
+          "candidate_diagnostics": {
+            "schema_version": "project.candidate-diagnostics.v1",
+            "events": [
+              {
+                "phase": "setup",
+                "bundle": "qwen-boundary-diagnostic",
+                "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/qwen-boundaries-no-fusion/jobs/boundaries/source/opop_candidates/trial-e262267559.py",
+                "function": "<genexpr>",
+                "line": 187,
+                "source": "getattr(m, \"bias\", None) is not None",
+                "recent_lines": [
+                  {
+                    "line": 186,
+                    "source": "if any("
+                  },
+                  {
+                    "line": 188,
+                    "source": "for m in (sa.q_proj, sa.k_proj, sa.v_proj, sa.o_proj,"
+                  },
+                  {
+                    "line": 187,
+                    "source": "getattr(m, \"bias\", None) is not None"
+                  }
+                ],
+                "event": "return",
+                "type": "bool",
+                "message": "False",
+                "count": 252
+              },
+              {
+                "phase": "run",
+                "bundle": "qwen-boundary-diagnostic",
+                "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/qwen-boundaries-no-fusion/jobs/boundaries/source/opop_candidates/trial-e262267559.py",
+                "function": "_close",
+                "line": 268,
+                "source": "return bool(torch.all(diff <= tol).item())",
+                "recent_lines": [
+                  {
+                    "line": 261,
+                    "source": "if a is None or ref is None or a.shape != ref.shape:"
+                  },
+                  {
+                    "line": 263,
+                    "source": "af = a.detach().float()"
+                  },
+                  {
+                    "line": 264,
+                    "source": "rf = ref.detach().float()"
+                  },
+                  {
+                    "line": 265,
+                    "source": "diff = (af - rf).abs()"
+                  },
+                  {
+                    "line": 266,
+                    "source": "tol = _VAL_ATOL + _VAL_RTOL * rf.abs()"
+                  },
+                  {
+                    "line": 267,
+                    "source": "print(\"GUARD_READOUT\", {\"shape\": list(a.shape), \"max_abs_error\": float(diff.max().item()), \"violations_internal\": int((diff > tol).sum().item()), \"violations_formal\": int((diff > (0.02 + 0.02 * rf.abs())).sum().item())}, flush=True)"
+                  },
+                  {
+                    "line": 268,
+                    "source": "return bool(torch.all(diff <= tol).item())"
+                  }
+                ],
+                "event": "return",
+                "type": "bool",
+                "message": "False",
+                "count": 1
+              }
+            ],
+            "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+          }
+        }
+      }
+    ],
+    "lease_wait_s": 0.00019215047359466553,
+    "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+    "devices": [
+      "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+    ],
+    "worker_pids_reaped": true
+  },
+  "boundaries": [
+    {
+      "name": "0:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "0:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "0:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "0:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "0:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "0:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "0:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "0:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "0:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "0:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "0:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "0:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "0:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "1:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "1:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "1:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "1:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "1:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "1:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "1:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "1:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "1:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "1:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "1:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "1:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "1:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "2:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "2:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "2:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "2:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "2:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0078125,
+      "unequal": 1,
+      "violations_002": 0
+    },
+    {
+      "name": "2:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "2:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0,
+      "unequal": 0,
+      "violations_002": 0
+    },
+    {
+      "name": "2:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 3.0517578125e-05,
+      "unequal": 11,
+      "violations_002": 0
+    },
+    {
+      "name": "2:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.00048828125,
+      "unequal": 15,
+      "violations_002": 0
+    },
+    {
+      "name": "2:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.00390625,
+      "unequal": 4,
+      "violations_002": 0
+    },
+    {
+      "name": "2:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.001220703125,
+      "unequal": 328,
+      "violations_002": 0
+    },
+    {
+      "name": "2:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.001953125,
+      "unequal": 741,
+      "violations_002": 0
+    },
+    {
+      "name": "2:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.001953125,
+      "unequal": 260,
+      "violations_002": 0
+    },
+    {
+      "name": "3:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0009765625,
+      "unequal": 232,
+      "violations_002": 0
+    },
+    {
+      "name": "3:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.0078125,
+      "unequal": 1031,
+      "violations_002": 0
+    },
+    {
+      "name": "3:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.00390625,
+      "unequal": 294,
+      "violations_002": 0
+    },
+    {
+      "name": "3:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.001953125,
+      "unequal": 354,
+      "violations_002": 0
+    },
+    {
+      "name": "3:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.03125,
+      "unequal": 958,
+      "violations_002": 0
+    },
+    {
+      "name": "3:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.03125,
+      "unequal": 272,
+      "violations_002": 0
+    },
+    {
+      "name": "3:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.001953125,
+      "unequal": 354,
+      "violations_002": 0
+    },
+    {
+      "name": "3:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.001953125,
+      "unequal": 17212,
+      "violations_002": 0
+    },
+    {
+      "name": "3:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.00390625,
+      "unequal": 52449,
+      "violations_002": 0
+    },
+    {
+      "name": "3:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.125,
+      "unequal": 17855,
+      "violations_002": 0
+    },
+    {
+      "name": "3:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.046875,
+      "unequal": 419676,
+      "violations_002": 0
+    },
+    {
+      "name": "3:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0234375,
+      "unequal": 283000,
+      "violations_002": 0
+    },
+    {
+      "name": "3:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.03125,
+      "unequal": 151057,
+      "violations_002": 0
+    },
+    {
+      "name": "4:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0078125,
+      "unequal": 141971,
+      "violations_002": 0
+    },
+    {
+      "name": "4:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.0078125,
+      "unequal": 368606,
+      "violations_002": 0
+    },
+    {
+      "name": "4:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.0078125,
+      "unequal": 95756,
+      "violations_002": 0
+    },
+    {
+      "name": "4:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.0078125,
+      "unequal": 114781,
+      "violations_002": 0
+    },
+    {
+      "name": "4:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.125,
+      "unequal": 347583,
+      "violations_002": 5
+    },
+    {
+      "name": "4:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.5,
+      "unequal": 90828,
+      "violations_002": 8
+    },
+    {
+      "name": "4:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0078125,
+      "unequal": 114781,
+      "violations_002": 0
+    },
+    {
+      "name": "4:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0078125,
+      "unequal": 536468,
+      "violations_002": 0
+    },
+    {
+      "name": "4:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.01953125,
+      "unequal": 370751,
+      "violations_002": 0
+    },
+    {
+      "name": "4:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.25,
+      "unequal": 222696,
+      "violations_002": 0
+    },
+    {
+      "name": "4:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.09375,
+      "unequal": 1370079,
+      "violations_002": 1
+    },
+    {
+      "name": "4:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0625,
+      "unequal": 431789,
+      "violations_002": 0
+    },
+    {
+      "name": "4:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.125,
+      "unequal": 333417,
+      "violations_002": 1
+    },
+    {
+      "name": "5:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0234375,
+      "unequal": 321349,
+      "violations_002": 0
+    },
+    {
+      "name": "5:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.015625,
+      "unequal": 538532,
+      "violations_002": 0
+    },
+    {
+      "name": "5:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.015625,
+      "unequal": 124574,
+      "violations_002": 0
+    },
+    {
+      "name": "5:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.0078125,
+      "unequal": 152989,
+      "violations_002": 0
+    },
+    {
+      "name": "5:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.25,
+      "unequal": 513746,
+      "violations_002": 28
+    },
+    {
+      "name": "5:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 1.0,
+      "unequal": 119367,
+      "violations_002": 877
+    },
+    {
+      "name": "5:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0078125,
+      "unequal": 152989,
+      "violations_002": 0
+    },
+    {
+      "name": "5:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.01171875,
+      "unequal": 683789,
+      "violations_002": 0
+    },
+    {
+      "name": "5:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.015625,
+      "unequal": 457161,
+      "violations_002": 0
+    },
+    {
+      "name": "5:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.125,
+      "unequal": 371797,
+      "violations_002": 1
+    },
+    {
+      "name": "5:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.0625,
+      "unequal": 1805460,
+      "violations_002": 0
+    },
+    {
+      "name": "5:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0625,
+      "unequal": 485326,
+      "violations_002": 0
+    },
+    {
+      "name": "5:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.125,
+      "unequal": 419260,
+      "violations_002": 0
+    },
+    {
+      "name": "6:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.03125,
+      "unequal": 401875,
+      "violations_002": 0
+    },
+    {
+      "name": "6:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.015625,
+      "unequal": 637012,
+      "violations_002": 0
+    },
+    {
+      "name": "6:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.015625,
+      "unequal": 150396,
+      "violations_002": 0
+    },
+    {
+      "name": "6:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.0089111328125,
+      "unequal": 181064,
+      "violations_002": 0
+    },
+    {
+      "name": "6:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.125,
+      "unequal": 612292,
+      "violations_002": 210
+    },
+    {
+      "name": "6:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.375,
+      "unequal": 141932,
+      "violations_002": 63
+    },
+    {
+      "name": "6:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0089111328125,
+      "unequal": 181064,
+      "violations_002": 0
+    },
+    {
+      "name": "6:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.013671875,
+      "unequal": 755638,
+      "violations_002": 0
+    },
+    {
+      "name": "6:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.03125,
+      "unequal": 486370,
+      "violations_002": 0
+    },
+    {
+      "name": "6:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.25,
+      "unequal": 430952,
+      "violations_002": 18
+    },
+    {
+      "name": "6:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.078125,
+      "unequal": 1930460,
+      "violations_002": 4
+    },
+    {
+      "name": "6:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.046875,
+      "unequal": 506406,
+      "violations_002": 0
+    },
+    {
+      "name": "6:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.25,
+      "unequal": 452875,
+      "violations_002": 1
+    },
+    {
+      "name": "7:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.09375,
+      "unequal": 436201,
+      "violations_002": 0
+    },
+    {
+      "name": "7:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.0625,
+      "unequal": 662296,
+      "violations_002": 0
+    },
+    {
+      "name": "7:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.03125,
+      "unequal": 160434,
+      "violations_002": 0
+    },
+    {
+      "name": "7:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.01953125,
+      "unequal": 187202,
+      "violations_002": 0
+    },
+    {
+      "name": "7:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.125,
+      "unequal": 646708,
+      "violations_002": 696
+    },
+    {
+      "name": "7:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.125,
+      "unequal": 154593,
+      "violations_002": 736
+    },
+    {
+      "name": "7:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.01953125,
+      "unequal": 187202,
+      "violations_002": 0
+    },
+    {
+      "name": "7:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0546875,
+      "unequal": 788491,
+      "violations_002": 29
+    },
+    {
+      "name": "7:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.025390625,
+      "unequal": 521944,
+      "violations_002": 0
+    },
+    {
+      "name": "7:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.375,
+      "unequal": 460409,
+      "violations_002": 0
+    },
+    {
+      "name": "7:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.09375,
+      "unequal": 2005540,
+      "violations_002": 19
+    },
+    {
+      "name": "7:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0316162109375,
+      "unequal": 526882,
+      "violations_002": 1
+    },
+    {
+      "name": "7:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.25,
+      "unequal": 482714,
+      "violations_002": 13
+    },
+    {
+      "name": "8:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0625,
+      "unequal": 470040,
+      "violations_002": 0
+    },
+    {
+      "name": "8:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.0625,
+      "unequal": 722035,
+      "violations_002": 1
+    },
+    {
+      "name": "8:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.03125,
+      "unequal": 177035,
+      "violations_002": 0
+    },
+    {
+      "name": "8:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.02734375,
+      "unequal": 198336,
+      "violations_002": 0
+    },
+    {
+      "name": "8:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.1875,
+      "unequal": 700464,
+      "violations_002": 1638
+    },
+    {
+      "name": "8:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.5,
+      "unequal": 168712,
+      "violations_002": 1143
+    },
+    {
+      "name": "8:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.02734375,
+      "unequal": 198336,
+      "violations_002": 0
+    },
+    {
+      "name": "8:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.03125,
+      "unequal": 822462,
+      "violations_002": 5
+    },
+    {
+      "name": "8:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.03125,
+      "unequal": 533049,
+      "violations_002": 5
+    },
+    {
+      "name": "8:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.046875,
+      "unequal": 484612,
+      "violations_002": 0
+    },
+    {
+      "name": "8:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.09375,
+      "unequal": 2070261,
+      "violations_002": 15
+    },
+    {
+      "name": "8:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0625,
+      "unequal": 540528,
+      "violations_002": 3
+    },
+    {
+      "name": "8:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.25,
+      "unequal": 499712,
+      "violations_002": 35
+    },
+    {
+      "name": "9:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.09375,
+      "unequal": 492466,
+      "violations_002": 3
+    },
+    {
+      "name": "9:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.0625,
+      "unequal": 750021,
+      "violations_002": 15
+    },
+    {
+      "name": "9:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.03125,
+      "unequal": 184079,
+      "violations_002": 4
+    },
+    {
+      "name": "9:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.03662109375,
+      "unequal": 206166,
+      "violations_002": 4
+    },
+    {
+      "name": "9:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.140625,
+      "unequal": 738388,
+      "violations_002": 4045
+    },
+    {
+      "name": "9:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.1875,
+      "unequal": 176646,
+      "violations_002": 2706
+    },
+    {
+      "name": "9:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.03662109375,
+      "unequal": 206166,
+      "violations_002": 4
+    },
+    {
+      "name": "9:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0703125,
+      "unequal": 809538,
+      "violations_002": 52
+    },
+    {
+      "name": "9:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0390625,
+      "unequal": 538746,
+      "violations_002": 14
+    },
+    {
+      "name": "9:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.09375,
+      "unequal": 497416,
+      "violations_002": 30
+    },
+    {
+      "name": "9:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.140625,
+      "unequal": 2072831,
+      "violations_002": 181
+    },
+    {
+      "name": "9:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0703125,
+      "unequal": 546546,
+      "violations_002": 88
+    },
+    {
+      "name": "9:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.375,
+      "unequal": 509824,
+      "violations_002": 320
+    },
+    {
+      "name": "10:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.125,
+      "unequal": 502518,
+      "violations_002": 48
+    },
+    {
+      "name": "10:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.15625,
+      "unequal": 774331,
+      "violations_002": 896
+    },
+    {
+      "name": "10:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.125,
+      "unequal": 191388,
+      "violations_002": 188
+    },
+    {
+      "name": "10:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.0859375,
+      "unequal": 211438,
+      "violations_002": 132
+    },
+    {
+      "name": "10:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.34375,
+      "unequal": 750408,
+      "violations_002": 8448
+    },
+    {
+      "name": "10:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.375,
+      "unequal": 181740,
+      "violations_002": 2491
+    },
+    {
+      "name": "10:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.0859375,
+      "unequal": 211438,
+      "violations_002": 132
+    },
+    {
+      "name": "10:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.08984375,
+      "unequal": 862026,
+      "violations_002": 131
+    },
+    {
+      "name": "10:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0546875,
+      "unequal": 551142,
+      "violations_002": 93
+    },
+    {
+      "name": "10:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.09375,
+      "unequal": 511781,
+      "violations_002": 332
+    },
+    {
+      "name": "10:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.34375,
+      "unequal": 2099639,
+      "violations_002": 232
+    },
+    {
+      "name": "10:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.1875,
+      "unequal": 552151,
+      "violations_002": 628
+    },
+    {
+      "name": "10:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.25,
+      "unequal": 516266,
+      "violations_002": 1168
+    },
+    {
+      "name": "11:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.09375,
+      "unequal": 511630,
+      "violations_002": 44
+    },
+    {
+      "name": "11:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.1328125,
+      "unequal": 786651,
+      "violations_002": 704
+    },
+    {
+      "name": "11:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.109375,
+      "unequal": 192648,
+      "violations_002": 184
+    },
+    {
+      "name": "11:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.08984375,
+      "unequal": 211808,
+      "violations_002": 146
+    },
+    {
+      "name": "11:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.453125,
+      "unequal": 767382,
+      "violations_002": 14620
+    },
+    {
+      "name": "11:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.625,
+      "unequal": 184699,
+      "violations_002": 4809
+    },
+    {
+      "name": "11:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.08984375,
+      "unequal": 211808,
+      "violations_002": 146
+    },
+    {
+      "name": "11:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.091796875,
+      "unequal": 865552,
+      "violations_002": 412
+    },
+    {
+      "name": "11:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.0546875,
+      "unequal": 552328,
+      "violations_002": 535
+    },
+    {
+      "name": "11:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.09375,
+      "unequal": 518955,
+      "violations_002": 1114
+    },
+    {
+      "name": "11:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.1640625,
+      "unequal": 2123472,
+      "violations_002": 525
+    },
+    {
+      "name": "11:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.1171875,
+      "unequal": 557645,
+      "violations_002": 1448
+    },
+    {
+      "name": "11:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.25,
+      "unequal": 524384,
+      "violations_002": 2669
+    },
+    {
+      "name": "12:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.125,
+      "unequal": 520573,
+      "violations_002": 229
+    },
+    {
+      "name": "12:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.15625,
+      "unequal": 795559,
+      "violations_002": 1661
+    },
+    {
+      "name": "12:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.12890625,
+      "unequal": 194421,
+      "violations_002": 382
+    },
+    {
+      "name": "12:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.078125,
+      "unequal": 213776,
+      "violations_002": 410
+    },
+    {
+      "name": "12:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.375,
+      "unequal": 776617,
+      "violations_002": 19344
+    },
+    {
+      "name": "12:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.5625,
+      "unequal": 188353,
+      "violations_002": 5896
+    },
+    {
+      "name": "12:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.078125,
+      "unequal": 213776,
+      "violations_002": 410
+    },
+    {
+      "name": "12:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.09375,
+      "unequal": 857018,
+      "violations_002": 355
+    },
+    {
+      "name": "12:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.244140625,
+      "unequal": 544372,
+      "violations_002": 507
+    },
+    {
+      "name": "12:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.09375,
+      "unequal": 526506,
+      "violations_002": 1883
+    },
+    {
+      "name": "12:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.203125,
+      "unequal": 2144747,
+      "violations_002": 656
+    },
+    {
+      "name": "12:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.28125,
+      "unequal": 564286,
+      "violations_002": 2125
+    },
+    {
+      "name": "12:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.375,
+      "unequal": 532975,
+      "violations_002": 4408
+    },
+    {
+      "name": "13:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.15625,
+      "unequal": 530367,
+      "violations_002": 361
+    },
+    {
+      "name": "13:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.21875,
+      "unequal": 815004,
+      "violations_002": 1775
+    },
+    {
+      "name": "13:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.28125,
+      "unequal": 200878,
+      "violations_002": 657
+    },
+    {
+      "name": "13:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.2734375,
+      "unequal": 215480,
+      "violations_002": 638
+    },
+    {
+      "name": "13:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.546875,
+      "unequal": 797307,
+      "violations_002": 27039
+    },
+    {
+      "name": "13:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.546875,
+      "unequal": 194869,
+      "violations_002": 10507
+    },
+    {
+      "name": "13:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.2734375,
+      "unequal": 215480,
+      "violations_002": 638
+    },
+    {
+      "name": "13:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.3203125,
+      "unequal": 862036,
+      "violations_002": 1017
+    },
+    {
+      "name": "13:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.1181640625,
+      "unequal": 558860,
+      "violations_002": 1197
+    },
+    {
+      "name": "13:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.15625,
+      "unequal": 536168,
+      "violations_002": 2881
+    },
+    {
+      "name": "13:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.138671875,
+      "unequal": 2186539,
+      "violations_002": 1279
+    },
+    {
+      "name": "13:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.25,
+      "unequal": 573359,
+      "violations_002": 2975
+    },
+    {
+      "name": "13:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.375,
+      "unequal": 542337,
+      "violations_002": 6434
+    },
+    {
+      "name": "14:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.34375,
+      "unequal": 538902,
+      "violations_002": 1519
+    },
+    {
+      "name": "14:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.283203125,
+      "unequal": 828837,
+      "violations_002": 5166
+    },
+    {
+      "name": "14:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.34375,
+      "unequal": 202047,
+      "violations_002": 1390
+    },
+    {
+      "name": "14:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.171875,
+      "unequal": 220681,
+      "violations_002": 1770
+    },
+    {
+      "name": "14:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.59375,
+      "unequal": 810009,
+      "violations_002": 31455
+    },
+    {
+      "name": "14:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 1.0,
+      "unequal": 196300,
+      "violations_002": 7854
+    },
+    {
+      "name": "14:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.171875,
+      "unequal": 220681,
+      "violations_002": 1770
+    },
+    {
+      "name": "14:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.19140625,
+      "unequal": 894466,
+      "violations_002": 1534
+    },
+    {
+      "name": "14:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.22265625,
+      "unequal": 572233,
+      "violations_002": 1301
+    },
+    {
+      "name": "14:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.1953125,
+      "unequal": 545183,
+      "violations_002": 4041
+    },
+    {
+      "name": "14:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.2470703125,
+      "unequal": 2205264,
+      "violations_002": 1725
+    },
+    {
+      "name": "14:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.1201171875,
+      "unequal": 578063,
+      "violations_002": 4123
+    },
+    {
+      "name": "14:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.25,
+      "unequal": 549031,
+      "violations_002": 8665
+    },
+    {
+      "name": "15:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.3359375,
+      "unequal": 544697,
+      "violations_002": 1871
+    },
+    {
+      "name": "15:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.40625,
+      "unequal": 840677,
+      "violations_002": 6188
+    },
+    {
+      "name": "15:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.421875,
+      "unequal": 204045,
+      "violations_002": 1467
+    },
+    {
+      "name": "15:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.2421875,
+      "unequal": 223156,
+      "violations_002": 2059
+    },
+    {
+      "name": "15:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.9322509765625,
+      "unequal": 823164,
+      "violations_002": 42715
+    },
+    {
+      "name": "15:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 1.15625,
+      "unequal": 199396,
+      "violations_002": 10410
+    },
+    {
+      "name": "15:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.2421875,
+      "unequal": 223156,
+      "violations_002": 2059
+    },
+    {
+      "name": "15:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.20703125,
+      "unequal": 901374,
+      "violations_002": 2165
+    },
+    {
+      "name": "15:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.193359375,
+      "unequal": 573471,
+      "violations_002": 2286
+    },
+    {
+      "name": "15:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.1875,
+      "unequal": 550815,
+      "violations_002": 5994
+    },
+    {
+      "name": "15:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.2578125,
+      "unequal": 2223138,
+      "violations_002": 2867
+    },
+    {
+      "name": "15:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.171875,
+      "unequal": 582725,
+      "violations_002": 6054
+    },
+    {
+      "name": "15:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.375,
+      "unequal": 556293,
+      "violations_002": 13297
+    },
+    {
+      "name": "16:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.5,
+      "unequal": 553323,
+      "violations_002": 6531
+    },
+    {
+      "name": "16:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.3583984375,
+      "unequal": 863675,
+      "violations_002": 16268
+    },
+    {
+      "name": "16:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.6875,
+      "unequal": 212085,
+      "violations_002": 4236
+    },
+    {
+      "name": "16:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.3828125,
+      "unequal": 227130,
+      "violations_002": 6602
+    },
+    {
+      "name": "16:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.859375,
+      "unequal": 843452,
+      "violations_002": 54698
+    },
+    {
+      "name": "16:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 1.625,
+      "unequal": 207746,
+      "violations_002": 14801
+    },
+    {
+      "name": "16:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.3828125,
+      "unequal": 227130,
+      "violations_002": 6602
+    },
+    {
+      "name": "16:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.28125,
+      "unequal": 914855,
+      "violations_002": 3589
+    },
+    {
+      "name": "16:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.3046875,
+      "unequal": 579841,
+      "violations_002": 4268
+    },
+    {
+      "name": "16:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.21875,
+      "unequal": 555727,
+      "violations_002": 9166
+    },
+    {
+      "name": "16:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.484375,
+      "unequal": 2229561,
+      "violations_002": 4954
+    },
+    {
+      "name": "16:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.427734375,
+      "unequal": 583572,
+      "violations_002": 9116
+    },
+    {
+      "name": "16:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.5,
+      "unequal": 558361,
+      "violations_002": 18989
+    },
+    {
+      "name": "17:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.625,
+      "unequal": 554710,
+      "violations_002": 7514
+    },
+    {
+      "name": "17:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.515625,
+      "unequal": 864821,
+      "violations_002": 19702
+    },
+    {
+      "name": "17:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.54296875,
+      "unequal": 214289,
+      "violations_002": 4604
+    },
+    {
+      "name": "17:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.5703125,
+      "unequal": 227223,
+      "violations_002": 6190
+    },
+    {
+      "name": "17:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.65625,
+      "unequal": 848714,
+      "violations_002": 70400
+    },
+    {
+      "name": "17:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 1.9375,
+      "unequal": 210810,
+      "violations_002": 17752
+    },
+    {
+      "name": "17:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.5703125,
+      "unequal": 227223,
+      "violations_002": 6190
+    },
+    {
+      "name": "17:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.55859375,
+      "unequal": 907565,
+      "violations_002": 5655
+    },
+    {
+      "name": "17:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.528076171875,
+      "unequal": 575614,
+      "violations_002": 6089
+    },
+    {
+      "name": "17:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.3125,
+      "unequal": 555775,
+      "violations_002": 11079
+    },
+    {
+      "name": "17:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.390625,
+      "unequal": 2229534,
+      "violations_002": 9665
+    },
+    {
+      "name": "17:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.326171875,
+      "unequal": 582650,
+      "violations_002": 14011
+    },
+    {
+      "name": "17:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.5,
+      "unequal": 559255,
+      "violations_002": 29062
+    },
+    {
+      "name": "18:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.5625,
+      "unequal": 555770,
+      "violations_002": 11616
+    },
+    {
+      "name": "18:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 0.703125,
+      "unequal": 862552,
+      "violations_002": 27474
+    },
+    {
+      "name": "18:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.6875,
+      "unequal": 214404,
+      "violations_002": 7523
+    },
+    {
+      "name": "18:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 0.5546875,
+      "unequal": 226733,
+      "violations_002": 8922
+    },
+    {
+      "name": "18:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.03125,
+      "unequal": 845225,
+      "violations_002": 72849
+    },
+    {
+      "name": "18:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 1.9375,
+      "unequal": 211105,
+      "violations_002": 19787
+    },
+    {
+      "name": "18:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 0.5546875,
+      "unequal": 226733,
+      "violations_002": 8922
+    },
+    {
+      "name": "18:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.50927734375,
+      "unequal": 911828,
+      "violations_002": 9029
+    },
+    {
+      "name": "18:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.2265625,
+      "unequal": 578118,
+      "violations_002": 10806
+    },
+    {
+      "name": "18:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.380859375,
+      "unequal": 558000,
+      "violations_002": 15773
+    },
+    {
+      "name": "18:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 0.640625,
+      "unequal": 2235019,
+      "violations_002": 16969
+    },
+    {
+      "name": "18:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.703125,
+      "unequal": 584166,
+      "violations_002": 20590
+    },
+    {
+      "name": "18:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.875,
+      "unequal": 561358,
+      "violations_002": 40178
+    },
+    {
+      "name": "19:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.375,
+      "unequal": 557738,
+      "violations_002": 21064
+    },
+    {
+      "name": "19:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 1.0,
+      "unequal": 858581,
+      "violations_002": 42060
+    },
+    {
+      "name": "19:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 1.1171875,
+      "unequal": 211326,
+      "violations_002": 10302
+    },
+    {
+      "name": "19:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 1.1015625,
+      "unequal": 227448,
+      "violations_002": 14045
+    },
+    {
+      "name": "19:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.5,
+      "unequal": 845748,
+      "violations_002": 74292
+    },
+    {
+      "name": "19:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 2.609375,
+      "unequal": 206421,
+      "violations_002": 18859
+    },
+    {
+      "name": "19:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 1.1015625,
+      "unequal": 227448,
+      "violations_002": 14045
+    },
+    {
+      "name": "19:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.48046875,
+      "unequal": 917691,
+      "violations_002": 11673
+    },
+    {
+      "name": "19:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.599609375,
+      "unequal": 577775,
+      "violations_002": 12126
+    },
+    {
+      "name": "19:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.503173828125,
+      "unequal": 558372,
+      "violations_002": 19353
+    },
+    {
+      "name": "19:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 2.05078125,
+      "unequal": 2236036,
+      "violations_002": 24681
+    },
+    {
+      "name": "19:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 2.453125,
+      "unequal": 583817,
+      "violations_002": 25507
+    },
+    {
+      "name": "19:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 2.0,
+      "unequal": 562878,
+      "violations_002": 54910
+    },
+    {
+      "name": "20:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.75,
+      "unequal": 558467,
+      "violations_002": 20941
+    },
+    {
+      "name": "20:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 2.640625,
+      "unequal": 870205,
+      "violations_002": 43268
+    },
+    {
+      "name": "20:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 1.7421875,
+      "unequal": 214536,
+      "violations_002": 10216
+    },
+    {
+      "name": "20:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 2.05859375,
+      "unequal": 227088,
+      "violations_002": 13199
+    },
+    {
+      "name": "20:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 2.8828125,
+      "unequal": 860282,
+      "violations_002": 85352
+    },
+    {
+      "name": "20:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 3.5,
+      "unequal": 211148,
+      "violations_002": 22200
+    },
+    {
+      "name": "20:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 2.05859375,
+      "unequal": 227088,
+      "violations_002": 13199
+    },
+    {
+      "name": "20:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.640625,
+      "unequal": 918176,
+      "violations_002": 15124
+    },
+    {
+      "name": "20:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.801025390625,
+      "unequal": 584352,
+      "violations_002": 15799
+    },
+    {
+      "name": "20:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.8798828125,
+      "unequal": 560472,
+      "violations_002": 24070
+    },
+    {
+      "name": "20:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 2.203125,
+      "unequal": 2239551,
+      "violations_002": 32886
+    },
+    {
+      "name": "20:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.828857421875,
+      "unequal": 585013,
+      "violations_002": 31675
+    },
+    {
+      "name": "20:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 2.0,
+      "unequal": 565163,
+      "violations_002": 70089
+    },
+    {
+      "name": "21:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 2.5,
+      "unequal": 560002,
+      "violations_002": 28824
+    },
+    {
+      "name": "21:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 2.31640625,
+      "unequal": 871678,
+      "violations_002": 56629
+    },
+    {
+      "name": "21:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 2.96484375,
+      "unequal": 214527,
+      "violations_002": 13776
+    },
+    {
+      "name": "21:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 1.9921875,
+      "unequal": 227175,
+      "violations_002": 17700
+    },
+    {
+      "name": "21:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 2.83984375,
+      "unequal": 857705,
+      "violations_002": 91081
+    },
+    {
+      "name": "21:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 5.3359375,
+      "unequal": 211375,
+      "violations_002": 21260
+    },
+    {
+      "name": "21:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 1.9921875,
+      "unequal": 227175,
+      "violations_002": 17700
+    },
+    {
+      "name": "21:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.4453125,
+      "unequal": 920396,
+      "violations_002": 17436
+    },
+    {
+      "name": "21:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.8427734375,
+      "unequal": 583775,
+      "violations_002": 17779
+    },
+    {
+      "name": "21:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.06103515625,
+      "unequal": 562533,
+      "violations_002": 29510
+    },
+    {
+      "name": "21:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 5.3828125,
+      "unequal": 2240265,
+      "violations_002": 37719
+    },
+    {
+      "name": "21:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.189453125,
+      "unequal": 585921,
+      "violations_002": 40353
+    },
+    {
+      "name": "21:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 2.69921875,
+      "unequal": 567276,
+      "violations_002": 85476
+    },
+    {
+      "name": "22:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 4.0234375,
+      "unequal": 562681,
+      "violations_002": 50790
+    },
+    {
+      "name": "22:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 5.0390625,
+      "unequal": 862438,
+      "violations_002": 86298
+    },
+    {
+      "name": "22:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 2.982421875,
+      "unequal": 213820,
+      "violations_002": 19298
+    },
+    {
+      "name": "22:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 2.765625,
+      "unequal": 229397,
+      "violations_002": 29278
+    },
+    {
+      "name": "22:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 3.25,
+      "unequal": 844109,
+      "violations_002": 85022
+    },
+    {
+      "name": "22:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 5.25,
+      "unequal": 209732,
+      "violations_002": 21281
+    },
+    {
+      "name": "22:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 2.765625,
+      "unequal": 229397,
+      "violations_002": 29278
+    },
+    {
+      "name": "22:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 2.53125,
+      "unequal": 918959,
+      "violations_002": 23451
+    },
+    {
+      "name": "22:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.0537109375,
+      "unequal": 584579,
+      "violations_002": 28942
+    },
+    {
+      "name": "22:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.2265625,
+      "unequal": 562222,
+      "violations_002": 31176
+    },
+    {
+      "name": "22:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 3.578125,
+      "unequal": 2226466,
+      "violations_002": 42078
+    },
+    {
+      "name": "22:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.6484375,
+      "unequal": 582918,
+      "violations_002": 47825
+    },
+    {
+      "name": "22:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 3.21484375,
+      "unequal": 564345,
+      "violations_002": 94739
+    },
+    {
+      "name": "23:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 6.640625,
+      "unequal": 560693,
+      "violations_002": 45946
+    },
+    {
+      "name": "23:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 6.021484375,
+      "unequal": 869183,
+      "violations_002": 84334
+    },
+    {
+      "name": "23:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 3.3828125,
+      "unequal": 213246,
+      "violations_002": 19032
+    },
+    {
+      "name": "23:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 3.46875,
+      "unequal": 227306,
+      "violations_002": 23878
+    },
+    {
+      "name": "23:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 5.09375,
+      "unequal": 853258,
+      "violations_002": 93039
+    },
+    {
+      "name": "23:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 5.34375,
+      "unequal": 208960,
+      "violations_002": 21415
+    },
+    {
+      "name": "23:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 3.46875,
+      "unequal": 227306,
+      "violations_002": 23878
+    },
+    {
+      "name": "23:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 3.140625,
+      "unequal": 926216,
+      "violations_002": 22271
+    },
+    {
+      "name": "23:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 3.59375,
+      "unequal": 582245,
+      "violations_002": 31136
+    },
+    {
+      "name": "23:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.875,
+      "unequal": 560941,
+      "violations_002": 34725
+    },
+    {
+      "name": "23:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 3.71533203125,
+      "unequal": 2218915,
+      "violations_002": 47672
+    },
+    {
+      "name": "23:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 5.203125,
+      "unequal": 580821,
+      "violations_002": 52769
+    },
+    {
+      "name": "23:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 3.71624755859375,
+      "unequal": 564094,
+      "violations_002": 110744
+    },
+    {
+      "name": "24:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 8.421875,
+      "unequal": 561847,
+      "violations_002": 55342
+    },
+    {
+      "name": "24:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 8.21875,
+      "unequal": 866974,
+      "violations_002": 100256
+    },
+    {
+      "name": "24:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 3.84375,
+      "unequal": 212890,
+      "violations_002": 22726
+    },
+    {
+      "name": "24:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 3.0,
+      "unequal": 226408,
+      "violations_002": 28657
+    },
+    {
+      "name": "24:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 4.015625,
+      "unequal": 853728,
+      "violations_002": 81917
+    },
+    {
+      "name": "24:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 5.28125,
+      "unequal": 209500,
+      "violations_002": 21246
+    },
+    {
+      "name": "24:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 3.0,
+      "unequal": 226408,
+      "violations_002": 28657
+    },
+    {
+      "name": "24:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 2.2998046875,
+      "unequal": 917823,
+      "violations_002": 24252
+    },
+    {
+      "name": "24:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 4.3125,
+      "unequal": 579565,
+      "violations_002": 31244
+    },
+    {
+      "name": "24:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 2.0625,
+      "unequal": 559897,
+      "violations_002": 34911
+    },
+    {
+      "name": "24:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 3.859375,
+      "unequal": 2209698,
+      "violations_002": 46189
+    },
+    {
+      "name": "24:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 3.125,
+      "unequal": 579178,
+      "violations_002": 55878
+    },
+    {
+      "name": "24:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 5.5,
+      "unequal": 563410,
+      "violations_002": 126648
+    },
+    {
+      "name": "25:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 4.0,
+      "unequal": 560932,
+      "violations_002": 48732
+    },
+    {
+      "name": "25:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 4.546875,
+      "unequal": 858838,
+      "violations_002": 83804
+    },
+    {
+      "name": "25:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 3.125,
+      "unequal": 212405,
+      "violations_002": 20784
+    },
+    {
+      "name": "25:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 3.58984375,
+      "unequal": 226043,
+      "violations_002": 26689
+    },
+    {
+      "name": "25:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 3.0078125,
+      "unequal": 840770,
+      "violations_002": 81879
+    },
+    {
+      "name": "25:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 4.921875,
+      "unequal": 207733,
+      "violations_002": 21883
+    },
+    {
+      "name": "25:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 3.58984375,
+      "unequal": 226043,
+      "violations_002": 26689
+    },
+    {
+      "name": "25:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.953125,
+      "unequal": 920271,
+      "violations_002": 20680
+    },
+    {
+      "name": "25:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.6708984375,
+      "unequal": 582855,
+      "violations_002": 35142
+    },
+    {
+      "name": "25:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 2.265625,
+      "unequal": 560813,
+      "violations_002": 37929
+    },
+    {
+      "name": "25:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 7.1875,
+      "unequal": 2212399,
+      "violations_002": 52397
+    },
+    {
+      "name": "25:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.4384765625,
+      "unequal": 580624,
+      "violations_002": 65247
+    },
+    {
+      "name": "25:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 6.5,
+      "unequal": 565432,
+      "violations_002": 144486
+    },
+    {
+      "name": "26:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 4.625,
+      "unequal": 558046,
+      "violations_002": 65938
+    },
+    {
+      "name": "26:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 5.216796875,
+      "unequal": 871799,
+      "violations_002": 114628
+    },
+    {
+      "name": "26:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 3.390625,
+      "unequal": 215513,
+      "violations_002": 28069
+    },
+    {
+      "name": "26:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 2.23046875,
+      "unequal": 227921,
+      "violations_002": 35189
+    },
+    {
+      "name": "26:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 3.0498046875,
+      "unequal": 857778,
+      "violations_002": 88411
+    },
+    {
+      "name": "26:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 5.125,
+      "unequal": 212763,
+      "violations_002": 23766
+    },
+    {
+      "name": "26:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 2.23046875,
+      "unequal": 227921,
+      "violations_002": 35189
+    },
+    {
+      "name": "26:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.46875,
+      "unequal": 923051,
+      "violations_002": 18890
+    },
+    {
+      "name": "26:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.6650390625,
+      "unequal": 583555,
+      "violations_002": 29212
+    },
+    {
+      "name": "26:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 2.359375,
+      "unequal": 564424,
+      "violations_002": 42779
+    },
+    {
+      "name": "26:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 4.125,
+      "unequal": 2208156,
+      "violations_002": 55492
+    },
+    {
+      "name": "26:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 2.25,
+      "unequal": 581061,
+      "violations_002": 69260
+    },
+    {
+      "name": "26:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 9.0,
+      "unequal": 566206,
+      "violations_002": 158215
+    },
+    {
+      "name": "27:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 4.875,
+      "unequal": 557794,
+      "violations_002": 72706
+    },
+    {
+      "name": "27:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 5.765625,
+      "unequal": 861623,
+      "violations_002": 121100
+    },
+    {
+      "name": "27:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 3.53125,
+      "unequal": 214182,
+      "violations_002": 27706
+    },
+    {
+      "name": "27:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 2.25,
+      "unequal": 226703,
+      "violations_002": 38045
+    },
+    {
+      "name": "27:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 2.1875,
+      "unequal": 841911,
+      "violations_002": 80793
+    },
+    {
+      "name": "27:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 5.75,
+      "unequal": 209555,
+      "violations_002": 21640
+    },
+    {
+      "name": "27:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 2.25,
+      "unequal": 226703,
+      "violations_002": 38045
+    },
+    {
+      "name": "27:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 0.78125,
+      "unequal": 922597,
+      "violations_002": 16306
+    },
+    {
+      "name": "27:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.4130859375,
+      "unequal": 585129,
+      "violations_002": 25043
+    },
+    {
+      "name": "27:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 2.03125,
+      "unequal": 565992,
+      "violations_002": 45704
+    },
+    {
+      "name": "27:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 7.0,
+      "unequal": 2208159,
+      "violations_002": 61617
+    },
+    {
+      "name": "27:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 2.10546875,
+      "unequal": 579887,
+      "violations_002": 81780
+    },
+    {
+      "name": "27:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 9.0,
+      "unequal": 566422,
+      "violations_002": 171984
+    },
+    {
+      "name": "28:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 4.5,
+      "unequal": 559945,
+      "violations_002": 70070
+    },
+    {
+      "name": "28:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 5.90625,
+      "unequal": 864460,
+      "violations_002": 124378
+    },
+    {
+      "name": "28:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 4.86328125,
+      "unequal": 213633,
+      "violations_002": 29097
+    },
+    {
+      "name": "28:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 1.9921875,
+      "unequal": 226007,
+      "violations_002": 38927
+    },
+    {
+      "name": "28:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 2.1875,
+      "unequal": 849649,
+      "violations_002": 81747
+    },
+    {
+      "name": "28:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 4.8671875,
+      "unequal": 209916,
+      "violations_002": 21465
+    },
+    {
+      "name": "28:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 1.9921875,
+      "unequal": 226007,
+      "violations_002": 38927
+    },
+    {
+      "name": "28:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.25,
+      "unequal": 919855,
+      "violations_002": 29286
+    },
+    {
+      "name": "28:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.08203125,
+      "unequal": 580945,
+      "violations_002": 44872
+    },
+    {
+      "name": "28:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.609375,
+      "unequal": 566560,
+      "violations_002": 50398
+    },
+    {
+      "name": "28:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 6.78125,
+      "unequal": 2209477,
+      "violations_002": 73163
+    },
+    {
+      "name": "28:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 2.9375,
+      "unequal": 581322,
+      "violations_002": 95262
+    },
+    {
+      "name": "28:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 11.5,
+      "unequal": 567379,
+      "violations_002": 187228
+    },
+    {
+      "name": "29:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 4.59375,
+      "unequal": 560335,
+      "violations_002": 98449
+    },
+    {
+      "name": "29:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 6.0,
+      "unequal": 870254,
+      "violations_002": 180051
+    },
+    {
+      "name": "29:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 3.7333984375,
+      "unequal": 216557,
+      "violations_002": 41289
+    },
+    {
+      "name": "29:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 1.953125,
+      "unequal": 228005,
+      "violations_002": 58800
+    },
+    {
+      "name": "29:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.91015625,
+      "unequal": 851432,
+      "violations_002": 79106
+    },
+    {
+      "name": "29:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 4.138671875,
+      "unequal": 212323,
+      "violations_002": 23187
+    },
+    {
+      "name": "29:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 1.953125,
+      "unequal": 228005,
+      "violations_002": 58800
+    },
+    {
+      "name": "29:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.5,
+      "unequal": 927472,
+      "violations_002": 34145
+    },
+    {
+      "name": "29:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.8125,
+      "unequal": 579754,
+      "violations_002": 58157
+    },
+    {
+      "name": "29:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.875,
+      "unequal": 564966,
+      "violations_002": 56790
+    },
+    {
+      "name": "29:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 4.494140625,
+      "unequal": 2208269,
+      "violations_002": 74260
+    },
+    {
+      "name": "29:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 2.25,
+      "unequal": 581263,
+      "violations_002": 98289
+    },
+    {
+      "name": "29:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 13.5,
+      "unequal": 568501,
+      "violations_002": 203417
+    },
+    {
+      "name": "30:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 4.8125,
+      "unequal": 566552,
+      "violations_002": 125073
+    },
+    {
+      "name": "30:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 7.125,
+      "unequal": 869823,
+      "violations_002": 204252
+    },
+    {
+      "name": "30:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 3.84375,
+      "unequal": 216365,
+      "violations_002": 49284
+    },
+    {
+      "name": "30:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 2.19921875,
+      "unequal": 229195,
+      "violations_002": 67608
+    },
+    {
+      "name": "30:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 2.046875,
+      "unequal": 851487,
+      "violations_002": 91895
+    },
+    {
+      "name": "30:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 3.21875,
+      "unequal": 211694,
+      "violations_002": 25477
+    },
+    {
+      "name": "30:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 2.19921875,
+      "unequal": 229195,
+      "violations_002": 67608
+    },
+    {
+      "name": "30:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 2.703125,
+      "unequal": 929493,
+      "violations_002": 48416
+    },
+    {
+      "name": "30:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.4375,
+      "unequal": 582294,
+      "violations_002": 82637
+    },
+    {
+      "name": "30:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.59375,
+      "unequal": 562662,
+      "violations_002": 60248
+    },
+    {
+      "name": "30:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 8.875,
+      "unequal": 2211283,
+      "violations_002": 83788
+    },
+    {
+      "name": "30:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 4.0,
+      "unequal": 581975,
+      "violations_002": 111036
+    },
+    {
+      "name": "30:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 16.0,
+      "unequal": 568939,
+      "violations_002": 217793
+    },
+    {
+      "name": "31:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 5.09375,
+      "unequal": 566396,
+      "violations_002": 124205
+    },
+    {
+      "name": "31:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 6.0,
+      "unequal": 870031,
+      "violations_002": 213802
+    },
+    {
+      "name": "31:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 3.83203125,
+      "unequal": 217093,
+      "violations_002": 50842
+    },
+    {
+      "name": "31:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 2.1328125,
+      "unequal": 228817,
+      "violations_002": 72164
+    },
+    {
+      "name": "31:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.21484375,
+      "unequal": 855197,
+      "violations_002": 80062
+    },
+    {
+      "name": "31:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 3.484375,
+      "unequal": 213544,
+      "violations_002": 25537
+    },
+    {
+      "name": "31:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 2.1328125,
+      "unequal": 228817,
+      "violations_002": 72164
+    },
+    {
+      "name": "31:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.4453125,
+      "unequal": 935174,
+      "violations_002": 47110
+    },
+    {
+      "name": "31:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.9140625,
+      "unequal": 585452,
+      "violations_002": 83414
+    },
+    {
+      "name": "31:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.3125,
+      "unequal": 563456,
+      "violations_002": 62102
+    },
+    {
+      "name": "31:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 3.78125,
+      "unequal": 2215963,
+      "violations_002": 95705
+    },
+    {
+      "name": "31:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.625,
+      "unequal": 581069,
+      "violations_002": 124629
+    },
+    {
+      "name": "31:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 14.0,
+      "unequal": 569463,
+      "violations_002": 230493
+    },
+    {
+      "name": "32:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 6.359375,
+      "unequal": 563515,
+      "violations_002": 144149
+    },
+    {
+      "name": "32:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 7.6875,
+      "unequal": 865241,
+      "violations_002": 232141
+    },
+    {
+      "name": "32:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 4.00390625,
+      "unequal": 215040,
+      "violations_002": 54225
+    },
+    {
+      "name": "32:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 2.046875,
+      "unequal": 228105,
+      "violations_002": 80286
+    },
+    {
+      "name": "32:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.1875,
+      "unequal": 849313,
+      "violations_002": 79151
+    },
+    {
+      "name": "32:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 3.30078125,
+      "unequal": 209661,
+      "violations_002": 22427
+    },
+    {
+      "name": "32:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 2.046875,
+      "unequal": 228105,
+      "violations_002": 80286
+    },
+    {
+      "name": "32:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 2.59375,
+      "unequal": 931216,
+      "violations_002": 70493
+    },
+    {
+      "name": "32:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.8125,
+      "unequal": 586869,
+      "violations_002": 128402
+    },
+    {
+      "name": "32:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.234375,
+      "unequal": 564111,
+      "violations_002": 65820
+    },
+    {
+      "name": "32:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 9.0,
+      "unequal": 2219478,
+      "violations_002": 112420
+    },
+    {
+      "name": "32:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 4.875,
+      "unequal": 581809,
+      "violations_002": 150939
+    },
+    {
+      "name": "32:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 14.0,
+      "unequal": 570356,
+      "violations_002": 245939
+    },
+    {
+      "name": "33:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 9.296875,
+      "unequal": 563398,
+      "violations_002": 165951
+    },
+    {
+      "name": "33:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 7.125,
+      "unequal": 880737,
+      "violations_002": 284679
+    },
+    {
+      "name": "33:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 5.0625,
+      "unequal": 220229,
+      "violations_002": 66763
+    },
+    {
+      "name": "33:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 3.03515625,
+      "unequal": 230247,
+      "violations_002": 99376
+    },
+    {
+      "name": "33:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.23828125,
+      "unequal": 868186,
+      "violations_002": 85665
+    },
+    {
+      "name": "33:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 2.96875,
+      "unequal": 215449,
+      "violations_002": 25737
+    },
+    {
+      "name": "33:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 3.03515625,
+      "unequal": 230247,
+      "violations_002": 99376
+    },
+    {
+      "name": "33:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.860107421875,
+      "unequal": 938672,
+      "violations_002": 108574
+    },
+    {
+      "name": "33:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 0.875,
+      "unequal": 587255,
+      "violations_002": 174082
+    },
+    {
+      "name": "33:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.3125,
+      "unequal": 564665,
+      "violations_002": 72701
+    },
+    {
+      "name": "33:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 7.375,
+      "unequal": 2217927,
+      "violations_002": 136409
+    },
+    {
+      "name": "33:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 6.0,
+      "unequal": 579678,
+      "violations_002": 177460
+    },
+    {
+      "name": "33:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 20.0,
+      "unequal": 570844,
+      "violations_002": 261644
+    },
+    {
+      "name": "34:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 8.0,
+      "unequal": 564164,
+      "violations_002": 192295
+    },
+    {
+      "name": "34:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 6.0,
+      "unequal": 873958,
+      "violations_002": 280109
+    },
+    {
+      "name": "34:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 6.265625,
+      "unequal": 218170,
+      "violations_002": 66600
+    },
+    {
+      "name": "34:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 2.65625,
+      "unequal": 229754,
+      "violations_002": 96166
+    },
+    {
+      "name": "34:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.92578125,
+      "unequal": 855249,
+      "violations_002": 94498
+    },
+    {
+      "name": "34:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 2.5625,
+      "unequal": 213606,
+      "violations_002": 26127
+    },
+    {
+      "name": "34:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 2.65625,
+      "unequal": 229754,
+      "violations_002": 96166
+    },
+    {
+      "name": "34:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 2.8125,
+      "unequal": 921355,
+      "violations_002": 127986
+    },
+    {
+      "name": "34:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 3.25,
+      "unequal": 580609,
+      "violations_002": 184691
+    },
+    {
+      "name": "34:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 1.3125,
+      "unequal": 561775,
+      "violations_002": 76760
+    },
+    {
+      "name": "34:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 11.75,
+      "unequal": 2185982,
+      "violations_002": 161301
+    },
+    {
+      "name": "34:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 17.0,
+      "unequal": 579059,
+      "violations_002": 197477
+    },
+    {
+      "name": "34:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 30.0,
+      "unequal": 570853,
+      "violations_002": 273255
+    },
+    {
+      "name": "35:input_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 4.9375,
+      "unequal": 566439,
+      "violations_002": 181498
+    },
+    {
+      "name": "35:q_proj",
+      "shape": [
+        1,
+        256,
+        4096
+      ],
+      "max_abs_error": 4.125,
+      "unequal": 867378,
+      "violations_002": 253155
+    },
+    {
+      "name": "35:k_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 4.3125,
+      "unequal": 215724,
+      "violations_002": 62823
+    },
+    {
+      "name": "35:v_proj",
+      "shape": [
+        1,
+        256,
+        1024
+      ],
+      "max_abs_error": 1.9375,
+      "unequal": 229900,
+      "violations_002": 88513
+    },
+    {
+      "name": "35:q_rotary",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.328125,
+      "unequal": 847264,
+      "violations_002": 94159
+    },
+    {
+      "name": "35:k_rotary",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 2.75,
+      "unequal": 210451,
+      "violations_002": 25259
+    },
+    {
+      "name": "35:v_cache",
+      "shape": [
+        1,
+        8,
+        256,
+        128
+      ],
+      "max_abs_error": 1.9375,
+      "unequal": 229900,
+      "violations_002": 88513
+    },
+    {
+      "name": "35:attention",
+      "shape": [
+        1,
+        32,
+        256,
+        128
+      ],
+      "max_abs_error": 1.59375,
+      "unequal": 921178,
+      "violations_002": 133810
+    },
+    {
+      "name": "35:o_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 6.0,
+      "unequal": 574581,
+      "violations_002": 155883
+    },
+    {
+      "name": "35:post_norm",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 2.25,
+      "unequal": 566774,
+      "violations_002": 94642
+    },
+    {
+      "name": "35:activation",
+      "shape": [
+        1,
+        256,
+        9728
+      ],
+      "max_abs_error": 15.5,
+      "unequal": 2193475,
+      "violations_002": 172447
+    },
+    {
+      "name": "35:down_proj",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 26.0,
+      "unequal": 572129,
+      "violations_002": 213141
+    },
+    {
+      "name": "35:layer",
+      "shape": [
+        1,
+        256,
+        2560
+      ],
+      "max_abs_error": 18.0,
+      "unequal": 571914,
+      "violations_002": 293590
+    },
+    {
+      "name": "final_norm",
+      "shape": [
+        1,
+        1,
+        2560
+      ],
+      "max_abs_error": 0.75,
+      "unequal": 2331,
+      "violations_002": 784
+    },
+    {
+      "name": "logits",
+      "shape": [
+        1,
+        1,
+        151936
+      ],
+      "max_abs_error": 0.3125,
+      "unequal": 115505,
+      "violations_002": 14631
+    }
+  ],
+  "sdpa": [
+    {
+      "layer": 0,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 1,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 2,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 3,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 4,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 5,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 6,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 7,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 8,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 9,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 10,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 11,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 12,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 13,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 14,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 15,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 16,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 17,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 18,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 19,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 20,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 21,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 22,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 23,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 24,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 25,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 26,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 27,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 28,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 29,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 30,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 31,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 32,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 33,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 34,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    },
+    {
+      "layer": 35,
+      "q_stride": [
+        1048576,
+        128,
+        4096,
+        1
+      ],
+      "k_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "v_stride": [
+        262144,
+        32768,
+        128,
+        1
+      ],
+      "args": [],
+      "kwargs": {
+        "attn_mask": "None",
+        "dropout_p": "0.0",
+        "scale": "0.08838834764831845",
+        "is_causal": "True",
+        "enable_gqa": "True"
+      }
+    }
+  ]
+}

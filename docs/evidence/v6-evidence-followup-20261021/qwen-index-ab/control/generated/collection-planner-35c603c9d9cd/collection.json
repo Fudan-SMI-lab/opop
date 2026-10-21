@@ -1,0 +1,26 @@
+{
+  "collectors": [
+    "candidate_diagnostics",
+    "binding_cost",
+    "execution_timeline",
+    "nsys",
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "candidate_bundle_functional_replacements",
+    "candidate_binding_site_resolution",
+    "binding_passthrough_invocation_cost_ms",
+    "ttft_boundary_interval_decomposition",
+    "prefill_cpu_to_cuda_submit_association",
+    "prefill_gpu_execution_vs_gap_time",
+    "prefill_host_dispatch_self_time"
+  ],
+  "unavailable_fields": {
+    "nccl_algorithm_protocol_channels": "Not applicable: single-process single-GPU task with no process group and no NCCL communicator (request.json notes; observations.json capabilities communication=not_applicable 'single-device task'); kernel entry names would not identify protocol regardless.",
+    "per_collective_wire_bytes": "Not applicable: the measured unit contains no collectives; a synthetic allreduce (collective_calibration) would be an unrelated reference experiment, and PCIe/NVLink traffic must not be inferred from logical payload or memcpy sizes.",
+    "device_pcie_nvlink_transfer_rates": "Not useful for the objective: device_telemetry supplies device-wide NVML readings with native sampling windows; the ~25 ms prefill window contains no communication phase, so device-wide rates cannot attribute it. Memory dimension is already covered by framework peak_allocated/reserved bytes in evaluation.json.",
+    "cross_rank_clock_aligned_intervals": "Not applicable: single-device task, no peer ranks (observations.json cross_rank.matched=[] with clock_policy note on rank clock subtraction)."
+  },
+  "rationale": "Observed uncertainty from evaluation.json: candidate 27675cc9 passes quality but misses the objective (ttft 25.183 ms vs paired parent 24.960 ms; reasons paired_gain_not_above_noise, objective_not_improved), and the binding summary shows requested legacy became effective direct with 'no functional replacements' for bundle index-control-param-e3d6ac10, i.e. the intended change never engaged functionally. Selection: (1) candidate_diagnostics to resolve why the bundle produced no functional replacements and which sites it attempted; (2) binding_cost (applicable: a candidate exists and the bundle is additive/passthrough at binding, not replacing the parent) to separate binding-machinery overhead from noise in the ~0.9% whole-invocation regression via clean AB/BA parent vs binding-only passthrough. For the frozen TTFT objective itself, the ~25 ms prefill interval is unattributed: the torch collector already ran and associated all 66441 kernels (coverage.json), but kernel association alone does not show launch gaps or the sync-to-sync boundary composition, so (3) execution_timeline for CPU-to-CUDA submit association and the pre-forward-sync to first-token-ready-sync interval decomposition (its clock alignment covers CPU submissions only), (4) nsys for the GPU-side kernel intervals vs idle gaps during prefill to resolve the compute-bound vs dispatch/overlap-bound attribution question execution_timeline cannot answer, and (5) python_runtime because decode runs at ~22.7 ms/step (44.07 tok/s) versus ~25 ms for the whole 256-token prefill, indicating probable host-dispatch dominance on the same dispatch path that bounds TTFT (interpreted as diagnostic self/inclusive host times, not clean scores). Not selected: torch (already ran); nccl_tuning, collective_calibration, device_telemetry as listed in unavailable_fields.",
+  "revision": "27675cc96ddfec0d2dbcc287d4de534f7f611be85c556a12deb63b44c8487265"
+}

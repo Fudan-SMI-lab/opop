@@ -1,0 +1,393 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "failure": null,
+  "wall_s": 14.734166450798512,
+  "ranks": [
+    {
+      "rank": 0,
+      "pid": 488980,
+      "exit_code": 0,
+      "status": "passed",
+      "binding": {
+        "pid": 488980,
+        "status": "verified",
+        "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+        "logical_device": 0,
+        "nvidia_smi_pid_uuids": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "pid_query_status": "observed",
+        "occupancy": {
+          "status": "sampled_clear",
+          "samples": 22,
+          "unavailable_samples": 0,
+          "wait_s": 0.05205801874399185,
+          "external_clients": [],
+          "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+        }
+      },
+      "framework_source": {
+        "sha256": "196767b08015b3fdb9a6cdd8b1320e60f621af50612a6d85c11054168b642ae3",
+        "files": 162,
+        "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+      },
+      "result": {
+        "valid": true,
+        "coverage": {
+          "ddp-full-capture-trace": {
+            "counts": {
+              "5d7d6bb13691b02f533f62b0": 2
+            },
+            "fallbacks": {},
+            "reference_invocations": {
+              "5d7d6bb13691b02f533f62b0": 2
+            },
+            "candidate_declared_routes": [
+              {
+                "call": "5d7d6bb13691b02f533f62b0",
+                "route": "eager:parent:first_invocation",
+                "count": 1
+              },
+              {
+                "call": "5d7d6bb13691b02f533f62b0",
+                "route": "fallback:parent:capture_failed:RuntimeError",
+                "count": 1
+              }
+            ],
+            "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+          }
+        },
+        "scope": "Diagnostic execution only; no quality or performance acceptance",
+        "candidate_diagnostics": {
+          "schema_version": "project.candidate-diagnostics.v1",
+          "events": [
+            {
+              "phase": "run",
+              "bundle": "ddp-full-capture-trace",
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/ddp-capture-trace/jobs/capture-trace/source/opop_candidates/trial-f684195486.py",
+              "function": "_capture_segments",
+              "line": 159,
+              "source": "output = raw_model(",
+              "recent_lines": [
+                {
+                  "line": 152,
+                  "source": "static_inputs = [inputs[index].detach().clone() for index in range(segments)]"
+                },
+                {
+                  "line": 153,
+                  "source": "static_losses = []"
+                },
+                {
+                  "line": 154,
+                  "source": "graphs = []"
+                },
+                {
+                  "line": 155,
+                  "source": "pool = torch.cuda.graph_pool_handle()"
+                },
+                {
+                  "line": 156,
+                  "source": "for index in range(segments):"
+                },
+                {
+                  "line": 157,
+                  "source": "graph = torch.cuda.CUDAGraph()"
+                },
+                {
+                  "line": 158,
+                  "source": "with torch.cuda.graph(graph, pool=pool):"
+                },
+                {
+                  "line": 159,
+                  "source": "output = raw_model("
+                },
+                {
+                  "line": 160,
+                  "source": "input_ids=static_inputs[index],"
+                },
+                {
+                  "line": 161,
+                  "source": "labels=static_inputs[index],"
+                },
+                {
+                  "line": 162,
+                  "source": "use_cache=False,"
+                },
+                {
+                  "line": 159,
+                  "source": "output = raw_model("
+                }
+              ],
+              "event": "exception",
+              "type": "RuntimeError",
+              "message": "Cannot copy between CPU and CUDA tensors during CUDA graph capture unless the CPU tensor is pinned. Please use tensor.pin_memory() or allocate the tensor with pin_memory=True.",
+              "count": 1
+            },
+            {
+              "phase": "run",
+              "bundle": "ddp-full-capture-trace",
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/ddp-capture-trace/jobs/capture-trace/source/opop_candidates/trial-f684195486.py",
+              "function": "replacement",
+              "line": 243,
+              "source": "losses = _capture_segments(raw_model, optimizer, inputs)",
+              "recent_lines": [
+                {
+                  "line": 199,
+                  "source": "not isinstance(model, DDP)"
+                },
+                {
+                  "line": 200,
+                  "source": "or not isinstance(raw_model, torch.nn.Module)"
+                },
+                {
+                  "line": 201,
+                  "source": "or optimizer is None"
+                },
+                {
+                  "line": 202,
+                  "source": "or not isinstance(inputs, (list, tuple))"
+                },
+                {
+                  "line": 203,
+                  "source": "or len(inputs) < 2"
+                },
+                {
+                  "line": 207,
+                  "source": "if book[\"params\"] is None:"
+                },
+                {
+                  "line": 218,
+                  "source": "if model is not book[\"model\"] or raw_model is not book[\"raw_model\"]:"
+                },
+                {
+                  "line": 221,
+                  "source": "if book[\"graphs\"] is not None:"
+                },
+                {
+                  "line": 240,
+                  "source": "failure = None"
+                },
+                {
+                  "line": 241,
+                  "source": "with phase(\"gradient_accumulation\"):"
+                },
+                {
+                  "line": 242,
+                  "source": "try:"
+                },
+                {
+                  "line": 243,
+                  "source": "losses = _capture_segments(raw_model, optimizer, inputs)"
+                }
+              ],
+              "event": "exception",
+              "type": "RuntimeError",
+              "message": "Cannot copy between CPU and CUDA tensors during CUDA graph capture unless the CPU tensor is pinned. Please use tensor.pin_memory() or allocate the tensor with pin_memory=True.",
+              "count": 1
+            }
+          ],
+          "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+        }
+      }
+    },
+    {
+      "rank": 1,
+      "pid": 488981,
+      "exit_code": 0,
+      "status": "passed",
+      "binding": {
+        "pid": 488981,
+        "status": "verified",
+        "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+        "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+        "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+        "logical_device": 1,
+        "nvidia_smi_pid_uuids": [
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "pid_query_status": "observed",
+        "occupancy": {
+          "status": "sampled_clear",
+          "samples": 23,
+          "unavailable_samples": 0,
+          "wait_s": 0.05126641318202019,
+          "external_clients": [],
+          "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+        }
+      },
+      "framework_source": {
+        "sha256": "196767b08015b3fdb9a6cdd8b1320e60f621af50612a6d85c11054168b642ae3",
+        "files": 162,
+        "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+      },
+      "result": {
+        "valid": true,
+        "coverage": {
+          "ddp-full-capture-trace": {
+            "counts": {
+              "5d7d6bb13691b02f533f62b0": 2
+            },
+            "fallbacks": {},
+            "reference_invocations": {
+              "5d7d6bb13691b02f533f62b0": 2
+            },
+            "candidate_declared_routes": [
+              {
+                "call": "5d7d6bb13691b02f533f62b0",
+                "route": "eager:parent:first_invocation",
+                "count": 1
+              },
+              {
+                "call": "5d7d6bb13691b02f533f62b0",
+                "route": "fallback:parent:capture_failed:RuntimeError",
+                "count": 1
+              }
+            ],
+            "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+          }
+        },
+        "scope": "Diagnostic execution only; no quality or performance acceptance",
+        "candidate_diagnostics": {
+          "schema_version": "project.candidate-diagnostics.v1",
+          "events": [
+            {
+              "phase": "run",
+              "bundle": "ddp-full-capture-trace",
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/ddp-capture-trace/jobs/capture-trace/source/opop_candidates/trial-f684195486.py",
+              "function": "_capture_segments",
+              "line": 159,
+              "source": "output = raw_model(",
+              "recent_lines": [
+                {
+                  "line": 152,
+                  "source": "static_inputs = [inputs[index].detach().clone() for index in range(segments)]"
+                },
+                {
+                  "line": 153,
+                  "source": "static_losses = []"
+                },
+                {
+                  "line": 154,
+                  "source": "graphs = []"
+                },
+                {
+                  "line": 155,
+                  "source": "pool = torch.cuda.graph_pool_handle()"
+                },
+                {
+                  "line": 156,
+                  "source": "for index in range(segments):"
+                },
+                {
+                  "line": 157,
+                  "source": "graph = torch.cuda.CUDAGraph()"
+                },
+                {
+                  "line": 158,
+                  "source": "with torch.cuda.graph(graph, pool=pool):"
+                },
+                {
+                  "line": 159,
+                  "source": "output = raw_model("
+                },
+                {
+                  "line": 160,
+                  "source": "input_ids=static_inputs[index],"
+                },
+                {
+                  "line": 161,
+                  "source": "labels=static_inputs[index],"
+                },
+                {
+                  "line": 162,
+                  "source": "use_cache=False,"
+                },
+                {
+                  "line": 159,
+                  "source": "output = raw_model("
+                }
+              ],
+              "event": "exception",
+              "type": "RuntimeError",
+              "message": "Cannot copy between CPU and CUDA tensors during CUDA graph capture unless the CPU tensor is pinned. Please use tensor.pin_memory() or allocate the tensor with pin_memory=True.",
+              "count": 1
+            },
+            {
+              "phase": "run",
+              "bundle": "ddp-full-capture-trace",
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/ddp-capture-trace/jobs/capture-trace/source/opop_candidates/trial-f684195486.py",
+              "function": "replacement",
+              "line": 243,
+              "source": "losses = _capture_segments(raw_model, optimizer, inputs)",
+              "recent_lines": [
+                {
+                  "line": 199,
+                  "source": "not isinstance(model, DDP)"
+                },
+                {
+                  "line": 200,
+                  "source": "or not isinstance(raw_model, torch.nn.Module)"
+                },
+                {
+                  "line": 201,
+                  "source": "or optimizer is None"
+                },
+                {
+                  "line": 202,
+                  "source": "or not isinstance(inputs, (list, tuple))"
+                },
+                {
+                  "line": 203,
+                  "source": "or len(inputs) < 2"
+                },
+                {
+                  "line": 207,
+                  "source": "if book[\"params\"] is None:"
+                },
+                {
+                  "line": 218,
+                  "source": "if model is not book[\"model\"] or raw_model is not book[\"raw_model\"]:"
+                },
+                {
+                  "line": 221,
+                  "source": "if book[\"graphs\"] is not None:"
+                },
+                {
+                  "line": 240,
+                  "source": "failure = None"
+                },
+                {
+                  "line": 241,
+                  "source": "with phase(\"gradient_accumulation\"):"
+                },
+                {
+                  "line": 242,
+                  "source": "try:"
+                },
+                {
+                  "line": 243,
+                  "source": "losses = _capture_segments(raw_model, optimizer, inputs)"
+                }
+              ],
+              "event": "exception",
+              "type": "RuntimeError",
+              "message": "Cannot copy between CPU and CUDA tensors during CUDA graph capture unless the CPU tensor is pinned. Please use tensor.pin_memory() or allocate the tensor with pin_memory=True.",
+              "count": 1
+            }
+          ],
+          "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+        }
+      }
+    }
+  ],
+  "lease_wait_s": 0.0002703741192817688,
+  "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+  "devices": [
+    "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+    "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+  ],
+  "worker_pids_reaped": true
+}

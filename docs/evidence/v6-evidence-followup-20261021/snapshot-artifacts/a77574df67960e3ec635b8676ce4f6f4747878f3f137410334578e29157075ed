@@ -1,0 +1,240 @@
+{
+  "communication": {
+    "cross_rank": {
+      "matched": [],
+      "incomplete": [],
+      "clock_policy": "No subtraction of timestamps from different rank clocks"
+    },
+    "ranks": [
+      {
+        "status": "not_applicable",
+        "reason": "single-device task"
+      }
+    ],
+    "capabilities": [
+      {
+        "schema_version": "project.v1",
+        "id": "ae720e6d46e8f6b7151780634fc4d9f69d488438ea5314352ebcd141f89ee3cd",
+        "devices": [],
+        "supported_scopes": [
+          "group",
+          "joint",
+          "region",
+          "execution_plan"
+        ],
+        "fields": [
+          {
+            "schema_version": "project.v1",
+            "name": "communication",
+            "status": "not_applicable",
+            "value": null,
+            "unit": "capability",
+            "entity": null,
+            "reason": "single-device task",
+            "evidence": []
+          }
+        ],
+        "tools": {}
+      }
+    ]
+  },
+  "coverage": [
+    {
+      "cuda_kernels": 66441,
+      "associated_kernels": 66441,
+      "unassociated_kernels": 0,
+      "associated_below_project": 66441,
+      "root_only_kernels": 0,
+      "backward_associated_kernels": 0,
+      "autograd_ranges": 0,
+      "forward_linked_autograd_ranges": 0,
+      "ambiguous_forward_sequences": 0
+    }
+  ],
+  "collection_plan": {
+    "plan": {
+      "collectors": [
+        "nsys",
+        "python_runtime"
+      ],
+      "requested_fields": [
+        "nsys.first_token_window_gpu_busy_fraction",
+        "nsys.first_token_window_inter_kernel_gap_us_total",
+        "nsys.first_token_window_largest_gaps_us",
+        "nsys.cuda_launch_api_total_us_in_window",
+        "nsys.stream_usage_and_concurrency_in_window",
+        "nsys.memcpy_and_memset_in_window",
+        "nsys.top_kernels_us_in_window",
+        "python_runtime.warmed_host_wall_ms_per_invocation",
+        "python_runtime.top_functions_by_self_time",
+        "python_runtime.top_call_paths_by_cumulative_time",
+        "python_runtime.python_call_count_per_invocation",
+        "python_runtime.torch_api_dispatch_hotspots"
+      ],
+      "unavailable_fields": {
+        "nccl_algorithm_protocol_channel_decisions": "nccl_tuning not applicable: single-process single-GPU task with no process group or NCCL communicator (request.json distributed_backend=null and one device; observations.json ranks[0].status=not_applicable 'single-device task', capability communication=not_applicable).",
+        "allreduce_reference_experiment_timing": "collective_calibration not applicable: no collective exists to calibrate in a single-device task; a synthetic full-world SUM allreduce has no matching operator group or observed sizes/dtypes here.",
+        "per_interval_pcie_nvlink_bytes": "device_telemetry not selected: it samples device-wide NVML PCIe rates/utilization/memory with native windows, not bytes tied to the timed prefill interval; weights and the batch=1 prompt tensor are GPU-resident and the already-run torch trace gives no transfer evidence, so PCIe/NVLink traffic must not be inferred from logical payload or memcpy sizes.",
+        "cpu_submit_to_gpu_ready_clock_alignment": "execution_timeline not selected: the already-run torch collector associated all 66441/66441 kernels with 0 unassociated and 0 ambiguous forward sequences (coverage.json), so submit association is complete; its clock alignment covers CPU submissions only (GPU readiness/consumer completion remain unknown) and its passive gradient post-accumulate callbacks are training-only.",
+        "candidate_binding_passthrough_ab_cost": "binding_cost not applicable: no additive candidate exists yet (initial collection; request.json binding_backend=legacy); if a parent-attached candidate is produced later it would run in subsequent candidate resource feedback, and it is inapplicable when bundles replace the parent.",
+        "candidate_diagnostic_fields": "candidate_diagnostics not applicable: no candidate or modified bundle exists yet to diagnose.",
+        "gradient_bucket_identity": "not applicable: the measured unit is a torch.inference_mode forward-only generation with no gradients, optimizer buckets or communication hooks (coverage.json backward_associated_kernels=0, autograd_ranges=0); exact bucket links would require native correlation plus observed gradient-storage membership, which this task cannot produce."
+      },
+      "rationale": "Frozen objective is ttft_ms on a single-GPU Qwen3-4B BF16 SDPA interactive row (batch=1, prompt_tokens=256, new_tokens=32): the wall interval between the pre-forward torch.cuda.synchronize() and the explicit first-token-ready synchronize after prefill+argmax (qwen_inference.py:16-24), with exact greedy tokens and 0.02-tolerance logits preserved. The torch collector already ran and closed attribution and graph-tracing questions (coverage.json: 66441/66441 CUDA kernels associated, 0 unassociated, 0 root-only, 0 ambiguous forward sequences, 0 autograd ranges), so torch is not re-requested and its kernel totals remain the attribution source. The two open questions for TTFT are (1) whether the prefill interval is device-bound or host-dispatch/launch-gap bound and (2) which host code dominates submission cost in eager transformers. nsys is available (request.json tools.nsys, verified present) and runs separately at low perturbation: its system timeline resolves the overlap/serialization question (GPU busy fraction and inter-kernel idle gaps inside the first-token window, cudaLaunchKernel/API totals, stream concurrency) and directly observes whether any H2D/D2H memcpy or memset appears in the timed window rather than inferring traffic from payload sizes; it is selected for this overlap question, not to re-attribute kernels already fully associated, and timeline evidence alone will not be used to claim protocol or bucket identity. python_runtime adds a warmed cProfile view of host dispatch and binding cost to locate Python hotspots (transformers modeling code vs torch API vs tokenizer-adjacent setup) guiding which host-side work a TTFT candidate can remove; accepted with the stated caveat that it perturbs execution and its inclusive/self times are not clean performance scores or GPU compute durations. All communication- and candidate-side dimensions are inapplicable or premature for this single-device, pre-candidate state and are listed in unavailable_fields with observed reasons; no workload, quality threshold, provider configuration or objective was changed.",
+      "revision": null
+    },
+    "agent": {
+      "role": "collection-planner",
+      "session": "ses_ea4c1dbb9ffeSNIn1iFobsI4gB",
+      "message": "msg_15b3fe513001ob0qnKBMIdYCwd",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 11,
+        "reported_cost": 0.10655986802,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 178596.0,
+          "input": 19017.0,
+          "output": 2289.0,
+          "reasoning": 7018.0,
+          "cache.read": 150272.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea4c1dbb9ffeSNIn1iFobsI4gB",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft/sandboxes/collection-planner-2ce47cb76145",
+      "outputs": [
+        "collection.json"
+      ],
+      "feedback_provided": false,
+      "contract_repairs": 0,
+      "generation_snapshots": [
+        "/root/autodl-tmp/dev/v6-work/agent-repair-20261021/fresh-final/qwen-ttft/generation-snapshots/generation-fd9aceffaa16.json"
+      ]
+    }
+  },
+  "extra_collectors": {
+    "nsys": {
+      "status": "observed",
+      "input": "observations/current/nsys-9ed9145c.json",
+      "sha256": "4bbce4d5c23abd8603021ae367169b693b1e55bd89659f1b712a418e0efee946",
+      "bytes": 77105019,
+      "provenance": {
+        "revision": "b759f42861842302784e96233f0ed68092b7455479704ff9609958d9a2a6907b",
+        "parent_revision": "78e3128e68a120e0ecfcc13ee23672072d35adfce958b4b935e5c59f468e7af3",
+        "bundles": [],
+        "plan": "sha256:400410101288f6b6d885edae5dd22f1aee486bf185795dcb491a13d61a87b2c0",
+        "registry": "sha256:317bc640813fe41847ccdbee9372ce6ff596f326bf8759730d99a82b07e16b97",
+        "request_sha256": "75b19989ae3bb0ad3f58a2d7340f7a586163194eaf44134a8252d88433037d7b",
+        "objective": {
+          "name": "ttft_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "interactive",
+          "batch": 1,
+          "prompt_tokens": 256,
+          "new_tokens": 32,
+          "goals": [
+            {
+              "id": "ttft",
+              "metric": "ttft_ms",
+              "direction": "min"
+            },
+            {
+              "id": "decode",
+              "metric": "decode_tokens_per_second",
+              "direction": "max"
+            }
+          ],
+          "prompt": "Explain how a computer executes a neural network and why memory access, arithmetic and communication affect performance. Use concrete examples."
+        },
+        "devices": [
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "framework_source": {
+          "sha256": "3f8440cd0b839b5ae3a384e3af81f5cdf675ba487823733dedf35c80d5610492",
+          "files": 162,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "scope": "separate Nsys run; nanosecond SQLite timestamps, no cross-run or cross-rank timestamp subtraction"
+        }
+      ],
+      "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+    },
+    "python_runtime": {
+      "status": "observed",
+      "input": "observations/current/python_runtime-aea48e29.json",
+      "sha256": "8f19216005ce8edb251be539952684229f74d40689007251e5ae0de7182821eb",
+      "bytes": 52470,
+      "provenance": {
+        "revision": "b759f42861842302784e96233f0ed68092b7455479704ff9609958d9a2a6907b",
+        "parent_revision": "78e3128e68a120e0ecfcc13ee23672072d35adfce958b4b935e5c59f468e7af3",
+        "bundles": [],
+        "plan": "sha256:400410101288f6b6d885edae5dd22f1aee486bf185795dcb491a13d61a87b2c0",
+        "registry": "sha256:317bc640813fe41847ccdbee9372ce6ff596f326bf8759730d99a82b07e16b97",
+        "request_sha256": "75b19989ae3bb0ad3f58a2d7340f7a586163194eaf44134a8252d88433037d7b",
+        "objective": {
+          "name": "ttft_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "interactive",
+          "batch": 1,
+          "prompt_tokens": 256,
+          "new_tokens": 32,
+          "goals": [
+            {
+              "id": "ttft",
+              "metric": "ttft_ms",
+              "direction": "min"
+            },
+            {
+              "id": "decode",
+              "metric": "decode_tokens_per_second",
+              "direction": "max"
+            }
+          ],
+          "prompt": "Explain how a computer executes a neural network and why memory access, arithmetic and communication affect performance. Use concrete examples."
+        },
+        "devices": [
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "framework_source": {
+          "sha256": "3f8440cd0b839b5ae3a384e3af81f5cdf675ba487823733dedf35c80d5610492",
+          "files": 162,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "scope": "cProfile perturbs Python dispatch; self/cumulative times include host waits and cannot be added to GPU durations or used for acceptance",
+          "profiled_wall_ms": 1034.506308
+        }
+      ],
+      "access": "Full unfiltered collector output in the referenced input; raw evidence paths retained"
+    }
+  },
+  "ownership_input": "communication-ownership.json"
+}

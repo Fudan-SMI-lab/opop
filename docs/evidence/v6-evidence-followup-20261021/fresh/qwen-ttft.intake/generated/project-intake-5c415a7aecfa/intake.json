@@ -1,0 +1,94 @@
+{
+  "status": "ready",
+  "description": {
+    "entry": "qwen_inference.py",
+    "files": [
+      "qwen_inference.py",
+      "common.py",
+      "workloads.json"
+    ],
+    "invocation": "One greedy generation call infer(model, inputs, new_tokens=32) on the interactive workload (batch=1, prompt_tokens=256): BF16 SDPA Qwen3-4B prefill over the 256-token GPU-resident prompt (use_cache=True, logits_to_keep=1), argmax first token, explicit first-token-ready synchronize, then new_tokens-1=31 KV-cached decode steps with per-step argmax for a fixed total of 32 generated tokens (EOS early stop disabled by the explicit loop). Excludes model loading, tokenization, host input construction/transfer, reference construction (capture and teacher-forced runs), correctness checks, warmup/repeats, reference tensor saving, result writing and profiling.",
+    "objective": {
+      "name": "ttft_ms",
+      "unit": "ms",
+      "direction": "minimize",
+      "constraints": []
+    },
+    "workload": {
+      "id": "interactive",
+      "batch": 1,
+      "prompt_tokens": 256,
+      "new_tokens": 32,
+      "goals": [
+        {"id": "ttft", "metric": "ttft_ms", "direction": "min"},
+        {"id": "decode", "metric": "decode_tokens_per_second", "direction": "max"}
+      ]
+    },
+    "quality": {
+      "atol": 0.02,
+      "rtol": 0.02,
+      "logits_atol": 0.02,
+      "logits_rtol": 0.02,
+      "require_exact_greedy_tokens": true
+    },
+    "warmup": 2,
+    "repeats": 5,
+    "assets": {
+      "assets": "/root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c"
+    },
+    "device_count": 1,
+    "distributed_backend": null,
+    "communication": "auto",
+    "required_observations": [],
+    "notes": [
+      "Command provenance: python qwen_inference.py --assets /root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c --output /tmp/original-qwen. The command passes no --workloads/--warmup/--repeats/--profile, so defaults apply: repository workloads.json, warmup=2, repeats=5, no profiling.",
+      "TTFT completion boundary (qwen_inference.py:16-24,37): sync -> t0; prefill forward + first-token argmax -> explicit torch.cuda.synchronize 'first-token-ready' -> t1; ttft_ms=(t1-t0)/1e6. It is model-execution latency, not a service SLA with queuing or network.",
+      "Input construction (qwen_inference.py:55-58): the fixed prompt from workloads.json qwen_inference.prompt is rendered with the chat template (enable_thinking=False, add_generation_prompt=True), encoded without special tokens, repeated/truncated to exactly prompt_tokens=256, and replicated to batch=1 as a CUDA tensor before timing.",
+      "Discrete outputs needing exact comparison: greedy generated tokens must equal the reference token sequence (torch.equal at qwen_inference.py:62); per-step last-token logits compared with torch.testing.assert_close at atol=rtol=0.02 (common.py:74-76); negative control must reject +1-corrupted logits (common.py:79-84). Reference tensors are saved as <workload.id>-reference.pt.",
+      "The script's reference construction (capture run plus teacher-forced re-run), correctness checks, warmup/repeats, saving and optional profiling are measurement infrastructure outside the repeated unit; the internal 31 cached decode iterations are genuine workload iterations and remain inside adapter.run(). The full generation workload (prefill + all decode steps) is preserved even though the objective only scores the first-token boundary.",
+      "Numerical/state policy preserved: Qwen3ForCausalLM pretrained weights in torch.bfloat16, attn_implementation='sdpa', local_files_only, .eval() under torch.inference_mode, KV cache via use_cache, TF32 disabled, float32 matmul precision 'highest', cudnn.benchmark off, seed 20261020 (common.py:34-42).",
+      "Single-GPU task on the one leased RTX 4090; no distributed backend and no communication collector fields required. ttft_ms is an ordinary end-to-end evaluator metric, not a diagnostic kernel-time objective.",
+      "workloads.json declares a second goal (decode_tokens_per_second, max) for this same interactive row and a separate offline batch=8 row; both are distinct source goals, not constraints on this request."
+    ]
+  },
+  "evidence": {
+    "entry": [
+      "intent.json command: python qwen_inference.py --assets /root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c --output /tmp/original-qwen",
+      "qwen_inference.py:44 main(); file closure qwen_inference.py + common.py (local import at qwen_inference.py:11) + workloads.json (default --workloads, common.py:23)",
+      "make_project_requests.py:42 uses the same file set [qwen_inference.py, common.py, workloads.json] for this case"
+    ],
+    "workload": [
+      "workloads.json qwen_inference.workloads[0]: {id: interactive, batch: 1, prompt_tokens: 256, new_tokens: 32, goals: [...]}, selected by intent.json goal 'interactive workload'",
+      "qwen_inference.py:53-58 builds inputs from workloads.json qwen_inference config (prompt, prompt_tokens, batch)"
+    ],
+    "objective": [
+      "workloads.json interactive goals[0]: {id: ttft, metric: ttft_ms, direction: min}",
+      "qwen_inference.py:37 metric key 'ttft_ms'; qwen_inference.py:23-24 explicit first-token-ready synchronize boundary; make_project_requests.py:20 unit 'ms'; make_project_requests.py:32 direction min -> minimize",
+      "make_project_requests.py:34-40 emits no constraints for the ttft goal (interactive row declares none)"
+    ],
+    "quality": [
+      "workloads.json qwen_inference.correctness: {logits_atol: 0.02, logits_rtol: 0.02, require_exact_greedy_tokens: true}",
+      "qwen_inference.py:59-64 close_check(logits, atol=0.02, rtol=0.02), torch.equal(actual_tokens, tokens), negative_check, exact_greedy_tokens flag; common.py:74-84 comparators",
+      "make_project_requests.py:27-29 quality = {**correctness, atol: logits_atol, rtol: logits_rtol}"
+    ],
+    "assets": [
+      "intent.json command --assets /root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c; directory listing verified: config.json, generation_config.json, tokenizer.json/tokenizer_config.json/vocab.json/merges.txt, model-0000{1..3}-of-00003.safetensors, model.safetensors.index.json",
+      "qwen_inference.py:48-49 AutoTokenizer.from_pretrained(args.assets, local_files_only=True) and Qwen3ForCausalLM.from_pretrained(args.assets, dtype=torch.bfloat16, attn_implementation='sdpa', local_files_only=True)"
+    ],
+    "warmup_repeats": [
+      "common.py:24-25 defaults --warmup 2 --repeats 5; common.py:28-29 minimum 1 warmup and 3 repeats; user command overrides neither",
+      "qwen_inference.py:69-76 warmup loop then repeats loop collecting per-sample metrics"
+    ],
+    "device": [
+      "qwen_inference.py:49 .cuda(); common.py:34,38 configure(device=0) with torch.cuda.set_device",
+      "deployment.json devices leases exactly one GPU (GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d, RTX 4090); no world_size in the interactive workload row, so single-process"
+    ]
+  },
+  "assumptions": [
+    "The user command runs the whole script (both interactive and offline rows); per the goal text only the interactive row is the measured workload/objective of this request, and the offline batch=8 row is a separate source goal.",
+    "Default --workloads (repository workloads.json), --warmup 2, --repeats 5 and no --profile apply because the command passes none of these flags.",
+    "The decode_tokens_per_second goal on the same interactive row is a distinct objective in the source (goal switching), not a performance constraint on this TTFT request.",
+    "Assets stay at their absolute path; the pinned directory name 1cfa9a7208912126459214e8b04321603b3df60c serves as model_revision (qwen_inference.py:51) and was verified to contain the complete weight shards and tokenizer files."
+  ],
+  "questions": []
+}

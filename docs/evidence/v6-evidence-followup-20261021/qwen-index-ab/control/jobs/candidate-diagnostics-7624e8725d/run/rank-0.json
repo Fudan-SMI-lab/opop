@@ -1,0 +1,217 @@
+{
+  "status": "passed",
+  "binding": {
+    "pid": 500145,
+    "status": "verified",
+    "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "logical_device": 0,
+    "nvidia_smi_pid_uuids": [
+      "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+    ],
+    "pid_query_status": "observed",
+    "occupancy": {
+      "status": "sampled_clear",
+      "samples": 32,
+      "unavailable_samples": 0,
+      "wait_s": 0.07966417819261551,
+      "external_clients": [],
+      "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+    }
+  },
+  "framework_source": {
+    "sha256": "3f8440cd0b839b5ae3a384e3af81f5cdf675ba487823733dedf35c80d5610492",
+    "files": 162,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "result": {
+    "valid": true,
+    "coverage": {
+      "index-control-param-e3d6ac10": {
+        "counts": {
+          "c9d14173dd4887d4a4133553": 2
+        },
+        "fallbacks": {},
+        "reference_invocations": {
+          "c9d14173dd4887d4a4133553": 7
+        },
+        "candidate_declared_routes": [
+          {
+            "call": "c9d14173dd4887d4a4133553",
+            "route": "parent_fallback_setup_failure",
+            "count": 2
+          }
+        ],
+        "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+      }
+    },
+    "scope": "Diagnostic execution only; no quality or performance acceptance",
+    "candidate_diagnostics": {
+      "schema_version": "project.candidate-diagnostics.v1",
+      "events": [
+        {
+          "phase": "run",
+          "bundle": "index-control-param-e3d6ac10",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/qwen-index-ab/control/jobs/candidate-diagnostics-7624e8725d/source/opop_candidates/index-control.py",
+          "function": "<genexpr>",
+          "line": 186,
+          "source": "if not static_keys or any(t is None for t in static_keys + static_values):",
+          "recent_lines": [
+            {
+              "line": 186,
+              "source": "if not static_keys or any(t is None for t in static_keys + static_values):"
+            }
+          ],
+          "event": "return",
+          "type": "bool",
+          "message": "False",
+          "count": 72
+        },
+        {
+          "phase": "run",
+          "bundle": "index-control-param-e3d6ac10",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/qwen-index-ab/control/jobs/candidate-diagnostics-7624e8725d/source/opop_candidates/index-control.py",
+          "function": "_close",
+          "line": 112,
+          "source": "return bool(torch.allclose(a.float(), b.float(), atol=ATOL, rtol=RTOL))",
+          "recent_lines": [
+            {
+              "line": 112,
+              "source": "return bool(torch.allclose(a.float(), b.float(), atol=ATOL, rtol=RTOL))"
+            }
+          ],
+          "event": "return",
+          "type": "bool",
+          "message": "False",
+          "count": 1
+        },
+        {
+          "phase": "run",
+          "bundle": "index-control-param-e3d6ac10",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/qwen-index-ab/control/jobs/candidate-diagnostics-7624e8725d/source/opop_candidates/index-control.py",
+          "function": "_setup",
+          "line": 197,
+          "source": "raise RuntimeError(\"replay logits differ from eager parent beyond project tolerance\")",
+          "recent_lines": [
+            {
+              "line": 185,
+              "source": "static_values = [layer.values for layer in captured_cache.layers]"
+            },
+            {
+              "line": 185,
+              "source": "static_values = [layer.values for layer in captured_cache.layers]"
+            },
+            {
+              "line": 185,
+              "source": "static_values = [layer.values for layer in captured_cache.layers]"
+            },
+            {
+              "line": 185,
+              "source": "static_values = [layer.values for layer in captured_cache.layers]"
+            },
+            {
+              "line": 185,
+              "source": "static_values = [layer.values for layer in captured_cache.layers]"
+            },
+            {
+              "line": 185,
+              "source": "static_values = [layer.values for layer in captured_cache.layers]"
+            },
+            {
+              "line": 186,
+              "source": "if not static_keys or any(t is None for t in static_keys + static_values):"
+            },
+            {
+              "line": 191,
+              "source": "eager = parent(input_ids=static_input, use_cache=True, logits_to_keep=1)"
+            },
+            {
+              "line": 192,
+              "source": "graph.replay()"
+            },
+            {
+              "line": 193,
+              "source": "torch.cuda.synchronize(device)"
+            },
+            {
+              "line": 196,
+              "source": "if not _close(static_logits, eager.logits):"
+            },
+            {
+              "line": 197,
+              "source": "raise RuntimeError(\"replay logits differ from eager parent beyond project tolerance\")"
+            }
+          ],
+          "event": "exception",
+          "type": "RuntimeError",
+          "message": "replay logits differ from eager parent beyond project tolerance",
+          "count": 1
+        },
+        {
+          "phase": "run",
+          "bundle": "index-control-param-e3d6ac10",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/qwen-index-ab/control/jobs/candidate-diagnostics-7624e8725d/source/opop_candidates/index-control.py",
+          "function": "prefill_forward",
+          "line": 294,
+          "source": "entry = _setup(input_ids)",
+          "recent_lines": [
+            {
+              "line": 275,
+              "source": "and labels is None"
+            },
+            {
+              "line": 276,
+              "source": "and use_cache is True"
+            },
+            {
+              "line": 277,
+              "source": "and isinstance(logits_to_keep, int)"
+            },
+            {
+              "line": 278,
+              "source": "and logits_to_keep == 1"
+            },
+            {
+              "line": 279,
+              "source": "and not kwargs"
+            },
+            {
+              "line": 284,
+              "source": "key = (str(input_ids.device), tuple(input_ids.shape), input_ids.dtype)"
+            },
+            {
+              "line": 285,
+              "source": "entry = state[\"graphs\"].get(key)"
+            },
+            {
+              "line": 286,
+              "source": "if entry is None:"
+            },
+            {
+              "line": 287,
+              "source": "if state[\"setup_failed\"]:"
+            },
+            {
+              "line": 290,
+              "source": "if len(state[\"graphs\"]) >= MAX_GRAPHS:"
+            },
+            {
+              "line": 293,
+              "source": "try:"
+            },
+            {
+              "line": 294,
+              "source": "entry = _setup(input_ids)"
+            }
+          ],
+          "event": "exception",
+          "type": "RuntimeError",
+          "message": "replay logits differ from eager parent beyond project tolerance",
+          "count": 1
+        }
+      ],
+      "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code, other threads and imported helper files are outside this observation."
+    }
+  }
+}

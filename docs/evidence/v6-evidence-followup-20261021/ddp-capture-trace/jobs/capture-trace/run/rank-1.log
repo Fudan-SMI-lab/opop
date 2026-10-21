@@ -1,0 +1,45 @@
+/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/ddp-capture-trace/jobs/capture-trace/source/opop_adapter.py:81: FutureWarning: `broadcast_buffers` is deprecated. Use `forward_sync_buffers` instead. IMPORTANT: unlike `broadcast_buffers=False`, `forward_sync_buffers=False` still syncs buffers at init. If you rely on buffers NOT being synced at init (e.g. rank-local buffers), keep using `broadcast_buffers=False` until `init_sync_buffers` is available.
+  model = DDP(raw_model, device_ids=[device_index], broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True)
+[transformers] `loss_type=None` was set in the config but it is unrecognized. Using the default loss: `ForCausalLMLoss`.
+DEVELOPER_CAPTURE_STACK Traceback (most recent call last):
+  File "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/ddp-capture-trace/jobs/capture-trace/source/opop_candidates/trial-f684195486.py", line 243, in replacement
+    losses = _capture_segments(raw_model, optimizer, inputs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/ddp-capture-trace/jobs/capture-trace/source/opop_candidates/trial-f684195486.py", line 159, in _capture_segments
+    output = raw_model(
+             ^^^^^^^^^^
+  File "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py", line 939, in wrapper
+    output = func(self, *args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/gpt2/modeling_gpt2.py", line 682, in forward
+    transformer_outputs: BaseModelOutputWithPastAndCrossAttentions = self.transformer(
+                                                                     ^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py", line 1068, in wrapper
+    output = func(self, *args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/output_capturing.py", line 262, in wrapper
+    outputs = func(self, *args, **kwargs)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/gpt2/modeling_gpt2.py", line 583, in forward
+    causal_mask = create_causal_mask(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/masking_utils.py", line 982, in create_causal_mask
+    causal_mask = mask_interface(
+                  ^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/masking_utils.py", line 603, in eager_mask
+    mask = torch.where(mask, torch.tensor(0.0, device=mask.device, dtype=dtype), min_dtype)
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Cannot copy between CPU and CUDA tensors during CUDA graph capture unless the CPU tensor is pinned. Please use tensor.pin_memory() or allocate the tensor with pin_memory=True.
+

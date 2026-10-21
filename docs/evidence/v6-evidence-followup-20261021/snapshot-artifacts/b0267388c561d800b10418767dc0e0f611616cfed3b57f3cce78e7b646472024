@@ -1,0 +1,54 @@
+{
+  "devices": [
+    "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+    "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+  ],
+  "inventory": [
+    {
+      "index": "0",
+      "uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+      "name": "NVIDIA GeForce RTX 4090",
+      "pci.bus_id": "00000000:27:00.0"
+    },
+    {
+      "index": "1",
+      "uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+      "name": "NVIDIA GeForce RTX 4090",
+      "pci.bus_id": "00000000:5A:00.0"
+    }
+  ],
+  "probe_error": null,
+  "tools": {
+    "ncu": "/usr/local/cuda/bin/ncu",
+    "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+  },
+  "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+  "profiling": {
+    "agent_plan": true,
+    "feedback_agent_plan": true
+  },
+  "worker_timeout_s": 900.0,
+  "metric_collectors": {
+    "torch_communication": {
+      "fields": {
+        "communication_kernel_sum_ms": {
+          "unit": "ms",
+          "meaning": "Per-rank sum of device communication-kernel durations in a separately profiled invocation; includes waiting, not wire time or a critical-path lower bound."
+        },
+        "communication_union_ms": {
+          "unit": "ms",
+          "meaning": "Per-rank union of communication-kernel intervals."
+        },
+        "compute_overlap_ms": {
+          "unit": "ms",
+          "meaning": "Local trace-clock overlap of communication and compute intervals."
+        },
+        "communication_without_compute_ms": {
+          "unit": "ms",
+          "meaning": "Communication intervals without observed compute overlap; not a measured critical path."
+        }
+      },
+      "availability": "must be verified by the actual workload worker"
+    }
+  }
+}

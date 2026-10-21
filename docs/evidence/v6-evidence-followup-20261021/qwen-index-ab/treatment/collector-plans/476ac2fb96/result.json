@@ -1,0 +1,68 @@
+{
+  "plan": {
+    "collectors": [
+      "candidate_diagnostics",
+      "execution_timeline",
+      "binding_cost"
+    ],
+    "requested_fields": [
+      "ttft_ms",
+      "candidate_invocation_paths",
+      "candidate_vs_parent_prefill_kernel_composition",
+      "prefill_window_per_device_intervals",
+      "cpu_submit_to_cuda_start_alignment_bounds",
+      "prefill_window_gpu_busy_fraction",
+      "host_gaps_in_prefill_window",
+      "binding_passthrough_vs_parent_whole_invocation_ms"
+    ],
+    "unavailable_fields": {
+      "nccl_algorithm_protocol_decision": "Single-device task: distributed_backend null, no process group or NCCL (request.json; observations.json communication not_applicable 'single-device task'); nccl_tuning has nothing to capture.",
+      "per_collective_pcie_nvlink_bytes": "No collectives exist in this workload; device_telemetry would only give device-wide NVML rates in native windows, not per-op bytes, and PCIe/NVLink traffic is not inferred from payload or memcpy sizes.",
+      "cross_rank_clock_alignment": "Only rank 0 exists; observations.json ranks status not_applicable 'single-device task'.",
+      "first_token_gpu_consumer_completion": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion at the first-token boundary may remain unknown.",
+      "collective_lower_bound_reference": "No communication in the measured unit; collective_calibration's synthetic allreduce would be uninterpretable for a single-GPU TTFT objective.",
+      "clean_host_function_self_times": "python_runtime not selected: cProfile perturbs execution and its inclusive/self times are not clean performance scores, inadequate for resolving the observed ~1.4 ms noise-level paired delta."
+    },
+    "rationale": "Frozen objective is ttft_ms on the single-GPU eager Qwen3-4B interactive row; the observed uncertainty is the rejected decision reason paired_gain_not_above_noise (candidate 26.70 ms vs paired parent 28.09 ms, ~1.4 ms delta) on an additive bundle whose binding resolved to direct with 'no functional replacements' (2 candidate invocations, 0 framework fallbacks). Three collectors target that uncertainty on this exact candidate in separate workers: candidate_diagnostics to establish what the candidate's native invocations actually execute and how their prefill kernel/op composition differs from the parent; execution_timeline for a clean trace of the prefill->first-token window bracketed by the two explicit torch.cuda.synchronize() calls, with CPU-to-CUDA submit associations, per-device intervals and gpu-busy fraction to decide whether remaining TTFT headroom is GPU compute or host dispatch gaps (its CPU-submission clock bounds cannot prove GPU readiness, listed unavailable); binding_cost because a candidate exists and the bundle does not replace the parent, giving clean AB/BA parent vs binding-only passthrough whole-invocation cost with quality checks to bound the additive binding overhead and judge whether the ~1.4 ms delta is structural or noise. Excluded with reasons: nccl_tuning and collective_calibration (no process group, no NCCL, no collectives in the measured unit); nsys (parent torch trace already associated all 66441 kernels with 0 unassociated and 0 ambiguous forward sequences, and no overlap, CUDA-graph or attribution question remains); device_telemetry (device-wide NVML sampling cannot attribute per-op behavior and no PCIe/communication question exists for resident weights); python_runtime (perturbing cProfile cannot resolve a noise-level delta and host-gap structure is covered by execution_timeline).",
+    "revision": "73c11a9a8f072eb2b98df6f6363ad7559650f47702ffeb0af0dd3ca915216d9d"
+  },
+  "agent": {
+    "role": "collection-planner",
+    "session": "ses_ea3f7f573ffeTyCfXlmis3baL3",
+    "message": "msg_15c0a395d001utJBwwoV3RpAg7",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 10,
+      "reported_cost": 0.0941756201,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 155359.0,
+        "input": 18086.0,
+        "output": 1814.0,
+        "reasoning": 6307.0,
+        "cache.read": 129152.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea3f7f573ffeTyCfXlmis3baL3",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/qwen-index-ab/treatment/sandboxes/collection-planner-516e5d8874f2",
+    "outputs": [
+      "collection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/qwen-index-ab/treatment/generation-snapshots/generation-c863b73081c6.json"
+    ]
+  }
+}

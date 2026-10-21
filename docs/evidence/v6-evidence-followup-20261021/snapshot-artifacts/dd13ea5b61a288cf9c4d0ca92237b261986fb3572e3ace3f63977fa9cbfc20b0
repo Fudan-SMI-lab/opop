@@ -1,0 +1,104 @@
+{
+  "current_revision": "b759f42861842302784e96233f0ed68092b7455479704ff9609958d9a2a6907b",
+  "contract": {
+    "schema_version": "project.v2",
+    "id": "task",
+    "goal": "Reduce first-token latency for the interactive workload, preserving the full generation workload and the source correctness checks.",
+    "objective": {
+      "name": "ttft_ms",
+      "unit": "ms",
+      "direction": "minimize",
+      "required_metrics": [
+        {
+          "name": "ttft_ms",
+          "unit": "ms"
+        }
+      ],
+      "aggregation": {
+        "kind": "sum",
+        "case_weights": {},
+        "callable": null
+      },
+      "improvement_threshold": 0.0
+    },
+    "workload": {
+      "batch": 1,
+      "goals": [
+        {
+          "direction": "min",
+          "id": "ttft",
+          "metric": "ttft_ms"
+        },
+        {
+          "direction": "max",
+          "id": "decode",
+          "metric": "decode_tokens_per_second"
+        }
+      ],
+      "id": "interactive",
+      "new_tokens": 32,
+      "prompt": "Explain how a computer executes a neural network and why memory access, arithmetic and communication affect performance. Use concrete examples.",
+      "prompt_tokens": 256
+    },
+    "quality": {
+      "atol": 0.02,
+      "logits_atol": 0.02,
+      "logits_rtol": 0.02,
+      "require_exact_greedy_tokens": true,
+      "rtol": 0.02
+    },
+    "completion": "One measured unit is qwen_inference.infer(model, inputs, new_tokens=32) (qwen_inference.py:15-41) under torch.inference_mode for the 'interactive' workload row: prefill forward with use_cache=True and logits_to_keep=1, argmax of the last-position logits, then an explicit torch.cuda.synchronize() that marks the first-token-ready boundary (qwen_inference.py:16-24), followed by exactly new_tokens-1 cached greedy decode steps and a final torch.cuda.synchronize(). The workload is complete only when all 32 greedy tokens over the full prefill+decode chain have been produced; the decode loop is never truncated. The ttft_ms objective completes at the source's own first-token-ready synchronize after prefill+argmax, measured with perf_counter_ns across that boundary.",
+    "invariants": [
+      "The full fixed-length generation must complete: one prefill forward plus exactly new_tokens-1 cached decode steps; EOS early stopping is disabled by the explicit loop and the decode loop must not be truncated or batched differently (qwen_inference.py:25-32).",
+      "Greedy decoding only: every step takes argmax over the last-position logits of the previous step's token; no sampling or beam search.",
+      "use_cache=True with the KV cache carried across decode steps, and logits_to_keep=1 so only the last position's logits are materialized (prefill and every decode step).",
+      "Numerical policy is fixed: BF16 weights with attn_implementation='sdpa', TF32 disabled for matmul and cudnn, float32_matmul_precision 'highest', cudnn.benchmark False, torch.manual_seed(20261020), set_num_threads(4), set_num_interop_threads(1) (qwen_inference.py:49, common.py:34-42).",
+      "Inputs are the chat-templated fixed prompt tokens repeated/truncated to exactly 256 tokens, batch=1, resident on the bound GPU before timing; tokenization and host-to-device transfer are setup, not timed.",
+      "The first-token boundary is the source's explicit torch.cuda.synchronize() after prefill forward + argmax (qwen_inference.py:16-24); ttft_ms, decode_ms, end_to_end_ms, decode_tokens_per_second (batch*(new_tokens-1)/decode interval) and generated_tokens_per_second (batch*new_tokens/end-to-end interval) all come from perf_counter_ns around these source boundaries and must keep those exact semantics.",
+      "Correctness checks: generated greedy tokens must satisfy torch.equal exactly (no tolerance), and the captured per-step last-token logits stacked to [batch, new_tokens, vocab] are compared with torch.testing.assert_close at atol=rtol=0.02 (common.py:74-76, qwen_inference.py:61-62); the +1 corruption negative control must be rejected (common.py:79-84).",
+      "Model loading, tokenization, input construction, reference capture runs (including the teacher-forced second pass), correctness checks, {id}-reference.pt saving, warmup, repeats, summarize() and --profile tracing are benchmark-harness setup or measurement infrastructure outside the timed unit and are not repeated inside run().",
+      "Single-process single-GPU task: the model is placed on the worker-provided device, there is no process group and no NCCL communication, and the adapter must not initialize another process group or allocate a second reference model on GPU.",
+      "All mutable per-run state (KV cache, generated-token list, per-step logits list) is created inside run and released with it; nothing is pre-cleared or pre-warmed across the measured boundary that the source itself does inside infer()."
+    ],
+    "frozen_files": [
+      "opop_adapter.py",
+      "opop_evaluate.py"
+    ],
+    "task_definition": null,
+    "state_protocol": "prepare(context, request) applies the source's configure() policies (seed 20261020, 4 torch threads + 1 interop thread, TF32 disabled, float32_matmul_precision 'highest', cudnn.benchmark False, torch.cuda.set_device on context['device']), loads the tokenizer and Qwen3-4B weights BF16 with attn_implementation='sdpa' from request['assets']['qwen3_4b'] onto the worker device in eval mode, builds the chat-templated prompt (add_generation_prompt=True, enable_thinking=False, add_special_tokens=False) repeated/truncated to request['workload']['prompt_tokens'] and repeated to request['workload']['batch'] as a GPU-resident tensor, and stores model/inputs/new_tokens in state. All workload dimensions are read from request['workload'] in prepare(), never embedded as constants. run(state) creates its own request-local KV cache (the prefill call starts from an empty cache) and returns tokens, optional quality-mode logits, and the source-measured phase metrics; no state survives between runs except the immutable loaded model and input tensor. reset(state) is therefore a no-op: greedy argmax consumes no RNG, model weights are never mutated (eval + inference_mode), and each run builds a fresh cache, matching the source where repeats simply call infer again. set_mode('quality') enables per-step last-token logits capture (stacked to [batch, new_tokens, vocab] like the source's capture=True reference path); measure/profile keep the source's clean no-capture timing path.",
+    "world_size": 1,
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ]
+  },
+  "original_reference_revision": "78e3128e68a120e0ecfcc13ee23672072d35adfce958b4b935e5c59f468e7af3",
+  "original_baseline": [
+    {
+      "rank": 0,
+      "metrics": {
+        "ttft_ms": 25.798801,
+        "decode_ms": 727.934248,
+        "end_to_end_ms": 753.223048,
+        "decode_tokens_per_second": 42.58626391761691,
+        "generated_tokens_per_second": 42.484095627408365,
+        "generated_tokens_per_second_wall": 42.47183307847579,
+        "peak_allocated_bytes": 8168429568.0,
+        "framework.elapsed_ms": 753.44052,
+        "framework.peak_allocated_bytes": 8168429568.0,
+        "framework.peak_reserved_bytes": 8239710208.0,
+        "framework.allocated_bytes": 8110232064.0,
+        "framework.reserved_bytes": 8239710208.0,
+        "framework.lifecycle_peak_allocated_bytes": 8181748736.0,
+        "framework.lifecycle_peak_reserved_bytes": 8239710208.0
+      },
+      "diagnostics": {}
+    }
+  ],
+  "profiled_wall_ms": [
+    11585.430964
+  ],
+  "measurement_policy": "Original baseline belongs to its immutable reference. Discovery uses intrusive hooks and is separate from clean timing and plain diagnostic objective samples. Profiled rank skew and kernel time can be heavily perturbed; they are not project J or wire time."
+}
