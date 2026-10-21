@@ -1,0 +1,29 @@
+{
+  "collectors": [
+    "execution_timeline",
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "execution_timeline.per_device_intervals",
+    "execution_timeline.cpu_to_cuda_submit_associations",
+    "execution_timeline.submit_gap_intervals_within_ttft_window",
+    "execution_timeline.synchronization_events",
+    "execution_timeline.clock_alignment_bounds",
+    "python_runtime.cprofile_inclusive_us",
+    "python_runtime.cprofile_self_us_top",
+    "python_runtime.host_call_counts"
+  ],
+  "unavailable_fields": {
+    "communication": "Not applicable: single-device task per observations.json capability field; distributed_backend is null in request.json.",
+    "nccl_tuning.algorithm_protocol_channel_decisions": "No NCCL communicator or collective kernels exist in this single-GPU workload; nothing for the warmed NCCL worker to observe.",
+    "collective_calibration.allreduce_reference": "No distributed world and no allreduce in the workload; the synthetic full-world SUM experiment cannot run single-device.",
+    "device_telemetry.per_collective_pcie_nvlink_bytes": "Device-wide NVML readings with native sampling windows only; no collectives exist and inputs are already GPU-resident before timing, so no per-collective or in-window transfer bytes are observable. Logical payload/memcpy sizes will not be converted into PCIe/NVLink traffic.",
+    "device_telemetry.per_phase_utilization": "NVML utilization/PCIe/memory samples are device-wide with coarse native windows and cannot attribute the millisecond-scale prefill window inside ttft_ms.",
+    "execution_timeline.gpu_readiness_and_consumer_completion": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown.",
+    "python_runtime.gpu_compute_durations": "cProfile inclusive/self times are host-side, perturbed by profiling overhead, and are not clean performance scores or GPU compute durations.",
+    "binding_cost.parent_vs_binding_only_passthrough": "No additive candidate exists yet; the AB/BA comparison is inapplicable pre-candidate (it would also run in subsequent candidate resource feedback once one exists).",
+    "candidate_diagnostics.candidate_fields": "No candidate exists yet; no candidate-specific diagnostics to collect."
+  },
+  "rationale": "Frozen objective is ttft_ms on a single leased RTX 4090 (Qwen3-4B BF16 SDPA, batch=1, 256-token GPU-resident prompt, prefill + argmax between two explicit torch.cuda.synchronize calls at qwen_inference.py:16-24). The torch collector already ran and coverage.json shows 66,441 CUDA kernels fully associated (0 unassociated, 0 ambiguous forward sequences, 0 autograd ranges), so kernel-level attribution is already complete and single-stream inference raises no overlap, CUDA-graph-tracing or attribution question that nsys would resolve. The open diagnostic question for TTFT is attribution inside the prefill window: GPU kernel execution versus host submission gaps across the per-layer dispatch of the 36-layer forward plus argmax before the first-token-ready synchronize. execution_timeline answers this with CPU-to-CUDA submit associations, submit-gap intervals, synchronization events, per-device intervals and clock-alignment bounds; python_runtime then localizes any host-side dispatch/binding cost (transformers Qwen3 forward path, SDPA dispatch, KV-cache handling) via its warmed cProfile trace, used only for host attribution since its times are perturbed and are not GPU durations. Collectors declined with reasons: nccl_tuning and collective_calibration (no collectives; communication not_applicable for a single-device task), device_telemetry (device-wide NVML samples with native windows cannot attribute the short single-GPU prefill and no in-window host transfer exists; per-collective bytes unobservable and not derived from payload sizes), binding_cost and candidate_diagnostics (no candidate exists yet), and torch (already collected).",
+  "revision": null
+}

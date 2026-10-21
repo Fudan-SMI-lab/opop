@@ -1,0 +1,77 @@
+{
+  "plan": {
+    "collectors": [
+      "binding_cost",
+      "python_runtime",
+      "execution_timeline",
+      "nsys",
+      "nccl_tuning",
+      "collective_calibration"
+    ],
+    "requested_fields": [
+      "communication_kernel_sum_ms",
+      "step_ms",
+      "binding.parent_step_ms",
+      "binding.passthrough_step_ms",
+      "host.dispatch_self_ms",
+      "host.candidate_path_inclusive_ms",
+      "timeline.cpu_submit_associations",
+      "timeline.sync_events",
+      "timeline.per_device_intervals",
+      "nsys.comm_compute_overlap",
+      "nsys.nccl_kernel_gaps",
+      "nccl.algorithm_decision",
+      "nccl.protocol_decision",
+      "nccl.channel_count",
+      "collective.reference_allreduce_ms"
+    ],
+    "unavailable_fields": {
+      "per_collective_wire_time_ms": "No available collector separates NCCL device waiting from wire transfer; kernel durations in the objective metric include waiting (workloads communication_metric_caveat), and nsys timelines cannot split waiting from transfer.",
+      "per_collective_pcie_bytes": "device_telemetry yields device-wide NVML rate samples in native windows, not per-collective bytes; hardware byte counters remain unprobed; PCIe/NVLink traffic must not be inferred from logical payload (28351488/157541376 B) or memcpy sizes.",
+      "nvlink_bytes": "NVLink is unsupported on both leased GPUs (nvmlDeviceGetNvLinkState returned NVML status 3, no links; peer_access.0.1 and peer_access.1.0 observed 0.0), so allreduce traffic rides PCIe and no NVLink counters exist.",
+      "gpu_readiness_bounds": "execution_timeline reports clock alignment bounds for matched CPU submissions only; GPU readiness and consumer completion may remain unknown.",
+      "critical_path_lower_bound_ms": "collective_calibration is a correctness-checked reference experiment at observed sizes/dtypes, not a performance lower bound or critical-path estimate; no available collector supplies one."
+    },
+    "rationale": "Target revision faadcab8e6aa66525c8cb171d3a9ed1da9b315a8b5874d3d2cc7cbd41da766a5 is the only listed candidate; its clean projection failed the step_ms constraint (256.978 vs limit 138.660; original reference 132.057) while communication_kernel_sum_ms stayed nearly flat (rank0 74.676->62.080, rank1 64.149->63.542), so ~125 ms of non-NCCL-kernel time appeared and its source is unattributed. binding_cost is applicable (candidate exists, bundle trial-b04d1d014e-param-cab8b6e9 bound legacy at 2 functional sites with reference still invoked 13x, not a parent replacement) and gives a clean AB/BA parent-vs-binding-passthrough bound on the binding share of that regression; python_runtime adds warmed function-level host dispatch/binding attribution (perturbing, inclusive/self times are not scores); execution_timeline contributes CPU-to-CUDA submit associations, synchronization and per-device intervals and corroborates the candidate-declared routes (b8ade439... armed_after_first_burst, d0938de8... observing_first_burst), which the evaluation flags as candidate-reported telemetry needing trace corroboration, with 13 reference invocations of unclear fallback/verification/composition role; nsys is available (request.json tools.nsys) and is selected for the overlap/attribution questions - where the +125 ms sits, whether the 13 allreduces (12x 28351488 B + 1x 157541376 B f32 SUM, world 2) are serialized with or hidden behind backward compute, and native corroboration of route labels - while acknowledging it cannot split NCCL waiting from wire transfer or prove bucket identity (bucket identity is already resolved via observed gradient-storage membership plus matched parameter inventory for all 13 collectives). For the communication objective itself, nccl_tuning captures the actual NCCL algorithm/protocol/channel decisions in a warmed worker at these sizes over PCIe (NVLink unsupported, peer access off), since the observed RING_LL kernel entry names alone do not identify the protocol and protocol/channel choice is the main non-structural lever on kernel-duration sum; collective_calibration runs the correctness-checked synthetic full-world SUM allreduce at the observed sizes/dtypes as a reference for interpreting the in-step durations (rank0 ~3.25 ms vs rank1 ~14.3 ms per 28 MB bucket indicates large arrival-skew waiting inside the metric), used strictly as reference, not as a lower bound. torch is excluded because it already ran and supplied the objective field; device_telemetry is excluded because its device-wide NVML windows cannot be attributed to the 13 collectives and would not change the attribution; candidate_diagnostics adds no capability beyond the trace corroboration above.",
+    "revision": "faadcab8e6aa66525c8cb171d3a9ed1da9b315a8b5874d3d2cc7cbd41da766a5"
+  },
+  "agent": {
+    "role": "collection-planner",
+    "session": "ses_ea39a8340ffeln7nYwiOYpUSfD",
+    "message": "msg_15c69c3d8001iZMTgyJlC7c8pL",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 13,
+      "reported_cost": 0.22660472632,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 444215.0,
+        "input": 50105.0,
+        "output": 2881.0,
+        "reasoning": 9725.0,
+        "cache.read": 381504.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea39a8340ffeln7nYwiOYpUSfD",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication/sandboxes/collection-planner-5bb066900b1d",
+    "outputs": [
+      "collection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication/generation-snapshots/generation-6b26d0c86adb.json"
+    ]
+  }
+}

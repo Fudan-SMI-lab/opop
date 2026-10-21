@@ -1,0 +1,34 @@
+{
+  "collectors": [
+    "candidate_diagnostics",
+    "binding_cost",
+    "execution_timeline",
+    "nccl_tuning",
+    "collective_calibration"
+  ],
+  "requested_fields": [
+    "candidate_diagnostics.route_evidence_call_5d7d6bb13691b02f533f62b0",
+    "candidate_diagnostics.actual_exception_or_trace_corroboration",
+    "candidate_diagnostics.framework_fallback_count",
+    "binding_cost.parent_invocation_ms",
+    "binding_cost.binding_only_passthrough_invocation_ms",
+    "binding_cost.ab_ba_order_and_quality_checks",
+    "execution_timeline.cpu_to_cuda_submit_associations",
+    "execution_timeline.per_device_intervals_ms",
+    "execution_timeline.synchronization_points",
+    "execution_timeline.clock_alignment_bounds_cpu_submissions",
+    "nccl_tuning.algorithm_protocol_channel_by_payload_bytes",
+    "nccl_tuning.decisions_for_28351488B_f32_and_157541376B_f32_world2",
+    "collective_calibration.sum_allreduce_f32_duration_by_observed_sizes",
+    "collective_calibration.correctness_check_results"
+  ],
+  "unavailable_fields": {
+    "per_collective_wire_transfer_ms": "No available collector separates NCCL in-kernel waiting from wire transfer; torch kernel durations include device waiting and nsys timelines cannot split them either.",
+    "per_collective_interconnect_bytes": "device_telemetry samples device-wide NVML PCIe/NVLink rates with native sampling windows, not per-collective bytes; logical payload sizes (28351488 B x12, 157541376 B x1) are not observed traffic and must not be converted into bandwidth estimates.",
+    "gpu_readiness_and_consumer_completion_bounds": "execution_timeline reports clock alignment bounds for CPU-to-CUDA submissions only; GPU readiness and consumer completion may remain unknown.",
+    "communication_lower_bound_or_critical_path_ms": "collective_calibration is a synthetic warmed reference experiment with correctness checks, not a performance lower bound or model critical-path estimate.",
+    "bucket_identity_for_unmatched_payloads": "Exact bucket links require native correlation plus observed gradient-storage membership; only the 13 matched allreduces have observed attribution in the parent trace, so no further bucket fields are requested."
+  },
+  "revision": "4de2b44cd799275628988f5f30f6643040613a214c806716a5f11054d56064b1",
+  "rationale": "The only listed candidate 4de2b44c... (bundle trial-df7761708a-param-1931c00b, empty parameters, additive direct binding with 'no functional replacements', declared routes eager_parent_warmup + setup_fallback_eager, framework_fallbacks=0) reduced max-rank communication_kernel_sum_ms (74.68->63.60 rank0, 64.15->64.01 rank1 vs original reference) but failed the step_ms constraint (139.370 vs 138.660 limit, ~0.5% over), yielding no_valid_parameter_candidate; it also shows a much larger allocator footprint (reserved 3.24GB vs 2.10GB). The observed uncertainty is therefore attribution, not communication volume: (1) whether the step regression is additive binding/host overhead rather than algorithm cost -> binding_cost runs clean AB/BA parent vs binding-only passthrough on this exact additive candidate (applicable since no functional replacements exist; whole-invocation cost, no per-group effects); (2) whether the candidate-declared setup_fallback_eager route reflects actual behavior -> candidate_diagnostics for independent route/exception corroboration, since coverage route labels are candidate-reported telemetry and reference invocations are not proof of fallback; (3) where the extra ~7ms step time sits and why rank0/rank1 kernel sums were asymmetric (in-kernel waiting skew) -> execution_timeline CPU-to-CUDA submit associations, per-device intervals and sync points; (4) which NCCL algorithm/protocol/channel the warmed tuner actually chose at the observed sizes (12x 28,351,488B + 1x 157,541,376B f32 SUM, world 2) -> nccl_tuning, because kernel entry names alone (all RING_LL, ~3.26ms and ~19.4ms) do not establish the protocol and a 157MB LL choice would be anomalous; (5) warmed isolated reference durations at exactly these sizes/dtypes -> collective_calibration, to separate intrinsic collective cost from in-step waiting without treating it as a lower bound or critical path. Excluded: torch (already ran, provides the kernel timeline and natively observed bucket attribution); nsys (no open overlap, graph-tracing or bucket-attribution question - bucket identity is already observed gradient-storage membership plus matched parameter inventory); python_runtime (perturbs execution and its cProfile times are not clean scores; binding_cost already isolates binding overhead cleanly); device_telemetry (device-wide readings with native windows cannot attribute per-collective traffic and no topology question is open)."
+}

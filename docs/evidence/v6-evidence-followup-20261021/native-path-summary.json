@@ -1,0 +1,352 @@
+{
+  "scope": "Read-only native CUDA API/kernel inventory from the exact candidate post-trial Nsight SQLite records. GraphNodeId and GraphLaunch corroborate execution; intrusive profiler durations are not performance acceptance. Selected kernel name filters are only for this developer report, not Agent inputs or framework routing.",
+  "runs": [
+    {
+      "run": "ddp-feedback-continuation",
+      "trial": "trial-f7b4b8b98a",
+      "source": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/ddp-feedback-continuation/trials/trial-f7b4b8b98a/result.json",
+      "source_sha256": "fe2be43fe4b6495e26671c4a69022ada9cf4fd1d8fd4b3e17dc3267da2b5c258",
+      "provenance": {
+        "revision": "66d9e2e385cd599c064fb9c3cca933baa7037b087b68bd27742c941b5f00990e",
+        "parent_revision": "fc9ec3b15cf986b7444fd68aa56941cd109661d9884d2a632e3ab58464aa1e46",
+        "bundles": [
+          "trial-f7b4b8b98a-param-57c55600"
+        ],
+        "plan": "sha256:941277463ecfbcdc4334eb3a38ab5185b278dbdccbde88f2cb02f8101203b385",
+        "registry": "sha256:71c64bac7881deeb92b7595da048d76fa4e871d0f52db4938cf342f0d2ece257",
+        "request_sha256": "261aeee1440cefe7d244a23ee3bf6782beb573aae59d5fce637479dcbb0ed677",
+        "objective": {
+          "name": "communication_kernel_sum_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": [
+            {
+              "metric": "step_ms",
+              "op": "le",
+              "baseline_ratio": 1.05,
+              "rank_aggregation": "max"
+            }
+          ],
+          "source": {
+            "collector": "torch_communication",
+            "field": "communication_kernel_sum_ms",
+            "source_metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+            "source_aggregation": "per-rank sum of NCCL kernel durations, maximum across ranks, median of 3 separately profiled samples"
+          },
+          "rank_aggregation": "max"
+        },
+        "workload": {
+          "id": "accumulated_step",
+          "world_size": 2,
+          "micro_batch": 1,
+          "sequence_length": 128,
+          "accumulation_steps": 4,
+          "goals": [
+            {
+              "id": "step",
+              "metric": "step_ms",
+              "direction": "min"
+            },
+            {
+              "id": "communication",
+              "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+              "direction": "min",
+              "constraints": {
+                "step_ms_max_baseline_ratio": 1.05
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "framework_source": {
+          "sha256": "6346dc694f9d74c23c60f1c75d035a6c602946ac53ba5b2a3c84a68e8df477ba",
+          "files": 162,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "sqlite": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/ddp-feedback-continuation/jobs/nsys-0063e0a7d6/run/nsys-rank-0.sqlite",
+          "sha256": "72cbdb2902c3142d367ac3ac7f976c48349c59e53d72d61f086f8b81c0c09f5a",
+          "cuda_graph_launch_apis": {
+            "cudaGraphLaunch_v10000": 3
+          },
+          "kernel_count": 4103,
+          "graph_node_kernel_count": 2826,
+          "nccl_kernel_count": 13,
+          "selected_kernel_counts": [
+            {
+              "name": "ncclDevKernel_AllReduce_Sum_f32_RING_LL(ncclDevKernelArgsStorage<(unsigned long)4096>)",
+              "graph_node": false,
+              "count": 13
+            }
+          ]
+        },
+        {
+          "rank": 1,
+          "sqlite": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/ddp-feedback-continuation/jobs/nsys-0063e0a7d6/run/nsys-rank-1.sqlite",
+          "sha256": "31bf15c5f9e3014585e1638b0cf470e1d3261d287f5fd2242fd28def6cf86b56",
+          "cuda_graph_launch_apis": {
+            "cudaGraphLaunch_v10000": 3
+          },
+          "kernel_count": 4103,
+          "graph_node_kernel_count": 2826,
+          "nccl_kernel_count": 13,
+          "selected_kernel_counts": [
+            {
+              "name": "ncclDevKernel_AllReduce_Sum_f32_RING_LL(ncclDevKernelArgsStorage<(unsigned long)4096>)",
+              "graph_node": false,
+              "count": 13
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run": "fresh/qwen-ttft",
+      "trial": "trial-57b13527f6",
+      "source": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/trials/trial-57b13527f6/result.json",
+      "source_sha256": "3f6057d9a2a97d63adfbb17d96aeafc3932abe358135fa34f507fb3163f1b9fe",
+      "provenance": {
+        "revision": "664cbcfc755dbda47d5bf7fd89f2a57de3838492a677031b5a7da9441db217af",
+        "parent_revision": "071bc24ea375281d5ed1d8c688e877e418ba6526dbef83be99588ec401e6c75a",
+        "bundles": [
+          "trial-57b13527f6-param-795208ea"
+        ],
+        "plan": "sha256:9572a11443252b086407169a479d78431d3178c1e8a4d7a714ba6857a00f274c",
+        "registry": "sha256:4deaaf7383aaa0a4e42cf6e8b7f9e3521e0ebf5add7e557637d8271c77af6c8d",
+        "request_sha256": "fcaf9ce9db3c9996891f0290f6c88d400c21c24ea9c94fca476cf8210b61c52c",
+        "objective": {
+          "name": "ttft_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "interactive",
+          "batch": 1,
+          "prompt_tokens": 256,
+          "new_tokens": 32,
+          "goals": [
+            {
+              "id": "ttft",
+              "metric": "ttft_ms",
+              "direction": "min"
+            },
+            {
+              "id": "decode",
+              "metric": "decode_tokens_per_second",
+              "direction": "max"
+            }
+          ]
+        },
+        "devices": [
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "framework_source": {
+          "sha256": "6346dc694f9d74c23c60f1c75d035a6c602946ac53ba5b2a3c84a68e8df477ba",
+          "files": 162,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "sqlite": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/jobs/nsys-1a094ceed7/run/nsys-rank-0.sqlite",
+          "sha256": "77fa8400805de3dad768c6f6546bd650e3877c2f8b5b9f63b99d8e200b2dee51",
+          "cuda_graph_launch_apis": {
+            "cudaGraphLaunch_v10000": 1
+          },
+          "kernel_count": 66592,
+          "graph_node_kernel_count": 2295,
+          "nccl_kernel_count": 0,
+          "selected_kernel_counts": [
+            {
+              "name": "fmha_cutlassF_bf16_aligned_64x128_rf_sm80(PyTorchMemEffAttention::AttentionKernel<cutlass::bfloat16_t, cutlass::arch::Sm80, (bool)1, (int)64, (int)128, (int)128, (bool)1, (bool)1>::Params)",
+              "graph_node": true,
+              "count": 36
+            },
+            {
+              "name": "void pytorch_flash::flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<(int)128, (int)64, (int)128, (int)4, (bool)0, (bool)0, cutlass::bfloat16_t, Flash_kernel_traits<(int)128, (int)64, (int)128, (int)4, cutlass::bfloat16_t>>, (int)4, (int)2, (bool)1>(pytorch_flash::Flash_fwd_params)",
+              "graph_node": false,
+              "count": 1116
+            },
+            {
+              "name": "void pytorch_flash::flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<(int)128, (int)64, (int)128, (int)4, (bool)0, (bool)0, cutlass::bfloat16_t, Flash_kernel_traits<(int)128, (int)64, (int)128, (int)4, cutlass::bfloat16_t>>, (bool)0, (bool)0, (bool)0, (bool)0, (bool)1, (bool)0, (bool)1, (bool)0>(pytorch_flash::Flash_fwd_params)",
+              "graph_node": false,
+              "count": 1116
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run": "fresh/qwen-ttft",
+      "trial": "trial-fc57bca7b9",
+      "source": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/trials/trial-fc57bca7b9/result.json",
+      "source_sha256": "343b69d4abd548a8bd72686530ae7cd9ac74f66bcdd24a7f717f10f8d91c1409",
+      "provenance": {
+        "revision": "9fb6e370922706c28b91ff0bb2273a32d29150c9376855c3880b21d819684b42",
+        "parent_revision": "071bc24ea375281d5ed1d8c688e877e418ba6526dbef83be99588ec401e6c75a",
+        "bundles": [
+          "trial-fc57bca7b9-param-f71a7c8a"
+        ],
+        "plan": "sha256:9572a11443252b086407169a479d78431d3178c1e8a4d7a714ba6857a00f274c",
+        "registry": "sha256:4deaaf7383aaa0a4e42cf6e8b7f9e3521e0ebf5add7e557637d8271c77af6c8d",
+        "request_sha256": "fcaf9ce9db3c9996891f0290f6c88d400c21c24ea9c94fca476cf8210b61c52c",
+        "objective": {
+          "name": "ttft_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "interactive",
+          "batch": 1,
+          "prompt_tokens": 256,
+          "new_tokens": 32,
+          "goals": [
+            {
+              "id": "ttft",
+              "metric": "ttft_ms",
+              "direction": "min"
+            },
+            {
+              "id": "decode",
+              "metric": "decode_tokens_per_second",
+              "direction": "max"
+            }
+          ]
+        },
+        "devices": [
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "framework_source": {
+          "sha256": "6346dc694f9d74c23c60f1c75d035a6c602946ac53ba5b2a3c84a68e8df477ba",
+          "files": 162,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "sqlite": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/jobs/nsys-bb6ddcb2fd/run/nsys-rank-0.sqlite",
+          "sha256": "d52736fa745f9d776c584c267354d7c3971692ad133e841bfe411def41d1097c",
+          "cuda_graph_launch_apis": {},
+          "kernel_count": 66441,
+          "graph_node_kernel_count": 0,
+          "nccl_kernel_count": 0,
+          "selected_kernel_counts": [
+            {
+              "name": "void pytorch_flash::flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<(int)128, (int)64, (int)128, (int)4, (bool)0, (bool)0, cutlass::bfloat16_t, Flash_kernel_traits<(int)128, (int)64, (int)128, (int)4, cutlass::bfloat16_t>>, (int)4, (int)1, (bool)1>(pytorch_flash::Flash_fwd_params)",
+              "graph_node": false,
+              "count": 36
+            },
+            {
+              "name": "void pytorch_flash::flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<(int)128, (int)64, (int)128, (int)4, (bool)0, (bool)0, cutlass::bfloat16_t, Flash_kernel_traits<(int)128, (int)64, (int)128, (int)4, cutlass::bfloat16_t>>, (int)4, (int)2, (bool)1>(pytorch_flash::Flash_fwd_params)",
+              "graph_node": false,
+              "count": 1116
+            },
+            {
+              "name": "void pytorch_flash::flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<(int)128, (int)64, (int)128, (int)4, (bool)0, (bool)0, cutlass::bfloat16_t, Flash_kernel_traits<(int)128, (int)64, (int)128, (int)4, cutlass::bfloat16_t>>, (bool)0, (bool)0, (bool)0, (bool)0, (bool)1, (bool)0, (bool)1, (bool)0>(pytorch_flash::Flash_fwd_params)",
+              "graph_node": false,
+              "count": 1116
+            },
+            {
+              "name": "void pytorch_flash::flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<(int)128, (int)64, (int)128, (int)4, (bool)0, (bool)0, cutlass::bfloat16_t, Flash_kernel_traits<(int)128, (int)64, (int)128, (int)4, cutlass::bfloat16_t>>, (bool)1, (bool)0, (bool)0, (bool)1, (bool)1, (bool)0, (bool)1, (bool)0>(pytorch_flash::Flash_fwd_params)",
+              "graph_node": false,
+              "count": 36
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run": "fresh/resnet-latency",
+      "trial": "trial-a9f72afa23",
+      "source": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/trials/trial-a9f72afa23/result.json",
+      "source_sha256": "1ceaf7b9d6c991d4a30a658df0aa5cf51682231cf8e40c2cc89090ee477d2793",
+      "provenance": {
+        "revision": "f12635aeab45ee38bb106d310a6ceff09f2faf366dde6d423cf56a72d015f7d1",
+        "parent_revision": "ad45c7ec156119aa3dbbac646242fe78895cf7bfbe8c08d7fb9e231089a53895",
+        "bundles": [
+          "trial-a9f72afa23-param-f2e37a0c"
+        ],
+        "plan": "sha256:f8ccf187c364d7226af4c6fce217bcddaf587bbc6471366ef0ab923cb99bab39",
+        "registry": "sha256:ad80d36d52a7089e4230e0a165eb7ff81f2eea6722b5b4189bc27c8d5a97b9e9",
+        "request_sha256": "1eae078cebdf9f18079e3c393ff0f0db7db6e5f91fccd062e1ad4a90d4fc1135",
+        "objective": {
+          "name": "latency_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "offline",
+          "batch": 32,
+          "goals": [
+            {
+              "id": "throughput",
+              "metric": "images_per_second",
+              "direction": "max"
+            },
+            {
+              "id": "memory",
+              "metric": "peak_allocated_bytes",
+              "direction": "min",
+              "constraints": {
+                "images_per_second_min_baseline_ratio": 0.95
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "6346dc694f9d74c23c60f1c75d035a6c602946ac53ba5b2a3c84a68e8df477ba",
+          "files": 162,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "sqlite": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/nsys-1431328863/run/nsys-rank-0.sqlite",
+          "sha256": "91edb27d2b70643489dd653caa27457749dc5e48efb25a9bde353a21c733cfa5",
+          "cuda_graph_launch_apis": {
+            "cudaGraphLaunch_v10000": 1
+          },
+          "kernel_count": 59,
+          "graph_node_kernel_count": 59,
+          "nccl_kernel_count": 0,
+          "selected_kernel_counts": [
+            {
+              "name": "_add_bias_relu",
+              "graph_node": true,
+              "count": 8
+            },
+            {
+              "name": "_bias_relu",
+              "graph_node": true,
+              "count": 8
+            },
+            {
+              "name": "_bias_relu_pool3x3s2p1",
+              "graph_node": true,
+              "count": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

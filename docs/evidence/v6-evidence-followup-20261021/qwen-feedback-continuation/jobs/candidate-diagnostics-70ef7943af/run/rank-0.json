@@ -1,0 +1,95 @@
+{
+  "status": "passed",
+  "binding": {
+    "pid": 606313,
+    "status": "verified",
+    "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "logical_device": 0,
+    "nvidia_smi_pid_uuids": [
+      "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+    ],
+    "pid_query_status": "observed",
+    "occupancy": {
+      "status": "sampled_clear",
+      "samples": 30,
+      "unavailable_samples": 0,
+      "wait_s": 0.0337013304233551,
+      "external_clients": [],
+      "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+    }
+  },
+  "framework_source": {
+    "sha256": "6346dc694f9d74c23c60f1c75d035a6c602946ac53ba5b2a3c84a68e8df477ba",
+    "files": 162,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "result": {
+    "valid": true,
+    "coverage": {
+      "trial-83a8db6873-param-a6565d69": {
+        "counts": {
+          "c9d14173dd4887d4a4133553": 2
+        },
+        "fallbacks": {},
+        "reference_invocations": {
+          "c9d14173dd4887d4a4133553": 5
+        },
+        "candidate_declared_routes": [
+          {
+            "call": "c9d14173dd4887d4a4133553",
+            "route": "parent_fallback_validation",
+            "count": 2
+          }
+        ],
+        "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+      }
+    },
+    "scope": "Diagnostic execution only; no quality or performance acceptance",
+    "candidate_diagnostics": {
+      "schema_version": "project.candidate-diagnostics.v1",
+      "events": [
+        {
+          "phase": "run",
+          "bundle": "trial-83a8db6873-param-a6565d69",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/qwen-feedback-continuation/jobs/candidate-diagnostics-70ef7943af/source/opop_candidates/trial-83a8db6873.py",
+          "function": "_validate_against",
+          "line": 180,
+          "source": "return False",
+          "recent_lines": [
+            {
+              "line": 174,
+              "source": "gs[\"graph\"].replay()"
+            },
+            {
+              "line": 175,
+              "source": "logits = gs[\"logits\"]"
+            },
+            {
+              "line": 176,
+              "source": "ref_logits = getattr(ref_out, \"logits\", None)"
+            },
+            {
+              "line": 177,
+              "source": "if logits is None or ref_logits is None or logits.shape != ref_logits.shape:"
+            },
+            {
+              "line": 179,
+              "source": "if not torch.equal(logits, ref_logits):"
+            },
+            {
+              "line": 180,
+              "source": "return False"
+            }
+          ],
+          "event": "return",
+          "type": "bool",
+          "message": "False",
+          "count": 1
+        }
+      ],
+      "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code and other threads are outside this observation. Propagated exception tracebacks can locate imported helpers without tracing their execution or retaining frames/locals."
+    }
+  }
+}

@@ -1,0 +1,602 @@
+{
+  "status": "passed",
+  "binding": {
+    "pid": 590057,
+    "status": "verified",
+    "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "logical_device": 1,
+    "nvidia_smi_pid_uuids": [
+      "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+    ],
+    "pid_query_status": "observed",
+    "occupancy": {
+      "status": "sampled_clear",
+      "samples": 26,
+      "unavailable_samples": 0,
+      "wait_s": 0.035579465329647064,
+      "external_clients": [],
+      "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+    }
+  },
+  "framework_source": {
+    "sha256": "6346dc694f9d74c23c60f1c75d035a6c602946ac53ba5b2a3c84a68e8df477ba",
+    "files": 162,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "result": {
+    "valid": true,
+    "coverage": {
+      "trial-df7761708a-param-1931c00b": {
+        "counts": {
+          "5d7d6bb13691b02f533f62b0": 2
+        },
+        "fallbacks": {},
+        "reference_invocations": {
+          "5d7d6bb13691b02f533f62b0": 2
+        },
+        "candidate_declared_routes": [
+          {
+            "call": "5d7d6bb13691b02f533f62b0",
+            "route": "eager_parent_warmup",
+            "count": 1
+          },
+          {
+            "call": "5d7d6bb13691b02f533f62b0",
+            "route": "setup_fallback_eager",
+            "count": 1
+          }
+        ],
+        "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+      }
+    },
+    "scope": "Diagnostic execution only; no quality or performance acceptance",
+    "candidate_diagnostics": {
+      "schema_version": "project.candidate-diagnostics.v1",
+      "events": [
+        {
+          "phase": "run",
+          "bundle": "trial-df7761708a-param-1931c00b",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication/jobs/candidate-diagnostics-36d54422b0/source/opop_candidates/trial-df7761708a.py",
+          "function": "_run_step",
+          "line": 84,
+          "source": "loss = model(input_ids=tokens, labels=tokens, use_cache=False).loss / total",
+          "recent_lines": [
+            {
+              "line": 72,
+              "source": "optimizer = state[\"optimizer\"]"
+            },
+            {
+              "line": 73,
+              "source": "inputs = state[\"inputs\"]"
+            },
+            {
+              "line": 74,
+              "source": "total = len(inputs)"
+            },
+            {
+              "line": 75,
+              "source": "optimizer.zero_grad(set_to_none=True)"
+            },
+            {
+              "line": 76,
+              "source": "losses = []"
+            },
+            {
+              "line": 77,
+              "source": "for index, tokens in enumerate(inputs):"
+            },
+            {
+              "line": 78,
+              "source": "final = index + 1 == total"
+            },
+            {
+              "line": 79,
+              "source": "if stop_before_final and final:"
+            },
+            {
+              "line": 81,
+              "source": "context = model.no_sync() if isinstance(model, DDP) and not final else nullcontext()"
+            },
+            {
+              "line": 82,
+              "source": "with context:"
+            },
+            {
+              "line": 83,
+              "source": "with _phase(\"microbatch_forward\"):"
+            },
+            {
+              "line": 84,
+              "source": "loss = model(input_ids=tokens, labels=tokens, use_cache=False).loss / total"
+            }
+          ],
+          "event": "exception",
+          "type": "RuntimeError",
+          "message": "Cannot copy between CPU and CUDA tensors during CUDA graph capture unless the CPU tensor is pinned. Please use tensor.pin_memory() or allocate the tensor with pin_memory=True.",
+          "count": 2,
+          "traceback": [
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication/jobs/candidate-diagnostics-36d54422b0/source/opop_candidates/trial-df7761708a.py",
+              "function": "_run_step",
+              "line": 84,
+              "source": "loss = model(input_ids=tokens, labels=tokens, use_cache=False).loss / total"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/parallel/distributed.py",
+              "function": "forward",
+              "line": 1890,
+              "source": "else self._run_ddp_forward(*inputs, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/parallel/distributed.py",
+              "function": "_run_ddp_forward",
+              "line": 1715,
+              "source": "return self.module(*inputs, **kwargs)  # type: ignore[index]"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "function": "wrapper",
+              "line": 939,
+              "source": "output = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/gpt2/modeling_gpt2.py",
+              "function": "forward",
+              "line": 682,
+              "source": "transformer_outputs: BaseModelOutputWithPastAndCrossAttentions = self.transformer("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "function": "wrapper",
+              "line": 1068,
+              "source": "output = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/output_capturing.py",
+              "function": "wrapper",
+              "line": 262,
+              "source": "outputs = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/gpt2/modeling_gpt2.py",
+              "function": "forward",
+              "line": 583,
+              "source": "causal_mask = create_causal_mask("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/masking_utils.py",
+              "function": "create_causal_mask",
+              "line": 982,
+              "source": "causal_mask = mask_interface("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/masking_utils.py",
+              "function": "eager_mask",
+              "line": 603,
+              "source": "mask = torch.where(mask, torch.tensor(0.0, device=mask.device, dtype=dtype), min_dtype)"
+            }
+          ]
+        },
+        {
+          "phase": "run",
+          "bundle": "trial-df7761708a-param-1931c00b",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication/jobs/candidate-diagnostics-36d54422b0/source/opop_candidates/trial-df7761708a.py",
+          "function": "_attempt_tier1",
+          "line": 215,
+          "source": "_run_step(state, sink)",
+          "recent_lines": [
+            {
+              "line": 205,
+              "source": "record = _BOX[\"record\"]"
+            },
+            {
+              "line": 206,
+              "source": "problem = \"\""
+            },
+            {
+              "line": 207,
+              "source": "graph = None"
+            },
+            {
+              "line": 208,
+              "source": "static = None"
+            },
+            {
+              "line": 209,
+              "source": "try:"
+            },
+            {
+              "line": 210,
+              "source": "_warmup_on_side_stream(state)"
+            },
+            {
+              "line": 211,
+              "source": "_restore_params(named, ctx[\"before\"])"
+            },
+            {
+              "line": 212,
+              "source": "graph = torch.cuda.CUDAGraph()"
+            },
+            {
+              "line": 213,
+              "source": "sink = []"
+            },
+            {
+              "line": 214,
+              "source": "with torch.cuda.graph(graph):"
+            },
+            {
+              "line": 215,
+              "source": "_run_step(state, sink)"
+            }
+          ],
+          "event": "exception",
+          "type": "RuntimeError",
+          "message": "Cannot copy between CPU and CUDA tensors during CUDA graph capture unless the CPU tensor is pinned. Please use tensor.pin_memory() or allocate the tensor with pin_memory=True.",
+          "count": 1,
+          "traceback": [
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication/jobs/candidate-diagnostics-36d54422b0/source/opop_candidates/trial-df7761708a.py",
+              "function": "_attempt_tier1",
+              "line": 215,
+              "source": "_run_step(state, sink)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication/jobs/candidate-diagnostics-36d54422b0/source/opop_candidates/trial-df7761708a.py",
+              "function": "_run_step",
+              "line": 84,
+              "source": "loss = model(input_ids=tokens, labels=tokens, use_cache=False).loss / total"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/parallel/distributed.py",
+              "function": "forward",
+              "line": 1890,
+              "source": "else self._run_ddp_forward(*inputs, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/parallel/distributed.py",
+              "function": "_run_ddp_forward",
+              "line": 1715,
+              "source": "return self.module(*inputs, **kwargs)  # type: ignore[index]"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "function": "wrapper",
+              "line": 939,
+              "source": "output = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/gpt2/modeling_gpt2.py",
+              "function": "forward",
+              "line": 682,
+              "source": "transformer_outputs: BaseModelOutputWithPastAndCrossAttentions = self.transformer("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "function": "wrapper",
+              "line": 1068,
+              "source": "output = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/output_capturing.py",
+              "function": "wrapper",
+              "line": 262,
+              "source": "outputs = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/gpt2/modeling_gpt2.py",
+              "function": "forward",
+              "line": 583,
+              "source": "causal_mask = create_causal_mask("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/masking_utils.py",
+              "function": "create_causal_mask",
+              "line": 982,
+              "source": "causal_mask = mask_interface("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/masking_utils.py",
+              "function": "eager_mask",
+              "line": 603,
+              "source": "mask = torch.where(mask, torch.tensor(0.0, device=mask.device, dtype=dtype), min_dtype)"
+            }
+          ]
+        },
+        {
+          "phase": "run",
+          "bundle": "trial-df7761708a-param-1931c00b",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication/jobs/candidate-diagnostics-36d54422b0/source/opop_candidates/trial-df7761708a.py",
+          "function": "<genexpr>",
+          "line": 167,
+          "source": "return all(item is True for item in gathered)",
+          "recent_lines": [
+            {
+              "line": 167,
+              "source": "return all(item is True for item in gathered)"
+            }
+          ],
+          "event": "return",
+          "type": "bool",
+          "message": "False",
+          "count": 2
+        },
+        {
+          "phase": "run",
+          "bundle": "trial-df7761708a-param-1931c00b",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication/jobs/candidate-diagnostics-36d54422b0/source/opop_candidates/trial-df7761708a.py",
+          "function": "_agree",
+          "line": 167,
+          "source": "return all(item is True for item in gathered)",
+          "recent_lines": [
+            {
+              "line": 162,
+              "source": "if not state.get(\"distributed\") or state.get(\"control\") is None:"
+            },
+            {
+              "line": 164,
+              "source": "try:"
+            },
+            {
+              "line": 165,
+              "source": "gathered = [None] * int(state[\"world_size\"])"
+            },
+            {
+              "line": 166,
+              "source": "dist.all_gather_object(gathered, bool(flag), group=state[\"control\"])"
+            },
+            {
+              "line": 167,
+              "source": "return all(item is True for item in gathered)"
+            }
+          ],
+          "event": "return",
+          "type": "bool",
+          "message": "False",
+          "count": 2
+        },
+        {
+          "phase": "run",
+          "bundle": "trial-df7761708a-param-1931c00b",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication/jobs/candidate-diagnostics-36d54422b0/source/opop_candidates/trial-df7761708a.py",
+          "function": "_attempt_tier2",
+          "line": 260,
+          "source": "_run_step(state, sink, stop_before_final=True)",
+          "recent_lines": [
+            {
+              "line": 249,
+              "source": "record = _BOX[\"record\"]"
+            },
+            {
+              "line": 250,
+              "source": "problem = \"\""
+            },
+            {
+              "line": 251,
+              "source": "graph = None"
+            },
+            {
+              "line": 252,
+              "source": "prefix = None"
+            },
+            {
+              "line": 253,
+              "source": "final = None"
+            },
+            {
+              "line": 254,
+              "source": "try:"
+            },
+            {
+              "line": 255,
+              "source": "_warmup_on_side_stream(state)"
+            },
+            {
+              "line": 256,
+              "source": "_restore_params(named, ctx[\"before\"])"
+            },
+            {
+              "line": 257,
+              "source": "graph = torch.cuda.CUDAGraph()"
+            },
+            {
+              "line": 258,
+              "source": "sink = []"
+            },
+            {
+              "line": 259,
+              "source": "with torch.cuda.graph(graph):"
+            },
+            {
+              "line": 260,
+              "source": "_run_step(state, sink, stop_before_final=True)"
+            }
+          ],
+          "event": "exception",
+          "type": "RuntimeError",
+          "message": "Cannot copy between CPU and CUDA tensors during CUDA graph capture unless the CPU tensor is pinned. Please use tensor.pin_memory() or allocate the tensor with pin_memory=True.",
+          "count": 1,
+          "traceback": [
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication/jobs/candidate-diagnostics-36d54422b0/source/opop_candidates/trial-df7761708a.py",
+              "function": "_attempt_tier2",
+              "line": 260,
+              "source": "_run_step(state, sink, stop_before_final=True)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication/jobs/candidate-diagnostics-36d54422b0/source/opop_candidates/trial-df7761708a.py",
+              "function": "_run_step",
+              "line": 84,
+              "source": "loss = model(input_ids=tokens, labels=tokens, use_cache=False).loss / total"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/parallel/distributed.py",
+              "function": "forward",
+              "line": 1890,
+              "source": "else self._run_ddp_forward(*inputs, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/parallel/distributed.py",
+              "function": "_run_ddp_forward",
+              "line": 1715,
+              "source": "return self.module(*inputs, **kwargs)  # type: ignore[index]"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "function": "wrapper",
+              "line": 939,
+              "source": "output = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/gpt2/modeling_gpt2.py",
+              "function": "forward",
+              "line": 682,
+              "source": "transformer_outputs: BaseModelOutputWithPastAndCrossAttentions = self.transformer("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "function": "wrapper",
+              "line": 1068,
+              "source": "output = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/output_capturing.py",
+              "function": "wrapper",
+              "line": 262,
+              "source": "outputs = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/gpt2/modeling_gpt2.py",
+              "function": "forward",
+              "line": 583,
+              "source": "causal_mask = create_causal_mask("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/masking_utils.py",
+              "function": "create_causal_mask",
+              "line": 982,
+              "source": "causal_mask = mask_interface("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/masking_utils.py",
+              "function": "eager_mask",
+              "line": 603,
+              "source": "mask = torch.where(mask, torch.tensor(0.0, device=mask.device, dtype=dtype), min_dtype)"
+            }
+          ]
+        }
+      ],
+      "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code and other threads are outside this observation. Propagated exception tracebacks can locate imported helpers without tracing their execution or retaining frames/locals."
+    }
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "plan": {
+    "collectors": [
+      "nsys",
+      "nccl_tuning",
+      "collective_calibration",
+      "execution_timeline"
+    ],
+    "requested_fields": [
+      "nsys.cross_rank_matched_collective_kernel_spans",
+      "nsys.rank_arrival_skew_per_collective",
+      "nsys.comm_compute_overlap_per_collective",
+      "nsys.stream_and_cuda_graph_attribution_of_allreduces",
+      "nccl_tuning.allreduce_sum_f32_28351488B.algorithm_protocol_channels",
+      "nccl_tuning.allreduce_sum_f32_157541376B.algorithm_protocol_channels",
+      "collective_calibration.allreduce_sum_f32_28351488B.warmed_duration_ms",
+      "collective_calibration.allreduce_sum_f32_157541376B.warmed_duration_ms",
+      "collective_calibration.correctness_check_results",
+      "execution_timeline.cpu_submit_to_cuda_associations_for_allreduces",
+      "execution_timeline.synchronization_events",
+      "execution_timeline.per_device_intervals",
+      "execution_timeline.post_accumulate_callback_observations"
+    ],
+    "unavailable_fields": {
+      "pcie_bytes": "No successful hardware-counter probe; NVML exposes only device-wide KB/s rate samples (capability probe outside the workload read 390/6103 and 341/341 KB/s), and logical payload or memcpy sizes are not traffic.",
+      "nvlink_bytes": "nvmlDeviceGetNvLinkState returned NVML status 3 on both GPU-4bead555 and GPU-69c59246; no NVLink links are exposed, so per-link byte counters are unavailable.",
+      "hardware_utilization": "Requires a successful hardware-counter probe; topology and logical payload do not measure utilization.",
+      "nccl_wire_time_ms": "Per-rank NCCL kernel durations include device waiting (matched collectives show ~13.5 ms on rank 0 vs ~3.6 ms on rank 1 in the parent discovery trace); neither torch nor nsys timelines separate NCCL waiting from wire transfer, and wire traffic will not be invented from payload sizes.",
+      "per_collective_pcie_bandwidth": "device_telemetry samples are device-wide readings with native 20 ms driver windows, not per-collective or per-bucket bytes; not requested.",
+      "model_critical_path_comm_bound_ms": "collective_calibration is a synthetic full-world SUM allreduce reference experiment at observed sizes/dtypes, not a performance lower bound or critical-path estimate.",
+      "bucket_identity_from_kernel_names_or_payload_match": "Exact bucket-to-collective links require native correlation and observed gradient-storage membership; kernel entry names and payload-size matches do not prove bucket identity for the candidate's routed collectives, so ambiguous candidates are retained."
+    },
+    "rationale": "The only listed candidate revision is 66d9e2e385cd599c064fb9c3cca933baa7037b087b68bd27742c941b5f00990e (bundle trial-f7b4b8b98a-param-57c55600); it measured communication_kernel_sum_ms 64.72 vs paired parent 72.41 but was rejected for paired_gain_not_above_noise, and both sit near the original 63.32/63.67 baseline. The decision-relevant uncertainties are: (1) how much of the ~64 ms max-rank NCCL kernel sum is intrinsic algorithm/protocol cost at the observed sizes (12x 28,351,488 B + 1x 157,541,376 B f32 SUM allreduce per step) versus in-kernel waiting from rank arrival skew and submission timing - the parent discovery trace shows matched collectives with rank-0 kernels ~13.4-14.3 ms vs rank-1 ~3.56-3.63 ms, so the max-rank metric is dominated by device waiting rather than uniform wire cost; (2) whether the candidate's self-reported routes (capture:stale_stream_repaired+eager_final_micro, eager:parent:first_invocation) actually occurred, since route labels are candidate telemetry requiring trace corroboration and the legacy binding resolved to direct with no functional replacements; (3) which NCCL algorithm/protocol/channel decisions are actually made for these sizes on this 2-GPU topology (peer_access.0.1/1.0 = 0, NVLink unsupported), since the RING_LL kernel entry name alone does not identify the protocol decision. Selection: nsys (available per capability tools) for cross-rank aligned kernel spans, arrival skew, comm/compute overlap, and stream/CUDA-graph attribution to corroborate the declared capture route - not used to separate waiting from wire transfer or to prove bucket identity; nccl_tuning for the actual warmed-worker algorithm/protocol/channel decisions at both observed sizes, which is the lever information for reducing kernel duration; collective_calibration for a correctness-checked synthetic full-world SUM allreduce at the observed sizes/dtypes as an attribution reference for warmed same-size cost, explicitly not a lower bound or critical-path estimate; execution_timeline for CPU-to-CUDA submit associations, synchronization and per-device intervals plus passive post-accumulate callbacks to corroborate route/stream claims and submission-to-kernel timing, with clock alignment bounds applying to CPU submissions only. Excluded: torch (already ran and produced the existing trace evidence); python_runtime (host dispatch is not implicated - step_ms 101.7/101.9 vs 144.8 limit leaves ~43 ms headroom - and it perturbs execution with non-clean inclusive/self times); device_telemetry (device-wide NVML rates with native windows cannot attribute per-collective bytes); binding_cost (whole-invocation host-side cost does not address the device-side comm-kernel noise question and the binding is already effective direct); candidate_diagnostics (no described capability beyond the selected trace collectors). No PCIe/NVLink traffic is derived from logical payload sizes, and no failure-category policy or optimization action is presumed from this plan.",
+    "revision": "66d9e2e385cd599c064fb9c3cca933baa7037b087b68bd27742c941b5f00990e"
+  },
+  "agent": {
+    "role": "collection-planner",
+    "session": "ses_ea3b803e3ffeHBSalaw5MFlnSj",
+    "message": "msg_15c4bf836001M0WZucSoNVRoXY",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 16,
+      "reported_cost": 0.38093095648,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 863106.0,
+        "input": 76550.0,
+        "output": 3718.0,
+        "reasoning": 10294.0,
+        "cache.read": 772544.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea3b803e3ffeHBSalaw5MFlnSj",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/ddp-feedback-continuation/sandboxes/collection-planner-dc5248b0ec3e",
+    "outputs": [
+      "collection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/ddp-feedback-continuation/generation-snapshots/generation-8f88f0e8306c.json"
+    ]
+  }
+}

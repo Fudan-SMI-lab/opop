@@ -1,7 +1,7 @@
 {
-  "revision": "ad45c7ec156119aa3dbbac646242fe78895cf7bfbe8c08d7fb9e231089a53895",
-  "registry": "ad3fc8ad97bc84bd76ee19be783c56b348fea42b408fff9b52d84567ee084d6c",
-  "plan": "b37749bf1ae58733bd4c45ae1088699ab92725069dcca050376b25065cfed1df",
+  "revision": "fad5b2333cc250231c495f9ec18c679cb44e65be5578092205b5060f05ddcd2e",
+  "registry": "b577ae2120421b7e9f5bed94d1e66cf0784c3c3ddcbff6eebfd4b553eaf9900b",
+  "plan": "08c40ce2212f56c3da61acd4aa8eb2814c82ad5e1b758acb2c6a5d904d9a726b",
   "groups": [
     {
       "id": "3c57c8731ec33ed76cbb",
@@ -11,7 +11,7 @@
       "semantics": "complete workload",
       "kind": "project",
       "invocations": 1,
-      "diagnostic_cuda_us": 3616.860000000001,
+      "diagnostic_cuda_us": 3345.0449999999996,
       "ranks": [
         0
       ],
@@ -30,7 +30,7 @@
       "semantics": "transformers.models.resnet.modeling_resnet.ResNetForImageClassification",
       "kind": "module",
       "invocations": 1,
-      "diagnostic_cuda_us": 3616.860000000001,
+      "diagnostic_cuda_us": 3345.0449999999996,
       "ranks": [
         0
       ],
@@ -80,9 +80,9 @@
       ]
     },
     {
-      "id": "f60289bed594cb7e6e9c",
+      "id": "b36bb31daf12356a5081",
       "calls": [
-        "4d4668255eac75c96856f062"
+        "4aab5013037467cf91b2a114"
       ],
       "semantics": "profiler::_record_function_enter_new(str name, str? args=None) -> __torch__.torch.classes.profiler._RecordFunction",
       "kind": "functional",
@@ -340,7 +340,7 @@
       }
     },
     {
-      "id": "4d4668255eac75c96856f062",
+      "id": "4aab5013037467cf91b2a114",
       "target": "profiler._record_function_enter_new.default",
       "kind": "functional",
       "phase": "forward",
@@ -349,7 +349,7 @@
       "signatures": [
         {
           "args": [
-            "opop_candidate::7b2262756e646c65223a22747269616c2d396336663532383064372d706172616d2d6164353134363733222c2263616c6c223a22663263663632636166353761643039663564326633366161222c227068617365223a22666f7277617264227d"
+            "opop_candidate::7b2262756e646c65223a22747269616c2d613966373261666132332d706172616d2d6632653337613063222c2263616c6c223a22663263663632636166353761643039663564326633366161222c227068617365223a22666f7277617264227d"
           ],
           "kwargs": {}
         }
@@ -368,7 +368,7 @@
           "signatures": [
             {
               "args": [
-                "opop_candidate::7b2262756e646c65223a22747269616c2d396336663532383064372d706172616d2d6164353134363733222c2263616c6c223a22663263663632636166353761643039663564326633366161222c227068617365223a22666f7277617264227d"
+                "opop_candidate::7b2262756e646c65223a22747269616c2d613966373261666132332d706172616d2d6632653337613063222c2263616c6c223a22663263663632636166353761643039663564326633366161222c227068617365223a22666f7277617264227d"
               ],
               "kwargs": {}
             }
@@ -578,16 +578,16 @@
     }
   ],
   "ranks": [
-    "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/discover-062fc43163/run/trace-rank-0.json"
+    "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/discover-7b5cabddb0/run/trace-rank-0.json"
   ],
   "call_resources": {
     "5d7d6bb13691b02f533f62b0": {
       "0": {
-        "cuda_us": 3616.860000000001,
-        "kernels": 60,
+        "cuda_us": 3345.0449999999996,
+        "kernels": 59,
         "communication_us": 0.0,
         "phase_cuda_us": {
-          "forward": 3616.860000000001
+          "forward": 3345.0449999999996
         },
         "launch_configurations": [
           {
@@ -626,33 +626,33 @@
             "graph id": 2,
             "graph node id": 8589934593,
             "invocations": 1,
-            "cuda_us": 261.821
+            "cuda_us": 261.985
           },
           {
-            "kernel": "_bias_relu",
-            "registers per thread": 20,
+            "kernel": "_bias_relu_pool3x3s2p1",
+            "registers per thread": 22,
             "shared memory": 0,
             "grid": [
               2048,
-              13,
+              56,
               1
             ],
             "block": [
-              128,
+              64,
               1,
               1
             ],
             "graph id": 2,
             "graph node id": 8589934594,
             "invocations": 1,
-            "cuda_us": 210.046
+            "cuda_us": 124.705
           },
           {
-            "kernel": "void at::native::(anonymous namespace)::max_pool_forward_nchw<float, int>(int, float const*, long, long, long, int, int, int, int, int, int, int, int, int, int, float*, long*)",
-            "registers per thread": 25,
+            "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+            "registers per thread": 16,
             "shared memory": 0,
             "grid": [
-              25088,
+              13,
               1,
               1
             ],
@@ -663,196 +663,6 @@
             ],
             "graph id": 2,
             "graph node id": 8589934595,
-            "invocations": 1,
-            "cuda_us": 183.613
-          },
-          {
-            "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
-            "registers per thread": 16,
-            "shared memory": 0,
-            "grid": [
-              13,
-              1,
-              1
-            ],
-            "block": [
-              256,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934596,
-            "invocations": 1,
-            "cuda_us": 1.248
-          },
-          {
-            "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_small_nn_v1",
-            "registers per thread": 128,
-            "shared memory": 16384,
-            "grid": [
-              784,
-              1,
-              1
-            ],
-            "block": [
-              128,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934597,
-            "invocations": 1,
-            "cuda_us": 221.951
-          },
-          {
-            "kernel": "_bias_relu",
-            "registers per thread": 20,
-            "shared memory": 0,
-            "grid": [
-              2048,
-              4,
-              1
-            ],
-            "block": [
-              128,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934598,
-            "invocations": 1,
-            "cuda_us": 15.68
-          },
-          {
-            "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
-            "registers per thread": 16,
-            "shared memory": 0,
-            "grid": [
-              13,
-              1,
-              1
-            ],
-            "block": [
-              256,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934599,
-            "invocations": 1,
-            "cuda_us": 1.216
-          },
-          {
-            "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_small_nn_v1",
-            "registers per thread": 128,
-            "shared memory": 16384,
-            "grid": [
-              784,
-              1,
-              1
-            ],
-            "block": [
-              128,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934600,
-            "invocations": 1,
-            "cuda_us": 225.95
-          },
-          {
-            "kernel": "_add_bias_relu",
-            "registers per thread": 30,
-            "shared memory": 0,
-            "grid": [
-              2048,
-              4,
-              1
-            ],
-            "block": [
-              128,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934601,
-            "invocations": 1,
-            "cuda_us": 41.119
-          },
-          {
-            "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
-            "registers per thread": 16,
-            "shared memory": 0,
-            "grid": [
-              13,
-              1,
-              1
-            ],
-            "block": [
-              256,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934602,
-            "invocations": 1,
-            "cuda_us": 1.185
-          },
-          {
-            "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_small_nn_v1",
-            "registers per thread": 128,
-            "shared memory": 16384,
-            "grid": [
-              784,
-              1,
-              1
-            ],
-            "block": [
-              128,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934603,
-            "invocations": 1,
-            "cuda_us": 225.47
-          },
-          {
-            "kernel": "_bias_relu",
-            "registers per thread": 20,
-            "shared memory": 0,
-            "grid": [
-              2048,
-              4,
-              1
-            ],
-            "block": [
-              128,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934604,
-            "invocations": 1,
-            "cuda_us": 17.472
-          },
-          {
-            "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
-            "registers per thread": 16,
-            "shared memory": 0,
-            "grid": [
-              13,
-              1,
-              1
-            ],
-            "block": [
-              256,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934605,
             "invocations": 1,
             "cuda_us": 1.184
           },
@@ -871,9 +681,66 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934606,
+            "graph node id": 8589934596,
             "invocations": 1,
-            "cuda_us": 222.141
+            "cuda_us": 220.001
+          },
+          {
+            "kernel": "_bias_relu",
+            "registers per thread": 20,
+            "shared memory": 0,
+            "grid": [
+              2048,
+              4,
+              1
+            ],
+            "block": [
+              128,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934597,
+            "invocations": 1,
+            "cuda_us": 17.312
+          },
+          {
+            "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+            "registers per thread": 16,
+            "shared memory": 0,
+            "grid": [
+              13,
+              1,
+              1
+            ],
+            "block": [
+              256,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934598,
+            "invocations": 1,
+            "cuda_us": 1.248
+          },
+          {
+            "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_small_nn_v1",
+            "registers per thread": 128,
+            "shared memory": 16384,
+            "grid": [
+              784,
+              1,
+              1
+            ],
+            "block": [
+              128,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934599,
+            "invocations": 1,
+            "cuda_us": 222.21
           },
           {
             "kernel": "_add_bias_relu",
@@ -890,9 +757,123 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934607,
+            "graph node id": 8589934600,
             "invocations": 1,
-            "cuda_us": 40.544
+            "cuda_us": 40.448
+          },
+          {
+            "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+            "registers per thread": 16,
+            "shared memory": 0,
+            "grid": [
+              13,
+              1,
+              1
+            ],
+            "block": [
+              256,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934601,
+            "invocations": 1,
+            "cuda_us": 1.056
+          },
+          {
+            "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_small_nn_v1",
+            "registers per thread": 128,
+            "shared memory": 16384,
+            "grid": [
+              784,
+              1,
+              1
+            ],
+            "block": [
+              128,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934602,
+            "invocations": 1,
+            "cuda_us": 226.497
+          },
+          {
+            "kernel": "_bias_relu",
+            "registers per thread": 20,
+            "shared memory": 0,
+            "grid": [
+              2048,
+              4,
+              1
+            ],
+            "block": [
+              128,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934603,
+            "invocations": 1,
+            "cuda_us": 18.752
+          },
+          {
+            "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+            "registers per thread": 16,
+            "shared memory": 0,
+            "grid": [
+              13,
+              1,
+              1
+            ],
+            "block": [
+              256,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934604,
+            "invocations": 1,
+            "cuda_us": 1.056
+          },
+          {
+            "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_small_nn_v1",
+            "registers per thread": 128,
+            "shared memory": 16384,
+            "grid": [
+              784,
+              1,
+              1
+            ],
+            "block": [
+              128,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934605,
+            "invocations": 1,
+            "cuda_us": 222.049
+          },
+          {
+            "kernel": "_add_bias_relu",
+            "registers per thread": 30,
+            "shared memory": 0,
+            "grid": [
+              2048,
+              4,
+              1
+            ],
+            "block": [
+              128,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934606,
+            "invocations": 1,
+            "cuda_us": 41.569
           },
           {
             "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
@@ -909,9 +890,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934608,
+            "graph node id": 8589934607,
             "invocations": 1,
-            "cuda_us": 1.279
+            "cuda_us": 1.185
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_128x128_relu_small_nn_v1",
@@ -928,9 +909,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934609,
+            "graph node id": 8589934608,
             "invocations": 1,
-            "cuda_us": 113.823
+            "cuda_us": 113.441
           },
           {
             "kernel": "_bias_relu",
@@ -947,9 +928,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934610,
+            "graph node id": 8589934609,
             "invocations": 1,
-            "cuda_us": 8.191
+            "cuda_us": 8.32
           },
           {
             "kernel": "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)",
@@ -966,9 +947,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934611,
+            "graph node id": 8589934610,
             "invocations": 1,
-            "cuda_us": 4.8
+            "cuda_us": 4.576
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile148n_nt_v1",
@@ -985,9 +966,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934612,
+            "graph node id": 8589934611,
             "invocations": 1,
-            "cuda_us": 139.774
+            "cuda_us": 142.017
           },
           {
             "kernel": "void implicit_convolve_sgemm<float, float, 512, 6, 8, 3, 3, 5, 1, false, false, true>(int, int, int, float const*, int, float*, float const*, kernel_conv_params, unsigned long long, int, float, float, int, float const*, float const*, bool, bool, int, int)",
@@ -1004,9 +985,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934613,
+            "graph node id": 8589934612,
             "invocations": 1,
-            "cuda_us": 47.487
+            "cuda_us": 47.296
           },
           {
             "kernel": "_add_bias_relu",
@@ -1023,9 +1004,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934614,
+            "graph node id": 8589934613,
             "invocations": 1,
-            "cuda_us": 10.145
+            "cuda_us": 9.792
           },
           {
             "kernel": "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)",
@@ -1042,9 +1023,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934615,
+            "graph node id": 8589934614,
             "invocations": 1,
-            "cuda_us": 4.032
+            "cuda_us": 3.936
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile148n_nt_v1",
@@ -1061,9 +1042,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934616,
+            "graph node id": 8589934615,
             "invocations": 1,
-            "cuda_us": 146.751
+            "cuda_us": 145.793
           },
           {
             "kernel": "_bias_relu",
@@ -1080,9 +1061,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934617,
+            "graph node id": 8589934616,
             "invocations": 1,
-            "cuda_us": 7.743
+            "cuda_us": 7.648
           },
           {
             "kernel": "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)",
@@ -1099,9 +1080,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934618,
+            "graph node id": 8589934617,
             "invocations": 1,
-            "cuda_us": 3.84
+            "cuda_us": 3.744
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile148n_nt_v1",
@@ -1118,9 +1099,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934619,
+            "graph node id": 8589934618,
             "invocations": 1,
-            "cuda_us": 138.174
+            "cuda_us": 136.673
           },
           {
             "kernel": "_add_bias_relu",
@@ -1137,9 +1118,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934620,
+            "graph node id": 8589934619,
             "invocations": 1,
-            "cuda_us": 9.792
+            "cuda_us": 9.888
           },
           {
             "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
@@ -1148,6 +1129,25 @@
             "grid": [
               1,
               1,
+              1
+            ],
+            "block": [
+              256,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934620,
+            "invocations": 1,
+            "cuda_us": 1.184
+          },
+          {
+            "kernel": "_5x_cudnn_ampere_scudnn_128x128_relu_small_nn_v1",
+            "registers per thread": 128,
+            "shared memory": 32768,
+            "grid": [
+              49,
+              2,
               1
             ],
             "block": [
@@ -1158,26 +1158,7 @@
             "graph id": 2,
             "graph node id": 8589934621,
             "invocations": 1,
-            "cuda_us": 1.76
-          },
-          {
-            "kernel": "_5x_cudnn_ampere_scudnn_128x128_relu_small_nn_v1",
-            "registers per thread": 128,
-            "shared memory": 32768,
-            "grid": [
-              49,
-              2,
-              1
-            ],
-            "block": [
-              256,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934622,
-            "invocations": 1,
-            "cuda_us": 101.375
+            "cuda_us": 101.505
           },
           {
             "kernel": "_bias_relu",
@@ -1194,9 +1175,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934623,
+            "graph node id": 8589934622,
             "invocations": 1,
-            "cuda_us": 6.496
+            "cuda_us": 6.432
           },
           {
             "kernel": "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)",
@@ -1213,9 +1194,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934624,
+            "graph node id": 8589934623,
             "invocations": 1,
-            "cuda_us": 6.848
+            "cuda_us": 6.016
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile442t_nt_v1",
@@ -1232,9 +1213,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934625,
+            "graph node id": 8589934624,
             "invocations": 1,
-            "cuda_us": 148.639
+            "cuda_us": 150.593
           },
           {
             "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
@@ -1243,6 +1224,25 @@
             "grid": [
               1,
               1,
+              1
+            ],
+            "block": [
+              256,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934625,
+            "invocations": 1,
+            "cuda_us": 1.408
+          },
+          {
+            "kernel": "_5x_cudnn_ampere_scudnn_128x128_relu_small_nn_v1",
+            "registers per thread": 128,
+            "shared memory": 32768,
+            "grid": [
+              49,
+              2,
               1
             ],
             "block": [
@@ -1253,26 +1253,7 @@
             "graph id": 2,
             "graph node id": 8589934626,
             "invocations": 1,
-            "cuda_us": 1.056
-          },
-          {
-            "kernel": "_5x_cudnn_ampere_scudnn_128x128_relu_small_nn_v1",
-            "registers per thread": 128,
-            "shared memory": 32768,
-            "grid": [
-              49,
-              2,
-              1
-            ],
-            "block": [
-              256,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934627,
-            "invocations": 1,
-            "cuda_us": 17.952
+            "cuda_us": 18.016
           },
           {
             "kernel": "_add_bias_relu",
@@ -1289,9 +1270,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934628,
+            "graph node id": 8589934627,
             "invocations": 1,
-            "cuda_us": 7.2
+            "cuda_us": 7.456
           },
           {
             "kernel": "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)",
@@ -1308,9 +1289,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934629,
+            "graph node id": 8589934628,
             "invocations": 1,
-            "cuda_us": 5.984
+            "cuda_us": 5.696
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile442t_nt_v1",
@@ -1327,9 +1308,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934630,
+            "graph node id": 8589934629,
             "invocations": 1,
-            "cuda_us": 151.87
+            "cuda_us": 151.105
           },
           {
             "kernel": "_bias_relu",
@@ -1346,9 +1327,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934631,
+            "graph node id": 8589934630,
             "invocations": 1,
-            "cuda_us": 6.144
+            "cuda_us": 5.984
           },
           {
             "kernel": "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)",
@@ -1365,9 +1346,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934632,
+            "graph node id": 8589934631,
             "invocations": 1,
-            "cuda_us": 5.216
+            "cuda_us": 5.185
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile442t_nt_v1",
@@ -1384,9 +1365,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934633,
+            "graph node id": 8589934632,
             "invocations": 1,
-            "cuda_us": 146.11
+            "cuda_us": 145.216
           },
           {
             "kernel": "_add_bias_relu",
@@ -1403,9 +1384,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934634,
+            "graph node id": 8589934633,
             "invocations": 1,
-            "cuda_us": 7.104
+            "cuda_us": 7.008
           },
           {
             "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
@@ -1422,7 +1403,7 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934635,
+            "graph node id": 8589934634,
             "invocations": 1,
             "cuda_us": 1.056
           },
@@ -1441,9 +1422,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934636,
+            "graph node id": 8589934635,
             "invocations": 1,
-            "cuda_us": 153.119
+            "cuda_us": 152.801
           },
           {
             "kernel": "_bias_relu",
@@ -1460,7 +1441,7 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934637,
+            "graph node id": 8589934636,
             "invocations": 1,
             "cuda_us": 9.376
           },
@@ -1479,9 +1460,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934638,
+            "graph node id": 8589934637,
             "invocations": 1,
-            "cuda_us": 17.504
+            "cuda_us": 16.032
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile442t_nt_v1",
@@ -1498,9 +1479,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934639,
+            "graph node id": 8589934638,
             "invocations": 1,
-            "cuda_us": 140.799
+            "cuda_us": 141.345
           },
           {
             "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
@@ -1517,9 +1498,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934640,
+            "graph node id": 8589934639,
             "invocations": 1,
-            "cuda_us": 1.056
+            "cuda_us": 1.248
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_medium_nn_v1",
@@ -1536,9 +1517,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934641,
+            "graph node id": 8589934640,
             "invocations": 1,
-            "cuda_us": 21.952
+            "cuda_us": 22.208
           },
           {
             "kernel": "_add_bias_relu",
@@ -1555,9 +1536,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934642,
+            "graph node id": 8589934641,
             "invocations": 1,
-            "cuda_us": 11.808
+            "cuda_us": 11.68
           },
           {
             "kernel": "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)",
@@ -1574,9 +1555,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934643,
+            "graph node id": 8589934642,
             "invocations": 1,
-            "cuda_us": 15.872
+            "cuda_us": 15.776
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile442t_nt_v1",
@@ -1593,9 +1574,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934644,
+            "graph node id": 8589934643,
             "invocations": 1,
-            "cuda_us": 138.175
+            "cuda_us": 140.033
           },
           {
             "kernel": "_bias_relu",
@@ -1612,7 +1593,7 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934645,
+            "graph node id": 8589934644,
             "invocations": 1,
             "cuda_us": 9.344
           },
@@ -1631,9 +1612,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934646,
+            "graph node id": 8589934645,
             "invocations": 1,
-            "cuda_us": 14.944
+            "cuda_us": 13.984
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile442t_nt_v1",
@@ -1650,9 +1631,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934647,
+            "graph node id": 8589934646,
             "invocations": 1,
-            "cuda_us": 136.766
+            "cuda_us": 137.185
           },
           {
             "kernel": "_add_bias_relu",
@@ -1669,9 +1650,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934648,
+            "graph node id": 8589934647,
             "invocations": 1,
-            "cuda_us": 11.648
+            "cuda_us": 12.512
           },
           {
             "kernel": "void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::MeanOps<float, float, float, float>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::MeanOps<float, float, float, float>, unsigned int, float, 4, 4>)",
@@ -1688,9 +1669,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934649,
+            "graph node id": 8589934648,
             "invocations": 1,
-            "cuda_us": 4.544
+            "cuda_us": 4.576
           },
           {
             "kernel": "ampere_sgemm_32x32_sliced1x4_tn",
@@ -1707,7 +1688,7 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934650,
+            "graph node id": 8589934649,
             "invocations": 1,
             "cuda_us": 5.472
           },
@@ -1726,9 +1707,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934651,
+            "graph node id": 8589934650,
             "invocations": 1,
-            "cuda_us": 1.824
+            "cuda_us": 1.856
           }
         ]
       }
@@ -1738,11 +1719,11 @@
     },
     "f2cf62caf57ad09f5d2f36aa": {
       "0": {
-        "cuda_us": 3616.860000000001,
-        "kernels": 60,
+        "cuda_us": 3345.0449999999996,
+        "kernels": 59,
         "communication_us": 0.0,
         "phase_cuda_us": {
-          "forward": 3616.860000000001
+          "forward": 3345.0449999999996
         },
         "launch_configurations": [
           {
@@ -1781,33 +1762,33 @@
             "graph id": 2,
             "graph node id": 8589934593,
             "invocations": 1,
-            "cuda_us": 261.821
+            "cuda_us": 261.985
           },
           {
-            "kernel": "_bias_relu",
-            "registers per thread": 20,
+            "kernel": "_bias_relu_pool3x3s2p1",
+            "registers per thread": 22,
             "shared memory": 0,
             "grid": [
               2048,
-              13,
+              56,
               1
             ],
             "block": [
-              128,
+              64,
               1,
               1
             ],
             "graph id": 2,
             "graph node id": 8589934594,
             "invocations": 1,
-            "cuda_us": 210.046
+            "cuda_us": 124.705
           },
           {
-            "kernel": "void at::native::(anonymous namespace)::max_pool_forward_nchw<float, int>(int, float const*, long, long, long, int, int, int, int, int, int, int, int, int, int, float*, long*)",
-            "registers per thread": 25,
+            "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+            "registers per thread": 16,
             "shared memory": 0,
             "grid": [
-              25088,
+              13,
               1,
               1
             ],
@@ -1818,196 +1799,6 @@
             ],
             "graph id": 2,
             "graph node id": 8589934595,
-            "invocations": 1,
-            "cuda_us": 183.613
-          },
-          {
-            "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
-            "registers per thread": 16,
-            "shared memory": 0,
-            "grid": [
-              13,
-              1,
-              1
-            ],
-            "block": [
-              256,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934596,
-            "invocations": 1,
-            "cuda_us": 1.248
-          },
-          {
-            "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_small_nn_v1",
-            "registers per thread": 128,
-            "shared memory": 16384,
-            "grid": [
-              784,
-              1,
-              1
-            ],
-            "block": [
-              128,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934597,
-            "invocations": 1,
-            "cuda_us": 221.951
-          },
-          {
-            "kernel": "_bias_relu",
-            "registers per thread": 20,
-            "shared memory": 0,
-            "grid": [
-              2048,
-              4,
-              1
-            ],
-            "block": [
-              128,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934598,
-            "invocations": 1,
-            "cuda_us": 15.68
-          },
-          {
-            "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
-            "registers per thread": 16,
-            "shared memory": 0,
-            "grid": [
-              13,
-              1,
-              1
-            ],
-            "block": [
-              256,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934599,
-            "invocations": 1,
-            "cuda_us": 1.216
-          },
-          {
-            "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_small_nn_v1",
-            "registers per thread": 128,
-            "shared memory": 16384,
-            "grid": [
-              784,
-              1,
-              1
-            ],
-            "block": [
-              128,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934600,
-            "invocations": 1,
-            "cuda_us": 225.95
-          },
-          {
-            "kernel": "_add_bias_relu",
-            "registers per thread": 30,
-            "shared memory": 0,
-            "grid": [
-              2048,
-              4,
-              1
-            ],
-            "block": [
-              128,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934601,
-            "invocations": 1,
-            "cuda_us": 41.119
-          },
-          {
-            "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
-            "registers per thread": 16,
-            "shared memory": 0,
-            "grid": [
-              13,
-              1,
-              1
-            ],
-            "block": [
-              256,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934602,
-            "invocations": 1,
-            "cuda_us": 1.185
-          },
-          {
-            "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_small_nn_v1",
-            "registers per thread": 128,
-            "shared memory": 16384,
-            "grid": [
-              784,
-              1,
-              1
-            ],
-            "block": [
-              128,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934603,
-            "invocations": 1,
-            "cuda_us": 225.47
-          },
-          {
-            "kernel": "_bias_relu",
-            "registers per thread": 20,
-            "shared memory": 0,
-            "grid": [
-              2048,
-              4,
-              1
-            ],
-            "block": [
-              128,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934604,
-            "invocations": 1,
-            "cuda_us": 17.472
-          },
-          {
-            "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
-            "registers per thread": 16,
-            "shared memory": 0,
-            "grid": [
-              13,
-              1,
-              1
-            ],
-            "block": [
-              256,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934605,
             "invocations": 1,
             "cuda_us": 1.184
           },
@@ -2026,9 +1817,66 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934606,
+            "graph node id": 8589934596,
             "invocations": 1,
-            "cuda_us": 222.141
+            "cuda_us": 220.001
+          },
+          {
+            "kernel": "_bias_relu",
+            "registers per thread": 20,
+            "shared memory": 0,
+            "grid": [
+              2048,
+              4,
+              1
+            ],
+            "block": [
+              128,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934597,
+            "invocations": 1,
+            "cuda_us": 17.312
+          },
+          {
+            "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+            "registers per thread": 16,
+            "shared memory": 0,
+            "grid": [
+              13,
+              1,
+              1
+            ],
+            "block": [
+              256,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934598,
+            "invocations": 1,
+            "cuda_us": 1.248
+          },
+          {
+            "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_small_nn_v1",
+            "registers per thread": 128,
+            "shared memory": 16384,
+            "grid": [
+              784,
+              1,
+              1
+            ],
+            "block": [
+              128,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934599,
+            "invocations": 1,
+            "cuda_us": 222.21
           },
           {
             "kernel": "_add_bias_relu",
@@ -2045,9 +1893,123 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934607,
+            "graph node id": 8589934600,
             "invocations": 1,
-            "cuda_us": 40.544
+            "cuda_us": 40.448
+          },
+          {
+            "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+            "registers per thread": 16,
+            "shared memory": 0,
+            "grid": [
+              13,
+              1,
+              1
+            ],
+            "block": [
+              256,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934601,
+            "invocations": 1,
+            "cuda_us": 1.056
+          },
+          {
+            "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_small_nn_v1",
+            "registers per thread": 128,
+            "shared memory": 16384,
+            "grid": [
+              784,
+              1,
+              1
+            ],
+            "block": [
+              128,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934602,
+            "invocations": 1,
+            "cuda_us": 226.497
+          },
+          {
+            "kernel": "_bias_relu",
+            "registers per thread": 20,
+            "shared memory": 0,
+            "grid": [
+              2048,
+              4,
+              1
+            ],
+            "block": [
+              128,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934603,
+            "invocations": 1,
+            "cuda_us": 18.752
+          },
+          {
+            "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
+            "registers per thread": 16,
+            "shared memory": 0,
+            "grid": [
+              13,
+              1,
+              1
+            ],
+            "block": [
+              256,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934604,
+            "invocations": 1,
+            "cuda_us": 1.056
+          },
+          {
+            "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_small_nn_v1",
+            "registers per thread": 128,
+            "shared memory": 16384,
+            "grid": [
+              784,
+              1,
+              1
+            ],
+            "block": [
+              128,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934605,
+            "invocations": 1,
+            "cuda_us": 222.049
+          },
+          {
+            "kernel": "_add_bias_relu",
+            "registers per thread": 30,
+            "shared memory": 0,
+            "grid": [
+              2048,
+              4,
+              1
+            ],
+            "block": [
+              128,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934606,
+            "invocations": 1,
+            "cuda_us": 41.569
           },
           {
             "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
@@ -2064,9 +2026,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934608,
+            "graph node id": 8589934607,
             "invocations": 1,
-            "cuda_us": 1.279
+            "cuda_us": 1.185
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_128x128_relu_small_nn_v1",
@@ -2083,9 +2045,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934609,
+            "graph node id": 8589934608,
             "invocations": 1,
-            "cuda_us": 113.823
+            "cuda_us": 113.441
           },
           {
             "kernel": "_bias_relu",
@@ -2102,9 +2064,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934610,
+            "graph node id": 8589934609,
             "invocations": 1,
-            "cuda_us": 8.191
+            "cuda_us": 8.32
           },
           {
             "kernel": "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)",
@@ -2121,9 +2083,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934611,
+            "graph node id": 8589934610,
             "invocations": 1,
-            "cuda_us": 4.8
+            "cuda_us": 4.576
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile148n_nt_v1",
@@ -2140,9 +2102,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934612,
+            "graph node id": 8589934611,
             "invocations": 1,
-            "cuda_us": 139.774
+            "cuda_us": 142.017
           },
           {
             "kernel": "void implicit_convolve_sgemm<float, float, 512, 6, 8, 3, 3, 5, 1, false, false, true>(int, int, int, float const*, int, float*, float const*, kernel_conv_params, unsigned long long, int, float, float, int, float const*, float const*, bool, bool, int, int)",
@@ -2159,9 +2121,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934613,
+            "graph node id": 8589934612,
             "invocations": 1,
-            "cuda_us": 47.487
+            "cuda_us": 47.296
           },
           {
             "kernel": "_add_bias_relu",
@@ -2178,9 +2140,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934614,
+            "graph node id": 8589934613,
             "invocations": 1,
-            "cuda_us": 10.145
+            "cuda_us": 9.792
           },
           {
             "kernel": "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)",
@@ -2197,9 +2159,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934615,
+            "graph node id": 8589934614,
             "invocations": 1,
-            "cuda_us": 4.032
+            "cuda_us": 3.936
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile148n_nt_v1",
@@ -2216,9 +2178,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934616,
+            "graph node id": 8589934615,
             "invocations": 1,
-            "cuda_us": 146.751
+            "cuda_us": 145.793
           },
           {
             "kernel": "_bias_relu",
@@ -2235,9 +2197,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934617,
+            "graph node id": 8589934616,
             "invocations": 1,
-            "cuda_us": 7.743
+            "cuda_us": 7.648
           },
           {
             "kernel": "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)",
@@ -2254,9 +2216,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934618,
+            "graph node id": 8589934617,
             "invocations": 1,
-            "cuda_us": 3.84
+            "cuda_us": 3.744
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile148n_nt_v1",
@@ -2273,9 +2235,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934619,
+            "graph node id": 8589934618,
             "invocations": 1,
-            "cuda_us": 138.174
+            "cuda_us": 136.673
           },
           {
             "kernel": "_add_bias_relu",
@@ -2292,9 +2254,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934620,
+            "graph node id": 8589934619,
             "invocations": 1,
-            "cuda_us": 9.792
+            "cuda_us": 9.888
           },
           {
             "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
@@ -2303,6 +2265,25 @@
             "grid": [
               1,
               1,
+              1
+            ],
+            "block": [
+              256,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934620,
+            "invocations": 1,
+            "cuda_us": 1.184
+          },
+          {
+            "kernel": "_5x_cudnn_ampere_scudnn_128x128_relu_small_nn_v1",
+            "registers per thread": 128,
+            "shared memory": 32768,
+            "grid": [
+              49,
+              2,
               1
             ],
             "block": [
@@ -2313,26 +2294,7 @@
             "graph id": 2,
             "graph node id": 8589934621,
             "invocations": 1,
-            "cuda_us": 1.76
-          },
-          {
-            "kernel": "_5x_cudnn_ampere_scudnn_128x128_relu_small_nn_v1",
-            "registers per thread": 128,
-            "shared memory": 32768,
-            "grid": [
-              49,
-              2,
-              1
-            ],
-            "block": [
-              256,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934622,
-            "invocations": 1,
-            "cuda_us": 101.375
+            "cuda_us": 101.505
           },
           {
             "kernel": "_bias_relu",
@@ -2349,9 +2311,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934623,
+            "graph node id": 8589934622,
             "invocations": 1,
-            "cuda_us": 6.496
+            "cuda_us": 6.432
           },
           {
             "kernel": "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)",
@@ -2368,9 +2330,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934624,
+            "graph node id": 8589934623,
             "invocations": 1,
-            "cuda_us": 6.848
+            "cuda_us": 6.016
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile442t_nt_v1",
@@ -2387,9 +2349,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934625,
+            "graph node id": 8589934624,
             "invocations": 1,
-            "cuda_us": 148.639
+            "cuda_us": 150.593
           },
           {
             "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
@@ -2398,6 +2360,25 @@
             "grid": [
               1,
               1,
+              1
+            ],
+            "block": [
+              256,
+              1,
+              1
+            ],
+            "graph id": 2,
+            "graph node id": 8589934625,
+            "invocations": 1,
+            "cuda_us": 1.408
+          },
+          {
+            "kernel": "_5x_cudnn_ampere_scudnn_128x128_relu_small_nn_v1",
+            "registers per thread": 128,
+            "shared memory": 32768,
+            "grid": [
+              49,
+              2,
               1
             ],
             "block": [
@@ -2408,26 +2389,7 @@
             "graph id": 2,
             "graph node id": 8589934626,
             "invocations": 1,
-            "cuda_us": 1.056
-          },
-          {
-            "kernel": "_5x_cudnn_ampere_scudnn_128x128_relu_small_nn_v1",
-            "registers per thread": 128,
-            "shared memory": 32768,
-            "grid": [
-              49,
-              2,
-              1
-            ],
-            "block": [
-              256,
-              1,
-              1
-            ],
-            "graph id": 2,
-            "graph node id": 8589934627,
-            "invocations": 1,
-            "cuda_us": 17.952
+            "cuda_us": 18.016
           },
           {
             "kernel": "_add_bias_relu",
@@ -2444,9 +2406,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934628,
+            "graph node id": 8589934627,
             "invocations": 1,
-            "cuda_us": 7.2
+            "cuda_us": 7.456
           },
           {
             "kernel": "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)",
@@ -2463,9 +2425,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934629,
+            "graph node id": 8589934628,
             "invocations": 1,
-            "cuda_us": 5.984
+            "cuda_us": 5.696
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile442t_nt_v1",
@@ -2482,9 +2444,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934630,
+            "graph node id": 8589934629,
             "invocations": 1,
-            "cuda_us": 151.87
+            "cuda_us": 151.105
           },
           {
             "kernel": "_bias_relu",
@@ -2501,9 +2463,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934631,
+            "graph node id": 8589934630,
             "invocations": 1,
-            "cuda_us": 6.144
+            "cuda_us": 5.984
           },
           {
             "kernel": "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)",
@@ -2520,9 +2482,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934632,
+            "graph node id": 8589934631,
             "invocations": 1,
-            "cuda_us": 5.216
+            "cuda_us": 5.185
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile442t_nt_v1",
@@ -2539,9 +2501,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934633,
+            "graph node id": 8589934632,
             "invocations": 1,
-            "cuda_us": 146.11
+            "cuda_us": 145.216
           },
           {
             "kernel": "_add_bias_relu",
@@ -2558,9 +2520,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934634,
+            "graph node id": 8589934633,
             "invocations": 1,
-            "cuda_us": 7.104
+            "cuda_us": 7.008
           },
           {
             "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
@@ -2577,7 +2539,7 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934635,
+            "graph node id": 8589934634,
             "invocations": 1,
             "cuda_us": 1.056
           },
@@ -2596,9 +2558,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934636,
+            "graph node id": 8589934635,
             "invocations": 1,
-            "cuda_us": 153.119
+            "cuda_us": 152.801
           },
           {
             "kernel": "_bias_relu",
@@ -2615,7 +2577,7 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934637,
+            "graph node id": 8589934636,
             "invocations": 1,
             "cuda_us": 9.376
           },
@@ -2634,9 +2596,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934638,
+            "graph node id": 8589934637,
             "invocations": 1,
-            "cuda_us": 17.504
+            "cuda_us": 16.032
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile442t_nt_v1",
@@ -2653,9 +2615,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934639,
+            "graph node id": 8589934638,
             "invocations": 1,
-            "cuda_us": 140.799
+            "cuda_us": 141.345
           },
           {
             "kernel": "void cask__5x_cudnn::computeOffsetsKernel<false, false>(cask__5x_cudnn::ComputeOffsetsParams)",
@@ -2672,9 +2634,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934640,
+            "graph node id": 8589934639,
             "invocations": 1,
-            "cuda_us": 1.056
+            "cuda_us": 1.248
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_128x64_relu_medium_nn_v1",
@@ -2691,9 +2653,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934641,
+            "graph node id": 8589934640,
             "invocations": 1,
-            "cuda_us": 21.952
+            "cuda_us": 22.208
           },
           {
             "kernel": "_add_bias_relu",
@@ -2710,9 +2672,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934642,
+            "graph node id": 8589934641,
             "invocations": 1,
-            "cuda_us": 11.808
+            "cuda_us": 11.68
           },
           {
             "kernel": "void cudnn::winograd::generateWinogradTilesKernel<0, float, float>(cudnn::winograd::GenerateWinogradTilesParams<float, float>)",
@@ -2729,9 +2691,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934643,
+            "graph node id": 8589934642,
             "invocations": 1,
-            "cuda_us": 15.872
+            "cuda_us": 15.776
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile442t_nt_v1",
@@ -2748,9 +2710,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934644,
+            "graph node id": 8589934643,
             "invocations": 1,
-            "cuda_us": 138.175
+            "cuda_us": 140.033
           },
           {
             "kernel": "_bias_relu",
@@ -2767,7 +2729,7 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934645,
+            "graph node id": 8589934644,
             "invocations": 1,
             "cuda_us": 9.344
           },
@@ -2786,9 +2748,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934646,
+            "graph node id": 8589934645,
             "invocations": 1,
-            "cuda_us": 14.944
+            "cuda_us": 13.984
           },
           {
             "kernel": "_5x_cudnn_ampere_scudnn_winograd_128x128_ldg1_ldg4_relu_tile442t_nt_v1",
@@ -2805,9 +2767,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934647,
+            "graph node id": 8589934646,
             "invocations": 1,
-            "cuda_us": 136.766
+            "cuda_us": 137.185
           },
           {
             "kernel": "_add_bias_relu",
@@ -2824,9 +2786,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934648,
+            "graph node id": 8589934647,
             "invocations": 1,
-            "cuda_us": 11.648
+            "cuda_us": 12.512
           },
           {
             "kernel": "void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::MeanOps<float, float, float, float>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::MeanOps<float, float, float, float>, unsigned int, float, 4, 4>)",
@@ -2843,9 +2805,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934649,
+            "graph node id": 8589934648,
             "invocations": 1,
-            "cuda_us": 4.544
+            "cuda_us": 4.576
           },
           {
             "kernel": "ampere_sgemm_32x32_sliced1x4_tn",
@@ -2862,7 +2824,7 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934650,
+            "graph node id": 8589934649,
             "invocations": 1,
             "cuda_us": 5.472
           },
@@ -2881,9 +2843,9 @@
               1
             ],
             "graph id": 2,
-            "graph node id": 8589934651,
+            "graph node id": 8589934650,
             "invocations": 1,
-            "cuda_us": 1.824
+            "cuda_us": 1.856
           }
         ]
       }
@@ -2891,7 +2853,7 @@
     "ce9b495d71872924979d1c91": {
       "0": {}
     },
-    "4d4668255eac75c96856f062": {
+    "4aab5013037467cf91b2a114": {
       "0": {}
     },
     "9b2f8fbe19d203f9499fe887": {
@@ -2909,10 +2871,10 @@
   },
   "coverage": [
     {
-      "cuda_kernels": 60,
-      "associated_kernels": 60,
+      "cuda_kernels": 59,
+      "associated_kernels": 59,
       "unassociated_kernels": 0,
-      "associated_below_project": 60,
+      "associated_below_project": 59,
       "root_only_kernels": 0,
       "backward_associated_kernels": 0,
       "autograd_ranges": 0,
@@ -2924,7 +2886,7 @@
     "Alias, persistent state and cross-stream/collective dependencies need additional evidence; data edges alone do not authorize reordering"
   ],
   "profiled_wall_ms": [
-    6.142587
+    5.992535
   ],
   "communication": {
     "cross_rank": {
@@ -2967,567 +2929,2006 @@
   },
   "plan_change": {
     "retired_calls": [
-      "00466bd68f0144232fc29824",
-      "013eeadd234965480748c13f",
-      "0216674971a5b836a999945d",
-      "025ff924c05968f5e3f7961d",
-      "02ef170c1a1e583b19aa7e54",
-      "033ee1ef66f9f141771c4e95",
-      "03f36e4fcd28beb6cf087e5c",
-      "042ac61d92422fdc4fc91834",
-      "04465014799484d7cef18353",
-      "04de0e7be76279cb340fc51e",
-      "050304c1d91baac7906920b7",
-      "06238f4bdd375d834b686fe3",
-      "074dfcc3922b7d2a1009b4ac",
-      "07e19be32b79aeb05aec13d6",
-      "08b64cd86b108048be952bd7",
-      "08d3217b8b560a463f2a3663",
-      "09f9643147b368713badcf69",
-      "0a55f75461e5d6a41c77fe90",
-      "0aeb57aaaa5fa66bc2e47a63",
-      "0b45bb04d4147792032b7923",
-      "0babaaf9f65d7ea2ac0f9180",
-      "0e645d228cc3d2af27a1ecc4",
-      "0ee6e96058d4325ee5cfe4e0",
-      "111e92c84dafacea46d50c57",
-      "12da68be9b9e14502fe4702a",
-      "138b64b72c7ca6417b977a81",
-      "139d57d160e210c9eabe838a",
-      "1461f1c9b7b18f46ad294e95",
-      "174cd89c18d80d194dc5dc7b",
-      "185eab8ac3768e370752cd6f",
-      "1879960077a44206e3bcfeea",
-      "189a55119d97d1c7cf758fe6",
-      "189d7e243d26d8fc6a3962d8",
-      "1929cfbd067456e05e2cc7cf",
-      "1b160dbf6743acd183be0d7d",
-      "1b163dbd8c0a67a214a9f004",
-      "1ba8dcd7d1a0c0a3a58bcd60",
-      "1c44b1bf3f53f0f5634242c9",
-      "1d4d69ca555d2a7f570c36fd",
-      "1d6ebc8028227ae93cadde42",
-      "1f750cfe73af31647514bce9",
-      "20ab8e7fcfbe652c7a9e76ef",
-      "218ec17b54af0b39308b4515",
-      "21d413dfed396ad249d2a4b7",
-      "2507a0eb57b6f0457f0fb388",
-      "26a75606952bd85d7ca907a1",
-      "26eb9f642eaddecee9d00bae",
-      "26fe32de6f89e29e5848acd6",
-      "271b7dbabdee66b08cee00bb",
-      "2743e487182d96cef02239b9",
-      "27aedd3d29c17aca7bf948c7",
-      "284a9f512e723ab5a1d83998",
-      "28d01b207f42b3fa5c12308a",
-      "29ee40e0947eeb9039c9fbe4",
-      "2aaa93b329a955a83f193080",
-      "2bd10305e02536cd92feab4b",
-      "2cf4d2b82dc58e11738bb3b9",
-      "2e115926c50254b6cf5d5c85",
-      "3023e8f76319f15fb91d0a92",
-      "305a3d47fba0f1586612f72e",
-      "307c22fdca28029f286c3b89",
-      "309efd23cc1edb283955b6a3",
-      "3110a6443ac2d93761b3d5c6",
-      "31651bd556566af82ff06f6a",
-      "339b2f7a0797cdd31461b819",
-      "367de5f4aafcff1e8916a668",
-      "36ef01a8b27e69d58d78a709",
-      "39140a3447d7140fc749cded",
-      "3a2ad08e7ac21ad8f038eef4",
-      "3a8cb56e234373d6905df319",
-      "3aadda42785fc3f11fe66958",
-      "3ae07038f2fc000186a5c19b",
-      "3bd2f7b5a135c9096c985cf0",
-      "3d5f001706f7f4c218a9c261",
-      "3db154d4b6654cb04cba4425",
-      "3ed371865874dd003973ef30",
-      "3fdc49c2c83aacbeb617e2f8",
-      "4011f0375e72ee07919e4514",
-      "419a4f96a3c5ecb3ebc59be0",
-      "41bce2b3604affc0c6f885ae",
-      "42421d27240c30720dcc0863",
-      "4367176c34e4141fee648ee6",
-      "43b56365683effb880896f02",
-      "4493f388e0c5f5f1fe437f7e",
-      "4529cf594d1da89461bd9f90",
-      "453f2a281d2e8754017a58e6",
-      "46a59afd3ab1f67ecfc98b46",
-      "485aed4bd4c3fdbb16528b0c",
-      "491a06ffda8a3b6140fb431c",
-      "4b27661da0a79c0cf9ad358a",
-      "4b997fb72b97b63be4d484be",
-      "4c89be17674cbb081616db8f",
-      "4cd47aeb2954d35601a9ee57",
-      "4d0349694e7ec598aee4c47c",
-      "4d67a44fe129db627ecbe349",
-      "4e1cb6f216767d70f53f37cb",
-      "4f55669c9904be049f1a615f",
-      "4fa20af9ecbc083fa05d4168",
-      "50e433b07d2a2088a810e4a9",
-      "5317ed169e344be620e52d7e",
-      "5341b6fa3adfe96c2df582b1",
-      "5488005b7d0670c133ccd331",
-      "54ac9fcdf984cdfde95b2863",
-      "55c254925f1e83d2147f16a1",
-      "5604ac692ad65621f937fa94",
-      "56b8dc8db4a7c1a2cda901c8",
-      "5784db785cf33b978d46d02b",
-      "579d44310e19bc10445ec286",
-      "57a82c4f5dd12cd2d08c16c9",
-      "589a5d16aa651dfa4b251de9",
-      "59d8ac10780ad3a612467c4e",
-      "5a738567860d1790e17b4c74",
-      "5ae8a4b9b9555cbcd7a9d78d",
-      "5b18f7c4e53ac5f48d01e34a",
-      "5c3a6552ee56574f3eced357",
-      "5cdd7d671539929865f00bd4",
-      "5cf79a2d1015ff0fd3f1baf5",
-      "5d2e4a5bb1e53820dcf7d240",
-      "6073def15630ca83b0fa7416",
-      "610b19656896ef485b73b42c",
-      "6132e53bd637bda47e97b103",
-      "6508d164f59b80fbc5ad7f1a",
-      "65b33ff07c19bdb1887ee9d7",
-      "65cf5a64dc11a2d9ce54d642",
-      "6623c151d28ed38e51408bbf",
-      "6658e6eda8887cd477c28209",
-      "66d2a06f39c8b44961a09e1b",
-      "6740df1f023a55742e384538",
-      "6746f23f001670e005ec8808",
-      "676fbdb9f1b64a0d53921081",
-      "68c8ba518916ed96386487e1",
-      "6a40efa91c6207ccdc63b63e",
-      "6a50799a3560f04524bb1825",
-      "6ab1f8d0e6ced43fa26813eb",
-      "6b7121539cb64cc1e5b497b1",
-      "6c8204e440f6fee73cc84fc1",
-      "6e0698b461722017c7b34b0f",
-      "6eed86b680edffea52f8c0c7",
-      "6f5c1ae7c001747434973c8d",
-      "6fe493534d5cd117ff18399b",
-      "7330bf026b53d0d21e816c0d",
-      "73edaa31e9bd926e06a74c7a",
-      "74a7d1dc7c252585bac9ee72",
-      "74e9871b09ae9c4a1f947695",
-      "752f591ca20b30c9b0ebf08a",
-      "757d5cdae5eeaa17d6c7729c",
-      "764b049d6a49f5ecc2002175",
-      "76d2fcd0eb48e480fd540d5e",
-      "77611ebca79b698454ee66d8",
-      "7776c91ca967e55779a412cc",
-      "77bbe12f8f3bf5225abecaac",
-      "792b638b86d8512427818b74",
-      "79ed3fea6cbba028226317b0",
-      "7bfa7e4ab384c02cf256ea70",
-      "7c735ffcb4cdc63167fb6082",
-      "7db3c2c1041bf3fe2951687e",
-      "808074af175e044867214196",
-      "80c92a1c47263b0dbd21ec22",
-      "812190ea0f5add1201bdc7b7",
-      "8146acef9c1a965b8908bbb5",
-      "81f2326ad167c42a0688f1dd",
-      "81fcb0e2c80d1552de07085c",
-      "82be61c5097290efe5a3112f",
-      "847c427a9031ddd09016a1ce",
-      "8504783bbca736066fecb204",
-      "856c7f09f0ee136393abb7a6",
-      "85abf4c3b0c55d7da7d5d359",
-      "8614687a2d6ee210c0f7f4aa",
-      "8639934630c59ca12ca1f5bb",
-      "868fd53c16e1f20de7e136a3",
-      "86d53f173ec2db711c715400",
-      "87ff5f11b9431aba2e7d2693",
-      "8906159cb8ba02fcff7a0598",
-      "89ac1f0557ceebf94bd891da",
-      "89bc7485bcb9aeaa62c7d28b",
-      "89c737b8e37b6380d3c3c1c2",
-      "89db664aaab8bbb849bc3e3b",
-      "89f968d79a78e013c08bd56c",
-      "8ad986dd3ab6bf80a008eefc",
-      "8b00751f4ad93ab883034bfa",
-      "8bd82d1e8008495f3081a50b",
-      "8c23d1741431ef5349be3934",
-      "8c5e33d99697b235debc58a2",
-      "8dbe0c017aabeb02a2604e82",
-      "8f22f7b7c4de1addaa64cc15",
-      "9000547cd2a8bfb3ff3c94e8",
-      "90a9be9b9db1fa1db99970cf",
-      "90ce0809107a7600c823f6c7",
-      "914527d00dd2ef1ccfffd97b",
-      "917e6260e60b88847b4d08f5",
-      "91cca06a837077361218ff7b",
-      "91e112c38a06040820360471",
-      "925bcbb7674ea93afc6ce015",
-      "925e748313484f7954d84bf1",
-      "92d28d39cefe291e9baf2391",
-      "92d69f3f439bda45f8c142c4",
-      "9337819e1d7b6a87031cc9fa",
-      "93576bba7340eca0dce2bc86",
-      "94344626f5051bd5205ee261",
-      "94514a28d00c0b86950c6d9f",
-      "9553e916c6120e828763d134",
-      "9558b170ac4859e4173c9e02",
-      "96368001b4fd229e639fb1dd",
-      "96a737ec20aa408fc1fa9d24",
-      "9814e3f2c8ac7fe3f7b3692e",
-      "988d74f06e500c5a000f9fa9",
-      "98b9a8eb1b7561f975610f02",
-      "99021dea5eb95f752c9be008",
-      "9a20c1450f938c32ac425ec9",
-      "9aaa7bdc66cc383f10be22da",
-      "9bb381a7b50f1e3dcfdb1cb4",
-      "9beb8b9076cc061fb8023ead",
-      "9c61a0898adb09fcada55871",
-      "9d3d81c3c57605e001aa0979",
-      "9fe6f8795b702427b639a842",
-      "a0f8878a18b99eb08fe2aef4",
-      "a19e2b85ae8b56bc0fa44985",
-      "a1a1ba5d96832a39f4dab342",
-      "a263d10c24fce1ff47e60d76",
-      "a2da470f90054ad87ca1c5b5",
-      "a36942ee716e0ac61dfa654e",
-      "a4e7b908571c70ff1c71afba",
-      "a6ded8874902a7fb0c6f2014",
-      "a70a285a94b56c6fd4679090",
-      "a929588cc0791799075542c6",
-      "a99fd0b9cc7853cf421dbdda",
-      "aa41a949752a50bdc44c9a47",
-      "ab5f018984612357036fff22",
-      "ab81090ad28b60df41110b3b",
-      "ac875b541e21e70dec32bf80",
-      "ad0730b4f031b770865aca4c",
-      "aef00bf505b13f0d61c43628",
-      "b04ed2ee2118d432096eebe4",
-      "b05973afdd3024b06d823eeb",
-      "b21668f41d9fb06e481b7ac6",
-      "b35fe95a3b097ce1dcb441ea",
-      "b3f4af616403b773235112b7",
-      "b426e54a36aefa78fb685f3e",
-      "b4699bb42eccc8d55943cd24",
-      "b5390518b6e0a73cb8e23943",
-      "b5a12c7d3b4325d9a576e31c",
-      "b660c4114fa105b873dffbd9",
-      "b69c034d4b53e55dc56edd12",
-      "b7a51a5243382e818c397c12",
-      "b85943a4e6882fd8c4c4ef05",
-      "baabb2ce566f7cb0689f2eb2",
-      "bb3832f66772f07b04659f89",
-      "bb68a9a1e26a451641af01b1",
-      "bb72850c82c1f09031c003d3",
-      "bc50cb2cf7d7a163f3cd1e20",
-      "bc65d5b388369d3040d18c6f",
-      "be8597b8dc2dee84ac934625",
-      "bf0a70ab7c25c04ef2879464",
-      "bf4bcffa4cae24a027925ba8",
-      "c2356ad4ce83dbc66dad026d",
-      "c276affd9a33331513ba1aee",
-      "c3dec2a11186f79a2625844e",
-      "c58b16d3a8f1c193e14e6915",
-      "c67abe836b4561a531784e8f",
-      "c6ff2643cb32d7090f4f16fc",
-      "c72d353710ac8cd3811191e0",
-      "c8992c6d4ebe2ac8945deabf",
-      "c94673fb7aee6ef9fefe41bf",
-      "c9bf754fdffe8b1a0580f389",
-      "cc0e171e669fc7a514d40757",
-      "cc716fcf2cd8c45155fd233e",
-      "ccb680b6fa3d5a2f0df29400",
-      "ce32078057b9bd929cb8c515",
-      "ce5bba9a5a4fbbe4cc4215a2",
-      "ce951f1ffb90385be041d268",
-      "cea956bf9012c4410f4b30f8",
-      "cecf17ef310a4487f93c1329",
-      "cf31ac83f28fecec802c96de",
-      "cf66bf497fd01a1b662fec32",
-      "cf798652b88e8ee2b4298cdd",
-      "d0384cb46bb193e5d6c55933",
-      "d1a120d4079cc689060c843e",
-      "d1da555ba2e1e432f8720e84",
-      "d2690ee924ab33cd95efa6f0",
-      "d32f14285793d10a683651c8",
-      "d36bf1f0baf2f3b6aa785acf",
-      "d47c1b88912aebd4cb9738ed",
-      "d589969694000a2cbd412ae6",
-      "d59a589b1d481b817677283a",
-      "d5fd1c2924a8d028cac02b88",
-      "d601d934cdf3e6496481fe6d",
-      "d61f3ae0c313ccdb6248fd9b",
-      "d6cd4f9f3cfba9ab59bc4777",
-      "d7477c177b132c7438d40e75",
-      "d75d81e4ac3f3ef9a2cabccc",
-      "d822faa7a06ed2c7aa54573f",
-      "d8abe6995c6c03cb0269951e",
-      "d97d55bb22b7a5b14da54326",
-      "db0081a61dc84282ec6811d4",
-      "db47ebe9e167f144855dfb31",
-      "db8a4685e26c9341b26c8e7a",
-      "dbe179fcec7253437f3b2686",
-      "dbf7bc380a16d0c71b121ac2",
-      "dd8c40e364278b64c4e1802d",
-      "de962f44a0a6a1452a99639d",
-      "df2c27a4e6c2d0e6339d3fa1",
-      "e0dec3276cb2ef8762cd83a4",
-      "e2b61f3af66883244f03b706",
-      "e4174ed71f25bb1aa98a4321",
-      "e43fb15b41a43f2b6382346a",
-      "e552404d6b2d9aae14552029",
-      "e5ac92622f32eda53ea3cd06",
-      "e6c0da64f818ae327bca1e37",
-      "e70c16fc91abf17849be8a88",
-      "e7a4622cea8588d3afb9f95d",
-      "e88997244ce84239d07e9dd4",
-      "e9fe269c320c74efb941f76e",
-      "eb6f8455fc0ba409c084440b",
-      "ec3bc46dc2384f6f149f83ac",
-      "ecb7faf10f62f364a9a8ca02",
-      "ed429e6e3859aca1e0f91ae6",
-      "ed609fcfe9f1b7538a7256aa",
-      "ed77d5b9305bc40d4e7fa62c",
-      "ee1e1653193ae4f3429cd741",
-      "eeb4ccba18a12ff2d51a46b5",
-      "eeb82a5ca68e6e78098137cb",
-      "eee99d07f250494d6cdb10f2",
-      "ef1b5e60b8f2cdfb974005d6",
-      "f0693d88324f90d8cd1ba86a",
-      "f08f72dc6f8c5491ebba31fe",
-      "f128692d64169c3f7bf21f94",
-      "f1dc26b1ad54a9b98b64d3c7",
-      "f29ee6d0ba97455f5bba8485",
-      "f32f1e8d1bf34cb7340b6c70",
-      "f52c9241f24ce3caecb23439",
-      "f54acc6a6cea03dea88774f7",
-      "f5586f5a021cb015b88f787e",
-      "f60ea87bffbf74ac7701bb6f",
-      "f691ef1f26dda28bf22cf9d5",
-      "f6b0ccf5b7ae11352441d478",
-      "f6bba3ab0e51c8d06823a513",
-      "f6ebf4fec5d0f791158df4f7",
-      "f7813fb69d4dbbf4c3c4baf9",
-      "f7ac151872fff6b0818f076f",
-      "f972518449600a297b7496a4",
-      "f9ad704797a591fd3fd254a0",
-      "fa7ef6548e3a2d54174caeba",
-      "fad32b28bd6e0def6ce7593e",
-      "fb7277dba44d770ed1cbb22f",
-      "fb78c6c94f3e492872e4848a",
-      "fc1db63b58e9ed7ba562454f",
-      "fc918136a01635c3d9d66d12",
-      "fcb343f505ed05253ab0d8f4",
-      "fd4f66c3ea2bfd36c8b017b8"
+      "4d4668255eac75c96856f062"
     ],
     "new_calls": [
-      "4d4668255eac75c96856f062",
-      "9b2f8fbe19d203f9499fe887"
+      "4aab5013037467cf91b2a114"
     ],
     "retired_groups": [
-      "0be43abe49347b3cb340",
-      "94b536a4a71bd5cca127",
-      "3821cceac23fa97e5a55",
-      "d613710c889b63958166",
-      "0022893ec8c1ceea869f",
-      "33b0d94ff0d86de0e145",
-      "95d8eead897036452c64",
-      "a44a11e39673a3b5d656",
-      "c97c8dfae7e5def85428",
-      "7e7c01e2bf7e30a42280",
-      "c279d448fb108b493359",
-      "3412952b9279e41b1709",
-      "c671bb65e86ad614e3f6",
-      "3264c69dfa51b73502af",
-      "8bffcf00b7bd20c935a5",
-      "c0af3909ba0a106672d5",
-      "90859fa00ce61ce6fa79",
-      "5d6060b158cac3430090",
-      "64eb8dbbdd040a60bd72",
-      "88475b4259a5c7ede930",
-      "928c554228ed389eec5f",
-      "7723baa985109c1b8708",
-      "5233e425bbe8203a4dc0",
-      "76d0207a5412c55935f9",
-      "a4f4c5345aa88445e09b",
-      "738ca12aaeb82ccb9b39",
-      "836e80426d566f8f5dce",
-      "5607aa17bfec784b9f45",
-      "4ab7837aeb010a1dd65b",
-      "76cf09c7e5f396cbb331",
-      "c10d16e6a9cc63601262",
-      "2965f941e5af0c3372e8",
-      "f2d7ce72d2ad72a00832",
-      "5fa4a225d6a33c5a4357",
-      "3a94c703428f9d161b77",
-      "be488cea3fcee224c2c2",
-      "501b4e226e675ed1a15f",
-      "ddca524dbebc4de53e8b",
-      "d87bddcaa786b0cc4999",
-      "d803578da524fac2c126",
-      "55f27adb85ae49d3ac67",
-      "3fabfd224ce9d7edc4ad",
-      "c2bafc75f789e2a309e9",
-      "f35b96d0a235e4e342c3",
-      "ba9bf2b90da4147ab727",
-      "88d35e7c1b3de7c7cb97",
-      "557a5e2963ed36592e80",
-      "50d23013a49000cf8552",
-      "51431fbfd82a704d9557",
-      "8ae0169125ec8186ee18",
-      "cc31b8e773ec923bd175",
-      "0087ea955e2166dbc04c",
-      "c48b7dd54647009db99b",
-      "00beb5a61aaefd204354",
-      "4fe6301d1c41498ba73a",
-      "52281b00e54388384add",
-      "a67bc0468942e8cdd8f6",
-      "ec9daf1c3c2e74296430",
-      "9a6b50456ce0a721231a",
-      "c6e10d996a5fe5d9ea19",
-      "08ac968e2f6fb9518750",
-      "1ef106d43764773bd4bb",
-      "c3263927ac151d120e5a",
-      "fa559c2d270d44ebfc3b",
-      "b1a923bb035642cf6654",
-      "f76f14efee04a72650c7",
-      "7e9ee100fbd4224dadb0",
-      "a4d5c9ebe5f020e5d6a0",
-      "163e2f65613871e1a525",
-      "73515f8c398f5223edd8",
-      "867f8d20e37fedce71c4",
-      "29a35fed1910af6af79b",
-      "07481ecfe85cf3c5573d",
-      "e8f94354241788d94f7f",
-      "d211bca3b8b32036ba61",
-      "705578744f0ea2806640",
-      "571ebe66a44ce53b8723",
-      "f134ba6bdcae5ad2ed59",
-      "04fe5ffd91a3ecdc1ced",
-      "0130bca07b30f0b1f2cf",
-      "da805003ae076db02e87",
-      "7cf7239ccabe86010efa",
-      "ba59202d253464a9f395",
-      "c80c06752caeeef5b8fc",
-      "9749b427b7bcbc2e75de",
-      "8f55e786be6e1cffee30",
-      "c1271430eda49ac23557",
-      "1b6dd9421e280c2c97e8",
-      "674c5372332029095322",
-      "43ccbf6525a73db6d78c",
-      "8f9621397d5f50a04d08",
-      "fe36020cef9bbfa51f73",
-      "dc9d2a33f43dcbc3b435",
-      "099cd5b7ffa75901378c",
-      "b5e3da92fd1c9d4bf121",
-      "7bec07b477fdcc4c64fe",
-      "4254116fb6be581e3055",
-      "27f22b7a6f995fc6d7d0",
-      "38c8785da0ca1c55b2ca",
-      "de229b29ee336a9bc537",
-      "c4cccaf5fb49d95a3287",
-      "229c19016ef1bf00d8b4",
-      "b7d23d487f937c239ee5",
-      "16d620e4e0939bdb1c53",
-      "e4cfd6573f790113788c",
-      "3be422d29d3c7d490d8c",
-      "c4ac02c3cab694fc9773",
-      "b3744aefe0629894d9be",
-      "2f0169cd8a5a28f6afdc",
-      "38b3e7b8251329e5406a",
-      "e52229d5622bac819df9",
-      "9499243aad6a29dab817",
-      "3c1fd8f71ab1a1d261b9",
-      "0ebf9df82d503705d70d",
-      "39b672d8d4bea8959c44",
-      "ab25fd37c8ab8da4bc41",
-      "04f12a2f2bc47e345410",
-      "ba13f943016b11e2063e",
-      "38bf64ddb1637605c229",
-      "37143f311fc4c2915b8e",
-      "610c967adbba75b192c8",
-      "2d47b5027177148a123e",
-      "4e7e7ecf95e285fe008e",
-      "46b222b567a163e2a7d3",
-      "41fdd53573c7b0f7b8e6",
-      "3fa7c02e62d533c591cf",
-      "f11f819c7f8c2db8ff93",
-      "eb8bd44fe190457d1f0b",
-      "fd4c9f1a936c813cca3d",
-      "916bdaf62976e52b71aa",
-      "5eb0dee1d36938317bbe",
-      "2108b5615a69269dfcd8",
-      "161ee036dd0505f2161f",
-      "68e493d384ea41c719c4",
-      "11cba0d9ece00492cc0c",
-      "ccf06afd0c00e76abe54",
-      "b0a3adbe3ac911fad7d6",
-      "d63c0ec38fa62edeba49",
-      "3323bda697e3ea6982fa",
-      "5372d0bb19145aa2d5e6",
-      "bd657da106e0beed381f",
-      "5da3d4cd58babe9138b0",
-      "801e753bb29aad5240c9",
-      "3231dce3b9e453557cdc",
-      "adfc67be9fa934fcf6a8",
-      "d6db13c47dd1cefda619",
-      "c022b433d7cd48279fc9",
-      "047bd24b66e26300fa4d",
-      "59ae7cbe49930562269b",
-      "5c400a512742ab2f1568",
-      "1a04212d8c49f3688af7",
-      "58de1f0f9cecce171de2",
-      "d845527c2d3cbe909d0f",
-      "119a19d819ac70fcd268",
-      "730c61c6acb919873e44",
-      "be959283f530f00903e0",
-      "b5b5e69e287d2484c055",
-      "2b9c756c2d0a5853d011",
-      "c30ffc96e594cd4d7734",
-      "5aa5812e1b77c821edf8",
-      "f482ae4e37535dcc289b",
-      "70cb2fadb68305156140",
-      "85e9eab0937fe88d5097",
-      "fbfa85d52672d8012520",
-      "2cfef57c1e141e9a8e98",
-      "88dd01019f6e3915e3b2",
-      "9c1e6f2c47a84d7de11d",
-      "728088e2172e156e523d",
-      "216a89b6a0a31ca221cd",
-      "2b332ce1f5e9fd2da3a9",
-      "6dfce7548078d0f9d7a9",
-      "e62035e0f28e3d6bd08c",
-      "55ba77e7dab850ad0798",
-      "9bc67f3d02390f3b55b3",
-      "9f7c0638f7c2fd3e7c50",
-      "76d13867f544be411dfa",
-      "e9f0ef32b415acf6a32a",
-      "5ad0a9f43aba16e6ae87",
-      "8f2a9f4f753d52e3291a",
-      "25e6749187e5c97e2bcc",
-      "bfd5e0d787b78218d4b9",
-      "e7979f7ae88379b59e00",
-      "cd6dc0dfcab1f0fbee2b",
-      "245c1a630f919e3b2aa2",
-      "c1522ef65691843c08de",
-      "14b599fef9ad5ad6dbdc",
-      "ae480b74aea01aea548e",
-      "0d882a1fca7f50467f96",
-      "0750aafe23d0cd094765",
-      "301bd50555b203d06bbe",
-      "01adb8e388ceb573e6b8",
-      "ec748135cc7ce17f024b",
-      "928122f2c9bfa56ade6c",
-      "60ddc817627fb6cc47e0",
-      "fb42d62888d25a517277",
-      "aa4fb05c4e80bff5b1c2",
-      "48bc8965b17f57bb4424",
-      "8c75d0862295a95f5390",
-      "bb2696c3f0bbbac236ed"
+      "f60289bed594cb7e6e9c"
     ],
     "invalidated_evidence": [
-      "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/discover-14f839bb71/run/trace-rank-0.json"
+      "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/discover-062fc43163/run/trace-rank-0.json"
     ],
     "lineage_basis": "Surviving call identity or containment inside an installed joint bundle; not independent causal attribution"
   },
   "raw_discovery": [
-    "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/discover-062fc43163/run/discovery-rank-0.json"
-  ]
+    "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/discover-7b5cabddb0/run/discovery-rank-0.json"
+  ],
+  "collection_plan": {
+    "plan": {
+      "collectors": [
+        "execution_timeline",
+        "python_runtime"
+      ],
+      "requested_fields": [
+        "cpu_to_cuda_submit_associations",
+        "cpu_clock_alignment_bounds",
+        "synchronization_events",
+        "per_device_execution_intervals",
+        "host_cprofile_inclusive_times",
+        "host_cprofile_self_times"
+      ],
+      "unavailable_fields": {
+        "nccl_algorithm_protocol_channels": "not_applicable: single-device task (request.devices lists one GPU, distributed_backend null; observations.json capability 'communication' not_applicable); the 59-kernel trace contains no NCCL kernels, so nccl_tuning has no collectives to sample, and kernel entry names alone could not identify protocol anyway",
+        "collective_calibration_allreduce_reference": "not_applicable: the timed unit is one single-GPU forward under torch.inference_mode() with no collectives; there are no observed sizes/dtypes to replay, and a synthetic full-world SUM allreduce would be a reference experiment, not a critical-path estimate for this workload",
+        "per_invocation_pcie_nvlink_bytes": "unavailable: device_telemetry PCIe/NVLink rates are device-wide readings with native sampling windows, not per-transfer bytes; inputs are GPU-resident and built outside the timed unit (resnet_inference.py:29), so no host-device transfer exists inside the synchronized forward, and traffic must never be inferred from logical payload or memcpy sizes",
+        "per_invocation_device_utilization_and_memory_attribution": "unavailable: device_telemetry NVML utilization/memory samples are device-wide with native windows and cannot be attributed to this ms-scale synchronized forward; the workload's peak_allocated_bytes is already sampled natively by the harness via torch.cuda.max_memory_allocated (resnet_inference.py:43,48)",
+        "gpu_ready_and_consumer_completion_times": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown after collection",
+        "gradient_bucket_membership_and_post_accumulate_callbacks": "not_applicable: inference-only workload under torch.inference_mode(); coverage.json reports 0 autograd ranges and 0 backward-associated kernels, so no gradient storage, buckets, or post-accumulate callbacks exist to observe; bucket links cannot be established",
+        "binding_passthrough_ab_cost": "not_applicable before any candidate exists; no additive candidate or bundle has been built, so binding_cost has no parent-vs-binding-only pair to compare, and if a candidate later emerges it also runs in subsequent candidate resource feedback"
+      },
+      "rationale": "Frozen objective is latency_ms of one complete offline batch=32 FP32 ResNet-18 forward under torch.inference_mode(), bounded by torch.cuda.synchronize() on both sides (resnet_inference.py:41-48), on a single device with distributed_backend null and the communication capability observed not_applicable. The torch collector already ran and is not re-requested: coverage.json shows 59 CUDA kernels with 59/59 associated to project calls, 0 unassociated, 0 ambiguous forward sequences, 0 autograd ranges and 0 backward-associated kernels, so kernel-to-operator attribution is complete. The source runs a plain eager transformers 5.16.1 forward with no CUDA graph capture and a single stream on one device, leaving no overlap, graph-tracing or attribution question that would justify nsys, so it is not selected. Communication-family collectors are unavailable rather than merely unchosen: nccl_tuning has no NCCL communicator or collectives to sample and kernel entry names cannot identify protocol; collective_calibration has no observed collective sizes/dtypes and its synthetic allreduce would not map onto this critical path. device_telemetry is excluded because device-wide NVML PCIe/utilization/memory windows cannot be attributed to the ms-scale timed unit, which contains no host transfer (GPU-resident pixels); no PCIe/NVLink traffic is inferred from logical payload or memcpy sizes. The remaining open question for minimizing the synchronized wall window is the host/device split: whether wall time is GPU-busy across the 59 kernel intervals or contains CPU submission and Python dispatch gaps between them, and which host call paths dominate dispatch/binding cost. execution_timeline is selected for its separate plain Torch trace with CPU-to-CUDA submit associations, synchronization events and per-device execution intervals; its clock alignment bounds cover matching CPU submissions only (GPU readiness and consumer completion may remain unknown), and it never replaces a communication hook or determines subsequent search actions. python_runtime is selected for a separate warmed cProfile call trace over the same forward path to attribute host dispatch and binding costs (transformers module traversal, torch 2.13.0+cu129); it perturbs execution, so its inclusive/self times are read only as relative host costs, never as clean performance scores or GPU compute durations. binding_cost and candidate_diagnostics are excluded because no candidate exists yet at initial planning. Unavailable dimensions are listed with observed reasons and remain unknown rather than assumed zero.",
+      "revision": null
+    },
+    "agent": {
+      "role": "collection-planner",
+      "session": "ses_ea3bb9d0fffeJlX9uf166hnGqW",
+      "message": "msg_15c46c2c3001hIsn6DvzKKMIFe",
+      "model": "zhipuai/glm-5.3",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 12,
+        "reported_cost": 0.10759368142,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 205043.0,
+          "input": 20836.0,
+          "output": 2342.0,
+          "reasoning": 4777.0,
+          "cache.read": 177088.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_ea3bb9d0fffeJlX9uf166hnGqW",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "sandbox": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/sandboxes/collection-planner-52c03ebe4047",
+      "outputs": [
+        "collection.json"
+      ],
+      "feedback_provided": false,
+      "contract_repairs": 0,
+      "generation_snapshots": [
+        "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/generation-snapshots/generation-a6d685a26e5b.json"
+      ]
+    }
+  },
+  "extra_collectors": {
+    "execution_timeline": {
+      "status": "observed",
+      "ranks": [
+        {
+          "schema_version": 1,
+          "rank": 0,
+          "communication": {
+            "rank": 0,
+            "status": "not_observed",
+            "collectives": [],
+            "unmatched_communication_kernels": [],
+            "communication_kernel_count": 0,
+            "communication_kernel_sum_ms": 0.0,
+            "communication_union_ms": 0.0,
+            "compute_overlap_ms": 0.0,
+            "communication_without_compute_ms": 0.0,
+            "logical_input_bytes": 0,
+            "payload_coverage": {
+              "observed_collectives": 0,
+              "total_collectives": 0
+            },
+            "interpretation": "Logical per-rank payload is counted once per collective, not per kernel. Kernel time includes waiting. Interval overlap is local to one trace clock; uncovered communication is not a measured critical path or causal speedup."
+          },
+          "devices": {
+            "0": {
+              "kernel_count": 59,
+              "kernel_span_us": 3338.6611328125,
+              "kernel_active_union_us": 3335.8134765625,
+              "gaps_between_kernels_us": 2.84765625,
+              "communication_intervals_us": [],
+              "compute_intervals_us": [
+                [
+                  1692509804561.816,
+                  1692509804563.192
+                ],
+                [
+                  1692509804563.256,
+                  1692509805166.489
+                ],
+                [
+                  1692509805166.553,
+                  1692509805184.985
+                ],
+                [
+                  1692509805185.049,
+                  1692509805408.153
+                ],
+                [
+                  1692509805408.186,
+                  1692509805449.369
+                ],
+                [
+                  1692509805449.433,
+                  1692509805673.018
+                ],
+                [
+                  1692509805673.082,
+                  1692509805692.25
+                ],
+                [
+                  1692509805692.314,
+                  1692509805913.178
+                ],
+                [
+                  1692509805913.242,
+                  1692509805954.49
+                ],
+                [
+                  1692509805954.523,
+                  1692509806068.635
+                ],
+                [
+                  1692509806068.698,
+                  1692509806076.891
+                ],
+                [
+                  1692509806076.923,
+                  1692509806081.6592
+                ],
+                [
+                  1692509806081.691,
+                  1692509806222.651
+                ],
+                [
+                  1692509806222.683,
+                  1692509806270.5552
+                ],
+                [
+                  1692509806270.651,
+                  1692509806281.0828
+                ],
+                [
+                  1692509806281.147,
+                  1692509806285.115
+                ],
+                [
+                  1692509806285.179,
+                  1692509806432.347
+                ],
+                [
+                  1692509806432.443,
+                  1692509806440.3792
+                ],
+                [
+                  1692509806440.443,
+                  1692509806444.635
+                ],
+                [
+                  1692509806444.667,
+                  1692509806583.388
+                ],
+                [
+                  1692509806583.451,
+                  1692509806593.243
+                ],
+                [
+                  1692509806593.308,
+                  1692509806594.4912
+                ],
+                [
+                  1692509806594.523,
+                  1692509806696.252
+                ],
+                [
+                  1692509806696.315,
+                  1692509806702.556
+                ],
+                [
+                  1692509806702.62,
+                  1692509806708.6362
+                ],
+                [
+                  1692509806708.668,
+                  1692509806859.004
+                ],
+                [
+                  1692509806859.068,
+                  1692509806860.124
+                ],
+                [
+                  1692509806860.188,
+                  1692509806878.108
+                ],
+                [
+                  1692509806878.14,
+                  1692509806885.4038
+                ],
+                [
+                  1692509806885.468,
+                  1692509806891.26
+                ],
+                [
+                  1692509806891.324,
+                  1692509807042.748
+                ],
+                [
+                  1692509807042.812,
+                  1692509807048.8281
+                ],
+                [
+                  1692509807048.86,
+                  1692509807054.1082
+                ],
+                [
+                  1692509807054.172,
+                  1692509807199.549
+                ],
+                [
+                  1692509807199.644,
+                  1692509807206.94
+                ],
+                [
+                  1692509807206.972,
+                  1692509807208.0598
+                ],
+                [
+                  1692509807208.092,
+                  1692509807360.893
+                ],
+                [
+                  1692509807360.925,
+                  1692509807370.301
+                ],
+                [
+                  1692509807370.365,
+                  1692509807386.397
+                ],
+                [
+                  1692509807386.429,
+                  1692509807525.885
+                ],
+                [
+                  1692509807525.949,
+                  1692509807527.005
+                ],
+                [
+                  1692509807527.069,
+                  1692509807549.021
+                ],
+                [
+                  1692509807549.053,
+                  1692509807560.701
+                ],
+                [
+                  1692509807560.765,
+                  1692509807576.733
+                ],
+                [
+                  1692509807576.765,
+                  1692509807716.8608
+                ],
+                [
+                  1692509807716.925,
+                  1692509807726.269
+                ],
+                [
+                  1692509807726.333,
+                  1692509807740.125
+                ],
+                [
+                  1692509807740.189,
+                  1692509807876.445
+                ],
+                [
+                  1692509807876.509,
+                  1692509807888.157
+                ],
+                [
+                  1692509807888.221,
+                  1692509807892.765
+                ],
+                [
+                  1692509807892.829,
+                  1692509807898.5571
+                ],
+                [
+                  1692509807898.621,
+                  1692509807900.477
+                ]
+              ],
+              "compute_overlap_us": 0.0,
+              "communication_after_last_compute_us": 0,
+              "interpretation": "Observed kernel intervals only; copies and CPU work are separate. Gaps/tail are not recoverable time or a causal critical path."
+            }
+          },
+          "cuda_synchronization": [
+            {
+              "name": "cudaDeviceSynchronize",
+              "start_us": 1692509804784.97,
+              "duration_us": 3121.619,
+              "pid": 586701,
+              "tid": 586701,
+              "args": {
+                "cbid": 165,
+                "correlation": 22
+              }
+            }
+          ],
+          "copies_and_memsets": [
+            {
+              "name": "Memcpy DtoD (Device -> Device)",
+              "start_us": 1692509807901.501,
+              "duration_us": 1.408,
+              "pid": 0,
+              "tid": 7,
+              "args": {
+                "External id": 5,
+                "device": 0,
+                "context": 1,
+                "stream": 7,
+                "correlation": 17,
+                "bytes": 128000,
+                "memory bandwidth (GB/s)": 90.9090909090909,
+                "graph id": 0,
+                "graph node id": 0,
+                "channel": 0,
+                "channel_type": 1
+              }
+            }
+          ],
+          "gradient_readiness": {
+            "status": "not_observed",
+            "events": [],
+            "buckets": [],
+            "scope": "CPU post-accumulate callbacks; no GPU synchronization or communication-hook replacement"
+          },
+          "clock": {
+            "status": "observed",
+            "offset_bounds_us": [
+              18956226441057.83,
+              18956226442508.547
+            ],
+            "anchor_bounds_us": [
+              [
+                18956226441057.83,
+                18956226442508.547
+              ],
+              [
+                18956226441401.938,
+                18956226441438.152
+              ]
+            ],
+            "domain": {
+              "host": "autodl-container-e8e84ea25b-cffd5c81",
+              "boot_id": "9890bc2b-f323-49ae-b779-8f723299b44a",
+              "clock": "CLOCK_MONOTONIC"
+            },
+            "scope": "CPU trace to host monotonic clock within this capture; excludes unknown GPU clock calibration error"
+          },
+          "workload_window": {
+            "start_us": 1692509804242.911,
+            "end_us": 1692509807931.3428,
+            "scope": "explicit workload including final completion synchronization; excludes profiler preparation"
+          },
+          "scope": "Separate diagnostic capture, never the clean project objective",
+          "gradient_stream_markers": {
+            "status": "not_collected",
+            "events": [],
+            "scope": "Optional CUDA event recorded on each gradient callback's current stream; time relative to a rank-local GPU origin. No per-parameter synchronize. Adds event-record overhead; does not prove reducer bucket readiness, unique consumption, or cross-rank GPU clock alignment."
+          },
+          "trace": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/timeline-03ee1f612e/run/timeline-rank-0-0.json",
+          "trace_sha256": "177a05205bfd2db86c8d77f94746f84d93b9e79b12983c8f3df1b012da55cdb6",
+          "profiled_wall_ms": 3.714112,
+          "gradient_hook_missing": [],
+          "gradient_hooks_enabled": false,
+          "clock_anchors": [
+            {
+              "name": "opop.clock::0:before",
+              "before_ns": 20648736244186523,
+              "after_ns": 20648736245637241
+            },
+            {
+              "name": "opop.clock::0:after",
+              "before_ns": 20648736249357925,
+              "after_ns": 20648736249394140
+            }
+          ]
+        }
+      ],
+      "cross_rank": {
+        "collectives": [],
+        "clock_policy": "Never subtract unaligned rank trace timestamps; CPU-only alignment bounds"
+      },
+      "run": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 8.269107110798359,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 586701,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 586701,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 13,
+                "unavailable_samples": 0,
+                "wait_s": 0.08763953670859337,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "6346dc694f9d74c23c60f1c75d035a6c602946ac53ba5b2a3c84a68e8df477ba",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "reports": [
+                "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/timeline-03ee1f612e/run/timeline-analysis-rank-0-0.json"
+              ],
+              "collector": "execution_timeline",
+              "scope": "Separate passive diagnostic; profiler/gradient hooks perturb execution. Compare against clean evaluation."
+            }
+          }
+        ],
+        "lease_wait_s": 18.818436421453953,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      },
+      "provenance": {
+        "revision": "fad5b2333cc250231c495f9ec18c679cb44e65be5578092205b5060f05ddcd2e",
+        "parent_revision": "f12635aeab45ee38bb106d310a6ceff09f2faf366dde6d423cf56a72d015f7d1",
+        "bundles": [
+          "trial-a9f72afa23-param-f2e37a0c"
+        ],
+        "plan": "sha256:08c20bb922ebf2b0963fd1e8deb82604634b4220c086b00da3994d04ad3b28d0",
+        "registry": "sha256:496aa8f93d7bfddd51e734832328460c168497df52c62243f3df371a41c64c82",
+        "request_sha256": "1eae078cebdf9f18079e3c393ff0f0db7db6e5f91fccd062e1ad4a90d4fc1135",
+        "objective": {
+          "name": "latency_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "offline",
+          "batch": 32,
+          "goals": [
+            {
+              "id": "throughput",
+              "metric": "images_per_second",
+              "direction": "max"
+            },
+            {
+              "id": "memory",
+              "metric": "peak_allocated_bytes",
+              "direction": "min",
+              "constraints": {
+                "images_per_second_min_baseline_ratio": 0.95
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "6346dc694f9d74c23c60f1c75d035a6c602946ac53ba5b2a3c84a68e8df477ba",
+          "files": 162,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      }
+    },
+    "python_runtime": {
+      "status": "observed",
+      "ranks": [
+        {
+          "rank": 0,
+          "profiled_wall_ms": 3.669272,
+          "pstats": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/python-runtime-b35ebd7c34/run/python-rank-0.pstats",
+          "by_self_time": [
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method torch._C._cuda_synchronize>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 3.189045,
+              "cumulative_ms": 3.189045
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'disable' of '_lsprof.Profiler' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.058426000000000006,
+              "cumulative_ms": 0.058426000000000006
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/graphs.py",
+              "line": 182,
+              "function": "replay",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.028405000000000003,
+              "cumulative_ms": 0.039725
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'clone' of 'torch._C.TensorBase' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.028247,
+              "cumulative_ms": 0.028247
+            },
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/discovery.py",
+              "line": 33,
+              "function": "tensor_description",
+              "calls": 3,
+              "primitive_calls": 2,
+              "self_ms": 0.019803,
+              "cumulative_ms": 0.023967000000000002
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "line": 1774,
+              "function": "_wrapped_call_impl",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.016861,
+              "cumulative_ms": 0.263551
+            },
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/python-runtime-b35ebd7c34/source/opop_candidates/trial-a9f72afa23.py",
+              "line": 432,
+              "function": "__call__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.01305,
+              "cumulative_ms": 0.1395
+            },
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/binding.py",
+              "line": 92,
+              "function": "wrapped",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.012718,
+              "cumulative_ms": 0.17650400000000002
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/dataclasses.py",
+              "line": 1278,
+              "function": "fields",
+              "calls": 4,
+              "primitive_calls": 4,
+              "self_ms": 0.011893,
+              "cumulative_ms": 0.017137000000000003
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/autograd/grad_mode.py",
+              "line": 290,
+              "function": "__enter__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.010825000000000001,
+              "cumulative_ms": 0.022942
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "line": 453,
+              "function": "__post_init__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.010669000000000001,
+              "cumulative_ms": 0.025849000000000004
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/__init__.py",
+              "line": 1209,
+              "function": "synchronize",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.009676,
+              "cumulative_ms": 3.2097450000000003
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/autograd/grad_mode.py",
+              "line": 285,
+              "function": "__new__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.008468999999999999,
+              "cumulative_ms": 0.009224
+            },
+            {
+              "file": "<string>",
+              "line": 2,
+              "function": "__init__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.008415,
+              "cumulative_ms": 0.05643600000000001
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "line": 528,
+              "function": "__setattr__",
+              "calls": 3,
+              "primitive_calls": 3,
+              "self_ms": 0.008059,
+              "cumulative_ms": 0.022172
+            },
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/evaluation.py",
+              "line": 204,
+              "function": "synchronize",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.007182000000000001,
+              "cumulative_ms": 3.2206580000000002
+            },
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/binding.py",
+              "line": 115,
+              "function": "dispatch",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.006981,
+              "cumulative_ms": 0.18487
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "line": 1782,
+              "function": "_call_impl",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.006355,
+              "cumulative_ms": 0.191225
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 104,
+              "function": "__init__",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.00591,
+              "cumulative_ms": 0.006714
+            },
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/python-runtime-b35ebd7c34/source/opop_candidates/trial-a9f72afa23.py",
+              "line": 366,
+              "function": "_sig",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0056960000000000005,
+              "cumulative_ms": 0.007222
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 567,
+              "function": "__exit__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.005461000000000001,
+              "cumulative_ms": 0.008635
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method builtins.next>",
+              "calls": 4,
+              "primitive_calls": 4,
+              "self_ms": 0.005246000000000001,
+              "cumulative_ms": 0.013934
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method builtins.all>",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.003362,
+              "cumulative_ms": 0.005672
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 299,
+              "function": "helper",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.003326,
+              "cumulative_ms": 0.01004
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'get' of 'dict' objects>",
+              "calls": 9,
+              "primitive_calls": 9,
+              "self_ms": 0.003277,
+              "cumulative_ms": 0.003277
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 511,
+              "function": "enter_context",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.003174,
+              "cumulative_ms": 0.016806
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method builtins.isinstance>",
+              "calls": 11,
+              "primitive_calls": 11,
+              "self_ms": 0.0030210000000000002,
+              "cumulative_ms": 0.0030210000000000002
+            },
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/binding.py",
+              "line": 225,
+              "function": "activate",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.003006,
+              "cumulative_ms": 0.004352
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/dataclasses.py",
+              "line": 1293,
+              "function": "<genexpr>",
+              "calls": 16,
+              "primitive_calls": 16,
+              "self_ms": 0.0029570000000000004,
+              "cumulative_ms": 0.0029570000000000004
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 543,
+              "function": "_push_cm_exit",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0029170000000000003,
+              "cumulative_ms": 0.006523
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/autograd/grad_mode.py",
+              "line": 280,
+              "function": "__init__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.002729,
+              "cumulative_ms": 0.002893
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 132,
+              "function": "__enter__",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.002687,
+              "cumulative_ms": 0.010538000000000002
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 548,
+              "function": "_push_exit_callback",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.002569,
+              "cumulative_ms": 0.002906
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method builtins.getattr>",
+              "calls": 7,
+              "primitive_calls": 7,
+              "self_ms": 0.0025450000000000004,
+              "cumulative_ms": 0.0025450000000000004
+            },
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/discovery.py",
+              "line": 24,
+              "function": "phase",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.0025280000000000003,
+              "cumulative_ms": 0.0043360000000000004
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/__init__.py",
+              "line": 650,
+              "function": "__init__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0024280000000000005,
+              "cumulative_ms": 0.003262
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "line": 63,
+              "function": "_register_model_output_pytree_node",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0022570000000000003,
+              "cumulative_ms": 0.0034530000000000003
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'stride' of 'torch._C.TensorBase' objects>",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.0020540000000000003,
+              "cumulative_ms": 0.0020540000000000003
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/cProfile.py",
+              "line": 119,
+              "function": "__exit__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.00202,
+              "cumulative_ms": 0.06044600000000001
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 141,
+              "function": "__exit__",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.001972,
+              "cumulative_ms": 0.008055
+            },
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/python-runtime-b35ebd7c34/source/opop_candidates/trial-a9f72afa23.py",
+              "line": 394,
+              "function": "_record",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.001755,
+              "cumulative_ms": 0.002042
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/__init__.py",
+              "line": 654,
+              "function": "__enter__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.001655,
+              "cumulative_ms": 0.0023880000000000004
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "line": 535,
+              "function": "__setitem__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0016530000000000002,
+              "cumulative_ms": 0.0016530000000000002
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'reset' of '_contextvars.ContextVar' objects>",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.0016120000000000002,
+              "cumulative_ms": 0.0016120000000000002
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/__init__.py",
+              "line": 657,
+              "function": "__exit__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0015660000000000001,
+              "cumulative_ms": 0.002026
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'set' of '_contextvars.ContextVar' objects>",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.001542,
+              "cumulative_ms": 0.001542
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/__init__.py",
+              "line": 452,
+              "function": "is_initialized",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0015320000000000002,
+              "cumulative_ms": 0.002194
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/__init__.py",
+              "line": 160,
+              "function": "_is_compiled",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0014340000000000002,
+              "cumulative_ms": 0.001861
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method torch._C._get_tracing_state>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0013850000000000002,
+              "cumulative_ms": 0.0013850000000000002
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/__init__.py",
+              "line": 1150,
+              "function": "device_count",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.001366,
+              "cumulative_ms": 0.0032270000000000003
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/__init__.py",
+              "line": 501,
+              "function": "_lazy_init",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.001154,
+              "cumulative_ms": 0.0033480000000000003
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "line": 464,
+              "function": "<genexpr>",
+              "calls": 3,
+              "primitive_calls": 3,
+              "self_ms": 0.001131,
+              "cumulative_ms": 0.001131
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/compiler/__init__.py",
+              "line": 477,
+              "function": "is_compiling",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.001079,
+              "cumulative_ms": 0.001196
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 481,
+              "function": "__init__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.001021,
+              "cumulative_ms": 0.001021
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method builtins.len>",
+              "calls": 4,
+              "primitive_calls": 4,
+              "self_ms": 0.001002,
+              "cumulative_ms": 0.001002
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'values' of 'dict' objects>",
+              "calls": 4,
+              "primitive_calls": 4,
+              "self_ms": 0.000932,
+              "cumulative_ms": 0.000932
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "line": 468,
+              "function": "<genexpr>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000866,
+              "cumulative_ms": 0.0011790000000000001
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'is_contiguous' of 'torch._C.TensorBase' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000857,
+              "cumulative_ms": 0.000857
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'data_ptr' of 'torch._C.TensorBase' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000827,
+              "cumulative_ms": 0.000827
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'items' of 'dict' objects>",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.000791,
+              "cumulative_ms": 0.000791
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'dim' of 'torch._C.TensorBase' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0007790000000000001,
+              "cumulative_ms": 0.0007790000000000001
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method torch._C._cuda_exchangeDevice>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000733,
+              "cumulative_ms": 0.000733
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 471,
+              "function": "_create_exit_wrapper",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0007000000000000001,
+              "cumulative_ms": 0.0007000000000000001
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method torch._C._cuda_isInBadFork>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000662,
+              "cumulative_ms": 0.000662
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/_utils.py",
+              "line": 557,
+              "function": "_get_device_index",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0006340000000000001,
+              "cumulative_ms": 0.0008340000000000001
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method sys.exc_info>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000612,
+              "cumulative_ms": 0.000612
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method __new__ of type object at 0x937f80>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0005210000000000001,
+              "cumulative_ms": 0.0005210000000000001
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'startswith' of 'str' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0005040000000000001,
+              "cumulative_ms": 0.0005040000000000001
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method torch._C._cuda_maybeExchangeDevice>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.00046000000000000007,
+              "cumulative_ms": 0.00046000000000000007
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method builtins.hasattr>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000427,
+              "cumulative_ms": 0.000427
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'append' of 'collections.deque' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000337,
+              "cumulative_ms": 0.000337
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'get' of '_contextvars.ContextVar' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.00031900000000000006,
+              "cumulative_ms": 0.00031900000000000006
+            },
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/binding.py",
+              "line": 133,
+              "function": "record_route",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.00028700000000000004,
+              "cumulative_ms": 0.00028700000000000004
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/_jit_internal.py",
+              "line": 104,
+              "function": "is_scripting",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.00028100000000000005,
+              "cumulative_ms": 0.00028100000000000005
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'pop' of 'collections.deque' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000261,
+              "cumulative_ms": 0.000261
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 564,
+              "function": "__enter__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000146,
+              "cumulative_ms": 0.000146
+            }
+          ],
+          "by_cumulative_time": [
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/evaluation.py",
+              "line": 204,
+              "function": "synchronize",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.007182000000000001,
+              "cumulative_ms": 3.2206580000000002
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/__init__.py",
+              "line": 1209,
+              "function": "synchronize",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.009676,
+              "cumulative_ms": 3.2097450000000003
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method torch._C._cuda_synchronize>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 3.189045,
+              "cumulative_ms": 3.189045
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "line": 1774,
+              "function": "_wrapped_call_impl",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.016861,
+              "cumulative_ms": 0.263551
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "line": 1782,
+              "function": "_call_impl",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.006355,
+              "cumulative_ms": 0.191225
+            },
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/binding.py",
+              "line": 115,
+              "function": "dispatch",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.006981,
+              "cumulative_ms": 0.18487
+            },
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/binding.py",
+              "line": 92,
+              "function": "wrapped",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.012718,
+              "cumulative_ms": 0.17650400000000002
+            },
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/python-runtime-b35ebd7c34/source/opop_candidates/trial-a9f72afa23.py",
+              "line": 432,
+              "function": "__call__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.01305,
+              "cumulative_ms": 0.1395
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/cProfile.py",
+              "line": 119,
+              "function": "__exit__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.00202,
+              "cumulative_ms": 0.06044600000000001
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'disable' of '_lsprof.Profiler' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.058426000000000006,
+              "cumulative_ms": 0.058426000000000006
+            },
+            {
+              "file": "<string>",
+              "line": 2,
+              "function": "__init__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.008415,
+              "cumulative_ms": 0.05643600000000001
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/graphs.py",
+              "line": 182,
+              "function": "replay",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.028405000000000003,
+              "cumulative_ms": 0.039725
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'clone' of 'torch._C.TensorBase' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.028247,
+              "cumulative_ms": 0.028247
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "line": 453,
+              "function": "__post_init__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.010669000000000001,
+              "cumulative_ms": 0.025849000000000004
+            },
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/discovery.py",
+              "line": 33,
+              "function": "tensor_description",
+              "calls": 3,
+              "primitive_calls": 2,
+              "self_ms": 0.019803,
+              "cumulative_ms": 0.023967000000000002
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/autograd/grad_mode.py",
+              "line": 290,
+              "function": "__enter__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.010825000000000001,
+              "cumulative_ms": 0.022942
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "line": 528,
+              "function": "__setattr__",
+              "calls": 3,
+              "primitive_calls": 3,
+              "self_ms": 0.008059,
+              "cumulative_ms": 0.022172
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/dataclasses.py",
+              "line": 1278,
+              "function": "fields",
+              "calls": 4,
+              "primitive_calls": 4,
+              "self_ms": 0.011893,
+              "cumulative_ms": 0.017137000000000003
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 511,
+              "function": "enter_context",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.003174,
+              "cumulative_ms": 0.016806
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method builtins.next>",
+              "calls": 4,
+              "primitive_calls": 4,
+              "self_ms": 0.005246000000000001,
+              "cumulative_ms": 0.013934
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 132,
+              "function": "__enter__",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.002687,
+              "cumulative_ms": 0.010538000000000002
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 299,
+              "function": "helper",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.003326,
+              "cumulative_ms": 0.01004
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/autograd/grad_mode.py",
+              "line": 285,
+              "function": "__new__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.008468999999999999,
+              "cumulative_ms": 0.009224
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 567,
+              "function": "__exit__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.005461000000000001,
+              "cumulative_ms": 0.008635
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 141,
+              "function": "__exit__",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.001972,
+              "cumulative_ms": 0.008055
+            },
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/python-runtime-b35ebd7c34/source/opop_candidates/trial-a9f72afa23.py",
+              "line": 366,
+              "function": "_sig",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0056960000000000005,
+              "cumulative_ms": 0.007222
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 104,
+              "function": "__init__",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.00591,
+              "cumulative_ms": 0.006714
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 543,
+              "function": "_push_cm_exit",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0029170000000000003,
+              "cumulative_ms": 0.006523
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method builtins.all>",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.003362,
+              "cumulative_ms": 0.005672
+            },
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/binding.py",
+              "line": 225,
+              "function": "activate",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.003006,
+              "cumulative_ms": 0.004352
+            },
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/discovery.py",
+              "line": 24,
+              "function": "phase",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.0025280000000000003,
+              "cumulative_ms": 0.0043360000000000004
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "line": 63,
+              "function": "_register_model_output_pytree_node",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0022570000000000003,
+              "cumulative_ms": 0.0034530000000000003
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/__init__.py",
+              "line": 501,
+              "function": "_lazy_init",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.001154,
+              "cumulative_ms": 0.0033480000000000003
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'get' of 'dict' objects>",
+              "calls": 9,
+              "primitive_calls": 9,
+              "self_ms": 0.003277,
+              "cumulative_ms": 0.003277
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/__init__.py",
+              "line": 650,
+              "function": "__init__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0024280000000000005,
+              "cumulative_ms": 0.003262
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/__init__.py",
+              "line": 1150,
+              "function": "device_count",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.001366,
+              "cumulative_ms": 0.0032270000000000003
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method builtins.isinstance>",
+              "calls": 11,
+              "primitive_calls": 11,
+              "self_ms": 0.0030210000000000002,
+              "cumulative_ms": 0.0030210000000000002
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/dataclasses.py",
+              "line": 1293,
+              "function": "<genexpr>",
+              "calls": 16,
+              "primitive_calls": 16,
+              "self_ms": 0.0029570000000000004,
+              "cumulative_ms": 0.0029570000000000004
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 548,
+              "function": "_push_exit_callback",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.002569,
+              "cumulative_ms": 0.002906
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/autograd/grad_mode.py",
+              "line": 280,
+              "function": "__init__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.002729,
+              "cumulative_ms": 0.002893
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method builtins.getattr>",
+              "calls": 7,
+              "primitive_calls": 7,
+              "self_ms": 0.0025450000000000004,
+              "cumulative_ms": 0.0025450000000000004
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/__init__.py",
+              "line": 654,
+              "function": "__enter__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.001655,
+              "cumulative_ms": 0.0023880000000000004
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/__init__.py",
+              "line": 452,
+              "function": "is_initialized",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0015320000000000002,
+              "cumulative_ms": 0.002194
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'stride' of 'torch._C.TensorBase' objects>",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.0020540000000000003,
+              "cumulative_ms": 0.0020540000000000003
+            },
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/python-runtime-b35ebd7c34/source/opop_candidates/trial-a9f72afa23.py",
+              "line": 394,
+              "function": "_record",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.001755,
+              "cumulative_ms": 0.002042
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/__init__.py",
+              "line": 657,
+              "function": "__exit__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0015660000000000001,
+              "cumulative_ms": 0.002026
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/__init__.py",
+              "line": 160,
+              "function": "_is_compiled",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0014340000000000002,
+              "cumulative_ms": 0.001861
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "line": 535,
+              "function": "__setitem__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0016530000000000002,
+              "cumulative_ms": 0.0016530000000000002
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'reset' of '_contextvars.ContextVar' objects>",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.0016120000000000002,
+              "cumulative_ms": 0.0016120000000000002
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'set' of '_contextvars.ContextVar' objects>",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.001542,
+              "cumulative_ms": 0.001542
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method torch._C._get_tracing_state>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0013850000000000002,
+              "cumulative_ms": 0.0013850000000000002
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/compiler/__init__.py",
+              "line": 477,
+              "function": "is_compiling",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.001079,
+              "cumulative_ms": 0.001196
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "line": 468,
+              "function": "<genexpr>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000866,
+              "cumulative_ms": 0.0011790000000000001
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "line": 464,
+              "function": "<genexpr>",
+              "calls": 3,
+              "primitive_calls": 3,
+              "self_ms": 0.001131,
+              "cumulative_ms": 0.001131
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 481,
+              "function": "__init__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.001021,
+              "cumulative_ms": 0.001021
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method builtins.len>",
+              "calls": 4,
+              "primitive_calls": 4,
+              "self_ms": 0.001002,
+              "cumulative_ms": 0.001002
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'values' of 'dict' objects>",
+              "calls": 4,
+              "primitive_calls": 4,
+              "self_ms": 0.000932,
+              "cumulative_ms": 0.000932
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'is_contiguous' of 'torch._C.TensorBase' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000857,
+              "cumulative_ms": 0.000857
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/cuda/_utils.py",
+              "line": 557,
+              "function": "_get_device_index",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0006340000000000001,
+              "cumulative_ms": 0.0008340000000000001
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'data_ptr' of 'torch._C.TensorBase' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000827,
+              "cumulative_ms": 0.000827
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'items' of 'dict' objects>",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.000791,
+              "cumulative_ms": 0.000791
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'dim' of 'torch._C.TensorBase' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0007790000000000001,
+              "cumulative_ms": 0.0007790000000000001
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method torch._C._cuda_exchangeDevice>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000733,
+              "cumulative_ms": 0.000733
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 471,
+              "function": "_create_exit_wrapper",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0007000000000000001,
+              "cumulative_ms": 0.0007000000000000001
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method torch._C._cuda_isInBadFork>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000662,
+              "cumulative_ms": 0.000662
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method sys.exc_info>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000612,
+              "cumulative_ms": 0.000612
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method __new__ of type object at 0x937f80>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0005210000000000001,
+              "cumulative_ms": 0.0005210000000000001
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'startswith' of 'str' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.0005040000000000001,
+              "cumulative_ms": 0.0005040000000000001
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method torch._C._cuda_maybeExchangeDevice>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.00046000000000000007,
+              "cumulative_ms": 0.00046000000000000007
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<built-in method builtins.hasattr>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000427,
+              "cumulative_ms": 0.000427
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'append' of 'collections.deque' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000337,
+              "cumulative_ms": 0.000337
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'get' of '_contextvars.ContextVar' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.00031900000000000006,
+              "cumulative_ms": 0.00031900000000000006
+            },
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/binding.py",
+              "line": 133,
+              "function": "record_route",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.00028700000000000004,
+              "cumulative_ms": 0.00028700000000000004
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/_jit_internal.py",
+              "line": 104,
+              "function": "is_scripting",
+              "calls": 2,
+              "primitive_calls": 2,
+              "self_ms": 0.00028100000000000005,
+              "cumulative_ms": 0.00028100000000000005
+            },
+            {
+              "file": "~",
+              "line": 0,
+              "function": "<method 'pop' of 'collections.deque' objects>",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000261,
+              "cumulative_ms": 0.000261
+            },
+            {
+              "file": "/root/miniconda3/lib/python3.12/contextlib.py",
+              "line": 564,
+              "function": "__enter__",
+              "calls": 1,
+              "primitive_calls": 1,
+              "self_ms": 0.000146,
+              "cumulative_ms": 0.000146
+            }
+          ],
+          "scope": "cProfile perturbs Python dispatch; self/cumulative times include host waits and cannot be added to GPU durations or used for acceptance"
+        }
+      ],
+      "run": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 7.465439818799496,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 587596,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 587596,
+              "status": "verified",
+              "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 12,
+                "unavailable_samples": 0,
+                "wait_s": 0.09008685499429703,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "6346dc694f9d74c23c60f1c75d035a6c602946ac53ba5b2a3c84a68e8df477ba",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "report": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/python-runtime-b35ebd7c34/run/python-rank-0.json",
+              "collector": "python_runtime"
+            }
+          }
+        ],
+        "lease_wait_s": 22.84959762915969,
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "worker_pids_reaped": true
+      },
+      "provenance": {
+        "revision": "fad5b2333cc250231c495f9ec18c679cb44e65be5578092205b5060f05ddcd2e",
+        "parent_revision": "f12635aeab45ee38bb106d310a6ceff09f2faf366dde6d423cf56a72d015f7d1",
+        "bundles": [
+          "trial-a9f72afa23-param-f2e37a0c"
+        ],
+        "plan": "sha256:08c20bb922ebf2b0963fd1e8deb82604634b4220c086b00da3994d04ad3b28d0",
+        "registry": "sha256:496aa8f93d7bfddd51e734832328460c168497df52c62243f3df371a41c64c82",
+        "request_sha256": "1eae078cebdf9f18079e3c393ff0f0db7db6e5f91fccd062e1ad4a90d4fc1135",
+        "objective": {
+          "name": "latency_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "offline",
+          "batch": 32,
+          "goals": [
+            {
+              "id": "throughput",
+              "metric": "images_per_second",
+              "direction": "max"
+            },
+            {
+              "id": "memory",
+              "metric": "peak_allocated_bytes",
+              "direction": "min",
+              "constraints": {
+                "images_per_second_min_baseline_ratio": 0.95
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "6346dc694f9d74c23c60f1c75d035a6c602946ac53ba5b2a3c84a68e8df477ba",
+          "files": 162,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      }
+    }
+  }
 }

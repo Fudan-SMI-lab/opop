@@ -1,0 +1,23 @@
+{
+  "collectors": [
+    "candidate_diagnostics",
+    "execution_timeline",
+    "binding_cost",
+    "nsys"
+  ],
+  "requested_fields": [
+    "candidate_setup_failure_exception_evidence",
+    "candidate_declared_route_corroboration_parent_fallback",
+    "ttft_prefill_cpu_submit_to_cuda_execution_intervals",
+    "first_token_ready_synchronization_timing",
+    "binding_passthrough_vs_parent_whole_invocation_cost"
+  ],
+  "unavailable_fields": {
+    "nccl_algorithm_protocol_channel_selection": "Single-process single-GPU task with no process group and no NCCL (request.json notes; observations.json communication capability is not_applicable, reason 'single-device task'), so there are no collective algorithm/protocol decisions to capture.",
+    "per_collective_pcie_nvlink_bytes": "No collectives exist on this workload; device_telemetry only provides device-wide NVML readings with native sampling windows, and PCIe/NVLink traffic must not be invented from logical payload or memcpy sizes.",
+    "gradient_bucket_membership_and_correlation": "Inference-only workload under torch.inference_mode with no gradients, optimizer or DDP buckets; exact bucket links are not observable, so no bucket-identity dimension is requested.",
+    "collective_reference_allreduce_timings": "collective_calibration's synthetic full-world SUM allreduce has no analog in this communication-free single-device invocation and would not inform the ttft_ms objective."
+  },
+  "rationale": "Evaluation shows quality pass but rejection (paired_gain_not_above_noise, objective_not_improved): candidate ttft 28.107 ms vs paired parent 25.037 ms. Two uncorroborated uncertainties remain: (1) the candidate-declared route 'parent_fallback_setup_failure' (count 2) with binding effective 'direct' and 'no functional replacements' is candidate-reported telemetry that interpretation explicitly asks to corroborate with traces or actual exception evidence; (2) the source of the ~3 ms TTFT regression is unknown and must not be assumed to be algorithm cost, since the declared fallback implies the parent path executed and the delta could be setup-failure handling, binding-layer overhead, or noise. Selections on this exact candidate in separate workers: candidate_diagnostics to capture the actual setup-failure exception/stack behind the declared fallback route; execution_timeline for a plain trace with CPU-to-CUDA submit associations and synchronization intervals around the prefill-to-first-token boundary to attribute host-side gaps vs GPU work and corroborate the executed code path (noting GPU readiness/consumer completion may remain unknown); binding_cost because an additive candidate exists and did not replace the parent (effective direct, parent_fallback route), giving clean AB/BA parent vs binding-only passthrough whole-invocation cost with quality checks to test whether the regression is binding overhead; nsys is available (request.json tools.nsys) and useful for the attribution question, independently resolving whether the TTFT delta sits in host gaps between CUDA submissions or in kernel durations, which execution_timeline alone cannot fully bound. torch already ran (coverage: 66441/66441 kernels associated, 0 ambiguous). nccl_tuning and collective_calibration are not applicable (single device, no NCCL); device_telemetry's device-wide native sampling windows cannot resolve a ~25-30 ms prefill interval attribution; python_runtime is excluded because its perturbation would confound a small delta and host dispatch attribution is covered by execution_timeline plus binding_cost.",
+  "revision": "b644d3a2ba812f5788c7b33a4f6fe1f422adce6d7d9f94269a34d241ff47f429"
+}

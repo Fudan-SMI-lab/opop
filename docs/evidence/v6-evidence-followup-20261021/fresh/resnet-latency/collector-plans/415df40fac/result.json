@@ -1,0 +1,66 @@
+{
+  "plan": {
+    "collectors": [
+      "execution_timeline",
+      "python_runtime"
+    ],
+    "requested_fields": [
+      "cpu_to_cuda_submit_associations",
+      "cpu_clock_alignment_bounds",
+      "synchronization_events",
+      "per_device_execution_intervals",
+      "host_cprofile_inclusive_times",
+      "host_cprofile_self_times"
+    ],
+    "unavailable_fields": {
+      "communication.nccl_algorithm_protocol_channel": "not_applicable: single-device task (observations.json communication capability not_applicable); no NCCL kernels appear in the completed torch trace, so nccl_tuning has nothing to capture and kernel names alone would not identify protocol anyway",
+      "collective_calibration.allreduce_reference_timing": "no collectives exist in the timed unit (single-device forward under inference_mode); nothing to calibrate, and it would be a reference experiment rather than a critical-path estimate",
+      "per_transfer.pcie_transfer_bytes": "input pixels are GPU-resident and built outside the timed unit; there is no host-device transfer or collective payload inside the synchronized forward, and device_telemetry PCIe rates are device-wide readings with native sampling windows that cannot be attributed to this ms-scale invocation; no traffic may be inferred from logical payload or memcpy sizes",
+      "per_invocation.device_utilization_attribution": "device_telemetry utilization/memory samples are device-wide with native windows and cannot be attributed to the single synchronized forward; allocator peak_allocated_bytes is already captured by the harness samples",
+      "binding.passthrough_ab_cost": "no additive candidate exists yet; binding_cost is inapplicable before a candidate and would run in subsequent candidate resource feedback if one emerges",
+      "gpu_kernel_ready_and_consumer_completion_times": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown after collection",
+      "backward.autograd_ranges": "forward runs under torch.inference_mode; coverage.json reports 0 autograd ranges and 0 backward-associated kernels"
+    },
+    "rationale": "Frozen objective is latency_ms of one complete offline batch=32 FP32 ResNet-18 forward bounded by torch.cuda.synchronize() on both sides (resnet_inference.py:42-47), single device, no distributed backend. The torch collector already ran and attribution is complete (coverage.json: 60/60 CUDA kernels associated, 0 unassociated, 0 ambiguous forward sequences, 0 autograd ranges), so kernel-to-operator attribution, overlap and CUDA-graph tracing questions are already resolved and nsys adds nothing. The remaining open question for reducing synchronized wall latency is the host/device split inside the timed window: whether wall time is dominated by GPU execution intervals or by CPU submission and Python dispatch gaps between the ~60 kernels. execution_timeline is selected for its separate plain Torch trace with CPU-to-CUDA submit associations, synchronization events and per-device intervals (clock alignment bounds apply to CPU submissions only; GPU readiness may remain unknown). python_runtime is selected for a warmed cProfile call trace of the same forward path (transformers 5.16.1 module dispatch) to attribute host dispatch and binding cost; it perturbs execution, so its inclusive/self times are used only for attribution, never as performance scores or GPU compute durations. Communication-family collectors (nccl_tuning, collective_calibration) are excluded because the task is single-device with communication not_applicable. device_telemetry is excluded because its device-wide NVML PCIe/utilization/memory readings cannot be attributed to the ms-scale timed unit, which contains no host transfer (GPU-resident input). binding_cost and candidate_diagnostics are excluded because no candidate exists yet. nsys is not requested: attribution is already complete and there is no multi-stream/overlap or graph-tracing question in this single-device inference workload. No PCIe/NVLink traffic is inferred from logical payload sizes. Unavailable dimensions are listed with observed reasons.",
+    "revision": null
+  },
+  "agent": {
+    "role": "collection-planner",
+    "session": "ses_ea3d00f42ffegXKgmk4umgx1qJ",
+    "message": "msg_15c31b205001UUX6dw23jC9sjP",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 9,
+      "reported_cost": 0.07829433402,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 140674.0,
+        "input": 14407.0,
+        "output": 1997.0,
+        "reasoning": 4014.0,
+        "cache.read": 120256.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea3d00f42ffegXKgmk4umgx1qJ",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/sandboxes/collection-planner-287356c2f582",
+    "outputs": [
+      "collection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/generation-snapshots/generation-7310b3db9e0d.json"
+    ]
+  }
+}

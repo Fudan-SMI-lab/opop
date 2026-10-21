@@ -1,0 +1,462 @@
+{
+  "status": "passed",
+  "binding": {
+    "pid": 597072,
+    "status": "verified",
+    "torch_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "requested_uuid": "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "torch_raw_uuid": "69c59246-e383-f1f1-1f46-5e2dfebb858d",
+    "logical_device": 0,
+    "nvidia_smi_pid_uuids": [
+      "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+    ],
+    "pid_query_status": "observed",
+    "occupancy": {
+      "status": "sampled_clear",
+      "samples": 32,
+      "unavailable_samples": 0,
+      "wait_s": 0.05603594332933426,
+      "external_clients": [],
+      "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+    }
+  },
+  "framework_source": {
+    "sha256": "6346dc694f9d74c23c60f1c75d035a6c602946ac53ba5b2a3c84a68e8df477ba",
+    "files": 162,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "result": {
+    "valid": true,
+    "coverage": {
+      "trial-fc57bca7b9-param-f71a7c8a": {
+        "counts": {
+          "2441f10600ba127de5cb753c": 2,
+          "e7df98b905ed8aa688d5227a": 62
+        },
+        "fallbacks": {},
+        "reference_invocations": {
+          "2441f10600ba127de5cb753c": 6,
+          "e7df98b905ed8aa688d5227a": 62
+        },
+        "candidate_declared_routes": [
+          {
+            "call": "2441f10600ba127de5cb753c",
+            "route": "parent-fallback:setup-failure:flash-dispatch-refused",
+            "count": 2
+          },
+          {
+            "call": "e7df98b905ed8aa688d5227a",
+            "route": "parent-delegate",
+            "count": 62
+          }
+        ],
+        "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+      }
+    },
+    "scope": "Diagnostic execution only; no quality or performance acceptance",
+    "candidate_diagnostics": {
+      "schema_version": "project.candidate-diagnostics.v1",
+      "events": [
+        {
+          "phase": "run",
+          "bundle": "trial-fc57bca7b9-param-f71a7c8a",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/jobs/candidate-diagnostics-bac6738b5b/source/opop_candidates/trial-fc57bca7b9.py",
+          "function": "<genexpr>",
+          "line": 90,
+          "source": "if any(kwargs.get(key) is not None for key in _NONE_KWARGS):",
+          "recent_lines": [
+            {
+              "line": 90,
+              "source": "if any(kwargs.get(key) is not None for key in _NONE_KWARGS):"
+            }
+          ],
+          "event": "return",
+          "type": "bool",
+          "message": "False",
+          "count": 4
+        },
+        {
+          "phase": "run",
+          "bundle": "trial-fc57bca7b9-param-f71a7c8a",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/jobs/candidate-diagnostics-bac6738b5b/source/opop_candidates/trial-fc57bca7b9.py",
+          "function": "_call_parent",
+          "line": 71,
+          "source": "return parent(**kwargs)",
+          "recent_lines": [
+            {
+              "line": 71,
+              "source": "return parent(**kwargs)"
+            }
+          ],
+          "event": "exception",
+          "type": "RuntimeError",
+          "message": "No available kernel. Aborting execution.",
+          "count": 1,
+          "traceback": [
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/jobs/candidate-diagnostics-bac6738b5b/source/opop_candidates/trial-fc57bca7b9.py",
+              "function": "_call_parent",
+              "line": 71,
+              "source": "return parent(**kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/binding.py",
+              "function": "reference",
+              "line": 67,
+              "source": "return _function(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "function": "wrapper",
+              "line": 1068,
+              "source": "output = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/output_capturing.py",
+              "function": "wrapper",
+              "line": 262,
+              "source": "outputs = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/qwen3/modeling_qwen3.py",
+              "function": "forward",
+              "line": 413,
+              "source": "hidden_states = decoder_layer("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/modeling_layers.py",
+              "function": "__call__",
+              "line": 114,
+              "source": "return super().__call__(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/qwen3/modeling_qwen3.py",
+              "function": "forward",
+              "line": 307,
+              "source": "hidden_states, _ = self.self_attn("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/qwen3/modeling_qwen3.py",
+              "function": "forward",
+              "line": 266,
+              "source": "attn_output, attn_weights = attention_interface("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/integrations/sdpa_attention.py",
+              "function": "sdpa_attention_forward",
+              "line": 158,
+              "source": "attn_output = torch.nn.functional.scaled_dot_product_attention("
+            }
+          ]
+        },
+        {
+          "phase": "run",
+          "bundle": "trial-fc57bca7b9-param-f71a7c8a",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/jobs/candidate-diagnostics-bac6738b5b/source/opop_candidates/trial-fc57bca7b9.py",
+          "function": "_capture",
+          "line": 117,
+          "source": "captured = _call_parent(static_kwargs)",
+          "recent_lines": [
+            {
+              "line": 111,
+              "source": "_call_parent(static_kwargs)"
+            },
+            {
+              "line": 110,
+              "source": "for _ in range(_WARMUP_ITERATIONS):"
+            },
+            {
+              "line": 111,
+              "source": "_call_parent(static_kwargs)"
+            },
+            {
+              "line": 110,
+              "source": "for _ in range(_WARMUP_ITERATIONS):"
+            },
+            {
+              "line": 111,
+              "source": "_call_parent(static_kwargs)"
+            },
+            {
+              "line": 110,
+              "source": "for _ in range(_WARMUP_ITERATIONS):"
+            },
+            {
+              "line": 109,
+              "source": "with torch.cuda.stream(side), _flash_only():"
+            },
+            {
+              "line": 112,
+              "source": "current.wait_stream(side)"
+            },
+            {
+              "line": 113,
+              "source": "torch.cuda.synchronize()"
+            },
+            {
+              "line": 115,
+              "source": "graph = torch.cuda.CUDAGraph()"
+            },
+            {
+              "line": 116,
+              "source": "with _flash_only(), torch.cuda.graph(graph):"
+            },
+            {
+              "line": 117,
+              "source": "captured = _call_parent(static_kwargs)"
+            }
+          ],
+          "event": "exception",
+          "type": "RuntimeError",
+          "message": "No available kernel. Aborting execution.",
+          "count": 1,
+          "traceback": [
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/jobs/candidate-diagnostics-bac6738b5b/source/opop_candidates/trial-fc57bca7b9.py",
+              "function": "_capture",
+              "line": 117,
+              "source": "captured = _call_parent(static_kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/jobs/candidate-diagnostics-bac6738b5b/source/opop_candidates/trial-fc57bca7b9.py",
+              "function": "_call_parent",
+              "line": 71,
+              "source": "return parent(**kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/binding.py",
+              "function": "reference",
+              "line": 67,
+              "source": "return _function(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "function": "wrapper",
+              "line": 1068,
+              "source": "output = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/output_capturing.py",
+              "function": "wrapper",
+              "line": 262,
+              "source": "outputs = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/qwen3/modeling_qwen3.py",
+              "function": "forward",
+              "line": 413,
+              "source": "hidden_states = decoder_layer("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/modeling_layers.py",
+              "function": "__call__",
+              "line": 114,
+              "source": "return super().__call__(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/qwen3/modeling_qwen3.py",
+              "function": "forward",
+              "line": 307,
+              "source": "hidden_states, _ = self.self_attn("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/qwen3/modeling_qwen3.py",
+              "function": "forward",
+              "line": 266,
+              "source": "attn_output, attn_weights = attention_interface("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/integrations/sdpa_attention.py",
+              "function": "sdpa_attention_forward",
+              "line": 158,
+              "source": "attn_output = torch.nn.functional.scaled_dot_product_attention("
+            }
+          ]
+        },
+        {
+          "phase": "run",
+          "bundle": "trial-fc57bca7b9-param-f71a7c8a",
+          "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/jobs/candidate-diagnostics-bac6738b5b/source/opop_candidates/trial-fc57bca7b9.py",
+          "function": "replacement",
+          "line": 222,
+          "source": "_capture(kwargs)",
+          "recent_lines": [
+            {
+              "line": 206,
+              "source": "if args:"
+            },
+            {
+              "line": 209,
+              "source": "if \"graph\" not in holder:"
+            },
+            {
+              "line": 210,
+              "source": "if holder.get(\"setup_error\"):"
+            },
+            {
+              "line": 215,
+              "source": "if not _signature_matches(kwargs):"
+            },
+            {
+              "line": 218,
+              "source": "if not _execution_context_ok():"
+            },
+            {
+              "line": 221,
+              "source": "try:"
+            },
+            {
+              "line": 222,
+              "source": "_capture(kwargs)"
+            }
+          ],
+          "event": "exception",
+          "type": "RuntimeError",
+          "message": "No available kernel. Aborting execution.",
+          "count": 1,
+          "traceback": [
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/jobs/candidate-diagnostics-bac6738b5b/source/opop_candidates/trial-fc57bca7b9.py",
+              "function": "replacement",
+              "line": 222,
+              "source": "_capture(kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/jobs/candidate-diagnostics-bac6738b5b/source/opop_candidates/trial-fc57bca7b9.py",
+              "function": "_capture",
+              "line": 117,
+              "source": "captured = _call_parent(static_kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/qwen-ttft/jobs/candidate-diagnostics-bac6738b5b/source/opop_candidates/trial-fc57bca7b9.py",
+              "function": "_call_parent",
+              "line": 71,
+              "source": "return parent(**kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev/opop-v6-freezes/a6f2b6e88ec3/src/kernel_optimizer/project/binding.py",
+              "function": "reference",
+              "line": 67,
+              "source": "return _function(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/generic.py",
+              "function": "wrapper",
+              "line": 1068,
+              "source": "output = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/utils/output_capturing.py",
+              "function": "wrapper",
+              "line": 262,
+              "source": "outputs = func(self, *args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/qwen3/modeling_qwen3.py",
+              "function": "forward",
+              "line": 413,
+              "source": "hidden_states = decoder_layer("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/modeling_layers.py",
+              "function": "__call__",
+              "line": 114,
+              "source": "return super().__call__(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/qwen3/modeling_qwen3.py",
+              "function": "forward",
+              "line": 307,
+              "source": "hidden_states, _ = self.self_attn("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_wrapped_call_impl",
+              "line": 1778,
+              "source": "return self._call_impl(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py",
+              "function": "_call_impl",
+              "line": 1789,
+              "source": "return forward_call(*args, **kwargs)"
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/models/qwen3/modeling_qwen3.py",
+              "function": "forward",
+              "line": 266,
+              "source": "attn_output, attn_weights = attention_interface("
+            },
+            {
+              "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/integrations/sdpa_attention.py",
+              "function": "sdpa_attention_forward",
+              "line": 158,
+              "source": "attn_output = torch.nn.functional.scaled_dot_product_attention("
+            }
+          ]
+        }
+      ],
+      "interpretation": "Separate intrusive Python diagnostic, including candidate installation and continuous runs. Exceptions may be intentionally handled; False returns may be normal predicates. These are source locations for investigation, not proof of failure or causal attribution. Only candidate installer files on the worker's current Python thread are traced; native code and other threads are outside this observation. Propagated exception tracebacks can locate imported helpers without tracing their execution or retaining frames/locals."
+    }
+  }
+}

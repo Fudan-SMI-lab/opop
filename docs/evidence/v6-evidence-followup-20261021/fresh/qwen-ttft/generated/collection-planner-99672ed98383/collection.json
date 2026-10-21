@@ -1,0 +1,25 @@
+{
+  "collectors": [
+    "candidate_diagnostics",
+    "nsys"
+  ],
+  "requested_fields": [
+    "candidate_diagnostics.exception_evidence",
+    "candidate_diagnostics.route_corroboration",
+    "candidate_diagnostics.reference_invocation_roles",
+    "nsys.ttft_window_kernel_names",
+    "nsys.ttft_window_device_intervals",
+    "nsys.candidate_owned_kernel_attribution"
+  ],
+  "unavailable_fields": {
+    "nccl.algorithm_protocol_channels": "Single-device task with no distributed backend (request.json distributed_backend null; observations.json communication status not_applicable, reason 'single-device task'); nccl_tuning not selected.",
+    "per_collective_pcie_or_nvlink_bytes": "No collectives in this workload; device_telemetry provides device-wide NVML rates/utilization with native windows, not per-collective bytes; PCIe/NVLink traffic must not be invented from logical payload or memcpy sizes.",
+    "allreduce_reference_cost": "collective_calibration runs a synthetic full-world SUM allreduce that has no analogue in this single-GPU inference task; not selected.",
+    "gradient_bucket_identity": "Inference-only workload under torch.inference_mode with no backward pass (coverage.json backward_associated_kernels 0, autograd_ranges 0); no gradient storage or communication hooks exist to correlate, so bucket identity is unobservable.",
+    "ttft_window_scoped_binding_cost": "binding_cost reports whole-invocation cost only; the invocation is dominated by ~708 ms decode against ~24.4 ms ttft, so a TTFT-window binding cost cannot be isolated from it.",
+    "clean_host_dispatch_scores": "python_runtime cProfile inclusive/self times perturb execution and are not clean performance scores or GPU compute durations; not selected for the current uncertainty.",
+    "cpu_submit_clock_alignment_bounds": "execution_timeline not selected: the already-run torch collector associated all 66,441 kernels with 0 unassociated and 0 ambiguous sequences, and the first-token boundary is an explicit torch.cuda.synchronize, leaving no open submit-association or graph-tracing question."
+  },
+  "rationale": "The frozen objective is ttft_ms for the single-GPU interactive prefill; the torch collector already ran with complete association (coverage.json: 66,441/66,441 kernels, 0 ambiguous). The clean evaluation of candidate 9fb6e370922706c28b91ff0bb2273a32d29150c9376855c3880b21d819684b42 passed quality and was accepted with a small ttft gain (24.44 ms vs 25.28 ms paired parent; the independent original reference at 25.11 ms indicates ~0.2 ms run-to-run scale, so the ~0.8 ms gain needs attribution). The single uncertainty the artifacts themselves flag is that coverage routes are candidate-reported telemetry: 62/64 invocations declare parent-delegate and 2/64 declare parent-fallback:setup-failure:flash-dispatch-refused, with 68 reference invocations of unknown role (fallback, verification, or composition) and zero framework fallbacks. candidate_diagnostics is selected to capture the actual exception/setup-failure evidence behind the refused flash-dispatch routes and native corroboration of the delegate routes and reference-invocation roles on this exact candidate. nsys is selected as the optional independent native timeline: kernel entry names and per-device intervals across the prefill-to-first-token window attribute what actually executed versus parent code, resolving whether any candidate-owned kernel ran, without relying on the candidate's self-reported labels and without treating reference calls as proven fallback. Communication collectors (nccl_tuning, collective_calibration, device_telemetry) are excluded because the task is single-device with communication not_applicable; execution_timeline is redundant with the completed fully-associated torch trace; python_runtime and binding_cost do not address route corroboration and cannot yield clean TTFT-window costs (binding is effective direct with no functional replacements and all declared routes delegate to the parent). The revision field is set to the evaluated candidate that the selected collectors will run on in separate workers.",
+  "revision": "9fb6e370922706c28b91ff0bb2273a32d29150c9376855c3880b21d819684b42"
+}

@@ -1,0 +1,27 @@
+{
+  "collectors": [
+    "nsys",
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "nsys.cuda_graph.capture_events",
+    "nsys.cuda_graph.replay_launches",
+    "nsys.route_evidence.eager_fused_stem_pool_kernels",
+    "nsys.timeline.per_kernel_intervals",
+    "nsys.timeline.inter_kernel_gaps_and_overlap",
+    "nsys.attribution.cpu_submit_to_kernel_association",
+    "python_runtime.cprofile.top_self_time_python_frames",
+    "python_runtime.cprofile.top_inclusive_call_paths"
+  ],
+  "unavailable_fields": {
+    "nccl.algorithm": "not applicable: single-device task; observations.json reports the communication capability as not_applicable and no NCCL communicator exists, so nccl_tuning has nothing to sample",
+    "nccl.protocol": "not applicable: single-device task; no collectives run and kernel entry names alone cannot identify protocol",
+    "nccl.channels": "not applicable: single-device task",
+    "collective_calibration.allreduce_reference": "not applicable: the offline batch=32 single-GPU forward contains no collectives; a synthetic full-world allreduce would not map onto this workload",
+    "device_telemetry.pcie_or_nvlink_per_collective_bytes": "unavailable: telemetry is device-wide with native sampling windows, not per-collective bytes, and there are no collectives; PCIe/NVLink traffic must not be invented from logical payload or memcpy sizes (host input transfer is outside the timed unit)",
+    "candidate_routes.native_exception_evidence": "unavailable: coverage for bundle trial-a9f72afa23-param-f2e37a0c shows framework_fallbacks=0 and reference_invocations=0, so no exception-based fallback proof exists; route labels can only be corroborated by independent traces (nsys)",
+    "binding.per_group_overhead": "unavailable: binding resolved to legacy->direct with reason 'no functional replacements'; binding_cost reports whole-invocation passthrough cost only and omits per-group effects"
+  },
+  "rationale": "Frozen objective is one offline batch=32 FP32 ResNet-18 forward on a single GPU; observations.json marks communication not_applicable, so nccl_tuning, collective_calibration and any per-collective byte dimension are unavailable rather than merely unchosen. The torch collector already ran: coverage.json shows all 60 CUDA kernels associated with zero unassociated or ambiguous kernels, so execution_timeline would only re-derive CPU-submit associations it already has, and it cannot bound GPU readiness or consumer completion anyway. The live uncertainty on the evaluated candidate is attribution, not scoring: measurement is valid and accepted (3.4018 ms vs paired parent 3.6847 ms, quality pass), but coverage for bundle trial-a9f72afa23-param-f2e37a0c reports the same call f2cf62caf57ad09f5d2f36aa under three inconsistent routes (captured, cuda_graph_replay, eager_fused_stem_pool) across two candidate invocations, and the evaluation interpretation explicitly warns these are candidate-reported telemetry needing independent corroboration. nsys is available (request.json tools.nsys) and is the matching instrument for graph-tracing and attribution questions: it can natively show whether CUDA graph capture and replay actually execute on this exact candidate, whether the fused stem+pool path runs as eager kernel launches, and where inter-kernel gaps or overlap sit, none of which candidate route labels or a plain Torch trace prove. python_runtime is selected for the complementary host-dispatch question: a 3.40 ms forward over ~60 associated kernels run through the eager transformers stack leaves the dispatch-vs-compute split open, and cProfile self/inclusive times (read only as relative host costs, never as clean scores or GPU durations, since it perturbs execution) indicate whether extending capture/fusion is worthwhile. binding_cost is omitted because binding is direct with no functional replacements and the clean paired measurement already contains any wrapper cost; device_telemetry is omitted because device-wide utilization/PCIe readings cannot attribute anything inside the synchronized forward. Revision is set to the single listed candidate revision f12635aeab45ee38bb106d310a6ceff09f2faf366dde6d423cf56a72d015f7d1, the evaluated candidate whose route uncertainty motivates this collection.",
+  "revision": "f12635aeab45ee38bb106d310a6ceff09f2faf366dde6d423cf56a72d015f7d1"
+}

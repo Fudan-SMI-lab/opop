@@ -423,3 +423,108 @@ Graph 候选，完整 AB/BA 为 `4.210417 → 3.6742565 ms`，约降低 12.7%，
 `027066ca92fbf61f1640a2281a5dd91b1a416a57d2fa1ef1c7b51212e3887daa`。
 再次核对源文件元数据且确认无进程引用后，用恢复记录替代远端展开副本，释放约 5.62 GiB。
 当前运行所需的 reference 和 provider 数据未参与此归档。
+
+### 第二批续跑及独立复测（2026-10-21 11:50 +08:00 检查点）
+
+以下候选均由真实 OpenCode 会话产生。诊断辅助分支已结束；三个全新原入口任务各完成两轮，
+第三轮遇到 provider 七天使用上限，不能将本检查点称为三轮自主运行全部结束。
+框架仍冻结于 `a6f2b6e`；本检查点只补充 GPU 验证、分析和原始证据，没有改变搜索或验收规则。
+
+#### DDP：Graph 修复成立，通信目标仍未通过
+
+`ddp-feedback-continuation/trial-f7b4b8b98a` 仅消费上一轮框架反馈。Agent 保留 capture 外的
+4D mask，给 warmup／capture 使用同一显式 stream，并在 capture 期间设置
+`torch.autograd.graph.set_override_stale_capture_stream(True)` 后恢复，清理旧 warmup 图引用。
+仍是三个 no_sync micro-batch 分段 Graph、最后一个 micro-batch 原生 DDP backward。
+这些是本次候选的实现，不是写入框架的 DDP 专用修法。
+
+正式两次连续质量检查均为零误差。由于首次调用使用父路径、第二次构图，两次检查不足以验证
+后续稳定 replay，额外建立独立分支，只将验证 worker 的 `continuous_steps` 从 2 增为 4。
+原请求文件哈希保持不变，重新生成四步 reference，未放宽或改变正式发布合同。两个 rank 的
+四次更新每次均比较 248,879,621 个元素（完整参数、梯度及 loss），最大误差均为 0；
+第三、第四次记录为 replay，无 fallback。额外 reference 位于 `/dev/shm`，记录其哈希且可重新生成。
+
+对应原生 Nsight 记录在每个 rank 上都有 3 次 `cudaGraphLaunch`、2,826 个 graph-node kernel，
+仍有 13 个未被 Graph 包含的 NCCL allreduce kernel。这证明分段 Graph 确实执行，不能使用
+侵入式 trace 的 kernel 耗时作为性能验收。
+
+| 测量 | 配对父版本通信（ms） | 配对候选通信（ms） | 整步父版本 → 候选（ms） | 正式通信决定 |
+|---|---|---|---|---|
+| 原轮次 AB/BA | 79.381857 / 65.429349 | 64.874065 / 64.560461 | 139.054530 / 140.595949 → 101.898305 / 101.588616 | 拒绝；第二对收益 0.868888 < 噪声 2.890766 |
+| 固定候选独立 AB/BA | 68.836801 / 74.397151 | 66.049996 / 63.982356 | 140.985333 / 142.355340 → 103.406991 / 100.566899 | 拒绝；第一对收益 2.786805 < 噪声 4.021950 |
+
+独立复测只执行一次，保留两次拒绝，没有反复重测直到通过。整步均值 `141.6703365 → 101.986945 ms`，
+降低约 28.0%，是可复现的辅助指标收益；本次目标是通信 kernel 总时长，所以不改口径宣称
+通信优化成功，也不能说 PCIe 传输带宽得到改善。该分支最初含开发者 traceback，仍归类为诊断辅助。
+
+#### Qwen：数值辅助修复与新入口失败分开记录
+
+`qwen-numerical-repair/trial-4556240c94` 保留部分 PyTorch 归一化计算，尝试融合其他部分，
+但生成代码的临时 `torch.empty` 未指定 CUDA device，首次 `_sq_kernel` 调用即遇到
+`Pointer argument cannot be accessed from Triton (cpu tensor?)`，两个检查调用均回退。
+新数值方案没有实际运行，不能据此判断是否修复了前述舍入差异。
+
+其正常反馈续跑 `trial-83a8db6873` 改选父实现 Graph。内部 `torch.equal(logits, ref_logits)`
+验证返回 False，两个调用均走 `parent_fallback_validation`；正式 TTFT 均值
+`24.899464 → 25.066046 ms`，拒绝。本轮没有通过人工放宽内部检查来制造通过结果。
+
+全新原入口的第二轮 `trial-fc57bca7b9` 则自行从第一轮 nsys 发现 Graph 内 SDPA kernel
+与父路径不同：第一轮 Graph 内为 36 个 `fmha_cutlassF`，其后 decode 为 Flash kernel。
+Agent 因而尝试强制 Flash，但 capture 报 `No available kernel. Aborting execution.`；
+新通用 traceback 记录了 `transformers/integrations/sdpa_attention.py` 的调用位置。
+“kernel 选择不同”有 trace 支持；完整数值误差的因果链没有经过独立替换隔离，不称为已完全证明。
+
+第二轮正确性为父路径零误差，两个 prefill 均为 `parent-fallback:setup-failure:flash-dispatch-refused`。
+完整计时仍被接受：`25.2799755 → 24.439589 ms`，两对短测均超过各自噪声界；
+但同一候选 post-trial nsys 为 **0 次 Graph launch、0 个 graph-node kernel**。
+固定第二轮完整版本独立 AB/BA 为 `24.6292785 → 24.7566235 ms`，配对收益
+`0.562678 / -0.817368 ms`、噪声 `1.166644 / 0.626998 ms`，拒绝且仍全部回退。
+因此本次新入口 Qwen 没有验证出有效优化；原运行的接受记录如实保留，未人工修改搜索历史。
+
+这再次说明，仅靠短时 AB/BA 与站点 coverage，仍可能接受未实际启用目标优化的候选。
+不能把 `fallback` 字符串当作通用判定规则：复合实现可能合理保留父路径，路由也只是候选自报。
+后续应从该固定失败快照验证最小的执行证据使用改进；目前没有新增硬编码失败分类或扩大 Agent 输入。
+
+#### 同版新入口 ResNet：两轮完整版本收益复现
+
+第一轮 BN folding＋逐点融合＋Graph 已通过；第二轮 `trial-a9f72afa23` 在保留这些修改的
+完整替换 bundle 中加入 stem bias／ReLU／maxpool 融合，配对均值
+`3.6846775 → 3.4017685 ms`，再次接受。两个轮次百分比不直接相加。
+
+固定第二轮完整版本与原始项目的独立 AB/BA 为父版本 `4.192271 / 4.198734 ms`、
+候选 `3.395735 / 3.409708 ms`；均值 `4.1955025 → 3.4027215 ms`，降低 **18.9%**。
+全部输出通过原质量要求、分类 ID 一致，完整版本 coverage 无错误。
+该候选的原生记录为 1 次 Graph launch、59 个 graph-node kernel，其中包括
+1 个 `_bias_relu_pool3x3s2p1`、8 个 `_bias_relu`、8 个 `_add_bias_relu`，优化路径有原生证据。
+候选来自无人工诊断注入的原入口；独立复测由开发者启动，两者分开记账。
+
+#### 同版新入口 DDP：第二轮再次测到 functional 绑定代价
+
+第一轮 `trial-df7761708a` 两级 Graph 均遇到前述 mask capture 异常，质量对应回退；
+整步 `139.370208 ms` 超过原约束 `138.6598437 ms`，筛查拒绝。
+第二轮 `trial-b04d1d014e` 自主选两个 allreduce 功能站点，尝试第一次通信前的 gloo barrier。
+候选依赖本次观测的 bucket inventory；这属于生成候选的假设，没有加入框架固定分类。
+
+实际整步为 `256.978056 ms`，再次被约束拒绝。框架随后自主选择 `binding_cost` 等采集：
+父路径 `139.583541 / 139.856785 ms`，相同绑定的纯透传为 `253.079666 / 231.298555 ms`，
+对应约 `113.50 / 91.44 ms` 额外开销。仅绑定本身就足以解释大部分退化，不能归因于通信传输。
+该成本由候选选择的 functional 绑定路径引入；当前 adapter 原项目一致性已独立通过，
+没有证据将这次回归归因于 adapter 改变了计算。第三轮是否利用这些自动采集证据尚未完成。
+
+#### Provider 阻塞、保存状态与后续边界
+
+三个新入口都在第三轮收到真实 HTTP 429：服务端说明已达七天使用上限，给出
+`2026-10-23 17:38:14 +08:00` 恢复时间（无时区原文按 host 时区解释）。
+Qwen／DDP 在 selection，ResNet 在 candidate；原进程、生成前快照和已生成文件保留，
+等待框架现有恢复调度。费用统计仍是 `observe_only`，本项目没有新增 API／token／费用限制。
+第三轮未完成，原最终版本验证控制器继续等待；本检查点新增的是固定第二轮的独立验证，
+不能冒充三轮终态。恢复后先完成这些原会话和最终完整版本复测，再决定下一项最小框架改进。
+
+本批费用快照覆盖 50 个真实 Agent 会话、1,242 条 assistant message，provider 的
+`reported_cost` 合计约 41.722453；这是截至检查点的估计值，不是账单，也不含外层 Codex 会话。
+
+另已冷归档上一批 `agent-repair-20261021/qwen-throughput` 和 `independent-validation`：
+`E:/opop-cold-archive/v6-cold-completed-repair-traces-20261021.tar.gz`，938,103,924 字节，
+SHA-256 `a08e041bcd32054305174b56f6ed5fa862d31e7357e14555790c0a9992cb6443`。
+本地校验、源文件未变和无进程引用复核通过后替换为恢复记录，释放约 9.08 GiB。
+活跃 reference 未归档；四步扩展的可重建 reference 放在共享内存，避免继续消耗实验盘。

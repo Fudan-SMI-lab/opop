@@ -1,0 +1,69 @@
+{
+  "plan": {
+    "collectors": [
+      "candidate_diagnostics",
+      "execution_timeline",
+      "binding_cost"
+    ],
+    "requested_fields": [
+      "candidate_diagnostics.actual_route_evidence.parent_fallback_validation",
+      "candidate_diagnostics.functional_path_activation_evidence",
+      "candidate_diagnostics.exception_evidence",
+      "execution_timeline.cpu_to_cuda_submit_associations",
+      "execution_timeline.first_token_ready_sync_boundary_interval",
+      "execution_timeline.per_device_intervals",
+      "binding_cost.parent_vs_binding_only_paired_whole_invocation_ms",
+      "binding_cost.ab_ba_order_and_quality_check_results"
+    ],
+    "unavailable_fields": {
+      "nccl_tuning.algorithm_protocol_channel_decisions": "Single-process single-GPU task with no process group and no NCCL (request.json distributed_backend=null; observations.json communication=not_applicable 'single-device task').",
+      "collective_calibration.synthetic_allreduce_reference": "No collectives exist in this workload; single-device inference task, nothing to calibrate.",
+      "device_telemetry.per_collective_pcie_or_nvlink_bytes": "No communication and no host<->device transfers inside the timed unit (model and inputs already GPU-resident); device-wide native-window utilization/PCIe samples cannot attribute a ~25 ms prefill interval, and per-collective bytes must not be derived from logical payload sizes.",
+      "nsys.nccl_wait_vs_wire_separation": "No NCCL present; kernel attribution is already complete from the prior torch run (coverage.json: 66441/66441 kernels associated, 0 ambiguous), no CUDA graphs or overlap questions are open, and nsys timelines cannot independently prove the candidate-declared route identity.",
+      "execution_timeline.gpu_readiness_and_consumer_completion_bounds": "Collector reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown by specification.",
+      "binding_cost.per_group_candidate_effect": "Collector reports whole-invocation parent vs binding-only cost and omits candidate build/computation; no available collector supplies per-group effects for this candidate.",
+      "python_runtime.clean_gpu_or_dispatch_scores": "Not selected: cProfile trace perturbs execution and its inclusive/self times are not clean performance scores; the binding-overhead question is measured cleanly by binding_cost instead."
+    },
+    "rationale": "Frozen objective is ttft_ms on a single-GPU, communication-free inference workload (batch=1, 256-token prefill, 32 tokens). The evaluated candidate 954d0614... passed quality but was not accepted (paired_gain_not_above_noise, objective_not_improved: 25.066 ms vs paired parent 24.899 ms), and the only route evidence is candidate-declared telemetry: parent_fallback_validation on 2/2 candidate invocations, with requested legacy binding resolving to effective direct ('no functional replacements'). evaluation.json explicitly asks that such route labels be corroborated with traces or actual exception evidence, so the plan targets three uncertainties on this exact candidate: (1) candidate_diagnostics to independently establish whether the candidate's functional path ever executed or both invocations genuinely fell back to the parent, and capture any exception evidence behind the fallback; (2) execution_timeline for an independent plain trace of the same candidate with CPU-to-CUDA submit associations, the explicit first-token-ready synchronize boundary and per-device intervals, to check whether the prefill kernel sequence is parent-identical and whether host-side submission gaps exist at the TTFT boundary; (3) binding_cost, applicable because an additive candidate exists that falls back to the parent rather than replacing it, to measure clean AB/BA whole-invocation parent vs binding-only passthrough cost with quality checks and determine whether additive wrapper overhead could mask a small functional gain. The torch collector already ran (66441/66441 kernels associated, 0 ambiguous, 0 autograd ranges) and is not re-requested; nsys is skipped because no overlap, graph-tracing or attribution question remains open; nccl_tuning, collective_calibration and device_telemetry are inapplicable to a single-device task with no communication. No optimization action is prescribed here; these diagnostics only resolve whether the observed non-gain is a fallback, an inactive replacement path, or wrapper overhead.",
+    "revision": "954d061493edf792d0059b7b5233b9beb3a9f52b14ed84ac3182a8bf510ae142"
+  },
+  "agent": {
+    "role": "collection-planner",
+    "session": "ses_ea3a45128ffeQLqjOYEYAEuTmy",
+    "message": "msg_15c5e1dcc001zeyUFEMt37KIvA",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 9,
+      "reported_cost": 0.08585909924,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 130249.0,
+        "input": 16333.0,
+        "output": 1933.0,
+        "reasoning": 6383.0,
+        "cache.read": 105600.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea3a45128ffeQLqjOYEYAEuTmy",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/qwen-feedback-continuation/sandboxes/collection-planner-ec690397540f",
+    "outputs": [
+      "collection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/qwen-feedback-continuation/generation-snapshots/generation-86ac7618be8a.json"
+    ]
+  }
+}
