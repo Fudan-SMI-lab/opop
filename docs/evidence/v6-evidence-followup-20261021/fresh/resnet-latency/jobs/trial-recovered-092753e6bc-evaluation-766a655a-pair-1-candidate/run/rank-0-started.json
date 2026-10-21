@@ -1,0 +1,380 @@
+{
+  "rank": 0,
+  "world_size": 1,
+  "device": "cuda:0",
+  "output": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/trial-recovered-092753e6bc-evaluation-766a655a-pair-1-candidate/run",
+  "parameters": {
+    "request": {
+      "schema_version": "project-request.v1",
+      "source_root": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency.intake/source",
+      "entry": "resnet_inference.py",
+      "files": [
+        "resnet_inference.py",
+        "common.py",
+        "workloads.json"
+      ],
+      "goal": "Reduce latency for one complete offline batch=32 image inference, preserving the source quality checks.",
+      "objective": {
+        "name": "latency_ms",
+        "unit": "ms",
+        "direction": "minimize",
+        "constraints": []
+      },
+      "workload": {
+        "id": "offline",
+        "batch": 32,
+        "goals": [
+          {
+            "id": "throughput",
+            "metric": "images_per_second",
+            "direction": "max"
+          },
+          {
+            "id": "memory",
+            "metric": "peak_allocated_bytes",
+            "direction": "min",
+            "constraints": {
+              "images_per_second_min_baseline_ratio": 0.95
+            }
+          }
+        ]
+      },
+      "quality": {
+        "atol": 0.0001,
+        "rtol": 0.0001,
+        "logits_atol": 0.0001,
+        "logits_rtol": 0.0001,
+        "require_exact_top1": true
+      },
+      "assets": {
+        "assets_dir": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18",
+        "model_weights": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/model.safetensors",
+        "model_config": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/config.json",
+        "preprocessor_config": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/preprocessor_config.json",
+        "pixels": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/pixels.npy",
+        "asset_manifest": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/asset-manifest.json"
+      },
+      "devices": [
+        "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+      ],
+      "distributed_backend": null,
+      "communication": "auto",
+      "required_observations": [],
+      "tools": {
+        "ncu": "/usr/local/cuda/bin/ncu",
+        "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+      },
+      "profiling": {
+        "agent_plan": true,
+        "feedback_agent_plan": true
+      },
+      "binding_backend": "legacy",
+      "measurement_lifetime": "invocation",
+      "warmup": 2,
+      "repeats": 5,
+      "continuous_steps": 2,
+      "worker_timeout_s": 900.0,
+      "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+      "notes": [
+        "Command provenance: intent command is `python resnet_inference.py --assets /root/autodl-tmp/dev/v6-work/validation-assets/resnet18 --output /tmp/original-resnet`, run from the repository root; it leaves --workloads at the default workloads.json, --warmup at 2 and --repeats at 5, and does not pass --profile.",
+        "Work/boundary split: main() loops all workload rows, but the selected unit is one infer() forward for the offline row; warmup(2)/repeats(5) are statistical harness fields, while the batch=32 forward itself contains no hidden internal iteration. README (\u8ba1\u91cf\u4e0e\u6b63\u786e\u6027) confirms main timing excludes model loading, preprocessing, host transfer, correctness checks and profiling.",
+        "Objective mapping: the user's goal `Reduce latency for one complete offline batch=32 image inference` selects the offline workload row; the metric key latency_ms is the per-repeat sample key recorded by resnet_inference.py around a single synchronized forward. For this fixed batch, images_per_second = 32000/latency_ms is the reciprocal of the same boundary, and the source's images_per_second_min_baseline_ratio 0.95 guard is scoped to the memory goal, not to latency, so no performance constraint is attached to this objective; the row (including its memory goal and guard) is preserved verbatim in workload.",
+        "Discrete output requiring exact comparison: require_exact_top1 means argmax labels over the full 1000-class logits must be exactly equal (resnet_inference.py uses torch.equal(actual.argmax(-1), reference.argmax(-1))); float logits are compared with torch.testing.assert_close at atol=rtol=1e-4, and the source also runs a negative control that must reject a +1 corruption of the reference.",
+        "Numerical policy (common.configure, resnet_inference.py): FP32 weights via dtype=torch.float32, TF32 disabled for matmul and cudnn, cudnn.benchmark=False, float32_matmul_precision 'highest', torch.manual_seed(20261020), 4 CPU threads, torch.cuda.set_device(0).",
+        "profile_once/--profile diagnostics (torch.profiler trace, nccl kernel sums) are not requested by the user and are collected separately from clean timing; no diagnostic collector source or communication observation is declared for this single-GPU task.",
+        "One measured invocation: One complete offline batch=32 ResNet-18 FP32 classification forward pass under torch.inference_mode(): infer(model, pixels) = model(pixel_values=pixels).logits, where pixels = images[torch.arange(32, device=\"cuda\") % len(images)].contiguous() built once from assets pixels.npy (3 preprocessed FP32 NCHW 224x224 images, GPU-resident). The timed unit is this single forward bounded by torch.cuda.synchronize() on both sides; model loading (ResNetForImageClassification.from_pretrained(args.assets, dtype=torch.float32).cuda().eval()), host input construction/transfer, reference generation, correctness checks, reference .pt/result.json writing and profiling are measurement infrastructure outside the repeated unit."
+      ]
+    },
+    "adapter": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/trial-recovered-092753e6bc-evaluation-766a655a-pair-1-candidate/source/opop_adapter.py",
+    "action": "evaluate",
+    "collector_options": {},
+    "reference_dir": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/preparation/a0379819b980/controls",
+    "bundles": [
+      {
+        "id": "trial-recovered-092753e6bc-param-5ce7e029",
+        "file": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/resnet-latency/jobs/trial-recovered-092753e6bc-evaluation-766a655a-pair-1-candidate/source/opop_candidates/trial-recovered-092753e6bc.py",
+        "parameters": {},
+        "specs": [
+          {
+            "id": "4aab5013037467cf91b2a114",
+            "target": "profiler._record_function_enter_new.default",
+            "kind": "functional",
+            "phase": "forward",
+            "semantics": "profiler::_record_function_enter_new(str name, str? args=None) -> __torch__.torch.classes.profiler._RecordFunction",
+            "attributes": {},
+            "signatures": [
+              {
+                "args": [
+                  "opop_candidate::7b2262756e646c65223a22747269616c2d613966373261666132332d706172616d2d6632653337613063222c2263616c6c223a22663263663632636166353761643039663564326633366161222c227068617365223a22666f7277617264227d"
+                ],
+                "kwargs": {}
+              }
+            ],
+            "count": 1,
+            "parents": [
+              "f2cf62caf57ad09f5d2f36aa"
+            ],
+            "site_parent": "f2cf62caf57ad09f5d2f36aa",
+            "ranks": [
+              0
+            ],
+            "rank_specs": {
+              "0": {
+                "attributes": {},
+                "signatures": [
+                  {
+                    "args": [
+                      "opop_candidate::7b2262756e646c65223a22747269616c2d613966373261666132332d706172616d2d6632653337613063222c2263616c6c223a22663263663632636166353761643039663564326633366161222c227068617365223a22666f7277617264227d"
+                    ],
+                    "kwargs": {}
+                  }
+                ],
+                "count": 1,
+                "parents": [
+                  "f2cf62caf57ad09f5d2f36aa"
+                ]
+              }
+            }
+          },
+          {
+            "id": "82be0731963c69a18149b577",
+            "target": "profiler._record_function_exit._RecordFunction",
+            "kind": "functional",
+            "phase": "forward",
+            "semantics": "profiler::_record_function_exit._RecordFunction(__torch__.torch.classes.profiler._RecordFunction record) -> ()",
+            "attributes": {},
+            "signatures": [
+              {
+                "args": [
+                  {
+                    "type": "ScriptObject"
+                  }
+                ],
+                "kwargs": {}
+              }
+            ],
+            "count": 1,
+            "parents": [
+              "f2cf62caf57ad09f5d2f36aa"
+            ],
+            "site_parent": "f2cf62caf57ad09f5d2f36aa",
+            "ranks": [
+              0
+            ],
+            "rank_specs": {
+              "0": {
+                "attributes": {},
+                "signatures": [
+                  {
+                    "args": [
+                      {
+                        "type": "ScriptObject"
+                      }
+                    ],
+                    "kwargs": {}
+                  }
+                ],
+                "count": 1,
+                "parents": [
+                  "f2cf62caf57ad09f5d2f36aa"
+                ]
+              }
+            }
+          },
+          {
+            "id": "9b2f8fbe19d203f9499fe887",
+            "target": "aten.clone.default",
+            "kind": "functional",
+            "phase": "forward",
+            "semantics": "aten::clone(Tensor self, *, MemoryFormat? memory_format=None) -> Tensor",
+            "attributes": {},
+            "signatures": [
+              {
+                "args": [
+                  {
+                    "shape": [
+                      32,
+                      1000
+                    ],
+                    "stride": [
+                      1000,
+                      1
+                    ],
+                    "dtype": "torch.float32",
+                    "device": "cuda",
+                    "requires_grad": false
+                  }
+                ],
+                "kwargs": {}
+              }
+            ],
+            "count": 1,
+            "parents": [
+              "f2cf62caf57ad09f5d2f36aa"
+            ],
+            "site_parent": "f2cf62caf57ad09f5d2f36aa",
+            "ranks": [
+              0
+            ],
+            "rank_specs": {
+              "0": {
+                "attributes": {},
+                "signatures": [
+                  {
+                    "args": [
+                      {
+                        "shape": [
+                          32,
+                          1000
+                        ],
+                        "stride": [
+                          1000,
+                          1
+                        ],
+                        "dtype": "torch.float32",
+                        "device": "cuda",
+                        "requires_grad": false
+                      }
+                    ],
+                    "kwargs": {}
+                  }
+                ],
+                "count": 1,
+                "parents": [
+                  "f2cf62caf57ad09f5d2f36aa"
+                ]
+              }
+            }
+          },
+          {
+            "id": "f2cf62caf57ad09f5d2f36aa",
+            "target": "model",
+            "kind": "module",
+            "phase": "forward",
+            "semantics": "transformers.models.resnet.modeling_resnet.ResNetForImageClassification",
+            "attributes": {
+              "training": false,
+              "name_or_path": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18",
+              "loss_type": "ForImageClassification",
+              "num_labels": 1000,
+              "parameter_shapes": {}
+            },
+            "signatures": [
+              {
+                "args": [],
+                "kwargs": {
+                  "pixel_values": {
+                    "shape": [
+                      32,
+                      3,
+                      224,
+                      224
+                    ],
+                    "stride": [
+                      150528,
+                      50176,
+                      224,
+                      1
+                    ],
+                    "dtype": "torch.float32",
+                    "device": "cuda",
+                    "requires_grad": false
+                  }
+                }
+              }
+            ],
+            "count": 1,
+            "parents": [
+              "5d7d6bb13691b02f533f62b0"
+            ],
+            "site_parent": null,
+            "ranks": [
+              0
+            ],
+            "rank_specs": {
+              "0": {
+                "attributes": {
+                  "training": false,
+                  "name_or_path": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18",
+                  "loss_type": "ForImageClassification",
+                  "num_labels": 1000,
+                  "parameter_shapes": {}
+                },
+                "signatures": [
+                  {
+                    "args": [],
+                    "kwargs": {
+                      "pixel_values": {
+                        "shape": [
+                          32,
+                          3,
+                          224,
+                          224
+                        ],
+                        "stride": [
+                          150528,
+                          50176,
+                          224,
+                          1
+                        ],
+                        "dtype": "torch.float32",
+                        "device": "cuda",
+                        "requires_grad": false
+                      }
+                    }
+                  }
+                ],
+                "count": 1,
+                "parents": [
+                  "5d7d6bb13691b02f533f62b0"
+                ]
+              }
+            }
+          }
+        ],
+        "expected_calls": [
+          "f2cf62caf57ad09f5d2f36aa"
+        ],
+        "expected_calls_by_rank": {
+          "0": [
+            "f2cf62caf57ad09f5d2f36aa"
+          ]
+        }
+      }
+    ]
+  },
+  "binding": {
+    "pid": 632706,
+    "status": "verified",
+    "torch_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+    "requested_uuid": "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2",
+    "torch_raw_uuid": "4bead555-f80c-df43-5a46-daa7a0ec80b2",
+    "logical_device": 0,
+    "nvidia_smi_pid_uuids": [
+      "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+    ],
+    "pid_query_status": "observed"
+  },
+  "revision": {
+    "revision": "e0fb01a27ac0ee01bf2c13b1539c833117a47a7da52cafc38a2798d44a77d7a4",
+    "bundles": [
+      "trial-recovered-092753e6bc-param-5ce7e029"
+    ],
+    "bundle_hashes": {
+      "trial-recovered-092753e6bc-param-5ce7e029": "b73f9936035d6e4ffcd30f1de193fff7f16e7015a432b857958fcafcd03e6dd4"
+    },
+    "files": {
+      "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+      "opop_adapter.py": "413ea6e9e1f4fb3b7d824d2a9c070861efe92c1e12a6269ba8a71f6936b2d72b",
+      "opop_candidates/trial-9c6f5280d7.py": "97af3fa3f310da763431e265bfd96bfb913277c63a0fd8fe9850614c0a88f722",
+      "opop_candidates/trial-9c6f5280d7.targets.json": "222f06af66b307d22f83a1ea39550172121ef03a33fa040a7a44b37979d3f841",
+      "opop_candidates/trial-a9f72afa23.py": "91481992e07163877ec2b767cff04ed0eb644ac4bb4204f73446ab72b2da0727",
+      "opop_candidates/trial-a9f72afa23.targets.json": "0f7346c83bdae5dabd0405120ad077ef2b66d6e272a4fccda584e9d3ec82fe83",
+      "opop_candidates/trial-recovered-092753e6bc.py": "893211b485c79379cda8213cb5808e9dc4cc3f4741b99d2afda49637061c2d44",
+      "opop_candidates/trial-recovered-092753e6bc.targets.json": "41b3a5094426482e94a2ec698206442c38cea7602cd0c88ced03f135c85c4aa8",
+      "opop_evaluate.py": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+      "resnet_inference.py": "b98cd81b4aa6fb8211be6382d9870bbf433eb352c248a4b2aaf8f5fde2b50997",
+      "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+    }
+  }
+}

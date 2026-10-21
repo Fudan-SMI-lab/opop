@@ -1,0 +1,69 @@
+{
+  "plan": {
+    "collectors": [
+      "nsys",
+      "execution_timeline",
+      "binding_cost",
+      "nccl_tuning"
+    ],
+    "requested_fields": [
+      "nsys.per_rank_compute_communication_overlap_ms",
+      "nsys.per_collective_nccl_kernel_intervals",
+      "execution_timeline.synchronization_events",
+      "execution_timeline.cpu_to_cuda_submit_associations",
+      "execution_timeline.per_device_intervals",
+      "execution_timeline.gradient_post_accumulate_callbacks",
+      "binding_cost.parent_vs_binding_only_invocation_cost",
+      "nccl_tuning.algorithm_protocol_channel_decisions"
+    ],
+    "unavailable_fields": {
+      "nccl_wire_transfer_ms": "No collector separates NCCL in-kernel waiting from wire transfer; nsys timelines cannot, and kernel duration sums are wait-inclusive by definition.",
+      "pcie_bytes_per_collective": "Only device-wide NVML rate samples exist (native 20 ms driver windows, exact boundaries unavailable, taken outside the workload); per-collective PCIe bytes would require unavailable hardware byte counters, and logical payload is not traffic.",
+      "nvlink_bytes": "nvmlDeviceGetNvLinkState returned NVML status 3 on both GPUs; no NVLink links or per-link counters are exposed.",
+      "hardware_utilization": "Hardware counters require a successful collector-specific probe; topology and logical payload do not measure traffic.",
+      "execution_timeline.gpu_readiness_and_consumer_completion": "Clock alignment bounds are reported for matching CPU submissions only; GPU readiness and consumer completion may remain unknown.",
+      "communication_critical_path_ms": "No collector measures the step's communication critical path; collective_calibration is a synthetic warmed reference experiment, not a performance lower bound or critical-path estimate."
+    },
+    "rationale": "Candidate 03c5e5abcdf4f4cf519e4e909e2b48a3d8e54414dd924a31dabd04f5f3878fbb (bundle trial-recovered-0f41339f0a-param-afbf38f4, declared route aligned_final_backward_barrier on call 5d7d6bb13691b02f533f62b0) is the only listed revision and its clean screening left concrete uncertainty: it lowered the frozen objective communication_kernel_sum_ms (max rank 74.675611 -> 64.149113 ms; rank 0 63.433, rank 1 64.149) while violating the step_ms <= 1.05x baseline constraint (144.138 > 138.660 ms), so parameter screening accepted nothing. The metric is wait-inclusive: parent discovery recorded identical per-rank collective sequences (13 allreduces: 12x 28,351,488 B + 1x 157,541,376 B, fp32, RING_LL kernel entries, SHM/direct/direct transport on 2 channels, peer access disabled) while rank 1 summed 200.615 ms of NCCL kernel time against rank 0's 58.898 ms in the same profiled step, so most kernel duration is arrival skew and in-kernel waiting rather than transfer. It is therefore unresolved whether the candidate's comm-sum drop is genuine transfer reduction or redistributed waiting that also serialized the step; the +12 ms step change must not be assumed to be algorithm cost. nsys (status available) is selected to attribute compute/communication overlap and per-collective sequencing on this exact candidate. execution_timeline is selected to corroborate the candidate-reported barrier route with actual synchronization events, CPU-to-CUDA submit associations, per-device intervals and passive gradient post-accumulate callbacks, since route labels are candidate telemetry and not independent native proof. binding_cost is applicable (an additive candidate exists, bundles do not replace the parent; effective binding direct, no functional replacements) and isolates whole-invocation binding overhead from candidate computation in clean AB/BA workers, ruling the wrapper in or out of the step regression. nccl_tuning is selected because kernel entry names alone do not identify the protocol: actual algorithm/protocol/channel decisions at the observed sizes and dtype determine whether a genuine transport-side reduction of the communication objective remains available rather than only wait rearrangement; it does not join payload sizes to operator groups or supply timing. torch already ran and supplied the objective field in evaluation.json; device_telemetry (device-wide readings with native windows, not per-collective bytes), collective_calibration (synthetic reference experiment), python_runtime (perturbing host profiling whose inclusive/self times are not clean scores), and candidate_diagnostics (route/coverage telemetry already present in evaluation.json) were not selected. No optimization action is prescribed by this plan; it only resolves the observed uncertainty for subsequent search decisions.",
+    "revision": "03c5e5abcdf4f4cf519e4e909e2b48a3d8e54414dd924a31dabd04f5f3878fbb"
+  },
+  "agent": {
+    "role": "collection-planner",
+    "session": "ses_ea25d37d5ffedBmJmwuHGnrPyf",
+    "message": "msg_15da604c2001hl4VbPUY8IITjz",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 15,
+      "reported_cost": 0.30265992808,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 643432.0,
+        "input": 68348.0,
+        "output": 3026.0,
+        "reasoning": 9626.0,
+        "cache.read": 562432.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_ea25d37d5ffedBmJmwuHGnrPyf",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication/sandboxes/collection-planner-a3ed76722672",
+    "outputs": [
+      "collection.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh/ddp-communication/generation-snapshots/generation-62257ce9b6dc.json"
+    ]
+  }
+}

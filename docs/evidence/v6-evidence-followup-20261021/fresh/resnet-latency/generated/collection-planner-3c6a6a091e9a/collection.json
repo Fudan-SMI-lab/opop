@@ -1,0 +1,30 @@
+{
+  "collectors": [
+    "nsys",
+    "execution_timeline",
+    "python_runtime",
+    "candidate_diagnostics"
+  ],
+  "requested_fields": [
+    "nsys.cuda_graph_capture_events",
+    "nsys.cuda_graph_replay_events",
+    "nsys.device_timeline_kernel_gaps",
+    "nsys.kernel_attribution_for_call_f2cf62caf57ad09f5d2f36aa",
+    "execution_timeline.cpu_submit_to_cuda_association",
+    "execution_timeline.synchronization_boundaries",
+    "execution_timeline.per_device_intervals",
+    "python_runtime.host_self_time_hotspots",
+    "candidate_diagnostics.route_corroboration_or_exception_evidence",
+    "candidate_diagnostics.per_invocation_route_stability"
+  ],
+  "unavailable_fields": {
+    "nccl_algorithm_protocol_channels": "Single-device task: observations.json capability 'communication' is not_applicable and request.json has distributed_backend null, so no NCCL collectives exist whose algorithm/protocol/channel decisions could be sampled; nccl_tuning not requested.",
+    "collective_payload_bytes": "No distributed backend and no collectives on this single GPU; there is no operator-group/payload matching subject, so collective_calibration is not applicable.",
+    "pcie_nvlink_per_collective_bytes": "No collectives occur, and device_telemetry only samples device-wide NVML rates in native windows; per-collective transfer bytes must not be derived from logical payload or memcpy sizes, so this dimension stays unknown.",
+    "gradient_bucket_membership": "Workload is inference-only under torch.inference_mode(); coverage.json reports 0 autograd ranges and 0 backward-associated kernels, so no gradient storage or DDP buckets exist to link.",
+    "binding_overhead_ab": "evaluation.json setup shows binding effective 'direct' with reason 'no functional replacements' and functional_sites null; nothing is bound for a binding-only passthrough to measure, and binding_cost omits candidate build/computation, which is where the suspected cost lies.",
+    "gpu_readiness_and_consumer_completion_bounds": "execution_timeline reports clock alignment bounds for CPU submissions only; GPU readiness and consumer completion may remain unknown, so these bounds are retained as unknown."
+  },
+  "rationale": "The sole listed candidate (revision e0fb01a2..., bundle trial-recovered-092753e6bc-param-5ce7e029) passes quality but regresses latency_ms to 22.376 vs parent 3.399 (~6.6x) with decision reasons paired_gain_not_above_noise and objective_not_improved, 0 framework fallbacks, and binding effective 'direct' (no functional replacements). The remaining uncertainty is inside candidate execution: coverage reports three candidate-declared routes for the same call f2cf62caf57ad09f5d2f36aa (captured, cuda_graph_replay, eager_fused_v3) across only 2 candidate invocations, which is unstable and, per evaluation.json's own interpretation, candidate-reported telemetry that needs native corroboration. nsys (available at the request.json path) resolves graph-tracing/attribution: whether capture/replay events actually occur on the device, which kernels run per route, and device busy/idle gaps within the ~22 ms window. execution_timeline attributes the extra wall time between host CPU-to-CUDA submission, synchronization boundaries, and per-device intervals on a clean plain Torch trace. python_runtime tests the distinct hypothesis that the ~19 ms delta is host-side per-invocation work (e.g., repeated capture/build or dispatch cost), using its warmed cProfile as relative host attribution only, not clean performance scores. candidate_diagnostics gathers candidate-side route/exception evidence and per-invocation route stability on this exact revision. torch already ran (coverage.json: 59/59 kernels associated below_project, 0 unassociated, 0 ambiguous), so it is not re-requested. nccl_tuning, collective_calibration and device_telemetry are excluded because the task is single-device with no communication and telemetry adds no per-call attribution beyond the nsys device timeline; binding_cost is excluded because nothing is functionally bound and it omits the candidate computation under suspicion.",
+  "revision": "e0fb01a27ac0ee01bf2c13b1539c833117a47a7da52cafc38a2798d44a77d7a4"
+}

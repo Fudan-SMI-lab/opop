@@ -1,0 +1,186 @@
+{
+  "runs": [
+    {
+      "case": "resnet-latency",
+      "scope": "Developer native-path check of the exact full final version staged by independent validation. Separate intrusive profiling; no generation, candidate edits or publication. Timing from this trace is not optimization performance.",
+      "status": "observed",
+      "revision": "dbffe5d6ec1aa52d9f35fd7b9a82c4a6f86b8e256c45fac9d5781ea6a25a3aaf",
+      "bundles": [
+        "trial-a9f72afa23-param-f2e37a0c"
+      ],
+      "raw": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh-independent/resnet-latency/final-native.json",
+      "raw_sha256": "1698ffc5bdbd952303a6281176c9b1ef4526b8dfabb172b36b81bd04e3e8c62f",
+      "provenance": {
+        "revision": "dbffe5d6ec1aa52d9f35fd7b9a82c4a6f86b8e256c45fac9d5781ea6a25a3aaf",
+        "parent_revision": "4a7124148172adc318e1e8202fd93e399e4bbd89e0bd7645ad5817265c927c2a",
+        "bundles": [
+          "trial-a9f72afa23-param-f2e37a0c"
+        ],
+        "plan": "sha256:08c20bb922ebf2b0963fd1e8deb82604634b4220c086b00da3994d04ad3b28d0",
+        "registry": "sha256:496aa8f93d7bfddd51e734832328460c168497df52c62243f3df371a41c64c82",
+        "request_sha256": "1eae078cebdf9f18079e3c393ff0f0db7db6e5f91fccd062e1ad4a90d4fc1135",
+        "objective": {
+          "name": "latency_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "offline",
+          "batch": 32,
+          "goals": [
+            {
+              "id": "throughput",
+              "metric": "images_per_second",
+              "direction": "max"
+            },
+            {
+              "id": "memory",
+              "metric": "peak_allocated_bytes",
+              "direction": "min",
+              "constraints": {
+                "images_per_second_min_baseline_ratio": 0.95
+              }
+            }
+          ]
+        },
+        "devices": [
+          "GPU-4bead555-f80c-df43-5a46-daa7a0ec80b2"
+        ],
+        "framework_source": {
+          "sha256": "6346dc694f9d74c23c60f1c75d035a6c602946ac53ba5b2a3c84a68e8df477ba",
+          "files": 162,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "status": "observed",
+          "sqlite": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh-independent/resnet-latency/jobs/nsys-374c3dcc55/run/nsys-rank-0.sqlite",
+          "sha256": "8a74c2c93bc5c30fa5b484ccfb92ef436d1db0ef8f1be1fe2183a934611a31f0",
+          "graph_launch_apis": {
+            "cudaGraphLaunch_v10000": 1
+          },
+          "kernels": 59,
+          "graph_node_kernels": 59,
+          "nccl_kernels": 0,
+          "selected_kernels": [
+            {
+              "name": "_add_bias_relu",
+              "graph_node": true,
+              "count": 8
+            },
+            {
+              "name": "_bias_relu",
+              "graph_node": true,
+              "count": 8
+            },
+            {
+              "name": "_bias_relu_pool3x3s2p1",
+              "graph_node": true,
+              "count": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "qwen-ttft",
+      "scope": "Developer native-path check of the exact full final version staged by independent validation. Separate intrusive profiling; no generation, candidate edits or publication. Timing from this trace is not optimization performance.",
+      "status": "observed",
+      "revision": "49a3c3cd6e6b73366acf103b1e8de4eb3d5aca46b2561fd9b74c94094911faf0",
+      "bundles": [
+        "trial-fc57bca7b9-param-f71a7c8a"
+      ],
+      "raw": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh-independent/qwen-ttft/final-native.json",
+      "raw_sha256": "c8b260debb66ba18de65b96618da0e6e7df6e98f58013ac10d0b984f6d679125",
+      "provenance": {
+        "revision": "49a3c3cd6e6b73366acf103b1e8de4eb3d5aca46b2561fd9b74c94094911faf0",
+        "parent_revision": "b73b061a7efaffd2213d5bed7d0df3febac624db82fdf680860adfe1c5008383",
+        "bundles": [
+          "trial-fc57bca7b9-param-f71a7c8a"
+        ],
+        "plan": "sha256:c536d208ac1421d5f9351500cce63e7b4e10fe9fedca324f948dc5bbdfb6519e",
+        "registry": "sha256:73fd2c24a8b761f778dcd2fa2a0ec7e037e475cebf1ae50323ba79542afa7870",
+        "request_sha256": "fcaf9ce9db3c9996891f0290f6c88d400c21c24ea9c94fca476cf8210b61c52c",
+        "objective": {
+          "name": "ttft_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": []
+        },
+        "workload": {
+          "id": "interactive",
+          "batch": 1,
+          "prompt_tokens": 256,
+          "new_tokens": 32,
+          "goals": [
+            {
+              "id": "ttft",
+              "metric": "ttft_ms",
+              "direction": "min"
+            },
+            {
+              "id": "decode",
+              "metric": "decode_tokens_per_second",
+              "direction": "max"
+            }
+          ]
+        },
+        "devices": [
+          "GPU-69c59246-e383-f1f1-1f46-5e2dfebb858d"
+        ],
+        "framework_source": {
+          "sha256": "6346dc694f9d74c23c60f1c75d035a6c602946ac53ba5b2a3c84a68e8df477ba",
+          "files": 162,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "status": "observed",
+          "sqlite": "/root/autodl-tmp/dev/v6-work/evidence-followup-20261021/fresh-independent/qwen-ttft/jobs/nsys-3d14536a64/run/nsys-rank-0.sqlite",
+          "sha256": "fd6004142ec74e1b7dc7966f9156a1ca4df46500bfbc8bcbf0bc5e0255d9ec34",
+          "graph_launch_apis": {},
+          "kernels": 66441,
+          "graph_node_kernels": 0,
+          "nccl_kernels": 0,
+          "selected_kernels": [
+            {
+              "name": "void pytorch_flash::flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<(int)128, (int)64, (int)128, (int)4, (bool)0, (bool)0, cutlass::bfloat16_t, Flash_kernel_traits<(int)128, (int)64, (int)128, (int)4, cutlass::bfloat16_t>>, (int)4, (int)1, (bool)1>(pytorch_flash::Flash_fwd_params)",
+              "graph_node": false,
+              "count": 36
+            },
+            {
+              "name": "void pytorch_flash::flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<(int)128, (int)64, (int)128, (int)4, (bool)0, (bool)0, cutlass::bfloat16_t, Flash_kernel_traits<(int)128, (int)64, (int)128, (int)4, cutlass::bfloat16_t>>, (int)4, (int)2, (bool)1>(pytorch_flash::Flash_fwd_params)",
+              "graph_node": false,
+              "count": 1116
+            },
+            {
+              "name": "void pytorch_flash::flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<(int)128, (int)64, (int)128, (int)4, (bool)0, (bool)0, cutlass::bfloat16_t, Flash_kernel_traits<(int)128, (int)64, (int)128, (int)4, cutlass::bfloat16_t>>, (bool)0, (bool)0, (bool)0, (bool)0, (bool)1, (bool)0, (bool)1, (bool)0>(pytorch_flash::Flash_fwd_params)",
+              "graph_node": false,
+              "count": 1116
+            },
+            {
+              "name": "void pytorch_flash::flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<(int)128, (int)64, (int)128, (int)4, (bool)0, (bool)0, cutlass::bfloat16_t, Flash_kernel_traits<(int)128, (int)64, (int)128, (int)4, cutlass::bfloat16_t>>, (bool)1, (bool)0, (bool)0, (bool)1, (bool)1, (bool)0, (bool)1, (bool)0>(pytorch_flash::Flash_fwd_params)",
+              "graph_node": false,
+              "count": 36
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "ddp-communication",
+      "scope": "Developer native-path check of the exact full final version staged by independent validation. Separate intrusive profiling; no generation, candidate edits or publication. Timing from this trace is not optimization performance.",
+      "status": "skipped",
+      "reason": "No quality-passing complete candidate in the independent result",
+      "independent_status": "no_accepted_candidate",
+      "independent_error": null
+    }
+  ]
+}

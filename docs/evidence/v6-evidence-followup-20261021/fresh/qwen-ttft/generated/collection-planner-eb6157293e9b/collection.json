@@ -1,0 +1,23 @@
+{
+  "collectors": [
+    "candidate_diagnostics",
+    "nsys"
+  ],
+  "requested_fields": [
+    "candidate.declared_route_corroboration",
+    "candidate.setup_failure_exception_evidence",
+    "candidate.binding_functional_replacement_inventory",
+    "candidate.fused_rms_norm_kernel_evidence",
+    "candidate.prefill_interval_kernel_attribution"
+  ],
+  "unavailable_fields": {
+    "nccl_tuning.algorithm_protocol_channel_decisions": "Single-device task on one leased RTX 4090; no distributed backend and no NCCL collectives (observations.json communication capability: not_applicable, reason 'single-device task').",
+    "collective_calibration.synthetic_allreduce_reference": "No collectives exist in this inference workload; there are no observed sizes/dtypes to calibrate against.",
+    "per_collective.pcie_or_nvlink_bytes": "No collectives and inputs are GPU-resident before timing; device_telemetry only provides device-wide NVML rates with native windows, so per-operation bytes are unobtainable. No traffic inferred from logical payload or memcpy sizes.",
+    "binding_cost.parent_vs_binding_passthrough": "Binding summary for this candidate reports effective 'direct' with reason 'no functional replacements' (functional_sites null), and the recovered bundle's fused-rms-norm routes replace parent operations rather than add an additive binding; there is no functional binding overhead to isolate in AB/BA workers.",
+    "candidate.clean_ttft_ms": "Parameter screening returned no_valid_parameter_candidate with empty rank metrics and quality_and_coverage_valid false; no clean candidate ttft_ms measurement currently exists for this revision.",
+    "first_token.gpu_ready_time": "Available timeline tooling reports clock alignment bounds for CPU submissions only; GPU readiness at the first-token boundary may remain unknown, so this dimension is retained as unknown."
+  },
+  "rationale": "Torch already ran (66441/66441 kernels associated on the parent discovery), and the task is single-GPU with no communication, so nccl_tuning, collective_calibration and per-collective telemetry dimensions are not applicable. The observed uncertainty is candidate-side: evaluation.json's interpretation states the route labels are candidate-reported telemetry, not native proof. Specifically, (1) trial-recovered-19ccfe875f declares 728 fused-rms-norm / fused-rms-norm-gated route invocations across many call sites while the binding summary simultaneously reports effective 'direct' binding with reason 'no functional replacements' and functional_sites null, a direct contradiction over whether any replacement actually took effect; (2) trial-fc57bca7b9 declares 2 invocations of call 2441f10600ba127de5cb753c as 'parent-fallback:setup-failure:flash-dispatch-refused' plus 62 parent-delegate calls, with no independent exception evidence; (3) the candidate produced no valid clean measurement (quality_and_coverage_valid false, empty metrics, no_valid_parameter_candidate). candidate_diagnostics runs on this exact candidate and can verify declared routes against observed behavior, capture the actual setup-failure/flash-dispatch exception evidence, and inventory why the legacy binding found no functional replacements. nsys runs separately on the same candidate to corroborate kernel entries (fused RMSNorm kernels vs parent rms-norm kernels, and the fallback path's kernels) and attribute kernels to the prefill-to-first-token interval, addressing the route-attribution question the torch parent trace cannot answer for this revision. execution_timeline is not selected because the torch trace already provides submit association and its CPU-submission clock bounds do not resolve route validity; python_runtime is not selected because the binding is effectively direct (no dispatch/binding cost question) and it perturbs execution; device_telemetry is not selected because device-wide utilization/PCIe readings cannot resolve route or attribution questions for this GPU-resident workload. Revision is set to the single listed candidate revision.",
+  "revision": "f5a797fab6e3796855819951a220124f9d6305b3152f9de9304b60b3a17d4030"
+}
