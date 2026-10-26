@@ -1,0 +1,192 @@
+{
+  "at": "2026-10-26T21:15:11.300364+00:00",
+  "results": {
+    "qwen": {
+      "status": "completed",
+      "output": "/root/autodl-tmp/dev/v6-work/next-stage-20261027/qwen-independent",
+      "decision": {
+        "state": "evaluated",
+        "kind": "complete_version",
+        "revision": "d627f6975b641d21fabb6ec2dc0424f678e0c34f2abd25e2818ea48b4d1b77c5",
+        "parent": "b73b061a7efaffd2213d5bed7d0df3febac624db82fdf680860adfe1c5008383",
+        "accepted": false,
+        "reasons": [
+          "paired_gain_not_above_noise"
+        ],
+        "report_ref": "sha256:a518bce3e0cd894f31f199de7696c110c241fe1152c9cf58dcdad0cf861f0b8a"
+      },
+      "measurement": {
+        "valid": true,
+        "objective": 26.4230605,
+        "reference": 24.5090595,
+        "parent_values": [
+          25.043118,
+          23.975001
+        ],
+        "candidate_values": [
+          28.567981,
+          24.27814
+        ],
+        "paired_gains": [
+          -3.524863,
+          -0.3031390000000016
+        ],
+        "noise_bounds": [
+          2.859008000000003,
+          0.1895719999999983
+        ],
+        "constraints": [],
+        "reasons": [
+          "paired_gain_not_above_noise"
+        ],
+        "framework_source": "2b16ff1eb0c8ed5774f2116818a5ea391c73ff1a0668c46a7f87253dd384f64b",
+        "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+      },
+      "quality": "pass",
+      "coverage_errors": []
+    },
+    "ddp_source_fidelity": {
+      "status": "passed",
+      "run": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 18.582474667578936,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 55662,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 55662,
+              "status": "verified",
+              "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 32,
+                "unavailable_samples": 0,
+                "wait_s": 0.057885944843292236,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "2b16ff1eb0c8ed5774f2116818a5ea391c73ff1a0668c46a7f87253dd384f64b",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "rank": 0,
+                  "step": 0,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 7.450580596923828e-09
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "rank": 1,
+                  "step": 0,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 7.450580596923828e-09
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "step": 0,
+                  "global_loss": {
+                    "passed": true,
+                    "compared_elements": 1,
+                    "max_abs_error": 4.76837158203125e-07
+                  }
+                },
+                {
+                  "rank": 0,
+                  "step": 1,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 6.798654794692993e-08
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "rank": 1,
+                  "step": 1,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 6.798654794692993e-08
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "step": 1,
+                  "global_loss": {
+                    "passed": true,
+                    "compared_elements": 1,
+                    "max_abs_error": 0.0
+                  }
+                }
+              ],
+              "method": "original source accumulates the exact global batch serially, for two continuous optimizer updates",
+              "exact_replica_gradients": [
+                {
+                  "step": 0,
+                  "passed": true,
+                  "compared_elements": 124439808,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "step": 1,
+                  "passed": true,
+                  "compared_elements": 124439808,
+                  "max_abs_error": 0.0
+                }
+              ]
+            }
+          }
+        ],
+        "lease_wait_s": 0.00018583238124847412,
+        "device_selectors": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+        ],
+        "entry_sha256": "1f62e334fce7958dfc2f6d92851dc0dd1c6008f85313a4207566c4c887151fda",
+        "devices": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+        ],
+        "worker_pids_reaped": true
+      }
+    }
+  }
+}
