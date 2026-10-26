@@ -39,6 +39,14 @@ T−P 的四个相邻对照差分别为 **1.562209 / 1.021143 / 1.192062 / 0.558
 
 ## DDP 新合同原入口
 
-Qwen 所有 clean 与侵入式诊断结束后，控制器已启动 DDP 三轮自主流程。使用当前源项目、原启动命令和通信目标，没有提供现成 adapter、算子组或人工修复诊断。真实 intake Agent 已完成，evaluator Agent 正在运行。
+Qwen 所有 clean 与侵入式诊断结束后，控制器已启动 DDP 三轮自主流程。使用当前源项目、原启动命令和通信目标，没有提供现成 adapter、算子组或人工修复诊断。真实 intake、evaluator、执行发现和采集规划均已完成；首次 evaluator 输出存在 workload 字段不一致，框架通过原会话自动修复，未人工编辑。
+
+新合同将 bucket 大小、DDP 构造参数和 no_sync 策略描述为基线实现选择，允许保持任务语义的替代实现。它仍将 `foreach=False` 放入 optimizer 不变量；这一项是否不必要地限制实现，需要继续审计，不能声称合同问题已全部解决。
+
+双 rank controls 均通过。每个连续步骤完整观察 248,879,617 个元素（梯度、更新参数与 loss），reset/identity 最大绝对误差为 0。独立原源码串行 global-batch 和精确副本比较排在自主批次结束后，当前 controls 通过本身不证明原项目一致性。
+
+selection 已自主选择覆盖 13 次梯度 all-reduce 的两个组作为 joint 范围，依据实际 timeline、NCCL tuning 与校准证据提出通信协议优化假设，首轮 candidate 生成中。这是 Agent 的待检验假设，当前没有有效通信加速结论。
+
+独立审计发现源项目与框架对多 rank 样本的聚合顺序不同。已增加保持旧默认的可选字段，并完成只改 schema 的真实 intake 对照；详见[聚合顺序修正与尚待审计的质量条件](v6-metric-aggregation-order-20261027.md)。这些改动没有进入本批冻结流程，不能将本批结果描述为已包含该修正。
 
 本节随后记录新合同、adapter 一致性和每轮实际结果；当前不预判优化成功。原始启动记录见[DDP 协议](evidence/v6-next-stage-20261027/ddp-protocol.json)。

@@ -4,11 +4,13 @@
 def objective_reference(run, objective):
     from kernel_optimizer.project.measurement import metric
     reducer = objective.get("rank_aggregation", "max" if objective["direction"] == "minimize" else "min")
+    order = objective.get("aggregation_order", "samples_then_ranks")
     result = {"metric": objective["name"], "unit": objective["unit"], "rank_aggregation": reducer,
-              "scope": "Original reference objective reduced from the per-rank metrics above using the frozen request; "
+              "aggregation_order": order,
+              "scope": "Original reference objective reduced using the frozen request's rank and sample order; "
                        "not a paired improvement or candidate score."}
     try:
-        result["value"] = metric(run, objective["name"], reducer)
+        result["value"] = metric(run, objective["name"], reducer, order)
     except (KeyError, TypeError, ValueError):
         result.update(value=None, reason="Original reference objective unavailable")
     return result

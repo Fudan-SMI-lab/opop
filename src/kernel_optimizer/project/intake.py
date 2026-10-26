@@ -19,6 +19,15 @@ from kernel_optimizer.store.run_store import RunStore
 from kernel_optimizer.wiring import Runtime
 
 
+AggregationOrder = Literal["samples_then_ranks", "ranks_then_samples"]
+AGGREGATION_ORDER_DESCRIPTION = (
+    "Preserve the source's order of rank and repetition reduction. samples_then_ranks (legacy default) "
+    "reduces rank-local endpoint medians; ranks_then_samples first applies rank_aggregation to each "
+    "aligned distributed invocation, then takes the median of those values. Select the latter only "
+    "when the source defines aligned rank samples, including for performance constraints."
+)
+
+
 class ConstraintDescription(BaseModel):
     model_config = ConfigDict(extra="forbid")
     metric: str
@@ -26,6 +35,7 @@ class ConstraintDescription(BaseModel):
     baseline_ratio: float | None = None
     threshold: float | None = None
     rank_aggregation: Literal["max", "min", "sum", "mean"] | None = None
+    aggregation_order: AggregationOrder | None = Field(default=None, description=AGGREGATION_ORDER_DESCRIPTION)
 
     @model_validator(mode="after")
     def limit(self):
@@ -42,6 +52,7 @@ class ObjectiveDescription(BaseModel):
     constraints: list[ConstraintDescription] = Field(default_factory=list)
     source: dict[str, Any] | None = Field(default=None, description="Optional diagnostic collector and field")
     rank_aggregation: Literal["max", "min", "sum", "mean"] | None = None
+    aggregation_order: AggregationOrder | None = Field(default=None, description=AGGREGATION_ORDER_DESCRIPTION)
 
     @model_validator(mode="after")
     def metric_name(self):

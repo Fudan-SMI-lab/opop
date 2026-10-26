@@ -1,0 +1,97 @@
+{
+  "schema_version": "project-request.v1",
+  "source_root": "/root/autodl-tmp/dev/v6-work/next-stage-20261027/ddp-raw.intake/source",
+  "entry": "gpt2_ddp_training.py",
+  "files": [
+    "gpt2_ddp_training.py",
+    "common.py",
+    "workloads.json",
+    "README.md"
+  ],
+  "goal": "Reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks.",
+  "objective": {
+    "name": "communication_kernel_sum_ms",
+    "unit": "ms",
+    "direction": "minimize",
+    "constraints": [
+      {
+        "metric": "step_ms",
+        "op": "le",
+        "baseline_ratio": 1.05,
+        "rank_aggregation": "max"
+      }
+    ],
+    "source": {
+      "collector": "torch_communication",
+      "field": "communication_kernel_sum_ms"
+    },
+    "rank_aggregation": "max"
+  },
+  "workload": {
+    "id": "accumulated_step",
+    "world_size": 2,
+    "micro_batch": 1,
+    "sequence_length": 128,
+    "accumulation_steps": 4,
+    "goals": [
+      {
+        "id": "step",
+        "metric": "step_ms",
+        "direction": "min"
+      },
+      {
+        "id": "communication",
+        "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+        "direction": "min",
+        "constraints": {
+          "step_ms_max_baseline_ratio": 1.05
+        }
+      }
+    ]
+  },
+  "quality": {
+    "atol": 1e-06,
+    "rtol": 0.0001,
+    "grad_atol": 1e-06,
+    "grad_rtol": 0.0001,
+    "parameter_atol": 1e-06,
+    "parameter_rtol": 0.0001
+  },
+  "assets": {},
+  "devices": [
+    "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+    "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+  ],
+  "distributed_backend": "nccl",
+  "communication": "required",
+  "required_observations": [
+    "communication_kernel_sum_ms"
+  ],
+  "tools": {
+    "ncu": "/usr/local/cuda/bin/ncu",
+    "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+  },
+  "profiling": {
+    "agent_plan": true,
+    "feedback_agent_plan": true
+  },
+  "binding_backend": "legacy",
+  "measurement_lifetime": "invocation",
+  "warmup": 2,
+  "repeats": 5,
+  "continuous_steps": 2,
+  "worker_timeout_s": 900.0,
+  "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+  "notes": [
+    "Command provenance (intent.json): torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp --profile",
+    "Selected objective is the communication diagnostic goal (workloads.json gpt2_ddp_training.workloads[0].goals[1], metric diagnostic.max_rank_nccl_kernel_sum_ms). Source definition (gpt2_ddp_training.py:156-157): per profiled run take the max across ranks of that rank's summed NCCL kernel durations (common.py:87-105 profile_once), then the median of 3 separately profiled runs. It includes device waiting; it is not wire time, critical-path time or exposed communication (workloads.json communication_metric_caveat). It maps to the installed collector torch_communication.communication_kernel_sum_ms with rank_aggregation=max; the 3-repeat median belongs to the diagnostic collection protocol, which is profiled separately from clean step timing.",
+    "Constraint from the same goal: step_ms_max_baseline_ratio 1.05 becomes step_ms <= 1.05x baseline. step_ms is the max across ranks of one full accumulated step's local wall time (gpt2_ddp_training.py:116-119, 148-152); Gloo control-group barriers are outside the timed region. This is full-request step time, not cached-only or communication-only time.",
+    "Step semantics preserved: FP32 with TF32 disabled and float32 matmul precision 'highest' (common.py configure), SGD lr=0.001 momentum=0 weight_decay=0 foreach=False, effective batch = 2 ranks x 1 x 4 = 8, 1024 tokens per step, dropout disabled, eager attention, DDP(broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True), no_sync() on the first 3 of 4 microbatches (baseline already avoids extra gradient syncs).",
+    "Exact/discrete comparisons required (not tolerance-based): every parameter gradient must be identical across ranks via torch.testing.assert_close with atol=0.0 and rtol=0.0 (exact_gradient_replica_check, gpt2_ddp_training.py:81-86); the negative control must reject +1-corrupted gradients; the training loss must be finite.",
+    "Quality is reference fidelity only: full gradients compared against a serial single-GPU accumulation of the exact same global batch (rank 0), plus post-step parameter comparison; no downstream accuracy or convergence claim (README, workloads.json quality_scope).",
+    "Harness vs work: warmup(2)/repeats(5) statistics, reference construction, gradient/parameter checks, exact replica broadcast, negative control, the extra inventory comm-hook run, the 3 profiled diagnostic runs and report writing surround the single-step invocation and are not repeated inside it.",
+    "No external assets: weights are a deterministic synthetic init (torch.manual_seed(20261020), make_model) and token IDs are seeded synthetic fixtures (make_inputs, gpt2_ddp_training.py:24-33); the entry never reads --assets, so assets is empty.",
+    "device_count=2 matches world_size=2, the torchrun --nproc_per_node=2 launch and the two leased RTX 4090 GPUs in deployment.json; the worker binds ranks/devices and initializes process groups (nccl for gradients; the gloo control group is the project's own timing infrastructure).",
+    "One measured invocation: One accumulated training step (step() at gpt2_ddp_training.py:102-105), with model state first restored to the initial seeded weights (reset() at gpt2_ddp_training.py:99-100): optimizer.zero_grad(set_to_none=True); 4 microbatches (micro_batch=1, sequence_length=128) of FP32 GPT-2 forward+backward under DDP with no_sync() on the first 3 microbatches and gradient all-reduce on the last (accumulate(), gpt2_ddp_training.py:36-45); optimizer.step(); torch.cuda.synchronize(). The 4 accumulation iterations are genuine internal workload work. The rank-0 serial global-batch reference, gradient/parameter correctness checks, exact replica broadcast, negative control, the separate bucket-inventory comm-hook run, the 3 profiled diagnostic runs and JSON report writing are measurement infrastructure, not part of the repeated invocation."
+  ]
+}

@@ -30,6 +30,9 @@ class ProjectTaskEvaluator:
         reducer = objective.get("rank_aggregation", "max" if objective["direction"] == "minimize" else "min")
         metrics = {name: metric(run, name, "max" if name.startswith("framework.") and name.endswith("_bytes") else reducer)
                    for name in run["ranks"][0]["result"]["metrics"]} if valid else {}
+        if valid:
+            metrics[objective["name"]] = metric(run, objective["name"], reducer,
+                objective.get("aggregation_order", "samples_then_ranks"))
         constraints = constraints_for_runs([run], objective, self.coordinator.prepared["evaluation"]) if valid else []
         feasible = valid and all(row["passed"] for row in constraints)
         from kernel_optimizer.project.candidate_diagnostics import reference_sites, should_trace

@@ -1,0 +1,356 @@
+{
+  "$defs": {
+    "ConstraintDescription": {
+      "additionalProperties": false,
+      "properties": {
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "op": {
+          "enum": [
+            "le",
+            "lt",
+            "ge",
+            "gt",
+            "eq"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "baseline_ratio": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baseline Ratio"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threshold"
+        },
+        "rank_aggregation": {
+          "anyOf": [
+            {
+              "enum": [
+                "max",
+                "min",
+                "sum",
+                "mean"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rank Aggregation"
+        },
+        "aggregation_order": {
+          "anyOf": [
+            {
+              "enum": [
+                "samples_then_ranks",
+                "ranks_then_samples"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Preserve the source's order of rank and repetition reduction. samples_then_ranks (legacy default) reduces rank-local endpoint medians; ranks_then_samples first applies rank_aggregation to each aligned distributed invocation, then takes the median of those values. Select the latter only when the source defines aligned rank samples, including for performance constraints.",
+          "title": "Aggregation Order"
+        }
+      },
+      "required": [
+        "metric",
+        "op"
+      ],
+      "title": "ConstraintDescription",
+      "type": "object"
+    },
+    "Description": {
+      "additionalProperties": false,
+      "properties": {
+        "entry": {
+          "title": "Entry",
+          "type": "string"
+        },
+        "files": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Files",
+          "type": "array"
+        },
+        "invocation": {
+          "description": "One complete unit of project work, excluding the benchmark harness's statistical repetitions and quality checks",
+          "minLength": 1,
+          "title": "Invocation",
+          "type": "string"
+        },
+        "objective": {
+          "$ref": "#/$defs/ObjectiveDescription"
+        },
+        "workload": {
+          "additionalProperties": true,
+          "title": "Workload",
+          "type": "object"
+        },
+        "quality": {
+          "$ref": "#/$defs/QualityDescription"
+        },
+        "warmup": {
+          "default": 2,
+          "minimum": 0,
+          "title": "Warmup",
+          "type": "integer"
+        },
+        "repeats": {
+          "default": 5,
+          "minimum": 3,
+          "title": "Repeats",
+          "type": "integer"
+        },
+        "assets": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Assets",
+          "type": "object"
+        },
+        "device_count": {
+          "minimum": 0,
+          "title": "Device Count",
+          "type": "integer"
+        },
+        "distributed_backend": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Distributed Backend"
+        },
+        "communication": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "off",
+            "required"
+          ],
+          "title": "Communication",
+          "type": "string"
+        },
+        "required_observations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Observations",
+          "type": "array"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "entry",
+        "files",
+        "invocation",
+        "objective",
+        "workload",
+        "quality",
+        "device_count"
+      ],
+      "title": "Description",
+      "type": "object"
+    },
+    "ObjectiveDescription": {
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "description": "Exact evaluator metric key, not a descriptive task title",
+          "title": "Name",
+          "type": "string"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "direction": {
+          "enum": [
+            "minimize",
+            "maximize"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "constraints": {
+          "items": {
+            "$ref": "#/$defs/ConstraintDescription"
+          },
+          "title": "Constraints",
+          "type": "array"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional diagnostic collector and field",
+          "title": "Source"
+        },
+        "rank_aggregation": {
+          "anyOf": [
+            {
+              "enum": [
+                "max",
+                "min",
+                "sum",
+                "mean"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rank Aggregation"
+        },
+        "aggregation_order": {
+          "anyOf": [
+            {
+              "enum": [
+                "samples_then_ranks",
+                "ranks_then_samples"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Preserve the source's order of rank and repetition reduction. samples_then_ranks (legacy default) reduces rank-local endpoint medians; ranks_then_samples first applies rank_aggregation to each aligned distributed invocation, then takes the median of those values. Select the latter only when the source defines aligned rank samples, including for performance constraints.",
+          "title": "Aggregation Order"
+        }
+      },
+      "required": [
+        "name",
+        "unit",
+        "direction"
+      ],
+      "title": "ObjectiveDescription",
+      "type": "object"
+    },
+    "QualityDescription": {
+      "additionalProperties": true,
+      "properties": {
+        "atol": {
+          "description": "Source-grounded absolute tolerance used by the fixed tensor comparator; zero for exact comparison",
+          "minimum": 0,
+          "title": "Atol",
+          "type": "number"
+        },
+        "rtol": {
+          "description": "Source-grounded relative tolerance used by the fixed tensor comparator",
+          "minimum": 0,
+          "title": "Rtol",
+          "type": "number"
+        }
+      },
+      "required": [
+        "atol",
+        "rtol"
+      ],
+      "title": "QualityDescription",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "enum": [
+        "ready",
+        "needs_input"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Description"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "evidence": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Evidence",
+      "type": "object"
+    },
+    "assumptions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Assumptions",
+      "type": "array"
+    },
+    "questions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Questions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "status",
+    "description",
+    "evidence",
+    "assumptions",
+    "questions"
+  ],
+  "title": "IntakeProposal",
+  "type": "object"
+}

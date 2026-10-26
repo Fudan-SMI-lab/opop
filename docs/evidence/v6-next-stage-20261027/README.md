@@ -10,4 +10,8 @@
 - `qwen-fixed/native-summary.json`：精确完整版本的原生 kernel 核验与 SQLite 哈希。
 - `qwen-summary.json`：由原记录导出的紧凑摘要；保留该实验是开发者固定候选诊断的身份。
 - `ddp-protocol.json`：独立的三轮原项目入口自主实验协议，结果在后续更新。
+- `ddp-raw/request.json`、`prepared.json`、`agents/`：冻结请求、双 rank controls，以及当前已完成的 evaluator/selection 输出；不能据此宣称三轮搜索完成。
+- `followup-protocol.json`：自主批次之后的 Qwen 标准独立 AB/BA 和 DDP 原源码一致性检查。
+- `metric-order-audit.json`、`metric-order-tests.json`：原始源定义差异及 22 项受影响检查。
+- `metric-order-ab/`：独立真实 intake 对照；`input-comparison.json` 确认 prompt、源码、模型、工具设置一致，仅 schema 文件不同；原输入和生成结果均保留。
 - `manifest.json`：原始导出文件路径、大小与 SHA-256。模型、完整参考张量、私有 provider 配置和大原生 trace 留在服务器。

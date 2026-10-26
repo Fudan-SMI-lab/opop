@@ -9,7 +9,28 @@ def valid_run(run):
     return run["status"] == "passed" and bool(run["ranks"]) and all(r.get("result", {}).get("valid", False) for r in run["ranks"])
 
 
-def metric(run, name, reducer="max"):
+def sample_series(run, name, reducer="max", aggregation_order="samples_then_ranks"):
+    """Retain rank-local series, or reduce aligned distributed invocations first."""
+    series = []
+    for rank in run["ranks"]:
+        result = rank["result"]
+        values = result.get("metric_samples", {}).get(name)
+        if values is None:
+            values = [sample[name] for sample in result["samples"]]
+        series.append(values)
+    if aggregation_order == "samples_then_ranks":
+        return series
+    if aggregation_order != "ranks_then_samples":
+        raise ValueError(f"unknown metric aggregation order: {aggregation_order}")
+    if not series or not series[0] or any(len(values) != len(series[0]) for values in series):
+        raise ValueError("ranks_then_samples requires equally sized, nonempty aligned rank samples")
+    operation = {"max": max, "min": min, "sum": sum, "mean": statistics.mean}[reducer]
+    return [[float(operation(values)) for values in zip(*series, strict=True)]]
+
+
+def metric(run, name, reducer="max", aggregation_order="samples_then_ranks"):
+    if aggregation_order != "samples_then_ranks":
+        return float(statistics.median(sample_series(run, name, reducer, aggregation_order)[0]))
     values = [r["result"]["metrics"][name] for r in run["ranks"]]
     reducers = {"max": max, "min": min, "sum": sum, "mean": statistics.mean}
     return float(reducers[reducer](values))
@@ -18,6 +39,7 @@ def metric(run, name, reducer="max"):
 def paired_decision(pairs, objective, anchor):
     direction, name = objective["direction"], objective["name"]
     reducer = objective.get("rank_aggregation", "max" if direction == "minimize" else "min")
+    order = objective.get("aggregation_order", "samples_then_ranks")
     threshold = float(objective.get("improvement_threshold", 0))
     reasons, gains, noise, constraints = [], [], [], []
     if not all(valid_run(run) for pair in pairs for run in pair.values()):
@@ -26,17 +48,14 @@ def paired_decision(pairs, objective, anchor):
                for pair in pairs for run in pair.values() for rank in run["ranks"]}
     if len(sources) > 1:
         reasons.append("framework_changed_between_endpoints")
-    before = [metric(p["parent"], name, reducer) for p in pairs]
-    after = [metric(p["candidate"], name, reducer) for p in pairs]
+    before = [metric(p["parent"], name, reducer, order) for p in pairs]
+    after = [metric(p["candidate"], name, reducer, order) for p in pairs]
     for pair, a, b in zip(pairs, before, after, strict=True):
         gain = a-b if direction == "minimize" else b-a
         gains.append(gain)
         deviations = []
         for run in pair.values():
-            for rank in run["ranks"]:
-                samples = rank["result"].get("metric_samples", {}).get(name)
-                if samples is None:
-                    samples = [s[name] for s in rank["result"]["samples"]]
+            for samples in sample_series(run, name, reducer, order):
                 center = statistics.median(samples)
                 deviations.append(statistics.median(abs(v-center) for v in samples))
         bound = float(objective.get("noise_factor", 2)) * max(deviations, default=0)
@@ -49,5 +68,6 @@ def paired_decision(pairs, objective, anchor):
     return {"valid": True, "objective": statistics.median(after), "reference": statistics.median(before),
             "parent_values": before, "candidate_values": after, "paired_gains": gains, "noise_bounds": noise,
             "constraints": constraints, "reasons": sorted(set(reasons)),
+            "aggregation_order": order,
             "framework_source": next(iter(sources)) if len(sources) == 1 else "mixed",
             "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"}
