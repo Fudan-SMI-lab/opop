@@ -1,0 +1,69 @@
+{
+  "status": "observed",
+  "provenance": {
+    "revision": "d627f6975b641d21fabb6ec2dc0424f678e0c34f2abd25e2818ea48b4d1b77c5",
+    "parent_revision": "b73b061a7efaffd2213d5bed7d0df3febac624db82fdf680860adfe1c5008383",
+    "bundles": [
+      "trial-fc57bca7b9-param-f71a7c8a",
+      "repair-treatment-param-70a89eea"
+    ],
+    "plan": "sha256:c536d208ac1421d5f9351500cce63e7b4e10fe9fedca324f948dc5bbdfb6519e",
+    "registry": "sha256:73fd2c24a8b761f778dcd2fa2a0ec7e037e475cebf1ae50323ba79542afa7870",
+    "request_sha256": "d06a600d083cab817d984e3397f297db5ee6d8f51d28804cf1916819cb42d45e",
+    "objective": {
+      "name": "ttft_ms",
+      "unit": "ms",
+      "direction": "minimize",
+      "constraints": []
+    },
+    "workload": {
+      "id": "interactive",
+      "batch": 1,
+      "prompt_tokens": 256,
+      "new_tokens": 32,
+      "goals": [
+        {
+          "id": "ttft",
+          "metric": "ttft_ms",
+          "direction": "min"
+        },
+        {
+          "id": "decode",
+          "metric": "decode_tokens_per_second",
+          "direction": "max"
+        }
+      ]
+    },
+    "devices": [
+      "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+    ],
+    "framework_source": {
+      "sha256": "2b16ff1eb0c8ed5774f2116818a5ea391c73ff1a0668c46a7f87253dd384f64b",
+      "files": 162,
+      "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+    },
+    "scope": "Separate diagnostic on this exact version; availability and perturbation are collector-specific"
+  },
+  "ranks": [
+    {
+      "rank": 0,
+      "status": "observed",
+      "sqlite": "/root/autodl-tmp/dev/v6-work/next-stage-20261027/qwen-fixed/jobs/nsys-f6a58d21c9/run/nsys-rank-0.sqlite",
+      "bytes": 9318400,
+      "sha256": "2a7913e4dbccd379f3b1fc226b3bbf319a210569d847509c43a4f82196fdf2ba",
+      "kernel_count": 65716,
+      "new_rms_kernels": [
+        {
+          "kernel": "<unnamed>::rms_apply_kernel(const __nv_bfloat16 *, __nv_bfloat16 *, const float *, const __nv_bfloat16 *, float, long long, int)",
+          "launches": 145,
+          "diagnostic_sum_ms": 0.282943
+        },
+        {
+          "kernel": "<unnamed>::rms_sq_kernel(const __nv_bfloat16 *, float *, long long)",
+          "launches": 145,
+          "diagnostic_sum_ms": 0.38403
+        }
+      ]
+    }
+  ]
+}
