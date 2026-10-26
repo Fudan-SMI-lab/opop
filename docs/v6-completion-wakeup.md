@@ -48,3 +48,7 @@
 正在等待 `/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/followup-completed.json`。该批先完成 Qwen 固定连续采样，再完成真实 evaluator 对照。新状态为 `.scratch/v6-post-batch-wakeup.json`，取消文件为 `.scratch/v6-post-batch-wakeup.stop`，启动 PID `25492`。已真实确认负例控制器完成、后续控制器运行；使用同一已验证的队列发送流程，新的终态只投递一次。见[部署记录](evidence/v6-post-batch-audit-20261027/wakeup-setup.json)。
 
 后续更新：上述批次于 `2026-10-26T21:52:14.871494Z` 完成，守候成功提交消息 `01a17a33-51d1-7bc1-a277-e3bbb293fc0a` 并退出；消息实际启动了下一轮核查，当前结果已审计。该状态文件现为 `queued`，不再用于等待。见[本批真实投递证据](evidence/v6-post-batch-audit-20261027/wakeup-delivery.json)。
+
+## 当前等待：同版本三项目批次
+
+现在由新的普通守候等待 `/root/autodl-tmp/dev/v6-work/autonomous-cohort-20261027/followup-completed.json`，范围含独立 planner 对照、三个项目自主运行和其后检查。单个远端控制器 PID `63346`，本机守候 PID `22328`；两个启动记录明确指向同一个远端控制器。新状态文件 `.scratch/v6-cohort-wakeup.json`，取消文件 `.scratch/v6-cohort-wakeup.stop`。已真实验证远端运行，仍使用同一已实证的单次投递逻辑，未启用 Goal。见[部署证据](evidence/v6-autonomous-cohort-20261027/wakeup-setup.json)。

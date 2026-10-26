@@ -33,3 +33,9 @@
 本批由一个控制器串行管理全部阶段；`launch.json` 与 `followup-launch.json` 是同一进程的启动记录，终态写入 `controller-completed.json` 和 `followup-completed.json`，兼容现有普通守候协议。错误也会写入结果；进程异常退出且无终态时由守候触发核查。
 
 配置独立本机状态 `.scratch/v6-cohort-wakeup.json`，每 30 秒通过普通 SSH 检查终态；结束后向当前会话排入一次核查与继续指令。不启用 Goal，不用模型轮询，不添加投递测试。
+
+## 已启动
+
+冻结提交 **`4cdd076376de`**，于 `2026-10-26T22:02:24.751310Z` 启动控制器，PID `63346`。collector planner control 的真实初始会话已建立并保存生成前快照，三个项目按上述顺序排在角色对照之后。
+
+本机守候 PID `22328` 已启动，真实 SSH 检查确认控制器运行，状态为 `waiting`。模型调用只发生在框架实际工作或批次结束后续行，等待由普通脚本完成。启动时数据盘可用 26,295,762,944 bytes（约 24.49 GiB）。[部署与输入证据](evidence/v6-autonomous-cohort-20261027/README.md)已归档；当前不预判自主优化或独立验证结果。
