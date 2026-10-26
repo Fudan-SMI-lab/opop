@@ -45,7 +45,7 @@ class ProjectSearch:
             if bundle.installer is None:
                 raise ValueError("candidate has no executable installer")
             bundles.append({"id": ident, "file": str(source/bundle.installer), "parameters": bundle.parameters,
-                            "specs": json.loads((source/Path(bundle.installer).with_suffix(".targets.json")).read_text()),
+                            "specs_path": str(source/Path(bundle.installer).with_suffix(".targets.json")),
                             "expected_calls": list(bundle.calls), "expected_calls_by_rank": rank_requirements(
                                 bundle, self.revisions.load(self.revisions.revision(bundle.parent_revision).plan_ref, ExecutionPlan), contract.world_size)})
         request = self.request

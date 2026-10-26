@@ -1,4 +1,5 @@
 import torch
+import pytest
 
 from kernel_optimizer.project.evaluation import compare, corrupt, snapshot
 
@@ -23,7 +24,8 @@ def test_negative_control_preserves_reference_and_exceeds_relative_tolerance():
     assert not compare(wrong, reference, {"atol": 0.02, "rtol": 0.02})["passed"]
 
 
-def test_installation_calls_do_not_satisfy_inherited_runtime_coverage(tmp_path):
+@pytest.mark.parametrize("specs_mode", ["inline", "file"])
+def test_installation_calls_do_not_satisfy_inherited_runtime_coverage(tmp_path, specs_mode):
     from kernel_optimizer.runtime.execution import ExecutionRequest, LocalExecutor
     entry = tmp_path/"entry.py"
     entry.write_text('''
@@ -33,6 +35,8 @@ from kernel_optimizer.project.discovery import tensor_description
 
 def run(context):
     import torch
+    import json
+    specs_mode = context["parameters"]["specs_mode"]
     root=Path(context["output"])
     adapter=root/"adapter.py"
     adapter.write_text("import torch\\ndef prepare(c,r): return {'x':torch.tensor([1.,2.]),'m':torch.nn.Identity()}\\ndef reset(s): pass\\ndef run(s): return s['m'](s['x'])+1\\ndef observe(s,r): return r\\ndef metrics(s,r,t): return {'latency_ms':t}\\ndef models(s): return {'model':s['m']}\\n")
@@ -45,6 +49,11 @@ def run(context):
     context["parameters"].update(action="evaluate",bundles=[
         {"id":"first","file":str(first),"expected_calls":["a"],"specs":[{"id":"a","kind":"module","target":"model","phase":"run","signatures":[signature]}]},
         {"id":"second","file":str(second),"expected_calls":["b"],"specs":[{"id":"b","kind":"project","target":"project.invoke","phase":"run","signatures":[]}]}])
+    if specs_mode == "file":
+        for bundle in context["parameters"]["bundles"]:
+            path = root/(bundle["id"]+".targets.json")
+            path.write_text(json.dumps(bundle.pop("specs")))
+            bundle["specs_path"] = str(path)
     result=worker_entry(context)
     assert all(check["passed"] for check in result["checks"])
     assert not result["valid"]
@@ -53,7 +62,7 @@ def run(context):
     return {"installation_cannot_supply_coverage":True}
 ''')
     receipt = LocalExecutor().run(ExecutionRequest(entry=entry, cwd=tmp_path, output=tmp_path/"run",
-        lease_dir=tmp_path/"leases", worker_timeout_s=30))
+        lease_dir=tmp_path/"leases", worker_timeout_s=30, parameters={"specs_mode":specs_mode}))
     assert receipt["status"] == "passed", receipt
 def test_failure_identifies_observation_without_claiming_first_execution_error():
     import torch

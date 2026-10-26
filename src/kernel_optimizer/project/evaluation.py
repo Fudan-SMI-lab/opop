@@ -22,6 +22,14 @@ def load_adapter(path: Path):
     return module
 
 
+def load_bundle_specs(bundle):
+    """Keep old inline requests readable; new requests reference the frozen snapshot."""
+    if "specs" in bundle:
+        return bundle["specs"]
+    import json
+    return json.loads(Path(bundle["specs_path"]).read_text(encoding="utf-8"))
+
+
 def snapshot(value: Any) -> Any:
     import torch
     if isinstance(value, torch.Tensor):
@@ -158,12 +166,13 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
     setup = []
     for bundle in parameters.get("bundles", []):
         from kernel_optimizer.project.binding import BindingSession
+        specs = load_bundle_specs(bundle)
         cuda = str(context["device"]).startswith("cuda")
         if cuda:
             torch.cuda.synchronize(); torch.cuda.reset_peak_memory_stats()
         started = time.perf_counter_ns()
         expected = bundle.get("expected_calls_by_rank", {}).get(str(context["rank"]), bundle["expected_calls"])
-        binding = BindingSession(adapter, state, bundle["specs"], rank=context["rank"], world_size=context["world_size"],
+        binding = BindingSession(adapter, state, specs, rank=context["rank"], world_size=context["world_size"],
                                  bundle_id=bundle["id"],
                                  backend=ablation.get("binding_backend", request.get("binding_backend", "legacy")))
         binding.tracking = False

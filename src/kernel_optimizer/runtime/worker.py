@@ -14,6 +14,15 @@ import traceback
 from kernel_optimizer.runtime.execution import ExecutionRequest, write_json
 
 
+def started_record(context: dict, request_path: Path) -> dict:
+    """Startup proof points to the request instead of duplicating its parameters per rank."""
+    with request_path.open("rb") as stream:
+        sha = hashlib.file_digest(stream, "sha256").hexdigest()
+    return {**{key: value for key, value in context.items() if key != "parameters"},
+            "parameters_ref": {"path": str(request_path.resolve()), "json_pointer": "/parameters",
+                               "request_sha256": sha}}
+
+
 def main() -> int:
     request = ExecutionRequest.model_validate_json(Path(sys.argv[1]).read_bytes())
     rank = int(sys.argv[2])
@@ -58,7 +67,7 @@ def main() -> int:
             if pid_uuids:
                 assert actual in pid_uuids
             del proof
-            write_json(request.output / f"rank-{rank}-started.json", context)
+            write_json(request.output / f"rank-{rank}-started.json", started_record(context, Path(sys.argv[1])))
             if request.distributed_backend:
                 torch.distributed.init_process_group(
                     backend=request.distributed_backend, init_method=(request.output / "rendezvous").as_uri(),
