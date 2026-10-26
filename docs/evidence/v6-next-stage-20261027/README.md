@@ -14,4 +14,5 @@
 - `followup-protocol.json`：自主批次之后的 Qwen 标准独立 AB/BA 和 DDP 原源码一致性检查。
 - `metric-order-audit.json`、`metric-order-tests.json`：原始源定义差异及 22 项受影响检查。
 - `metric-order-ab/`：独立真实 intake 对照；`input-comparison.json` 确认 prompt、源码、模型、工具设置一致，仅 schema 文件不同；原输入和生成结果均保留。
+- `wakeup-setup.json`：普通完成守候进程的部署快照、六项真实远端状态检查和两项队列替身检查；真实自动续行仍以终态触发后的回执为准。该文件汇总本机与远端记录，不属于原文件逐字导出清单。
 - `manifest.json`：原始导出文件路径、大小与 SHA-256。模型、完整参考张量、私有 provider 配置和大原生 trace 留在服务器。

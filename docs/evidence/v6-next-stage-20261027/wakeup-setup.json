@@ -1,0 +1,165 @@
+{
+  "launch": {
+    "pid": 29568,
+    "at": "2026-10-26T20:11:35.326337+00:00",
+    "argv": [
+      "D:\\Anaconda\\python.exe",
+      "-B",
+      "-u",
+      "D:\\Pyhon_projects\\opop\\v6\\scripts\\experiments\\wake_codex_on_completion.py",
+      "--host",
+      "root@connect.bjb1.seetacloud.com",
+      "--port",
+      "51018",
+      "--remote-root",
+      "/root/autodl-tmp/dev/v6-work/next-stage-20261027",
+      "--remote-python",
+      "/root/autodl-tmp/dev-venv/bin/python",
+      "--thread",
+      "01a154d9-d2c0-7d80-9492-7c5ff93d4f66",
+      "--cwd",
+      "D:\\Pyhon_projects\\opop\\v6",
+      "--codex",
+      "C:\\Users\\Zihang Zeng\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.EXE",
+      "--prompt-file",
+      "D:\\Pyhon_projects\\opop\\v6\\.scratch\\v6-next-stage-wake-message.txt",
+      "--state",
+      "D:\\Pyhon_projects\\opop\\v6\\.scratch\\v6-next-stage-wakeup.json",
+      "--interval",
+      "30"
+    ],
+    "scope": "Plain background watcher; no Goal and no model polling"
+  },
+  "state_snapshot": {
+    "pid": 29568,
+    "started_at": "2026-10-26T20:11:35.391863+00:00",
+    "thread": "01a154d9-d2c0-7d80-9492-7c5ff93d4f66",
+    "remote_root": "/root/autodl-tmp/dev/v6-work/next-stage-20261027",
+    "phase": "waiting",
+    "poll_interval_s": 30.0,
+    "scope": "SSH/file checks only; no model calls until a terminal event is queued.",
+    "last_checked_at": "2026-10-26T20:12:36.935408+00:00",
+    "observation": {
+      "terminal": false,
+      "reason": "waiting",
+      "controllers": [
+        {
+          "launch": "launch.json",
+          "pid": 10538,
+          "running": true
+        },
+        {
+          "launch": "followup-launch.json",
+          "pid": 19884,
+          "running": true
+        }
+      ]
+    }
+  },
+  "remote_probe_checks": {
+    "scope": "Real remote Linux processes/files and SSH probe; no model invocation or real queue delivery test",
+    "checks": [
+      {
+        "case": "missing launch does not wake",
+        "passed": true,
+        "observed": {
+          "terminal": false,
+          "reason": "launch_record_missing",
+          "record": "/root/autodl-tmp/dev/v6-work/next-stage-20261027/wakeup-check-sakpvsu6/launch.json"
+        }
+      },
+      {
+        "case": "running controllers do not wake",
+        "passed": true,
+        "observed": {
+          "terminal": false,
+          "reason": "waiting",
+          "controllers": [
+            {
+              "launch": "launch.json",
+              "pid": 32266,
+              "running": true
+            },
+            {
+              "launch": "followup-launch.json",
+              "pid": 32266,
+              "running": true
+            }
+          ]
+        }
+      },
+      {
+        "case": "partial terminal JSON does not wake",
+        "passed": true,
+        "observed": {
+          "terminal": false,
+          "reason": "completion_record_being_written"
+        }
+      },
+      {
+        "case": "completed batch wakes even if a stage failed",
+        "passed": true,
+        "observed": {
+          "terminal": true,
+          "reason": "batch_finished",
+          "record": "/root/autodl-tmp/dev/v6-work/next-stage-20261027/wakeup-check-sakpvsu6/followup-completed.json",
+          "completed_at": "fixture",
+          "result_keys": [
+            "qwen"
+          ]
+        }
+      },
+      {
+        "case": "unexpected controller exit wakes",
+        "passed": true,
+        "observed": {
+          "terminal": true,
+          "reason": "controller_exited_without_completion",
+          "controllers": [
+            {
+              "launch": "launch.json",
+              "pid": 32271,
+              "running": false
+            }
+          ],
+          "missing_record": "/root/autodl-tmp/dev/v6-work/next-stage-20261027/wakeup-check-sakpvsu6/controller-completed.json"
+        }
+      },
+      {
+        "case": "finished main waits for remaining followup",
+        "passed": true,
+        "observed": {
+          "terminal": false,
+          "reason": "waiting",
+          "controllers": [
+            {
+              "launch": "launch.json",
+              "pid": 32271,
+              "running": false
+            },
+            {
+              "launch": "followup-launch.json",
+              "pid": 32266,
+              "running": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "queue_adapter_fixture_checks": {
+    "scope": "Queue adapter fixture only, no actual Codex message/model call",
+    "checks": [
+      {
+        "case": "one queue submission and saved successful receipt",
+        "passed": true
+      },
+      {
+        "case": "ambiguous delivery recorded for inspection without automatic duplicate retry",
+        "passed": true
+      }
+    ]
+  },
+  "goal_enabled": false,
+  "real_queue_delivery": "Not yet triggered at deployment; completion event must verify the actual delivery."
+}
