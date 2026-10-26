@@ -4,6 +4,8 @@
 
 最新交接：[box4-3 验证与环境耦合审查](handover-box4-3-2026-10-27.md)。三项目旧参考比较、真实 Agent、CUDA/NCCL、扩展构建及基础 profiling 已验证；设备选择支持卡号/auto，已取消 v6 默认的网页读取禁令。历史硬件身份不作为新实验的准入条件。
 
+当前工作：[下一阶段方案与进展](plan-v6-next-stage-20261027.md)。先推进 Qwen 固定候选开销诊断与 DDP 新合同原入口自主实验，再按真实信息缺口小步调整，并进行最新版同版本三项目与目标切换验证。
+
 以下为先前失败原因核验阶段记录：[Qwen / DDP 诊断](v6-qwen-ddp-failure-analysis.md)
 完成四个原 Qwen 候选复现、八个诊断变体、14 个 DDP 独立端点、五组双 rank CPU profile 和
 48 个旧通信 trace 分解。确认 Qwen 数值路径变化与缓存接口问题、DDP 绑定开销及 P2P 守卫回退。
