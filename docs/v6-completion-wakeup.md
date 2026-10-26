@@ -42,3 +42,7 @@
 远端 followup 于 `2026-10-26T21:15:11.300364Z` 写入终态。守候进程在同秒成功 queue，消息 ID 为 `01a17a11-3a95-7871-b54e-a1e6c0d3d941`；该消息实际开启了本次核查轮次。已读取 Qwen 独立复测和 DDP 自主运行/源码一致性结果，区分流程结束与优化失败。此次验证了实际批次的完整“结束 → 投递 → 当前会话继续工作”，未启用 Goal，也未靠模型轮询。原守候状态为 `queued`，不复用它等待下一批。
 
 见[真实批次投递证据](evidence/v6-next-stage-20261027/wakeup-batch-delivery.json)。上文部署和一次测试记录描述的是各自当时状态。
+
+## 下一批守候已配置
+
+正在等待 `/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/followup-completed.json`。该批先完成 Qwen 固定连续采样，再完成真实 evaluator 对照。新状态为 `.scratch/v6-post-batch-wakeup.json`，取消文件为 `.scratch/v6-post-batch-wakeup.stop`，启动 PID `25492`。已真实确认负例控制器完成、后续控制器运行；使用同一已验证的队列发送流程，新的终态只投递一次。见[部署记录](evidence/v6-post-batch-audit-20261027/wakeup-setup.json)。
