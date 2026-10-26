@@ -71,6 +71,8 @@ ssh -p 51018 root@connect.bjb1.seetacloud.com
 
 见 [P0 receipt](evidence/v6-box43-20261027/p0/public-receipt.json)、[工具实测](evidence/v6-box43-20261027/tools-result.json)、[真实 webfetch](evidence/v6-box43-20261027/agent-webfetch/public-receipt.json)、[相关测试](evidence/v6-box43-20261027/final-tests.json)。P0 在原 HEAD 运行；三项目和工具在设备选择修正后运行；文档访问和最终测试在 v6 权限默认值修正后运行。各 receipt 记录对应源码哈希。
 
+代码修正已提交 `1339824` 并推送 GitHub；box4-3 同步到该提交，工作区干净。开发期间上传的部分文件带 CRLF，Git 部署后统一为 LF，所以逐字节源码哈希不同；同步前已确认变更文件按换行标准化后与提交内容一致。部署后相关 **13 项测试再次通过**，见[同步记录](evidence/v6-box43-20261027/github-sync.json)与[部署后测试](evidence/v6-box43-20261027/post-sync-tests.json)。
+
 ## 通信能力与当前环境限制
 
 实际拓扑为同 NUMA 的 `NODE`；双向 `torch.cuda.can_device_access_peer` 均为 false。NCCL 日志记录 `SHM/direct/direct`。NVML PCIe tx/rx 速率、GPU/内存利用率、显存使用可读取。
