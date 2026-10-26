@@ -14,13 +14,14 @@ def add_project_parser(parser):
     parser.add_argument("--goal", help="natural-language goal for --project")
     parser.add_argument("--command", help="existing project launch command, when known")
     parser.add_argument("--context", action="append", default=[], help="data paths or necessary task constraints")
+    parser.add_argument("--devices", nargs="+", help="current-host nvidia-smi indices, UUIDs, auto, or cpu; auto preserves a saved request's device count")
     parser.add_argument("--project-ref", help="branch/tag when cloning a repository")
     parser.add_argument("--intake-only", action="store_true", help="resolve project input without running optimization")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--prepare-only", action="store_true", help="generate and validate the project evaluator")
     parser.add_argument("--feedback", type=Path, help="actual failure evidence from a previous preparation")
     parser.add_argument("--resume", action="store_true", help="resume the identical frozen project request")
-    parser.add_argument("--reuse-evaluator", type=Path, help="revalidate a frozen generated evaluator for a goal/workload variant without regenerating code")
+    parser.add_argument("--reuse-evaluator", type=Path, help="revalidate a frozen evaluator for a goal/workload or device-placement variant, measuring a new baseline")
     parser.add_argument("--resume-trial", help="resume one saved generated trial without another generation request; implies --resume")
     parser.add_argument("--resume-generation", type=Path, help="continue an interrupted selection/candidate sandbox in its original provider session; implies --resume")
     parser.add_argument("--replay-from", type=Path, help="source run for frozen-candidate cross-goal/held-out evaluation")
@@ -45,6 +46,9 @@ def add_project_parser(parser):
 
 def cmd_optimize_project(args):
     config = load_config(Path(args.config) if args.config else None, args.override)
+    devices = getattr(args, "devices", None)
+    if devices is not None and getattr(args, "project", None):
+        config.project_defaults.devices = devices
     if getattr(args, "project", None):
         if not args.goal:
             raise ValueError("--project requires a natural-language --goal")
@@ -58,6 +62,9 @@ def cmd_optimize_project(args):
     elif getattr(args, "intake_only", False):
         raise ValueError("--intake-only requires --project")
     request = ProjectRequest.model_validate_json(args.request.read_bytes())
+    if devices is not None and not getattr(args, "project", None):
+        from kernel_optimizer.runtime.execution import resolve_devices
+        request = request.model_copy(update={"devices": resolve_devices(devices, count=len(request.devices))})
     if args.rounds < 1:
         raise ValueError("experiment rounds must be positive")
     feedback = args.feedback.read_text(encoding="utf-8") if args.feedback else None
@@ -98,7 +105,8 @@ def cmd_optimize_project(args):
     elif args.resume:
         previous = ProjectRequest.model_validate_json((args.output/"request.json").read_bytes())
         if previous != request:
-            raise ValueError("resume cannot change the frozen project request")
+            raise ValueError("resume cannot change the frozen project request; for a new device placement, "
+                             "use --reuse-evaluator OLD_OUTPUT --devices auto --output NEW_OUTPUT to refresh the baseline")
         result = ProjectWorkflow(config, request, args.output).prepare(feedback=feedback, resume=True)
     elif args.reuse_evaluator:
         from kernel_optimizer.project.variants import prepare_variant

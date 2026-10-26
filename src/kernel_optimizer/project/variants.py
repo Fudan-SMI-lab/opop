@@ -21,9 +21,11 @@ def prepare_variant(parent_output: Path, request: ProjectRequest, output: Path, 
     parent_output, output = parent_output.resolve(), output.resolve()
     old_request = ProjectRequest.model_validate_json((parent_output/"request.json").read_bytes())
     allowed = {"goal", "objective", "workload", "warmup", "repeats", "worker_timeout_s", "tools", "profiling",
-               "communication", "required_observations", "notes"}
+               "communication", "required_observations", "notes", "devices", "lease_dir"}
     if old_request.model_dump(exclude=allowed) != request.model_dump(exclude=allowed):
-        raise ValueError("variant may change goal/workload/collection protocol, not source, quality, assets or device semantics")
+        raise ValueError("variant may change goal/workload/collection protocol/device placement, not source, quality or assets")
+    if len(old_request.devices) != len(request.devices):
+        raise ValueError("device placement may change, but this frozen evaluator variant keeps the task's device count")
     prepared = json.loads((parent_output/"prepared.json").read_text())
     if prepared["status"] != "prepared":
         raise ValueError("variant requires a validated original evaluator")
@@ -85,6 +87,8 @@ def prepare_variant(parent_output: Path, request: ProjectRequest, output: Path, 
         "revision": revision.id, "contract_ref": revision.contract_ref, "evaluation": evaluation,
         "adapter_sha256": prepared["adapter_sha256"], "request_sha256": hashlib.sha256((output/"request.json").read_bytes()).hexdigest(),
         "controls_path": str(controls), "reuse": {"parent_output": str(parent_output), "revision": original.id,
+            "placement": {"previous_devices": old_request.devices, "devices": request.devices,
+                          "baseline": "remeasured in this variant's controls; no historical timing reused"},
             "origin_agent": prepared.get("agent", prepared.get("reuse")), "new_generation": False,
             "contract_adaptation": adaptation}}
     write_json(output/"prepared.json", result)

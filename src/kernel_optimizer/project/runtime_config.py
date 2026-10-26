@@ -17,6 +17,15 @@ def worker_environment():
 
 def project_agent_config(config):
     result = config.model_copy(deep=True)
+    # Project agents inspect unfamiliar libraries; inherit legacy execution/read
+    # permissions without inheriting its blanket web-documentation denial.
+    # Explicit deployment overrides still take precedence; legacy callers do not
+    # use this project-only configuration function.
+    from kernel_optimizer.agents.sandbox import PERMISSION_CONFIG
+    permissions = result.opencode.sandbox_extra_config.get("permission", {})
+    if isinstance(permissions, dict):
+        result.opencode.sandbox_extra_config["permission"] = {
+            **PERMISSION_CONFIG["permission"], "webfetch": "allow", **permissions}
     result.opencode.server_env.setdefault("CUDA_VISIBLE_DEVICES", "")
     interpreter_dir = str(Path(sys.executable).parent)
     current_path = result.opencode.server_env.get("PATH", os.environ.get("PATH", ""))

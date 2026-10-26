@@ -774,7 +774,7 @@ class UsageConfig(StrictConfig):
 
 class ProjectDefaults(StrictConfig):
     """Reusable deployment settings for the optional plain-project entry."""
-    devices: list[str] = Field(default_factory=list)
+    devices: list[str] = Field(default_factory=list, description="Current-host GPU indices, UUIDs, auto or cpu; empty discovers all GPUs")
     lease_dir: Path = Path("~/.cache/opop/device-leases")
     tools: dict[str, str] = Field(default_factory=dict)
     profiling: dict[str, Any] = Field(default_factory=dict)

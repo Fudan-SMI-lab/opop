@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from kernel_optimizer.project.agents import ProjectAgents
 from kernel_optimizer.project.request import ProjectRequest
 from kernel_optimizer.project.runtime_config import project_agent_config
-from kernel_optimizer.runtime.execution import gpu_inventory, write_json
+from kernel_optimizer.runtime.execution import gpu_inventory, resolve_devices, write_json
 from kernel_optimizer.store.run_store import RunStore
 from kernel_optimizer.wiring import Runtime
 
@@ -105,10 +105,7 @@ def deployment(config):
         probe_error = None
     except (OSError, subprocess.SubprocessError) as exc:
         inventory, probe_error = [], f"{type(exc).__name__}: {exc}"
-    available = {row["uuid"]: row for row in inventory}
-    devices = defaults.devices or list(available)
-    if set(devices) - available.keys():
-        raise ValueError("configured project device UUID is absent from the actual worker inventory")
+    devices = resolve_devices(defaults.devices or ["auto"], inventory=inventory)
     tools = {name: path for name in ("nsys", "ncu") if (path := shutil.which(name))}
     tools.update(defaults.tools)
     return {"devices": devices, "inventory": inventory, "probe_error": probe_error,

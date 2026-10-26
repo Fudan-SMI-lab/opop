@@ -51,6 +51,33 @@ def gpu_inventory() -> list[dict[str, str]]:
             for row in csv.reader(io.StringIO(result.stdout))]
 
 
+def resolve_devices(selectors: list[str], *, inventory=None, count: int | None = None) -> list[str]:
+    """Resolve current-host indices/UUIDs; UUIDs identify jobs, not experiment eligibility.
+
+    ``auto`` selects the first ``count`` devices (all devices when count is absent).
+    An empty list or ``cpu`` selects CPU execution. Indices are nvidia-smi indices.
+    """
+    if not selectors or selectors == ["cpu"] or (selectors == ["auto"] and count == 0):
+        return []
+    rows = gpu_inventory() if inventory is None else inventory
+    if selectors == ["auto"]:
+        count = len(rows) if count is None else count
+        if count > len(rows):
+            raise ValueError(f"task needs {count} GPUs; this host exposes {len(rows)}")
+        return [row["uuid"] for row in rows[:count]]
+    lookup = {key: row["uuid"] for row in rows
+              for key in (row["uuid"], row["index"], "cuda:" + row["index"])}
+    unknown = [device for device in selectors if device not in lookup]
+    if unknown:
+        raise ValueError(f"devices absent from this host: {unknown}; select current indices or auto. "
+                         "For a saved project on new hardware, use --reuse-evaluator with --devices auto "
+                         "and a new output to refresh its baseline.")
+    devices = [lookup[device] for device in selectors]
+    if len(set(devices)) != len(devices):
+        raise ValueError("device selectors must refer to distinct physical GPUs")
+    return devices
+
+
 class DeviceLease:
     """Cooperative, cross-process exclusive lease keyed by physical UUID."""
 
@@ -114,16 +141,13 @@ def _terminate(process: subprocess.Popen) -> None:
 
 class LocalExecutor:
     def run(self, request: ExecutionRequest) -> dict:
+        selectors = list(request.devices)
         request = request.model_copy(update={
             "entry": request.entry.resolve(), "cwd": request.cwd.resolve(),
-            "output": request.output.resolve(), "lease_dir": request.lease_dir.resolve()})
+            "output": request.output.resolve(), "lease_dir": request.lease_dir.resolve(),
+            "devices": resolve_devices(selectors)})
         if not request.entry.is_file():
             raise FileNotFoundError(request.entry)
-        if len(set(request.devices)) != len(request.devices):
-            raise ValueError("device UUIDs must be unique")
-        available = {row["uuid"] for row in gpu_inventory()} if request.devices else set()
-        if not set(request.devices) <= available:
-            raise ValueError("requested device UUID is unavailable")
         if request.distributed_backend and len(request.devices) < 2:
             raise ValueError("distributed execution requires at least two devices")
         request.output.mkdir(parents=True, exist_ok=False)
@@ -184,6 +208,7 @@ class LocalExecutor:
                            any(r.get("status") != "passed" for r in ranks) else "passed",
                            "failure": failure, "wall_s": time.monotonic() - started, "ranks": ranks,
                            "lease_wait_s": lease_wait_s,
+                           "device_selectors": selectors,
                            "entry_sha256": hashlib.sha256(request.entry.read_bytes()).hexdigest(),
                            "devices": request.devices, "worker_pids_reaped": all(p.poll() is not None for p in processes)}
                 write_json(request.output / "receipt.json", receipt)

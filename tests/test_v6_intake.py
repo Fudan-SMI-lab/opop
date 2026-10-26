@@ -2,7 +2,7 @@ import argparse
 
 import pytest
 
-from kernel_optimizer.project.intake import IntakeProposal, ObjectiveDescription, resolve_request
+from kernel_optimizer.project.intake import IntakeProposal, ObjectiveDescription, deployment, resolve_request
 from kernel_optimizer.project_cli import add_project_parser
 
 
@@ -13,6 +13,17 @@ def test_plain_entry_and_original_request_are_separate(tmp_path):
     assert old.project is None and old.rounds == 2
     new = parser.parse_args(["--project", str(tmp_path), "--goal", "reduce latency", "--output", str(tmp_path/"out")])
     assert new.request is None and new.goal == "reduce latency"
+
+
+def test_deployment_accepts_indices_without_requiring_uuid_configuration(monkeypatch):
+    from kernel_optimizer.config import AppConfig
+    config = AppConfig()
+    config.project_defaults.devices = ["1"]
+    monkeypatch.setattr("kernel_optimizer.project.intake.gpu_inventory", lambda: [
+        {"index": "0", "uuid": "GPU-current-a"}, {"index": "1", "uuid": "GPU-current-b"}])
+    assert deployment(config)["devices"] == ["GPU-current-b"]
+    config.project_defaults.devices = []
+    assert deployment(config)["devices"] == ["GPU-current-a", "GPU-current-b"]
 
 
 def test_resolved_description_keeps_task_semantics_and_uses_deployment(tmp_path):

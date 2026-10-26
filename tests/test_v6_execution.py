@@ -4,8 +4,21 @@ from pathlib import Path
 
 import pytest
 
-from kernel_optimizer.runtime.execution import DeviceLease, ExecutionRequest, LocalExecutor
+from kernel_optimizer.runtime.execution import DeviceLease, ExecutionRequest, LocalExecutor, resolve_devices
 
+
+def test_device_placement_uses_current_host_indices_and_preserves_order():
+    inventory = [{"index": "0", "uuid": "GPU-new-a"}, {"index": "1", "uuid": "GPU-new-b"}]
+    assert resolve_devices(["1", "cuda:0"], inventory=inventory) == ["GPU-new-b", "GPU-new-a"]
+    assert resolve_devices(["auto"], inventory=inventory, count=1) == ["GPU-new-a"]
+    assert resolve_devices(["auto"], inventory=inventory, count=2) == ["GPU-new-a", "GPU-new-b"]
+    assert resolve_devices(["auto"], inventory=[], count=0) == []
+    with pytest.raises(ValueError, match="distinct physical GPUs"):
+        resolve_devices(["0", "GPU-new-a"], inventory=inventory)
+    with pytest.raises(ValueError, match="task needs 3 GPUs"):
+        resolve_devices(["auto"], inventory=inventory, count=3)
+    with pytest.raises(ValueError, match="--reuse-evaluator"):
+        resolve_devices(["GPU-old-host"], inventory=inventory)
 
 def request(tmp_path, source, timeout=20):
     entry = tmp_path / "entry.py"
