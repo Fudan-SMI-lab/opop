@@ -11,3 +11,5 @@
 - `manifest.json`：当前已导出远端文件的路径、长度和 SHA-256。后续结果随真实终态补充，未完成时不能声称 evaluator 改进成功。
 
 原 adapter、参考张量和原批次保留在服务器。导出只含必要证据，不包含私有 provider 配置或认证信息。
+
+终态新增：`evaluator-ab/result.json`、`followup-completed.json` 记录两臂 controls、负例和源一致性结果；`evaluator-ab/input-comparison.json` 记录实际生成前输入对比。各臂 sandbox 内的 `adapter.py`、`understanding.json` 是真实生成原件。`wakeup-delivery.json` 为本次真实完成事件触发新轮次的本地汇总记录。

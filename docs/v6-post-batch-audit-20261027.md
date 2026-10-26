@@ -52,3 +52,23 @@
 端点前后容器 CPU 统计中存在 throttling 增量，但覆盖模型加载和整个 worker，无法定位到正式 TTFT 样本。若继续定位，下一项最小观测应区分加载/预热/测量阶段并对齐原始样本；当前不把限流、GPU 状态或绑定中的任何一项预判为根因。
 
 全部样本见[原始结果](evidence/v6-post-batch-audit-20261027/qwen-sampling/result.json)，全样本摘要见[派生摘要](evidence/v6-post-batch-audit-20261027/qwen-sampling-summary.json)。随后真实 evaluator control 会话已开始（`ses_e85dbd284ffe0j2iUlSYm3oGa7`），A/B 和验证结果仍待终态核查。
+
+## evaluator A/B 终态与合入决定
+
+后续批次于 `2026-10-26T21:52:14.871494Z` 正常结束，完成守候再次实际唤起了当前会话。两臂都完成真实生成及 GPU 验证，没有执行错误，没有自动契约修复。
+
+| 检查 | control：原提示 | treatment：增加一段通用说明 |
+|---|---|---|
+| 双 rank controls、连续步骤 | 全量零误差通过 | 全量零误差通过 |
+| 同一容差内梯度负例 | 漏检，完整比较通过 | rank 1 在 observe 中精确断言拒绝 |
+| 独立原源码 global-batch、完整梯度与更新参数 | 通过 | 通过 |
+| 基线完整梯度副本精确一致 | 两步通过 | 两步通过 |
+| provider reported cost，仅统计 | 0.25397687822 | 0.27674826170 |
+
+生成前捕获证明：模型、工具设置、框架源码相同，所有输入文件逐字相同，prompt 只多该段说明。control 虽在 understanding 中写到精确关系，但 observe 未执行；treatment 在 observe 中逐参数广播参考梯度并用零容差断言，同时保留完整梯度、参数和 loss。该检查位于计时外，没有改动训练工作量、源质量容差或性能接受规则。
+
+据此将**实验中相同的一段提示**合入生产 `adapter_prompt.md`。不加入模型名、DDP 专用判定或新的失败路由，也不修改旧冻结 adapter。单对真实对照支持本次修正，不证明跨任务稳定成功率；下一步由同版本三项目原入口自主 cohort 检查泛化表现。
+
+另行修正 collection planner 对 candidate_diagnostics 的能力描述：实际只记录候选文件当前线程的异常和 False 返回，不记录正常调用及其他标量返回。原第三轮 planner 已实际请求不存在的 executed_calls/scalar_returns，并据此推断执行路径，因此这不是预防性扩写。将从该角色原始快照单独做仅此一句变化的真实对照，不与 evaluator A/B 混作同一变量实验。
+
+完整结果、生成代码及输入差异见[证据索引](evidence/v6-post-batch-audit-20261027/README.md)。Qwen 仍保持上一节的全样本诊断结论，未删除样本、发布旧候选或改写标准独立失败。

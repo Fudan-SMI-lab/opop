@@ -1,0 +1,1537 @@
+{
+  "runs": [
+    {
+      "arm": "control",
+      "status": "completed",
+      "agent": {
+        "role": "project-evaluator",
+        "session": "ses_e85dbd284ffe0j2iUlSYm3oGa7",
+        "message": "msg_17a2aa8c0001ZH0YXHwcTmSk4u",
+        "model": "zhipuai/glm-5.3",
+        "usage": {
+          "schema_version": 1,
+          "mode": "observe_only",
+          "messages": 13,
+          "reported_cost": 0.25397687822,
+          "messages_without_cost": 0,
+          "unfinished_messages": 0,
+          "tokens": {
+            "total": 409037.0,
+            "input": 39618.0,
+            "output": 6939.0,
+            "reasoning": 17840.0,
+            "cache.read": 344640.0,
+            "cache.write": 0.0
+          },
+          "sessions": [
+            {
+              "id": "ses_e85dbd284ffe0j2iUlSYm3oGa7",
+              "status": "observed",
+              "detail": null
+            }
+          ],
+          "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+        },
+        "sandbox": "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/control/sandboxes/project-evaluator-replay-fa00936f1397",
+        "outputs": [
+          "adapter.py",
+          "understanding.json"
+        ],
+        "feedback_provided": false,
+        "contract_repairs": 0,
+        "generation_snapshots": [
+          "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/control/generation-snapshots/generation-6ce0104b08c1.json"
+        ]
+      },
+      "understanding": {
+        "goal": "Reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks.",
+        "entrypoint": "gpt2_ddp_training.py",
+        "completion": "One measured invocation equals the source's step() (gpt2_ddp_training.py:102-105): optimizer.zero_grad(set_to_none=True), then accumulation_steps=4 microbatches (micro_batch=1, sequence_length=128) of FP32 GPT-2 forward+backward under DDP with no_sync() on the first 3 microbatches and the gradient all-reduce on the last backward, then optimizer.step(), then torch.cuda.synchronize() as the source's internal completion boundary. run() returns the summed per-microbatch loss; observe() exposes the loss, every parameter gradient and every post-step parameter. The rank-0 serial global-batch reference, gradient/parameter closeness checks, exact replica broadcast, negative control, the separate bucket-inventory comm-hook run, the 3 profiled diagnostic runs and JSON report writing surround the invocation and are not part of it (request notes 'Harness vs work', 'One measured invocation').",
+        "state_protocol": "prepare(context, request) applies the source numerical policy (common.py configure: torch.set_num_threads(4), best-effort set_num_interop_threads(1), torch.manual_seed(20261020), TF32 disabled for cuda.matmul and cudnn, cudnn.benchmark False, float32_matmul_precision 'highest'), builds GPT2LMHeadModel (n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, dropout disabled, eager attention, use_cache=False) on context['device'], wraps it in DDP(broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True) over the worker's already-initialized process group, creates SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False), generates the local rank's synthetic token inputs with torch.Generator().manual_seed(31000+rank) on the device, snapshots the initial state_dict on CPU, and, for world_size>1, creates the source's additional gloo control group used by before_run's barrier. reset(state) restores the initial seeded weights via raw_model.load_state_dict(initial), exactly the source reset() (gpt2_ddp_training.py:99-100); SGD with momentum=0 and weight_decay=0 holds no optimizer state, and gradient clearing stays inside run because the source's accumulate() starts with zero_grad(set_to_none=True) inside the timed invocation. run(state) executes the whole frozen step and returns {'loss', 'losses'}; observe(state, result) returns detached CPU tensors (loss, per-microbatch losses, all named gradients, all post-step named parameters); metrics(state, result, elapsed_ms) returns only clean project metrics in native units with the communication objective left to the framework's collector; models(state) exposes the raw GPT-2 module for discovery and controlled replacement. before_run(state) performs the gloo control barrier outside the timer; no process group is initialized or destroyed by the adapter.",
+        "invariants": [
+          "Workload dimensions are frozen by request['workload'] and must be read from it at prepare() time, never embedded as constants: world_size=2, micro_batch=1, sequence_length=128, accumulation_steps=4 (effective batch 8, 1024 tokens per step); a separately validated variant may supply different values through the same fields (request.workload; request notes 'One measured invocation').",
+          "Precision and numerical policy are frozen (common.py configure; request notes 'Step semantics preserved'): FP32 weights, torch.backends.cuda.matmul.allow_tf32=False, torch.backends.cudnn.allow_tf32=False, torch.backends.cudnn.benchmark=False, torch.set_float32_matmul_precision('highest'), model dropout disabled (resid/embd/attn pdrop 0.0), attn_implementation='eager', use_cache=False (make_model).",
+          "Deterministic seed policy is required so independent workers reproduce the same reference: torch.manual_seed(20261020) before model construction and per-rank inputs from torch.Generator().manual_seed(31000+rank) (make_model/make_inputs; request notes 'No external assets').",
+          "One invocation must contain the full accumulation, the required communication and the update (request notes 'One measured invocation'): loss divided by accumulation_steps, backward per microbatch, no_sync() on all but the last microbatch so exactly one DDP gradient all-reduce serves the whole accumulation, then a single SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) step, ending at the source's completion boundary torch.cuda.synchronize() (step(), gpt2_ddp_training.py:102-105).",
+          "The source's division between setup and timed work must be preserved (reset/run contract): reset() only restores initial weights from the CPU snapshot, while optimizer.zero_grad(set_to_none=True) stays inside run() because accumulate() performs it inside the timed step (gpt2_ddp_training.py:37).",
+          "Correctness observations must be complete and unmodified (request quality; workloads.json quality_scope): the summed loss, every parameter gradient and every post-step parameter returned as full detached tensors; reference fidelity is checked by the framework against a serial single-GPU accumulation of the same global batch, including exact cross-rank gradient equality (gpt2_ddp_training.py:81-86); no accuracy or convergence is claimed beyond that.",
+          "The communication objective communication_kernel_sum_ms is measured by the framework's torch_communication collector in separate diagnostic runs (request objective.source with collector descriptor; rank_aggregation=max, median of 3 profiled runs); the adapter must not fabricate a value for it, install communication hooks merely to inventory buckets, or run a profiler inside run()/metrics().",
+          "step_ms keeps the source's timing semantics: max across ranks of one full accumulated step's local wall time, with control-group barriers outside the timed region (request notes; gpt2_ddp_training.py:116-119, 148-152).",
+          "Required communication must remain real: gradient synchronization through NCCL on the worker-initialized process group using context['device']; the adapter must not initialize another default process group or destroy it (worker ABI)."
+        ],
+        "objective": {
+          "name": "communication_kernel_sum_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": [
+            {
+              "metric": "step_ms",
+              "op": "le",
+              "baseline_ratio": 1.05,
+              "rank_aggregation": "max"
+            }
+          ],
+          "source": {
+            "collector": "torch_communication",
+            "field": "communication_kernel_sum_ms"
+          },
+          "rank_aggregation": "max"
+        },
+        "workload": {
+          "id": "accumulated_step",
+          "world_size": 2,
+          "micro_batch": 1,
+          "sequence_length": 128,
+          "accumulation_steps": 4,
+          "goals": [
+            {
+              "id": "step",
+              "metric": "step_ms",
+              "direction": "min"
+            },
+            {
+              "id": "communication",
+              "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+              "direction": "min",
+              "constraints": {
+                "step_ms_max_baseline_ratio": 1.05
+              }
+            }
+          ]
+        },
+        "quality": {
+          "atol": 1e-06,
+          "rtol": 0.0001,
+          "grad_atol": 1e-06,
+          "grad_rtol": 0.0001,
+          "parameter_atol": 1e-06,
+          "parameter_rtol": 0.0001
+        },
+        "missing_information": [],
+        "assumptions": [
+          "Model architecture constants (n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024) are taken from source workloads.json gpt2_ddp_training.model, because request assets are empty and the request freezes model architecture; these are fixed for all workload variants of this project.",
+          "The baseline's DDP construction kwargs (broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True) replicate the source (gpt2_ddp_training.py:59); bucket sizing and reducer scheduling are implementation choices that later candidates may legitimately change to reduce NCCL kernel time, provided gradients stay exactly replica-consistent and the step_ms constraint holds.",
+          "SGD foreach=False, listed under the request's preserved step semantics, is kept for exact baseline replication even though a foreach update would be numerically identical for this elementwise SGD rule.",
+          "The worker has already initialized the NCCL process group and bound context['device'] (worker ABI); prepare() only creates the source's additional gloo control group for before_run's barrier, mirroring dist.new_group(backend='gloo') at gpt2_ddp_training.py:53.",
+          "before_run's gloo control barrier mirrors the source's pre-sample barrier (gpt2_ddp_training.py:114) and stays outside all measurement; it is redundant but harmless if the framework already aligns ranks.",
+          "The final torch.cuda.synchronize() remains inside run() because the source's step() defines that internal completion point; the framework's own boundary synchronization subsumes it without changing semantics.",
+          "reset() needs no optimizer-state restore because SGD with momentum=0.0 and weight_decay=0.0 carries no state; residual gradients from a previous invocation are cleared by zero_grad(set_to_none=True) at the start of the next run, matching the source exactly.",
+          "Source harness responsibilities deliberately excluded from run(): warmup/repeats sampling, rank-0 serial global-batch reference construction, gradient/parameter closeness checks, exact replica broadcast, negative control, the separate bucket-inventory comm-hook run, the 3 profiled diagnostic runs and JSON report writing (request notes 'Harness vs work').",
+          "metrics() returns only clean project metrics (step_ms, tokens_per_step, effective_batch, tokens_per_second, peak_allocated_bytes, parameter_count) in native units; the objective communication_kernel_sum_ms comes exclusively from the framework's torch_communication collector.",
+          "observe() returns detached CPU copies; the tied lm_head/wte weight appears once because named_parameters() deduplicates shared parameters, matching the source's parameters()-zip comparison (gpt2_ddp_training.py:74).",
+          "The held-out workload longer_sequence (sequence_length=256, accumulation_steps=2) in workloads.json is not part of this frozen request; the adapter reads all workload-dependent dimensions from request['workload'] so a validated variant can reuse it unchanged.",
+          "continuous_steps=2 is supported because each run() invocation is self-contained (zero_grad at start, one all-reduce on the last microbatch, one SGD update), so consecutive invocations without reset behave as consecutive training steps.",
+          "torch.set_num_interop_threads(1) is best-effort in case the worker already started parallel CPU work; every other configure() policy from common.py is applied unconditionally.",
+          "Task phases annotated for discovery are 'forward_backward' (the accumulation loop) and 'optimizer_step'; no optimization target or operator group is preselected."
+        ]
+      },
+      "controls": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 30.336058888584375,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 59469,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 59469,
+              "status": "verified",
+              "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 49,
+                "unavailable_samples": 0,
+                "wait_s": 0.044693343341350555,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "c706677b51159df15afb5fabdfa51ec84c6bb5803b2d9d6cb09c9a52961704f7",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "controls": {
+                "reset": [
+                  {
+                    "passed": true,
+                    "compared_elements": 248879621,
+                    "max_abs_error": 0.0
+                  },
+                  {
+                    "passed": true,
+                    "compared_elements": 248879621,
+                    "max_abs_error": 0.0
+                  }
+                ],
+                "identity": {
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                "identity_covered": true,
+                "wrong_output_rejected": true,
+                "missing_coverage_rejected": true
+              },
+              "samples": [
+                {
+                  "step_ms": 111.758259,
+                  "tokens_per_step": 1024.0,
+                  "effective_batch": 8.0,
+                  "tokens_per_second": 9162.63378798698,
+                  "parameter_count": 124439808.0,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 111.758259,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014019584.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                },
+                {
+                  "step_ms": 112.569615,
+                  "tokens_per_step": 1024.0,
+                  "effective_batch": 8.0,
+                  "tokens_per_second": 9096.593250318925,
+                  "parameter_count": 124439808.0,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 112.569615,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014019584.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                },
+                {
+                  "step_ms": 106.805813,
+                  "tokens_per_step": 1024.0,
+                  "effective_batch": 8.0,
+                  "tokens_per_second": 9587.493145153065,
+                  "parameter_count": 124439808.0,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 106.805813,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014019584.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                },
+                {
+                  "step_ms": 108.596913,
+                  "tokens_per_step": 1024.0,
+                  "effective_batch": 8.0,
+                  "tokens_per_second": 9429.365639518684,
+                  "parameter_count": 124439808.0,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 108.596913,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014019584.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                },
+                {
+                  "step_ms": 109.82295,
+                  "tokens_per_step": 1024.0,
+                  "effective_batch": 8.0,
+                  "tokens_per_second": 9324.098469400065,
+                  "parameter_count": 124439808.0,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 109.82295,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014019584.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                }
+              ],
+              "metrics": {
+                "step_ms": 109.82295,
+                "tokens_per_step": 1024.0,
+                "effective_batch": 8.0,
+                "tokens_per_second": 9324.098469400065,
+                "parameter_count": 124439808.0,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 109.82295,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2080374784.0,
+                "framework.allocated_bytes": 1014019584.0,
+                "framework.reserved_bytes": 2080374784.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+                "communication_kernel_sum_ms": 38.343230000000005
+              },
+              "metric_samples": {
+                "communication_kernel_sum_ms": [
+                  40.713822,
+                  35.751875000000005,
+                  38.343230000000005
+                ]
+              },
+              "diagnostics": {
+                "values": [
+                  40.713822,
+                  35.751875000000005,
+                  38.343230000000005
+                ],
+                "evidence": [
+                  "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/control/controls/metric-rank-0-0.json",
+                  "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/control/controls/metric-rank-0-1.json",
+                  "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/control/controls/metric-rank-0-2.json"
+                ],
+                "profiled_wall_ms": [
+                  167.951746,
+                  170.563372,
+                  160.756596
+                ],
+                "protocol": "profiler_start_then_rank_preparation_v2; explicit completion-bounded workload, excluding preparation collectives",
+                "scope": "separate plain PyTorch diagnostic; kernel time includes waiting, not wire or critical-path time"
+              },
+              "reference": "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/control/controls/reference-rank-0.pt",
+              "models": [
+                "gpt2"
+              ]
+            }
+          },
+          {
+            "rank": 1,
+            "pid": 59470,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 59470,
+              "status": "verified",
+              "torch_uuid": "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+              "requested_uuid": "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+              "torch_raw_uuid": "cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+              "logical_device": 1,
+              "nvidia_smi_pid_uuids": [
+                "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 49,
+                "unavailable_samples": 0,
+                "wait_s": 0.09647874161601067,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "c706677b51159df15afb5fabdfa51ec84c6bb5803b2d9d6cb09c9a52961704f7",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "controls": {
+                "reset": [
+                  {
+                    "passed": true,
+                    "compared_elements": 248879621,
+                    "max_abs_error": 0.0
+                  },
+                  {
+                    "passed": true,
+                    "compared_elements": 248879621,
+                    "max_abs_error": 0.0
+                  }
+                ],
+                "identity": {
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                "identity_covered": true,
+                "wrong_output_rejected": true,
+                "missing_coverage_rejected": true
+              },
+              "samples": [
+                {
+                  "step_ms": 111.719687,
+                  "tokens_per_step": 1024.0,
+                  "effective_batch": 8.0,
+                  "tokens_per_second": 9165.797251114747,
+                  "parameter_count": 124439808.0,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 111.719687,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014019584.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                },
+                {
+                  "step_ms": 112.56984,
+                  "tokens_per_step": 1024.0,
+                  "effective_batch": 8.0,
+                  "tokens_per_second": 9096.575068419746,
+                  "parameter_count": 124439808.0,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 112.56984,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014019584.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                },
+                {
+                  "step_ms": 106.772743,
+                  "tokens_per_step": 1024.0,
+                  "effective_batch": 8.0,
+                  "tokens_per_second": 9590.46261460193,
+                  "parameter_count": 124439808.0,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 106.772743,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014019584.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                },
+                {
+                  "step_ms": 108.568191,
+                  "tokens_per_step": 1024.0,
+                  "effective_batch": 8.0,
+                  "tokens_per_second": 9431.860202957605,
+                  "parameter_count": 124439808.0,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 108.568191,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014019584.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                },
+                {
+                  "step_ms": 109.802154,
+                  "tokens_per_step": 1024.0,
+                  "effective_batch": 8.0,
+                  "tokens_per_second": 9325.864408816606,
+                  "parameter_count": 124439808.0,
+                  "peak_allocated_bytes": 1977712640.0,
+                  "framework.elapsed_ms": 109.802154,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014019584.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                }
+              ],
+              "metrics": {
+                "step_ms": 109.802154,
+                "tokens_per_step": 1024.0,
+                "effective_batch": 8.0,
+                "tokens_per_second": 9325.864408816606,
+                "parameter_count": 124439808.0,
+                "peak_allocated_bytes": 1977712640.0,
+                "framework.elapsed_ms": 109.802154,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2080374784.0,
+                "framework.allocated_bytes": 1014019584.0,
+                "framework.reserved_bytes": 2080374784.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+                "communication_kernel_sum_ms": 35.389288
+              },
+              "metric_samples": {
+                "communication_kernel_sum_ms": [
+                  35.389288,
+                  51.15293899999999,
+                  35.311717
+                ]
+              },
+              "diagnostics": {
+                "values": [
+                  35.389288,
+                  51.15293899999999,
+                  35.311717
+                ],
+                "evidence": [
+                  "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/control/controls/metric-rank-1-0.json",
+                  "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/control/controls/metric-rank-1-1.json",
+                  "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/control/controls/metric-rank-1-2.json"
+                ],
+                "profiled_wall_ms": [
+                  167.883645,
+                  170.415578,
+                  160.720939
+                ],
+                "protocol": "profiler_start_then_rank_preparation_v2; explicit completion-bounded workload, excluding preparation collectives",
+                "scope": "separate plain PyTorch diagnostic; kernel time includes waiting, not wire or critical-path time"
+              },
+              "reference": "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/control/controls/reference-rank-1.pt",
+              "models": [
+                "gpt2"
+              ]
+            }
+          }
+        ],
+        "lease_wait_s": 0.0003297775983810425,
+        "device_selectors": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+          "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+        ],
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+          "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+        ],
+        "worker_pids_reaped": true
+      },
+      "controls_valid": true,
+      "negative_probe": {
+        "status": "completed",
+        "probe_valid": true,
+        "detected": false,
+        "run": {
+          "schema_version": 1,
+          "status": "passed",
+          "failure": null,
+          "wall_s": 15.106592319905758,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 59872,
+              "exit_code": 0,
+              "status": "passed",
+              "binding": {
+                "pid": 59872,
+                "status": "verified",
+                "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+                "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+                "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 24,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.05591064319014549,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "framework_source": {
+                "sha256": "c706677b51159df15afb5fabdfa51ec84c6bb5803b2d9d6cb09c9a52961704f7",
+                "files": 162,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "probe_executed": true,
+                "rank": 0,
+                "parameter": "gpt2.transformer.ln_f.bias",
+                "delta_requested": 2.5e-07,
+                "actual_abs_change": 0.0,
+                "scalar_within_tolerance": true,
+                "exact_replica_equal_after": true,
+                "scope": "Mutation only in this isolated worker after a complete step, outside timing",
+                "detected": false,
+                "detection": "observation_comparison",
+                "comparison": {
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              }
+            },
+            {
+              "rank": 1,
+              "pid": 59873,
+              "exit_code": 0,
+              "status": "passed",
+              "binding": {
+                "pid": 59873,
+                "status": "verified",
+                "torch_uuid": "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+                "requested_uuid": "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+                "torch_raw_uuid": "cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+                "logical_device": 1,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 24,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.03409627825021744,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "framework_source": {
+                "sha256": "c706677b51159df15afb5fabdfa51ec84c6bb5803b2d9d6cb09c9a52961704f7",
+                "files": 162,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "probe_executed": true,
+                "rank": 1,
+                "parameter": "gpt2.transformer.ln_f.bias",
+                "delta_requested": 2.5e-07,
+                "actual_abs_change": 2.500019036233425e-07,
+                "scalar_within_tolerance": true,
+                "exact_replica_equal_after": false,
+                "scope": "Mutation only in this isolated worker after a complete step, outside timing",
+                "detected": false,
+                "detection": "observation_comparison",
+                "comparison": {
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 2.500019036233425e-07
+                }
+              }
+            }
+          ],
+          "lease_wait_s": 0.0003196448087692261,
+          "device_selectors": [
+            "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+            "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+          ],
+          "entry_sha256": "b69872b04afe2aa096a146a7f51b28030c40f2f08873e05464dd2d79d4c96eed",
+          "devices": [
+            "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+            "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+          ],
+          "worker_pids_reaped": true
+        }
+      },
+      "source_fidelity": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 19.09978047758341,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 60163,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 60163,
+              "status": "verified",
+              "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 33,
+                "unavailable_samples": 0,
+                "wait_s": 0.0516609288752079,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "c706677b51159df15afb5fabdfa51ec84c6bb5803b2d9d6cb09c9a52961704f7",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "rank": 0,
+                  "step": 0,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 7.450580596923828e-09
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "rank": 1,
+                  "step": 0,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 7.450580596923828e-09
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "step": 0,
+                  "global_loss": {
+                    "passed": true,
+                    "compared_elements": 1,
+                    "max_abs_error": 4.76837158203125e-07
+                  }
+                },
+                {
+                  "rank": 0,
+                  "step": 1,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 6.798654794692993e-08
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "rank": 1,
+                  "step": 1,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 6.798654794692993e-08
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "step": 1,
+                  "global_loss": {
+                    "passed": true,
+                    "compared_elements": 1,
+                    "max_abs_error": 0.0
+                  }
+                }
+              ],
+              "method": "original source accumulates the exact global batch serially, for two continuous optimizer updates",
+              "exact_replica_gradients": [
+                {
+                  "step": 0,
+                  "passed": true,
+                  "compared_elements": 124439808,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "step": 1,
+                  "passed": true,
+                  "compared_elements": 124439808,
+                  "max_abs_error": 0.0
+                }
+              ]
+            }
+          }
+        ],
+        "lease_wait_s": 8.615478873252869e-05,
+        "device_selectors": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+        ],
+        "entry_sha256": "b69872b04afe2aa096a146a7f51b28030c40f2f08873e05464dd2d79d4c96eed",
+        "devices": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+        ],
+        "worker_pids_reaped": true
+      },
+      "source_fidelity_valid": true
+    },
+    {
+      "arm": "treatment",
+      "status": "completed",
+      "agent": {
+        "role": "project-evaluator",
+        "session": "ses_e85d42b08ffeB2twk3shTVGgok",
+        "message": "msg_17a32091c001d01qwu9D7P4Ow1",
+        "model": "zhipuai/glm-5.3",
+        "usage": {
+          "schema_version": 1,
+          "mode": "observe_only",
+          "messages": 12,
+          "reported_cost": 0.2767482617,
+          "messages_without_cost": 0,
+          "unfinished_messages": 0,
+          "tokens": {
+            "total": 412801.0,
+            "input": 43756.0,
+            "output": 6938.0,
+            "reasoning": 22459.0,
+            "cache.read": 339648.0,
+            "cache.write": 0.0
+          },
+          "sessions": [
+            {
+              "id": "ses_e85d42b08ffeB2twk3shTVGgok",
+              "status": "observed",
+              "detail": null
+            }
+          ],
+          "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+        },
+        "sandbox": "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/treatment/sandboxes/project-evaluator-replay-b57437249c36",
+        "outputs": [
+          "adapter.py",
+          "understanding.json"
+        ],
+        "feedback_provided": false,
+        "contract_repairs": 0,
+        "generation_snapshots": [
+          "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/treatment/generation-snapshots/generation-2343783e0e21.json"
+        ]
+      },
+      "understanding": {
+        "goal": "Reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks.",
+        "entrypoint": "gpt2_ddp_training.py",
+        "completion": "The measured invocation is one full accumulated DDP training step (gpt2_ddp_training.py step(), lines 102-105): optimizer.zero_grad(set_to_none=True), then accumulation_steps forward/backward microbatches of micro_batch x sequence_length tokens each under DDP with no_sync() on all but the last microbatch and one gradient all-reduce on the final microbatch, then optimizer.step(), ending at the source's internal torch.cuda.synchronize() completion boundary. The step consumes world_size x micro_batch x sequence_length x accumulation_steps = 1024 tokens with effective batch 8. Harness work surrounding it (reference construction, gradient/parameter checks, exact replica broadcast, negative control, the separate bucket-inventory comm-hook run, the 3 profiled diagnostic runs, report writing) is not part of the invocation.",
+        "state_protocol": "prepare() configures the source's numerical policy on context['device'], builds the seeded FP32 GPT-2 (torch.manual_seed(20261020)), wraps it in DDP(broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True), creates SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False), synthesizes per-rank token inputs (generator seed 31000 + source_rank) and snapshots initial weights to CPU. reset() restores those initial weights via raw_model.load_state_dict(initial) outside timing, mirroring the source's reset() (gpt2_ddp_training.py:99-100); gradient clearing is NOT moved into reset because the source performs optimizer.zero_grad(set_to_none=True) inside the timed accumulate() (gpt2_ddp_training.py:37). before_run() reproduces the source's pre-step control-group barrier plus CUDA sync outside the timer. run() repeats the identical step from the restored start state each invocation (the 4 accumulation iterations are genuine internal work). The worker-initialized process group is never destroyed and no second default group is created; a gloo control subgroup is created only for coordination. observe() runs outside timing, clones loss, all gradients and updated parameters to CPU, and performs the exact cross-rank gradient broadcast check. metrics() queries CUDA peak statistics outside the timer.",
+        "invariants": [
+          "Numerical policy is frozen by the request notes: FP32 weights, TF32 disabled for CUDA matmul and cudnn, torch.set_float32_matmul_precision('highest'), cudnn.benchmark False (common.py configure; request notes preserve precision).",
+          "Model architecture is frozen by the request: GPT-2 with n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, resid_pdrop=embd_pdrop=attn_pdrop=0.0, use_cache=False, eager attention (workloads.json gpt2_ddp_training.model; request forbids changing model architecture).",
+          "Workload dimensions are read from request['workload'] (world_size=2, micro_batch=1, sequence_length=128, accumulation_steps=4; effective batch 8; 1024 tokens per step) and must not be reduced or altered (request freezes batch, sequence length, effective training batch and work amount).",
+          "Task data are the source's declared seeded synthetic fixtures: weight initialization manual_seed(20261020) and per-source-rank token generator seed 31000 + source_rank with values in [0, vocab_size) (gpt2_ddp_training.py make_model/make_inputs; request notes declare these valid task data; assets is legitimately empty).",
+          "run() must execute the entire frozen workload: full gradient accumulation over all accumulation_steps microbatches, the required NCCL gradient all-reduce on the last microbatch, the SGD optimizer update, and the source's synchronize boundary (request: a training workload must include the full accumulation, required communication and optimizer update).",
+          "optimizer.zero_grad(set_to_none=True) stays inside the timed invocation rather than being pre-cleared in reset(), because the source executes it within accumulate() on every step (gpt2_ddp_training.py:37); the source's setup/timed division must be preserved.",
+          "Exact discrete correctness checks are required in observe(), outside timed run(), because per-rank tolerance comparisons cannot enforce participant relationships: every parameter gradient must be identical across ranks via broadcast and assert_close(atol=0.0, rtol=0.0) (exact_gradient_replica_check, gpt2_ddp_training.py:81-86), the negative control must reject +1-corrupted gradients, and the training loss must be finite (request notes).",
+          "Reference fidelity uses the request's quality tolerances (grad_atol/parameter_atol 1e-06, grad_rtol/parameter_rtol 1e-04) against the serial single-GPU accumulation of the exact same global batch plus the post-step parameter comparison; the adapter must reproduce the source's full gradients, loss and updated parameters as observations so this check remains meaningful (request quality and notes; no accuracy or convergence claim beyond reference fidelity).",
+          "The step-time constraint step_ms <= 1.05x baseline (max across ranks of one full accumulated step's local wall time) applies to the full request; communication improvements may not trade away step time or the unchanged work amount (request objective.constraints).",
+          "The frozen objective communication_kernel_sum_ms is collected by the framework's torch_communication collector in separate diagnostic runs; the adapter must not fabricate, inline or approximate it inside run()/metrics() (request objective.source)."
+        ],
+        "objective": {
+          "name": "communication_kernel_sum_ms",
+          "unit": "ms",
+          "direction": "minimize",
+          "constraints": [
+            {
+              "metric": "step_ms",
+              "op": "le",
+              "baseline_ratio": 1.05,
+              "rank_aggregation": "max"
+            }
+          ],
+          "source": {
+            "collector": "torch_communication",
+            "field": "communication_kernel_sum_ms"
+          },
+          "rank_aggregation": "max"
+        },
+        "workload": {
+          "id": "accumulated_step",
+          "world_size": 2,
+          "micro_batch": 1,
+          "sequence_length": 128,
+          "accumulation_steps": 4,
+          "goals": [
+            {
+              "id": "step",
+              "metric": "step_ms",
+              "direction": "min"
+            },
+            {
+              "id": "communication",
+              "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+              "direction": "min",
+              "constraints": {
+                "step_ms_max_baseline_ratio": 1.05
+              }
+            }
+          ]
+        },
+        "quality": {
+          "atol": 1e-06,
+          "rtol": 0.0001,
+          "grad_atol": 1e-06,
+          "grad_rtol": 0.0001,
+          "parameter_atol": 1e-06,
+          "parameter_rtol": 0.0001
+        },
+        "missing_information": [],
+        "assumptions": [
+          "Model dimensions are embedded as frozen architecture constants taken from workloads.json gpt2_ddp_training.model, because request['workload'] carries only workload-dependent dimensions; a separately validated workload variant (e.g. held-out longer_sequence with sequence_length 256, accumulation_steps 2) changes only workload fields through the same request structure while the architecture stays fixed.",
+          "The rank-0 serial global-batch reference, its gradient/parameter comparisons and negative-control scaffolding in the source are measurement and quality infrastructure surrounding the invocation; the framework stores reference observations on CPU, so this adapter does not allocate a second reference model on GPU. The baseline reproduces the source's exact gradient, loss and parameter values, which is what those comparisons verify.",
+          "The separate bucket-inventory comm-hook run and the 3 profiled diagnostic runs (median-of-3 max-rank NCCL kernel sum) are diagnostics owned by the framework; the baseline registers no communication hook and runs no profiler inside run()/metrics().",
+          "DDP reducer options (broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True), SGD hyperparameters (lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) and no_sync() on the first accumulation_steps-1 microbatches are the source baseline's implementation choices reproduced faithfully here; they remain legitimate optimization surfaces as long as the exact cross-rank gradient check, the reference-fidelity tolerances and the step-time constraint still hold.",
+          "The source's gloo control group exists only for timing barriers; the adapter reproduces that coordination in before_run() (CUDA sync plus barrier) without re-initializing or destroying the worker's process group, falling back to the default group if gloo subgroup creation fails.",
+          "set_mode() only records the mode because the source has no separate correctness-capture path: execution semantics, work amount and observations are identical in quality, measure and profile modes; kernel_optimizer.project.discovery.phase annotations are labels only and add no work.",
+          "metrics() exposes the source's clean project metrics (step_ms, tokens_per_second, peak_allocated_bytes, loss, parameter_count, effective_batch, tokens_per_step) in native units; step_ms is the local wall time whose max across ranks is the constraint metric, and the communication objective is left to the framework's collector.",
+          "The held-out workload longer_sequence is not part of this frozen request and is not exercised; request['assets'] is empty by design because the entry never reads --assets."
+        ]
+      },
+      "controls": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 31.847466561943293,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 61457,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 61457,
+              "status": "verified",
+              "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 53,
+                "unavailable_samples": 0,
+                "wait_s": 0.03586859628558159,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "c706677b51159df15afb5fabdfa51ec84c6bb5803b2d9d6cb09c9a52961704f7",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "controls": {
+                "reset": [
+                  {
+                    "passed": true,
+                    "compared_elements": 248879621,
+                    "max_abs_error": 0.0
+                  },
+                  {
+                    "passed": true,
+                    "compared_elements": 248879621,
+                    "max_abs_error": 0.0
+                  }
+                ],
+                "identity": {
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                "identity_covered": true,
+                "wrong_output_rejected": true,
+                "missing_coverage_rejected": true
+              },
+              "samples": [
+                {
+                  "step_ms": 118.749863,
+                  "tokens_per_second": 8623.167843149427,
+                  "peak_allocated_bytes": 1977712640,
+                  "loss": 10.976432800292969,
+                  "parameter_count": 124439808,
+                  "effective_batch": 8,
+                  "tokens_per_step": 1024,
+                  "framework.elapsed_ms": 118.749863,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014017536.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                },
+                {
+                  "step_ms": 115.432318,
+                  "tokens_per_second": 8870.999194523669,
+                  "peak_allocated_bytes": 1977712640,
+                  "loss": 10.976432800292969,
+                  "parameter_count": 124439808,
+                  "effective_batch": 8,
+                  "tokens_per_step": 1024,
+                  "framework.elapsed_ms": 115.432318,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014017536.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                },
+                {
+                  "step_ms": 116.524853,
+                  "tokens_per_second": 8787.82485998931,
+                  "peak_allocated_bytes": 1977712640,
+                  "loss": 10.976432800292969,
+                  "parameter_count": 124439808,
+                  "effective_batch": 8,
+                  "tokens_per_step": 1024,
+                  "framework.elapsed_ms": 116.524853,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014017536.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                },
+                {
+                  "step_ms": 120.133661,
+                  "tokens_per_second": 8523.839126154659,
+                  "peak_allocated_bytes": 1977712640,
+                  "loss": 10.976432800292969,
+                  "parameter_count": 124439808,
+                  "effective_batch": 8,
+                  "tokens_per_step": 1024,
+                  "framework.elapsed_ms": 120.133661,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014017536.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                },
+                {
+                  "step_ms": 114.267663,
+                  "tokens_per_second": 8961.415444367669,
+                  "peak_allocated_bytes": 1977712640,
+                  "loss": 10.976432800292969,
+                  "parameter_count": 124439808,
+                  "effective_batch": 8,
+                  "tokens_per_step": 1024,
+                  "framework.elapsed_ms": 114.267663,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014017536.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                }
+              ],
+              "metrics": {
+                "step_ms": 116.524853,
+                "tokens_per_second": 8787.82485998931,
+                "peak_allocated_bytes": 1977712640,
+                "loss": 10.976432800292969,
+                "parameter_count": 124439808,
+                "effective_batch": 8,
+                "tokens_per_step": 1024,
+                "framework.elapsed_ms": 116.524853,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2080374784.0,
+                "framework.allocated_bytes": 1014017536.0,
+                "framework.reserved_bytes": 2080374784.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+                "communication_kernel_sum_ms": 36.94478999999999
+              },
+              "metric_samples": {
+                "communication_kernel_sum_ms": [
+                  43.136281000000004,
+                  35.556774,
+                  36.94478999999999
+                ]
+              },
+              "diagnostics": {
+                "values": [
+                  43.136281000000004,
+                  35.556774,
+                  36.94478999999999
+                ],
+                "evidence": [
+                  "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/treatment/controls/metric-rank-0-0.json",
+                  "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/treatment/controls/metric-rank-0-1.json",
+                  "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/treatment/controls/metric-rank-0-2.json"
+                ],
+                "profiled_wall_ms": [
+                  176.605267,
+                  182.071258,
+                  165.53466
+                ],
+                "protocol": "profiler_start_then_rank_preparation_v2; explicit completion-bounded workload, excluding preparation collectives",
+                "scope": "separate plain PyTorch diagnostic; kernel time includes waiting, not wire or critical-path time"
+              },
+              "reference": "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/treatment/controls/reference-rank-0.pt",
+              "models": [
+                "gpt2"
+              ]
+            }
+          },
+          {
+            "rank": 1,
+            "pid": 61458,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 61458,
+              "status": "verified",
+              "torch_uuid": "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+              "requested_uuid": "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+              "torch_raw_uuid": "cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+              "logical_device": 1,
+              "nvidia_smi_pid_uuids": [
+                "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 53,
+                "unavailable_samples": 0,
+                "wait_s": 0.039023011922836304,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "c706677b51159df15afb5fabdfa51ec84c6bb5803b2d9d6cb09c9a52961704f7",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "controls": {
+                "reset": [
+                  {
+                    "passed": true,
+                    "compared_elements": 248879621,
+                    "max_abs_error": 0.0
+                  },
+                  {
+                    "passed": true,
+                    "compared_elements": 248879621,
+                    "max_abs_error": 0.0
+                  }
+                ],
+                "identity": {
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                },
+                "identity_covered": true,
+                "wrong_output_rejected": true,
+                "missing_coverage_rejected": true
+              },
+              "samples": [
+                {
+                  "step_ms": 118.773882,
+                  "tokens_per_second": 8621.42402653809,
+                  "peak_allocated_bytes": 1977712640,
+                  "loss": 10.959263801574707,
+                  "parameter_count": 124439808,
+                  "effective_batch": 8,
+                  "tokens_per_step": 1024,
+                  "framework.elapsed_ms": 118.773882,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014017536.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                },
+                {
+                  "step_ms": 115.389476,
+                  "tokens_per_second": 8874.29283412293,
+                  "peak_allocated_bytes": 1977712640,
+                  "loss": 10.959263801574707,
+                  "parameter_count": 124439808,
+                  "effective_batch": 8,
+                  "tokens_per_step": 1024,
+                  "framework.elapsed_ms": 115.389476,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014017536.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                },
+                {
+                  "step_ms": 116.468463,
+                  "tokens_per_second": 8792.079620729604,
+                  "peak_allocated_bytes": 1977712640,
+                  "loss": 10.959263801574707,
+                  "parameter_count": 124439808,
+                  "effective_batch": 8,
+                  "tokens_per_step": 1024,
+                  "framework.elapsed_ms": 116.468463,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014017536.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                },
+                {
+                  "step_ms": 120.082895,
+                  "tokens_per_second": 8527.442647014797,
+                  "peak_allocated_bytes": 1977712640,
+                  "loss": 10.959263801574707,
+                  "parameter_count": 124439808,
+                  "effective_batch": 8,
+                  "tokens_per_step": 1024,
+                  "framework.elapsed_ms": 120.082895,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014017536.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                },
+                {
+                  "step_ms": 114.233946,
+                  "tokens_per_second": 8964.060472882553,
+                  "peak_allocated_bytes": 1977712640,
+                  "loss": 10.959263801574707,
+                  "parameter_count": 124439808,
+                  "effective_batch": 8,
+                  "tokens_per_step": 1024,
+                  "framework.elapsed_ms": 114.233946,
+                  "framework.peak_allocated_bytes": 1977712640.0,
+                  "framework.peak_reserved_bytes": 2080374784.0,
+                  "framework.allocated_bytes": 1014017536.0,
+                  "framework.reserved_bytes": 2080374784.0,
+                  "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                  "framework.lifecycle_peak_reserved_bytes": 2080374784.0
+                }
+              ],
+              "metrics": {
+                "step_ms": 116.468463,
+                "tokens_per_second": 8792.079620729604,
+                "peak_allocated_bytes": 1977712640,
+                "loss": 10.959263801574707,
+                "parameter_count": 124439808,
+                "effective_batch": 8,
+                "tokens_per_step": 1024,
+                "framework.elapsed_ms": 116.468463,
+                "framework.peak_allocated_bytes": 1977712640.0,
+                "framework.peak_reserved_bytes": 2080374784.0,
+                "framework.allocated_bytes": 1014017536.0,
+                "framework.reserved_bytes": 2080374784.0,
+                "framework.lifecycle_peak_allocated_bytes": 1983637504.0,
+                "framework.lifecycle_peak_reserved_bytes": 2080374784.0,
+                "communication_kernel_sum_ms": 35.246885999999996
+              },
+              "metric_samples": {
+                "communication_kernel_sum_ms": [
+                  35.246885999999996,
+                  50.753823000000004,
+                  34.565975
+                ]
+              },
+              "diagnostics": {
+                "values": [
+                  35.246885999999996,
+                  50.753823000000004,
+                  34.565975
+                ],
+                "evidence": [
+                  "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/treatment/controls/metric-rank-1-0.json",
+                  "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/treatment/controls/metric-rank-1-1.json",
+                  "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/treatment/controls/metric-rank-1-2.json"
+                ],
+                "profiled_wall_ms": [
+                  176.520777,
+                  181.957603,
+                  165.460235
+                ],
+                "protocol": "profiler_start_then_rank_preparation_v2; explicit completion-bounded workload, excluding preparation collectives",
+                "scope": "separate plain PyTorch diagnostic; kernel time includes waiting, not wire or critical-path time"
+              },
+              "reference": "/root/autodl-tmp/dev/v6-work/post-batch-audit-20261027/evaluator-ab/treatment/controls/reference-rank-1.pt",
+              "models": [
+                "gpt2"
+              ]
+            }
+          }
+        ],
+        "lease_wait_s": 0.0003198161721229553,
+        "device_selectors": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+          "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+        ],
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+          "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+        ],
+        "worker_pids_reaped": true
+      },
+      "controls_valid": true,
+      "negative_probe": {
+        "status": "completed",
+        "probe_valid": true,
+        "detected": true,
+        "run": {
+          "schema_version": 1,
+          "status": "passed",
+          "failure": null,
+          "wall_s": 13.877783216536045,
+          "ranks": [
+            {
+              "rank": 0,
+              "pid": 61876,
+              "exit_code": 0,
+              "status": "passed",
+              "binding": {
+                "pid": 61876,
+                "status": "verified",
+                "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+                "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+                "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+                "logical_device": 0,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 22,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.056681014597415924,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "framework_source": {
+                "sha256": "c706677b51159df15afb5fabdfa51ec84c6bb5803b2d9d6cb09c9a52961704f7",
+                "files": 162,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "probe_executed": true,
+                "rank": 0,
+                "parameter": "gpt2.transformer.ln_f.bias",
+                "delta_requested": 2.5e-07,
+                "actual_abs_change": 0.0,
+                "scalar_within_tolerance": true,
+                "exact_replica_equal_after": true,
+                "scope": "Mutation only in this isolated worker after a complete step, outside timing",
+                "detected": false,
+                "detection": "observation_comparison",
+                "comparison": {
+                  "passed": true,
+                  "compared_elements": 248879621,
+                  "max_abs_error": 0.0
+                }
+              }
+            },
+            {
+              "rank": 1,
+              "pid": 61877,
+              "exit_code": 0,
+              "status": "passed",
+              "binding": {
+                "pid": 61877,
+                "status": "verified",
+                "torch_uuid": "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+                "requested_uuid": "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+                "torch_raw_uuid": "cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+                "logical_device": 1,
+                "nvidia_smi_pid_uuids": [
+                  "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+                ],
+                "pid_query_status": "observed",
+                "occupancy": {
+                  "status": "sampled_clear",
+                  "samples": 19,
+                  "unavailable_samples": 0,
+                  "wait_s": 0.059027109295129776,
+                  "external_clients": [],
+                  "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                }
+              },
+              "framework_source": {
+                "sha256": "c706677b51159df15afb5fabdfa51ec84c6bb5803b2d9d6cb09c9a52961704f7",
+                "files": 162,
+                "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+              },
+              "result": {
+                "probe_executed": true,
+                "rank": 1,
+                "parameter": "gpt2.transformer.ln_f.bias",
+                "delta_requested": 2.5e-07,
+                "actual_abs_change": 2.500019036233425e-07,
+                "scalar_within_tolerance": true,
+                "exact_replica_equal_after": false,
+                "scope": "Mutation only in this isolated worker after a complete step, outside timing",
+                "detected": true,
+                "detection": "observe_assertion",
+                "error": "Tensor-likes are not equal!\n\nMismatched elements: 1 / 768 (0.1%)\nGreatest absolute difference: 2.500019036233425e-07 at index (0,)\nGreatest relative difference: 0.0005018783849664032 at index (0,)"
+              }
+            }
+          ],
+          "lease_wait_s": 0.00029963627457618713,
+          "device_selectors": [
+            "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+            "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+          ],
+          "entry_sha256": "b69872b04afe2aa096a146a7f51b28030c40f2f08873e05464dd2d79d4c96eed",
+          "devices": [
+            "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+            "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+          ],
+          "worker_pids_reaped": true
+        }
+      },
+      "source_fidelity": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 18.38325795531273,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 62153,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 62153,
+              "status": "verified",
+              "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 32,
+                "unavailable_samples": 0,
+                "wait_s": 0.0588032491505146,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "c706677b51159df15afb5fabdfa51ec84c6bb5803b2d9d6cb09c9a52961704f7",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "checks": [
+                {
+                  "rank": 0,
+                  "step": 0,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 7.450580596923828e-09
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "rank": 1,
+                  "step": 0,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 7.450580596923828e-09
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "step": 0,
+                  "global_loss": {
+                    "passed": true,
+                    "compared_elements": 1,
+                    "max_abs_error": 4.76837158203125e-07
+                  }
+                },
+                {
+                  "rank": 0,
+                  "step": 1,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 6.798654794692993e-08
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "rank": 1,
+                  "step": 1,
+                  "gradients": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 6.798654794692993e-08
+                  },
+                  "parameters": {
+                    "passed": true,
+                    "compared_elements": 124439808,
+                    "max_abs_error": 3.725290298461914e-09
+                  }
+                },
+                {
+                  "step": 1,
+                  "global_loss": {
+                    "passed": true,
+                    "compared_elements": 1,
+                    "max_abs_error": 0.0
+                  }
+                }
+              ],
+              "method": "original source accumulates the exact global batch serially, for two continuous optimizer updates",
+              "exact_replica_gradients": [
+                {
+                  "step": 0,
+                  "passed": true,
+                  "compared_elements": 124439808,
+                  "max_abs_error": 0.0
+                },
+                {
+                  "step": 1,
+                  "passed": true,
+                  "compared_elements": 124439808,
+                  "max_abs_error": 0.0
+                }
+              ]
+            }
+          }
+        ],
+        "lease_wait_s": 0.00018842145800590515,
+        "device_selectors": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+        ],
+        "entry_sha256": "b69872b04afe2aa096a146a7f51b28030c40f2f08873e05464dd2d79d4c96eed",
+        "devices": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+        ],
+        "worker_pids_reaped": true
+      },
+      "source_fidelity_valid": true
+    }
+  ]
+}
