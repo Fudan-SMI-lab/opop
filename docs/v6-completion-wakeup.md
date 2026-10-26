@@ -28,9 +28,11 @@
 
 - 已通过真实 SSH 查询当前两个控制器，确认仍在运行。
 - 已在远端真实 Linux 进程/临时文件上验证六种状态：缺少启动记录、仍在运行、JSON 写入中、包含失败结果的正常终态、控制器异常退出、主控制器完成但后续检查仍在进行。
-- 队列适配器的两项本地替身检查验证单次提交和不确定回执记录；没有为测试而额外唤醒模型。
-- 完整的真实队列投递与自动续行要等本批到达终态后才能确认。部署时不提前宣称已经完成端到端唤醒验证。
+- 部署时先用队列适配器的两项本地替身检查验证单次提交和不确定回执记录，当时没有额外唤醒模型。
+- 随后用户明确要求真实投递验证，已使用守候脚本同一个 `queue_continuation()` 函数实际调用 `codex queue`。CLI 退出码为 0，返回消息 ID `01a179dd-f023-7fd3-be76-1718bfceb6b7`，目标为上述当前项目会话。
+- 上一轮回复结束后，这条消息已自动进入当前会话的新一轮；新轮次于 `2026-10-26T20:20:06.434749+00:00` 写入确认记录，`source=actual queued Codex turn`。这证明真实消息投递和自动续行均可行，不只是命令行帮助或模拟测试。
+- 本次是用户授权的一次测试唤醒，没有启用 Goal、再次排入测试消息或重启实验。实际实验守候进程仍为 `waiting`；当前整批远端完成事件本身尚未发生，不能把该测试当成实验已经完成。
 
-状态阶段为 `waiting` → `queueing` → `queued`，异常投递则为 `delivery_uncertain`。证据见 [部署记录](evidence/v6-next-stage-20261027/wakeup-setup.json)。
+状态阶段为 `waiting` → `queueing` → `queued`，异常投递则为 `delivery_uncertain`。证据见 [部署记录](evidence/v6-next-stage-20261027/wakeup-setup.json)和[真实投递与新轮次确认](evidence/v6-next-stage-20261027/wakeup-live-delivery.json)。部署记录中的“尚未真实投递”是部署当时的状态，由后者补充后续验证结果。
 
 官方 CLI 接口：[codex queue](https://learn.chatgpt.com/docs/cli/reference#codex-queue)。
