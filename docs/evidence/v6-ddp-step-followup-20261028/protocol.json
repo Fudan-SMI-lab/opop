@@ -1,0 +1,34 @@
+{
+  "at": "2026-10-27T21:50:13.427775+00:00",
+  "framework_source": {
+    "sha256": "cb4ea28c3d90ccad5bc723ed5b6dc124488d572fca8a69b3ed3b12ec0e994016",
+    "files": 162,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "specification": {
+    "name": "ddp-step-original",
+    "case": "ddp",
+    "devices": [
+      "0",
+      "1"
+    ],
+    "command": "torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp-step --profile",
+    "goal": "Minimize maximum-rank clean step_ms for the source's complete accumulated training step, taking aligned rank maxima before the median over repeats. Retain the original step_ms <= 1.05x original-baseline constraint, all workload, precision, full quality and exact rank-replica requirements and the completion boundary. Communication kernel duration remains a separately profiled diagnostic, not wire time or the primary score."
+  },
+  "sequence": [
+    "fixed native B/C paths",
+    "fixed B/C/C/B communication diagnostics",
+    "fresh original-entry DDP step goal three rounds",
+    "source/negative/full-version independent checks"
+  ],
+  "scope": "No supplied adapter, bundle, groups or developer diagnostics in original-entry task. Production unchanged. Fixed diagnostics never overwrite prior independent acceptance. New adapter source checks may require manual observation-schema mapping; execution failure or naming mismatch is not automatically numerical infidelity or acceptance. No API caps, score-dependent repeats, Goal, delivery probes or bulk local transfer.",
+  "disk": {
+    "at": "2026-10-27T21:50:13.450746+00:00",
+    "path": "/root/autodl-tmp",
+    "df_returncode": 0,
+    "df": "   1B-blocks         Used       Avail Use% Mounted on\n161061273600 115368398848 45692874752  72% /root/autodl-tmp\n",
+    "df_error": "",
+    "statvfs_free_bytes": 45692874752,
+    "interpretation": "df reflects the 150 GiB container quota; statvfs has reported host space for some nested paths and quota for the mount root. Compare both; plan against df."
+  }
+}

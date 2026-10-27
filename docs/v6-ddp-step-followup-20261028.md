@@ -12,3 +12,5 @@
 脚本`v6_ddp_step_followup_20261028.py`；目录`/root/autodl-tmp/dev/v6-work/ddp-step-followup-20261028`。GPU阶段串行，原始数据留服务器，启动前实际容器剩约42.57GiB。没有大型Qwen任务或本地原始数据转存；每阶段留小型索引和摘要到GitHub。只设置一个普通终态监听，不启用Goal或模型轮询。
 
 这不是把固定候选重新测到通过：旧整步独立接受、旧通信独立拒绝都保留；新原入口任务独立记录结果。allocator改动与两次review建议仍不采纳，TP完整质量失败以及历史Qwen/ResNet结果和样本也保持。
+
+启动记录：2026-10-27 21:50:12 UTC冻结`53d2611fa96ec6b27263c8dfeefe8fb08283fe2d`，controller PID372607；核心SHA仍`cb4ea28c…`。[launch](evidence/v6-ddp-step-followup-20261028/launch.json)与[protocol](evidence/v6-ddp-step-followup-20261028/protocol.json)留档。启动实际df可用45,692,874,752 bytes（42.56GiB）。首次检查B原生profile已passed，C的两个GPU worker正在运行，尚未据此宣称新原入口结果。唯一普通监听PID18968、状态waiting、同一controller存活；[设置证据](evidence/v6-ddp-step-followup-20261028/wakeup-setup.json)已归档。没有恢复旧监听或转存控制器。
