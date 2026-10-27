@@ -60,3 +60,7 @@
 新的普通守候 PID `65792` 等待 `/root/autodl-tmp/dev/v6-work/goal-switch-20261027/followup-completed.json`；远端单控制器 PID `179345`。状态 `.scratch/v6-goal-switch-wakeup.json`，取消文件 `.scratch/v6-goal-switch-wakeup.stop`。真实 SSH probe 已确认 running，范围包含 intake A/B、TP 基线和 ResNet 目标切换后的完整检查。仍使用已实证的终态单次 queue，不使用 Goal 或模型轮询。见[部署证据](evidence/v6-goal-switch-20261027/wakeup-setup.json)。
 
 后续更新：该批于 `2026-10-27T07:09:12.612180Z` 结束，已真实唤起本轮审计。守候状态 queued，未复用；本轮已区分 TP 依赖错误/后续质量失败、ResNet 冻结接受/源资源状态偏差，并完成真实追加诊断。见[投递回执](evidence/v6-goal-switch-20261027/wakeup-delivery.json)。
+
+## 当前等待：语义与生命周期批次
+
+新普通守候 PID `49404` 等待 `/root/autodl-tmp/dev/v6-work/semantics-lifetime-20261027/followup-completed.json`；远端单控制器 PID `207298`。状态 `.scratch/v6-semantics-lifetime-wakeup.json`，取消文件 `.scratch/v6-semantics-lifetime-wakeup.stop`。真实 SSH probe 确认 running，初始真实 Agent 会话已保存。使用同一终态单次投递机制，未启用 Goal、额外测试消息或模型轮询。见[部署回执](evidence/v6-semantics-lifetime-20261027/wakeup-setup.json)。

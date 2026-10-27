@@ -98,3 +98,4 @@ clean 端点结束后，对 P/T/C 各做单独的 Python runtime profile；对 C
 - 2026-10-27：上述[目标切换批次](v6-goal-switch-20261027.md)已冻结 `1d6f3a5` 并启动，核心框架保持上一批 SHA；真实 intake control 会话已建立。单卡/官方双卡 TP 基线、ResNet 显存三轮及独立/交叉检查排定串行执行，普通完成守候已验证运行。当前仅完成启动及 CPU 协议检查，不预判新实验结果。
 - 2026-10-27：目标切换批次结束并完成审计。ResNet 两个独立 bundle 共存、反馈、接受后重发现和完整版本独立检查均有真实证据；冻结 adapter 内运行峰值下降 36.68%，但新 adapter 遗失原计时阶段仍存活的 images（1,806,336 bytes），已用单行持有对照实证，故不能直接确认为原项目资源收益。数值全量检查仍为零误差。intake treatment 的非冻结说明主要留在未传递的 assumptions，而 invocation 仍过度指定 no_sync，暂不采用生产提示。TP 缺依赖问题已用局部 overlay 修复；真实 TP=2 token 完全一致但 logits 超原容差，仍不具备优化就绪条件。
 - 下一步：基于真实生成前状态做 intake 第二版单段说明对照、evaluator 生命周期说明对照；复用已核实的旧 ResNet baseline adapter 做明确目标 variant，保持代码/工作量/质量而重新生成合同及基线，再搜索三轮。TP 只做数值差异定位与分片一致性诊断，不放宽容差，不将失败基线包装为通信正例。旧结果全部保留，生产提示是否修改继续由实际对照决定。
+- 2026-10-27：已冻结 `6cd5c80` 并启动[语义/生命周期与目标变体批次](v6-semantics-lifetime-20261027.md)，intake control 真实会话已建立；两个提示对照、TP 单次 prefill 诊断、同 adapter 显存目标三轮及独立检查按协议执行。普通完成守候已确认运行；生产提示与旧实验不变。
