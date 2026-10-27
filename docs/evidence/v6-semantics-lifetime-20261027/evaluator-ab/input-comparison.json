@@ -1,0 +1,19 @@
+{
+  "same_framework": true,
+  "same_model": true,
+  "same_tool_settings": true,
+  "changed_inputs": [],
+  "prompt_diff": [
+    "--- ",
+    "+++ ",
+    "@@ -28,6 +28,8 @@",
+    " Use the source's actual timing semantics when adding phase measurements. Do not rewrite the supplied project's workload merely to make an adapter convenient. Do not declare accuracy or convergence beyond the source's reference-fidelity checks.",
+    " The framework synchronizes before and after run and resets CUDA peak stats immediately before its timer. Keep statistics queries in metrics(), outside the timer; do not duplicate those boundary operations inside run unless the source requires an internal completion point. Trace live Python references at the source timer, including loaded tensors unused by the forward: preserve allocations still held by source-local variables at that point.",
+    " ",
+    "+In understanding.state_protocol, give a concise ownership mapping from source objects that hold live device allocations at the timer to their owners in the adapter. Check that each mapped allocation actually survives prepare() in returned state or another explicit owner and remains live through run(). A comment or a temporary prepare-local variable does not retain an allocation. Report unresolved source lifetime facts without guessing them.",
+    "+",
+    " understanding.json must contain goal, entrypoint, completion, state_protocol, invariants (a nonempty array of strings), objective (copied from request), workload (copied from request), quality (copied from request), missing_information (an array of strings), and assumptions (an array of strings). If a required fact cannot be determined, list it in missing_information.",
+    " ",
+    " The baseline adapter must reproduce the source implementation. In understanding.invariants, distinguish required task semantics from source implementation choices: preserve request constraints and source-defined correctness, but do not freeze a choice solely because it appears in the reference. Describe such choices in assumptions; for a genuine invariant, cite the request/source requirement that makes it necessary."
+  ]
+}

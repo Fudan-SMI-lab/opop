@@ -64,3 +64,5 @@
 ## 当前等待：语义与生命周期批次
 
 新普通守候 PID `49404` 等待 `/root/autodl-tmp/dev/v6-work/semantics-lifetime-20261027/followup-completed.json`；远端单控制器 PID `207298`。状态 `.scratch/v6-semantics-lifetime-wakeup.json`，取消文件 `.scratch/v6-semantics-lifetime-wakeup.stop`。真实 SSH probe 确认 running，初始真实 Agent 会话已保存。使用同一终态单次投递机制，未启用 Goal、额外测试消息或模型轮询。见[部署回执](evidence/v6-semantics-lifetime-20261027/wakeup-setup.json)。
+
+后续更新：该批10:31:21 UTC结束，守候10:31:46 UTC提交消息 `01a17cea-8819-7422-ae5a-746c84681cc2`，实际开启本轮审计。已完成角色输入/输出、源数值、目标变体和独立拒绝核查；状态 queued，不复用。见[投递证据](evidence/v6-semantics-lifetime-20261027/wakeup-delivery.json)。

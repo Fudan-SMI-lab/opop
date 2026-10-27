@@ -1,0 +1,28 @@
+{
+  "collectors": [
+    "execution_timeline",
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "memory.peak_allocated_bytes",
+    "memory.allocation_events",
+    "images_per_second",
+    "execution_timeline.cpu_submit_associations",
+    "execution_timeline.per_device_intervals",
+    "execution_timeline.synchronization_events",
+    "execution_timeline.clock_alignment_bounds",
+    "python_runtime.host_dispatch_self_times",
+    "python_runtime.binding_call_costs"
+  ],
+  "unavailable_fields": {
+    "communication.nccl_algorithm_protocol_channels": "Not applicable: single-device task; observations.json capability 'communication' is not_applicable with reason 'single-device task' and request.json distributed_backend is null, so nccl_tuning is not selected; kernel entry names alone would not identify NCCL protocol anyway.",
+    "communication.per_collective_bytes_on_wire": "No collectives exist in this workload; device_telemetry (not selected) provides device-wide NVML PCIe/utilization/memory samples with native windows, not per-collective bytes, and PCIe/NVLink traffic must not be invented from logical payload or memcpy sizes.",
+    "candidate.exceptions_and_false_returns": "No candidate files exist yet; candidate_diagnostics only records exceptions (including handled ones) and False returns from supplied candidate files in a separate instrumented run, so it is not applicable at this planning stage; empty events would not establish which successful path executed.",
+    "candidate.binding_overhead_ab": "No additive candidate exists yet, so binding_cost (clean AB/BA whole-invocation comparison of parent vs binding-only passthrough) is not applicable before any candidate exists; it may be selected in subsequent candidate resource feedback rounds.",
+    "numerics.first_divergence_site": "No available collector compares intermediate tensors, measures per-site numerical error, or locates the first numerical divergence; quality is enforced only by the frozen evaluator (logits assert_close atol=rtol=1e-4, exact top1, +1-corruption negative control).",
+    "timeline.gpu_ready_to_consumer_completion": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown for the recorded intervals.",
+    "device.per_op_gpu_memory_attribution": "NVML memory readings from device_telemetry are device-wide with native sampling windows and cannot attribute per-operation allocated bytes; the objective metric is the torch allocator's max_memory_allocated bracketed by reset_peak_memory_stats per invocation (resnet_inference.py:43-48)."
+  },
+  "rationale": "Frozen objective is minimizing peak_allocated_bytes for one batch-32 FP32 ResNet-18 inference forward on a single leased CUDA device, subject to images_per_second >= 0.95 of baseline. The torch collector already ran and its evidence (coverage.json: 88/88 CUDA kernels associated, 0 unassociated, 0 root-only, 0 autograd ranges, 0 ambiguous forward sequences) resolves operator-to-kernel attribution completely, so torch is not re-selected and nsys is not selected despite being available: there is no overlap, CUDA-graph-tracing, or attribution question left for it to answer. Selected execution_timeline because the throughput-floor trade-off of any memory-reduction candidate depends on the submit/launch/synchronization structure of the eager forward: its separate plain Torch trace with CPU-to-CUDA submit associations, synchronization events, and per-device intervals shows whether the GPU is submission-bound or compute-bound, while the harness itself already supplies clean per-invocation latency_ms, images_per_second, and peak_allocated_bytes samples; it is used only as structural evidence, never as a communication hook or to determine subsequent search actions, and its clock alignment bounds cover CPU submissions only. Selected python_runtime as a secondary, explicitly perturbing probe of host dispatch and binding costs (warmed cProfile inclusive/self times) to estimate host-side slack available to memory-reduction candidates that alter eager per-layer work; its times are not treated as clean performance scores or GPU compute durations. Excluded nccl_tuning, collective_calibration, and device_telemetry as communication- or device-wide instruments with no question to answer in this single-device, no-backend workload, per the guidance against requesting counters indiscriminately. Excluded candidate_diagnostics and binding_cost because no candidate exists yet this round. Unavailable dimensions are listed with observed reasons rather than estimated or invented.",
+  "revision": null
+}

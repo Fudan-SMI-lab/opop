@@ -24,6 +24,8 @@ in source or deployment. Ready requires evidence for entry, workload, objective,
 quality and assets; evidence values are concrete source paths/symbols or user
 statements. Record assumptions separately.
 
+The downstream evaluator receives the resolved description, not this proposal's top-level assumptions. Make the description self-contained: distinguish source-required task semantics from baseline implementation choices within any notes or invocation text that mentions them. An implementation choice is not a frozen requirement merely because the source uses it; identify it explicitly as baseline behavior, preserving semantics-equivalent alternatives unless a cited user/source requirement forbids them. Keep the measured invocation about the full required work, outputs and completion boundary; keep source-excluded setup/reset outside it. Do not resolve this distinction only in assumptions, propose optimizations, or omit numerical, state or relational correctness requirements.
+
 The objective contains name (the exact metric key, not a task title), unit and
 direction (minimize/maximize). Its metric must correspond to the requested
 completion boundary. Constraints use the supplied schema: a list of metric, op

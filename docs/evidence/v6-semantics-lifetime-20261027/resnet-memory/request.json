@@ -1,0 +1,93 @@
+{
+  "schema_version": "project-request.v1",
+  "source_root": "/root/autodl-tmp/dev/v6-work/autonomous-cohort-20261027/resnet-latency.intake/source",
+  "entry": "resnet_inference.py",
+  "files": [
+    "resnet_inference.py",
+    "common.py",
+    "workloads.json",
+    "prepare_resnet_assets.py",
+    "README.md"
+  ],
+  "goal": "Minimize peak_allocated_bytes for the same offline batch-32 workload, subject to images_per_second >= 0.95 of the original baseline. Preserve the frozen evaluator, original source workload, assets, quality, numerical policies and completion boundary.",
+  "objective": {
+    "name": "peak_allocated_bytes",
+    "unit": "bytes",
+    "direction": "minimize",
+    "constraints": [
+      {
+        "metric": "images_per_second",
+        "op": "ge",
+        "baseline_ratio": 0.95
+      }
+    ]
+  },
+  "workload": {
+    "id": "offline",
+    "batch": 32,
+    "goals": [
+      {
+        "id": "throughput",
+        "metric": "images_per_second",
+        "direction": "max"
+      },
+      {
+        "id": "memory",
+        "metric": "peak_allocated_bytes",
+        "direction": "min",
+        "constraints": {
+          "images_per_second_min_baseline_ratio": 0.95
+        }
+      }
+    ]
+  },
+  "quality": {
+    "atol": 0.0001,
+    "rtol": 0.0001,
+    "logits_atol": 0.0001,
+    "logits_rtol": 0.0001,
+    "require_exact_top1": true
+  },
+  "assets": {
+    "assets_dir": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18",
+    "pixels": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/pixels.npy",
+    "model_weights": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/model.safetensors",
+    "model_config": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/config.json",
+    "preprocessor_config": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/preprocessor_config.json",
+    "asset_manifest": "/root/autodl-tmp/dev/v6-work/validation-assets/resnet18/asset-manifest.json"
+  },
+  "devices": [
+    "0"
+  ],
+  "distributed_backend": null,
+  "communication": "auto",
+  "required_observations": [],
+  "tools": {
+    "ncu": "/usr/local/cuda/bin/ncu",
+    "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+  },
+  "profiling": {
+    "agent_plan": true,
+    "feedback_agent_plan": true
+  },
+  "binding_backend": "legacy",
+  "measurement_lifetime": "invocation",
+  "warmup": 2,
+  "repeats": 5,
+  "continuous_steps": 2,
+  "worker_timeout_s": 900.0,
+  "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+  "notes": [
+    "Measured invocation is one infer(model, pixels) call (resnet_inference.py:15-16,30) for the offline row; harness timing brackets it with torch.cuda.synchronize + perf_counter_ns (resnet_inference.py:42-47).",
+    "This explicit goal variant selects the source's offline batch-32 memory goal: minimize peak_allocated_bytes with images_per_second >= 0.95 of the original baseline. latency_ms remains recorded; all input work, precision, quality and completion boundaries are unchanged.",
+    "Constraint conversion: the source memory goal's notation images_per_second_min_baseline_ratio 0.95 (workloads.json resnet_inference offline) is expressed generically as images_per_second >= 0.95 x baseline; meaning unchanged (throughput floor on the same batch-32 workload).",
+    "Discrete exact output: require_exact_top1 means argmax(-1) predicted class indices must equal the reference exactly (resnet_inference.py:33 torch.equal on argmax); the full 1000-class FP32 logits are compared with atol=rtol=1e-4 via torch.testing.assert_close (common.py:74-76), and a +1-corruption negative control must be rejected (common.py:79-84).",
+    "Numerical policies preserved: dtype=torch.float32, local_files_only=True, inference_mode, TF32 disabled for matmul and cudnn, cudnn.benchmark=False, float32_matmul_precision 'highest', torch.manual_seed(20261020), 4 CPU threads, interop 1 (common.py:34-42 configure; resnet_inference.py:23).",
+    "Input is real image data: pixels.npy holds 3 preprocessed public images (float32 NCHW 224, ImageNet mean/std, prepared offline per prepare_resnet_assets.py and asset-manifest.json); batch 32 selects images[arange(32) % 3].contiguous() on GPU (resnet_inference.py:29); host-to-device transfer and preprocessing are outside timing (README measurement section).",
+    "Model is pinned microsoft/resnet-18 revision 65a5785d9156231087c481e0c7dd33a5ff6f7e3e (asset-manifest.json); runner needs only transformers, torch, numpy - no Pillow/torchvision at runtime (prepare_resnet_assets.py docstring). The .jpg assets are provenance only.",
+    "Command provenance: user command 'python resnet_inference.py --assets /root/autodl-tmp/dev/v6-work/validation-assets/resnet18 --output /tmp/original-resnet' runs the full harness over all configured workloads with defaults --workloads workloads.json, warmup 2, repeats 5, no --profile; the offline row is the selected workload and the diagnostic torch.profiler run (common.py:87-105) was not requested.",
+    "Single process on one CUDA device (common.py:34 configure sets device 0; deployment leases GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba); device_count=1 although the machine inventory lists two RTX 4090s. No distributed backend and no communication collector fields required; torch_communication metrics are not requested for this workload.",
+    "Reference construction (double infer + close_check + negative_check + exact top1 + saving {id}-reference.pt) and result.json writing (resnet_inference.py:30-37,54) belong to measurement infrastructure, not the repeated unit.",
+    "One measured invocation: One offline batch-32 full inference forward under torch.inference_mode(): FP32 pretrained microsoft/resnet-18 (local assets, dtype=torch.float32, .cuda().eval()) executes model(pixel_values=pixels).logits on the GPU-resident 32x3x224x224 float32 input built once as images[torch.arange(32) % 3].contiguous() from pixels.npy, producing the complete 32x1000 FP32 logits tensor. Model loading, input staging/transfer, reference construction, correctness checks, warmup, statistical repeats and report writing are benchmark infrastructure outside this unit."
+  ]
+}

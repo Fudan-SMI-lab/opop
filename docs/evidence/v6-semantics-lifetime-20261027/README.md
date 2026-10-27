@@ -8,3 +8,7 @@
 - manifest 记录逐字远端导出的路径/长度/SHA；wakeup-setup 是本机普通守候及真实 SSH probe 记录。
 
 不归档私有 provider 配置、权重或完整大张量。所有前批失败、接受及审计结论保持在原目录，结果终态后逐项审计再更新。
+
+终态已补充：两个角色实际 fresh snapshots、逐字 prompt/input 比较、生成 intake/adapter/understanding；ResNet 三轮候选/提案/事件、完整版本独立端点、原生路径摘要；TP 全部参数布局检查及逐层边界；manual-audit 下的全量源数值和额外固定 B/C/C/B 80样本。manifest 对远端导出逐文件记录 SHA，wakeup-delivery 是当前真实新轮次确认。
+
+`manual-audit/resnet-audit.json` 为原 trials/version-trial 的摘要，保留原路径/SHA、实际参数、所有端点样本、反馈输入哈希与共存/替换的 bundle。`manual-audit/resnet-sampling` 不取代正式独立拒绝；两个角色 A/B 仅支持相应范围内判断。完整结论及采用/不采用原因见执行文档。

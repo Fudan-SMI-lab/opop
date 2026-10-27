@@ -1,0 +1,36 @@
+{
+  "scope": "region",
+  "groups": [
+    "3821cceac23fa97e5a55",
+    "0022893ec8c1ceea869f",
+    "95d8eead897036452c64",
+    "7e7c01e2bf7e30a42280",
+    "c671bb65e86ad614e3f6",
+    "c0af3909ba0a106672d5",
+    "c97c8dfae7e5def85428",
+    "3412952b9279e41b1709",
+    "8bffcf00b7bd20c935a5",
+    "5d6060b158cac3430090"
+  ],
+  "rationale": "The objective is peak_allocated_bytes for one batch-32 FP32 ResNet-18 forward (baseline 281,975,808 B; throughput floor images_per_second >= 7120.3, i.e. latency <= 4.4942 ms vs 4.2695 ms baseline). The measured peak is set by the stem: the eager ResNetConvLayer runs conv1 -> BatchNorm2d -> ReLU out-of-place, so during aten::batch_norm the conv1 output (32x64x112x112x4 = 102,760,448 B) and the BN output (another 102,760,448 B) are simultaneously live on top of resident weights (11,689,512x4 = 46,758,048 B) and the GPU-resident input (19,267,584 B) = 271.5 MB of the 282.0 MB observed peak (remainder consistent with conv workspace/maxpool int64 indices). I verified this subtree in the call tree: model.resnet.embedder (912.0 of 4163.5 us inclusive diagnostic CUDA, 5 kernels: conv1 268.0, BN 227.7, ReLU 216.1, maxpool 198.8 us). Every stem kernel is bandwidth-bound (~900 GB/s effective on the leased RTX 4090: BN moves ~205 MB/227.7 us, ReLU ~205 MB/216.1 us, maxpool ~180 MB/198.8 us), and the timeline shows the GPU nearly saturated (4093.7 us kernel union, only 74.1 us gaps) while host dispatch finishes ~2 ms early (cuda_synchronize self 2.11 ms of 4.50 ms profiled wall). Therefore restructuring only the stem keeps total memory traffic constant, so the throughput floor is protected, and the host has ample slack for a few extra chunked calls. All later activations are <= 25.69 MB per tensor, so after the stem fix the peak moves to the stage-0 residual moment (~46.76 weights + 19.27 pixels + 4x25.69 live = ~168.8 MB), which is the honest floor for a stem-only edit. The selected region is one coherent editable boundary: replace the whole bundle inside model.resnet.embedder (a single module-boundary direct callable replacement at the ResNetEmbeddings group), explicitly replacing the inner ResNetConvLayer/Conv2d/BatchNorm2d/ReLU/MaxPool2d module groups and their aten::conv2d/batch_norm/relu/max_pool2d functional calls, per binding-contract whole-bundle replacement. Model, pixels, workload, precision and evaluator are untouched.",
+  "hypothesis": "Replacing the stem bundle at the model.resnet.embedder boundary with a memory-lean equivalent that (a) processes the frozen batch through conv1->BN->ReLU->maxpool in 2-4 per-sample chunks (all four ops are strictly per-sample, so chunks are elementwise exact) and rejoins before stage 0, and/or (b) folds the frozen eval-mode BN affine into conv1 (scale/bias precomputed from the pinned running stats, warm-model and measurement boundaries unchanged) with an in-place ReLU, removes the simultaneous full-resolution 102.76 MB temporaries. Predicted peak_allocated_bytes drops from 281,975,808 to approximately 168-185 MB (-34% to -40%; with 2-chunk no-fold ~178 MB, with fold+in-place+2-chunk ~140 MB bounded below by the stage-0 moment ~168.8 MB plus conv workspaces); chunk workspace and the 51.38 MB maxpool int64 index tensor shrink proportionally too. Expected latency change is small (bandwidth-bound kernels with unchanged total bytes; extra launch overhead hidden by the 2 ms host slack and 224.7 us latency budget; a BN fold would additionally remove ~228 us of GPU time), keeping images_per_second >= 7120.3. Logits should remain within atol=rtol=1e-4 with exact top-1 (chunking is per-sample exact; BN folding only reorders rounding of the same FP32 arithmetic), to be verified by the frozen evaluator's repeated-forward closeness, exact-top1 and +1-corruption checks. If measurement shows cudnn picks a slower algorithm at the chunk batch size or the fold perturbs logits beyond tolerance, the chunk size / fold choice is retunable inside the same region without changing the boundary.",
+  "affected_calls": [
+    "fa7ef6548e3a2d54174caeba",
+    "fad32b28bd6e0def6ce7593e",
+    "a929588cc0791799075542c6",
+    "d2690ee924ab33cd95efa6f0",
+    "9bb381a7b50f1e3dcfdb1cb4",
+    "12da68be9b9e14502fe4702a",
+    "8504783bbca736066fecb204",
+    "89bc7485bcb9aeaa62c7d28b",
+    "89f968d79a78e013c08bd56c",
+    "4367176c34e4141fee648ee6",
+    "1f750cfe73af31647514bce9",
+    "5a738567860d1790e17b4c74",
+    "b04ed2ee2118d432096eebe4",
+    "74a7d1dc7c252585bac9ee72",
+    "9beb8b9076cc061fb8023ead",
+    "9d3d81c3c57605e001aa0979",
+    "a263d10c24fce1ff47e60d76"
+  ]
+}

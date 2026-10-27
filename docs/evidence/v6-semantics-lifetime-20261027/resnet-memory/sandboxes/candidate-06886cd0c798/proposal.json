@@ -1,0 +1,147 @@
+{
+  "implementation": "composite",
+  "replacement_calls": [
+    "fb7277dba44d770ed1cbb22f"
+  ],
+  "rationale": "Module-boundary direct-callable replacement at the observed model.resnet bundle (call fb7277dba44d770ed1cbb22f, group 0be43abe49347b3cb340) plus every computational group fully contained in its subtree: the encoder call 5784db785cf33b978d46d02b, all four ResNetStage calls including the two installed chunked boundaries ed609fcfe9f1b7538a7256aa and e4174ed71f25bb1aa98a4321, the installed chunked-stem boundary fa7ef6548e3a2d54174caeba, the AdaptiveAvgPool2d pooler call 764b049d6a49f5ecc2002175 and every aten site in the subtree. Previous feedback records the prior trial ACCEPTED, not a failure: trial-31442e4c3a-param-9aa9f111 measured paired peak_allocated_bytes 155,229,184 vs parent 204,905,472 (paired gains 49,676,288 x2, noise bounds 0.0) with images_per_second 7673.5/7894.5 above the 7120.308 floor, quality pass at max_abs_error 7.63e-06 over 32,036 compared elements, exact top-1, zero fallbacks and empty candidate_diagnostics. So there is no concrete failure to repair; the feedback changes this attempt in three ways: (1) it fixes the exact numbers above as the baseline to beat, (2) its parameter sweep shows the stage-side chunk-4 endpoint is invalid on throughput (153,525,248 B but 5,418.94 ips, from 30 stage sites x 8 small-batch convs), which is why stage_samples=4 is excluded from this candidate's space, and (3) together with target-resources.json it shows the accepted chain is now capped by two moments that cannot be reduced from the inner boundaries separately: the stage-0 moment (weights 46,758,048 + pixels 19,267,584 + full (32,64,56,56) stem output 25,690,112 + full-size stage-0 prealloc 25,690,112 + 4x6,422,528 chunk temporaries + ~12.1 MB workspace = 155,229,184) and the stem moment (~153.5 MB, observed directly as the 153,525,248 B endpoint once the stage moment dropped below it), because the encoder loop holds one full (32,64,56,56) tensor while stage 0 preallocates another. The replacement removes exactly that coupling: it takes over the whole ResNetModel boundary and streams the frozen batch through the identical parent aten chain in nested sample chunks - stem conv2d(7x7 s2) -> eval batch_norm(training=False, frozen running stats) -> out-of-place relu -> max_pool2d(3,2,1) in stem_samples sub-chunks assembled into a per-stage-chunk buffer; stages.0/1 conv2d/batch_norm/relu/add_/1x1-shortcut in stage_samples chunks copied into one macro stage-1 buffer; stages.2/3 plus adaptive_avg_pool2d in tail_samples macro chunks written into one preallocated (32,512,7,7) last_hidden_state and (32,512,1,1) pooler_output - so no full (32,64,56,56) stem output and no full-size stage intermediate ever coexists with the weights and pixels. All 47 computational aten sites (stem 4, merged stages.0/1 sites 10, per-site stages.2/3 conv/bn/relu/add 32, adaptive_avg_pool2d 1) still execute through context['references'] on every invocation, with the merged stages.0/1 call ids invoked exactly as the parent composites invoked them; the residual add_ stays the in-place aten.add_ on chunk-owned temporaries, matching the parent's `hidden_state += residual`. The two installed bundles (trial-4bdb465d41-param-0bfb4c5a at the embedder boundary, trial-31442e4c3a-param-9aa9f111 at the stages.0/1 boundaries) are explicitly listed in replaces because this boundary's writes overlap their entire regions; their chunked behavior is preserved inside the fused loop (their exact configurations are the stem_samples=8/stage_samples=8 points of the same code), and their inherited required calls fa7ef6548e3a2d54174caeba/ed609fcfe9f1b7538a7256aa/e4174ed71f25bb1aa98a4321 no longer execute as module calls, which is declared rather than hidden. Memory accounting at the default (stem_samples=4, stage_samples=8, tail_samples=32): persistent live set weights 46,758,048 + pixels 19,267,584 + preallocated outputs 3,211,264 + 65,536 = 69,302,432 B; the expected peak is the stem-phase moment of stage-chunks 1..3, base 66,025,632 (outputs not yet allocated during the first macro) + macro stage-1 buffer 12,845,056 + stem assembly buffer 6,422,528 + two concurrent (4,64,112,112) stem temporaries 25,690,112 = 110,983,328 B plus the cudnn 7x7-conv workspace (the parent's own stem-moment accounting implies ~4-10 MB), i.e. ~111-121 MB expected versus the accepted 155,229,184 (-22% to -28%; -57% to -61% versus the original 281,975,808), with the stage-0 streaming moment ~95-110 MB, the full-batch stages.2/3 moment ~92-98 MB and the selection's ~76 MB hard floor below that; exact values are left to the paired evaluator. Throughput floor images_per_second >= 7120.308 (latency <= 4.4942 ms) against the parent's measured 4.2279 ms screening median and 4.06-4.21 ms paired values: at the defaults the aten-level call count is ~229 versus the parent's ~208 (+16 stem ops and finer plumbing from the 4-sample stem chunks, minus the retired full-size prealloc copies), GPU work is the same total MACs and bytes (stem conv at batch 4 is the one efficiency unknown; diagnostic durations: embedder 550.2 us, stages.0 902.5, stages.1 829.4, stages.2 672.7, stages.3 728.1, pooler 5.3), and the observed host slack (diagnostic kernel_active_union 3,642.5 us vs 4.23 ms warm latency) absorbs it, so latency within ~0.1-0.2 ms of the parent is expected with margin to the floor. Quality: every operator in the region is strictly per-sample, so fixed-batch chunking is elementwise exact; the full streaming semantics (stem chain, both basic-layer shapes with Identity and 1x1-stride-2 shortcut convs, in-place residual add, macro buffers, output assembly, both return_dict forms) were validated against the eager parent on CPU with the pinned asset weights and are bitwise identical for every divisor chunk configuration (and within 3.4e-06 for non-divisor remainder cases), while on GPU the accepted chunked bundles already measured 7.63e-06 max abs error against the 1e-4 logits tolerance with exact top-1, and this candidate keeps stages.0/1 at the accepted batch-8 shapes. No CUDA Graph is captured and no fixture-dependent output is cached: the framework's phase/signature guard dispatches the observed (32,3,224,224) call to the replacement, which re-executes the whole chain on the current input each invocation; output_hidden_states=True (never requested by the frozen workload, config default False) and any unsupported signature fall back to the parent callable so external outputs and state semantics are preserved in all cases.",
+  "setup_work": "build(context) performs no GPU work and allocates no device memory: it resolves the parent callable for fb7277dba44d770ed1cbb22f from context['references'], the ResNetModel module from context['modules'] (falling back to context['models']['model'].resnet), the 47 aten operator references from the current plan, and traverses the live module tree (embedder conv/bn/relu + MaxPool2d, the four stages with two basic layers each, per-layer conv/bn/ReLU/Identity/shortcut specs, the AdaptiveAvgPool2d pooler), verifying types, fp32 CUDA weights, eval mode, affine BatchNorm2d with running stats, non-inplace ReLU, groups=1, zeros padding mode and the pinned (in,out,kernel,stride) signature of every mapped conv once at installation; any mismatch only clears the ready flag so calls fall back to the parent under the setup_failure_parent label. No model parameters are transformed, packed or copied, no CUDA Graph is captured, no global torch backend/math flag is touched (the evaluator's math_policy check stays green), and nothing is cached across invocations; weights and BN statistics are read live from the module objects on every call, so the warm-model lifecycle (reset() reseeding and re-asserting eval, observe()'s repeated forward) sees consistent behavior. All streaming buffers - the per-stage-chunk stem assembly buffer (6,422,528 B at stage_samples=8), the macro stage-1 buffer (12,845,056 B at tail_samples=32), the preallocated (32,512,7,7) last_hidden_state (3,211,264 B) and (32,512,1,1) pooler_output (65,536 B), and the chunk-shaped conv/bn/relu temporaries - are allocated inside each invocation through the caching allocator and dropped promptly (explicit reference clears) once consumed, so after warmup they are served from cached blocks and the setup receipt's allocated_bytes after installation remains the prepared model + pixels exactly as the parent (previous receipts: 67,935,232 B). Retained allocator pools may come to include the 12.85/6.42/3.21 MB block classes, so framework.reserved_bytes and the lifecycle peak counters can differ from the parent even as the objective framework.peak_allocated_bytes - reset for each run - falls; the predicted decrease is specific to the warm-run peak_allocated_bytes counter of this workload, not a general physical-memory saving. The three chunk sizes are read once from context['parameters'] at build (defaults stem_samples=4, stage_samples=8, tail_samples=32; any non-positive or non-int value falls back to its default) and are fixed for the bundle installation.",
+  "quality_risks": [
+    "cudnn algorithm selection at the new chunk shapes: the stem conv2d runs at batch 4 (default) instead of the parent's batch 8, and at tail_samples=16 the stages.2/3 convs run at batch 16 instead of 32 (cudnn.benchmark stays False, so heuristics pick per-shape algorithms; the diagnostic trace shows the full-batch stages.2/3 3x3 convs use winograd tile-generation kernels whose per-invocation overhead scales with chunk count). Per-element differences are fp32 round-off at the scale the accepted chunked bundles already measured (max_abs_error 7.63e-06), far below the frozen logits tolerance atol=rtol=1e-4 and immaterial to argmax margins; the frozen evaluator's closeness, exact-top1 and +1-corruption checks decide.",
+    "Throughput floor risk (images_per_second >= 7120.308, latency <= 4.4942 ms vs the parent's 4.2279 ms median with ~0.27 ms headroom): the defaults add roughly +20 aten-level calls (16 stem ops from 4-sample stem chunks plus finer plumbing, minus the retired full-size prealloc copies) and the stem conv runs at batch 4; the aggressive parameter points add more (tail_samples=16 adds ~31 stages.2/3 site invocations plus doubled winograd tile-generation; stem_samples=2 adds another 16 stem ops). stage_samples=4 is deliberately excluded because the previous sweep measured that exact failure mode (5,418.94 ips, 30 stage sites x 8 small convs). If a parameter endpoint violates the floor it is an invalid endpoint, not a publication; the search retains (8,*,32) and (*,16,*) as faster points.",
+    "output_hidden_states=True is not materialized by the streaming path (full per-stage hidden states would require exactly the full-size intermediates being eliminated) and falls back to the parent callable under unsupported_signature_parent; the frozen workload never requests it (config output_hidden_states=False, adapter calls model(pixel_values=pixels) only), and return_dict=False is handled natively by returning (last_hidden_state, pooler_output).",
+    "Memory accounting: the expected new peak (~111-121 MB at defaults) is set by the stem-phase moment (base + macro stage-1 buffer + stem assembly buffer + two stem temporaries + cudnn 7x7 workspace, the workspace being the main unknown); allocator block reuse for the 12.85/6.42/3.21 MB classes can shift the measured counter a few MB in either direction, and reserved pools may grow even as the per-invocation allocated peak falls - expected and not part of the objective. framework.lifecycle_peak_allocated_bytes additionally includes prepare/installation and earlier invocations, so it can exceed the per-run peak.",
+    "Plan recapture: the 47 computational aten sites keep executing through context['references'] but with new chunk-shaped signatures (stages.2/3 at (16,...) when tail_samples=16), and the parent composites' slice/copy_/empty plumbing call ids cease while the fused loop re-emits equivalent plumbing under the new boundary; the framework's recapture will re-key these sites, as it did for both accepted bundles.",
+    "Fallback taxonomy stays observable: 'setup_failure_parent' (unresolved references/modules or structural mismatch, including a replaced layer's shortcut no longer being Identity or conv+bn as assumed), 'unsupported_signature_parent' (guard mismatch: non-fp32/non-CUDA/non-contiguous input, training mode, wrong channel count, output_hidden_states=True), 'runtime_failure_parent' (operator exception mid-stream, full parent recompute on the original input). The framework's signature guard additionally only dispatches the observed (32,3,224,224) forward call to the replacement at all."
+  ],
+  "eliminated_calls": [
+    "04de0e7be76279cb340fc51e",
+    "050304c1d91baac7906920b7",
+    "089bcde1ca20e9b9e6e4ff6e",
+    "0ee6e96058d4325ee5cfe4e0",
+    "138b64b72c7ca6417b977a81",
+    "139d57d160e210c9eabe838a",
+    "189a55119d97d1c7cf758fe6",
+    "1b160dbf6743acd183be0d7d",
+    "1b163dbd8c0a67a214a9f004",
+    "1ba8dcd7d1a0c0a3a58bcd60",
+    "1c44b1bf3f53f0f5634242c9",
+    "237388b9c501b89a928f5a33",
+    "27c06e6b9d341b815219999c",
+    "292d49a366ed954ebefb4f0f",
+    "293aa7fde682b2d87b915ba0",
+    "31651bd556566af82ff06f6a",
+    "3325ea72ef498b8e7e97df16",
+    "33edc342d3c1d13cd0f63908",
+    "36329e96734dff0490ade950",
+    "37b8680ae72a94e45bfd715b",
+    "3aadda42785fc3f11fe66958",
+    "3db154d4b6654cb04cba4425",
+    "3fdc49c2c83aacbeb617e2f8",
+    "4011f0375e72ee07919e4514",
+    "419a4f96a3c5ecb3ebc59be0",
+    "41bce2b3604affc0c6f885ae",
+    "4d67a44fe129db627ecbe349",
+    "4e1cb6f216767d70f53f37cb",
+    "5784db785cf33b978d46d02b",
+    "57a82c4f5dd12cd2d08c16c9",
+    "589a5d16aa651dfa4b251de9",
+    "59d8ac10780ad3a612467c4e",
+    "5cdd7d671539929865f00bd4",
+    "657dc36aeb81c5ff34f42a88",
+    "6658e6eda8887cd477c28209",
+    "66d2a06f39c8b44961a09e1b",
+    "6a68f119ff39b344ccaba2c8",
+    "6ab1f8d0e6ced43fa26813eb",
+    "6b71f26639505d6cb79cac68",
+    "752f591ca20b30c9b0ebf08a",
+    "764b049d6a49f5ecc2002175",
+    "7c735ffcb4cdc63167fb6082",
+    "81f2326ad167c42a0688f1dd",
+    "888a59da48a05e988d6adcbc",
+    "8bd82d1e8008495f3081a50b",
+    "8d582ec476e7b5b7ba8dfefb",
+    "90a9be9b9db1fa1db99970cf",
+    "914527d00dd2ef1ccfffd97b",
+    "91cca06a837077361218ff7b",
+    "92f1fb00f0565f77aecfa461",
+    "93650675b7cac0786ddcdf59",
+    "9814e3f2c8ac7fe3f7b3692e",
+    "a1a1ba5d96832a39f4dab342",
+    "a85e0c85c3d172cf3ca42777",
+    "ab5f018984612357036fff22",
+    "ad0730b4f031b770865aca4c",
+    "b4e3186f96acdbefdd0824ac",
+    "bf4bcffa4cae24a027925ba8",
+    "c20e562793294087ff49033b",
+    "c3dec2a11186f79a2625844e",
+    "c67abe836b4561a531784e8f",
+    "c6ff2643cb32d7090f4f16fc",
+    "d1a120d4079cc689060c843e",
+    "d48a8e28ea3e11f7c79c4c99",
+    "d57921fdd92fc49040667748",
+    "d57b8cc7e23d5ce9de22b06b",
+    "d589969694000a2cbd412ae6",
+    "d5fd1c2924a8d028cac02b88",
+    "d601d934cdf3e6496481fe6d",
+    "d75cc38e6c295580bc0c02e4",
+    "d9a6da14ddb61b9d7b909b8c",
+    "db8a4685e26c9341b26c8e7a",
+    "e4174ed71f25bb1aa98a4321",
+    "e6c0da64f818ae327bca1e37",
+    "e70c16fc91abf17849be8a88",
+    "e9fe269c320c74efb941f76e",
+    "ed609fcfe9f1b7538a7256aa",
+    "f128692d64169c3f7bf21f94",
+    "f5586f5a021cb015b88f787e",
+    "f754881f702edf941d89fd03",
+    "f9ad704797a591fd3fd254a0",
+    "fa7ef6548e3a2d54174caeba",
+    "fa94ab75a41c3acd4edab20b",
+    "fb78c6c94f3e492872e4848a",
+    "fcb343f505ed05253ab0d8f4"
+  ],
+  "requires": [],
+  "replaces": [
+    "trial-4bdb465d41-param-0bfb4c5a",
+    "trial-31442e4c3a-param-9aa9f111"
+  ],
+  "parameter_space": {
+    "params": [
+      {
+        "name": "stem_samples",
+        "kind": "int",
+        "choices": [
+          2,
+          4,
+          8
+        ],
+        "description": "Per-chunk sample count for the embedder chain (7x7 s2 conv -> eval batch_norm -> relu -> max_pool2d), assembled into a stage_samples-sized stem buffer. Every operator is strictly per-sample, so any value yields elementwise-identical outputs; the stem moment is base + macro stage-1 buffer + stem buffer + two (stem_samples,64,112,112) temporaries, so 4 halves the two stem temporaries versus the accepted stem bundle's 8 (25,690,112 B -> 12,845,056 B each) at the cost of 16 extra stem ops, and 2 halves them again at the cost of 16 more. Read from context['parameters'] at build; default 4 when absent."
+      },
+      {
+        "name": "stage_samples",
+        "kind": "int",
+        "choices": [
+          8,
+          16
+        ],
+        "description": "Per-chunk sample count for the stages.0/1 streaming (conv2d/batch_norm/relu/add_/1x1-stride-2 shortcut), matching the accepted chunk-8 stage bundle at 8; 16 trades ~2x larger chunk temporaries and the larger stem assembly buffer for fewer launches and better conv efficiency. 4 is deliberately excluded: the previous sweep measured that exact configuration invalid on throughput (5,418.94 ips vs the 7120.308 floor). Read from context['parameters'] at build; default 8 when absent."
+      },
+      {
+        "name": "tail_samples",
+        "kind": "int",
+        "choices": [
+          16,
+          32
+        ],
+        "description": "Macro-chunk sample count for stages.2/3 plus the adaptive pooler; 32 keeps those 33 aten sites at their observed full-batch shapes and call counts (zero added launches, macro stage-1 buffer 12,845,056 B), while 16 halves that buffer and the stages.2/3 working set at the cost of ~31 extra site invocations plus doubled winograd tile-generation overhead. Read from context['parameters'] at build; default 32 when absent."
+      }
+    ],
+    "constraints": [
+      {
+        "expr": "stem_samples <= stage_samples and stage_samples <= tail_samples",
+        "rationale": "Keeps the streaming hierarchy well-formed (stem sub-chunks nest inside stage chunks inside tail macro chunks) and every parameter domain nonempty; all choices divide the frozen batch 32, and the remainder loops handle any other batch without changing frozen task semantics."
+      }
+    ]
+  },
+  "eliminated_calls_rationale": "The whole model.resnet subtree below the fb7277dba44d770ed1cbb22f boundary is replaced at that one boundary, so the inner Python module calls no longer execute as module calls: the embedder call fa7ef6548e3a2d54174caeba and the stem bundle installed on it, the encoder call 5784db785cf33b978d46d02b, the four ResNetStage calls ed609fcfe9f1b7538a7256aa/e4174ed71f25bb1aa98a4321/d1a120d4079cc689060c843e/3fdc49c2c83aacbeb617e2f8 (the first two carrying the installed chunked-stage bundle), all eight ResNetBasicLayer module groups in stages.2/3 with their layer Sequentials, ResNetConvLayers, Conv2d/BatchNorm2d/ReLU/Identity modules and ResNetShortCut conv+bn pairs, the pooler module call 764b049d6a49f5ecc2002175, and the 26 slice/copy_/empty plumbing call ids the installed composites emitted inside the embedder and stages.0/1 boundaries. Their computational content is preserved exactly: the replacements read the same live module parameters (conv weights/strides/paddings, BN affine and frozen running stats, eps/momentum, pooler window and output size) and execute the equivalent aten operators through context['references'] on every invocation - the 47 computational aten sites (15 conv2d, 13 batch_norm, 11 relu, 6 add_, 1 max_pool2d, 1 adaptive_avg_pool2d) are NOT eliminated and keep executing, now with chunk-shaped signatures; equivalent slice/copy_/empty plumbing is re-emitted by the fused streaming loop and will be re-keyed by the framework's recapture, exactly as happened for both accepted bundles. The only consumers of the eliminated calls' outputs are within the subtree itself: the replacement returns the same BaseModelOutputWithPoolingAndNoAttention structure (last_hidden_state (32,512,7,7), pooler_output (32,512,1,1), hidden_states None) or the (last_hidden_state, pooler_output) tuple when return_dict=False, so the root model's classifier and every downstream consumer remain valid."
+}

@@ -1,0 +1,716 @@
+{
+  "runs": [
+    {
+      "arm": "control",
+      "agent": {
+        "role": "project-evaluator",
+        "session": "ses_e83ab87b7ffeJRP0vLFID0zEZC",
+        "message": "msg_17c59c3ba0013j6pEyIzaJqUla",
+        "model": "zhipuai/glm-5.3",
+        "usage": {
+          "schema_version": 1,
+          "mode": "observe_only",
+          "messages": 14,
+          "reported_cost": 0.2938061828,
+          "messages_without_cost": 0,
+          "unfinished_messages": 0,
+          "tokens": {
+            "total": 576355.0,
+            "input": 51285.0,
+            "output": 5710.0,
+            "reasoning": 13760.0,
+            "cache.read": 505600.0,
+            "cache.write": 0.0
+          },
+          "sessions": [
+            {
+              "id": "ses_e83ab87b7ffeJRP0vLFID0zEZC",
+              "status": "observed",
+              "detail": null
+            }
+          ],
+          "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+        },
+        "sandbox": "/root/autodl-tmp/dev/v6-work/semantics-lifetime-20261027/evaluator-ab/control/sandboxes/project-evaluator-replay-fb52108986dd",
+        "outputs": [
+          "adapter.py",
+          "understanding.json"
+        ],
+        "feedback_provided": false,
+        "contract_repairs": 0,
+        "generation_snapshots": [
+          "/root/autodl-tmp/dev/v6-work/semantics-lifetime-20261027/evaluator-ab/control/generation-snapshots/generation-5d010e422a98.json"
+        ]
+      },
+      "understanding": {
+        "goal": "Minimize the source's peak_allocated_bytes for the offline batch-32 workload while retaining images_per_second >= 0.95 of the original baseline, preserving its pretrained model, real image inputs, FP32 numerical policies, full logits and exact predicted classes. Keep the original workload and completion boundary.",
+        "entrypoint": "inputs/source/resnet_inference.py::main() -> infer(model, pixels) (resnet_inference.py:14-16) with common.py configure()/sample loop; the adapter exposes prepare/reset/run/observe/metrics/models in adapter.py for the single frozen offline batch-32 row from request['workload'].",
+        "completion": "One measured invocation equals the source's clean sample (resnet_inference.py:41-49): a single offline batch-32 inference, model(pixel_values=pixels).logits under @torch.inference_mode() on the fixed GPU-resident FP32 tensor of 32 preprocessed real images, starting after torch.cuda.synchronize() plus reset_peak_memory_stats() and ending at the following torch.cuda.synchronize() with the full 1000-class (32x1000) logits returned. Model loading, host->device input transfer, reference construction, correctness checks, warmup, statistical repeats and profiling are harness, not the repeated work. The workload is complete when the full logits exist on the device at that boundary; peak_allocated_bytes is read after it.",
+        "state_protocol": "prepare(context, request) mirrors source setup outside timing: apply common.configure() policy (torch.manual_seed(20261020), 4 CPU threads, TF32 disabled for matmul and cudnn, cudnn.benchmark off, float32_matmul_precision 'highest'), set the worker-bound device from context['device'] via torch.cuda.set_device, load the pretrained FP32 ResNetForImageClassification from the request assets directory with local_files_only=True, move it to the bound device and eval(); build the GPU-resident image tensor from pixels.npy and the frozen slice images[torch.arange(batch, device) % len(images)].contiguous() with batch read from request['workload']['batch']. State keeps {'device','model','images','pixels','batch','quality','seed','parameter_count'}; the 3-image tensor stays referenced exactly like the source-local live variable at its timer. reset(state) re-applies model.eval() and torch.manual_seed(seed): the workload is stateless FP32 inference (no gradients, optimizer, RNG draws or caches; cudnn.benchmark off), so there is no other mutable state, request-local output is created inside run, and the process group is never destroyed. run(state) executes the whole frozen workload once and returns the full logits; the framework resets CUDA peak stats immediately before its timer and synchronizes at both boundaries. observe(state, result) runs outside timing, re-executes the identical forward for the replay and negative-control relational checks, and returns CPU tensors/scalars only. metrics(state, result, elapsed_ms) derives images_per_second = batch*1000/elapsed_ms from the unchanged work amount and reads torch.cuda.max_memory_allocated() (the framework-reset peak window matching the source's per-sample reset_peak_memory_stats/max_memory_allocated pair). models(state) returns {'model': model} for discovery/replacement; set_mode(state, mode) records the mode without changing execution semantics; before_run is unused because this single-process workload needs no coordination.",
+        "invariants": [
+          "Frozen workload shape (request['workload'] id=offline, batch=32; resnet_inference.py:29): each measured invocation is exactly one full ResNet-18 forward over the fixed GPU-resident FP32 tensor built as images[torch.arange(batch, device) % len(images)].contiguous() from the 3 real preprocessed images in pixels.npy; batch is read from request['workload'], never embedded as a constant.",
+          "Full output fidelity (request quality; resnet_inference.py:16,31): the invocation returns the complete 1000-class logits tensor (batch x 1000) in FP32; no logits pruning, sampling, hashing or class-subset output.",
+          "Numerical policy (request notes; common.py configure() at common.py:34-42): weights and activations in torch.float32, TF32 disabled for cuda.matmul and cudnn, cudnn.benchmark off, float32_matmul_precision 'highest', torch.manual_seed(20261020), 4 CPU intra-op threads; required for the atol=rtol=1e-4 logits tolerance.",
+          "Model identity (request assets; resnet_inference.py:23): pretrained microsoft/resnet-18 weights (revision 65a5785d9156231087c481e0c7dd33a5ff6f7e3e per asset-manifest) loaded from the local request asset directory with local_files_only=True and dtype=torch.float32; no download and no substitute or randomly initialized weights.",
+          "Relational correctness enforced in observe() outside timed run (resnet_inference.py:30-34; workloads.json correctness; request quality): a repeated identical inference must satisfy torch.testing.assert_close at logits_atol=logits_rtol=1e-4, top-1 predictions must match exactly (torch.equal on argmax, require_exact_top1), and the +1 corruption negative control must be rejected; violations raise.",
+          "Objective definition (resnet_inference.py:42-48; request notes): peak_allocated_bytes is the process's torch.cuda.max_memory_allocated() with peak stats reset immediately before the timed invocation and read after the completion-boundary synchronize; it is PyTorch CUDA allocated peak, not reserved, whole-GPU or driver memory.",
+          "Throughput and constraint semantics (resnet_inference.py:48; workloads.json offline row; request objective.constraints): images_per_second = batch * 1e9 / elapsed_ns for the full batch-32 forward on the GPU-resident input; the memory objective is only valid while images_per_second >= 0.95x the original baseline median.",
+          "Completion boundary (resnet_inference.py:44-47; request notes 'One measured invocation'): the timed region is the inference call plus its trailing torch.cuda.synchronize(); model loading, host->device transfer, correctness checks, warmup and repeats remain outside it.",
+          "Execution topology (request devices length 1, distributed_backend null): single-process single-GPU work on the worker-bound device from context['device']; no NCCL, collectives or communication collector fields are part of this workload."
+        ],
+        "objective": {
+          "name": "peak_allocated_bytes",
+          "unit": "bytes",
+          "direction": "minimize",
+          "constraints": [
+            {
+              "metric": "images_per_second",
+              "op": "ge",
+              "baseline_ratio": 0.95
+            }
+          ]
+        },
+        "workload": {
+          "id": "offline",
+          "batch": 32,
+          "goals": [
+            {
+              "id": "throughput",
+              "metric": "images_per_second",
+              "direction": "max"
+            },
+            {
+              "id": "memory",
+              "metric": "peak_allocated_bytes",
+              "direction": "min",
+              "constraints": {
+                "images_per_second_min_baseline_ratio": 0.95
+              }
+            }
+          ]
+        },
+        "quality": {
+          "atol": 0.0001,
+          "rtol": 0.0001,
+          "logits_atol": 0.0001,
+          "logits_rtol": 0.0001,
+          "require_exact_top1": true
+        },
+        "missing_information": [],
+        "assumptions": [
+          "from_pretrained is called on the assets directory (Path(request['assets']['model_config']).parent, which also contains model.safetensors and preprocessor_config.json) exactly as the source does, with dtype=torch.float32 and local_files_only=True, then .to(context['device']).eval(); the source's hardcoded configure(device=0)/.cuda() is expressed through the worker-bound context device.",
+          "The full 3-image GPU tensor remains referenced in state during the timed run, mirroring the source-local live variable at its timer; it contributes to the allocated baseline of peak_allocated_bytes (about 1.8 MB) just as in the source.",
+          "reset() being effectively a re-seed plus eval() is sufficient because the workload is stateless inference with cudnn.benchmark off (no autotune cache) and no RNG consumption; the framework treats warmup/repeats around run().",
+          "run() ends with torch.cuda.synchronize() to replicate the source's completion boundary; the framework's own boundary synchronization makes this redundant but harmless, and it is not a duplicated statistics query.",
+          "metrics() reads torch.cuda.max_memory_allocated() after the framework's peak-stat reset that immediately precedes its timer; observe()'s replay forward performs identical allocations, so it cannot lower or raise that high-water mark regardless of call order.",
+          "The 0.95 baseline-ratio constraint is evaluated by the framework against its own measurement of the unmodified source baseline; the adapter embeds no baseline numbers.",
+          "observe() exposes full logits and integer predicted class ids; the source's predicted_labels strings via model.config.id2label (resnet_inference.py:35) are a deterministic function of those ids and are not duplicated as string observations, keeping observations tensors/scalars.",
+          "torch.set_num_interop_threads(1) is best-effort: if the host process already started the interop pool it is skipped; this does not affect GPU numerics or the measured work.",
+          "The online batch=1 row and the held-out unseen_batch=7 row in workloads.json are not part of this frozen request (request notes); reading batch from request['workload'] lets a separately validated variant reuse the same adapter.",
+          "profile_once tracing in the source is a diagnostic run separate from clean timing (request notes) and is not implemented in the adapter; the objective is the clean-sample peak_allocated_bytes, and no profiler runs inside run()/metrics().",
+          "The framework's reference observations are stored on CPU, so observe() returns CPU copies of the logits and predicted classes; the GPU-resident originals stay unchanged."
+        ]
+      },
+      "controls": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 6.915826112031937,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 209875,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 209875,
+              "status": "verified",
+              "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 11,
+                "unavailable_samples": 0,
+                "wait_s": 0.07132209837436676,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "controls": {
+                "reset": [
+                  {
+                    "passed": true,
+                    "compared_elements": 32041,
+                    "max_abs_error": 0.0
+                  },
+                  {
+                    "passed": true,
+                    "compared_elements": 32041,
+                    "max_abs_error": 0.0
+                  }
+                ],
+                "identity": {
+                  "passed": true,
+                  "compared_elements": 32041,
+                  "max_abs_error": 0.0
+                },
+                "identity_covered": true,
+                "wrong_output_rejected": true,
+                "missing_coverage_rejected": true
+              },
+              "samples": [
+                {
+                  "images_per_second": 7483.619059468111,
+                  "latency_ms": 4.276006,
+                  "batch": 32,
+                  "parameter_count": 11689512,
+                  "peak_allocated_bytes": 281975808,
+                  "framework.elapsed_ms": 4.276006,
+                  "framework.peak_allocated_bytes": 281975808.0,
+                  "framework.peak_reserved_bytes": 398458880.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 398458880.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282937344.0,
+                  "framework.lifecycle_peak_reserved_bytes": 398458880.0
+                },
+                {
+                  "images_per_second": 7497.461991967875,
+                  "latency_ms": 4.268111,
+                  "batch": 32,
+                  "parameter_count": 11689512,
+                  "peak_allocated_bytes": 281975808,
+                  "framework.elapsed_ms": 4.268111,
+                  "framework.peak_allocated_bytes": 281975808.0,
+                  "framework.peak_reserved_bytes": 398458880.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 398458880.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282937344.0,
+                  "framework.lifecycle_peak_reserved_bytes": 398458880.0
+                },
+                {
+                  "images_per_second": 7476.597082912191,
+                  "latency_ms": 4.280022,
+                  "batch": 32,
+                  "parameter_count": 11689512,
+                  "peak_allocated_bytes": 281975808,
+                  "framework.elapsed_ms": 4.280022,
+                  "framework.peak_allocated_bytes": 281975808.0,
+                  "framework.peak_reserved_bytes": 398458880.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 398458880.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282937344.0,
+                  "framework.lifecycle_peak_reserved_bytes": 398458880.0
+                },
+                {
+                  "images_per_second": 7494.868357321597,
+                  "latency_ms": 4.269588,
+                  "batch": 32,
+                  "parameter_count": 11689512,
+                  "peak_allocated_bytes": 281975808,
+                  "framework.elapsed_ms": 4.269588,
+                  "framework.peak_allocated_bytes": 281975808.0,
+                  "framework.peak_reserved_bytes": 398458880.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 398458880.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282937344.0,
+                  "framework.lifecycle_peak_reserved_bytes": 398458880.0
+                },
+                {
+                  "images_per_second": 7477.348307969544,
+                  "latency_ms": 4.279592,
+                  "batch": 32,
+                  "parameter_count": 11689512,
+                  "peak_allocated_bytes": 281975808,
+                  "framework.elapsed_ms": 4.279592,
+                  "framework.peak_allocated_bytes": 281975808.0,
+                  "framework.peak_reserved_bytes": 398458880.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 398458880.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282937344.0,
+                  "framework.lifecycle_peak_reserved_bytes": 398458880.0
+                }
+              ],
+              "metrics": {
+                "images_per_second": 7483.619059468111,
+                "latency_ms": 4.276006,
+                "batch": 32,
+                "parameter_count": 11689512,
+                "peak_allocated_bytes": 281975808,
+                "framework.elapsed_ms": 4.276006,
+                "framework.peak_allocated_bytes": 281975808.0,
+                "framework.peak_reserved_bytes": 398458880.0,
+                "framework.allocated_bytes": 76582912.0,
+                "framework.reserved_bytes": 398458880.0,
+                "framework.lifecycle_peak_allocated_bytes": 282937344.0,
+                "framework.lifecycle_peak_reserved_bytes": 398458880.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "reference": "/root/autodl-tmp/dev/v6-work/semantics-lifetime-20261027/evaluator-ab/control/controls/reference-rank-0.pt",
+              "models": [
+                "model"
+              ]
+            }
+          }
+        ],
+        "lease_wait_s": 0.00023346394300460815,
+        "device_selectors": [
+          "0"
+        ],
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+        ],
+        "worker_pids_reaped": true
+      },
+      "controls_valid": true,
+      "state_inventory": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 6.56304145231843,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 209982,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 209982,
+              "status": "verified",
+              "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 11,
+                "unavailable_samples": 0,
+                "wait_s": 0.05340580269694328,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "tensors": [
+                {
+                  "path": "state.images",
+                  "shape": [
+                    3,
+                    3,
+                    224,
+                    224
+                  ],
+                  "dtype": "torch.float32",
+                  "device": "cuda:0",
+                  "bytes": 1806336
+                },
+                {
+                  "path": "state.pixels",
+                  "shape": [
+                    32,
+                    3,
+                    224,
+                    224
+                  ],
+                  "dtype": "torch.float32",
+                  "device": "cuda:0",
+                  "bytes": 19267584
+                }
+              ],
+              "scope": "Diagnostic of direct nested returned-state tensors after prepare; does not traverse arbitrary objects, model parameters or globals. Other owners require code review."
+            }
+          }
+        ],
+        "lease_wait_s": 0.0001956634223461151,
+        "device_selectors": [
+          "0"
+        ],
+        "entry_sha256": "e47af7cf57534bc8fb4d2c300466f254dd9f8c86941f94f2d53bc7273059b0bd",
+        "devices": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+        ],
+        "worker_pids_reaped": true
+      },
+      "status": "completed"
+    },
+    {
+      "arm": "treatment",
+      "agent": {
+        "role": "project-evaluator",
+        "session": "ses_e83a5dc02ffelBQQDTfnOImFrv",
+        "message": "msg_17c5eefea001KXKsfD8EyT4gni",
+        "model": "zhipuai/glm-5.3",
+        "usage": {
+          "schema_version": 1,
+          "mode": "observe_only",
+          "messages": 13,
+          "reported_cost": 0.31524854836,
+          "messages_without_cost": 0,
+          "unfinished_messages": 0,
+          "tokens": {
+            "total": 625342.0,
+            "input": 53452.0,
+            "output": 5393.0,
+            "reasoning": 15329.0,
+            "cache.read": 551168.0,
+            "cache.write": 0.0
+          },
+          "sessions": [
+            {
+              "id": "ses_e83a5dc02ffelBQQDTfnOImFrv",
+              "status": "observed",
+              "detail": null
+            }
+          ],
+          "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+        },
+        "sandbox": "/root/autodl-tmp/dev/v6-work/semantics-lifetime-20261027/evaluator-ab/treatment/sandboxes/project-evaluator-replay-7cab294b175f",
+        "outputs": [
+          "adapter.py",
+          "understanding.json"
+        ],
+        "feedback_provided": false,
+        "contract_repairs": 0,
+        "generation_snapshots": [
+          "/root/autodl-tmp/dev/v6-work/semantics-lifetime-20261027/evaluator-ab/treatment/generation-snapshots/generation-1c447be9a6a1.json"
+        ]
+      },
+      "understanding": {
+        "goal": "Minimize the source's peak_allocated_bytes for the offline batch-32 workload while retaining images_per_second >= 0.95 of the original baseline, preserving its pretrained model, real image inputs, FP32 numerical policies, full logits and exact predicted classes. Keep the original workload and completion boundary.",
+        "entrypoint": "resnet_inference.py",
+        "completion": "One measured invocation equals the source's infer(model, pixels) (resnet_inference.py:14-16): a single ResNetForImageClassification forward model(pixel_values=pixels).logits under torch.inference_mode() on the fixed GPU-resident FP32 tensor holding 32 preprocessed real images, built once as images[torch.arange(batch, device='cuda') % len(images)].contiguous() (resnet_inference.py:29). The invocation completes when the full 1000-class logits of shape [batch,1000] are returned and the post-invocation CUDA synchronization finishes, matching the source sample boundary torch.cuda.synchronize() after infer (resnet_inference.py:46). Model loading, host->device input transfer, batch construction, reference construction and correctness checks, warmup (2), statistical repeats (5), summary and profiling are harness outside the measured work; each run() performs exactly one full forward and no more.",
+        "state_protocol": "Ownership mapping of live device allocations held at the source timer (infer inside the sample loop, resnet_inference.py:45): (1) model - FP32 ResNet-18 parameters and BatchNorm buffers on CUDA, source owner main() local 'model' (resnet_inference.py:23) -> adapter owner state['model'], created in prepare(), returned in the state dict and via models(), live through run()/observe()/metrics(); (2) images - base 3x3x224x224 float32 CUDA tensor holding all fixture images, source owner main() local 'images' (resnet_inference.py:24), unused by the forward but still referenced at the timer -> adapter owner state['images'], explicitly retained in the returned state so the same allocation survives prepare() and remains live through run(); (3) pixels - 32x3x224x224 contiguous CUDA batch input, source owner workload-loop local (resnet_inference.py:29) -> adapter owner state['pixels']; (4) output logits (32x1000) - allocated inside the timed region, source owner sample-loop local 'output' deleted after each sample (resnet_inference.py:49) -> adapter run() returns it to the framework, which owns it across observe()/metrics() before release. Intermediate activations are freed when the forward returns; the workload has no caches, RNG-driven state, optimizers, counters or process group, so reset() only re-asserts model.eval() and is otherwise a no-op for this stateless inference.",
+        "invariants": [
+          "Workload shape is frozen: each measured invocation is exactly one full forward over the batch from request['workload'] (id=offline, batch=32; workloads.json:19); the adapter reads the batch from request['workload'] in prepare() instead of embedding 32, and never changes batch, input tensor or invocation count to improve a score (request freezes the workload).",
+          "Pretrained model preserved: ResNetForImageClassification weights come from request['assets'] (microsoft/resnet-18 revision 65a5785d9156231087c481e0c7dd33a5ff6f7e3e) loaded with local_files_only=True and no downloads (resnet_inference.py:23; the goal requires preserving its pretrained model).",
+          "Real task data preserved: inputs are the preprocessed real public images in pixels.npy (float32 NCHW 3x224x224) batched deterministically as images[torch.arange(batch) % len(images)].contiguous() (resnet_inference.py:24,29); preprocessing finished in the asset-preparation stage and is not re-derived or replaced by synthetic inputs (request notes; asset-manifest scope).",
+          "Output requirement: run() returns the full 1000-class logits tensor of shape [batch,1000] (resnet_inference.py:16); quality compares every logit at logits_atol=logits_rtol=1e-4 (workloads.json resnet_inference.correctness) and observe() also exposes the predicted class integers.",
+          "Exact top-1 relational check: torch.equal(actual.argmax(-1), reference.argmax(-1)) must hold (resnet_inference.py:33; workloads.json require_exact_top1); implemented in observe() outside timed run() as an identity-replay comparison plus the +1-corruption negative control (common.py close_check/negative_check), exposing exact booleans and raising on violation.",
+          "Numerical policy: FP32 weights and activations (dtype=torch.float32, resnet_inference.py:23), TF32 disabled for matmul and cudnn, cudnn.benchmark off, float32_matmul_precision 'highest' (common.py configure(), lines 34-42); required by the goal's FP32 policy and by the 1e-4 logits tolerance, since TF32 would perturb logits.",
+          "Measured work is pure inference: model.eval() with no parameter mutation, no optimizer and no autograd graph in the timed forward (source @torch.inference_mode(), resnet_inference.py:14-16); required because the objective is the peak allocated memory of this offline inference forward and reference fidelity needs BatchNorm running statistics used, not updated.",
+          "Objective semantics: peak_allocated_bytes is the process's torch.cuda.max_memory_allocated() sampled around one forward with peak stats reset before it (resnet_inference.py:42-48); the adapter reports it from metrics() after the framework's own pre-timer peak-stat reset instead of duplicating boundary operations inside run().",
+          "Throughput semantics: images_per_second = batch * 1e9 / elapsed_ns for one full batch-32 forward on the fixed GPU-resident input (resnet_inference.py:48), and the memory objective is constrained by images_per_second >= 0.95 x original baseline median (workloads.json images_per_second_min_baseline_ratio 0.95; request objective.constraints baseline_ratio 0.95).",
+          "Single-process single-GPU execution on the worker-bound context['device'] with no process group, NCCL or communication hooks (request distributed_backend null; source configure()/set_device on one device); the adapter does not initialize another default process group."
+        ],
+        "objective": {
+          "name": "peak_allocated_bytes",
+          "unit": "bytes",
+          "direction": "minimize",
+          "constraints": [
+            {
+              "metric": "images_per_second",
+              "op": "ge",
+              "baseline_ratio": 0.95
+            }
+          ]
+        },
+        "workload": {
+          "id": "offline",
+          "batch": 32,
+          "goals": [
+            {
+              "id": "throughput",
+              "metric": "images_per_second",
+              "direction": "max"
+            },
+            {
+              "id": "memory",
+              "metric": "peak_allocated_bytes",
+              "direction": "min",
+              "constraints": {
+                "images_per_second_min_baseline_ratio": 0.95
+              }
+            }
+          ]
+        },
+        "quality": {
+          "atol": 0.0001,
+          "rtol": 0.0001,
+          "logits_atol": 0.0001,
+          "logits_rtol": 0.0001,
+          "require_exact_top1": true
+        },
+        "missing_information": [],
+        "assumptions": [
+          "from_pretrained is given the assets directory (parent of request assets.model_weights) because the source passes its --assets directory containing config.json, model.safetensors and preprocessor_config.json, and the request's asset paths all share that directory.",
+          "The source's per-sample boundary operations (torch.cuda.synchronize + reset_peak_memory_stats before, synchronize after, max_memory_allocated read after; resnet_inference.py:42-48) map onto the framework's documented pre/post-run synchronizations and pre-timer CUDA peak-stat reset; the adapter keeps run() free of boundary operations and reads torch.cuda.max_memory_allocated() in metrics() outside the timer.",
+          "The source's pre-timing correctness harness (reference/actual identity replay at 1e-4, torch.equal top-1, +1-corruption negative control; resnet_inference.py:30-35) is re-executed in observe() outside timing by comparing a fresh replay forward against the timed result; the framework's independent comparison against its stored offline-reference.pt reference is separate and not re-implemented in the adapter.",
+          "torch.manual_seed(20261020), torch.set_num_threads(4) and torch.set_num_interop_threads(1) are re-applied in prepare() for parity with common.configure(); none changes this GPU forward's numerics (deterministic eval model, file-based inputs), and set_num_interop_threads is best-effort because the worker process may already have started interop threads.",
+          "torch.inference_mode() is kept as the source's exact no-grad mechanism; equivalent alternatives such as torch.no_grad() exist but are not used so the timing path stays identical to the source.",
+          "predicted_labels for the first three samples via model.config.id2label (resnet_inference.py:35) are exposed from observe() as descriptive strings; the graded discrete outputs are the full predicted-class integers.",
+          "The source's other workload rows (online batch=1) and the held-out unseen_batch=7 row (workloads.json:18,21) are not part of this frozen request; the adapter reads request['workload']['batch'] so a separately validated variant supplying different values would reuse the same adapter unchanged.",
+          "Warmup (2) and repeats (5) with median/min/max summary (common.py summarize) are the framework's invocation-lifetime measurement loop (request measurement_lifetime=invocation); run() performs exactly one invocation and contains no extra forward passes.",
+          "profile_once/torch.profiler diagnostics (common.py:87-105) are separate diagnostic runs in the source and were not requested; the adapter does not run a profiler inside run()/metrics(), and the objective is the ordinary clean-sample metric peak_allocated_bytes, not a collector field.",
+          "required_observations is empty and the workload is single-process, so no communication observations are produced by the adapter; those belong to the framework's collector responsibilities."
+        ]
+      },
+      "controls": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 7.416974600404501,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 211380,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 211380,
+              "status": "verified",
+              "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 12,
+                "unavailable_samples": 0,
+                "wait_s": 0.07050787657499313,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "controls": {
+                "reset": [
+                  {
+                    "passed": true,
+                    "compared_elements": 32039,
+                    "max_abs_error": 0.0
+                  },
+                  {
+                    "passed": true,
+                    "compared_elements": 32039,
+                    "max_abs_error": 0.0
+                  }
+                ],
+                "identity": {
+                  "passed": true,
+                  "compared_elements": 32039,
+                  "max_abs_error": 0.0
+                },
+                "identity_covered": true,
+                "wrong_output_rejected": true,
+                "missing_coverage_rejected": true
+              },
+              "samples": [
+                {
+                  "latency_ms": 4.250578,
+                  "images_per_second": 7528.387903950945,
+                  "peak_allocated_bytes": 281975808.0,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.250578,
+                  "framework.peak_allocated_bytes": 281975808.0,
+                  "framework.peak_reserved_bytes": 398458880.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 398458880.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282937344.0,
+                  "framework.lifecycle_peak_reserved_bytes": 398458880.0
+                },
+                {
+                  "latency_ms": 4.241777,
+                  "images_per_second": 7544.008089062673,
+                  "peak_allocated_bytes": 281975808.0,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.241777,
+                  "framework.peak_allocated_bytes": 281975808.0,
+                  "framework.peak_reserved_bytes": 398458880.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 398458880.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282937344.0,
+                  "framework.lifecycle_peak_reserved_bytes": 398458880.0
+                },
+                {
+                  "latency_ms": 4.250807,
+                  "images_per_second": 7527.982333707459,
+                  "peak_allocated_bytes": 281975808.0,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.250807,
+                  "framework.peak_allocated_bytes": 281975808.0,
+                  "framework.peak_reserved_bytes": 398458880.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 398458880.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282937344.0,
+                  "framework.lifecycle_peak_reserved_bytes": 398458880.0
+                },
+                {
+                  "latency_ms": 4.235496,
+                  "images_per_second": 7555.195424573651,
+                  "peak_allocated_bytes": 281975808.0,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.235496,
+                  "framework.peak_allocated_bytes": 281975808.0,
+                  "framework.peak_reserved_bytes": 398458880.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 398458880.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282937344.0,
+                  "framework.lifecycle_peak_reserved_bytes": 398458880.0
+                },
+                {
+                  "latency_ms": 4.241639,
+                  "images_per_second": 7544.253530298076,
+                  "peak_allocated_bytes": 281975808.0,
+                  "batch": 32.0,
+                  "parameter_count": 11689512.0,
+                  "framework.elapsed_ms": 4.241639,
+                  "framework.peak_allocated_bytes": 281975808.0,
+                  "framework.peak_reserved_bytes": 398458880.0,
+                  "framework.allocated_bytes": 76582912.0,
+                  "framework.reserved_bytes": 398458880.0,
+                  "framework.lifecycle_peak_allocated_bytes": 282937344.0,
+                  "framework.lifecycle_peak_reserved_bytes": 398458880.0
+                }
+              ],
+              "metrics": {
+                "latency_ms": 4.241777,
+                "images_per_second": 7544.008089062673,
+                "peak_allocated_bytes": 281975808.0,
+                "batch": 32.0,
+                "parameter_count": 11689512.0,
+                "framework.elapsed_ms": 4.241777,
+                "framework.peak_allocated_bytes": 281975808.0,
+                "framework.peak_reserved_bytes": 398458880.0,
+                "framework.allocated_bytes": 76582912.0,
+                "framework.reserved_bytes": 398458880.0,
+                "framework.lifecycle_peak_allocated_bytes": 282937344.0,
+                "framework.lifecycle_peak_reserved_bytes": 398458880.0
+              },
+              "metric_samples": {},
+              "diagnostics": {},
+              "reference": "/root/autodl-tmp/dev/v6-work/semantics-lifetime-20261027/evaluator-ab/treatment/controls/reference-rank-0.pt",
+              "models": [
+                "resnet18"
+              ]
+            }
+          }
+        ],
+        "lease_wait_s": 0.00012515857815742493,
+        "device_selectors": [
+          "0"
+        ],
+        "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "devices": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+        ],
+        "worker_pids_reaped": true
+      },
+      "controls_valid": true,
+      "state_inventory": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 7.265201009809971,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 211487,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 211487,
+              "status": "verified",
+              "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 12,
+                "unavailable_samples": 0,
+                "wait_s": 0.03495819494128227,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "tensors": [
+                {
+                  "path": "state.images",
+                  "shape": [
+                    3,
+                    3,
+                    224,
+                    224
+                  ],
+                  "dtype": "torch.float32",
+                  "device": "cuda:0",
+                  "bytes": 1806336
+                },
+                {
+                  "path": "state.pixels",
+                  "shape": [
+                    32,
+                    3,
+                    224,
+                    224
+                  ],
+                  "dtype": "torch.float32",
+                  "device": "cuda:0",
+                  "bytes": 19267584
+                }
+              ],
+              "scope": "Diagnostic of direct nested returned-state tensors after prepare; does not traverse arbitrary objects, model parameters or globals. Other owners require code review."
+            }
+          }
+        ],
+        "lease_wait_s": 0.00014257803559303284,
+        "device_selectors": [
+          "0"
+        ],
+        "entry_sha256": "e47af7cf57534bc8fb4d2c300466f254dd9f8c86941f94f2d53bc7273059b0bd",
+        "devices": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+        ],
+        "worker_pids_reaped": true
+      },
+      "status": "completed"
+    }
+  ]
+}

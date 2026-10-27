@@ -1,0 +1,27 @@
+{
+  "collectors": [
+    "nsys",
+    "candidate_diagnostics"
+  ],
+  "requested_fields": [
+    "nsys.kernel_timeline.measured_invocation",
+    "nsys.kernel_names.per_device_interval",
+    "nsys.cuda_memory_allocation_events",
+    "nsys.attribution.candidate_vs_reference_invocations",
+    "candidate_diagnostics.handled_exceptions",
+    "candidate_diagnostics.exception_traceback_locations",
+    "candidate_diagnostics.false_returns"
+  ],
+  "unavailable_fields": {
+    "communication.nccl_algorithm_protocol_channel": "Single-device task: observations.json marks the communication capability not_applicable (reason: single-device task); request.json has no distributed backend, so nccl_tuning has no collectives to observe.",
+    "communication.per_collective_pcie_nvlink_bytes": "No collectives exist in this workload; device_telemetry samples device-wide NVML PCIe rates with native windows, not per-collective bytes, and wire traffic must not be derived from logical payload or memcpy sizes.",
+    "collective.performance_lower_bound": "collective_calibration's synthetic full-world SUM allreduce is inapplicable without communication and is a reference experiment, not a critical-path estimate for a single-GPU forward pass.",
+    "numerical.first_divergence_site": "No actual collector compares intermediate tensors or locates the first numerical divergence; candidate_diagnostics records only exceptions and False returns. Quality already passes (atol=rtol=1e-4, exact top1), so this dimension stays unobserved rather than measured.",
+    "execution.gpu_ready_to_consumer_completion": "execution_timeline reports clock alignment bounds for CPU submissions only and GPU readiness/consumer completion may remain unknown; not selected because the already-run torch collector achieved 221/221 kernel association with 0 ambiguous sequences, leaving no submission-association gap to close.",
+    "binding.per_group_overhead": "binding_cost reports whole-invocation cost only (no per-group effects) and no binding-cost uncertainty is observed: the candidate's images_per_second (7488.5) is not below the paired parent (7483.6) and the throughput floor passes with margin.",
+    "host_dispatch.clean_gpu_durations": "python_runtime's cProfile inclusive/self times are host-side, perturb execution, and are not GPU compute durations; host dispatch is not an observed uncertainty for the 4.27 ms GPU-bound invocation.",
+    "successful_path_identity_from_empty_diagnostics": "candidate_diagnostics records exceptions and False returns only; empty events cannot establish which successful path executed. Route confirmation must come from the nsys trace, not from absence of exceptions."
+  },
+  "rationale": "The candidate (revision 604d1fce...) passes quality and the throughput floor (7488.5 >= 7120.3 img/s) and improves peak_allocated_bytes from 155229184 (parent) to 121412608. The one uncertainty the evaluation itself flags is that the declared route 'fused_streaming_resnet' (2 candidate invocations, 370 reference invocations in the same job) is candidate-reported telemetry, not independent native proof, and should be corroborated by traces or actual exception evidence. nsys is available (binary verified at request.json tools.nsys, nsys-2025.3.1) and supplies the independent native view: the kernel-name sequence within the measured invocation's device interval to confirm the fused/streaming route versus reference-composition kernels, plus native CUDA memory allocation events to attribute which allocations drive the 121 MB peak_allocated_bytes (on-objective for further minimization, including the lifecycle-vs-invocation gap of ~0.8 MB). candidate_diagnostics supplies the second named corroboration path: handled exceptions with propagated library traceback locations and False returns in the candidate files, which would expose a silent try/except fallback to the reference path (framework_fallbacks is reported as 0, but that count is not exception evidence); its known limit is that empty events prove nothing about the successful path, which is why the trace is also requested. Communication collectors (nccl_tuning, collective_calibration, device_telemetry per-collective use) are excluded because observations.json records communication as not_applicable for this single-device task. execution_timeline is excluded as redundant: the torch collector already associated all 221 kernels with zero ambiguity, and its clock-alignment bounds and gradient callbacks target distributed/gradient questions absent here. python_runtime and binding_cost are excluded because host dispatch cost and binding overhead are not observed uncertainties: the candidate is not slower than its parent and latency is GPU-dominated. No failure-category policy or optimization action is presupposed; these collectors only corroborate route identity and attribute peak memory on the exact candidate.",
+  "revision": "604d1fce615dba09e9ece2485eb85baf6300fd3a06f0c86644e07ea9834be816"
+}
