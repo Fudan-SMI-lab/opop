@@ -4,6 +4,21 @@
 
 ### 最新授权：仅执行服务器内整理
 
+**已完成并通过终态验收。** 控制器于2026-10-27 15:57:47 UTC正常结束，三个阶段均为成功，没有把控制器退出当成数据验证通过。独立验收复查所有压缩内容、环境共享文件、Git恢复对象和保留项目依赖，结果通过。数据盘仍为150 GiB，本轮净回收约**42.24 GiB**，可用约**49.72 GiB**（维护起点约7.48 GiB）；以[最终汇总](evidence/v6-storage-cleanup-20261027/server-only-final-summary.json)中的df字节为依据，详细[核查回执](evidence/v6-storage-cleanup-20261027/server-only-verification-result.json)同时保留。这一数字不重复计算更早清掉的6.43 GiB失败下载片段。
+
+| 项目 | 实际完成及验收 |
+|---|---|
+| 环境去重 | 49,122个文件逐一复验SHA、模式、所有者、mtime及共享inode关系；52个未去重路径仍在 |
+| 旧freeze | 40份副本退役；恢复标记和Git元数据压缩包全部核验，引用目标的可达Git对象没有缺失 |
+| 冷JSON | 2,531份独立payload、3,520个原路径；37,107,392,397 bytes（34.56 GiB）原内容压缩为2,993,419,012 bytes（2.79 GiB） |
+| 内容保真 | 全部2,531份压缩文件SHA和解压后的原始SHA/字节数再次核验；真实多别名样本在隔离目录恢复后，内容、权限、所有者、mtime、硬链接关系均正确 |
+| 保留范围 | 47,556个受保护文件无缺失、元数据无变化；清单采集于cold_json阶段，不能外推成整个维护开始前的内容哈希检查。另有21个范围外共享inode的原文件保留在线 |
+| 可用性 | Qwen/ResNet/最新DDP的当前revision、contract/plan/registry、28份源码文件、adapter、installer/targets、参考文件和资产可解析并通过实际物化校验；Qwen三个完整checkpoint shard均在。Node/OpenCode/Nsys及旧环境Torch导入正常，双卡NCCL小型all-reduce返回预期值 |
+
+以上可用性检查不构成新的模型性能接受，也不覆盖任何先前失败。Qwen旧独立拒绝及80样本、ResNet显存独立拒绝及80样本、DDP独立拒绝和TP完整32-token质量失败均不变。原始冷内容保留在服务器gzip中，journal记录全部路径/哈希/元数据；需要历史重放时使用服务器`server-only-run/RESTORE.md`中的恢复命令。不同版本的orch-venv/nodejs继续保留。
+
+本轮没有恢复本地大归档，只回传小型公开回执、核查代码和摘要。核查临时物化的28份源码副本在重新校验后清除，原始不可变artifact保留；实际恢复样本及审计记录留在服务器。维护控制器与完成监听均已结束，不追加优化实验。此次真实队列消息完成了自动续行；同时修正监听器优先读取`finished_at`、没有该字段时回退`at`，避免把维护state的创建时间显示成完成时间。只做时间字段单元检查，没有额外队列投递探针。
+
 用户已进一步明确“不考虑转存，仅处理无需转存即可释放的空间”。据此执行[服务器内清单](evidence/v6-storage-cleanup-20261027/server-only-plan.json)：整套环境/数据下载仍然停止；旧环境中内容及mode/uid/gid/mtime均相同的文件改为共享硬链接，路径和差异保留；40个旧freeze在核对Git可恢复后退役；只对明确冷目录内至少256 KiB的JSON及其全部硬链接别名进行服务器内gzip。仍被范围外路径共享的inode跳过，当前接受版本和最新实验整组保护。不同版本的orch-venv和旧nodejs本轮保留。
 
 `scripts/maintenance/v6_server_storage.py`只操作服务器文件，不具备下载或provider请求逻辑。每个冷JSON先生成gzip、验证解压SHA、持久化包含原路径/权限/mtime/全部别名的journal，然后移除未压缩副本。一次处理一个payload，空间不足或内容变化时停止；所有样本、结果、原始内容均可恢复。环境硬链接维持两个原路径可用；后续若需单独原地编辑其中一份共享文件，应先复制拆开链接，常规替换文件不影响另一链接的原内容。维护不会添加框架执行门槛。
@@ -12,7 +27,7 @@
 
 服务器控制器PID `294835`已于15:49 UTC启动（执行提交`b1301dd`），第一阶段完成：49,122个文件已共享硬链接，52个因内容/属性不同的文件保持原样；40个旧freeze已退役。原先只比较内容时相同文件为49,126，本次额外要求mtime等属性相同，因此实际去重少4个。前两步后df可用19,274,121,216 bytes（约17.95 GiB），较本次起点净增约10.48 GiB；并非把预计量当作实测。见[环境回执](evidence/v6-storage-cleanup-20261027/server-only-environment-result.json)和[freeze回执](evidence/v6-storage-cleanup-20261027/server-only-freezes-result.json)。
 
-冷JSON压缩仍在运行。服务器保存47,556个受保护文件的清单（在cold_json阶段、前两步之后采集），用于终态核对。一个普通完成监听PID `44176`已验证服务器控制器存活，[监听回执](evidence/v6-storage-cleanup-20261027/server-only-wakeup.json)限定后续只核查本次服务器维护；没有本地大归档、Goal或模型轮询。全部压缩完成或出错后自动审计实际状态，再报告最终净回收，不自动启动新的优化实验。
+启动阶段曾记录冷JSON压缩正在运行。服务器保存47,556个受保护文件清单（在cold_json阶段、前两步之后采集），现已完成终态核对。普通完成监听PID `44176`已成功投递一次续行后退出，[监听回执](evidence/v6-storage-cleanup-20261027/server-only-wakeup.json)与[实际投递记录](evidence/v6-storage-cleanup-20261027/server-only-wakeup-delivery.json)保留；没有本地大归档、Goal或模型轮询，也未自动启动新的优化实验。
 
 **已按用户新指令停止**：用户因本地剩余空间要求立即停止这次新转存。15:10 UTC已终止控制器PID `40732`及其传输子进程、完成监听PID `48580`；服务器端无残留维护进程，未提交新的续行消息。首组流式传输写入183,068,672 bytes（约174.59 MiB）未完成文件，现已清除。未完成任何冷归档组，也未执行任何对应服务器证据删除；源清单10,079个条目全部仍在，size/mtime/inode/mode未变。此前四个失败下载片段的删除是独立已完成操作。见[停止回执](evidence/v6-storage-cleanup-20261027/user-stop.json)。**不得自动恢复转存、批量删除或重新开启清理守候；后续安排以用户新指令为准。**
 

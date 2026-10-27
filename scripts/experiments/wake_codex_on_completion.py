@@ -46,7 +46,8 @@ def probe():
         except json.JSONDecodeError:
             return {'terminal': False, 'reason': 'completion_record_being_written'}
         return {'terminal': True, 'reason': 'batch_finished', 'record': str(final),
-                'completed_at': value.get('at'), 'result_keys': list(value.get('results', {}))}
+                'completed_at': value.get('finished_at') or value.get('at'),
+                'result_keys': list(value.get('results', {}))}
     controllers = []
     for launch, completion in [('launch.json', 'controller-completed.json'),
                                ('followup-launch.json', 'followup-completed.json')]:
