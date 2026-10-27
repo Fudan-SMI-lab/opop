@@ -7,5 +7,6 @@
 - `candidate-breakdown.json`：从清单派生的候选目录分类。current DDP 标记 active_protected，其他也仅为候选。
 - `local-coverage.json`：本地归档存在/大小、旧验证记录、49份导出文件新 SHA 校验、两份现有冷归档的新完整压缩件 SHA，以及旧 tgz 的成员概况。
 - `deferred-cleanup.json`：现有完成守候 prompt 的变更哈希和原样追加指令。没有额外队列消息或 Goal。
+- `whole-disk.json`：追加的全盘一级目录、完整 checkpoint shard 与失败下载残留区分、三个环境包清单、当前进程路径使用观测；没有输出进程原始命令/环境或私有值。
 
 扫描发生在当前实验运行时，文件可能继续增长。删除前必须在终态重新核对数据完整覆盖和依赖；这些清单本身不授予按目录一键删除的依据。完成后另加实际归档/删除/恢复索引及空间前后对照。
