@@ -1,0 +1,30 @@
+{
+  "collectors": [
+    "nccl_tuning",
+    "collective_calibration",
+    "device_telemetry"
+  ],
+  "requested_fields": [
+    "nccl_tuning.algorithm_by_size_bytes",
+    "nccl_tuning.protocol_by_size_bytes",
+    "nccl_tuning.channels_by_size_bytes",
+    "collective_calibration.allreduce_sum_f32_world2_duration_ms.size_28351488",
+    "collective_calibration.allreduce_sum_f32_world2_duration_ms.size_157541376",
+    "collective_calibration.correctness_check_results",
+    "device_telemetry.pcie_throughput_samples",
+    "device_telemetry.gpu_utilization_samples",
+    "device_telemetry.device_memory_samples"
+  ],
+  "unavailable_fields": {
+    "nccl_wait_vs_wire_transfer_breakdown_ms": "The frozen objective (diagnostic.max_rank_nccl_kernel_sum_ms) includes device waiting; no available collector separates NCCL wait from wire transfer. Nsys timelines would not separate them either, so the per-kernel wait/transfer split stays unknown and the objective is interpreted as kernel-duration sum including waiting.",
+    "per_collective_interconnect_bytes": "device_telemetry supplies device-wide NVML readings with native sampling windows only, not per-collective bytes; PCIe/NVLink traffic must not be invented from the logical payload sizes (28351488 B and 157541376 B) or memcpy sizes.",
+    "allreduce_performance_lower_bound_ms": "collective_calibration is a correctness-checked reference experiment at the observed sizes/dtypes, not a performance lower bound, so it cannot be reported as a bound on the objective.",
+    "exposed_or_critical_path_communication_ms": "No collector measures exposed or model-critical-path communication; the torch metric is summed device NCCL kernel duration including waiting, profiled separately from clean step timing.",
+    "consolidated_single_allreduce_reference_ms": "collective_calibration runs only at actually observed sizes (28351488 B and 157541376 B fp32 SUM, world 2); a reference for one consolidated ~497.8 MB gradient allreduce (a possible bucket_cap_mb change) is not an observed size and cannot be requested.",
+    "first_numerical_divergence_site_and_per_site_error": "No collector compares intermediate tensors, measures per-site numerical error, or locates the first numerical divergence; candidate_diagnostics records only exceptions and False returns, and no candidate files exist yet.",
+    "clean_host_dispatch_scores_ms": "python_runtime is not selected; its cProfile inclusive/self times come from a perturbing instrumented run and are not clean performance scores or GPU compute durations.",
+    "per_bucket_binding_overhead_ms": "binding_cost is inapplicable before any candidate exists, and even when applicable it reports whole-invocation cost, not per-group or per-bucket effects."
+  },
+  "rationale": "The torch collector already ran and its trace resolves the structural questions: 13 cross-rank matched fp32 SUM allreduces on world [0,1] (sequences 21-32 at 28351488 B / 7087872 f32 elements each, sequence 33 at 157541376 B), each served by a single ncclDevKernel_AllReduce_Sum_f32_RING_LL kernel of ~1.87-1.90 ms on stream 17, with exact bucket attribution already established from observed gradient-storage membership plus matched parameter inventory (12 x ~28.35 MB buckets and one wte+wpe+ln_f ~157.5 MB bucket under bucket_cap_mb=25, gradient_as_bucket_view=True) and full kernel association (4000/4000, 0 unassociated). Therefore no attribution, graph-tracing or bucket-identity question remains that would justify nsys or execution_timeline, and torch is not re-requested. The open questions for minimizing the summed NCCL kernel duration are: (1) which NCCL algorithm/protocol/channel decisions are actually made at the observed message sizes - kernel entry names alone do not establish the protocol, and the RING_LL entry with ~28.35 MB in ~1.9 ms (~14.9 GB/s effective per rank) suggests a protocol/channel-limited regime with headroom - addressed by nccl_tuning in its separate warmed worker at the observed sizes; (2) what a full-world SUM fp32 allreduce at exactly 28351488 B and 157541376 B costs as a correctness-checked reference under current bucket granularity, addressed by collective_calibration (reference only, not a lower bound); (3) whether the transfer is interconnect-limited or protocol-limited, for which device_telemetry's device-wide NVML PCIe throughput, utilization and memory samples provide the only actual interconnect evidence (device-wide readings with native windows, never per-collective bytes). Kernel starts are spaced ~15 ms apart versus ~1.9 ms durations across backward, so kernel-sum reductions pose low risk to the step_ms <= 1.05x baseline constraint, which the framework enforces on every evaluation anyway. Excluded: nsys (no open overlap/graph/attribution question; timelines alone cannot separate NCCL waiting from wire transfer or prove bucket identity), execution_timeline (no open CPU-submit association question, and GPU readiness/consumer completion bounds would remain unknown), python_runtime (host dispatch is not the device-side objective and the run perturbs execution), candidate_diagnostics (no candidate files exist yet), binding_cost (not applicable before a candidate exists; it will become eligible in subsequent candidate resource feedback).",
+  "revision": null
+}

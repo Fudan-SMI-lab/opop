@@ -1,0 +1,64 @@
+{
+  "implementation": "composite",
+  "replacement_calls": [
+    "f2cf62caf57ad09f5d2f36aa"
+  ],
+  "rationale": "Previous feedback is a clean acceptance, not a failure: bundle trial-1bfb948628-param-aba0ae1b (BN fold + fused conv(+relu)/conv(+add+relu) epilogues) was accepted at objective 3.4129 ms vs parent 3.6579 ms (paired gains 0.235/0.255 ms over MAD bounds 0.017/0.009 ms), the current revision a345441f already carries it, and candidate_diagnostics-4123e6d6 records only normal guard returns (no exceptions, no silent fused-op fallbacks; 12/12 declared routes executed). This attempt therefore builds on that implementation instead of repeating it: it explicitly replaces the whole earlier bundle and re-issues its accepted folded/fused conv semantics unchanged inside one region replacement at the ResNetForImageClassification.forward boundary (call f2cf62caf57ad09f5d2f36aa, group eca3643289778aea5af3), where the measured levers are host-side, not kernel-side. Measured evidence on this exact revision (observations/current/nsys-9ed9145c.json, 46/46 kernels associated): GPU kernel busy 3228.4 us inside a 3778.3 us kernel span - 549.9 us of GPU-idle launch gaps in ONE invocation (top gaps 225.6 us after the stem max_pool before stage 1, then 72.6/48.8/45.5/33.2/21.0/19.9/18.8/15.3/15.2 us), while python_runtime-aea48e29 corroborates the host shape: 0.867 ms conv dispatch self time (9x cudnn_convolution_relu 0.437, 8x cudnn_convolution_add_relu 0.296, 3x conv2d 0.134) plus 0.057 ms binding dispatch over 12 module sites, mostly hidden under GPU execution but surfacing as exactly those gaps; the clean objective 3.4129 ms leaves ~0.185 ms non-kernel residual against 3.228 ms kernel busy. Mechanism (1), whole-region CUDA-graph replay: the first guarded invocation runs the folded forward eagerly (warming engine selection and compiling the Triton kernel), the second guarded invocation performs three unrecorded side-stream warmups and captures the identical op sequence inside the actual adapter invocation context - inside the installed replacement, executing the replacement's own ops on the current input, never the original parent work - then replays; every later invocation is one graph launch on the current input. The static input aliases the incoming tensor's storage (state['pixels'] is created once in prepare and is storage-stable for this workload); if a different storage with the captured geometry ever arrives it is copied into the static buffer first (one D2D copy, ~30-40 us for 19.3 MB), so replay always executes the workload on current input values - no output is ever cached. Expected saving: most of the ~0.185 ms residual plus the graphed elimination of intra-invocation starvation, ~0.10-0.19 ms. Mechanism (2), indices-free exact max pooling: the stem 3x3/stride-2/pad-1 pool runs as one stride-generic Triton kernel computing the identical maxima without the int32 indices tensor (~25.5 MB) that the measured aten kernel max_pool_forward_nchw<float,int> (189.2 us, about half its store traffic) writes and nothing in this inference workload reads; max selection is exact with no accumulation, so selected values are bit-identical and downstream logits are unchanged (verified bitwise torch.equal against F.max_pool2d at setup); expected save ~0.08-0.12 ms. Combined expectation ~3.10-3.25 ms (5-9% off 3.4129 ms), 5-15x the 0.009-0.017 ms MAD noise bounds, with images_per_second rising above the current 9370/9382 against the 7150 floor. Numerical policies preserved: TF32 stays disabled for matmul and cudnn, cudnn.benchmark stays False, dtype float32, eval, inference_mode; the replayed kernels are the accepted ones (previously measured quality pass at max_abs_error 9.06e-6 vs parent), so observe()'s repeated-forward closeness and exact top-1 hold trivially. Optional route parameter activation_layout='nhwc' (measured either/or, never an assumption): packed weights converted to channels_last, one input-conversion kernel inside the graph, all intermediates channels_last; could drop the 76.3 us of per-conv auxiliary kernels (10x computeOffsets 13.1 us + 9x generateWinogradTiles 63.2 us) and pick different FP32 engines, but NHWC-FP32-without-TF32 engine availability on cudnn 9.20 per shape is unverified, so TPE measures both values against the complete project and the revalidated winner publishes; it reorders FP32 accumulation exactly like the accepted BN fold (~1e-7 relative, far inside atol=rtol=1e-4) and must pass the same full-logits/exact-top1 gates. Eliminated calls: the 12 module boundaries of the replaced bundle (stem embeddings, 8 ResNetBasicLayer, 3 ResNetShortCut sites) no longer exist as separate Python sites; their work is re-issued unchanged inside the region (same folded weights, same fused aten ops), so every consumer (max pool, subsequent blocks, head pooling, classifier GEMM) receives the same tensors from the region computation - nothing that consumed those sites' outputs is starved, and after the whole-bundle replacement no inherited required calls remain: the boundary call itself is invoked on every invocation and carries coverage. The graph is captured during a real adapter invocation (binding contract: capture must record the replacement's own work in the actual parent execution context); route labels distinguish eager_warmup, cuda_graph_capture+replay, cuda_graph_replay, eager_shape_mismatch, eager_no_graph, graph_capture_failed, setup:* availability and parent:* guard rejections. Risks resolve on the framework's leased GPU workers: cudnn/cublas/Triton capture behavior (fallback = permanent eager folded route, i.e. the accepted objective with zero change), per-site fused-op or Triton-pool runtime decline (per-site latches to kernel-for-kernel folded/aten fallbacks that preserve values), and the NHWC route's engine quality/speed (isolated to that parameter value).",
+  "setup_work": {
+    "build_time": [
+      "Structure validation of the pinned microsoft/resnet-18 (stem conv+BN, MaxPool2d(3,2,padding=1), 4 stages x 2 basic blocks with ReLU/Identity activation placement, Identity or 1x1 conv+BN shortcuts, AdaptiveAvgPool2d((1,1)), Sequential(Flatten, Linear) head); any mismatch declines the replacement.",
+      "Eval-BN fold packing of all 20 conv+BN pairs computed once in float64 and stored as contiguous float32 (same transform as the accepted bundle; ~44.8 MB retained packed conv weights + ~2.1 MB detached classifier weight/bias clones; original parameters untouched so every parent fallback recomputes the exact original parent computation). For activation_layout='nhwc' the packed weights are additionally converted to channels_last.",
+      "Three tiny installation probes on the model's device with deterministic linspace tensors, fully synchronized, consuming no RNG: aten.cudnn_convolution_relu vs relu(conv2d) (allclose 1e-5), aten.cudnn_convolution_add_relu vs relu(conv2d+z), and the Triton indices-free pool vs F.max_pool2d under torch.equal (bitwise), each in the selected layout; a failed probe latches the corresponding fallback route and is surfaced as a setup:* route-label prefix."
+    ],
+    "invocation_time": [
+      "Invocation 1 (guarded fast path): one eager folded forward - warms cudnn engine selection (benchmark=False heuristics are deterministic per shape), initializes cudnn/cublas workspaces and compiles the Triton kernel for the observed signature (32,3,224,224) contiguous float32.",
+      "Invocation 2: three unrecorded warmup forwards on a fresh side stream (initializes per-stream library resources), then CUDA-graph capture of the region's op sequence in the actual adapter invocation context, followed by an immediate replay that produces this invocation's output; one-time cost inside an un-timed/lazy-setup invocation.",
+      "Every later invocation: geometry/storage check (zero-copy when the incoming tensor is the storage-stable state['pixels'], otherwise one D2D copy into the static input buffer), one graph launch, and a fresh 128 KB logits clone wrapped in ImageClassifierOutputWithNoAttention to preserve the parent's fresh-tensor alias semantics."
+    ],
+    "memory": [
+      "Retained after setup: ~47 MB packed weights/clones plus the CUDA graph's private pool, which retains the region's intermediates and the captured cudnn/cublas workspace blocks - framework reserved_bytes and lifecycle_peak_reserved_bytes increase accordingly and stay allocated for the process lifetime.",
+      "Per-run framework.peak_allocated_bytes is reset each invocation and is NOT improved: allocation for captured intermediates moves into the graph pool (counter scope change), so any decrease there is not a general physical-memory saving; peak_allocated_bytes remains a non-objective metric under the 0.95 images_per_second floor. No non-PyTorch driver allocation is claimed or measured."
+    ]
+  },
+  "quality_risks": [
+    "CUDA-graph capture could fail on this stack (torch 2.13.0+cu129, cudnn 9.20, Triton 3.7.1) if a captured op performs an illegal capture action; the attempt is wrapped and latched, and every later invocation uses the eager folded route (identical math to the accepted bundle, zero-change objective) with label graph_capture_failed.",
+    "The Triton pool replaces aten only for the validated 3x3/stride-2/pad-1 geometry, is verified bitwise-equal at setup, and any runtime launch failure latches permanently back to F.max_pool2d (indices materialized, still exact).",
+    "aten fused ops (cudnn_convolution_relu / cudnn_convolution_add_relu) are probed at setup in the selected layout; per-site runtime failures latch to the kernel-for-kernel folded conv2d+add+relu sequence, which preserves values (fallbacks are part of the accepted bundle's measured behavior).",
+    "activation_layout='nhwc' may select different FP32 engines (TF32 stays disabled): logits deviations are expected far inside atol=rtol=1e-4 (accumulation reordering, like the accepted BN fold) and must pass the full-logits and exact-top1 gates; if engines are slower or decline, that parameter value measures worse and TPE discards it - the default 'nchw' route is unaffected.",
+    "Input aliasing: the graph's static input aliases the incoming tensor's storage; if a caller ever passes a different storage with the captured geometry, it is copied into the static buffer before replay (documented write to the then-retired buffer) so replay always reads current values; outputs are freshly cloned per invocation.",
+    "Guard ladder: unsupported signature, channel mismatch, labels/loss, output_hidden_states, return_dict=False, any module in training mode, or grad-enabled calls with requires_grad inputs route to the parent forward; odd-shaped but valid float32 CUDA inputs take the eager folded path (shape-independent fold math) with parent fallback on any runtime error.",
+    "Quality comparison uses the same thresholds as the accepted bundle; the NCHW route replays the previously accepted kernels (max_abs_error 9.06e-6 vs reference), and graph replay is deterministic, so the adapter's repeated-forward closeness and exact top-1 checks are unchanged."
+  ],
+  "eliminated_calls": [
+    "fa7ef6548e3a2d54174caeba",
+    "07e19be32b79aeb05aec13d6",
+    "74e9871b09ae9c4a1f947695",
+    "7db3c2c1041bf3fe2951687e",
+    "66d2a06f39c8b44961a09e1b",
+    "a1a1ba5d96832a39f4dab342",
+    "41bce2b3604affc0c6f885ae",
+    "5317ed169e344be620e52d7e",
+    "bf4bcffa4cae24a027925ba8",
+    "3a8cb56e234373d6905df319",
+    "04de0e7be76279cb340fc51e",
+    "31651bd556566af82ff06f6a"
+  ],
+  "requires": [],
+  "replaces": [
+    "trial-1bfb948628-param-aba0ae1b"
+  ],
+  "parameter_space": {
+    "params": [
+      {
+        "name": "activation_layout",
+        "kind": "str",
+        "choices": [
+          "nchw",
+          "nhwc"
+        ],
+        "description": "Activation memory layout for the whole region forward. 'nchw' (default) runs the accepted BN-folded/fused conv sequence in the current NCHW layout and is the zero-change baseline for this candidate. 'nhwc' converts the packed conv weights to channels_last at build and runs the region with channels_last activations (one input-conversion kernel inside the captured graph; the stride-generic Triton pool handles both layouts), potentially dropping the 76.3 us of per-conv winograd auxiliary kernels and selecting different cudnn FP32 engines. Both values implement the identical computation on the same frozen workload, batch, sampling semantics, dtype and thresholds; the choice only selects between two legal layouts, measured as an either/or by the parameter search. Read from context['parameters'] at build time; absent or invalid values fall back to 'nchw'."
+      }
+    ],
+    "constraints": []
+  }
+}

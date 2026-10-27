@@ -1,0 +1,26 @@
+{
+  "collectors": [
+    "nsys",
+    "execution_timeline",
+    "candidate_diagnostics"
+  ],
+  "requested_fields": [
+    "nsys.graph_tracing.cuda_graph_launch_or_replay_evidence_for_call_2441f10600ba127de5cb753c",
+    "nsys.attribution.prefill_gpu_kernel_and_gap_composition_within_ttft_boundary",
+    "nsys.decode_step_kernel_sequence_for_call_e7df98b905ed8aa688d5227a_parent_passthrough",
+    "execution_timeline.cpu_submit_to_cuda_launch_association.prefill",
+    "execution_timeline.per_device_intervals_and_synchronization_at_first_token_ready_boundary",
+    "candidate_diagnostics.handled_exceptions_with_propagated_traceback_locations_in_candidate_files",
+    "candidate_diagnostics.false_returns_in_candidate_files"
+  ],
+  "unavailable_fields": {
+    "nccl_algorithm_protocol_channel_selection": "Single-device task: observations.json records the communication capability as not_applicable ('single-device task') and the measured invocation issues no NCCL collectives, so nccl_tuning has no decisions to capture; kernel entry names would not identify protocol anyway.",
+    "per_collective_pcie_or_nvlink_bytes": "No collectives occur in this single-GPU inference invocation; device_telemetry supplies only device-wide rates in native windows, not per-collective bytes, and traffic must not be invented from logical payload or memcpy sizes.",
+    "gradient_bucket_membership_and_native_bucket_correlation": "Inference-only workload with no gradient buckets or communication hooks; no collector supplies observed gradient-storage membership, and exact bucket links are unavailable without it.",
+    "first_numerical_divergence_site": "candidate_diagnostics does not compare intermediate tensors, measure per-site numerical error, or locate the first divergence, and no other available collector supplies these observations; quality passed (exact greedy tokens, logits within tolerance), so no divergence site is known to exist.",
+    "gpu_ready_and_consumer_completion_timestamps_at_first_token_boundary": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown. nsys per-device GPU intervals are requested as the partial substitute.",
+    "clean_per_decode_step_passthrough_cost": "python_runtime perturbs execution and reports host inclusive/self times that are not clean performance scores or GPU durations, and binding_cost reports whole-invocation cost without per-group effects; neither yields a clean per-step cost for the 62 parent-passthrough invocations, so the decode_ms change (681.09 -> 704.04) stays unattributed to any per-step cause."
+  },
+  "rationale": "The accepted candidate 59688cbb... improved paired ttft_ms from 24.2147 to 21.6003 (~10.8%) with quality pass, but its coverage telemetry is the main open uncertainty: call 2441f10600ba127de5cb753c declares route graph-replay:graph-composite for only 2 of 64 candidate invocations while call e7df98b905ed8aa688d5227a routed parent-passthrough 62 times, and evaluation.json states these route labels are candidate-reported telemetry, not independent native proof, asking for trace or actual exception corroboration. nsys is selected for the graph-tracing and attribution questions: confirm on the GPU timeline whether the prefill call actually replays a captured CUDA graph, and attribute the TTFT gain to kernel time versus launch gaps, plus observe the kernel sequence the parent-passthrough invocations execute (decode slowed 681.09 to 704.04 ms; this is not assumed to be algorithm cost, and the 62 reference invocations are not assumed to be fallback - they may be composition or verification). execution_timeline adds CPU-to-CUDA submit associations, per-device intervals and the explicit first-token-ready synchronization boundary for this exact candidate, with its clock-alignment-only limitation recorded above. candidate_diagnostics supplies the actual exception evidence (handled exceptions with propagated library traceback locations, False returns) needed to distinguish intentional parent-passthrough composition from silent in-candidate fallback; empty events will not establish which successful path executed, so trace and exception evidence are requested together. Excluded with reasons: nccl_tuning, collective_calibration and device_telemetry (single-device task, no collectives; observations.json communication=not_applicable), torch (already ran; coverage.json shows all 66441 kernels associated with zero ambiguous sequences, so kernel attribution is resolved), binding_cost (the clean paired measurement already nets out binding overhead for the objective, and it cannot give per-group effects), python_runtime (perturbs execution and cannot attribute GPU-side TTFT).",
+  "revision": "59688cbb1dc481b08f4c136903943cabef733f6d5fda6d6bf4787002d9c638c8"
+}

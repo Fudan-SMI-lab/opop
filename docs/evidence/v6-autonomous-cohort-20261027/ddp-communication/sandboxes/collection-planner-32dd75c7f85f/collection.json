@@ -1,0 +1,32 @@
+{
+  "collectors": [
+    "nccl_tuning",
+    "execution_timeline",
+    "collective_calibration",
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "communication_kernel_sum_ms",
+    "nccl_tuning.algorithm_by_size",
+    "nccl_tuning.protocol_by_size",
+    "nccl_tuning.channel_count_by_size",
+    "collective_calibration.allreduce_sum_f32_ms.at_28351488_bytes",
+    "collective_calibration.allreduce_sum_f32_ms.at_157541376_bytes",
+    "collective_calibration.correctness",
+    "execution_timeline.cpu_submit_to_cuda_launch_per_collective",
+    "execution_timeline.clock_alignment_bounds",
+    "execution_timeline.synchronization_events",
+    "execution_timeline.per_device_intervals",
+    "execution_timeline.gradient_post_accumulate_callback_timing",
+    "python_runtime.host_self_time_by_function"
+  ],
+  "unavailable_fields": {
+    "wire_transfer_time_ms": "NCCL kernel durations include device waiting (metric caveat); no available collector separates in-kernel waiting from wire transfer, and nsys timelines alone cannot make that separation.",
+    "per_collective_pcie_nvlink_bytes": "device_telemetry yields device-wide NVML rates with native ~20 ms windows, not per-collective bytes; NVML NVLink state returned not_supported (status 3) on both GPUs; logical payload (497759232 bytes per rank) must not be converted into traffic.",
+    "cross_rank_submission_skew_us": "clock_policy forbids subtracting timestamps from different rank clocks; execution_timeline reports clock alignment bounds for matching CPU submissions only, so the exact skew that stretches rank 1 kernels stays bounded rather than measured.",
+    "gpu_readiness_and_consumer_completion": "execution_timeline associates CPU submissions with CUDA launches within alignment bounds; GPU readiness and consumer completion of each bucket may remain unknown.",
+    "critical_path_exposed_communication_ms": "no collector measures exposed or critical-path communication; interval overlap is local to one trace clock and uncovered communication is not a measured causal speedup; collective_calibration is a reference experiment, not a critical-path or lower-bound estimate."
+  },
+  "rationale": "Objective is diagnostic.max_rank_nccl_kernel_sum_ms (min) with step_ms <= 1.05x baseline. The torch collector already ran and supplies the objective field and full attribution: 13 matched fp32 SUM allreduces (12x 28351488 B buckets 0-11 plus the 157541376 B last bucket 12), all ncclDevKernel_AllReduce_Sum_f32_RING_LL over SHM/direct/direct (2 channels, peer_access 0 in both directions, NVLink NVML not_supported), rank 0 sum 32.79 ms vs rank 1 sum 295.94 ms with identical collectives and matching correlation ids. Rank 1 per-kernel durations (seq 21: 106814 us vs rank 0 1892 us; ~14.5-23 ms vs ~1.86-1.89 ms per 28 MB bucket) show the max-rank objective is dominated by in-kernel device waiting induced by the peer's late submission, not by wire time, so torch is not re-selected. Selection: (1) execution_timeline for CPU-to-CUDA submit associations, synchronization, per-device intervals, clock alignment bounds for matching CPU submissions, and passive post-accumulate callbacks, to locate where the lagging rank's allreduce submissions are delayed; it never replaces a communication hook. (2) python_runtime (separate warmed cProfile) to attribute host dispatch and binding costs behind that delay; acknowledged as perturbing, its inclusive/self times are not performance scores or GPU durations. (3) nccl_tuning to capture the actual NCCL algorithm/protocol/channel decisions in a separate warmed worker at the observed sizes (28351488 and 157541376 bytes, fp32, SUM, world 2) - kernel entry names alone do not identify the protocol - to judge whether protocol/channel choices can shorten per-kernel duration. (4) collective_calibration as a synthetic full-world SUM allreduce reference at the observed sizes/dtypes with correctness checks, to separate per-collective current-config reference duration from waiting; it is not a lower bound or model estimate. Not selected: nsys (available, but no graph tracing exists, bucket attribution is already observed gradient-storage membership, and nsys cannot separate NCCL waiting from wire transfer or prove bucket identity beyond existing evidence); device_telemetry (device-wide native-window rates cannot attribute per-collective traffic and transport is already observed); candidate_diagnostics and binding_cost (not applicable before any candidate exists).",
+  "revision": null
+}

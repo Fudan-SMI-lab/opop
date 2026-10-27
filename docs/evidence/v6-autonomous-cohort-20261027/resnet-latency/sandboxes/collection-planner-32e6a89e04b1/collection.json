@@ -1,0 +1,26 @@
+{
+  "collectors": [
+    "nsys",
+    "candidate_diagnostics",
+    "binding_cost"
+  ],
+  "requested_fields": [
+    "nsys.cuda_kernel_timeline",
+    "nsys.cpu_to_cuda_submit_association",
+    "nsys.per_device_execution_intervals",
+    "candidate_diagnostics.exception_events",
+    "candidate_diagnostics.false_return_events",
+    "binding_cost.parent_invocation_ms",
+    "binding_cost.binding_only_passthrough_ms",
+    "binding_cost.whole_invocation_overhead_ms"
+  ],
+  "unavailable_fields": {
+    "nccl_tuning.algorithm_protocol_channels": "Not applicable: single-device task with no distributed backend and no collectives; communication capability is not_applicable in observations.json. Kernel entry names alone cannot identify NCCL protocol, and no NCCL decision exists to capture.",
+    "collective_calibration.allreduce_reference_timing": "Not applicable: offline single-GPU inference workload has no allreduce or world to calibrate; a synthetic full-world SUM allreduce reference would not bound or model this critical path.",
+    "device_telemetry.pcie_per_collective_bytes": "NVML readings are device-wide with native sampling windows and cannot attribute per-kernel or per-collective bytes; PCIe/NVLink traffic must not be invented from logical payload or memcpy sizes, and no communication payload exists here.",
+    "numerics.per_site_error_first_divergence": "No collector compares intermediate tensors, measures per-site numerical error, or locates the first numerical divergence; candidate_diagnostics records only exceptions and False returns, and quality already passes (logits atol=rtol=1e-4, exact top1).",
+    "host.unperturbed_dispatch_timing": "python_runtime cProfile inclusive/self times are perturbative and are not clean dispatch costs or GPU durations; no selected collector provides unperturbed host dispatch timing, so this stays unknown."
+  },
+  "rationale": "The torch collector already ran and fully associated all 70 CUDA kernels with 0 unassociated, 0 ambiguous sequences (coverage.json), so trace association is not the gap. Remaining uncertainty on the accepted candidate (revision 1f6acbf79ceff5d3a990b1b5b2fe388225516d7e3dd1dc7a43022809a12a8833, objective 3.413 ms vs paired parent 3.658 ms): (1) evaluation.json's interpretation flags that the 12 declared routes (conv2d_folded, aten.cudnn_convolution_add_relu, aten.cudnn_convolution_relu) are candidate-reported telemetry, not independent native proof. nsys is available (request.json tools.nsys) and gives a separate native kernel timeline to corroborate which kernels actually executed and whether CPU submit overlaps GPU execution within the measured invocation, resolving the attribution question; candidate_diagnostics supplies actual exception (including handled) and False-return evidence for silent fallback paths in the candidate files, with the caveat that empty events do not identify the successful path. (2) The latency gain's composition is unknown: the candidate is additive (parent retained, adds bundle trial-1bfb948628-param-aba0ae1b) with an effective direct binding, so binding_cost is applicable and reports whole-invocation parent vs binding-only passthrough cost in clean AB/BA workers, separating binding overhead from the candidate's compute change (not per-group effects). nccl_tuning, collective_calibration and device_telemetry are excluded: single-device task, no communication, and device-wide NVML rates cannot attribute this inference workload. python_runtime and execution_timeline are excluded to avoid cProfile perturbation and a duplicate plain trace; nsys already covers the host/GPU attribution need. No failure-category policy or optimization action is prescribed; this collection only corroborates route attribution and quantifies binding overhead on this exact candidate.",
+  "revision": "1f6acbf79ceff5d3a990b1b5b2fe388225516d7e3dd1dc7a43022809a12a8833"
+}

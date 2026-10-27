@@ -1,0 +1,27 @@
+{
+  "collectors": [
+    "nsys",
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "nsys.cuda_kernel_intervals",
+    "nsys.cuda_api_call_durations",
+    "nsys.cuda_launch_api_total",
+    "nsys.gpu_idle_gaps_in_invocation",
+    "nsys.cpu_submit_to_kernel_launch_lag",
+    "python_runtime.host_callee_self_time_top",
+    "python_runtime.host_inclusive_time_top",
+    "python_runtime.host_call_counts"
+  ],
+  "unavailable_fields": {
+    "communication.nccl_algorithm_protocol_channels": "observations.json marks the communication capability not_applicable with reason 'single-device task' and request.json has no distributed backend, so no NCCL algorithm/protocol/channel decision exists in the measured unit; nccl_tuning not selected.",
+    "communication.allreduce_reference_timing": "The measured single-GPU forward performs no collectives, so collective_calibration's synthetic full-world SUM allreduce reference has no counterpart in this workload.",
+    "communication.per_collective_pcie_nvlink_bytes": "device_telemetry reports device-wide NVML rates with native windows, not per-collective/per-op bytes, and inventing PCIe/NVLink traffic from logical payload or memcpy sizes is not permitted; no available collector supplies this dimension.",
+    "gpu.invocation_resolved_utilization": "device_telemetry samples are device-wide with native windows coarser than the millisecond-scale single forward, so utilization resolved to the measured invocation is unavailable; the collector was not selected.",
+    "candidate.binding_overhead_ms": "No candidate exists yet (capability lists no candidates), and binding_cost is inapplicable before any candidate exists; revisit once an additive candidate is installed.",
+    "candidate.exceptions_and_false_returns": "No candidate files are supplied to instrument, so candidate_diagnostics would record nothing meaningful in its separate instrumented run; empty events would not identify which successful path executed.",
+    "candidate.first_numerical_divergence_site": "No available collector compares intermediate tensors, measures per-site numerical error, or locates the first numerical divergence; numerical acceptance remains with the harness full-logits (atol=rtol=1e-4) and exact-top1 checks."
+  },
+  "rationale": "Frozen objective: minimize one sync-bracketed batch-32 FP32 ResNet-18 forward on a single leased GPU, with a 0.95 throughput floor and exact-top1/logits quality gates. Evidence: observations.json marks communication not_applicable (single-device task); the torch collector already ran with complete attribution (coverage.json: 46/46 kernels associated, 0 unassociated, 0 ambiguous forward sequences, 0 autograd ranges, inference-only). The open diagnostic question for latency is decomposing the measured wall-clock into GPU kernel execution versus host-side dispatch/launch overhead (CPU-submit vs GPU-execute overlap). nsys is available (request.json tools.nsys, listed in available-collectors.json) and resolves exactly this overlap/gap question via CUDA API and kernel timelines; it is selected for that purpose only, not for attribution (already complete) or communication bucket identity (no communication exists). python_runtime is selected to locate which host frames (transformers/torch bindings across the 46-kernel Python-driven forward) drive dispatch cost where gaps appear, accepting that it perturbs execution and its inclusive/self times are diagnostic readings, not clean performance scores or GPU compute durations. Excluded: torch (already ran, full coverage, not re-requested); execution_timeline (its plain Torch trace, CPU-to-CUDA submit associations, synchronization and per-device intervals duplicate the completed torch coverage plus nsys, its gradient post-accumulate callbacks are inapplicable to inference, and it cannot bound GPU readiness/consumer completion beyond what nsys timelines already give, so it never informs subsequent search actions here); nccl_tuning, collective_calibration, device_telemetry (no communication in the measured unit, host-to-device transfer is outside the timed bracket, and per-collective bytes/protocol are unobservable); candidate_diagnostics and binding_cost (no candidate exists yet). No PCIe/NVLink traffic is inferred from payload or memcpy sizes, and nsys timelines are not used to prove bucket identity.",
+  "revision": null
+}

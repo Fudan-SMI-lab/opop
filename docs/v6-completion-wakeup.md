@@ -52,3 +52,5 @@
 ## 当前等待：同版本三项目批次
 
 现在由新的普通守候等待 `/root/autodl-tmp/dev/v6-work/autonomous-cohort-20261027/followup-completed.json`，范围含独立 planner 对照、三个项目自主运行和其后检查。单个远端控制器 PID `63346`，本机守候 PID `22328`；两个启动记录明确指向同一个远端控制器。新状态文件 `.scratch/v6-cohort-wakeup.json`，取消文件 `.scratch/v6-cohort-wakeup.stop`。已真实验证远端运行，仍使用同一已实证的单次投递逻辑，未启用 Goal。见[部署证据](evidence/v6-autonomous-cohort-20261027/wakeup-setup.json)。
+
+后续更新：该批于 `2026-10-27T04:41:53.122740Z` 完成，守候于 04:42:09Z 成功提交 `01a17baa-6cd1-7f90-9010-1ea59fd8c22e`，并实际启动本次审计轮次。已经读取原始结果、日志、生成物、快照和独立测量，补做有明确源码依据的 observation 映射审计。原守候状态为 queued，不再等待；未启用 Goal 或额外投递测试。见[实际续行证据](evidence/v6-autonomous-cohort-20261027/wakeup-delivery.json)。

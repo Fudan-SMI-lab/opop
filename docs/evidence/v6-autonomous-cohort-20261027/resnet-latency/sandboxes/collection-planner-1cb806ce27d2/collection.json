@@ -1,0 +1,21 @@
+{
+  "collectors": [
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "python_runtime.host_dispatch_hotspots",
+    "python_runtime.host_dispatch_self_time",
+    "python_runtime.call_counts_per_infer",
+    "python_runtime.binding_hotspots"
+  ],
+  "unavailable_fields": {
+    "communication": "Not applicable: single-device task (observations.json capability field 'communication' status not_applicable, reason 'single-device task'; request.json distributed_backend null), so no NCCL algorithm/protocol/channel decisions exist for nccl_tuning to capture.",
+    "per_collective_bytes": "No collectives execute in this single-device inference workload; device_telemetry provides device-wide PCIe/utilization samples with native windows, not per-collective byte counts, and payload sizes cannot be inferred from logical tensors.",
+    "gradient_bucket_membership": "Inference-only measured unit under torch.inference_mode(); coverage.json shows backward_associated_kernels 0 and autograd_ranges 0, so no gradient buckets or bucket identity question exists.",
+    "per_site_numerical_error": "candidate_diagnostics records only exceptions and False returns in supplied candidate files and does not compare intermediate tensors or locate first numerical divergence; no candidate files exist yet, so this dimension is unobserved.",
+    "candidate_binding_overhead": "binding_cost is not applicable before any candidate exists; no additive candidate is installed at this planning stage.",
+    "allreduce_reference_timing": "collective_calibration's synthetic full-world SUM allreduce has no analog in this single-device workload and is a reference experiment, not a lower bound; nothing to calibrate."
+  },
+  "rationale": "Frozen objective is median full-inference latency for one offline batch-32 FP32 ResNet-18 forward on a single leased GPU, with exact top-1 and 1e-4 logits tolerance. The torch collector already ran and resolved GPU-side attribution completely (coverage.json: 70 cuda_kernels, 70 associated, 0 unassociated, 0 ambiguous_forward_sequences, 0 autograd ranges), so nsys is not selected: no open overlap, CUDA-graph tracing, or attribution question remains, and nsys timelines would not add separable information. Communication-oriented collectors are excluded on evidence: single-device task with distributed_backend null makes nccl_tuning, collective_calibration, and torch_communication fields not applicable (observations.json records communication as not_applicable), and device_telemetry's device-wide PCIe/utilization/memory readings do not address any open question for this GPU-resident-input workload, so its counters are not requested indiscriminately. execution_timeline is excluded as redundant: kernel-to-op association is already complete and it cannot add GPU readiness or consumer completion facts beyond the existing trace. candidate_diagnostics and binding_cost are not applicable because no candidate exists yet; binding_cost would only become eligible in later candidate resource feedback. python_runtime is selected as the one useful addition: a warmed cProfile call trace to quantify host dispatch and binding overhead across the ~70-kernel eager forward, the main remaining unknown for whether CPU-side dispatch contributes to latency next to GPU kernel time. Its inclusive/self times are treated strictly as diagnostic host-cost evidence, not as performance scores or GPU durations, and it perturbs execution; the objective score remains the harness's synchronize+perf_counter_ns timing. Torch is not re-requested since it already ran; its recorded peak_allocated_bytes remains a non-objective metric.",
+  "revision": null
+}

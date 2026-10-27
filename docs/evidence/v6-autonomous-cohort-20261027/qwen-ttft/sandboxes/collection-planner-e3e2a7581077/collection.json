@@ -1,0 +1,30 @@
+{
+  "collectors": [
+    "candidate_diagnostics",
+    "execution_timeline",
+    "nsys",
+    "binding_cost"
+  ],
+  "requested_fields": [
+    "candidate_diagnostics.handled_exceptions_with_library_traceback_locations",
+    "candidate_diagnostics.false_return_sites",
+    "execution_timeline.cpu_to_cuda_submit_associations",
+    "execution_timeline.synchronization_events",
+    "execution_timeline.per_device_intervals",
+    "execution_timeline.cpu_cuda_clock_alignment_bounds",
+    "nsys.gpu_kernel_intervals_within_first_token_boundary",
+    "nsys.cuda_runtime_api_timeline",
+    "nsys.host_gpu_gap_overlap_attribution",
+    "binding_cost.parent_vs_binding_only_whole_invocation_ms"
+  ],
+  "unavailable_fields": {
+    "route_counts.native_per_route_execution_counts": "candidate_diagnostics records only exceptions and False returns in candidate files; empty events do not establish which successful path executed, so per-route counts (62 parent-passthrough / 2 parent-eager) remain candidate-reported telemetry without independent native enumeration",
+    "ttft.gpu_readiness_and_consumer_completion_bounds": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown, and no collector annotates consumer completion",
+    "binding_cost.per_route_or_per_group_breakdown": "binding_cost omits candidate build/computation and reports whole-invocation cost only; per-group or per-route effects are unavailable",
+    "communication.nccl_algorithm_protocol_channels": "single-device task; observations.json capability 'communication' is not_applicable with reason 'single-device task', so nccl_tuning is inapplicable and kernel entry names would not identify protocol anyway",
+    "communication.per_collective_pcie_nvlink_bytes": "no communication exists on this single-device task; device_telemetry reads device-wide PCIe rates with native windows and must not be converted to per-collective bytes from logical payload or memcpy sizes",
+    "numerics.first_divergence_site": "candidate_diagnostics does not compare intermediate tensors, measure per-site numerical error, or locate first numerical divergence, and no other collector supplies these observations (quality currently passes, so not needed)"
+  },
+  "rationale": "Single-device, single-process TTFT task (no communication, so nccl_tuning, collective_calibration and device_telemetry's communication use are inapplicable; observations.json records communication as not_applicable 'single-device task'). The evaluated candidate 2cb762292afdd4b617dd5c4935afbd3e995ce6d3085a61d9156fb70b0d5b13f5 passes quality but was not accepted (paired_gain_not_above_noise: 24.44 ms vs 26.91 ms paired parent, original reference 24.61 ms), and its coverage shows 62/64 invocations on candidate-declared 'parent-passthrough' with only 2 on 'parent-eager'; the endpoint states these route labels are candidate-reported telemetry requiring corroboration by traces or actual exception evidence. Plan: (1) candidate_diagnostics on this exact candidate to capture handled exceptions (with library traceback locations) and False returns that would reveal silent fallback behind the declared passthrough routing - noting empty events cannot confirm which successful path ran. (2) execution_timeline for a separate plain Torch trace on this candidate with CPU-to-CUDA submit associations, synchronization events and per-device intervals, to corroborate the actually executed kernel sequence around the explicit first-token-ready boundary and attribute TTFT to host dispatch gaps vs device execution. (3) nsys (available per request.json tools) as an independent GPU-side timeline to resolve host/GPU overlap and attribution questions execution_timeline cannot close (its clock alignment bounds cover CPU submissions only; GPU readiness may remain unknown). (4) binding_cost, applicable because the candidate is additive (retains the parent's empty bundle set and adds trial-1a25041f29-param-4c76f383; effective 'direct' binding under 'no functional replacements' is explicitly eligible), to quantify whole-invocation binding overhead of the binding-only passthrough - with 62/64 invocations routing through passthrough, binding overhead may dominate the candidate's net effect and explain the not-above-noise result; it also runs in subsequent candidate resource feedback. python_runtime is excluded because cProfile perturbs execution and its inclusive/self times are not clean scores, and the host-overhead question is answered more cleanly by binding_cost plus execution_timeline/nsys. torch already ran on the parent discovery run (coverage.json: 66441/66441 kernels associated, 0 ambiguous), so a candidate-side trace is supplied by execution_timeline/nsys instead. Revision is set to the single listed candidate whose uncertainty motivates collection.",
+  "revision": "2cb762292afdd4b617dd5c4935afbd3e995ce6d3085a61d9156fb70b0d5b13f5"
+}

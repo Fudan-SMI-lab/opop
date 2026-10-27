@@ -1,0 +1,24 @@
+{
+  "collectors": [
+    "nsys",
+    "candidate_diagnostics",
+    "binding_cost"
+  ],
+  "requested_fields": [
+    "nsys.kernel_timeline",
+    "nsys.cpu_submit_association",
+    "nsys.device_gaps",
+    "candidate_diagnostics.handled_exceptions",
+    "candidate_diagnostics.false_returns",
+    "binding_cost.binding_vs_parent_invocation_ms"
+  ],
+  "unavailable_fields": {
+    "communication.nccl_algorithm_protocol": "Single-device task: the communication capability is not_applicable (observations.json); there are no collectives for nccl_tuning or collective_calibration to observe, and no per-collective payload exists to match.",
+    "per_site_numerical_first_divergence": "No available collector compares intermediate tensors or measures per-site numerical error; candidate_diagnostics explicitly does not. Quality already passes (exact top1, logits within 1e-4), so this dimension stays unobserved.",
+    "per_call_site_binding_overhead": "binding_cost reports whole-invocation parent-vs-binding-passthrough cost in clean AB/BA workers; it omits candidate build/computation and does not provide per-group or per-call-site effects.",
+    "native_route_to_callsite_binding": "nsys kernel entry names and candidate_diagnostics exception/False-return events corroborate the candidate-declared conv2d_folded and aten.cudnn_convolution_relu routes, but no collector provides native correlation binding candidate-reported route labels to call sites (evaluation.json endpoint.interpretation); empty diagnostics still would not establish which successful path executed.",
+    "gpu_readiness_bounds": "Not requested via execution_timeline because the completed torch run already associated all 88 kernels with zero unassociated and zero ambiguous forward sequences (coverage.json), making a second plain Torch trace redundant; that collector reports clock alignment for CPU submissions only, and GPU readiness/consumer completion may remain unknown regardless."
+  },
+  "rationale": "Frozen objective is single-GPU batch-32 FP32 ResNet-18 inference latency; communication is not_applicable and torch already ran with all 88 CUDA kernels associated (coverage.json), so nccl_tuning, collective_calibration, device_telemetry (device-wide, no collectives or timed host transfers), execution_timeline (redundant trace) and python_runtime (perturbing, non-clean host timings) are not useful. The accepted candidate 63457819fa66f591c2949734f7d11f6e19073dfab0d4648ccec92e338187eef0 (bundle trial-a7f5de7ac7-param-23c435d4, 3.6458ms vs parent 4.2489ms, constraints passed) leaves exactly one flagged uncertainty: its 17-site conv2d_folded vs aten.cudnn_convolution_relu route split is candidate-reported telemetry, not independent native proof. nsys (available per request.json tools) resolves this attribution question with the actual per-kernel timeline, CPU-to-CUDA submit associations and device gaps; candidate_diagnostics supplies the complementary actual exception evidence (handled exceptions with library traceback locations and False returns in the candidate files) that would expose silent fold failures or fallback attempts behind the declared routes. binding_cost is applicable because the candidate is additive over its parent (parent has no removed/replaced bundles) and bound direct with no functional replacements, which does not imply zero binding overhead; it cleanly quantifies the whole-invocation dispatch cost of the candidate's 34 per-invocation hooks, the remaining lever for further latency reduction beyond the measured net gain.",
+  "revision": "63457819fa66f591c2949734f7d11f6e19073dfab0d4648ccec92e338187eef0"
+}

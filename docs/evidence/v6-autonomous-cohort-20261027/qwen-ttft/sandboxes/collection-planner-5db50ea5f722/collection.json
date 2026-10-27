@@ -1,0 +1,30 @@
+{
+  "collectors": [
+    "nsys",
+    "execution_timeline",
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "prefill_gpu_busy_fraction",
+    "prefill_inter_kernel_gap_total_ms",
+    "cpu_submit_to_kernel_start_latency_us",
+    "argmax_and_sync_boundary_overhead_ms",
+    "ttft_window_cuda_sync_call_count",
+    "plain_run_cpu_submit_interval_bounds_ms",
+    "per_device_interval_ttft_window_ms",
+    "prefill_python_self_time_hotspots",
+    "prefill_host_dispatch_call_count"
+  ],
+  "unavailable_fields": {
+    "nccl_algorithm_protocol_and_channels": "Single-device task (request.json distributed_backend null, one leased GPU; observations.json capability communication=not_applicable, reason 'single-device task'). No NCCL collectives occur in the measured invocation, so nccl_tuning has no algorithm/protocol/channel decisions to capture and kernel entry names carry no protocol information here.",
+    "per_transfer_pcie_nvlink_bytes": "No collectives and no host-to-device transfers inside the measured invocation (weights and inputs already resident on device per request notes). device_telemetry was not selected because its NVML readings are device-wide with native sampling windows and cannot be attributed per kernel or per window; logical payload or memcpy sizes must not be converted into PCIe/NVLink traffic.",
+    "allreduce_reference_lower_bound_ms": "collective_calibration runs a separate synthetic warmed full-world SUM allreduce reference with correctness checks; it is not a performance lower bound or critical-path estimate, and no allreduce exists in this single-GPU workload.",
+    "ttft_window_device_utilization_and_memory": "device_telemetry samples device-wide utilization, memory and PCIe rates with native windows that cannot isolate the prefill/first-token boundary; GPU busy fraction within the window is instead derived from nsys kernel intervals, so the collector was not selected.",
+    "first_numerical_divergence_site_and_per_site_error": "No collector compares intermediate tensors, measures per-site numerical error, or locates the first divergence. candidate_diagnostics records only exceptions (including handled ones with propagated library traceback locations) and False returns in supplied candidate files, and no candidate files exist yet, so empty events would not establish which successful path executed either.",
+    "per_group_binding_overhead_ms": "binding_cost compares an additive candidate against a binding-only passthrough and reports whole-invocation cost only, not per-group effects, and it is not applicable before any candidate exists; no candidate bundles are installed in this initial plan.",
+    "gpu_ready_and_consumer_completion_bounds": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion at the first-token boundary may remain unknown.",
+    "clean_gpu_durations_from_host_profile": "python_runtime runs a separate warmed cProfile that perturbs execution; its inclusive/self times are host-side dispatch/binding costs, not GPU compute durations. GPU durations come from the already-completed torch trace and from nsys intervals."
+  },
+  "rationale": "Frozen objective is ttft_ms on a single GPU (batch 1, 256-token prefill forward, argmax of last-position logits, explicit torch.cuda.synchronize first-token-ready boundary; no distributed backend, no collectives). The torch collector already ran: coverage.json shows 66441/66441 CUDA kernels associated with 0 unassociated, 0 autograd ranges and 0 ambiguous forward sequences, so kernel identity and attribution are already resolved and torch is not re-requested. The open diagnostic questions for TTFT are (1) whether the prefill window is GPU-bound or host-dispatch-bound (CPU submit vs kernel start latency, inter-kernel gaps, launch overlap), (2) the cost of the argmax + cudaSynchronize first-token boundary relative to the prefill forward, and (3) host-side Python dispatch/binding cost of the transformers 5.16.1 eager per-layer path. nsys is available (request.json tools.nsys) and selected because these are exactly overlap/attribution questions: it yields the ground-truth CPU launch vs GPU execution timeline, gaps, and synchronization calls inside the ttft window. execution_timeline is selected because it records a separate plain (non-profiler) Torch trace with CPU-to-CUDA submit associations, synchronization events and per-device intervals, matching how ttft_ms is actually measured (perf_counter_ns around prefill+argmax terminated by synchronize), with clock-alignment bounds reported for matched CPU submissions. python_runtime is selected to quantify host dispatch and binding hotspots (warmed cProfile) that would justify host-side or graph-based TTFT work; its perturbed host times are interpreted qualitatively only. Excluded: nccl_tuning and collective_calibration (no collectives; communication capability recorded not_applicable for this single-device task), device_telemetry (device-wide native-window readings cannot isolate the prefill/first-token window; PCIe is idle since weights and inputs are already resident; utilization is redundant with nsys busy fraction), candidate_diagnostics (no candidate files supplied yet, and its exception/False-return events would not identify successful execution paths), binding_cost (not applicable before any candidate exists), and torch (already collected with full association).",
+  "revision": null
+}

@@ -1,0 +1,30 @@
+{
+  "collectors": [
+    "execution_timeline",
+    "python_runtime"
+  ],
+  "requested_fields": [
+    "execution_timeline.cpu_to_cuda_submit_association",
+    "execution_timeline.host_submit_gap_intervals",
+    "execution_timeline.per_device_busy_idle_intervals",
+    "execution_timeline.synchronization_wait_events",
+    "execution_timeline.cpu_submit_clock_alignment_bounds",
+    "python_runtime.warmed_cprofile_call_trace",
+    "python_runtime.host_dispatch_hot_path_self_times",
+    "python_runtime.binding_wrapper_invocation_counts"
+  ],
+  "unavailable_fields": {
+    "communication.nccl_algorithm_protocol_channels": "Not applicable: single-device task (observations.json ranks[0].status=not_applicable 'single-device task'; request.json distributed_backend=null, single leased GPU). No NCCL collectives execute, and kernel entry names alone do not identify algorithm/protocol/channel decisions.",
+    "communication.collective_allreduce_calibration": "Not applicable: no collectives in this workload; collective_calibration's synthetic full-world SUM allreduce reference experiment has no counterpart here and is not a critical-path estimate for single-GPU inference.",
+    "communication.per_collective_pcie_nvlink_bytes": "Unavailable: no collectives exist; device_telemetry (not selected) yields only device-wide NVML readings with native sampling windows, not per-collective bytes. PCIe/NVLink traffic is not inferred from logical payload or memcpy sizes; the timed unit excludes host-to-device input staging, which happens once outside timing.",
+    "communication.gradient_bucket_identity": "Unavailable: inference-only measured unit under torch.inference_mode (coverage.json backward_associated_kernels=0, autograd_ranges=0); no gradient storage exists, so bucket-to-gradient membership and native correlation links are undefined and candidate bucket mappings must stay ambiguous.",
+    "binding.additive_overhead_ms": "Unavailable: binding_cost is not applicable before any candidate exists; no candidate files have been supplied, and it reports whole-invocation parent-vs-binding cost only.",
+    "candidate.exceptions_false_returns": "Unavailable: candidate_diagnostics requires supplied candidate files and a separate instrumented run; none exist yet, and even empty events would not establish which successful path executed.",
+    "numerics.first_divergence_site": "Unavailable: no collector records per-site numerical error, intermediate tensor comparison, or the first divergence location; available quality evidence is end-to-end logits (atol=rtol=1e-4) and exact top-1 only.",
+    "timeline.gpu_ready_to_consumer_latency": "Partially unavailable: execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown after this collection.",
+    "profiling.clean_gpu_durations_from_cprofile": "Unavailable: python_runtime inclusive/self times are host-side cProfile readings that perturb execution; they are not clean performance scores or GPU compute durations. GPU kernel durations come from the already-collected torch trace.",
+    "nsys.nccl_wait_vs_wire_separation": "Not selected: nsys is available (request.json tools.nsys) but coverage.json shows 88/88 kernels associated below project with 0 unassociated, 0 root-only, 0 ambiguous forward sequences and no backward ranges, leaving no open overlap, graph-tracing or attribution question; nsys timelines alone also do not separate NCCL waiting from wire transfer. Revisit only if a later candidate introduces CUDA graphs or multi-stream execution."
+  },
+  "rationale": "Frozen objective: minimize latency_ms of one timed offline batch-32 FP32 ResNet-18 forward (infer(model, pixels) under torch.inference_mode) on the single leased GPU, bracketed by torch.cuda.synchronize + perf_counter_ns, with exact 1000-class FP32 logits and exact top-1 preserved. The torch collector already ran and its evidence is complete for this unit (coverage.json: 88 CUDA kernels, 100% associated and below project, 0 unassociated, 0 ambiguous forward sequences, 0 backward/autograd ranges), so per-kernel GPU durations and CPU-op-to-kernel attribution are already in hand and torch is not re-requested; nsys is deliberately not selected because no overlap, CUDA-graph tracing or attribution question remains open for the baseline single-stream invocation. The unresolved diagnostic for a short 88-kernel invocation is host-side latency attribution: whether the synchronized wall-clock window is dominated by GPU kernel time or by CPU submit gaps, synchronization waits, and Python dispatch/binding cost through the transformers ResNet stack. execution_timeline is selected for CPU-to-CUDA submit associations, synchronization events, per-device busy/idle intervals and clock-alignment bounds within the timed window; python_runtime is selected for a warmed cProfile call trace decomposing host dispatch and wrapper/binding hot paths that the timeline cannot attribute per Python call. Both run the frozen workload unchanged and neither replaces a communication hook or drives search actions. Single-device evidence (observations.json capability field communication=not_applicable 'single-device task'; request.json distributed_backend=null, torch_communication metrics not requested) makes nccl_tuning, collective_calibration and per-collective telemetry inapplicable; device_telemetry is not requested because its device-wide NVML readings with native sampling windows cannot attribute a millisecond-scale invocation and its PCIe/utilization data matches no timed activity (input staging is outside timing; peak_allocated_bytes comes from the torch allocator). candidate_diagnostics and binding_cost are inapplicable before any candidate exists; binding_cost can be selected in later revisions once an additive candidate is built. No PCIe/NVLink traffic is invented from logical payload sizes, and no per-site numerical divergence observation is claimed.",
+  "revision": null
+}

@@ -1,0 +1,29 @@
+{
+  "collectors": [
+    "execution_timeline",
+    "candidate_diagnostics",
+    "nccl_tuning",
+    "collective_calibration"
+  ],
+  "requested_fields": [
+    "execution_timeline.synchronization_events",
+    "execution_timeline.cpu_to_cuda_submit_associations",
+    "execution_timeline.per_device_intervals",
+    "execution_timeline.final_backward_barrier_placement",
+    "candidate_diagnostics.exceptions",
+    "candidate_diagnostics.false_returns",
+    "nccl_tuning.algorithm_protocol_channel_decisions",
+    "nccl_tuning.warmed_decisions_for_observed_sizes",
+    "collective_calibration.sum_allreduce_f32_warmed_durations",
+    "collective_calibration.correctness_checks"
+  ],
+  "unavailable_fields": {
+    "per_collective_pcie_nvlink_bytes": "NVLink unsupported on these devices (nvmlDeviceGetNvLinkState returned NVML status 3 in the parent capability probe); device_telemetry PCIe rates are device-wide readings with native ~20 ms driver windows, not per-collective bytes; PCIe/NVLink traffic must not be invented from the logical payload sizes (12x28,351,488 B + 1x157,541,376 B)",
+    "nccl_waiting_vs_wire_transfer_split": "communication_kernel_sum_ms includes device waiting and no available collector separates NCCL kernel waiting from wire transfer; nsys timelines alone cannot make this split, so it remains unknown",
+    "per_bucket_cost_allocation": "the observed reducer bucket inventory reports many-to-many parameter ownership; no collector allocates one collective's kernel duration among its member parameter groups, so per-group cost attribution stays unavailable",
+    "gpu_readiness_and_consumer_completion": "execution_timeline reports clock alignment bounds for matched CPU submissions only; GPU readiness and consumer completion may remain unknown for the barrier and allreduce launches",
+    "first_numerical_divergence_site": "candidate_diagnostics does not compare intermediate tensors or locate the first numerical divergence; with quality passing this dimension is unobserved rather than measured"
+  },
+  "rationale": "Evaluation accepted revision f7ff93b9... (objective 36.281155 ms vs parent 44.515443, step_ms within the 1.05x limit), but its only mechanism evidence is the candidate-declared route distributed:gloo_control_barrier_before_final_backward, and evaluation.interpretation explicitly asks for trace or exception corroboration of route labels. execution_timeline records a separate plain Torch trace with CPU-to-CUDA submit associations, synchronization events and per-device intervals, which can confirm the barrier's placement before the final backward's 13 allreduce submissions; candidate_diagnostics records handled exceptions and False returns (with library traceback locations) in the candidate files, revealing any silent fallback path; its empty events will not be treated as proof of the successful path. The remaining objective is 13 SHM RING_LL allreduce kernels with residual rank asymmetry (37.56 vs 35.30 ms) and only ~2 ms compute overlap in the parent trace, so the open questions are how much of the residual is desync waiting versus intrinsic collective cost and whether the NCCL algorithm/protocol/channel choice is a lever: nccl_tuning captures the actual warmed-worker algorithm/protocol/channel decisions (kernel entry names alone do not identify the protocol), and collective_calibration provides a separate warmed full-world SUM allreduce reference at the observed sizes/dtypes with correctness checks to compare against in-step durations; both are used comparatively, not as lower bounds or critical-path estimates. Excluded: torch (already ran and supplies the objective), nsys (cannot separate NCCL waiting from wire transfer, no graph tracing question, bucket identity already established via observed gradient-storage membership), device_telemetry (device-wide native-window readings; transport already evidenced as SHM/direct in NCCL logs), python_runtime (perturbs execution; host dispatch is not the objective), binding_cost (direct effective binding, no functional replacements; binding overhead is not the observed uncertainty and step_ms already passed). The single listed revision is selected.",
+  "revision": "f7ff93b903894ce06860f80499af60b7fa694c1cf1acecd2230008072275d6eb"
+}

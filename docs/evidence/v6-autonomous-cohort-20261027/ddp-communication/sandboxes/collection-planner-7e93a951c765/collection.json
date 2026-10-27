@@ -1,0 +1,34 @@
+{
+  "revision": "27740d97c013c8b170502ba35f87cd54bd5e2cff50056228699f447dfa4fedf7",
+  "collectors": [
+    "candidate_diagnostics",
+    "nccl_tuning",
+    "execution_timeline",
+    "nsys"
+  ],
+  "requested_fields": [
+    "nccl.algorithm",
+    "nccl.protocol",
+    "nccl.channels",
+    "candidate.exceptions",
+    "candidate.false_returns",
+    "execution.cpu_submit_associations",
+    "execution.synchronization",
+    "execution.per_device_intervals",
+    "execution.post_accumulate_callbacks",
+    "execution.clock_alignment_bounds",
+    "nsys.nccl_kernel_intervals",
+    "nsys.cuda_api_rows",
+    "nsys.communication_compute_overlap"
+  ],
+  "unavailable_fields": {
+    "pcie_bytes": "No selected collector measures per-collective PCIe bytes; device_telemetry (not selected) yields only device-wide NVML rates over native, unaligned windows, and traffic must not be inferred from the logical payload sizes (12x28,351,488B + 1x157,541,376B).",
+    "nvlink_bytes": "NVLink is unsupported on both leased GPUs (nvmlDeviceGetNvLinkState returned NVML status 3; observed transport SHM/direct/direct, peer access disabled), so no NVLink traffic exists to measure.",
+    "nccl.wait_vs_wire_ms": "NCCL kernel durations include device waiting; nsys timelines cannot separate NCCL waiting from wire transfer, so no per-collective wait/wire split is obtainable.",
+    "bucket.identity": "Exact bucket-to-collective identity requires native correlation plus observed gradient-storage membership; the 12 equal 28,351,488-byte buckets remain ambiguous on payload-size match alone, so ambiguous candidates must be retained.",
+    "numerics.first_divergence_site": "Quality passed on this candidate and no selected collector compares intermediate tensors, measures per-site numerical error, or locates a first numerical divergence; candidate_diagnostics records only exceptions and False returns, and empty events would not establish which successful path executed.",
+    "execution.gpu_ready_and_consumer_completion": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion may remain unknown.",
+    "step_ms.failing_sample_attribution": "The constraint-failing 126.44ms sample occurred in a prior clean run; the selected collectors execute in separate workers on this same revision and can only characterize systematic causes (hook fallback, NCCL decisions, host dispatch, device intervals), not re-measure that specific sample."
+  },
+  "rationale": "Revision 27740d97 (bundle trial-78c6177ee8-param-943908b8, additive on parent 07bfb8d6) passed quality but was rejected for original_baseline_constraint_failed (step_ms samples 111.66/126.44ms vs limit 121.51 = 1.05x115.72) and paired_gain_not_above_noise (objective 38.02ms vs paired parent 38.45ms). Three uncertainties remain. (1) Route verification: the only evidence the comm hook engaged is the candidate-reported route distributed:new_nccl_pg_comm_hook_step (count 2), which the endpoint explicitly flags as telemetry needing corroboration by traces or actual exception evidence; candidate_diagnostics records handled exceptions with library traceback locations and False returns that would expose a silent fallback (its emptiness proves nothing). (2) NCCL decisions: parent discovery observed only kernel entry names (ncclDevKernel_AllReduce_Sum_f32_RING_LL, 4 SHM/direct/direct channels, no NVLink, no P2P) at 12x28,351,488B + 1x157,541,376B f32 SUM over 2 ranks; kernel names do not identify the actual protocol/algorithm/channel decisions in effect under the candidate, which nccl_tuning captures in a separate warmed worker. (3) Step-time attribution: parent discovery showed communication almost fully exposed on rank 0 (31.77 of 33.57ms without concurrent compute) and rank-1 kernel sum inflated to 124.25ms by device waiting, and the original baseline's 45.13ms objective was itself rank-1 wait, so waiting and exposure dominate this metric; execution_timeline (CPU-to-CUDA submit associations, synchronization, per-device intervals, passive post-accumulate callbacks) separates host dispatch/sync from device-side structure, and nsys (status available) supplies native NCCL kernel and CUDA-API timeline rows to corroborate the collective pattern and overlap/attribution questions. Excluded as not decision-relevant here: device_telemetry (device-wide NVML rates with misaligned native windows cannot attribute per-collective traffic), collective_calibration (reference experiment at observed sizes, not a lower bound or critical-path estimate, resolves none of the three questions), python_runtime (perturbing cProfile whose inclusive/self times are not clean scores; host dispatch is covered by submit associations), and binding_cost (single additive bundle, effective direct binding with no functional replacements; an intermittent 14.8ms excess in one sample is not plausibly whole-invocation binding overhead, and evaluation.json already carries the binding summary)."
+}

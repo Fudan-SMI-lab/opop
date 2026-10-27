@@ -9,3 +9,16 @@
 - `manifest.json`：已导出远端文件的路径、长度和 SHA-256。
 
 结果随真实终态更新。原始实验和新批次使用独立目录；私有 provider 配置、模型权重和完整大张量不进入 GitHub。
+
+## 终态归档
+
+`controller-result.json` 与两个 completed 文件是冻结原始结果，保留 ResNet/DDP 初始 source_fidelity_valid=false；实际原因和后续独立修正见主报告，不覆盖原始结果。
+
+- `manual-audit/cohort-audit.json`：按真实会话顺序整理的九轮选择、提案、反馈快照摘要、配对数据、完整版本复测、revision 事件和原生 kernel 计数；含原始大结果路径/SHA。它是派生审计，原始 trial JSON、sqlite 和大张量仍留远端。
+- `manual-audit/collection-input-comparison.json`：真实 planner A/B 的输入、模型、代码与 prompt 差异核对。
+- `manual-audit/result.json`：后续案例映射审计，ResNet/DDP 的完整检查；路径属于另建的 `cohort-schema-audit-20261027`。
+- 三项目 `sandboxes/`、request、prepared、events、intake result：真实生成物及过程证据，没有带入模型/provider 私有配置。
+- `manual-audit/reflink-*.json`、`artifact-duplicates.json`：磁盘调查和单文件 CoW 试验，配额空间未增加，未批量清理。
+- `wakeup-delivery.json`：本次实际终态触发的新轮次确认。
+
+旧固定 Qwen 候选的拒绝/诊断记录属于前两批，未被本次新候选结果替代。

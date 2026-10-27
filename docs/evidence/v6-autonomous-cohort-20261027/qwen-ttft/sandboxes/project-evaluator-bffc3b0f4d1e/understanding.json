@@ -1,0 +1,62 @@
+{
+  "goal": "Minimize first-token latency for the source's interactive workload (batch 1, prompt 256 tokens, full greedy generation of 32 new tokens), preserving the source model, inputs, completion semantics and full quality requirements.",
+  "entrypoint": "adapter.py, reproducing one timed infer() invocation of the source entry qwen_inference.py (main -> infer, qwen_inference.py:14-41); the request freezes the single 'interactive' workload row from workloads.json.",
+  "completion": "One invocation completes the full frozen workload exactly as source infer(): a single prefill forward over the whole prompt (use_cache=True, logits_to_keep=1), greedy first token = argmax of the last-position logits, with the source's explicit torch.cuda.synchronize() first-token-ready boundary terminating the ttft_ms objective, then the fixed loop of new_tokens-1 = 31 cached single-token decode steps producing exactly 32 new tokens in total, ended by the source's final torch.cuda.synchronize(). EOS early stopping is disabled by the explicit loop; generation never stops before 32 tokens. Model loading, tokenization, reference capture, verification, warmup, repeats and median reduction are outside the timed invocation.",
+  "state_protocol": "prepare(context, request) runs outside timing: it applies common.configure()'s numerical policy (threads 4/1, torch.manual_seed(20261020), matmul/cudnn TF32 off, float32_matmul_precision 'highest', cudnn.benchmark False) with torch.cuda.set_device(context['device']), loads the tokenizer and Qwen3ForCausalLM (bfloat16, attn_implementation='sdpa', local_files_only) from request['assets'].assets onto context['device'], builds the input by applying the chat template to the workloads.json qwen_inference.prompt (add_generation_prompt=True, enable_thinking=False, encoded without special tokens, repeated/truncated to exactly request['workload'].prompt_tokens and tiled to batch), and keeps model/tokenizer/inputs/workload/quality in state; workload dimensions are read from request['workload'], never embedded as constants. reset(state) is effectively a no-op for this stateless greedy inference: the model is in eval/inference mode and immutable, inputs are fixed, KV caches are created per invocation inside run(), and the source clears nothing inside its timed invocation; reset only drops quality-mode capture references and synchronizes, without touching the allocator. run(state) executes the entire workload under torch.inference_mode() via the verbatim source infer() body (capture only in quality mode) and returns the generated tokens, optional per-step last-position logits, and the source's internal phase timings including the first-token boundary. observe(state, result) reruns the teacher-forced capture outside the timer, applies the source's relational checks (torch.equal greedy-token equality, logits closeness at the request tolerances, +1 corruption rejection) and returns the full tokens/logits tensors plus exact boolean/integer check results, raising on violation. metrics(state, result, elapsed_ms) exposes ttft_ms from run's internal first-token boundary plus the source's other per-sample metrics, wall-clock derived throughput and peak_allocated_bytes queried outside the timer. models(state) returns {'model': loaded Qwen3ForCausalLM}. set_mode(state, mode) toggles logits capture ('quality') versus the clean timing path ('measure'/'profile') with identical execution semantics and identical work; before_run is not needed for this single-process workload.",
+  "invariants": [
+    "Greedy argmax decoding over exactly new_tokens=32 steps with EOS early stopping disabled by the explicit decode loop; the full 32-token sequence must be produced every invocation (qwen_inference.py:25-33; request.json note on input construction: 'Generation length is fixed at new_tokens=32; EOS early stopping is disabled by the explicit loop').",
+    "The workload shape is the source's infer() structure: one prefill forward over the full 256-token prompt with use_cache=True and logits_to_keep=1, first token from argmax of last-position logits, then 31 single-token decode steps reusing past_key_values with logits_to_keep=1 (qwen_inference.py:18-32).",
+    "ttft_ms is measured at the source's actual completion boundary: perf_counter_ns around prefill forward + argmax terminated by an explicit torch.cuda.synchronize() ('explicit first-token-ready boundary'); decode timing starts only after that boundary (qwen_inference.py:16-24; request.json note: 'ttft_ms is measured inside infer() ... terminated by torch.cuda.synchronize()').",
+    "The model must be Qwen3ForCausalLM loaded from the frozen assets path (revision directory 1cfa9a7208912126459214e8b04321603b3df60c) in bfloat16 with attn_implementation='sdpa', eval mode, local_files_only=True (qwen_inference.py:49; request.json model/precision policy note); architecture, precision, attention implementation and weights are unchanged.",
+    "Numerical policy from common.configure(): torch.set_num_threads(4), set_num_interop_threads(1), torch.manual_seed(20261020), matmul and cudnn TF32 disabled, float32_matmul_precision 'highest', cudnn.benchmark False (common.py:34-42; request.json note).",
+    "Inputs are constructed from the workloads.json qwen_inference.prompt via the tokenizer's chat template with add_generation_prompt=True and enable_thinking=False, encoded without special tokens, repeated/truncated to exactly prompt_tokens=256 and tiled to batch=1, resident on the worker device (qwen_inference.py:55-58; request.json input-construction note).",
+    "Source-defined correctness must hold per invocation: a teacher-forced replay must satisfy torch.equal(actual_tokens, tokens) for the full 32 greedy tokens, per-step last-position logits must match the greedy capture within logits_atol=logits_rtol=0.02, and a +1 corrupted reference must be rejected; these relational checks are implemented in observe() outside timed run() (qwen_inference.py:59-64; workloads.json qwen_inference.correctness; request.json quality).",
+    "The timed region contains only one clean infer() call; model/tokenizer loading, tokenization, reference construction, teacher-forced verification, negative control, torch.save, warmup, repeats and statistical reduction are outside it (request.json notes on harness vs measured invocation).",
+    "Workload dimensions (batch=1, prompt_tokens=256, new_tokens=32) are read from request['workload'] in prepare(); they are frozen for this run but a separately validated variant may supply different values through the same adapter (request.json workload; adapter contract).",
+    "Single-process, single-GPU task: the adapter uses context['device'] after worker device binding instead of choosing a physical GPU, initializes no process group, and performs no communication (request.json note: single-process single-GPU task, no distributed backend, no communication collector fields required)."
+  ],
+  "objective": {
+    "name": "ttft_ms",
+    "unit": "ms",
+    "direction": "minimize",
+    "constraints": []
+  },
+  "workload": {
+    "id": "interactive",
+    "batch": 1,
+    "prompt_tokens": 256,
+    "new_tokens": 32,
+    "goals": [
+      {
+        "id": "ttft",
+        "metric": "ttft_ms",
+        "direction": "min"
+      },
+      {
+        "id": "decode",
+        "metric": "decode_tokens_per_second",
+        "direction": "max"
+      }
+    ]
+  },
+  "quality": {
+    "atol": 0.02,
+    "rtol": 0.02,
+    "logits_atol": 0.02,
+    "logits_rtol": 0.02,
+    "require_exact_greedy_tokens": true
+  },
+  "missing_information": [],
+  "assumptions": [
+    "The worker-supplied context['device'] (e.g. cuda:0) replaces the source's hard-coded common.configure(device=0)/.cuda(); torch.cuda.set_device(context['device']) plus .to(device) place the model and inputs on that same logical device.",
+    "The prompt text is task data fixed across workloads: it is read from the bundled source copy at inputs/source/workloads.json (qwen_inference.prompt), with request source_root as a secondary candidate and the exact prompt string embedded as a last-resort fallback; prompt_tokens/batch/new_tokens never fall back and always come from request['workload'].",
+    "torch.set_num_interop_threads(1) may raise RuntimeError if the worker process already configured inter-op threads; it is guarded so prepare stays safe, matching common.configure()'s intent rather than its failure mode.",
+    "The framework performs warmup/repeats (warmup=2, repeats=5, continuous_steps=2) and median reduction externally with measurement_lifetime 'invocation'; run() is exactly one clean infer() invocation, so the source's summarize()/median harness responsibility transfers to the framework.",
+    "In quality mode run() retains per-step last-position logits exactly like source capture=True; in measure/profile mode it follows the clean capture=False path. Both paths execute identical forwards and the same 32-token work; capture only keeps references to logits the forward already produced.",
+    "The teacher-forced verification rerun and the +1 corruption control execute in observe() outside the timed region, mirroring the source harness (qwen_inference.py:59-64); logits comparisons use the request's logits_atol/logits_rtol (0.02).",
+    "peak_allocated_bytes is queried in metrics() outside the timer (the framework resets CUDA peak stats at its own boundary), replacing the source harness's per-sample query; it is a recorded diagnostic, not an objective or constraint for this request.",
+    "The workload's second goal (decode_tokens_per_second, max) is reported as a source metric computed with the source formula batch*(new_tokens-1)/decode_window over the 31 decode tokens, but this request optimizes only ttft_ms (request.json note); the held-out 'long_prompt' workload in workloads.json is not part of this frozen request.",
+    "Internal phase timings keep the source's perf_counter_ns clock so ttft_ms reproduces the source's measurement semantics, while the framework's wall clock wraps the whole run(); both are exposed separately in metrics().",
+    "reset() deliberately performs no gc.collect()/torch.cuda.empty_cache(), because the source's repeat loop runs consecutive timed infer() calls without clearing the allocator; clearing happens in the harness only before the warmup block, and capture references are dropped instead."
+  ]
+}

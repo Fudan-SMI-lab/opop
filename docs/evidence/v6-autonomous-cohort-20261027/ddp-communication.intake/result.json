@@ -1,0 +1,190 @@
+{
+  "status": "ready",
+  "intake": "/root/autodl-tmp/dev/v6-work/autonomous-cohort-20261027/ddp-communication.intake",
+  "proposal": {
+    "status": "ready",
+    "description": {
+      "entry": "gpt2_ddp_training.py",
+      "files": [
+        "gpt2_ddp_training.py",
+        "common.py",
+        "workloads.json",
+        "README.md"
+      ],
+      "invocation": "One accumulated GPT-2 124M FP32 DDP training step (workloads.json gpt2_ddp_training.workloads[0], id=accumulated_step): optimizer.zero_grad(set_to_none=True); 4 microbatches of synthetic tokens of shape (micro_batch=1, sequence_length=128) each run forward+backward, with DDP.no_sync() on the first 3 microbatches and the final microbatch performing the gradient allreduce; then optimizer.step() and torch.cuda.synchronize() -- the source's step() at gpt2_ddp_training.py:102-105, timed after reset()/barrier at gpt2_ddp_training.py:111-117. The communication objective is measured in a separately profiled invocation of this same step (common.py profile_once, gpt2_ddp_training.py:121-125). Reference construction, correctness checks, bucket-inventory hook run and report writing are measurement infrastructure, not the repeated work.",
+      "objective": {
+        "name": "communication_kernel_sum_ms",
+        "unit": "ms",
+        "direction": "minimize",
+        "constraints": [
+          {
+            "metric": "step_ms",
+            "op": "le",
+            "baseline_ratio": 1.05,
+            "threshold": null,
+            "rank_aggregation": "max",
+            "aggregation_order": "ranks_then_samples"
+          }
+        ],
+        "source": {
+          "collector": "torch_communication",
+          "field": "communication_kernel_sum_ms",
+          "project_metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+          "project_definition": "Per-rank sum of device NCCL kernel durations in a separately profiled step invocation, maximum across ranks, median of the 3 profiled invocations; includes device waiting; not wire time, exposed or critical-path communication"
+        },
+        "rank_aggregation": "max",
+        "aggregation_order": "ranks_then_samples"
+      },
+      "workload": {
+        "id": "accumulated_step",
+        "world_size": 2,
+        "micro_batch": 1,
+        "sequence_length": 128,
+        "accumulation_steps": 4,
+        "goals": [
+          {
+            "id": "step",
+            "metric": "step_ms",
+            "direction": "min"
+          },
+          {
+            "id": "communication",
+            "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+            "direction": "min",
+            "constraints": {
+              "step_ms_max_baseline_ratio": 1.05
+            }
+          }
+        ]
+      },
+      "quality": {
+        "atol": 1e-06,
+        "rtol": 0.0001,
+        "grad_atol": 1e-06,
+        "grad_rtol": 0.0001,
+        "parameter_atol": 1e-06,
+        "parameter_rtol": 0.0001,
+        "exact_gradient_replica_check": {
+          "atol": 0.0,
+          "rtol": 0.0
+        },
+        "require_finite_loss": true,
+        "corrupted_output_rejected": true
+      },
+      "warmup": 2,
+      "repeats": 5,
+      "assets": {},
+      "device_count": 2,
+      "distributed_backend": "nccl",
+      "communication": "required",
+      "required_observations": [
+        "communication_kernel_sum_ms"
+      ],
+      "notes": [
+        "Command provenance (intent.json): torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp --profile; README.md:37 documents the equivalent python -m torch.distributed.run --standalone --nproc-per-node=2 launch.",
+        "Selected goal is the workload row's 'communication' goal (diagnostic.max_rank_nccl_kernel_sum_ms, direction min); the row's 'step' goal is retained as the performance constraint step_ms <= 1.05x baseline, matching the user's goal of keeping the step-time constraint.",
+        "Objective metric mapping: source's diagnostic.max_rank_nccl_kernel_sum_ms (gpt2_ddp_training.py:156-157: max over ranks of profiles[i].nccl_kernel_sum_ms for i in range(3), then median sorted(values)[1]) corresponds to installed collector torch_communication.communication_kernel_sum_ms (deployment.json) with rank_aggregation=max and ranks_then_samples order; common.py:95-99 derives nccl_kernel_sum_ms from a torch.profiler CUDA trace. Collector availability must be verified by the actual workload worker.",
+        "step_ms semantics (constraint): per-repeat maximum across ranks of local clean step time (gpt2_ddp_training.py:150), median across the repeats; excludes model build, input creation, reference construction, correctness checks, profiling and the gloo control barriers (README.md:41-45).",
+        "Communication metric caveat (workloads.json communication_metric_caveat, README.md:48): includes device waiting; is not wire time, critical-path time or exposed communication; profiled separately from clean step timing; the source protocol also reports profiling perturbation alongside this objective.",
+        "Discrete exact comparison: every rank's full post-accumulation gradients must equal rank 0's broadcast gradient exactly via torch.testing.assert_close(atol=0.0, rtol=0.0) (gpt2_ddp_training.py:81-86, checks['exact_gradient_replica_check']); loss must be finite; negative control must reject a +1 corrupted output (common.py negative_check).",
+        "Numerical policy preserved: FP32 weights/inputs, TF32 disabled, cudnn.benchmark False, float32_matmul_precision 'highest' (common.py:34-42); SGD lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False; DDP(broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True); no_sync on the first 3 of 4 microbatches (baseline already avoids redundant sync); effective batch 8 (2 ranks x micro_batch 1 x 4 accumulation), 1024 tokens per step.",
+        "The separate comm-hook bucket inventory invocation (gpt2_ddp_training.py:128-138) is an extra diagnostic step and must not alter the default reducer used for clean timing or the communication trace.",
+        "Correctness checks run on every execution: rank-0 serial single-device reference over the exact same global batch compares gradients and post-step parameters at grad/parameter tolerances (gpt2_ddp_training.py:67-91)."
+      ]
+    },
+    "evidence": {
+      "entry_and_command": [
+        "intent.json command: torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp --profile",
+        "README.md:37: DDP single-project launch via python -m torch.distributed.run --standalone --nproc-per-node=2 .../gpt2_ddp_training.py with --output/--workloads/--warmup/--repeats/--profile"
+      ],
+      "workload": [
+        "workloads.json gpt2_ddp_training.workloads[0]: {id: accumulated_step, world_size: 2, micro_batch: 1, sequence_length: 128, accumulation_steps: 4}",
+        "gpt2_ddp_training.py:54-57: loads config['gpt2_ddp_training'].workloads[0] and asserts launched world_size equals workload world_size"
+      ],
+      "objective": [
+        "intent.json goal: reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks",
+        "workloads.json gpt2_ddp_training.workloads[0].goals[1]: {id: communication, metric: diagnostic.max_rank_nccl_kernel_sum_ms, direction: min, constraints: {step_ms_max_baseline_ratio: 1.05}}",
+        "gpt2_ddp_training.py:121-125: 3 separately profiled step invocations behind control-group barriers; :156-157: per-invocation max across ranks of nccl_kernel_sum_ms, then median of the 3 values",
+        "common.py:87-105 profile_once: torch.profiler CUDA trace -> nccl_kernel_sum_ms = sum of 'nccl' kernel durations / 1000",
+        "workloads.json gpt2_ddp_training.communication_metric_caveat: per-rank NCCL kernel duration sum, max across ranks, includes device waiting, not wire/critical-path/exposed communication, profiled separately from clean timing",
+        "deployment.json metric_collectors.torch_communication.fields.communication_kernel_sum_ms: installed per-rank summed communication-kernel duration in a separately profiled invocation (unit ms) -- the interface for this objective"
+      ],
+      "step_time_constraint": [
+        "workloads.json gpt2_ddp_training.workloads[0].goals[1].constraints.step_ms_max_baseline_ratio = 1.05",
+        "README.md:48: communication target must simultaneously satisfy clean step <= 1.05x the original baseline",
+        "gpt2_ddp_training.py:148-152: per-repeat step_ms = max across ranks; common.py:66-71 summarize reports the median"
+      ],
+      "quality": [
+        "workloads.json gpt2_ddp_training.correctness: grad_atol=1e-6, grad_rtol=1e-4, parameter_atol=1e-6, parameter_rtol=1e-4",
+        "gpt2_ddp_training.py:67-78: rank-0 serial global-batch reference gradient check via close_check(grad_atol, grad_rtol) plus negative_check corrupted-output control",
+        "gpt2_ddp_training.py:81-86: exact cross-rank gradient replica check with torch.testing.assert_close(atol=0.0, rtol=0.0) on every parameter and every rank",
+        "gpt2_ddp_training.py:87-91: post-step parameter check via close_check(parameter_atol, parameter_rtol); gpt2_ddp_training.py:65: assert torch.isfinite(loss)"
+      ],
+      "assets": [
+        "gpt2_ddp_training.py:24-27: GPT2Config(**config['model']) with torch.manual_seed(20261020) -- deterministic random init, no pretrained weights",
+        "gpt2_ddp_training.py:30-33: token IDs drawn from a seeded torch.Generator -- synthetic inputs, no external data; --assets argument unused by this entry"
+      ],
+      "devices_and_backend": [
+        "intent.json command --nproc_per_node=2 and workloads.json world_size=2; deployment.json inventory: 2x NVIDIA GeForce RTX 4090",
+        "gpt2_ddp_training.py:52: dist.init_process_group('nccl', ..., device_id=cuda:rank); :53: separate gloo control group used only for barriers/all_gather_object"
+      ],
+      "invocation_boundary": [
+        "gpt2_ddp_training.py:36-45 accumulate(): zero_grad, 4 microbatch forward/backward passes, no_sync when i+1 < len(inputs)",
+        "gpt2_ddp_training.py:99-105: reset() restores initial weights; step() = accumulate + optimizer.step + synchronize, the measured unit",
+        "gpt2_ddp_training.py:107-119: warmup steps then timed repeats with reset/synchronize/barrier at measurement boundaries"
+      ],
+      "warmup_and_repeats": [
+        "common.py:24-25: defaults --warmup 2 --repeats 5; intent.json command does not override them (README.md:32 uses the same values)"
+      ]
+    },
+    "assumptions": [
+      "warmup=2 and repeats=5 come from common.py argument defaults because the user's command does not override them; repeats refers to the clean timed step samples.",
+      "The diagnostic communication trace count (3 profiled invocations, median of 3) is part of the source's measurement protocol (gpt2_ddp_training.py:121-125,156-157), not the clean-sample repeats field.",
+      "The evaluator's torch_communication.communication_kernel_sum_ms with rank_aggregation=max and ranks_then_samples order reproduces the source's diagnostic.max_rank_nccl_kernel_sum_ms; the installed collector's availability must be verified by the actual workload worker per deployment.json.",
+      "The workload dict is the exact workloads.json row (including its goals array, copied unchanged); the operative goal for this request is 'communication', with the row's step goal expressed as the 1.05x baseline step_ms constraint.",
+      "No external model weights or data are needed (seeded synthetic init and token IDs), so assets is empty; /tmp/original-ddp in the user's command is a baseline output directory supplied by the runner, not an asset.",
+      "distributed_backend is nccl for the data-parallel work; the gloo group at gpt2_ddp_training.py:53 is a control plane only and does not change the backend requirement."
+    ],
+    "questions": []
+  },
+  "agent": {
+    "role": "project-intake",
+    "session": "ses_e84df8d6effegV4QFeRToAjX5w",
+    "message": "msg_17b236517001qLPZ5YzW8SUyBO",
+    "model": "zhipuai/glm-5.3",
+    "usage": {
+      "schema_version": 1,
+      "mode": "observe_only",
+      "messages": 6,
+      "reported_cost": 0.10782195698000001,
+      "messages_without_cost": 0,
+      "unfinished_messages": 0,
+      "tokens": {
+        "total": 140612.0,
+        "input": 25737.0,
+        "output": 3856.0,
+        "reasoning": 7147.0,
+        "cache.read": 103872.0,
+        "cache.write": 0.0
+      },
+      "sessions": [
+        {
+          "id": "ses_e84df8d6effegV4QFeRToAjX5w",
+          "status": "observed",
+          "detail": null
+        }
+      ],
+      "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+    },
+    "sandbox": "/root/autodl-tmp/dev/v6-work/autonomous-cohort-20261027/ddp-communication.intake/sandboxes/project-intake-c4a914012f78",
+    "outputs": [
+      "intake.json"
+    ],
+    "feedback_provided": false,
+    "contract_repairs": 0,
+    "generation_snapshots": [
+      "/root/autodl-tmp/dev/v6-work/autonomous-cohort-20261027/ddp-communication.intake/generation-snapshots/generation-4b715484e927.json"
+    ]
+  },
+  "request": "/root/autodl-tmp/dev/v6-work/autonomous-cohort-20261027/ddp-communication.intake/resolved-request.json"
+}

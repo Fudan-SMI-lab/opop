@@ -1,0 +1,30 @@
+{
+  "revision": "62dd58ec40f739e4d83c259b10e0459c63d955a04a464d1ee76f85bf88e22907",
+  "collectors": [
+    "execution_timeline",
+    "candidate_diagnostics",
+    "binding_cost"
+  ],
+  "requested_fields": [
+    "execution_timeline.cpu_to_cuda_submit_associations",
+    "execution_timeline.synchronization_events",
+    "execution_timeline.per_device_intervals",
+    "execution_timeline.prefill_to_first_token_boundary_interval",
+    "execution_timeline.clock_alignment_bounds",
+    "candidate_diagnostics.handled_exceptions",
+    "candidate_diagnostics.false_returns",
+    "candidate_diagnostics.library_traceback_locations",
+    "binding_cost.ab_ba_whole_invocation_cost",
+    "binding_cost.binding_only_passthrough_vs_parent"
+  ],
+  "unavailable_fields": {
+    "nccl_tuning.algorithm_protocol_channel": "Single-device task; no NCCL collectives in the measured invocation (observations.json reports communication not_applicable), so there are no actual algorithm/protocol decisions to capture.",
+    "collective_calibration.synthetic_allreduce_reference": "No distributed world exists; a full-world SUM allreduce at observed sizes is not applicable to this single-GPU workload.",
+    "device_telemetry.per_call_site_or_pcie_bytes": "NVML readings are device-wide with native windows; they cannot attribute bytes to the two intercepted call sites, so requesting them would not resolve the open questions.",
+    "binding_cost.per_call_site_or_per_group_effects": "binding_cost omits candidate build/computation and reports whole-invocation AB/BA cost only; per-site (parent-eager vs parent-passthrough) timing decomposition is unavailable.",
+    "execution_timeline.gpu_readiness_and_consumer_completion": "Clock alignment bounds are reported for matching CPU submissions only; GPU readiness and consumer completion may remain unknown.",
+    "candidate_diagnostics.successful_path_identification": "Empty diagnostics events cannot establish which successful path executed (no normal calls or non-False scalar returns are recorded), and no collector compares intermediate tensors or locates a first numerical divergence.",
+    "nsys.nccl_wait_vs_wire_separation": "Not requested: no communication to separate, and torch coverage already associated all 66441 kernels with zero ambiguous sequences, leaving no overlap or graph-tracing question for nsys to resolve."
+  },
+  "rationale": "Evidence: torch already ran (coverage.json: 66441/66441 kernels associated, 0 unassociated, 0 ambiguous), the task is single-device (observations.json: communication not_applicable), and this additive candidate 62dd58ec (bundle trial-cf72c8a39d-param-65bdefc5, effective direct binding with reason 'no functional replacements') passed quality but was not accepted: paired TTFT 26.73 ms vs parent 28.78 ms is within noise, and both sit above the original reference 24.61 ms. Two uncertainties remain. (1) Route attribution: the candidate self-reports call site 2441f10600ba127de5cb753c as parent-eager (2 calls) and call site e7df98b905ed8aa688d5227a as parent-passthrough (62 calls); these labels are candidate telemetry, not independent proof. execution_timeline supplies a separate plain Torch trace with CPU-to-CUDA submit associations, synchronization events around the explicit first-token-ready torch.cuda.synchronize(), and per-device intervals to corroborate which code path actually launched kernels at those call sites and whether host-side gaps inside the TTFT window exist. candidate_diagnostics adds actual exception evidence (handled exceptions with library traceback locations and False returns) distinguishing a genuine passthrough from a silent fallback. (2) Whether the additive binding layer itself masks a real gain despite 'no functional replacements': binding_cost runs clean AB/BA workers comparing the candidate's parent against a binding-only passthrough with full quality checks, directly measuring whole-invocation binding overhead; if selected it also feeds subsequent candidate resource feedback. nsys is skipped because kernel-to-op attribution is already complete from the prior torch run and no graph-tracing or stream-overlap question exists; python_runtime is skipped because it perturbs execution and binding_cost already measures binding/dispatch overhead cleanly; nccl_tuning, collective_calibration and device_telemetry are inapplicable to a single-GPU eager workload with no collectives. No PCIe/NVLink traffic is inferred from payload sizes, and no optimization action or failure-category policy is prescribed by this plan."
+}

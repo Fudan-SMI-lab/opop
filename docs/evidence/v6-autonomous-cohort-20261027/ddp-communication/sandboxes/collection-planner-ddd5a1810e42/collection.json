@@ -1,0 +1,35 @@
+{
+  "collectors": [
+    "nccl_tuning",
+    "collective_calibration",
+    "execution_timeline",
+    "candidate_diagnostics"
+  ],
+  "requested_fields": [
+    "nccl.algorithm",
+    "nccl.protocol",
+    "nccl.channel_count",
+    "nccl_tuning.decisions.allreduce_sum_f32.28351488_bytes",
+    "nccl_tuning.decisions.allreduce_sum_f32.157541376_bytes",
+    "collective_calibration.duration_ms.allreduce_sum_f32.28351488_bytes",
+    "collective_calibration.duration_ms.allreduce_sum_f32.157541376_bytes",
+    "collective_calibration.correctness",
+    "execution_timeline.cpu_submit_alignment_bounds_ms",
+    "execution_timeline.collective_submit_to_kernel_interval_ms",
+    "execution_timeline.gradient_post_accumulate_callback_ms",
+    "execution_timeline.compute_overlap_ms",
+    "execution_timeline.communication_without_compute_ms",
+    "candidate_diagnostics.exception_events",
+    "candidate_diagnostics.false_return_events"
+  ],
+  "unavailable_fields": {
+    "pcie_bytes": "Hardware counters require a successful collector-specific probe; topology and logical payload do not measure traffic, and device_telemetry NVML windows are device-wide, not per-collective bytes; must not be inferred from the 497,759,232 B/rank logical payload",
+    "nvlink_bytes": "No NVLink P2P between GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba and GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4 (peer_access false both directions; NCCL channels observed via SHM/direct/direct); no hardware counter probe supplies nvlink bytes",
+    "bucket_to_kernel_identity": "The 12 small buckets share the identical 28,351,488-byte payload, so payload matching leaves 12 bucket_candidates per collective; exact links would require native correlation plus observed gradient-storage membership, which no listed collector supplies, so ambiguous candidates are retained",
+    "per_kernel_wait_vs_wire_split": "No collector decomposes an in-step NCCL kernel duration into waiting vs wire transfer: nsys timelines alone do not separate them and collective_calibration is a separate warmed reference experiment at observed sizes, not an in-step split",
+    "cross_rank_kernel_start_skew_us": "Discovery clock policy forbids subtracting timestamps from different rank clocks (rank-1 vs rank-0 first-collective asymmetry of 106.8 ms vs 1.89 ms cannot be compared directly); execution_timeline reports clock alignment bounds for matching CPU submissions only and GPU readiness/consumer completion may remain unknown",
+    "first_numerical_divergence": "No collector compares intermediate tensors, measures per-site numerical error or locates the first divergence; candidate_diagnostics records only exceptions and False returns, so empty events will not establish which successful path executed"
+  },
+  "rationale": "Candidate cc3584dfdb44878c03164086c5846fe5dc450340950ac12ee1e587d03a75cb1b (bundle trial-2eafcccfdb-param-a5965c80, additive direct binding of 12 composite:gpt2_block:eager_fused sites) was rejected for objective_not_improved (40.118 ms vs paired parent 39.697 ms, paired_gain_not_above_noise) while the step_ms constraint passed with headroom (106.73/102.86 ms vs 121.51 ms limit), so the open uncertainty is what composes the ~37-40 ms max-rank NCCL kernel sum on this exact candidate and whether the candidate-declared composite routes truly executed. Trace evidence: 13/13 allreduces matched per rank (12 x 28,351,488 B + 1 x 157,541,376 B = 497,759,232 B/rank) over SHM/direct/direct channels with peer_access disabled both directions; every kernel is named ncclDevKernel_AllReduce_Sum_f32_RING_LL, which by policy does not establish the protocol, and both the 28 MB (~1.86 ms) and 157 MB (~10.3 ms) buckets run at ~15 GB/s, suggesting a protocol/channel-limited transfer worth resolving; the intrusive parent profiling also inflated rank-1 kernel sums 9x (295.9 vs 32.8 ms, first collective 106.8 ms) with cross-rank clocks not comparable, showing waiting/skew can dominate the very metric being minimized. nccl_tuning captures the actual algorithm/protocol/channel decisions in a warmed worker at the observed sizes/dtypes; collective_calibration gives correctness-checked full-world SUM allreduce reference durations at exactly 28,351,488 B and 157,541,376 B f32 to separate achievable transfer cost from in-step waiting (reference experiment, not a lower bound or critical-path estimate); execution_timeline supplies CPU-to-CUDA submit associations, synchronization, per-device intervals and optional passive gradient post-accumulate callbacks with clock-alignment bounds for matching CPU submissions - the only sanctioned cross-rank timing comparison here - to attribute submission skew and bucket readiness; candidate_diagnostics looks for handled exceptions and False returns behind the candidate-declared routes, since 0 framework_fallbacks is candidate-reported telemetry, not native proof. torch already ran in discovery and the clean evaluation supplies this candidate's per-rank communication_kernel_sum_ms, so it is not repeated. nsys is not selected: attribution is already complete (4000/4000 kernels associated, 0 unmatched communication kernels, no graph tracing in this eager workload) and nsys timelines alone would not separate NCCL waiting from wire transfer or prove bucket identity. python_runtime is excluded because it perturbs host dispatch and step_ms already has ~12% headroom; binding_cost is not decision-relevant because the constraint passed and the failure is the communication objective itself; device_telemetry is excluded because device-wide NVML windows cannot attribute per-collective bytes and cannot answer the protocol/waiting questions above.",
+  "revision": "cc3584dfdb44878c03164086c5846fe5dc450340950ac12ee1e587d03a75cb1b"
+}

@@ -1,0 +1,23 @@
+{
+  "collectors": [
+    "candidate_diagnostics",
+    "nsys"
+  ],
+  "requested_fields": [
+    "candidate_diagnostics.exceptions.handled_with_traceback_locations",
+    "candidate_diagnostics.exceptions.raised",
+    "candidate_diagnostics.false_returns",
+    "nsys.cuda_graph.capture_events",
+    "nsys.cuda_graph.launch_replay_events",
+    "nsys.kernels.graph_replay_vs_eager_attribution"
+  ],
+  "unavailable_fields": {
+    "communication.nccl_algorithm_protocol_channel": "Single-device task with no distributed backend and no collectives; observations.json records communication as not_applicable (reason: single-device task), so nccl_tuning has nothing to sample and kernel names cannot identify protocol decisions that never occur.",
+    "communication.collective_reference_cost": "No allreduce or world exists; collective_calibration's synthetic full-world SUM allreduce has no counterpart in this workload and would not be a lower bound for single-GPU inference.",
+    "link.pcie_nvlink_traffic_bytes": "No per-collective device traffic exists; the timed unit is one GPU-resident forward pass with host-to-device staging outside timing (request.json notes), and inventing traffic from logical payload or memcpy sizes is prohibited. Device-wide NVML rates from device_telemetry were not selected because no link-traffic question is open.",
+    "host.dispatch_clean_self_time": "python_runtime cProfile self/inclusive times are perturbed and are not clean scores; coverage.json shows all 46 CUDA kernels CPU-associated with 0 unassociated and 0 ambiguous sequences, so no host-dispatch or attribution gap is evidenced.",
+    "route_label.native_proof_when_diagnostics_empty": "candidate_diagnostics records only exceptions and False returns; empty events do not establish which successful path executed, so absence of a triton_pool exception leaves the route label uncorroborated except by nsys graph evidence."
+  },
+  "rationale": "The evaluated candidate f3f6683 (bundle trial-abe1619d50-param-a4dd1d6a, parent a345441f) passed quality and improved latency_ms to 3.293275 vs paired parent 3.4179885 with the throughput constraint satisfied, so no performance anomaly is open. The single flagged uncertainty (evaluation.json interpretation) is that the candidate-declared routes 'setup:triton_pool_unavailable->nchw:cuda_graph_replay' and 'setup:triton_pool_unavailable->nchw:eager_warmup' are candidate-reported telemetry, not independent native proof. Two collectors target exactly that: (1) candidate_diagnostics captures handled exceptions with propagated library traceback locations and False returns in the candidate files on the worker's current Python thread, which is the 'actual exception evidence' needed to corroborate or refute the triton_pool_unavailable branch; its limits are respected - empty events do not prove which successful path ran, and it does not compare tensors or locate numerical divergence (quality already passes, so no divergence question exists). (2) nsys is available (request.json tools.nsys) and addresses the graph-tracing question: whether CUDA graph capture and replay actually occur in the measured invocation and which kernels execute via graph replay versus the eager warmup invocation, resolving the replay-vs-eager attribution the route labels assert. torch is not re-requested because it already ran: coverage.json shows 46/46 kernels associated, 0 unassociated, 0 root-only, 0 ambiguous forward sequences, so no attribution gap remains. Excluded as not useful for observed uncertainty: nccl_tuning, collective_calibration and device_telemetry (single-device task, no collectives, no link-traffic question); execution_timeline (CPU-to-CUDA association already complete, no synchronization or per-device interval question, no communication hook role); python_runtime (perturbs execution, no host-bound evidence); binding_cost (eligible since the candidate is additive with direct binding under 'no functional replacements', but the clean paired measurement already attributes the improvement and no binding-overhead anomaly is observed, so requesting it would be indiscriminate).",
+  "revision": "f3f668301a8177a7f867ae2bca14f83fd6c955de3aa7565f5844ec31240bf92b"
+}

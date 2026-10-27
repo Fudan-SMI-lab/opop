@@ -1,0 +1,150 @@
+{
+  "runs": [
+    {
+      "arm": "control",
+      "status": "completed",
+      "agent": {
+        "role": "collection-planner",
+        "session": "ses_e85c380e6ffevewjE6MVB3ZuzJ",
+        "message": "msg_17a3e78ab001s49leroy3O4JWk",
+        "model": "zhipuai/glm-5.3",
+        "usage": {
+          "schema_version": 1,
+          "mode": "observe_only",
+          "messages": 13,
+          "reported_cost": 0.2250635675,
+          "messages_without_cost": 0,
+          "unfinished_messages": 0,
+          "tokens": {
+            "total": 461256.0,
+            "input": 55259.0,
+            "output": 3015.0,
+            "reasoning": 6694.0,
+            "cache.read": 396288.0,
+            "cache.write": 0.0
+          },
+          "sessions": [
+            {
+              "id": "ses_e85c380e6ffevewjE6MVB3ZuzJ",
+              "status": "observed",
+              "detail": null
+            }
+          ],
+          "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+        },
+        "sandbox": "/root/autodl-tmp/dev/v6-work/autonomous-cohort-20261027/collection-ab/control/sandboxes/collection-planner-replay-51b9b1bb4fde",
+        "outputs": [
+          "collection.json"
+        ],
+        "feedback_provided": false,
+        "contract_repairs": 0,
+        "generation_snapshots": [
+          "/root/autodl-tmp/dev/v6-work/autonomous-cohort-20261027/collection-ab/control/generation-snapshots/generation-a1ad08aabd38.json"
+        ]
+      },
+      "plan": {
+        "collectors": [
+          "candidate_diagnostics",
+          "execution_timeline",
+          "nccl_tuning",
+          "binding_cost"
+        ],
+        "requested_fields": [
+          "communication_kernel_sum_ms",
+          "candidate_diagnostics.executed_calls",
+          "candidate_diagnostics.handled_exceptions",
+          "candidate_diagnostics.scalar_returns",
+          "execution_timeline.cpu_to_cuda_submit_associations",
+          "execution_timeline.per_device_intervals",
+          "execution_timeline.synchronization_events",
+          "execution_timeline.gradient_post_accumulate_callbacks",
+          "nccl_tuning.algorithm",
+          "nccl_tuning.protocol",
+          "nccl_tuning.channels",
+          "binding_cost.parent_vs_binding_only_invocation_ms"
+        ],
+        "unavailable_fields": {
+          "pcie_bytes": "Hardware byte counters require a successful collector-specific probe; observed capability fields retain pcie_bytes unknown (topology and logical payload do not measure traffic), and NVML exposes only device-wide rates with native sampling windows.",
+          "nvlink_bytes": "Same observed reason as pcie_bytes: no successful hardware-counter probe; transport evidence only shows SHM/direct/direct channels with peer_access=0, so link traffic cannot be derived.",
+          "nccl_wire_time_ms": "NCCL kernel durations include device waiting (torch observation, rank 1 sum 228.3ms vs rank 0 33.2ms in the intrusive discovery); neither the torch trace nor an nsys timeline separates NCCL waiting from wire transfer, and no listed collector supplies per-collective wire time.",
+          "per_collective_bus_bytes": "device_telemetry readings are device-wide with native windows, not per-collective bytes; deriving per-collective PCIe/NVLink traffic from logical payload or memcpy sizes would be invented, not observed.",
+          "paired_gain_noise_band": "Clean paired repetition statistics belong to the framework evaluation (decision reason paired_gain_not_above_noise); diagnostic collectors run instrumented/separate workers and do not supply clean paired repeat measurements."
+        },
+        "rationale": "Frozen objective is the max-rank summed NCCL kernel duration (waiting-inclusive) over 13 DDP gradient allreduces (12x 28,351,488 B + 1x 157,541,376 B, all ncclDevKernel_AllReduce_Sum_f32_RING_LL, SHM/direct channels, peer_access=0). The clean evaluation of candidate e111944d2afd6f4ba071849f28b2f0cdb3c4ceaaab0d4848a4f1570116ee244c measured 37.511 ms vs paired parent 41.830 ms with the step_ms constraint satisfied, but acceptance failed on paired_gain_not_above_noise, and its declared route 'parent-exact-then-gloo-control-align' (call 03e8e3a0a8a549d528e18317, last bucket, direct binding, 0 fallbacks) is candidate-reported telemetry that the endpoint interpretation explicitly asks to corroborate with traces or actual exception evidence. Selection: (1) candidate_diagnostics records the executed candidate Python calls, handled exceptions with propagated library traceback locations and scalar returns on this exact candidate, independently corroborating or refuting the declared parent-exact-then-gloo-control-align route. (2) execution_timeline supplies CPU-to-CUDA submit associations, synchronization, per-device intervals and passive CPU gradient post-accumulate callbacks, attributing whether the reduced kernel sum comes from earlier/aligned submission of the final 150 MB allreduce versus GPU-side readiness; its clock-alignment bounds apply to CPU submissions only, so GPU readiness stays unknown. (3) nccl_tuning captures the actual NCCL algorithm/protocol/channel decisions in a warmed worker at the observed sizes/dtypes (kernel entry names alone do not identify the protocol), attributing any kernel-duration change to changed NCCL decisions and showing remaining tuning headroom. (4) binding_cost compares the additive candidate's parent versus binding-only passthrough in clean AB/BA workers with full quality checks, quantifying whether direct-binding overhead ('no functional replacements' does not imply zero overhead) sits in the ~4 ms band that swallowed the paired gain. Skipped: torch (already ran; observations.json is its output), nsys (timelines alone cannot separate NCCL waiting from wire transfer or prove bucket identity, no graph tracing is involved, and submit/attribution needs are met by execution_timeline), device_telemetry (device-wide NVML windows, not per-collective), collective_calibration (a synthetic reference experiment, not a bound or candidate verification; would not change this decision), python_runtime (perturbs execution and host dispatch is not the observed uncertainty).",
+        "revision": "e111944d2afd6f4ba071849f28b2f0cdb3c4ceaaab0d4848a4f1570116ee244c"
+      }
+    },
+    {
+      "arm": "treatment",
+      "status": "completed",
+      "agent": {
+        "role": "collection-planner",
+        "session": "ses_e85c16a0bffem0w2gjKEJJK2qu",
+        "message": "msg_17a40a121001flozLAWJbuTHtt",
+        "model": "zhipuai/glm-5.3",
+        "usage": {
+          "schema_version": 1,
+          "mode": "observe_only",
+          "messages": 10,
+          "reported_cost": 0.18849944004,
+          "messages_without_cost": 0,
+          "unfinished_messages": 0,
+          "tokens": {
+            "total": 343857.0,
+            "input": 60469.0,
+            "output": 2390.0,
+            "reasoning": 5734.0,
+            "cache.read": 275264.0,
+            "cache.write": 0.0
+          },
+          "sessions": [
+            {
+              "id": "ses_e85c16a0bffem0w2gjKEJJK2qu",
+              "status": "observed",
+              "detail": null
+            }
+          ],
+          "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+        },
+        "sandbox": "/root/autodl-tmp/dev/v6-work/autonomous-cohort-20261027/collection-ab/treatment/sandboxes/collection-planner-replay-dac02d655cb8",
+        "outputs": [
+          "collection.json"
+        ],
+        "feedback_provided": false,
+        "contract_repairs": 0,
+        "generation_snapshots": [
+          "/root/autodl-tmp/dev/v6-work/autonomous-cohort-20261027/collection-ab/treatment/generation-snapshots/generation-11cc3f2d3c61.json"
+        ]
+      },
+      "plan": {
+        "collectors": [
+          "nsys",
+          "nccl_tuning",
+          "collective_calibration"
+        ],
+        "requested_fields": [
+          "nccl_tuning.allreduce_algorithm_by_size",
+          "nccl_tuning.allreduce_protocol_by_size",
+          "nccl_tuning.channel_count",
+          "nccl_tuning.transport_by_channel",
+          "collective_calibration.allreduce_sum_f32_ms.size_28351488",
+          "collective_calibration.allreduce_sum_f32_ms.size_157541376",
+          "collective_calibration.correctness",
+          "nsys.per_rank_nccl_kernel_intervals_us",
+          "nsys.communication_kernel_sum_ms_per_rank",
+          "nsys.cpu_submit_to_nccl_kernel_association"
+        ],
+        "unavailable_fields": {
+          "per_collective_wait_vs_wire_separation_ms": "NCCL kernel durations include device waiting; neither nsys timelines nor kernel names separate waiting from wire transfer per collective. Only cross-rank interval comparison on a shared trace bounds the waiting component.",
+          "per_collective_pcie_nvlink_bytes": "device_telemetry supplies device-wide NVML rates in native sampling windows, not per-collective bytes, and was not selected; transport is already observed as SHM/direct/direct on 2 channels. Wire traffic must not be derived from the logical payload sizes (28351488/157541376 bytes).",
+          "candidate_bucket_to_kernel_proof": "Exact bucket links require native correlation plus observed gradient-storage membership. No communication hook runs on this candidate collection (execution_timeline never replaces one), so per-bucket cost attribution on the candidate remains ambiguous.",
+          "objective_lower_bound_ms": "collective_calibration is a reference experiment at observed sizes/dtypes, not a performance lower bound or critical-path estimate; no collector yields a defensible minimum for communication_kernel_sum_ms.",
+          "binding_overhead_per_group_ms": "binding_cost reports whole-invocation cost only, without per-group effects; step_ms (113.97/115.80 ms) is within its 121.95 ms constraint, so binding overhead is not the open question for this candidate.",
+          "successful_path_execution_proof": "candidate_diagnostics records only exceptions and False returns; endpoint status is passed with 0 framework fallbacks, and empty candidate_diagnostics events would not establish which successful route (declared parent-exact-then-gloo-control-align) executed."
+        },
+        "rationale": "Frozen objective is max-rank summed NCCL kernel duration (includes device waiting). The clean candidate measurement (37.51 ms vs paired parent 41.83 ms) was rejected as paired_gain_not_above_noise while the step_ms constraint passes, and the candidate-declared route 'parent-exact-then-gloo-control-align' for call 03e8e3a0a8a549d528e18317 is uncorroborated telemetry. Discovery on the parent shows 13 fp32 SUM allreduces (12x 28351488 B buckets + 1x 157541376 B last bucket, world 2, SHM/direct/direct, 2 channels) all named ncclDevKernel_AllReduce_Sum_f32_RING_LL, with rank-1 kernels ~13.4-13.7 ms vs rank-0 ~1.9 ms on identical payloads, i.e. the metric is dominated by rank-arrival waiting rather than transfer. nccl_tuning captures the actual NCCL algorithm/protocol/channel decisions in a warmed worker at the observed sizes/dtypes (kernel entry names alone do not identify the protocol), establishing whether RING/LL/2-channel is a genuine lever or a constraint. collective_calibration runs a synthetic full-world SUM allreduce at the actually observed sizes with correctness checks, giving an isolated reference against the in-step kernel times to attribute how much of the 37.51 ms is waiting versus transfer (reference, not a lower bound). nsys on this exact candidate records per-rank NCCL kernel intervals, CPU-to-CUDA submit associations and synchronization, resolving the overlap/attribution question: whether the unaccepted ~4.3 ms gain coincides with changed rank skew or scheduling, and corroborating the declared route with trace evidence. torch already ran and supplies the objective value; nsys/nccl_tuning/collective_calibration run in separate workers on this candidate. device_telemetry (device-wide windows, transport already evidenced), execution_timeline (redundant with nsys here, cannot replace a hook), python_runtime (perturbs, targets host dispatch), candidate_diagnostics (no failure evidence; empty events prove nothing) and binding_cost (not the open question, whole-invocation only) were deliberately not selected.",
+        "revision": "e111944d2afd6f4ba071849f28b2f0cdb3c4ceaaab0d4848a4f1570116ee244c"
+      }
+    }
+  ]
+}

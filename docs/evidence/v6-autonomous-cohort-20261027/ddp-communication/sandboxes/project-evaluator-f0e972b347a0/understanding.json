@@ -1,0 +1,90 @@
+{
+  "goal": "Reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks.",
+  "entrypoint": "gpt2_ddp_training.py (source entry, launched per README.md:37 as python -m torch.distributed.run --standalone --nproc-per-node=2); adapter.py exposes prepare/reset/run/observe/metrics/models/before_run/set_mode reproducing that source's accumulated_step workload.",
+  "completion": "run(state) performs exactly one accumulated DDP training step and completes at the source's boundary: optimizer.zero_grad(set_to_none=True), then workload['accumulation_steps'] microbatches of forward+backward (the first accumulation_steps-1 under DDP.no_sync(), the final microbatch backward performing the DDP gradient allreduce), then optimizer.step(), then torch.cuda.synchronize() (source step() at gpt2_ddp_training.py:102-105 calling accumulate() at 36-45). The framework measures wall time around run() with CUDA-synchronized boundaries, which matches the source's clean step timing (gpt2_ddp_training.py:111-118, excluding build, inputs, reference, checks, barriers and profiling per README.md:41-45). The communication objective diagnostic.max_rank_nccl_kernel_sum_ms is collected by the framework's torch_communication collector over separately profiled invocations of this same step (max across ranks, median of 3), never inside run()/metrics().",
+  "state_protocol": "prepare(context, request) configures the source numerical policy (FP32, TF32 off for matmul/cudnn, cudnn.benchmark False, float32_matmul_precision 'highest', thread settings per common.py:34-42), builds the seed-20261020 GPT-2 LM head on context['device'] from the frozen architecture (workloads.json gpt2_ddp_training.model), wraps it in DDP(broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True) with local device index, creates SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False), generates per-rank token inputs with torch.Generator().manual_seed(31000+rank) using micro_batch/sequence_length/accumulation_steps read from request['workload'], snapshots the initial state_dict on CPU, and creates the source's gloo control group (dist already initialized by the worker; no default group is created). All setup is untimed. reset(state) reloads the CPU snapshot into the model outside timing, restoring the exact pre-step weights (SGD momentum is 0 so the optimizer holds no other state); it never destroys the process group. run(state) itself begins with optimizer.zero_grad(set_to_none=True) exactly as the source's accumulate() does, keeping gradient clearing inside the timed region; it ends with optimizer.step() and torch.cuda.synchronize(). before_run(state) performs the source's gloo control barrier (gpt2_ddp_training.py:114) outside the timer. observe(state, result) runs outside timing and returns the loss, per-microbatch losses, every full gradient and every updated parameter as detached CPU tensors, plus the exact cross-rank gradient-replica broadcast check (raises on mismatch), loss finiteness, and the +1-corruption negative control. metrics(state, result, elapsed_ms) derives step_ms, tokens_per_second and peak_allocated_bytes from the unchanged work amount and the measured elapsed time. models(state) returns the root GPT-2 module for controlled replacement; set_mode records the framework mode.",
+  "invariants": [
+    "Measured workload is exactly one accumulated GPT-2 training step per run() invocation: zero_grad(set_to_none=True), workload['accumulation_steps'] (frozen value 4) microbatches of shape (workload['micro_batch']=1, workload['sequence_length']=128) per rank, then optimizer.step() and torch.cuda.synchronize() (gpt2_ddp_training.py:36-45,102-105; request workload id=accumulated_step, one measured invocation per request notes).",
+    "Loss semantics: each microbatch computes model(input_ids=tokens, labels=tokens, use_cache=False).loss / accumulation_steps, calls loss.backward() on it, and the step's loss is the sum of the scaled per-microbatch losses; the loss must be finite (gpt2_ddp_training.py:40-45,65; request quality.require_finite_loss).",
+    "Gradient synchronization semantics: after the final microbatch backward, every parameter's gradient must equal the world_size-average of the ranks' fully accumulated gradients and be bitwise identical across ranks, enforced in observe() by broadcasting rank 0's gradient and torch.testing.assert_close(atol=0.0, rtol=0.0) per parameter, raising on any mismatch (gpt2_ddp_training.py:81-86; request quality.exact_gradient_replica_check).",
+    "Full-gradient and post-step-parameter reference fidelity: every gradient and every updated parameter is exposed as observations and must match the serial global-batch reference within grad_atol=1e-6/grad_rtol=1e-4 and parameter_atol=1e-6/parameter_rtol=1e-4 (gpt2_ddp_training.py:67-91; request quality); effective batch is world_size*micro_batch*accumulation_steps (=8) and tokens_per_step is world_size*micro_batch*sequence_length*accumulation_steps (=1024) (README.md:44; request notes).",
+    "Numerical policy: FP32 parameters/inputs/losses/gradients, TF32 disabled for matmul and cudnn, cudnn.benchmark False, float32_matmul_precision 'highest', all dropout probabilities 0 (common.py:34-42; gpt2_ddp_training.py:26; request notes on preserved numerical policy).",
+    "Deterministic seeding: model weights initialized after torch.manual_seed(20261020); rank r's token inputs drawn on CPU with torch.Generator().manual_seed(31000+r) as randint(0, 50257, (micro_batch, sequence_length)) then moved to device, so independent workers reproduce identical data (gpt2_ddp_training.py:24-32; empty request assets is valid because the source explicitly declares seeded synthetic fixtures).",
+    "Optimizer semantics: SGD(lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) over all DDP-wrapped parameters, with zero_grad(set_to_none=True) executed inside the timed step before the first microbatch (gpt2_ddp_training.py:37,60; request notes).",
+    "Step-time constraint: step_ms (per-repeat maximum across ranks, median across repeats) must remain <= 1.05x baseline; the measured region excludes model build, input creation, reference construction, correctness checks, gloo control barriers and profiling (request objective.constraints and workload goals; README.md:41-45).",
+    "The communication objective diagnostic.max_rank_nccl_kernel_sum_ms is measured by the framework's torch_communication collector in separate profiled invocations of the same step; the adapter must not install communication hooks or run profilers inside run()/metrics() that would alter the default reducer or the trace (request objective.source and request notes on the separate inventory hook).",
+    "Model architecture is frozen: GPT-2 LM head with n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, use_cache=False, tied LM head, in train mode (workloads.json gpt2_ddp_training.model; request freezes model architecture).",
+    "run() must perform the full accumulation, the required NCCL gradient reduction and the optimizer update on every invocation; reset() restores only the pre-step starting point outside timing and must not destroy the process group (adapter contract; source reset at gpt2_ddp_training.py:99-100 and control barrier at 113-114)."
+  ],
+  "objective": {
+    "name": "communication_kernel_sum_ms",
+    "unit": "ms",
+    "direction": "minimize",
+    "constraints": [
+      {
+        "metric": "step_ms",
+        "op": "le",
+        "baseline_ratio": 1.05,
+        "rank_aggregation": "max",
+        "aggregation_order": "ranks_then_samples"
+      }
+    ],
+    "source": {
+      "collector": "torch_communication",
+      "field": "communication_kernel_sum_ms",
+      "project_metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+      "project_definition": "Per-rank sum of device NCCL kernel durations in a separately profiled step invocation, maximum across ranks, median of the 3 profiled invocations; includes device waiting; not wire time, exposed or critical-path communication"
+    },
+    "rank_aggregation": "max",
+    "aggregation_order": "ranks_then_samples"
+  },
+  "workload": {
+    "id": "accumulated_step",
+    "world_size": 2,
+    "micro_batch": 1,
+    "sequence_length": 128,
+    "accumulation_steps": 4,
+    "goals": [
+      {
+        "id": "step",
+        "metric": "step_ms",
+        "direction": "min"
+      },
+      {
+        "id": "communication",
+        "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+        "direction": "min",
+        "constraints": {
+          "step_ms_max_baseline_ratio": 1.05
+        }
+      }
+    ]
+  },
+  "quality": {
+    "atol": 1e-06,
+    "rtol": 0.0001,
+    "grad_atol": 1e-06,
+    "grad_rtol": 0.0001,
+    "parameter_atol": 1e-06,
+    "parameter_rtol": 0.0001,
+    "exact_gradient_replica_check": {
+      "atol": 0.0,
+      "rtol": 0.0
+    },
+    "require_finite_loss": true,
+    "corrupted_output_rejected": true
+  },
+  "missing_information": [],
+  "assumptions": [
+    "DDP construction details broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True and the no_sync()-on-the-first-(accumulation_steps-1)-microbatches mechanism are the baseline's implementation of one gradient reduction per parameter per step; they are preserved here for fidelity but remain legitimate optimization surfaces (bucket sizing, reduction strategy, overlap) as long as the exact-replica and reference-fidelity invariants and the step_ms constraint hold (gpt2_ddp_training.py:40,59; README.md:44 notes the baseline already avoids redundant sync).",
+    "attn_implementation='eager' and zero dropout are source choices for a deterministic reference path, preserved in this baseline; they are not frozen by the request, but any change must still satisfy the tolerance-based gradient/parameter observations and exact cross-rank equality (gpt2_ddp_training.py:26).",
+    "torch.set_num_threads(4) and torch.set_num_interop_threads(1) are environment setup choices from common.configure applied best-effort in prepare (common.py:34-36).",
+    "The source's in-process rank-0 serial reference, the separate comm-hook bucket-inventory step and trace-file writing are measurement/diagnostics infrastructure outside the frozen workload: this adapter omits the second GPU reference model (the framework stores reference observations on CPU and compares the exposed full gradients/parameters at the request tolerances) and leaves passive bucket inventory and NCCL-kernel collection to the framework's collector, per the worker ABI and request notes (gpt2_ddp_training.py:67-91,128-138).",
+    "step() ends with torch.cuda.synchronize() inside the timed call (gpt2_ddp_training.py:105), so the framework's post-run boundary synchronization measures the same completion point; no extra boundary syncs are added inside run().",
+    "The gloo control barrier before each measured step (gpt2_ddp_training.py:113-114, control group created at 53) is reproduced via a gloo side group in prepare and used in before_run() outside the timer; barriers never count toward step_ms (README.md:45).",
+    "Architecture constants are embedded from the source's workloads.json because request['workload'] carries only workload dimensions; all workload-dependent values (world_size, micro_batch, sequence_length, accumulation_steps) are read from request['workload'] in prepare() so a separately validated variant can supply different values with this same adapter.",
+    "The held-out workload 'longer_sequence' in workloads.json is a reserved validation configuration and is not part of this frozen request (README.md:57).",
+    "The exact-gradient-replica broadcast, loss-finiteness assertion and the +1-corruption negative control (common.negative_check semantics on a gradient slice) are implemented in observe() outside timing; observe() is expected to be invoked on all ranks so its collectives stay symmetric.",
+    "metrics() reports only clean project metrics (step_ms, tokens_per_second, tokens_per_step, effective_batch, workload descriptors, parameter_count, peak_allocated_bytes) because the objective has a framework collector descriptor; no profiler or fake objective value is produced inside run()/metrics()."
+  ]
+}
