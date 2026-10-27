@@ -87,4 +87,4 @@ control 在 run 内额外同步，treatment 没有；框架本身也在边界同
 
 box4-3 的 intake 相关6项检查通过，并核对生产段落与真实 treatment 逐字相同。本机先缺 PYTHONPATH，补上后仍缺 optuna，故在已有依赖的主开发环境完成检查。旧 request 路径未变，未运行无关旧回归。
 
-数据盘实际 `df -B1` 可用10,875,371,520 bytes（约10.13 GiB）。本环境 `shutil.disk_usage` 却返回底层文件系统约703GB，不能用于判断容器剩余额度；旧协议里的该值只保留为原始记录。后续批次同时记录 df 与 statvfs，按 df 安排一次 DDP 和小型 TP 诊断，不删除冻结证据、不并发大型 trace。
+数据盘实际 `df -B1` 可用10,875,371,520 bytes（约10.13 GiB）。对部分嵌套实验路径，`shutil.disk_usage` 却返回底层文件系统约703GB；对挂载根又返回正确额度，因此不能单凭该 API 判断容器剩余额度。旧协议里的值保留为原始记录。后续批次同时记录路径、df 与 statvfs，按 df 安排一次 DDP 和小型 TP 诊断，不删除冻结证据、不并发大型 trace。
