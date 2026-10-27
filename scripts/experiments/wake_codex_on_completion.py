@@ -65,6 +65,42 @@ print(json.dumps(probe()))
 
 
 def probe(args):
+    if getattr(args, 'local_root', None):
+        final = args.local_root / 'completion.json'
+        if final.exists():
+            value = json.loads(final.read_text(encoding='utf-8'))
+            return {'terminal': True, 'reason': 'maintenance_' + value['phase'],
+                    'record': str(final), 'completed_at': value.get('finished_at'),
+                    'completed_groups': [g['group'] for g in value.get('groups', [])]}
+        launch = args.local_root / 'launch.json'
+        if not launch.exists():
+            return {'terminal': False, 'reason': 'launch_record_missing'}
+        pid = json.loads(launch.read_text(encoding='utf-8'))['pid']
+        if os.name == 'nt':
+            import ctypes
+            from ctypes import wintypes
+            kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+            kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+            kernel.OpenProcess.restype = wintypes.HANDLE
+            kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+            kernel.WaitForSingleObject.restype = wintypes.DWORD
+            kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+            handle = kernel.OpenProcess(0x00100000, False, pid)
+            if not handle and ctypes.get_last_error() == 5:
+                raise PermissionError('Cannot inspect maintenance controller')
+            wait_result = kernel.WaitForSingleObject(handle, 0) if handle else 0
+            if handle:
+                kernel.CloseHandle(handle)
+            if wait_result == 0xFFFFFFFF:
+                raise OSError('Cannot query maintenance controller state')
+            running = bool(handle) and wait_result == 258
+        else:
+            try:
+                os.kill(pid, 0); running = True
+            except ProcessLookupError:
+                running = False
+        return {'terminal': not running, 'reason': 'waiting' if running else 'controller_exited_without_completion',
+                'pid': pid}
     command = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=12',
                '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=2',
                '-p', str(args.port), args.host, shlex.quote(args.remote_python) + ' -']
@@ -114,6 +150,7 @@ def main():
     parser.add_argument('--host', required=True)
     parser.add_argument('--port', type=int, required=True)
     parser.add_argument('--remote-root', required=True)
+    parser.add_argument('--local-root', type=Path, help='Watch a local archive controller instead of SSH experiments.')
     parser.add_argument('--remote-python', default='python3')
     parser.add_argument('--thread', required=True)
     parser.add_argument('--cwd', type=Path, required=True)
