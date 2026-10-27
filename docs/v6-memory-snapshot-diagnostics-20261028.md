@@ -21,3 +21,9 @@ AST检查确认`invoke`之外无变化，计时调用不变；基准源码SHA `5
 工作目录 `/root/autodl-tmp/dev/v6-work/memory-snapshot-diagnostics-20261028`，脚本`v6_memory_snapshot_probe_20261028.py`、`v6_memory_snapshot_batch_20261028.py`。GPU串行租用，参考只读复用，原始数据留服务器。数据盘启动准备时约48.31 GiB可用；不恢复大体积本地转存，不启动大型TP实验。
 
 旧DDP独立拒绝、TP完整32-token质量失败、Qwen/ResNet旧拒绝及全部样本、不同memory adapter的接受与missing images事实不变。本批没有新的正式候选接受；生产是否采用显存读取改进，要在真实控制、固定端点和代码审阅后决定。使用一个普通完成监听，不启用Goal、额外投递测试或模型进度轮询；API费用仅统计、不限额。
+
+## 启动错误与修正
+
+首次冻结`0d3dec2`于19:00:57 UTC启动，PID315735。CUDA控制在创建worker前失败：协议写入已创建`controls/legacy-original`，而LocalExecutor要求运行输出目录不存在，抛出FileExistsError；DDP按协议跳过。没有任何GPU质量/性能结论，后续真实语义审阅仍保留运行，不取消、不重启。
+
+已将worker输出改为其独立`run`子目录，协议留父目录。首个根目录、错误日志及审阅均保留；修正后的验证使用新目录`/root/autodl-tmp/dev/v6-work/memory-snapshot-validation-20261028`。首次普通监听被标记停止，由新验证批次的唯一监听接管；新续行指令同时核对首次审阅终态。该修正只涉及实验目录布局，不涉及生产逻辑或实验判据。

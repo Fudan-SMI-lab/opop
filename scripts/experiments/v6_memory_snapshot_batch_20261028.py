@@ -29,7 +29,7 @@ def controls(args):
             task = {'quality': {'atol': 0, 'rtol': 0}, 'continuous_steps': 2, 'warmup': 1, 'repeats': 2,
                     'objective': {'name': 'latency_ms', 'direction': 'minimize'}, 'measurement_lifetime': lifetime}
             request = ExecutionRequest(entry=Path(__file__).with_name('v6_memory_snapshot_probe_20261028.py'),
-                function='control', cwd=Path(__file__).resolve().parents[2], devices=['0'], output=output,
+                function='control', cwd=Path(__file__).resolve().parents[2], devices=['0'], output=output/'run',
                 lease_dir=args.source.parent/'device-leases', worker_timeout_s=180, wait_for_devices=True,
                 parameters={'request': task, 'adapter': str(output/'fixture-adapter'), 'action': 'controls',
                             'memory_read_policy': policy})
