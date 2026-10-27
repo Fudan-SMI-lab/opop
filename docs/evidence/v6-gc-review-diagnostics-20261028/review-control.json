@@ -1,0 +1,105 @@
+{
+  "review_type": "diagnostic_review",
+  "scope_statement": "Diagnostic review of fixed DDP B/C/N endpoints and TP same-input colwise projection evidence. Not autonomous optimization, not acceptance. Prior independent failures preserved: the earlier DDP independent rejection and the TP full 32-token logits failure both remain in force; nothing below adopts or reopens a production change.",
+  "findings": [
+    {
+      "claim": "Observation: arm C (candidate comm hook + per-collective gloo barrier) lowers the diagnostic objective - median over 3 profiled invocations of the max-rank summed NCCL kernel duration - from 53.63 ms (original baseline evaluation) and 53.50/40.09 ms (the two B endpoints) to 35.32/35.28 ms (the two C endpoints), and equalizes the two ranks (timeline per-rank kernel sums 35.17 vs 35.00 ms, versus B rank0 45.44 vs rank1 35.58 ms in the matched timeline capture).",
+      "evidence_paths": [
+        "inputs/ddp-protocol.json (original_evaluation rank metric_samples: rank1 [54.87, 40.49, 53.63] vs rank0 [35.73, 36.03, 36.00]; objective definition lines in request.notes)",
+        "inputs/ddp-clean-result.json (endpoints 0/1/4/5 metric_samples and communication_kernel_sum_ms)",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-B/run/timeline-analysis-rank-0-0.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-B/run/timeline-analysis-rank-1-0.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-C/run/timeline-analysis-rank-0-0.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-C/run/timeline-analysis-rank-1-0.json"
+      ],
+      "limitations": "Two endpoints per arm in one fixed order (B,C,N,N,C,B). The metric is per-rank summed device NCCL kernel duration including device waiting; it is explicitly not wire time, not critical-path time and not exposed communication, so this reduction is a reduction of the defined metric only. All runs are separate developer diagnostics with full correctness checks retained (valid=true), not formal acceptance evaluations."
+    },
+    {
+      "claim": "Observation with mechanism support, not proof: the baseline B shows 4.8-8.4 ms cross-rank CPU submission spread per matched collective; C collapses it to <=0.16 ms; the ablation N (hook, no barriers) leaves it uncontrolled at 1.2-1.9 ms in one capture and 11.6-12.8 ms in another. In C, the early rank's wait is visible CPU-side as gloo control-group barrier ranges (rank0 rep1: one 37.46 ms wait, 13 barrier ranges total). The B timeline shows the earlier-submitting rank carrying ~9.9 ms more summed NCCL kernel time (45.44 vs 35.58 ms), consistent with in-kernel device wait on the early rank that C's barriers move CPU-side.",
+      "evidence_paths": [
+        "inputs/ddp-timeline-result.json (profiles[].cross_rank['0'/'1'].collectives[].cpu_submit_spread_bounds_us; arm C rank0 gloo:barrier sum 44122.4 us, max 37456.7 us in repeat 1)",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-C/run/timeline-analysis-rank-0-0.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-N/run/timeline-analysis-rank-0-0.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-N/run/timeline-analysis-rank-1-0.json",
+        "inputs/trial-25f69b0d87.py (hook applies div_/allreduce and returns the official future chain; barriers use the gloo control group)"
+      ],
+      "limitations": "CPU submission spread is not GPU arrival skew; the collector states this scope itself. Gloo barrier CPU ranges are nested/overlapping waits whose durations must not be summed as additive cost; the 37.46 ms maximum is a single-range wait, not a step cost. Device-wait attribution rests on rank-differential kernel sums plus CPU spread - no collected field directly measures per-collective cross-rank device arrival, which is why the next_minimal_experiment proposes exactly that join. The trial docstring's 'measured 3.0-3.7 ms rank submit skew' understates the 4.8-8.4 ms actually observed in the B timelines."
+    },
+    {
+      "claim": "Observation: N is a parameter ablation of the same candidate version as C (identical entry sha), run with per_collective_align='none' and pre_backward_align='none' in both clean endpoints and its timeline; its metric stays elevated and variable (medians 43.85 and 41.60 ms, per-invocation max-rank values up to 50.89 ms). The executed C is per-collective-barrier-only (pre_backward_align='none'), which is not the trial file's default configuration (DEFAULT_PRE_BACKWARD_ALIGN='drain_barrier' plus per-collective barrier); the drain_barrier variant was not measured in these endpoints.",
+      "evidence_paths": [
+        "inputs/ddp-protocol.json (versions B vs C/N shas; parameter_change_N_only; candidate_parameters per_collective_align barrier / pre_backward_align none; scope 'N is a parameter ablation, not the frozen accepted version')",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/clean-2-N/run/request.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/clean-3-N/run/request.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-C/run/request.json",
+        "inputs/trial-25f69b0d87.py (defaults drain_barrier + barrier)",
+        "inputs/ddp-clean-result.json (endpoints 2/3 metric_samples)"
+      ],
+      "limitations": "N must not be described as a frozen full version, and C must not be described as the trial-default configuration. Two endpoints per parameter setting in a fixed interleaved order cannot separate the barrier's effect from endpoint-order drift; no until-pass repeats or sample removal are permitted or performed."
+    },
+    {
+      "claim": "Observation: step-time behavior under the protocol's constraint semantics (max across ranks per aligned repeat, then median over 20 repeats, bound 1.05x the original baseline median of 115.139 ms, i.e. 120.90 ms): C endpoints sit at 111.39 and 113.57 ms, N at 119.33 and 114.42 ms (endpoint 2 within ~1.3 percent of the bound), B endpoints at 122.13 and 109.71 ms. The first B endpoint exceeds the very bound its own baseline would be judged against, so baseline step time is bimodal across endpoints in this session.",
+      "evidence_paths": [
+        "inputs/ddp-clean-result.json (median_max_rank_step_ms per endpoint: 122.13, 111.39, 119.33, 114.42, 113.57, 109.71)",
+        "inputs/ddp-protocol.json (original_evaluation metrics.step_ms 115.139; constraint step_ms le 1.05 baseline_ratio, rank_aggregation max, ranks_then_samples)"
+      ],
+      "limitations": "These are diagnostic endpoints, not formal constraint evaluations; medians are robust to the observed 444-519 ms outliers but the bimodal baseline means any single-endpoint pass/fail margin claim is unreliable. Cross-endpoint comparison is confounded with time/order (first endpoint slowest for B and slowest overall)."
+    },
+    {
+      "claim": "Observation: periodic synchronized step outliers of ~444-519 ms appear at identical sample indices on both ranks only in the comm-hook arms (C endpoint 1: samples ~444.3/444.8/468.4 ms and one 142.4 ms; N endpoint 2: 473.5/518.8 ms; N endpoint 3 first sample ~164.8 ms) and are absent from both B endpoints (maxima 128.8 and 113.5 ms).",
+      "evidence_paths": [
+        "inputs/ddp-clean-result.json (endpoints[].ranks[].samples step_ms arrays; outliers at the same indices on rank 0 and rank 1)"
+      ],
+      "limitations": "Cause unattributed: the timeline collector captured only 2 profiled repeats per arm and shows no comparable stall, so present evidence cannot distinguish a comm-hook-path effect from endpoint environment interference. MAD confirms the instability (C endpoint 1 MAD 5.67 ms vs B endpoint 5 MAD 1.69 ms). This is an open diagnostic question, not a rejection."
+    },
+    {
+      "claim": "Observation (TP same-input projection): with bit-identical BF16 inputs (same_input exact_equal on sha-matched prior TP inputs), local colwise shard computation reproduces the recorded TP outputs exactly for all three projections on both ranks (official_module, checkpoint_slice_bf16, local_weight_bf16, local_contiguous_bf16, local_bf16_repeat all exact_equal against recorded TP), and local weights match checkpoint row slices exactly. Against the recorded single-block (unsharded) observation, the wide q_proj shard's local variants differ from the recorded output slice by at most one BF16 ulp (4.88e-4) while the full-BF16-matmul slice matches it exactly; FP32-cast variants differ up to 7.8e-3. The smaller k_proj/v_proj shards (512 rows) match every variant exactly.",
+      "evidence_paths": [
+        "inputs/tp-summary.json (ranks[].result.projections[]: same_input, checkpoint_row_slice, against_recorded_tp, against_recorded_single_slice)",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/tp-result.json",
+        "inputs/stage-index.json (tp-colwise entry)"
+      ],
+      "limitations": "Single-layer, same-input local arithmetic mapping only. It does not emulate NCCL execution, does not exercise the o_proj reduction or lm_head, and does not establish full 32-token logits quality - the prior full TP rejection remains in force and is not weakened by these BF16/FP32 local results. The q_proj full-vs-shard one-ulp divergence is a property of this capture's wide shard and kernel selection; it is neither a defect claim nor an acceptance claim."
+    },
+    {
+      "claim": "Collector adequacy assessment: the existing collector stack exposes what a candidate agent needs to reproduce the objective and rank mechanisms - per-rank per-invocation communication_kernel_sum_ms (the objective source), per-collective NCCL kernel durations with CUDA-launch correlation and launch-to-kernel-start intervals, cross-rank CPU submit spread bounds on a verified shared monotonic clock (boot_id domain plus anchor hull, never subtracting unaligned rank timestamps), CPU c10d/gloo range inventories, and gradient post-accumulate CPU callbacks with bucket membership. One justified gap remains: no collected field joins per-rank kernel timestamps to the cross-rank clock mapping, so per-collective cross-rank device-arrival (kernel start) bounds - the direct quantity separating in-kernel wait from payload floor - are not exposed; cross_rank explicitly scopes itself as 'not GPU arrival skew'. Optional GPU stream markers were disabled in these runs (gradient_stream_markers: not_collected).",
+      "evidence_paths": [
+        "inputs/timeline-collector.py (analyze, cross_rank, capture; scopes at lines restricting claims to CPU submission and observed intervals)",
+        "inputs/ddp-timeline-result.json (clock status observed with offset_bounds_us per rank; cross_rank spread rows)",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-B/run/timeline-analysis-rank-0-0.json"
+      ],
+      "limitations": "The gap is analysis-side only; filling it requires no new GPU work, workload change, prompt, metric or threshold change. Nothing here asserts the collector is insufficient for the objective itself - it is sufficient for measurement and mechanism ranking; the gap concerns direct falsification of the wait mechanism."
+    }
+  ],
+  "unresolved": [
+    "Prior independent failures remain open and unoverturned: the earlier DDP candidate's independent rejection, and the TP full 32-token logits failure (scope.txt). This review adopts nothing; both failures stay in force regardless of the C-endpoint metric observation.",
+    "Cause of the periodic ~444-519 ms synchronized step outliers present only in the comm-hook arms (C and N, both ranks at identical sample indices), absent in B; current timeline evidence (2 profiled repeats, no stall observed) cannot attribute them.",
+    "Whether the residual ~35 ms per-rank kernel-sum floor (11-12 small buckets at ~1.9 ms plus one ~10.5 ms large bucket, consistent across arms) is payload/algorithm-bound or still contains removable in-kernel wait; this requires per-collective cross-rank device-arrival bounds that the collector does not currently emit.",
+    "How much of C's step-time position relative to the 120.90 ms bound is stable given the bimodal baseline (B endpoint 0 at 122.13 ms vs endpoint 5 at 109.71 ms) and the endpoint ordering; no repeated baseline under identical conditions exists in this session.",
+    "Whether the trial-default configuration (pre_backward_align='drain_barrier' plus per-collective barrier) differs from the executed barrier-only C; it was never measured in these endpoints, and ddp-protocol.json's candidate_parameters describe the barrier-only variant actually run.",
+    "TP: whether the one-BF16-ulp wide-shard divergence observed against the single-block q_proj slice propagates through the rowwise o_proj reduction and lm_head to full 32-token logits; the same-input projection is local to layer 0 attention projections and cannot answer this."
+  ],
+  "next_minimal_experiment": {
+    "name": "retrospective_cross_rank_device_arrival_bounds",
+    "question": "Per matched collective, do the cross-rank NCCL kernel start times collapse under arm C and remain spread under arm B by roughly the measured CPU submit spread, directly confirming that B's early-rank kernel-duration excess is in-kernel device wait rather than payload growth?",
+    "change": "Analysis-only extension of the existing timeline collector's cross_rank step: for each matched collective (grouped as today by process_group/sequence/operation/participants), map each rank's kernel start and end trace timestamps onto the host monotonic clock using that rank's already-computed clock offset_bounds_us hull, and emit kernel_start_spread_bounds_us and kernel_end_spread_bounds_us per collective under the existing never-subtract-unaligned-timestamps policy. No new GPU work, no workload/prompt/metric/threshold changes, collector option default off; validated purely by re-analyzing already-collected traces.",
+    "falsifiable_prediction": "Under arm B, per-collective kernel_start_spread_bounds_us should be of the same magnitude as the measured CPU submit spread (approx. 4.8-8.4 ms in repeat 0, 4.8-5.7 ms in repeat 1) and the earlier-submitting rank's per-collective kernel duration should exceed the later rank's by a comparable amount; under arm C, kernel_start_spread_bounds_us should collapse to the same scale as its CPU spread (<= ~0.5 ms, versus measured 0.00-0.16 ms) with per-bucket durations near-equal across ranks.",
+    "failure_condition": "If under C the kernel_start_spread bounds do not collapse, or the early-rank duration excess persists after CPU submission alignment, then the 'in-kernel device wait moved CPU-side' mechanism is falsified and the 53.63 -> 35.32 ms metric reduction must be explained by another cause (e.g. changed kernel selection or launch schedule from the hook itself), which the N ablation data alone cannot establish.",
+    "inputs": [
+      "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-B/run/timeline-analysis-rank-0-0.json",
+      "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-B/run/timeline-analysis-rank-0-1.json",
+      "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-B/run/timeline-analysis-rank-1-0.json",
+      "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-B/run/timeline-analysis-rank-1-1.json",
+      "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-C/run/timeline-analysis-rank-0-0.json",
+      "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-C/run/timeline-analysis-rank-0-1.json",
+      "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-C/run/timeline-analysis-rank-1-0.json",
+      "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-C/run/timeline-analysis-rank-1-1.json",
+      "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-N/run/timeline-analysis-rank-0-0.json",
+      "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-N/run/timeline-analysis-rank-0-1.json",
+      "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-N/run/timeline-analysis-rank-1-0.json",
+      "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-N/run/timeline-analysis-rank-1-1.json"
+    ],
+    "cost": "CPU-only re-analysis of 12 existing timeline-analysis JSON files using the measured worker python (/root/autodl-tmp/dev-venv/bin/python); optionally emitted for future timeline runs behind a default-off collector option.",
+    "interpretation_scope": "Result would strengthen or falsify a mechanism attribution only; it would not constitute acceptance, would not change any threshold, and would not alter the preserved prior independent failures."
+  }
+}

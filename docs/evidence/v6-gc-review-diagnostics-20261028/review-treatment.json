@@ -1,0 +1,121 @@
+{
+  "findings": [
+    {
+      "claim": "Arm and parameter identification (observation). The fixed DDP endpoints are: B = code version 547a003950af353d6f337f421657fc1eedda36105f97ca2bd188c054afbae3f8 whose run requests carry no policy parameters; C = code version 75e28d3d2ccd5fab06175ef1b827a325ed2159d011758c7b2deccda6173b9e2d with per_collective_align='barrier', pre_backward_align='none' (the frozen candidate_parameters of the protocol); N = the same 75e28d3d... version with per_collective_align='none', pre_backward_align='none'. N is a parameter ablation of C only, not a frozen, accepted or representative version. Clean order was B,C,N,N,C,B (repeats 20, warmup 2); timeline profile order B,C,N with 2 repeats. All arms perform 13 allreduce collectives per step (12 small buckets plus the last 39,385,344-element bucket).",
+      "evidence_paths": [
+        "inputs/ddp-protocol.json",
+        "inputs/ddp-clean-result.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/clean-1-C/run/request.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/clean-2-N/run/request.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/clean-0-B/run/request.json"
+      ],
+      "limitations": "Run requests record bundle parameters but not a semantic code label; version identity rests on the protocol's sha mapping. The diagnostic parameters (pre_backward_align='none') differ from trial-25f69b0d87.py's DEFAULT_PRE_BACKWARD_ALIGN='drain_barrier', so these endpoints do not exercise the drain_barrier variant at all."
+    },
+    {
+      "claim": "Objective values on the clean endpoints (observation). Computing the objective as defined (per-rank sum of device NCCL kernel durations per profiled invocation, max across ranks per aligned invocation, median of the 3 profiled invocations): original baseline evaluation 53.63 ms; B 53.50 ms (first endpoint) and 40.44 ms (last); C 35.32 ms and 35.18 ms; N 43.85 ms and 41.60 ms. C is the only arm whose per-rank medians collapse onto both ranks in both endpoints (all six per-rank medians 34.90-35.39 ms), i.e. the intermittently inflated rank disappears. The unaligned arms keep one inflated rank in every endpoint, and the inflated rank differs across endpoints (B endpoint 0: rank 1 at 53.50; N endpoint 2: rank 0 at 43.41; N endpoint 3: rank 0 at 41.60).",
+      "evidence_paths": [
+        "inputs/ddp-protocol.json",
+        "inputs/ddp-clean-result.json"
+      ],
+      "limitations": "Three profiled invocations per endpoint and at most two endpoints per arm; the metric is defined to include device waiting inside NCCL kernels and is explicitly NOT wire time, critical-path time or exposed communication; these are developer diagnostics, not a formal paired evaluation, and no acceptance or rejection follows from them."
+    },
+    {
+      "claim": "Cross-rank CPU submit spread (observation). Using the collector's bracketed monotonic-clock anchors, matched-collective CPU submission spread bounds are: B 7.47-8.82 ms (repeat 0) and 4.80-5.91 ms (repeat 1), rank 0 the earlier submitter in every B collective; N 1.19-2.09 ms (repeat 0) and 11.63-13.29 ms (repeat 1), rank 1 the earlier submitter in every N collective; C 0-0.18 ms in both repeats across all 26 collectives. The protocol's claimed 3.0-3.7 ms candidate skew is within the range actually observed here (1.2-13.3 ms) but not a stable point estimate.",
+      "evidence_paths": [
+        "inputs/ddp-timeline-result.json",
+        "inputs/timeline-collector.py"
+      ],
+      "limitations": "Separate profiler captures (2 per arm), not the metric's own invocations. Spread bounds are CPU submission intervals that retain anchor jitter; a lower bound of 0 means the intervals overlap within bounds, not proven simultaneity. CPU submit spread is not GPU arrival skew and not transport duration (collector scope notes state this)."
+    },
+    {
+      "claim": "Early submitter carries the inflated kernel-duration sum (hypothesis, strongly supported within captures). In each unaligned timeline capture the rank that submits earlier holds the larger per-rank NCCL kernel sum: B rank 0 = 45.44/42.89 ms vs rank 1 = 35.58/35.79 ms; N rank 1 = 42.35/52.68 ms vs rank 0 = 35.90/36.15 ms. In N's 11.6-13.3 ms-skew repeat the first collective alone ran 13.90 ms against a ~1.9 ms per-collective floor, i.e. the skew is absorbed as in-kernel device wait concentrated in the earliest collectives. Both C captures sit at 35.00-35.55 ms on both ranks, indistinguishable from the observed floor structure (11 collectives ~1.9 ms, one ~2.8-3.4 ms, final large bucket ~10.4-10.6 ms). Mechanism reading: unaligned CPU submission lets the early rank's NCCL kernels spin-wait for the peer, which the max-rank sum objective then records; C's per-collective gloo barrier removes that term without emitting NCCL kernels (13 gloo:barrier + 13 c10d::barrier CPU ranges, zero extra NCCL collectives).",
+      "evidence_paths": [
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-B/run/timeline-analysis-rank-0-0.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-B/run/timeline-analysis-rank-0-1.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-B/run/timeline-analysis-rank-1-0.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-B/run/timeline-analysis-rank-1-1.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-N/run/timeline-analysis-rank-0-0.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-N/run/timeline-analysis-rank-1-0.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-N/run/timeline-analysis-rank-1-1.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-C/run/timeline-analysis-rank-0-0.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-C/run/timeline-analysis-rank-1-0.json",
+        "inputs/ddp-timeline-result.json"
+      ],
+      "limitations": "Correlation observed inside separate, profiler-perturbed captures; the objective's own three profiled invocations per endpoint were never paired with submit-spread evidence. In-kernel wait is sublinear in CPU skew (B repeat 0: 7.5-8.8 ms spread produces only ~+9.9 ms of sum, mostly in the first and a few later collectives), so no quantitative skew-to-metric transfer model is established. The collector deliberately marks gpu_input_ready, consumer_completion and timed_collective_identity unknown: launch-to-start intervals, GPU producer readiness and NCCL internals are unobserved, and kernel durations remain non-wire-time. The absence of gloo ranges in B/N captures is an inventory fact only and does not prove absence of CPU-side waits there."
+    },
+    {
+      "claim": "Step-time constraint is not adjudicable from this diagnostic (observation). Median max-rank step_ms: B 122.13 ms at endpoint 0 - the only endpoint that started from P8 idle clocks (210 MHz before, 2520 MHz after) - versus 109.71 ms at endpoint 5 on the same B version; C 111.39/113.57; N 119.33/114.42; original baseline 115.14, so the 1.05x constraint bound is ~120.90 ms. The same code version spanning 12.4 ms across sequence positions exceeds every arm difference, so arm-level step_ms ordering and any constraint verdict from this sequence are confounded by endpoint position (clock ramp, first-endendpoint warmth) and must be left to the formal paired evaluation.",
+      "evidence_paths": [
+        "inputs/ddp-clean-result.json",
+        "inputs/ddp-protocol.json"
+      ],
+      "limitations": "GPU pstate/clocks are sampled only before and after each endpoint; no statistical model or repeated cold-start control exists; MADs range 1.46-5.91 ms within endpoints, and single 444-519 ms outlier samples inside C/N/B endpoints show the clean timing itself is heavy-tailed in this environment."
+    },
+    {
+      "claim": "Correctness held in every diagnostic endpoint (observation, non-acceptance). All six clean endpoints passed the source's full correctness battery in both of their check rounds (checks_passed [true, true], math_policy_unchanged true): exact cross-rank gradient equality at atol=rtol=0, serial single-GPU global-batch reference comparison, post-step parameter comparison and the +1-corruption negative control, with FP32/no-TF32 math policy unchanged. This is a diagnostic observation about these runs only. The prior independent DDP rejection of the candidate lineage remains in force; nothing in this review constitutes acceptance, and no production change is adopted.",
+      "evidence_paths": [
+        "inputs/ddp-clean-result.json",
+        "inputs/opop_adapter.py",
+        "inputs/scope.txt"
+      ],
+      "limitations": "Two check rounds per diagnostic endpoint, not the formal harness regime; passing here does not clear the prior independent rejection and does not speak to the step-time constraint."
+    },
+    {
+      "claim": "TP same-input colwise projection evidence (observation). For layer.0.self_attn q_proj/k_proj/v_proj on both ranks: the sharded weights match the checkpoint row slices exactly (max_abs_error 0.0 over 1,310,720-5,242,880 elements per tensor), the TP inputs are bit-identical to the recorded single-block inputs (same sha256, 0.0 error), and the prior TP run's projection outputs are bit-identical (0.0) to the official module's shard outputs for every variant pair. The only nonzero deltas are arithmetic-order controls: BF16 full-matmul-then-row-slice differs from shard matmul on q_proj (max 4.88e-4 rank 0, 9.77e-4 rank 1; rms 3.2e-6-6.3e-6) while k_proj/v_proj match exactly in BF16, and FP32-cast controls differ more (3.9e-3-7.8e-3). Interpretation as hypothesis: the prior TP failure was not caused by wrong local weight mapping, wrong input mapping, or wrong shard arithmetic in these projections; the BF16/FP32 deltas quantify accumulation-order sensitivity of the rowwise split and nothing more.",
+      "evidence_paths": [
+        "inputs/tp-summary.json"
+      ],
+      "limitations": "Coverage is three projections of layer.0 on a 256-token input, two ranks. It does not touch the full 32-token logits, does not emulate any NCCL execution, and neither accepts nor rejects model quality: local BF16/FP32 arithmetic agreement cannot be promoted to full-model quality acceptance. The prior full TP rejection remains standing and unexplained by this evidence."
+    },
+    {
+      "claim": "Collector adequacy for a candidate agent (assessment). The existing collector exposes the mechanism-level information a candidate agent actually needs for the skew question: anchored cross-rank CPU submission bounds per matched collective (shared boot_id + CLOCK_MONOTONIC anchors), per-rank device kernel intervals with overlap/gap/tail aggregates, CPU c10d/gloo range inventories (counts; durations explicitly non-additive), CUDA synchronization calls, and CPU-side gradient-readiness callbacks with bucket membership - while refusing unsound inferences (never subtracting unaligned rank timestamps, marking gpu_input_ready/consumer_completion/timed_collective_identity unknown, calling gaps non-recoverable). Two exposures are genuinely absent: (i) decomposition of a NCCL kernel duration into wait vs algorithm vs transport - impossible from device durations, so the composition of the ~35.0 ms per-rank floor remains unknown; (ii) submit-spread evidence on the objective's own three profiled invocations, whose traces carry no cross-rank clock anchors, so the skew-mechanism pairing exists only in the separate perturbed timeline captures. Gap (ii) is small, justified and closable with collector code that already ships (the opop.clock anchor brackets); gap (i) would require a different tool class (ncu/nsys are provisioned in the protocol) and is not proposed here. The optional gpu_gradient_markers stream-marker facility was not enabled in these captures ('not_collected').",
+      "evidence_paths": [
+        "inputs/timeline-collector.py",
+        "inputs/ddp-timeline-result.json",
+        "inputs/ddp-clean-result.json",
+        "inputs/ddp-protocol.json"
+      ],
+      "limitations": "Bucket readiness remains CPU-callback evidence only ('Not GPU bucket-ready timestamps'); gradient stream markers add overhead and prove neither reducer bucket readiness nor unique consumption even when enabled; profiler runs perturb execution and must be compared against clean evaluation."
+    }
+  ],
+  "unresolved": [
+    {
+      "question": "Does the prior independent DDP rejection of the candidate lineage stand, and does the C configuration satisfy the step_ms <= 1.05x baseline constraint?",
+      "status": "unresolved-preserved",
+      "blocking_factor": "Scope fixes both the prior rejection and this review as non-acceptance; endpoint-position/clock confound (B spanning 109.7-122.1 ms) prevents any constraint verdict from these diagnostics."
+    },
+    {
+      "question": "What composes the ~35.0 ms per-rank NCCL kernel-sum floor (in-kernel wait vs algorithm vs transport), and is further reduction possible?",
+      "status": "unresolved",
+      "blocking_factor": "Device kernel durations include waiting and cannot be decomposed by the current collector; ncu/nsys-class evidence would be required and none was collected."
+    },
+    {
+      "question": "Does the submit-skew -> early-rank in-kernel-wait mechanism operate on the objective's own three profiled invocations per endpoint, not only in separate timeline captures?",
+      "status": "unresolved",
+      "blocking_factor": "The metric invocations' traces lack cross-rank clock anchors, so per-invocation pairing of spread and per-rank sums was never measured."
+    },
+    {
+      "question": "What causes the 1.2-13.3 ms CPU submission skew between ranks, and why does it settle on either rank across invocations?",
+      "status": "unresolved",
+      "blocking_factor": "Timeline captures measure the spread but not its origin (backward-pass timing divergence, launch queues, host jitter); no experiment here isolates it."
+    },
+    {
+      "question": "What is the clean-timing CPU cost of C's 13 per-collective gloo barriers (single observed waits up to 37.5 ms under profiler perturbation, nested and non-additive)?",
+      "status": "unresolved",
+      "blocking_factor": "Only profiler-perturbed captures record the barriers; clean step_ms cannot be attributed per-mechanism, and nested CPU ranges must not be summed."
+    },
+    {
+      "question": "Does the full TP path reproduce the full 32-token logits within the source contract?",
+      "status": "unresolved-preserved",
+      "blocking_factor": "Prior full TP rejection remains; the colwise evidence covers only layer.0 q/k/v same-input projections with no NCCL emulation and no full-model statement."
+    }
+  ],
+  "next_minimal_experiment": {
+    "name": "Anchor the objective's own profiled invocations for per-invocation skew pairing",
+    "question": "On the three invocations that actually define communication_kernel_sum_ms, does the early-submitting rank carry the inflated NCCL kernel sum, and do aligned submissions produce two-rank floor sums, as the separate timeline captures suggest?",
+    "design": "One leased-worker diagnostic replay of the existing fixed endpoints (B and the C parameters, optionally one N) in which the three separately profiled diagnostic invocations are wrapped with the timeline collector's already-implemented bracketed monotonic anchors (opop.clock::before/after around the workload window, inputs/timeline-collector.py clock_mapping/capture), placed outside the measured step region; then run the existing offline cross_rank and per-collective kernel-duration analysis on those captures. No change to the workload, clean timing repeats, metric definition, aggregation, quality checks or thresholds; anchors reuse shipped code and add no NCCL kernels.",
+    "prediction": "Every profiled invocation with max-rank comm sum >= ~40 ms shows per-collective CPU submit spread >= ~1 ms with the early-submitting rank inflated (whichever rank it is); every invocation with spread <= ~0.2 ms shows both ranks <= ~36 ms.",
+    "falsification": "Any invocation with aligned submissions (<= 0.2 ms spread) but a >= 40 ms rank sum, or persistent inflation on the late-submitting rank, refutes the skew-wait explanation and redirects the search to device-side causes (contention, clocks); C showing aligned-but-inflated sums would additionally refute the per-collective barrier as the operative difference.",
+    "cost_and_scope": "Roughly one timeline-arm session per arm (~15 s measured per arm here, < 2 min wall including startup) in the framework's leased 2-GPU workers; evidence-only, no adoption, no autonomous production change."
+  }
+}

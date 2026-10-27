@@ -5,3 +5,5 @@
 `preflight.json` 是真实服务器CPU隔离检查与冻结TP数据转换检查，不是性能或质量验收。后续记录启动/普通完成监听；原始GPU receipts、GC事件、所有样本和agent输入快照留服务器，只保存小型公开记录。
 
 `launch.json`记录冻结代码和真实启动；`startup.json`记录首个U质量通过与双卡worker；`wakeup-setup.json`记录唯一新普通完成监听。两次review在GPU阶段之后，本次启动记录不代表已收到其回答。
+
+终态新增`terminal-audit.json`、`review-control.json`、`review-treatment.json`。审计保留全部120个样本及逐rank值，核对源代码/参数与真实输入快照；原回答包含主文指出的错误，不是验收结论。服务器完整GC事件位于`ddp-gc/*/run/gc-rank-*.json`，原批次不修改；审计结果另存`/root/autodl-tmp/dev/v6-work/gc-review-audit-20261028/audit.json`。
