@@ -1,0 +1,23 @@
+{
+  "collectors": [
+    "candidate_diagnostics",
+    "execution_timeline"
+  ],
+  "requested_fields": [
+    "candidate_diagnostics.exceptions",
+    "candidate_diagnostics.false_returns",
+    "execution_timeline.cpu_to_cuda_submit_associations",
+    "execution_timeline.cuda_kernel_launch_sequence",
+    "execution_timeline.per_device_intervals",
+    "execution_timeline.synchronization_events"
+  ],
+  "unavailable_fields": {
+    "per_operator_memory_attribution": "No selected or remaining collector attributes the candidate's 203099136-byte peak_allocated_bytes to individual ops/tensors on this candidate; the torch collector already ran on the parent discovery revision and is not repeated, and no other listed collector supplies memory composition.",
+    "candidate_route_native_proof": "Native correlation proving call d16297b8a11b79a2657853d0 executed route stem_microbatch_rows8 is not supplied by any collector; execution_timeline reports clock alignment bounds for CPU submissions only, and GPU readiness and consumer completion may remain unknown, so route identity rests on trace corroboration plus exception evidence rather than native proof.",
+    "nccl_algorithm_protocol_channels": "Single-process single-GPU task with distributed_backend null; observations.json marks communication not_applicable, so nccl_tuning has nothing to observe and kernel names cannot identify protocol decisions that do not exist.",
+    "per_collective_pcie_nvlink_bytes": "No communication or replication in this workload; device_telemetry NVML rates are device-wide readings with native windows, not per-collective bytes, and traffic must not be invented from logical payload or memcpy sizes.",
+    "first_numerical_divergence": "candidate_diagnostics records exceptions and False returns only; it does not compare intermediate tensors, measure per-site numerical error, or locate the first divergence, and no other actual collector supplies these observations (quality currently passes, so this dimension stays unobserved)."
+  },
+  "rationale": "The only observed uncertainty in evaluation.json is the interpretation note that the declared route stem_microbatch_rows8 on call d16297b8a11b79a2657853d0 (count 2, matching candidate_invocations 2, framework_fallbacks 0) is candidate-reported telemetry, not independent native proof, and should be corroborated with traces or actual exception evidence. On revision 71271401df75de54b0dfbde52ef969152593c8ecf72640f6bf95a4319d81dc8e I select candidate_diagnostics to capture handled exceptions with propagated traceback locations and False returns inside the candidate files, which would expose a hidden in-candidate fallback around the route guard (empty events will not establish which successful path executed), and execution_timeline to record a separate plain Torch trace on this exact candidate whose CPU-to-CUDA submit associations, kernel launch sequence and per-device intervals can corroborate that the stem is actually launched as rows=8 microbatches attributed to the candidate call site, with synchronization events bounding the measured window. torch is not re-requested because it already ran on the parent discovery (coverage.json: 88/88 kernels associated below project, 0 unassociated, 0 ambiguous forward sequences), so kernel attribution is already clean. nsys is not selected: no overlap, graph-tracing or attribution question is observed, so an additional system timeline would not resolve further uncertainty. nccl_tuning, collective_calibration and device_telemetry are not applicable to a single-device task with no communication and cannot inform a torch-allocated-memory objective. python_runtime is not selected because host dispatch is not an observed uncertainty and its perturbing cProfile times are not clean scores. binding_cost is not selected: binding is effective direct with no functional replacements, throughput passes with margin (8079 vs limit 7158.9), and whole-invocation binding cost does not advance the peak_allocated_bytes objective.",
+  "revision": "71271401df75de54b0dfbde52ef969152593c8ecf72640f6bf95a4319d81dc8e"
+}

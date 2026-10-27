@@ -1,0 +1,261 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "failure": null,
+  "wall_s": 6.9642905332148075,
+  "ranks": [
+    {
+      "rank": 0,
+      "pid": 206036,
+      "exit_code": 0,
+      "status": "passed",
+      "binding": {
+        "pid": 206036,
+        "status": "verified",
+        "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+        "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+        "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+        "logical_device": 0,
+        "nvidia_smi_pid_uuids": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+        ],
+        "pid_query_status": "observed",
+        "occupancy": {
+          "status": "sampled_clear",
+          "samples": 11,
+          "unavailable_samples": 0,
+          "wait_s": 0.076171163469553,
+          "external_clients": [],
+          "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+        }
+      },
+      "framework_source": {
+        "sha256": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+        "files": 162,
+        "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+      },
+      "result": {
+        "numerical_source_fidelity": true,
+        "checks": [
+          {
+            "step": 0,
+            "passed": true,
+            "compared_elements": 32032,
+            "max_abs_error": 0.0
+          },
+          {
+            "step": 1,
+            "passed": true,
+            "compared_elements": 32032,
+            "max_abs_error": 0.0
+          }
+        ],
+        "mapping": "Source logits and logits.argmax(-1) map to observed logits/pred_classes; additional observations are not certified by this fixture.",
+        "original_entry_result": {
+          "case": "resnet_inference",
+          "created_unix": 1793085493.4295707,
+          "protocol": "readiness_baseline_not_optimization",
+          "python": "3.12.4",
+          "torch": "2.13.0+cu129",
+          "cuda": "12.9",
+          "device": "NVIDIA GeForce RTX 4090",
+          "visible_devices": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+          "gpu_inventory": [
+            "0, GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba, 00000000:16:00.0, NVIDIA GeForce RTX 4090",
+            "1, GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4, 00000000:38:00.0, NVIDIA GeForce RTX 4090"
+          ],
+          "pid": 206036,
+          "warmup": 2,
+          "repeats": 5,
+          "source_sha256": {
+            "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+            "opop_adapter.py": "f8659f88578fb323cc15b855ee0e36da633df994025191e3afaef664374d9eb9",
+            "opop_evaluate.py": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+            "resnet_inference.py": "b98cd81b4aa6fb8211be6382d9870bbf433eb352c248a4b2aaf8f5fde2b50997"
+          },
+          "workloads_sha256": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba",
+          "quality_scope": "Reference fidelity; no downstream accuracy/convergence claim",
+          "asset_manifest_sha256": "0daedcfdfe3b2c32deb3b3c087a6f55f8bf94a314433f07a520efe95ffbd8414",
+          "parameter_count": 11689512,
+          "workloads": [
+            {
+              "workload": {
+                "id": "online",
+                "batch": 1,
+                "goals": [
+                  {
+                    "id": "latency",
+                    "metric": "latency_ms",
+                    "direction": "min"
+                  }
+                ]
+              },
+              "correctness": {
+                "passed": true,
+                "max_abs_error": 0.0,
+                "atol": 0.0001,
+                "rtol": 0.0001,
+                "corrupted_output_rejected": true,
+                "exact_top1": true,
+                "predicted_labels": [
+                  "Pembroke, Pembroke Welsh corgi"
+                ]
+              },
+              "samples": [
+                {
+                  "latency_ms": 1.320952,
+                  "images_per_second": 757.029778523368,
+                  "peak_allocated_bytes": 86366208
+                },
+                {
+                  "latency_ms": 1.313795,
+                  "images_per_second": 761.1537568646554,
+                  "peak_allocated_bytes": 86366208
+                },
+                {
+                  "latency_ms": 1.309904,
+                  "images_per_second": 763.4147235217238,
+                  "peak_allocated_bytes": 86366208
+                },
+                {
+                  "latency_ms": 1.328015,
+                  "images_per_second": 753.0035428816692,
+                  "peak_allocated_bytes": 86366208
+                },
+                {
+                  "latency_ms": 1.298626,
+                  "images_per_second": 770.044647188644,
+                  "peak_allocated_bytes": 86366208
+                }
+              ],
+              "summary": {
+                "latency_ms": {
+                  "median": 1.313795,
+                  "min": 1.298626,
+                  "max": 1.328015
+                },
+                "images_per_second": {
+                  "median": 761.1537568646554,
+                  "min": 753.0035428816692,
+                  "max": 770.044647188644
+                },
+                "peak_allocated_bytes": {
+                  "median": 86366208,
+                  "min": 86366208,
+                  "max": 86366208
+                }
+              }
+            },
+            {
+              "workload": {
+                "id": "offline",
+                "batch": 32,
+                "goals": [
+                  {
+                    "id": "throughput",
+                    "metric": "images_per_second",
+                    "direction": "max"
+                  },
+                  {
+                    "id": "memory",
+                    "metric": "peak_allocated_bytes",
+                    "direction": "min",
+                    "constraints": {
+                      "images_per_second_min_baseline_ratio": 0.95
+                    }
+                  }
+                ]
+              },
+              "correctness": {
+                "passed": true,
+                "max_abs_error": 0.0,
+                "atol": 0.0001,
+                "rtol": 0.0001,
+                "corrupted_output_rejected": true,
+                "exact_top1": true,
+                "predicted_labels": [
+                  "Pembroke, Pembroke Welsh corgi",
+                  "German shepherd, German shepherd dog, German police dog, alsatian",
+                  "reel"
+                ]
+              },
+              "samples": [
+                {
+                  "latency_ms": 4.296026,
+                  "images_per_second": 7448.744490838742,
+                  "peak_allocated_bytes": 282273280
+                },
+                {
+                  "latency_ms": 4.26048,
+                  "images_per_second": 7510.890791647889,
+                  "peak_allocated_bytes": 282273280
+                },
+                {
+                  "latency_ms": 4.233154,
+                  "images_per_second": 7559.375349916398,
+                  "peak_allocated_bytes": 282273280
+                },
+                {
+                  "latency_ms": 4.286153,
+                  "images_per_second": 7465.902407123591,
+                  "peak_allocated_bytes": 282273280
+                },
+                {
+                  "latency_ms": 4.259279,
+                  "images_per_second": 7513.008657099007,
+                  "peak_allocated_bytes": 282273280
+                }
+              ],
+              "summary": {
+                "latency_ms": {
+                  "median": 4.26048,
+                  "min": 4.233154,
+                  "max": 4.296026
+                },
+                "images_per_second": {
+                  "median": 7510.890791647889,
+                  "min": 7448.744490838742,
+                  "max": 7559.375349916398
+                },
+                "peak_allocated_bytes": {
+                  "median": 282273280,
+                  "min": 282273280,
+                  "max": 282273280
+                }
+              }
+            }
+          ]
+        },
+        "original_offline_peak": {
+          "median": 282273280,
+          "min": 282273280,
+          "max": 282273280
+        },
+        "adapter_baseline_metrics": {
+          "images_per_second": 7535.65838223073,
+          "latency_ms": 4.246477,
+          "peak_allocated_bytes": 280169472,
+          "batch": 32,
+          "parameter_count": 11689512,
+          "framework.elapsed_ms": 4.246477,
+          "framework.peak_allocated_bytes": 280169472.0,
+          "framework.peak_reserved_bytes": 398458880.0,
+          "framework.allocated_bytes": 74776576.0,
+          "framework.reserved_bytes": 398458880.0,
+          "framework.lifecycle_peak_allocated_bytes": 280809472.0,
+          "framework.lifecycle_peak_reserved_bytes": 398458880.0
+        },
+        "scope": "Independent source execution and full numerical comparison; source memory fidelity is assessed separately from frozen optimizer acceptance."
+      }
+    }
+  ],
+  "lease_wait_s": 0.00019999220967292786,
+  "device_selectors": [
+    "0"
+  ],
+  "entry_sha256": "eb7bac3ddd5ad84b92085b48d1684b94ca7e5c9d58ab01b8433b14852d514894",
+  "devices": [
+    "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+  ],
+  "worker_pids_reaped": true
+}

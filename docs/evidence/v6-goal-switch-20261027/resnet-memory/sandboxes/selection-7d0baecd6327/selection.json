@@ -1,0 +1,32 @@
+{
+  "scope": "region",
+  "groups": [
+    "3821cceac23fa97e5a55",
+    "0022893ec8c1ceea869f",
+    "95d8eead897036452c64",
+    "7e7c01e2bf7e30a42280",
+    "c671bb65e86ad614e3f6",
+    "c0af3909ba0a106672d5"
+  ],
+  "rationale": "Objective is peak_allocated_bytes (baseline 280,169,472 B, median of clean samples) with images_per_second >= 0.95x7535.66 = 7158.9. The peak decomposes exactly from the measured assets: live FP32 params 46,758,048 + GPU-resident input 19,267,584 + conv1 output 32x64x112x112x4 = 102,760,448 coexisting with the out-of-place batch_norm1 output of the same size + 8,622,944 workspace = 280,169,472 exactly. That coexistence happens inside ResNetEmbeddings (model.resnet.embedder): the stem's two 112x112x64 tensors are 73% of the peak. Note the separately observed ReLU duplication (all 17 ReLUs out-of-place) is not the binding term: the ReLU moment is also a 2x102,760,448 coexistence, so in-place ReLU alone cannot move the peak; the conv->BN output coexistence is the floor that must be attacked. Selection: the stem region (ResNetEmbeddings module and its subtree: stem ResNetConvLayer 0022893ec8c1ceea869f with the single target model.resnet.embedder.embedder, its Conv2d/BatchNorm2d/ReLU modules, and the MaxPool2d pooler). The candidate replaces the ResNetEmbeddings forward (module boundary, children invoked through context.references; no functional dispatch sites, so the legacy direct-callable backend applies) to micro-batch the stem along the frozen batch dimension: 4 contiguous chunks of 8 rows, each chunk running the unchanged conv1 -> bn1(eval) -> relu1 -> maxpool path on a contiguous slice (no copies), with chunk outputs assembled into the same [32,64,56,56] hidden state (25,690,112 B) for the untouched stages. All inherited stem calls still execute (4x per invocation), preserving quality coverage without CUDA-graph replay. Region scope because every call in the stem subtree changes execution (invocation count 1->4, per-call batch 32->8); all 17 observed stem-subtree calls are listed, including the aten conv2d/batch_norm/relu/max_pool2d calls and the discovery record_function hooks that will fire per chunk. No calls outside the region are affected: stage 0+ receive the same-shape, same-value hidden state through the same ops. Rejected alternatives: whole-model micro-batching (execution_plan) would cut deeper (~122 MB) but re-times all 20 convs (~4156 us of diagnostic CUDA time) at batch 8 and risks the 7158.9 img/s floor; deduplicating the 3 unique input images contradicts the frozen batch-32 workload (all 32 rows must execute); CUDA-graph replay skips Python hooks and breaks coverage per binding-contract; folding BN into conv weights changes parameter values (invariant); in-place ReLU alone does not move the 2-tensor peak. Throughput safety: the stem is 907.7/4156.2 us (21.8%) of diagnostic CUDA time, and its kernels are bandwidth-bound on the 112x112x64 tensors - bn_fw_inf_1C11_NCHW 227.2 us, clamp/relu 217.8 us, max_pool_forward_nchw 198.7 us - whose grids stay far above SM saturation at batch 8 and whose total bytes moved are unchanged; only conv1's scudnn kernel (262.5 us) can lose modest efficiency, so even a 20% stem slowdown keeps wall time <= ~4.42 ms (>= ~7240 img/s).",
+  "hypothesis": "Chunking the stem 4x8 lowers peak_allocated_bytes from 280,169,472 B to approximately 143-152 MB (-46% to -49%). With batch-8 chunks the stem transient becomes params 46,758,048 + input 19,267,584 + assembled stem output 25,690,112 + one chunk's conv_out + bn_out coexistence 2x25,690,112 (+ small workspaces) = 143,095,968 + ws, which matches the new binding tier set outside the region by stage 0's out-of-place conv coexistence (input 25,690,112 + conv_out + bn_out), the eager-execution floor reachable without editing stage semantics. If measurement shows batch-8 chunks cost more than the 5% throughput budget, 2x16 chunks inside the same region still yield ~168.8 MB + ws (-38% to -40%); chunk size is tunable within this one boundary. Expected images_per_second 7300-7500 (>= 7158.9) since the bandwidth-bound stem kernels move identical total bytes at near-identical efficiency; expected numerics unchanged: identical aten kernels on contiguous batch slices, BN(eval)/ReLU/MaxPool per-sample exact, conv1 at worst reduction-order-level differences far below the atol=rtol=1e-4 logits tolerance, preserving exact top-1. These benefit, throughput and numerics expectations are hypotheses to be tested by the evaluator's clean timing, peak and quality checks.",
+  "affected_calls": [
+    "d16297b8a11b79a2657853d0",
+    "1dcfd07639d32233c49eafdf",
+    "dce00bb8bc9002a887676687",
+    "11c99c108749a5d6fc1a0e93",
+    "5d1aebae3f2f92ffaa9936ae",
+    "00a422776866511d21aff9b4",
+    "10cd0c158be281074f5a8f40",
+    "6b96219304ac79385e4ef06c",
+    "805d3386b241f40ad80ab04c",
+    "1547a96083c06cac6f3b11b7",
+    "c98061ff56600d8872eade43",
+    "5bd0541e4cd2aecdc8ab6def",
+    "48592f21510e7abe26e21e96",
+    "7e48deea7b643161bf830885",
+    "babacb997a72996bf303d028",
+    "c44bf4cf07ad0ee80bd946b7",
+    "35cdfcc2ac5800fd6a981dd7"
+  ]
+}

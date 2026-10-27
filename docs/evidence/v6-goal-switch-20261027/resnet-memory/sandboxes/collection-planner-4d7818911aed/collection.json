@@ -1,0 +1,24 @@
+{
+  "revision": "374e89a754f8d3d6e6ac80dea757002e28f18666b62bc68d1094a5432917b9e0",
+  "collectors": [
+    "nsys",
+    "candidate_diagnostics"
+  ],
+  "requested_fields": [
+    "nsys.kernel_launch_timeline",
+    "nsys.kernel_grid_block_dimensions",
+    "nsys.cuda_api_submission_timeline",
+    "nsys.kernel_overlap_gaps_within_invocation",
+    "candidate_diagnostics.exception_events",
+    "candidate_diagnostics.false_return_events"
+  ],
+  "unavailable_fields": {
+    "per_bundle_or_per_stage_peak_memory_attribution": "No collector decomposes peak_allocated_bytes by operator group, model stage, or bundle. The already-run torch collector retained only kernel association counts (coverage.json: 157/157 associated, 0 ambiguous); nsys timelines attribute kernel execution, not PyTorch allocator peaks. Which tensors hold the residual 177409024-byte peak remains unattributed.",
+    "nccl_algorithm_protocol_channel_decisions": "Not applicable: single-process single-GPU task (request.json distributed_backend null, one device UUID; observations.json capability 'communication' status not_applicable, reason single-device task). nccl_tuning and collective_calibration were not selected.",
+    "pcie_nvlink_collective_traffic_bytes": "No communication exists to measure; device_telemetry was not selected because its device-wide NVML windows with native sampling cannot be joined to per-collective or per-operator bytes, and traffic must not be invented from logical payload sizes.",
+    "first_numerical_divergence_site": "No collector compares intermediate tensors, measures per-site numerical error, or locates a first divergence. Moot here: evaluation.json quality=pass with logits atol/rtol 1e-4 and exact top-1, so no divergence is observed.",
+    "cpu_submit_to_gpu_completion_bounds": "execution_timeline was not selected; its clock-alignment bounds cover CPU submissions only (GPU readiness/consumer completion may remain unknown) and its sync/gradient-callback features target distributed work, immaterial to this single-device allocator objective.",
+    "clean_host_dispatch_and_binding_costs": "python_runtime perturbs execution and its inclusive/self times are not clean scores; binding_cost reports whole-invocation overhead, omits candidate build/computation, and no overhead-driven uncertainty is observed (throughput 7835.99 >= limit 7158.88 with margin). Neither was selected."
+  },
+  "rationale": "Observed uncertainty: candidate 374e89a7 (parent 46bcc1f2 + additive bundle trial-2ffc01d1ba, route stem_microbatch_rows8) measured peak_allocated_bytes 177409024, exactly equal to its paired parent reference, with decision reasons paired_gain_not_above_noise and objective_not_improved, while quality passed and the throughput constraint held. Coverage shows the declared stem route with only 2 candidate invocations versus 32 reference invocations for that bundle (16 for the parent's stage0 bundle), and the endpoint interpretation explicitly warns that route labels are candidate-reported telemetry, not native proof, to be corroborated with traces or actual exception evidence. Two questions follow: (1) does the added stem-microbatch route actually execute its microbatched path, or is it bypassed via handled exceptions or False guards falling back to the reference stem (which would explain the bit-identical objective); (2) if it does execute, does the trace show the expected rows8 launch pattern and any serialization/overlap with the parent bundle's stage0 microbatches that bears on remaining peak reduction. Selections: candidate_diagnostics records exceptions (including handled ones with library traceback locations) and False returns in the supplied candidate files on this exact revision - the only source of actual exception evidence for silent fallback; its known limit is that empty events do not establish which successful path executed, so nsys is selected to corroborate with trace evidence: per-kernel launch timeline with grid/block dimensions and CUDA API submissions, showing independently of candidate labels whether stem convolutions launch microbatched (4x rows8-sized grids vs one rows32 grid) and how kernels serialize or overlap within one measured invocation. nsys is available (request.json tools.nsys). Exclusions: torch already ran; nccl_tuning/collective_calibration are inapplicable (single device, no NCCL per observations.json); device_telemetry cannot attribute allocator peaks; execution_timeline is redundant for attribution since torch already associated 157/157 kernels with zero ambiguity and its comm-oriented bounds add nothing; python_runtime and binding_cost address host dispatch and binding overhead, neither implicated by the observed memory-objective uncertainty. No failure-category policy or optimization action is presumed; the residual peak's per-stage ownership stays listed as unavailable because no collector supplies per-group allocator attribution."
+}

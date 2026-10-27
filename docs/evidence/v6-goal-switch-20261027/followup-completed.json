@@ -1,0 +1,1795 @@
+{
+  "at": "2026-10-27T07:09:12.612180+00:00",
+  "results": {
+    "intake_ab": {
+      "status": "completed",
+      "runs": [
+        {
+          "arm": "control",
+          "status": "ready",
+          "proposal": {
+            "status": "ready",
+            "description": {
+              "entry": "gpt2_ddp_training.py",
+              "files": [
+                "gpt2_ddp_training.py",
+                "common.py",
+                "workloads.json",
+                "README.md"
+              ],
+              "invocation": "torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output <fresh-dir> --profile: the repeated unit of work is one accumulated DDP training step, step() at gpt2_ddp_training.py:102-105, i.e. accumulate() over accumulation_steps=4 micro-batches (micro_batch=1, sequence_length=128, FP32 GPT-2 124M, first 3 micro-batches under model.no_sync(), DDP gradient all-reduce on the final micro-batch) followed by optimizer.step() (SGD lr=0.001, momentum=0, foreach=False) and torch.cuda.synchronize(). Model/input construction, initial-state snapshot and reset(), warmup and 5 clean timed repeats, the 3 separately profiled diagnostic invocations, the reference-model build and all correctness checks, the comm-hook bucket inventory pass, and rank/result report writing are measurement infrastructure outside the invocation.",
+              "objective": {
+                "name": "communication_kernel_sum_ms",
+                "unit": "ms",
+                "direction": "minimize",
+                "constraints": [
+                  {
+                    "metric": "step_ms",
+                    "op": "le",
+                    "baseline_ratio": 1.05,
+                    "threshold": null,
+                    "rank_aggregation": "max",
+                    "aggregation_order": "ranks_then_samples"
+                  }
+                ],
+                "source": {
+                  "collector": "torch_communication",
+                  "field": "communication_kernel_sum_ms",
+                  "source_metric": "diagnostic.max_rank_nccl_kernel_sum_ms"
+                },
+                "rank_aggregation": "max",
+                "aggregation_order": "ranks_then_samples"
+              },
+              "workload": {
+                "id": "accumulated_step",
+                "world_size": 2,
+                "micro_batch": 1,
+                "sequence_length": 128,
+                "accumulation_steps": 4,
+                "goals": [
+                  {
+                    "id": "step",
+                    "metric": "step_ms",
+                    "direction": "min"
+                  },
+                  {
+                    "id": "communication",
+                    "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+                    "direction": "min",
+                    "constraints": {
+                      "step_ms_max_baseline_ratio": 1.05
+                    }
+                  }
+                ]
+              },
+              "quality": {
+                "atol": 1e-06,
+                "rtol": 0.0001,
+                "grad_atol": 1e-06,
+                "grad_rtol": 0.0001,
+                "parameter_atol": 1e-06,
+                "parameter_rtol": 0.0001
+              },
+              "warmup": 2,
+              "repeats": 5,
+              "assets": {},
+              "device_count": 2,
+              "distributed_backend": "nccl",
+              "communication": "auto",
+              "required_observations": [
+                "communication_kernel_sum_ms"
+              ],
+              "notes": [
+                "Command provenance: user command torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp --profile; README.md gives the equivalent python -m torch.distributed.run --standalone --nproc-for-node=2 form and default flags --warmup 2 --repeats 5 --profile.",
+                "Objective mapping: source goal diagnostic.max_rank_nccl_kernel_sum_ms (workloads.json gpt2_ddp_training.workloads[0].goals[1]) is computed at gpt2_ddp_training.py:156-157 as, per profiled invocation, max over ranks of common.py profile_once nccl_kernel_sum_ms (summed device NCCL kernel durations), then the median of 3 profiled invocations. It is reported to the installed collector interface torch_communication.communication_kernel_sum_ms with rank_aggregation=max over the 2 ranks.",
+                "Metric semantics preserved from workloads.json communication_metric_caveat: per-rank sum of device NCCL kernel durations includes device waiting; it is not wire time, critical-path time or exposed communication, and is profiled separately from clean step timing. Collector availability must be verified by the actual workload worker (deployment.json metric_collectors.torch_communication).",
+                "Step-time constraint: source constraint key step_ms_max_baseline_ratio=1.05 means clean step_ms <= 1.05x baseline. Source step score (gpt2_ddp_training.py:111-119, 148-152) is per aligned repeat max across ranks, then median over the 5 repeats; the Gloo control barrier and synchronization are outside the timed region, so rank samples are aligned -> aggregation_order ranks_then_samples with rank_aggregation max.",
+                "Exact (discrete) comparisons retained: every rank's gradients must match the rank-0 replica bit-exactly via torch.testing.assert_close(atol=0.0, rtol=0.0) (gpt2_ddp_training.py:81-86); loss must be finite (gpt2_ddp_training.py:65); generic atol/rtol cover the tensor checks against the serial single-device reference that replays the exact same global batch.",
+                "Numerical and state policies preserved: FP32 model and SGD, TF32 disabled, matmul precision highest, cudnn.benchmark off (common.py:34-42); deterministic seeds (model 20261020, inputs 31000+rank); initial weights restored before every measured invocation; effective batch = world_size*micro_batch*accumulation_steps = 8, tokens per step = 1024; DDP bucket_cap_mb=25, gradient_as_bucket_view=True, broadcast_buffers=False; baseline already uses no_sync() for the first 3 micro-batches.",
+                "Distributed setup: NCCL process group for compute with device_id binding and a separate Gloo control group for barriers/all_gather_object (gpt2_ddp_training.py:52-53); rank/device binding and group init handled by the worker. The separate comm-hook bucket inventory diagnostic (gpt2_ddp_training.py:128-138) runs after all timing/tracing and must not change the reducer used in measured invocations.",
+                "No external assets: weights are a deterministically seeded synthetic GPT-2 config (n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, all dropout 0, eager attention, use_cache=False) and inputs are seeded random token IDs; deployment.box42.example.json lists assets only for qwen_inference and resnet_inference, none for gpt2_ddp_training."
+              ]
+            },
+            "evidence": {
+              "entry": [
+                "intent.json command: torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp --profile",
+                "gpt2_ddp_training.py main() is the torchrun entry (LOCAL_RANK, __main__ guard at :164-165)"
+              ],
+              "workload": [
+                "workloads.json gpt2_ddp_training.workloads[0]: id=accumulated_step, world_size=2, micro_batch=1, sequence_length=128, accumulation_steps=4 (single row; held_out longer_sequence not selected)",
+                "gpt2_ddp_training.py:54-57 loads config['gpt2_ddp_training'].workloads[0] and enforces world_size match",
+                "README.md line 44: DDP uses FP32, SGD, effective batch=8, 1024 tokens per step, first 3 microbatches no_sync()"
+              ],
+              "objective": [
+                "workloads.json gpt2_ddp_training.workloads[0].goals[1]: metric diagnostic.max_rank_nccl_kernel_sum_ms, direction min, constraint step_ms_max_baseline_ratio=1.05",
+                "gpt2_ddp_training.py:156-157: values = max over ranks of profiles[i].nccl_kernel_sum_ms for i in 0..2; reported value is sorted(values)[1] (median of 3)",
+                "common.py:87-105 profile_once: per-rank sum of NCCL kernel durations from a torch.profiler trace, separate from clean timing",
+                "workloads.json gpt2_ddp_training.communication_metric_caveat defines the per-rank-sum-then-max semantics and its exclusions",
+                "deployment.json metric_collectors.torch_communication.communication_kernel_sum_ms: per-rank sum of device communication-kernel durations in a separately profiled invocation - matching installed interface for this objective"
+              ],
+              "quality": [
+                "workloads.json gpt2_ddp_training.correctness: grad_atol=1e-6, grad_rtol=1e-4, parameter_atol=1e-6, parameter_rtol=1e-4",
+                "gpt2_ddp_training.py:68-91: rank-0 reference accumulates the exact global batch serially without DDP; gradient and post-step parameter close_check at those tolerances",
+                "gpt2_ddp_training.py:81-86: exact cross-rank gradient replica check with atol=0.0, rtol=0.0",
+                "common.py:74-84 close_check/negative_check: tolerance-based comparison plus corrupted-output negative control (+1 corruption must be rejected)"
+              ],
+              "constraint": [
+                "workloads.json gpt2_ddp_training.workloads[0].goals[1].constraints.step_ms_max_baseline_ratio = 1.05",
+                "README.md line 48: communication goal must simultaneously satisfy clean step <= 1.05x original baseline",
+                "gpt2_ddp_training.py:148-152: per-repeat step duration is max across ranks, then summarize() takes the median over repeats"
+              ],
+              "device_count": [
+                "torchrun --nproc_per_node=2 in intent.json command and workload world_size=2 (workloads.json)",
+                "deployment.json inventory: exactly 2 GPUs (RTX 4090, UUIDs GPU-6c11763a..., GPU-cc3c3439...)"
+              ],
+              "distributed_backend": [
+                "gpt2_ddp_training.py:52: dist.init_process_group('nccl', ..., device_id=torch.device('cuda', rank))"
+              ],
+              "warmup_repeats": [
+                "common.py:24-25: argparse defaults --warmup 2 --repeats 5; gpt2_ddp_training.py:107-119 uses them for clean timing; 3 profiled diagnostic invocations at :121-125"
+              ],
+              "assets": [
+                "gpt2_ddp_training.py:24-33: make_model/make_inputs create seeded synthetic weights and token IDs; no --assets argument is consumed",
+                "deployment.box42.example.json assets map has entries only for qwen_inference and resnet_inference"
+              ]
+            },
+            "assumptions": [
+              "The installed torch_communication collector's communication_kernel_sum_ms (per-rank summed device communication-kernel duration in a separately profiled invocation) implements the source's per-rank NCCL kernel-sum definition; its availability must be verified by the actual workload worker as deployment.json states.",
+              "Objective aggregation follows the source: rank max per profiled invocation, then median over the 3 diagnostic profile invocations (gpt2_ddp_training.py:156-157); the separate 5-repeat clean timing feeds only the step_ms constraint.",
+              "The evaluator measures its own clean step_ms for the 1.05x-baseline constraint, preserving the source's max-across-ranks per aligned repeat then median-over-repeats reduction (ranks_then_samples).",
+              "The --profile flag and output directory are harness/measurement infrastructure; adapter.run() repeats only the accumulated step (reset, warmup, repeats, reference build, correctness checks, inventory pass and report writing stay outside).",
+              "No external model weights or data are needed; the seeded synthetic fixtures in source are the workload's actual weights/inputs and are not copied or invented as assets."
+            ],
+            "questions": []
+          },
+          "request": {
+            "schema_version": "project-request.v1",
+            "source_root": "/root/autodl-tmp/dev/v6-work/autonomous-cohort-20261027/framework/4cdd076376de/examples/v6_validation",
+            "entry": "gpt2_ddp_training.py",
+            "files": [
+              "gpt2_ddp_training.py",
+              "common.py",
+              "workloads.json",
+              "README.md"
+            ],
+            "goal": "Reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks.",
+            "objective": {
+              "name": "communication_kernel_sum_ms",
+              "unit": "ms",
+              "direction": "minimize",
+              "constraints": [
+                {
+                  "metric": "step_ms",
+                  "op": "le",
+                  "baseline_ratio": 1.05,
+                  "rank_aggregation": "max",
+                  "aggregation_order": "ranks_then_samples"
+                }
+              ],
+              "source": {
+                "collector": "torch_communication",
+                "field": "communication_kernel_sum_ms",
+                "source_metric": "diagnostic.max_rank_nccl_kernel_sum_ms"
+              },
+              "rank_aggregation": "max",
+              "aggregation_order": "ranks_then_samples"
+            },
+            "workload": {
+              "id": "accumulated_step",
+              "world_size": 2,
+              "micro_batch": 1,
+              "sequence_length": 128,
+              "accumulation_steps": 4,
+              "goals": [
+                {
+                  "id": "step",
+                  "metric": "step_ms",
+                  "direction": "min"
+                },
+                {
+                  "id": "communication",
+                  "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+                  "direction": "min",
+                  "constraints": {
+                    "step_ms_max_baseline_ratio": 1.05
+                  }
+                }
+              ]
+            },
+            "quality": {
+              "atol": 1e-06,
+              "rtol": 0.0001,
+              "grad_atol": 1e-06,
+              "grad_rtol": 0.0001,
+              "parameter_atol": 1e-06,
+              "parameter_rtol": 0.0001
+            },
+            "assets": {},
+            "devices": [
+              "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+            ],
+            "distributed_backend": "nccl",
+            "communication": "auto",
+            "required_observations": [
+              "communication_kernel_sum_ms"
+            ],
+            "tools": {
+              "ncu": "/usr/local/cuda/bin/ncu",
+              "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+            },
+            "profiling": {
+              "agent_plan": true,
+              "feedback_agent_plan": true
+            },
+            "binding_backend": "legacy",
+            "measurement_lifetime": "invocation",
+            "warmup": 2,
+            "repeats": 5,
+            "continuous_steps": 2,
+            "worker_timeout_s": 900.0,
+            "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+            "notes": [
+              "Command provenance: user command torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp --profile; README.md gives the equivalent python -m torch.distributed.run --standalone --nproc-for-node=2 form and default flags --warmup 2 --repeats 5 --profile.",
+              "Objective mapping: source goal diagnostic.max_rank_nccl_kernel_sum_ms (workloads.json gpt2_ddp_training.workloads[0].goals[1]) is computed at gpt2_ddp_training.py:156-157 as, per profiled invocation, max over ranks of common.py profile_once nccl_kernel_sum_ms (summed device NCCL kernel durations), then the median of 3 profiled invocations. It is reported to the installed collector interface torch_communication.communication_kernel_sum_ms with rank_aggregation=max over the 2 ranks.",
+              "Metric semantics preserved from workloads.json communication_metric_caveat: per-rank sum of device NCCL kernel durations includes device waiting; it is not wire time, critical-path time or exposed communication, and is profiled separately from clean step timing. Collector availability must be verified by the actual workload worker (deployment.json metric_collectors.torch_communication).",
+              "Step-time constraint: source constraint key step_ms_max_baseline_ratio=1.05 means clean step_ms <= 1.05x baseline. Source step score (gpt2_ddp_training.py:111-119, 148-152) is per aligned repeat max across ranks, then median over the 5 repeats; the Gloo control barrier and synchronization are outside the timed region, so rank samples are aligned -> aggregation_order ranks_then_samples with rank_aggregation max.",
+              "Exact (discrete) comparisons retained: every rank's gradients must match the rank-0 replica bit-exactly via torch.testing.assert_close(atol=0.0, rtol=0.0) (gpt2_ddp_training.py:81-86); loss must be finite (gpt2_ddp_training.py:65); generic atol/rtol cover the tensor checks against the serial single-device reference that replays the exact same global batch.",
+              "Numerical and state policies preserved: FP32 model and SGD, TF32 disabled, matmul precision highest, cudnn.benchmark off (common.py:34-42); deterministic seeds (model 20261020, inputs 31000+rank); initial weights restored before every measured invocation; effective batch = world_size*micro_batch*accumulation_steps = 8, tokens per step = 1024; DDP bucket_cap_mb=25, gradient_as_bucket_view=True, broadcast_buffers=False; baseline already uses no_sync() for the first 3 micro-batches.",
+              "Distributed setup: NCCL process group for compute with device_id binding and a separate Gloo control group for barriers/all_gather_object (gpt2_ddp_training.py:52-53); rank/device binding and group init handled by the worker. The separate comm-hook bucket inventory diagnostic (gpt2_ddp_training.py:128-138) runs after all timing/tracing and must not change the reducer used in measured invocations.",
+              "No external assets: weights are a deterministically seeded synthetic GPT-2 config (n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024, all dropout 0, eager attention, use_cache=False) and inputs are seeded random token IDs; deployment.box42.example.json lists assets only for qwen_inference and resnet_inference, none for gpt2_ddp_training.",
+              "One measured invocation: torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output <fresh-dir> --profile: the repeated unit of work is one accumulated DDP training step, step() at gpt2_ddp_training.py:102-105, i.e. accumulate() over accumulation_steps=4 micro-batches (micro_batch=1, sequence_length=128, FP32 GPT-2 124M, first 3 micro-batches under model.no_sync(), DDP gradient all-reduce on the final micro-batch) followed by optimizer.step() (SGD lr=0.001, momentum=0, foreach=False) and torch.cuda.synchronize(). Model/input construction, initial-state snapshot and reset(), warmup and 5 clean timed repeats, the 3 separately profiled diagnostic invocations, the reference-model build and all correctness checks, the comm-hook bucket inventory pass, and rank/result report writing are measurement infrastructure outside the invocation."
+            ]
+          },
+          "agent": {
+            "role": "project-intake",
+            "session": "ses_e843c6085ffeSwMIVWdY1hMkug",
+            "message": "msg_17bc5f5fd001MpyP7x7aARNKg0",
+            "model": "zhipuai/glm-5.3",
+            "usage": {
+              "schema_version": 1,
+              "mode": "observe_only",
+              "messages": 9,
+              "reported_cost": 0.12823409462,
+              "messages_without_cost": 0,
+              "unfinished_messages": 0,
+              "tokens": {
+                "total": 208171.0,
+                "input": 26128.0,
+                "output": 3621.0,
+                "reasoning": 7350.0,
+                "cache.read": 171072.0,
+                "cache.write": 0.0
+              },
+              "sessions": [
+                {
+                  "id": "ses_e843c6085ffeSwMIVWdY1hMkug",
+                  "status": "observed",
+                  "detail": null
+                }
+              ],
+              "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+            },
+            "sandbox": "/root/autodl-tmp/dev/v6-work/goal-switch-20261027/intake-ab/control/sandboxes/project-intake-replay-72d7feedbb29",
+            "outputs": [
+              "intake.json"
+            ],
+            "feedback_provided": false,
+            "contract_repairs": 0,
+            "generation_snapshots": [
+              "/root/autodl-tmp/dev/v6-work/goal-switch-20261027/intake-ab/control/generation-snapshots/generation-7c61dd9f0631.json"
+            ]
+          }
+        },
+        {
+          "arm": "treatment",
+          "status": "ready",
+          "proposal": {
+            "status": "ready",
+            "description": {
+              "entry": "gpt2_ddp_training.py",
+              "files": [
+                "gpt2_ddp_training.py",
+                "common.py",
+                "workloads.json"
+              ],
+              "invocation": "torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output <run-dir> --profile (from the repository root; --warmup/--repeats default to 2/5). One measured unit = one full accumulated training step from the stored initial weights: reset() restores the seeded initial state_dict, accumulate() runs 4 microbatches of per-rank GPU-resident synthetic input_ids (micro_batch=1, sequence_length=128, generator seed 31000+rank) with loss divided by accumulation_steps and DDP no_sync() on the first 3 microbatches so the gradient allreduce runs only in the 4th backward, then optimizer.step() (SGD lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) and torch.cuda.synchronize(). Unit outputs: finite summed FP32 loss, allreduced gradients, updated FP32 parameters. Model construction, input generation and H2D transfer, warmup/repeats statistics, rank-0 reference construction, correctness checks, the 3 profiled diagnostic passes and the separate comm-hook bucket inventory are outside the repeated unit.",
+              "objective": {
+                "name": "diagnostic.max_rank_nccl_kernel_sum_ms",
+                "unit": "ms",
+                "direction": "minimize",
+                "constraints": [
+                  {
+                    "metric": "step_ms",
+                    "op": "le",
+                    "baseline_ratio": 1.05,
+                    "threshold": null,
+                    "rank_aggregation": "max",
+                    "aggregation_order": "ranks_then_samples"
+                  }
+                ],
+                "source": {
+                  "collector": "torch_communication",
+                  "field": "communication_kernel_sum_ms"
+                },
+                "rank_aggregation": "max",
+                "aggregation_order": "ranks_then_samples"
+              },
+              "workload": {
+                "id": "accumulated_step",
+                "world_size": 2,
+                "micro_batch": 1,
+                "sequence_length": 128,
+                "accumulation_steps": 4,
+                "goals": [
+                  {
+                    "id": "step",
+                    "metric": "step_ms",
+                    "direction": "min"
+                  },
+                  {
+                    "id": "communication",
+                    "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+                    "direction": "min",
+                    "constraints": {
+                      "step_ms_max_baseline_ratio": 1.05
+                    }
+                  }
+                ],
+                "model": {
+                  "n_layer": 12,
+                  "n_embd": 768,
+                  "n_head": 12,
+                  "vocab_size": 50257,
+                  "n_positions": 1024
+                }
+              },
+              "quality": {
+                "atol": 1e-06,
+                "rtol": 0.0001,
+                "grad_atol": 1e-06,
+                "grad_rtol": 0.0001,
+                "parameter_atol": 1e-06,
+                "parameter_rtol": 0.0001
+              },
+              "warmup": 2,
+              "repeats": 5,
+              "assets": {},
+              "device_count": 2,
+              "distributed_backend": "nccl",
+              "communication": "required",
+              "required_observations": [
+                "communication_kernel_sum_ms"
+              ],
+              "notes": [
+                "Command provenance: intent.json command 'torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp --profile'; warmup=2 and repeats=5 come from common.py:24-25 defaults, which the command does not override.",
+                "Objective definition (workloads.json communication_metric_caveat, README line 48): per-rank sum of device NCCL kernel durations over the whole accumulated step, including device waiting; NOT wire time, critical-path time or exposed communication. Maximum across ranks, sampled in 3 separately profiled diagnostic invocations (gpt2_ddp_training.py:121-125) and reduced by median (sorted(values)[1], gpt2_ddp_training.py:156-157) - hence rank_aggregation=max with aggregation_order=ranks_then_samples.",
+                "The source metric diagnostic.max_rank_nccl_kernel_sum_ms (computed by common.py profile_once nccl_kernel_sum_ms from CUDA traces) maps to the installed collector torch_communication.communication_kernel_sum_ms per deployment.json metric_collectors; make_project_requests.py:51-55 uses the same mapping for this exact goal. Collector availability is verified by the actual workload worker.",
+                "Step-time constraint from workloads.json:30 step_ms_max_baseline_ratio=1.05 on the communication goal: clean step_ms (per-repeat maximum across rank-local step times, median of 5 repeats; gpt2_ddp_training.py:148-152 with common.py:66-71 summarize) must stay <= 1.05x baseline. Gloo control-group barrier and reset() are outside the timed boundary (gpt2_ddp_training.py:112-118).",
+                "Discrete exact comparisons that must hold: every parameter gradient bitwise identical across ranks (torch.testing.assert_close atol=0.0, rtol=0.0; gpt2_ddp_training.py:81-86); summed loss finite (gpt2_ddp_training.py:65); negative control must reject a +1-corrupted gradient (common.py:79-84).",
+                "Full correctness checks retained per the goal: rank-0 serial single-GPU reference consuming the identical global batch (all ranks' seeded inputs concatenated, effective batch 8) with gradient comparison before step and parameter comparison after SGD step at grad/parameter tolerances (gpt2_ddp_training.py:67-91). Reference construction, correctness checks, the 3 diagnostic traces and the separate allreduce-hook bucket inventory (gpt2_ddp_training.py:128-138) are measurement infrastructure, not work repeated by the adapter.",
+                "Numerics preserved end to end: FP32 weights and inputs, TF32 disabled for matmul and cudnn, float32_matmul_precision 'highest', cudnn.benchmark off, attn_implementation='eager', all dropout 0, use_cache=False (common.py:34-42; gpt2_ddp_training.py:26). Effective batch = 2*1*4 = 8; tokens per step = 2*1*128*4 = 1024.",
+                "Deterministic fixtures: model init torch.manual_seed(20261020) (gpt2_ddp_training.py:25); per-rank token inputs torch.Generator seed 31000+rank (gpt2_ddp_training.py:31-33); inputs are pre-generated and moved to device before any timing.",
+                "Baseline communication implementation to reproduce (gpt2_ddp_training.py:59-60 and :40): DDP(device_ids=[rank], broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True) with no_sync() on the first accumulation_steps-1 microbatches, so one gradient allreduce per step; SGD lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False."
+              ]
+            },
+            "evidence": {
+              "entry_and_command": [
+                "inputs/intent.json:4 command 'torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp --profile'",
+                "inputs/intent.json:3 goal: reduce the diagnostic maximum-rank summed NCCL kernel duration, retaining step-time constraint and full correctness checks",
+                "gpt2_ddp_training.py:48-53 main(): torchrun entry, init_process_group('nccl'), gloo control group",
+                "gpt2_ddp_training.py:54-57 loads workloads.json key gpt2_ddp_training, selects workloads[0], enforces world_size==2"
+              ],
+              "workload": [
+                "workloads.json:28-29 workload row id=accumulated_step world_size=2 micro_batch=1 sequence_length=128 accumulation_steps=4",
+                "gpt2_ddp_training.py:30-33 make_inputs: per-rank synthetic token IDs, generator seed 31000+rank",
+                "gpt2_ddp_training.py:24-27 make_model: GPT2Config from workloads.json model dict, seeded init, FP32, eager attention, dropout 0",
+                "workloads.json:26 model architecture n_layer=12 n_embd=768 n_head=12 vocab_size=50257 n_positions=1024"
+              ],
+              "objective": [
+                "workloads.json:30 goal id=communication metric diagnostic.max_rank_nccl_kernel_sum_ms direction min with constraint step_ms_max_baseline_ratio=1.05",
+                "workloads.json:34 communication_metric_caveat: per-rank sum of NCCL kernel durations, max across ranks, includes waiting, profiled separately from clean timing",
+                "gpt2_ddp_training.py:121-125 3 separately profiled diagnostic passes when --profile is set",
+                "gpt2_ddp_training.py:156-157 max across ranks per profile index, then median of the 3 values (sorted(values)[1])",
+                "common.py:87-105 profile_once: sums NCCL kernel durations from the CUDA trace (nccl_kernel_sum_ms)",
+                "make_project_requests.py:51-55 canonical mapping for this goal: source={collector: torch_communication, field: communication_kernel_sum_ms}, rank_aggregation=max, communication=required",
+                "inputs/deployment.json:32-53 metric_collectors.torch_communication.fields.communication_kernel_sum_ms (per-rank sum of device communication-kernel durations in a separately profiled invocation)",
+                "README.md:48 communication goal must also keep clean step <= 1.05x original baseline"
+              ],
+              "quality": [
+                "workloads.json:33 correctness grad_atol=0.000001 grad_rtol=0.0001 parameter_atol=0.000001 parameter_rtol=0.0001",
+                "gpt2_ddp_training.py:64-78 finite-loss assert, rank-0 serial reference over the same global batch, gradient close_check, negative_check",
+                "gpt2_ddp_training.py:81-86 exact cross-rank gradient equality with atol=0.0 rtol=0.0",
+                "gpt2_ddp_training.py:87-91 optimizer.step() then parameter_update_check via close_check",
+                "common.py:74-84 close_check and negative_check implementations",
+                "common.py:34-42 configure(): TF32 disabled, float32_matmul_precision 'highest', cudnn.benchmark False"
+              ],
+              "timing_boundary": [
+                "common.py:24-25 defaults --warmup 2 --repeats 5 (command does not override)",
+                "gpt2_ddp_training.py:99-105 reset() and step(): accumulate + optimizer.step + cuda.synchronize",
+                "gpt2_ddp_training.py:107-119 warmup loop then per-repeat reset, barrier, peak-memory reset, timed step",
+                "gpt2_ddp_training.py:148-152 combined step_ms = max across ranks per aligned repeat",
+                "common.py:66-71 summarize: median/min/max over the 5 combined samples"
+              ],
+              "assets": [
+                "gpt2_ddp_training.py:1-5 docstring: seeded synthetic weights and token IDs, not pretrained GPT-2",
+                "make_project_requests.py:45 gpt2_ddp_training request carries no assets entry",
+                "user command passes no --assets; common.py --assets is optional and unused here"
+              ],
+              "devices": [
+                "workloads.json:28 world_size=2; inputs/intent.json:4 --nproc_per_node=2",
+                "inputs/deployment.json devices/inventory: 2x NVIDIA GeForce RTX 4090 (the worker binds ranks/devices and initializes process groups)",
+                "gpt2_ddp_training.py:52 dist.init_process_group('nccl', ...) with device_id cuda:rank"
+              ]
+            },
+            "assumptions": [
+              "The user goal selects the 'communication' goal of workload row 'accumulated_step'; the sibling 'step' goal (minimize step_ms) is retained only as the <=1.05x baseline constraint, not as a second objective.",
+              "Statistical defaults warmup=2/repeats=5 apply because the command does not override them; the 3 profiled diagnostic invocations are the communication collector's separate profiling passes (recorded in notes), not additional clean repeats.",
+              "Objective name keeps the project's own metric key diagnostic.max_rank_nccl_kernel_sum_ms (make_project_requests.py:32,51-55) with the installed collector field declared in objective.source; required_observations lists only the installed collector field communication_kernel_sum_ms - the project generator's extra inventory observations (collective_identity, logical_payload, cross_rank_collectives) come from the source's separate allreduce-hook inventory (gpt2_ddp_training.py:128-138), have no corresponding installed collector fields, and are not requested by this goal.",
+              "device_count=2 matches the workload's world_size and --nproc_per_node=2, not merely the machine inventory; distributed_backend=nccl is the model process group - a gloo control group exists only for barriers/object gather outside timing.",
+              "No external assets: architecture-only GPT-2 with seeded synthetic initialization and synthetic token IDs; assets is empty and no weights/data are copied into source.",
+              "Each measured unit starts from the stored initial weights via reset(); SGD has no momentum state and gradients are recomputed each unit, so the weight reset fully determines unit state semantics.",
+              "The generic tensor comparator uses atol=1e-6/rtol=1e-4, the source's identical grad and parameter tolerances (workloads.json:33; make_project_requests.py:28-29); bitwise cross-rank gradient equality stays an exact discrete check described in notes.",
+              "Incidental baseline implementation choices (recorded for reproduction, not frozen requirements - semantics-preserving alternatives are allowed as long as FP32 numerics, seeds, effective batch 8, completion boundaries and outputs are preserved): bucket_cap_mb=25, gradient_as_bucket_view=True, broadcast_buffers=False, SGD foreach=False, torch.set_num_threads(4)/interop 1, eager attention, separate gloo control group, torch.profiler chrome-trace export."
+            ],
+            "questions": []
+          },
+          "request": {
+            "schema_version": "project-request.v1",
+            "source_root": "/root/autodl-tmp/dev/v6-work/autonomous-cohort-20261027/framework/4cdd076376de/examples/v6_validation",
+            "entry": "gpt2_ddp_training.py",
+            "files": [
+              "gpt2_ddp_training.py",
+              "common.py",
+              "workloads.json"
+            ],
+            "goal": "Reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks.",
+            "objective": {
+              "name": "diagnostic.max_rank_nccl_kernel_sum_ms",
+              "unit": "ms",
+              "direction": "minimize",
+              "constraints": [
+                {
+                  "metric": "step_ms",
+                  "op": "le",
+                  "baseline_ratio": 1.05,
+                  "rank_aggregation": "max",
+                  "aggregation_order": "ranks_then_samples"
+                }
+              ],
+              "source": {
+                "collector": "torch_communication",
+                "field": "communication_kernel_sum_ms"
+              },
+              "rank_aggregation": "max",
+              "aggregation_order": "ranks_then_samples"
+            },
+            "workload": {
+              "id": "accumulated_step",
+              "world_size": 2,
+              "micro_batch": 1,
+              "sequence_length": 128,
+              "accumulation_steps": 4,
+              "goals": [
+                {
+                  "id": "step",
+                  "metric": "step_ms",
+                  "direction": "min"
+                },
+                {
+                  "id": "communication",
+                  "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+                  "direction": "min",
+                  "constraints": {
+                    "step_ms_max_baseline_ratio": 1.05
+                  }
+                }
+              ],
+              "model": {
+                "n_layer": 12,
+                "n_embd": 768,
+                "n_head": 12,
+                "vocab_size": 50257,
+                "n_positions": 1024
+              }
+            },
+            "quality": {
+              "atol": 1e-06,
+              "rtol": 0.0001,
+              "grad_atol": 1e-06,
+              "grad_rtol": 0.0001,
+              "parameter_atol": 1e-06,
+              "parameter_rtol": 0.0001
+            },
+            "assets": {},
+            "devices": [
+              "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+            ],
+            "distributed_backend": "nccl",
+            "communication": "required",
+            "required_observations": [
+              "communication_kernel_sum_ms"
+            ],
+            "tools": {
+              "ncu": "/usr/local/cuda/bin/ncu",
+              "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+            },
+            "profiling": {
+              "agent_plan": true,
+              "feedback_agent_plan": true
+            },
+            "binding_backend": "legacy",
+            "measurement_lifetime": "invocation",
+            "warmup": 2,
+            "repeats": 5,
+            "continuous_steps": 2,
+            "worker_timeout_s": 900.0,
+            "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+            "notes": [
+              "Command provenance: intent.json command 'torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp --profile'; warmup=2 and repeats=5 come from common.py:24-25 defaults, which the command does not override.",
+              "Objective definition (workloads.json communication_metric_caveat, README line 48): per-rank sum of device NCCL kernel durations over the whole accumulated step, including device waiting; NOT wire time, critical-path time or exposed communication. Maximum across ranks, sampled in 3 separately profiled diagnostic invocations (gpt2_ddp_training.py:121-125) and reduced by median (sorted(values)[1], gpt2_ddp_training.py:156-157) - hence rank_aggregation=max with aggregation_order=ranks_then_samples.",
+              "The source metric diagnostic.max_rank_nccl_kernel_sum_ms (computed by common.py profile_once nccl_kernel_sum_ms from CUDA traces) maps to the installed collector torch_communication.communication_kernel_sum_ms per deployment.json metric_collectors; make_project_requests.py:51-55 uses the same mapping for this exact goal. Collector availability is verified by the actual workload worker.",
+              "Step-time constraint from workloads.json:30 step_ms_max_baseline_ratio=1.05 on the communication goal: clean step_ms (per-repeat maximum across rank-local step times, median of 5 repeats; gpt2_ddp_training.py:148-152 with common.py:66-71 summarize) must stay <= 1.05x baseline. Gloo control-group barrier and reset() are outside the timed boundary (gpt2_ddp_training.py:112-118).",
+              "Discrete exact comparisons that must hold: every parameter gradient bitwise identical across ranks (torch.testing.assert_close atol=0.0, rtol=0.0; gpt2_ddp_training.py:81-86); summed loss finite (gpt2_ddp_training.py:65); negative control must reject a +1-corrupted gradient (common.py:79-84).",
+              "Full correctness checks retained per the goal: rank-0 serial single-GPU reference consuming the identical global batch (all ranks' seeded inputs concatenated, effective batch 8) with gradient comparison before step and parameter comparison after SGD step at grad/parameter tolerances (gpt2_ddp_training.py:67-91). Reference construction, correctness checks, the 3 diagnostic traces and the separate allreduce-hook bucket inventory (gpt2_ddp_training.py:128-138) are measurement infrastructure, not work repeated by the adapter.",
+              "Numerics preserved end to end: FP32 weights and inputs, TF32 disabled for matmul and cudnn, float32_matmul_precision 'highest', cudnn.benchmark off, attn_implementation='eager', all dropout 0, use_cache=False (common.py:34-42; gpt2_ddp_training.py:26). Effective batch = 2*1*4 = 8; tokens per step = 2*1*128*4 = 1024.",
+              "Deterministic fixtures: model init torch.manual_seed(20261020) (gpt2_ddp_training.py:25); per-rank token inputs torch.Generator seed 31000+rank (gpt2_ddp_training.py:31-33); inputs are pre-generated and moved to device before any timing.",
+              "Baseline communication implementation to reproduce (gpt2_ddp_training.py:59-60 and :40): DDP(device_ids=[rank], broadcast_buffers=False, bucket_cap_mb=25, gradient_as_bucket_view=True) with no_sync() on the first accumulation_steps-1 microbatches, so one gradient allreduce per step; SGD lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False.",
+              "One measured invocation: torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output <run-dir> --profile (from the repository root; --warmup/--repeats default to 2/5). One measured unit = one full accumulated training step from the stored initial weights: reset() restores the seeded initial state_dict, accumulate() runs 4 microbatches of per-rank GPU-resident synthetic input_ids (micro_batch=1, sequence_length=128, generator seed 31000+rank) with loss divided by accumulation_steps and DDP no_sync() on the first 3 microbatches so the gradient allreduce runs only in the 4th backward, then optimizer.step() (SGD lr=0.001, momentum=0.0, weight_decay=0.0, foreach=False) and torch.cuda.synchronize(). Unit outputs: finite summed FP32 loss, allreduced gradients, updated FP32 parameters. Model construction, input generation and H2D transfer, warmup/repeats statistics, rank-0 reference construction, correctness checks, the 3 profiled diagnostic passes and the separate comm-hook bucket inventory are outside the repeated unit."
+            ]
+          },
+          "agent": {
+            "role": "project-intake",
+            "session": "ses_e8439eff8ffeYHQCrMtqbrleAK",
+            "message": "msg_17bca44bb001TnUGO7K31mrxn2",
+            "model": "zhipuai/glm-5.3",
+            "usage": {
+              "schema_version": 1,
+              "mode": "observe_only",
+              "messages": 8,
+              "reported_cost": 0.17486804266,
+              "messages_without_cost": 0,
+              "unfinished_messages": 0,
+              "tokens": {
+                "total": 218121.0,
+                "input": 35932.0,
+                "output": 4332.0,
+                "reasoning": 15617.0,
+                "cache.read": 162240.0,
+                "cache.write": 0.0
+              },
+              "sessions": [
+                {
+                  "id": "ses_e8439eff8ffeYHQCrMtqbrleAK",
+                  "status": "observed",
+                  "detail": null
+                }
+              ],
+              "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+            },
+            "sandbox": "/root/autodl-tmp/dev/v6-work/goal-switch-20261027/intake-ab/treatment/sandboxes/project-intake-replay-286491e2fa12",
+            "outputs": [
+              "intake.json"
+            ],
+            "feedback_provided": false,
+            "contract_repairs": 0,
+            "generation_snapshots": [
+              "/root/autodl-tmp/dev/v6-work/goal-switch-20261027/intake-ab/treatment/generation-snapshots/generation-aa4e14103d17.json"
+            ]
+          }
+        }
+      ]
+    },
+    "tp_readiness": {
+      "status": "completed_with_errors",
+      "ready_for_optimization": false,
+      "runs": [
+        {
+          "world_size": 1,
+          "source_fidelity_valid": true,
+          "execution": {
+            "schema_version": 1,
+            "status": "passed",
+            "failure": null,
+            "wall_s": 29.154997140169144,
+            "ranks": [
+              {
+                "rank": 0,
+                "pid": 180651,
+                "exit_code": 0,
+                "status": "passed",
+                "binding": {
+                  "pid": 180651,
+                  "status": "verified",
+                  "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+                  "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+                  "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+                  "logical_device": 0,
+                  "nvidia_smi_pid_uuids": [
+                    "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+                  ],
+                  "pid_query_status": "observed",
+                  "occupancy": {
+                    "status": "sampled_clear",
+                    "samples": 34,
+                    "unavailable_samples": 0,
+                    "wait_s": 0.06340501829981804,
+                    "external_clients": [],
+                    "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+                  }
+                },
+                "framework_source": {
+                  "sha256": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+                  "files": 162,
+                  "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+                },
+                "result": {
+                  "valid": true,
+                  "scope": "Developer readiness of the original full inference loop using official library TP; no autonomous optimization or formal speedup acceptance.",
+                  "workload": {
+                    "id": "interactive",
+                    "batch": 1,
+                    "prompt_tokens": 256,
+                    "new_tokens": 32,
+                    "goals": [
+                      {
+                        "id": "ttft",
+                        "metric": "ttft_ms",
+                        "direction": "min"
+                      },
+                      {
+                        "id": "decode",
+                        "metric": "decode_tokens_per_second",
+                        "direction": "max"
+                      }
+                    ]
+                  },
+                  "quality": {
+                    "atol": 0.02,
+                    "rtol": 0.02
+                  },
+                  "checks": [
+                    {
+                      "step": 0,
+                      "full_logits": {
+                        "passed": true,
+                        "compared_elements": 4861952,
+                        "max_abs_error": 0.0
+                      },
+                      "exact_tokens": {
+                        "passed": true,
+                        "compared_elements": 32,
+                        "max_abs_error": 0.0
+                      }
+                    },
+                    {
+                      "step": 1,
+                      "full_logits": {
+                        "passed": true,
+                        "compared_elements": 4861952,
+                        "max_abs_error": 0.0
+                      },
+                      "exact_tokens": {
+                        "passed": true,
+                        "compared_elements": 32,
+                        "max_abs_error": 0.0
+                      }
+                    }
+                  ],
+                  "samples": [
+                    {
+                      "ttft_ms": 24.279746,
+                      "decode_ms": 679.80443,
+                      "end_to_end_ms": 704.084176,
+                      "decode_tokens_per_second": 45.60135037660758,
+                      "generated_tokens_per_second": 45.44911118695558,
+                      "peak_allocated_bytes": 8168429568
+                    },
+                    {
+                      "ttft_ms": 24.026542,
+                      "decode_ms": 667.189822,
+                      "end_to_end_ms": 691.216364,
+                      "decode_tokens_per_second": 46.463538528020294,
+                      "generated_tokens_per_second": 46.29520026814643,
+                      "peak_allocated_bytes": 8168429568
+                    },
+                    {
+                      "ttft_ms": 23.973491,
+                      "decode_ms": 674.494753,
+                      "end_to_end_ms": 698.468244,
+                      "decode_tokens_per_second": 45.96032787819181,
+                      "generated_tokens_per_second": 45.81453813381958,
+                      "peak_allocated_bytes": 8168429568
+                    },
+                    {
+                      "ttft_ms": 25.009047,
+                      "decode_ms": 674.327047,
+                      "end_to_end_ms": 699.336094,
+                      "decode_tokens_per_second": 45.97175827058291,
+                      "generated_tokens_per_second": 45.75768400136373,
+                      "peak_allocated_bytes": 8168429568
+                    },
+                    {
+                      "ttft_ms": 24.084986,
+                      "decode_ms": 680.197415,
+                      "end_to_end_ms": 704.282401,
+                      "decode_tokens_per_second": 45.57500413317507,
+                      "generated_tokens_per_second": 45.436319230132234,
+                      "peak_allocated_bytes": 8168429568
+                    }
+                  ],
+                  "summary": {
+                    "ttft_ms": {
+                      "median": 24.084986,
+                      "min": 23.973491,
+                      "max": 25.009047
+                    },
+                    "decode_ms": {
+                      "median": 674.494753,
+                      "min": 667.189822,
+                      "max": 680.197415
+                    },
+                    "end_to_end_ms": {
+                      "median": 699.336094,
+                      "min": 691.216364,
+                      "max": 704.282401
+                    },
+                    "decode_tokens_per_second": {
+                      "median": 45.96032787819181,
+                      "min": 45.57500413317507,
+                      "max": 46.463538528020294
+                    },
+                    "generated_tokens_per_second": {
+                      "median": 45.75768400136373,
+                      "min": 45.436319230132234,
+                      "max": 46.29520026814643
+                    },
+                    "peak_allocated_bytes": {
+                      "median": 8168429568,
+                      "min": 8168429568,
+                      "max": 8168429568
+                    }
+                  },
+                  "diagnostic": {
+                    "trace_file": "tp1-rank0-trace.json",
+                    "trace_sha256": "836a8b7c9edab9e41d25023de6459c1aa97736361d62cff0d1895eef4e17db93",
+                    "cuda_kernel_count": 66441,
+                    "nccl_kernel_count": 0,
+                    "nccl_kernel_sum_ms": 0.0,
+                    "cpu_allreduce_event_count": 0,
+                    "nccl_kernel_names": [],
+                    "top_cuda_kernels_by_total_us": [
+                      {
+                        "name": "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, __nv_bfloat16, __nv_bfloat16, __nv_bfloat16, float, false, true, true, false, 6, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16>, float>)",
+                        "total_us": 219081.635,
+                        "calls": 6728
+                      },
+                      {
+                        "name": "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, __nv_bfloat16, __nv_bfloat16, __nv_bfloat16, float, false, true, true, false, 7, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16>, float>)",
+                        "total_us": 61211.237,
+                        "calls": 1116
+                      },
+                      {
+                        "name": "void at::native::elementwise_kernel<128, 4, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1})",
+                        "total_us": 12323.083,
+                        "calls": 6985
+                      },
+                      {
+                        "name": "void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::MeanOps<float, float, float, float>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::MeanOps<float, float, float, float>, unsigned int, float, 4, 4>)",
+                        "total_us": 10033.219,
+                        "calls": 4640
+                      },
+                      {
+                        "name": "void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>, 4, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithCast<1>, at::native::memory::StoreWithCast<1> >(int, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithCast<1>, at::native::memory::StoreWithCast<1>)",
+                        "total_us": 9460.25,
+                        "calls": 4672
+                      },
+                      {
+                        "name": "ampere_bf16_s1688gemm_bf16_64x128_sliced1x2_ldg8_f2f_tn",
+                        "total_us": 9255.528,
+                        "calls": 108
+                      },
+                      {
+                        "name": "void pytorch_flash::flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 64, 128, 4, false, false, cutlass::bfloat16_t, Flash_kernel_traits<128, 64, 128, 4, cutlass::bfloat16_t> >, false, false, false, false, true, false, true, false>(pytorch_flash::Flash_fwd_params)",
+                        "total_us": 7022.642,
+                        "calls": 1116
+                      },
+                      {
+                        "name": "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1})",
+                        "total_us": 6546.195,
+                        "calls": 4640
+                      },
+                      {
+                        "name": "void at::native::(anonymous namespace)::CatArrayBatchedCopy<at::native::(anonymous namespace)::OpaqueType<2u>, unsigned int, 4, 64, 64>(at::native::(anonymous namespace)::OpaqueType<2u>*, at::native::(anonymous namespace)::CatArrInputTensorMetadata<at::native::(anonymous namespace)::OpaqueType<2u>, unsigned int, 64, 64>, at::native::(anonymous namespace)::TensorSizeStride<unsigned int, 4u>, int, unsigned int)",
+                        "total_us": 5302.218,
+                        "calls": 2376
+                      },
+                      {
+                        "name": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::pow_tensor_scalar_kernel_impl<float, float>(at::TensorIteratorBase&, float)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::pow_tensor_scalar_kernel_impl<float, float>(at::TensorIteratorBase&, float)::{lambda(float)#1}, std::array<char*, 2ul>)",
+                        "total_us": 4773.82,
+                        "calls": 4640
+                      },
+                      {
+                        "name": "void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)",
+                        "total_us": 4770.596,
+                        "calls": 4704
+                      },
+                      {
+                        "name": "void at::native::vectorized_elementwise_kernel<4, at::native::rsqrt_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#2}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::rsqrt_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#2}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+                        "total_us": 4736.666,
+                        "calls": 4640
+                      },
+                      {
+                        "name": "void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctor_add<c10::BFloat16>, std::array<char*, 3ul> >(int, at::native::CUDAFunctor_add<c10::BFloat16>, std::array<char*, 3ul>)",
+                        "total_us": 4655.714,
+                        "calls": 4536
+                      },
+                      {
+                        "name": "void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctorOnSelf_add<float>, std::array<char*, 2ul> >(int, at::native::CUDAFunctorOnSelf_add<float>, std::array<char*, 2ul>)",
+                        "total_us": 4468.514,
+                        "calls": 4640
+                      },
+                      {
+                        "name": "void at::native::elementwise_kernel<128, 4, at::native::gpu_kernel_impl_nocast<at::native::neg_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#9}::operator()() const::{lambda(c10::BFloat16)#1}>(at::TensorIteratorBase&, at::native::neg_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#9}::operator()() const::{lambda(c10::BFloat16)#1} const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::neg_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#9}::operator()() const::{lambda(c10::BFloat16)#1}>(at::TensorIteratorBase&, at::native::neg_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#9}::operator()() const::{lambda(c10::BFloat16)#1} const&)::{lambda(int)#1})",
+                        "total_us": 3987.8469999999998,
+                        "calls": 2304
+                      }
+                    ]
+                  },
+                  "tp_plan": {
+                    "lm_head": "colwise_gather_output",
+                    "model.layers.*.self_attn.q_proj": "colwise",
+                    "model.layers.*.self_attn.k_proj": "colwise",
+                    "model.layers.*.self_attn.v_proj": "colwise",
+                    "model.layers.*.self_attn.q_norm": "replicated_with_grad_allreduce",
+                    "model.layers.*.self_attn.k_norm": "replicated_with_grad_allreduce",
+                    "model.layers.*.self_attn.o_proj": "rowwise",
+                    "model.layers.*.mlp.gate_proj": "colwise",
+                    "model.layers.*.mlp.up_proj": "colwise",
+                    "model.layers.*.mlp.down_proj": "rowwise",
+                    "model.embed_tokens": "embedding_rowwise"
+                  },
+                  "world_size": 1,
+                  "torch": "2.13.0+cu129",
+                  "transformers": "5.16.1",
+                  "reference_sha256": "af929f424e8ceb372b06ac171841df496f9a9ef4c26c16dc2f69b4014a2678da",
+                  "source_sha256": {
+                    "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+                    "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+                    "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+                  },
+                  "interpretation": "NCCL kernel duration includes waiting; it is neither link traffic nor exposed critical-path cost. Quality failure disqualifies this case at the unchanged tolerance."
+                }
+              }
+            ],
+            "lease_wait_s": 0.00022333860397338867,
+            "device_selectors": [
+              "0"
+            ],
+            "entry_sha256": "1beaf911eea2a4ece3f1d4baa2c0ed8fda279955bba8e8296a84a8612bdedf30",
+            "devices": [
+              "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+            ],
+            "worker_pids_reaped": true
+          }
+        },
+        {
+          "world_size": 2,
+          "source_fidelity_valid": false,
+          "execution": {
+            "schema_version": 1,
+            "status": "failed",
+            "failure": "rank_failed",
+            "wall_s": 6.398087687790394,
+            "ranks": [
+              {
+                "rank": 0,
+                "pid": 180834,
+                "exit_code": 1,
+                "status": "failed",
+                "binding": {
+                  "pid": 180834,
+                  "status": "verified",
+                  "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+                  "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+                  "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+                  "logical_device": 0,
+                  "nvidia_smi_pid_uuids": [
+                    "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+                  ],
+                  "pid_query_status": "observed"
+                },
+                "framework_source": {
+                  "sha256": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+                  "files": 162,
+                  "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+                },
+                "error_type": "ValueError",
+                "error": "Using a `device_map`, `tp_plan`, `torch.device` context manager or setting `torch.set_default_device(device)` requires `accelerate`. You can install it with `pip install accelerate`",
+                "traceback": "Traceback (most recent call last):\n  File \"/root/autodl-tmp/dev/v6-work/goal-switch-20261027/framework/1d6f3a5bd822/src/kernel_optimizer/runtime/worker.py\", line 82, in main\n    result = getattr(module, request.function)(context)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/autodl-tmp/dev/v6-work/goal-switch-20261027/framework/1d6f3a5bd822/scripts/experiments/v6_tp_qwen_readiness_20261027.py\", line 32, in run\n    model = Qwen3ForCausalLM.from_pretrained(params['assets'], **options).eval()\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/modeling_utils.py\", line 4226, in from_pretrained\n    device_map = check_and_set_device_map(device_map)  # warn, error and fix the device map\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/integrations/accelerate.py\", line 137, in check_and_set_device_map\n    raise ValueError(\nValueError: Using a `device_map`, `tp_plan`, `torch.device` context manager or setting `torch.set_default_device(device)` requires `accelerate`. You can install it with `pip install accelerate`\n"
+              },
+              {
+                "rank": 1,
+                "pid": 180835,
+                "exit_code": 1,
+                "status": "failed",
+                "binding": {
+                  "pid": 180835,
+                  "status": "verified",
+                  "torch_uuid": "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+                  "requested_uuid": "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+                  "torch_raw_uuid": "cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+                  "logical_device": 1,
+                  "nvidia_smi_pid_uuids": [
+                    "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+                  ],
+                  "pid_query_status": "observed"
+                },
+                "framework_source": {
+                  "sha256": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+                  "files": 162,
+                  "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+                },
+                "error_type": "ValueError",
+                "error": "Using a `device_map`, `tp_plan`, `torch.device` context manager or setting `torch.set_default_device(device)` requires `accelerate`. You can install it with `pip install accelerate`",
+                "traceback": "Traceback (most recent call last):\n  File \"/root/autodl-tmp/dev/v6-work/goal-switch-20261027/framework/1d6f3a5bd822/src/kernel_optimizer/runtime/worker.py\", line 82, in main\n    result = getattr(module, request.function)(context)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/autodl-tmp/dev/v6-work/goal-switch-20261027/framework/1d6f3a5bd822/scripts/experiments/v6_tp_qwen_readiness_20261027.py\", line 32, in run\n    model = Qwen3ForCausalLM.from_pretrained(params['assets'], **options).eval()\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/modeling_utils.py\", line 4226, in from_pretrained\n    device_map = check_and_set_device_map(device_map)  # warn, error and fix the device map\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/integrations/accelerate.py\", line 137, in check_and_set_device_map\n    raise ValueError(\nValueError: Using a `device_map`, `tp_plan`, `torch.device` context manager or setting `torch.set_default_device(device)` requires `accelerate`. You can install it with `pip install accelerate`\n"
+              }
+            ],
+            "lease_wait_s": 0.0003088228404521942,
+            "device_selectors": [
+              "0",
+              "1"
+            ],
+            "entry_sha256": "1beaf911eea2a4ece3f1d4baa2c0ed8fda279955bba8e8296a84a8612bdedf30",
+            "devices": [
+              "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+            ],
+            "worker_pids_reaped": true
+          }
+        }
+      ]
+    },
+    "resnet-memory": {
+      "status": "completed",
+      "returncode": 0,
+      "output": "/root/autodl-tmp/dev/v6-work/goal-switch-20261027/resnet-memory",
+      "free_data_bytes": 11571068928,
+      "preparation_status": "prepared",
+      "current": "46bcc1f2bfa33e521d66821dd9074e95da99d5c5e123646f8bbd8290c3699718",
+      "bundles": [
+        "trial-e9279012c6-param-9ac5fd08",
+        "trial-fd9bdc62a2-param-b6738601"
+      ],
+      "trials": [
+        {
+          "path": "/root/autodl-tmp/dev/v6-work/goal-switch-20261027/resnet-memory/trials/trial-2ffc01d1ba/result.json",
+          "sha256": "8073e90b41a73ef6246a104fcf8cfd38bc7d2071d8500bc37e9af50bac332ed9",
+          "decision": {
+            "state": "evaluated",
+            "revision": "374e89a754f8d3d6e6ac80dea757002e28f18666b62bc68d1094a5432917b9e0",
+            "parent": "46bcc1f2bfa33e521d66821dd9074e95da99d5c5e123646f8bbd8290c3699718",
+            "bundle": "trial-2ffc01d1ba-param-7e5c0ae4",
+            "accepted": false,
+            "reasons": [
+              "paired_gain_not_above_noise",
+              "objective_not_improved"
+            ],
+            "report_ref": "sha256:6d55c9de6b02b8f47aea0b6b172e7a43d54f80b9f07bdb4d6765e80ef6dd45e9"
+          },
+          "selection": {
+            "scope": "region",
+            "groups": [
+              "12db41921fb9c23d394c",
+              "3264c69dfa51b73502af",
+              "3821cceac23fa97e5a55",
+              "40c0c6aad406fb16de74",
+              "43dc00eec958553f5d6d",
+              "4a72185b7336e8bacf02",
+              "4f2e4acaa4fc9d5996a5",
+              "51dd65788ef71c02459f",
+              "5607aa17bfec784b9f45",
+              "564a29dd11ebaed3c3cf",
+              "5c95b6c20b9c8d2ceab9",
+              "62ab8ba898b17ded7f5a",
+              "76d0207a5412c55935f9",
+              "798df708d05932b17f71",
+              "84a14107ead22805b2ac",
+              "85bb2174694bea7879b2",
+              "85f0b0bf9291b9a0bd86",
+              "88475b4259a5c7ede930",
+              "97136fdb2313898b4105",
+              "9d0088b560f84ffda378",
+              "9d90f761ca790170108a",
+              "a44a11e39673a3b5d656",
+              "a72fc73ca2119f919a28",
+              "ab5746b9531790083077",
+              "ad8134ca1bf541789198",
+              "b93c27e31878f0489b7a",
+              "c279d448fb108b493359",
+              "c7fdaffbaa4778818440",
+              "d08da70bf1d8d266142d",
+              "e5e3a4d3d51c6efee229",
+              "fba4f95997cde4b95bb4",
+              "fe2a3d8608fc58a6cc01"
+            ],
+            "rationale": "Objective peak_allocated_bytes on the current accepted version (stem micro-batch rows8 + stage-0 micro-batch rows8, both verified executing in this discovery: stem Conv2d/BatchNorm2d/ReLU/max_pool2d n=4, copy_ n=4, one 32x64x56x56 assembly; stage-0 slices/Sequential/Identity n=4, add_ n=8) measures exactly 177,409,024 B = live FP32 params 46,758,048 + GPU-resident input 19,267,584 + retained workspace 8,622,944 + 4 x 25,690,112, where 25,690,112 is one 32x64x56x56 FP32 unit (also exactly 8x64x112x112). The previous parameter search measured stage0_chunk_rows=8 and =16 at the identical 177,409,024, so the binding moment is independent of stage-0 chunk transients; the peak now sits in a phase that parameter cannot touch. Static liveness bounds leave the unchanged stage-1 phase at <= base + 1 unit + 3-4 x 12,845,056 and the chunked stage-0 phase at ~ base + 2 units + 6,422,528 transients, both below the measured 4 units; the stem phase is the only phase where 3 x 25,690,112 coexist in the observed aten sequence (full assembly empty+4x copy_, chunk conv_out 8x64x112x112, chunk bn_out 8x64x112x112), with the fourth unit unexplained by static shapes (per-operator allocation attribution is an explicit unknown; plausibly cudnn workspace for the 7x7 stride-2 conv, which also scales with chunk rows). Halving the stem chunk is the one lever that shrinks every term of that phase: rows=4 turns conv_out/bn_out (and any row-scaled workspace) into 12,845,056 each while the assembly stays 25,690,112. The earlier stem parameter search already executed rows=4 cleanly (objective identical to rows=8 at 203,099,136 while stage 0 was binding), so the lever is proven executable and quality-passing. Selection: region scope re-binding the ResNetEmbeddings boundary (call d16297b8a11b79a2657853d0) with the same proven pattern at half chunk size, running the unchanged Conv2d/BatchNorm2d/ReLU/max_pool parents through context.references on contiguous row chunks and assembling one [32,64,56,56] FP32 tensor consumed unchanged by the untouched stage-0 bundle and stages 1-3; no functional dispatch sites, so the legacy direct-callable backend applies. All 32 stem-subtree groups are selected; the 49 additional calls (stage-0 assembly empty/copy_/slice calls and 43 record_function_exit family calls) are included only because those group families share ownership across the region boundary, matching the accepted region-selection precedent.",
+            "hypothesis": "Re-binding the stem region at chunk_rows=4 (parameter space may probe 2/4/8) lowers peak_allocated_bytes from 177,409,024 B to approximately 151,718,912 B (-25,690,112, -14.5%): with 4-row chunks the stem-phase coexistence becomes assembly 25,690,112 + conv_out 12,845,056 + bn_out 12,845,056 + one further <=25,690,112 term (the statically unexplained unit, likely conv workspace that itself shrinks with rows), i.e. base 74,648,576 + 2 x 25,690,112 + 2 x 12,845,056 at worst. Even if the unexplained unit is fixed-size, the arithmetic lands exactly on 151,718,912; the graceful floor is the unchanged stage-0 phase (~145.3 MB: stage input + assembled output + 6,422,528 transients) and stage-1 phase (~151.4 MB), so no gain below ~145 MB is claimed. Throughput: constraint is images_per_second >= 7,158.9 (0.95 x 7535.66); the accepted version measured 8,506-8,538 img/s (16-19% headroom), rows=4 only adds four extra small conv/bn/relu/pool launches versus the accepted rows=8 route, and stem chunking has previously measured throughput-neutral, so the constraint is expected to hold. Numerics: identical per-sample FP32 kernels (eval batch_norm, out-of-place relu, max_pool2d, conv2d) on contiguous batch slices, the pattern already accepted twice with max_abs_error 7.6e-06 within atol=rtol=1e-4 and exact top-1; full 1000-class logits and predicted classes are unchanged. These benefit, throughput and numerics expectations are hypotheses to be tested by the evaluator's clean paired measurement.",
+            "affected_calls": [
+              "02fb9fd6dfef8178b4e7a42a",
+              "04b4752935d6b3ce9ae4ed0b",
+              "0c5e91ccf13f06039e77b2e6",
+              "0c8cafb1fc30de539c787552",
+              "0d18e670320d9f27ed54e2b6",
+              "0fd8f19f97094a98c0d7910d",
+              "11c99c108749a5d6fc1a0e93",
+              "2056083bb4b55b27f31ec1d1",
+              "21993439018bd21c41eea56a",
+              "2218ed3a8ab07dee5ec3e98b",
+              "22efc2d3b1b60fe2b75f317c",
+              "241f73f10fd1c0ea2acbe22c",
+              "33ce3471dcce4074ae74d5cc",
+              "374bc0aa0686f1b728b343b7",
+              "3a830073d292823ae0c03b78",
+              "3abfb2e86d1ce57b7adb1ed3",
+              "3c976296e834679ec4d133cf",
+              "3fb5d63c01b88564368dd8d0",
+              "3fc87ba4414e84c9b7939615",
+              "418da59429f66deba45916e9",
+              "43b8b7cb129f039619dea4fa",
+              "4703a1bc9b43fa1201fb1b11",
+              "47bb03b7033a59510ec18a88",
+              "4bba89601e13d8fa3bae6359",
+              "50854bcbf8b5dfc6ee604533",
+              "52ea6fd6cc3b235da2ef3b24",
+              "534e55dc22858cdb8b89f79f",
+              "58fedc47449c7a06a7e4a7b4",
+              "5ceb81b2497b31310710f1eb",
+              "5d750732da8081d442528f91",
+              "601b19f4d1d0264c8e846864",
+              "60438f492c3146c3be447874",
+              "60e956ab3f37af2f47df256c",
+              "64c40485484c53c8b0fb0acf",
+              "6b96219304ac79385e4ef06c",
+              "6e963cc930c0fe448baac0b6",
+              "717a390c3e0ed625e60d2e2e",
+              "724da1af9e49fd192e01fb5d",
+              "792aff121b707148530f6d17",
+              "7e2fdcb04e37c22420aceec9",
+              "7e48deea7b643161bf830885",
+              "801ccec157bc2a1c29c5401d",
+              "8921fb59d6c92f1235e4e2c8",
+              "8b3de4b9383e55d14b1f6d7a",
+              "8ca5aa5ac66f4b5fb11f7bd6",
+              "90b6a33cc461537164466140",
+              "94f52ee71b9a898e3daebe01",
+              "95dc61f9a3a0f44a891fb341",
+              "9a7f865a6c842a6b3bc58752",
+              "a170d0b3b9e9364c7e7cd82d",
+              "a260d92a1e9b5e480145920d",
+              "a29180530d8d0f9cd5ee7c56",
+              "a353b2eab2ab30f777298336",
+              "a729fa36a6408758950477bc",
+              "a7ee3c0c860b0737dc4812e1",
+              "a81af62da4defc103c1e24b3",
+              "a9a3911fd343426696acabd5",
+              "aafcc45a5dbf6a6b573a265f",
+              "af5a0976e04ebdc07b8dbbb8",
+              "b063aed8c05fd42dbe3f219f",
+              "b4a6a747499f99f6b81d4b66",
+              "bcb0f37780d2d066cf16a2d8",
+              "c98061ff56600d8872eade43",
+              "ca1f233e0c891270f758ff58",
+              "ce6ba9fef39431107b67833c",
+              "cf2be7db41582c61bf2ee1b6",
+              "cf4c7657cfc7bf028181ea33",
+              "d16297b8a11b79a2657853d0",
+              "d367368ce44ae04acdd178c2",
+              "d49f788ec3edf10b20cba4be",
+              "ddd29cd52cbe36b151fb3883",
+              "df93d5164f6e0cf648fa9162",
+              "e0ad565f4efe33b8c7d338d8",
+              "e11b34f35e11b90ac2cd3a41",
+              "e7ef8d8938f1002fe59a7548",
+              "e89543447aeeab7d6ef31bc1",
+              "ea702dd3861c46a162d769b2",
+              "f02bc80806f007a4645f4881",
+              "f4e98cac0ef6fb4071e898ae",
+              "f526b65855ac2c3a5c7fc7b0",
+              "f80b23633c903441cf06bf33"
+            ]
+          }
+        },
+        {
+          "path": "/root/autodl-tmp/dev/v6-work/goal-switch-20261027/resnet-memory/trials/trial-e9279012c6/result.json",
+          "sha256": "6e2c13654811acde0403d39b294298fc84f9cfe6c22d9ce3f06a9eadf6032613",
+          "decision": {
+            "state": "evaluated",
+            "revision": "71271401df75de54b0dfbde52ef969152593c8ecf72640f6bf95a4319d81dc8e",
+            "parent": "659320c1828f47878b122ecdd4e62039d4f77affce6ddc0d21aabbba6f68dce1",
+            "bundle": "trial-e9279012c6-param-9ac5fd08",
+            "accepted": true,
+            "reasons": [],
+            "report_ref": "sha256:0a1ed65683a2f40176174fbc47dcdb6d56be3de9d5f8af8546c9cf2e5284c311"
+          },
+          "selection": {
+            "scope": "region",
+            "groups": [
+              "3821cceac23fa97e5a55",
+              "0022893ec8c1ceea869f",
+              "95d8eead897036452c64",
+              "7e7c01e2bf7e30a42280",
+              "c671bb65e86ad614e3f6",
+              "c0af3909ba0a106672d5"
+            ],
+            "rationale": "Objective is peak_allocated_bytes (baseline 280,169,472 B, median of clean samples) with images_per_second >= 0.95x7535.66 = 7158.9. The peak decomposes exactly from the measured assets: live FP32 params 46,758,048 + GPU-resident input 19,267,584 + conv1 output 32x64x112x112x4 = 102,760,448 coexisting with the out-of-place batch_norm1 output of the same size + 8,622,944 workspace = 280,169,472 exactly. That coexistence happens inside ResNetEmbeddings (model.resnet.embedder): the stem's two 112x112x64 tensors are 73% of the peak. Note the separately observed ReLU duplication (all 17 ReLUs out-of-place) is not the binding term: the ReLU moment is also a 2x102,760,448 coexistence, so in-place ReLU alone cannot move the peak; the conv->BN output coexistence is the floor that must be attacked. Selection: the stem region (ResNetEmbeddings module and its subtree: stem ResNetConvLayer 0022893ec8c1ceea869f with the single target model.resnet.embedder.embedder, its Conv2d/BatchNorm2d/ReLU modules, and the MaxPool2d pooler). The candidate replaces the ResNetEmbeddings forward (module boundary, children invoked through context.references; no functional dispatch sites, so the legacy direct-callable backend applies) to micro-batch the stem along the frozen batch dimension: 4 contiguous chunks of 8 rows, each chunk running the unchanged conv1 -> bn1(eval) -> relu1 -> maxpool path on a contiguous slice (no copies), with chunk outputs assembled into the same [32,64,56,56] hidden state (25,690,112 B) for the untouched stages. All inherited stem calls still execute (4x per invocation), preserving quality coverage without CUDA-graph replay. Region scope because every call in the stem subtree changes execution (invocation count 1->4, per-call batch 32->8); all 17 observed stem-subtree calls are listed, including the aten conv2d/batch_norm/relu/max_pool2d calls and the discovery record_function hooks that will fire per chunk. No calls outside the region are affected: stage 0+ receive the same-shape, same-value hidden state through the same ops. Rejected alternatives: whole-model micro-batching (execution_plan) would cut deeper (~122 MB) but re-times all 20 convs (~4156 us of diagnostic CUDA time) at batch 8 and risks the 7158.9 img/s floor; deduplicating the 3 unique input images contradicts the frozen batch-32 workload (all 32 rows must execute); CUDA-graph replay skips Python hooks and breaks coverage per binding-contract; folding BN into conv weights changes parameter values (invariant); in-place ReLU alone does not move the 2-tensor peak. Throughput safety: the stem is 907.7/4156.2 us (21.8%) of diagnostic CUDA time, and its kernels are bandwidth-bound on the 112x112x64 tensors - bn_fw_inf_1C11_NCHW 227.2 us, clamp/relu 217.8 us, max_pool_forward_nchw 198.7 us - whose grids stay far above SM saturation at batch 8 and whose total bytes moved are unchanged; only conv1's scudnn kernel (262.5 us) can lose modest efficiency, so even a 20% stem slowdown keeps wall time <= ~4.42 ms (>= ~7240 img/s).",
+            "hypothesis": "Chunking the stem 4x8 lowers peak_allocated_bytes from 280,169,472 B to approximately 143-152 MB (-46% to -49%). With batch-8 chunks the stem transient becomes params 46,758,048 + input 19,267,584 + assembled stem output 25,690,112 + one chunk's conv_out + bn_out coexistence 2x25,690,112 (+ small workspaces) = 143,095,968 + ws, which matches the new binding tier set outside the region by stage 0's out-of-place conv coexistence (input 25,690,112 + conv_out + bn_out), the eager-execution floor reachable without editing stage semantics. If measurement shows batch-8 chunks cost more than the 5% throughput budget, 2x16 chunks inside the same region still yield ~168.8 MB + ws (-38% to -40%); chunk size is tunable within this one boundary. Expected images_per_second 7300-7500 (>= 7158.9) since the bandwidth-bound stem kernels move identical total bytes at near-identical efficiency; expected numerics unchanged: identical aten kernels on contiguous batch slices, BN(eval)/ReLU/MaxPool per-sample exact, conv1 at worst reduction-order-level differences far below the atol=rtol=1e-4 logits tolerance, preserving exact top-1. These benefit, throughput and numerics expectations are hypotheses to be tested by the evaluator's clean timing, peak and quality checks.",
+            "affected_calls": [
+              "00a422776866511d21aff9b4",
+              "10cd0c158be281074f5a8f40",
+              "11c99c108749a5d6fc1a0e93",
+              "1547a96083c06cac6f3b11b7",
+              "1dcfd07639d32233c49eafdf",
+              "35cdfcc2ac5800fd6a981dd7",
+              "48592f21510e7abe26e21e96",
+              "5bd0541e4cd2aecdc8ab6def",
+              "5d1aebae3f2f92ffaa9936ae",
+              "6b96219304ac79385e4ef06c",
+              "7e48deea7b643161bf830885",
+              "805d3386b241f40ad80ab04c",
+              "babacb997a72996bf303d028",
+              "c44bf4cf07ad0ee80bd946b7",
+              "c98061ff56600d8872eade43",
+              "d16297b8a11b79a2657853d0",
+              "dce00bb8bc9002a887676687"
+            ]
+          }
+        },
+        {
+          "path": "/root/autodl-tmp/dev/v6-work/goal-switch-20261027/resnet-memory/trials/trial-fd9bdc62a2/result.json",
+          "sha256": "cc5f7bf14f829fc650ebc4712058133daaadf7f13e6f8732bc03b46a6f4bb947",
+          "decision": {
+            "state": "evaluated",
+            "revision": "02ef15633279e44bc56fdcb2bc52aadfc2f66efcdd461ae53138fe634679afce",
+            "parent": "cd0790cfedf4f4510beb28291ca2415796e5bd0d772618c8be4ade64a0f69497",
+            "bundle": "trial-fd9bdc62a2-param-b6738601",
+            "accepted": true,
+            "reasons": [],
+            "report_ref": "sha256:342d029dab5834402d3910435ffcd78d3d1bef9a6e329c749d9c189472862841"
+          },
+          "selection": {
+            "scope": "region",
+            "groups": [
+              "928c554228ed389eec5f",
+              "5233e425bbe8203a4dc0",
+              "a4f4c5345aa88445e09b",
+              "836e80426d566f8f5dce",
+              "4ab7837aeb010a1dd65b",
+              "c10d16e6a9cc63601262",
+              "f35b96d0a235e4e342c3",
+              "2965f941e5af0c3372e8",
+              "5fa4a225d6a33c5a4357",
+              "3a94c703428f9d161b77",
+              "501b4e226e675ed1a15f",
+              "55f27adb85ae49d3ac67"
+            ],
+            "rationale": "Objective peak_allocated_bytes on the current accepted version measures 203,099,136 B (previous-feedback project_measurement candidate_values, both AB/BA endpoints, zero noise). That peak decomposes exactly as live FP32 params 46,758,048 + GPU-resident input 19,267,584 + retained cudnn workspace 8,622,944 + 5 x 25,690,112 = 128,450,560, where 25,690,112 is one 32x64x56x56 FP32 activation. Tensors of that shape exist only in encoder stage 0 (model.resnet.encoder.stages.0: two ResNetBasicLayers at 64ch/56x56) and its input (the stem output), so the binding memory tier is stage 0's full-batch activation coexistence, not the already-optimized stem: parameter search showed stem chunk 4 and 8 both measure exactly 203,099,136 (stem not binding), while chunk 16 rises to 205,196,288 (stem-limited), and per aten::add_/relu/batch_norm evidence in calls.json stage 0 runs out-of-place conv->bn chains plus out-of-place post-add nn.ReLU(inplace=False) around an in-place residual add. The accepted stem micro-batch is verified executing in the current revision (trace: embedder convolution/normalization/activation/max_pool2d n=4, 8 slice.Tensor, empty+copy_ assembly; coverage route stem_microbatch_rows8 with reference invocations 8/8), so a stage-0 edit composes on top of it and the stem tier (~151.7 MB) becomes the post-edit floor. Selection: region scope replacing the stages.0 module boundary (call 595c8331c60823c132ca3a4a) with the same proven pattern - run the unchanged two BasicLayer parents (f3ec7e68beb5e3d3f846d2fa, dfb96bb329e6c3859d690b9a) through context.references on contiguous row chunks of the frozen batch-32 input and assemble chunk results into one [32,64,56,56] tensor for the untouched later stages; no functional dispatch sites, so the legacy direct-callable backend applies. All 72 observed calls in the stages.0 subtree are affected (module, aten and record_function hook invocation counts change 1->4); four stages.1-family calls (47f42cfd2d55620ecd13e733, b92e9ace8737abe290b03c62, ae6782daa6589784cea3aad8, 6d17e25a4f8679b7b8f3d445) are included only because current group families share ownership across stages.0/stages.1; their own execution is unchanged. No call outside this region changes: stem, pooler, classifier and stages.1-3 run exactly as in the accepted version.",
+            "hypothesis": "Micro-batching stage 0 into 4 chunks of 8 rows lowers peak_allocated_bytes from 203,099,136 B to approximately 151.7 MB (-25%): with batch-8 chunks the stage-0 moment becomes stem output 25,690,112 + assembled stage-0 output 25,690,112 + chunk transients 4 x 6,422,528 = 3 x 25,690,112 total coexistence, matching the tier the unchanged stem (input 19,267,584 + output 25,690,112 + 2 chunk transients) and unchanged stage 1 (stage-0 output 25,690,112 + 4 x 12,845,056) already set at ~151,718,912 B. One 25,690,112 term in the current peak (5 vs the 4 coexisting activations visible in the aten call sequence) is not fully explained by static call-shape analysis, so the honest pessimistic bound is 177,409,024 B (-12.7%); the 4-vs-8-chunk stem equivalence shows such tier plateaus are real and measurable. Throughput: ~0.5 ms headroom exists (accepted version 3.92-3.96 ms, 8079-8121 img/s vs floor 7158.9 = 4.47 ms); stem chunking at batch 8 measured faster than baseline, and stage 0 adds ~54 launches of already-warmed kernels, so images_per_second >= 7158.9 is expected to hold, with a chunk_rows=16 variant inside the same boundary (~177.4 MB peak) as fallback. Numerics: identical aten kernels on contiguous batch slices; eval BatchNorm, out-of-place ReLU and the in-place residual add are per-sample exact, so logits stay within atol=rtol=1e-4 and top-1 stays exact, as the accepted stem micro-batch already demonstrated (max_abs_error 0.0). These benefit, throughput and numerics expectations are hypotheses to be tested by the evaluator's clean timing, peak and quality checks.",
+            "affected_calls": [
+              "02013844f74f4fedd94116e9",
+              "02fb9fd6dfef8178b4e7a42a",
+              "0336537f2acb6fcfee02ffa0",
+              "04a751911e0b34fc1adaf42a",
+              "04b4752935d6b3ce9ae4ed0b",
+              "06429b54c0f2bbe7f17832dd",
+              "09faae3e1107d1570538ea70",
+              "0a0ff177626be4d5fb849a77",
+              "0a3d23c3ad58ddae5ca681aa",
+              "0bf5cc76ede9f2329059964d",
+              "181b852cae9c605e1af5d02c",
+              "189963b5e443e271cc7ced62",
+              "1adbf9af011a4047dbb14e7d",
+              "1c9e59f401053141b8f989f8",
+              "1ca7f182504ca084c560bf0d",
+              "1cbbcdc66d055254d2fe56e3",
+              "21eed40a140fbd4449d7269f",
+              "241f73f10fd1c0ea2acbe22c",
+              "263170be5738d8e9b5a0d76c",
+              "286a98fd8738a96ec74fcdfc",
+              "292f717d8ce6d86f91175f65",
+              "2c0aa2f70446c64d0ac7cc0b",
+              "3156915065b774a2a423c06f",
+              "31c45989c5b6c376abb604de",
+              "33ba1e2135d61ec9d68a716a",
+              "369f8887cda2a36376a27dc9",
+              "37f8d6f65461d90c721d2c87",
+              "3bf082512e751ddb0b33bd13",
+              "3da466c328d6f324bac7f5c4",
+              "3fc87ba4414e84c9b7939615",
+              "404c5622e5f949436c17c3d7",
+              "418da59429f66deba45916e9",
+              "46ae4da5da6aadc54aac0233",
+              "47f42cfd2d55620ecd13e733",
+              "49387830e598d35c17c7bff7",
+              "4a12fc92b1e70333e0b3029f",
+              "4b41d6f2e800986b1642f1b9",
+              "4d75a091cd837ee418b3b165",
+              "4d8664c89d2a89089a2b2c7d",
+              "52ea6fd6cc3b235da2ef3b24",
+              "558af39eefc15332221173c0",
+              "57948710f7c2004cc8f41e3a",
+              "5952680d84bb535da571d1cd",
+              "595c8331c60823c132ca3a4a",
+              "59db53cf70f53560e18b73ad",
+              "5b5a891b40f7200e78e3ddc7",
+              "5d01f20a9b2dd63baaad70db",
+              "5d7d5ca9f3fb8a33974af915",
+              "5e14c12125b533f333f1e529",
+              "5ec0eb1733d1e55b55dc1153",
+              "5f0e06d3f39cc45302e05d36",
+              "60438f492c3146c3be447874",
+              "6218db06970f187a022617d2",
+              "6391bb634ce17abba081b4f3",
+              "65b76212b1bb3812697248e6",
+              "66d6eee48b92f1d3f3673a0c",
+              "6c843982dcd328be1f2c6956",
+              "6d17e25a4f8679b7b8f3d445",
+              "6dc7de75fd0775dbcfbd7239",
+              "6f1ed6136f55aee2cf85b1d0",
+              "71130f404979cfc72c5be501",
+              "72254282747763211b663829",
+              "7228738fe444c0b5a2b4ea93",
+              "73187dc05a3ac06b88404b6d",
+              "7443a645156cea0107f357c6",
+              "793076e812a99e50d29b4585",
+              "7a6732f7f570826b3a2a41d0",
+              "7a88e1aa6b929b8d84f24b73",
+              "7dd31f0d5de0874eecc5fb01",
+              "7df6d4448c26ff10bb048b91",
+              "7f41ff333b7c2b0860e20ab0",
+              "801ccec157bc2a1c29c5401d",
+              "80328ce1edcd4d4be852c598",
+              "8921fb59d6c92f1235e4e2c8",
+              "8b1f33700701821d266b828b",
+              "8edc2bdbf528de20e3bcf34a",
+              "92f84be2307522d43ac26c3c",
+              "94ac80487897396a41aaf45c",
+              "95213507777a57757257d4a8",
+              "9891c76c8412ee3efc9958c2",
+              "9d936db80259fe2abd90e80d",
+              "9f57119e3cc0fb03ab8a9b86",
+              "a0c644f9e86e48b4ddaa8d02",
+              "a260d92a1e9b5e480145920d",
+              "a34b6f7064fe3b1b4ca84f41",
+              "a353b2eab2ab30f777298336",
+              "a39c4252bb70ea101be42a86",
+              "a5242f06c5ecda12fea380bc",
+              "a9a3911fd343426696acabd5",
+              "aab6a232d41d104582486d97",
+              "aabc1b42a14650686a460048",
+              "ae6782daa6589784cea3aad8",
+              "aee7555d1c9afe788d477edb",
+              "b00c30ef4fa94a2c18aa86d3",
+              "b48c43e359441e77429193ef",
+              "b56463636dc47894ab688513",
+              "b5c5f26717a20ac189ff74ad",
+              "b774ebf3bcfbbc20ab95ec9a",
+              "b92e9ace8737abe290b03c62",
+              "b9431c00533648cd806fc847",
+              "ba7d73a996ba6bee3e4c4d29",
+              "bcb0f37780d2d066cf16a2d8",
+              "bd2374038709aeb3656dce7e",
+              "bd40ff409edb7493c2f8b40f",
+              "be9b134c1b782e2bd5de689f",
+              "bfd290c1cd2fbefd158a152b",
+              "c0ca1ca9dc0b05accc54ba76",
+              "c1dceec0f6f16671709551fe",
+              "c3d40a7d16c707f2a2f5f9c3",
+              "c5121e145e8228f9895df00b",
+              "c65c72f3035a4f951a9e1027",
+              "c6dac79b102e505e7aa8ea87",
+              "c759beb99511914e8cef1592",
+              "cee77e16389c04c5a30499f5",
+              "d00693c85945f3f5fb930bc4",
+              "d127c02e39396cb0de47a1cd",
+              "d367368ce44ae04acdd178c2",
+              "d7de2102f249d713f90cf985",
+              "da89101ba634c88935a8918a",
+              "dbe34bbca5bbef865314353e",
+              "dcc6d0fade84c4c7e40ac51b",
+              "ddd0811d059c4ed80a8d691a",
+              "de78dd07c33a9870f1ff5e09",
+              "de85ada4f984c418594e1e58",
+              "dfb96bb329e6c3859d690b9a",
+              "e03fdd023e63bcc52391f91d",
+              "e11b34f35e11b90ac2cd3a41",
+              "e3983f1c815a57f6c63d17cb",
+              "e7dfc63c1b239353953fdf6f",
+              "e7e374e082d0439b5c0c4d9f",
+              "e88f2e273852cafabb57d1fc",
+              "e89543447aeeab7d6ef31bc1",
+              "ebb41639dbbe2f07863aeab1",
+              "ec766c13c6931b25bc276871",
+              "ee724e17e87d9b678c81a391",
+              "ee84302b65f5facd75c6a324",
+              "eef77bac8a245e72d3ecb76e",
+              "f0a7fe60cac6f1e5b54d3e5f",
+              "f22272a70c1d5b0041c81c57",
+              "f37d7459d0c5ebfcf879b6e6",
+              "f386d6ce7891ec8f95d095b4",
+              "f3c1a04e55d6b55c618ba54f",
+              "f3ec7e68beb5e3d3f846d2fa",
+              "f4e98cac0ef6fb4071e898ae",
+              "f56f0745f4e156b8a876eb33",
+              "f7f816c7ef88250584bd45c2",
+              "f881d5e42548e4fc5036f9ee",
+              "f9156775eb27c6f4866ae31e",
+              "f9765b8fbdb79263ca09599d",
+              "fe31c4922736ae6ab17a7e70",
+              "ffb0ec4ae230469a3b8fa48f"
+            ]
+          }
+        }
+      ]
+    },
+    "resnet-memory-independent": {
+      "source_fidelity": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 3.508318353444338,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 204604,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 204604,
+              "status": "verified",
+              "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 6,
+                "unavailable_samples": 0,
+                "wait_s": 0.07948563247919083,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": false,
+              "status": "observation_schema_requires_manual_audit",
+              "missing_names": [
+                "top1"
+              ],
+              "observed_names": [
+                "checks",
+                "logits",
+                "pred_classes",
+                "predicted_labels_first3"
+              ],
+              "scope": "A naming mismatch does not establish numerical infidelity."
+            }
+          }
+        ],
+        "lease_wait_s": 0.00022176280617713928,
+        "device_selectors": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+        ],
+        "entry_sha256": "d97b697491aeb4108dd9059f4f7e7e34725055784e30f7a2b2e6b5de22f0b469",
+        "devices": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+        ],
+        "worker_pids_reaped": true
+      },
+      "source_fidelity_valid": false,
+      "status": "completed",
+      "independent_version": {
+        "revision": "5ac56954e7a91c5c24b8681f84bcdf38e1ed5edfe695aeeba7a1cebb465907e9",
+        "parent": "c186f2dcb0634df3ccb05ecf3fcd0204de5b6648c054ca3a491d045c88c1c5fc",
+        "quality": "pass",
+        "coverage_errors": [],
+        "measurement": {
+          "valid": true,
+          "objective": 177409024.0,
+          "reference": 280169472.0,
+          "parent_values": [
+            280169472.0,
+            280169472.0
+          ],
+          "candidate_values": [
+            177409024.0,
+            177409024.0
+          ],
+          "paired_gains": [
+            102760448.0,
+            102760448.0
+          ],
+          "noise_bounds": [
+            0.0,
+            0.0
+          ],
+          "constraints": [
+            {
+              "metric": "images_per_second",
+              "values": [
+                8571.849510467031,
+                7482.322428705743
+              ],
+              "limit": 7158.875463119193,
+              "original_reference": 7535.65838223073,
+              "passed": true
+            }
+          ],
+          "reasons": [],
+          "aggregation_order": "samples_then_ranks",
+          "framework_source": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+          "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+        },
+        "decision": {
+          "state": "evaluated",
+          "kind": "complete_version",
+          "revision": "5ac56954e7a91c5c24b8681f84bcdf38e1ed5edfe695aeeba7a1cebb465907e9",
+          "parent": "c186f2dcb0634df3ccb05ecf3fcd0204de5b6648c054ca3a491d045c88c1c5fc",
+          "accepted": true,
+          "reasons": [],
+          "report_ref": "sha256:3a9d131dcd0373f9de865caf858bd080e80bf1a6e99bf82747394bae2ccc465a"
+        },
+        "publication": "exploration"
+      }
+    },
+    "cross_goals": {
+      "status": "completed",
+      "scope": "Retrospective cross-goal diagnostic from all original independent samples, not a new acceptance/publication. Separate runs may have different adapters/anchors; audit comparability and source fidelity before conclusions. No cross-contract bundle import.",
+      "versions": [
+        {
+          "version": "latency_selected",
+          "source_result": "/root/autodl-tmp/dev/v6-work/autonomous-cohort-20261027/resnet-latency-independent/version-trials/version-7d5a7631043c/result.json",
+          "source_sha256": "5303dd3660af943446e307da3c81ea102fdb2d04937aad6d657976d9fd79da59",
+          "actual_objective": {
+            "name": "latency_ms",
+            "unit": "ms",
+            "direction": "minimize",
+            "constraints": [
+              {
+                "metric": "images_per_second",
+                "op": "ge",
+                "baseline_ratio": 0.95
+              }
+            ]
+          },
+          "original_decision": {
+            "state": "evaluated",
+            "kind": "complete_version",
+            "revision": "8e2678eb30c9d2782e4e5159a9e024581354b1ab85d62045c03f0796d8e9ac54",
+            "parent": "065e81c280656587fe381f17a08564d7dc1c90cc9584f0afdaa010dd99242479",
+            "accepted": true,
+            "reasons": [],
+            "report_ref": "sha256:d95d2a4f3d9a8245eb6baa4051cddae3a1056be785ebcbf97b2a5f70a4eb156f"
+          },
+          "cross_metric_scores": {
+            "latency": {
+              "valid": true,
+              "objective": 3.2926925000000002,
+              "reference": 4.2511605,
+              "parent_values": [
+                4.250825,
+                4.251496
+              ],
+              "candidate_values": [
+                3.293807,
+                3.291578
+              ],
+              "paired_gains": [
+                0.9570179999999997,
+                0.9599180000000005
+              ],
+              "noise_bounds": [
+                0.011299999999999422,
+                0.020293999999999812
+              ],
+              "constraints": [],
+              "reasons": [],
+              "aggregation_order": "samples_then_ranks",
+              "framework_source": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+              "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+            },
+            "memory_with_throughput": {
+              "valid": true,
+              "objective": 132312064.0,
+              "reference": 281975808.0,
+              "parent_values": [
+                281975808.0,
+                281975808.0
+              ],
+              "candidate_values": [
+                132312064.0,
+                132312064.0
+              ],
+              "paired_gains": [
+                149663744.0,
+                149663744.0
+              ],
+              "noise_bounds": [
+                0.0,
+                0.0
+              ],
+              "constraints": [
+                {
+                  "metric": "images_per_second",
+                  "values": [
+                    9715.201892521329,
+                    9721.78086012241
+                  ],
+                  "limit": 7150.086189114605,
+                  "original_reference": 7526.406514857479,
+                  "passed": true
+                }
+              ],
+              "reasons": [],
+              "aggregation_order": "samples_then_ranks",
+              "framework_source": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+              "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+            }
+          },
+          "lifecycle_memory": [
+            {
+              "pair": 0,
+              "arm": "parent",
+              "ranks": [
+                {
+                  "rank": 0,
+                  "metrics": {
+                    "peak_allocated_bytes": 281975808.0,
+                    "framework.peak_allocated_bytes": 281975808.0,
+                    "framework.peak_reserved_bytes": 398458880.0,
+                    "framework.allocated_bytes": 76582912.0,
+                    "framework.reserved_bytes": 398458880.0,
+                    "framework.lifecycle_peak_allocated_bytes": 282392064.0,
+                    "framework.lifecycle_peak_reserved_bytes": 398458880.0
+                  }
+                }
+              ]
+            },
+            {
+              "pair": 0,
+              "arm": "candidate",
+              "ranks": [
+                {
+                  "rank": 0,
+                  "metrics": {
+                    "peak_allocated_bytes": 132312064.0,
+                    "framework.peak_allocated_bytes": 132312064.0,
+                    "framework.peak_reserved_bytes": 364904448.0,
+                    "framework.allocated_bytes": 132312064.0,
+                    "framework.reserved_bytes": 364904448.0,
+                    "framework.lifecycle_peak_allocated_bytes": 313063424.0,
+                    "framework.lifecycle_peak_reserved_bytes": 572522496.0
+                  }
+                }
+              ]
+            },
+            {
+              "pair": 1,
+              "arm": "candidate",
+              "ranks": [
+                {
+                  "rank": 0,
+                  "metrics": {
+                    "peak_allocated_bytes": 132312064.0,
+                    "framework.peak_allocated_bytes": 132312064.0,
+                    "framework.peak_reserved_bytes": 364904448.0,
+                    "framework.allocated_bytes": 132312064.0,
+                    "framework.reserved_bytes": 364904448.0,
+                    "framework.lifecycle_peak_allocated_bytes": 313063424.0,
+                    "framework.lifecycle_peak_reserved_bytes": 572522496.0
+                  }
+                }
+              ]
+            },
+            {
+              "pair": 1,
+              "arm": "parent",
+              "ranks": [
+                {
+                  "rank": 0,
+                  "metrics": {
+                    "peak_allocated_bytes": 281975808.0,
+                    "framework.peak_allocated_bytes": 281975808.0,
+                    "framework.peak_reserved_bytes": 398458880.0,
+                    "framework.allocated_bytes": 76582912.0,
+                    "framework.reserved_bytes": 398458880.0,
+                    "framework.lifecycle_peak_allocated_bytes": 282392064.0,
+                    "framework.lifecycle_peak_reserved_bytes": 398458880.0
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "version": "memory_selected",
+          "source_result": "/root/autodl-tmp/dev/v6-work/goal-switch-20261027/resnet-memory-independent/version-trials/version-937125a3daab/result.json",
+          "source_sha256": "392b5380bc3c7fe7138d6c3be268c9664b3c41c4d71c81522200f8805078bc01",
+          "actual_objective": {
+            "name": "peak_allocated_bytes",
+            "unit": "bytes",
+            "direction": "minimize",
+            "constraints": [
+              {
+                "metric": "images_per_second",
+                "op": "ge",
+                "baseline_ratio": 0.95
+              }
+            ]
+          },
+          "original_decision": {
+            "state": "evaluated",
+            "kind": "complete_version",
+            "revision": "5ac56954e7a91c5c24b8681f84bcdf38e1ed5edfe695aeeba7a1cebb465907e9",
+            "parent": "c186f2dcb0634df3ccb05ecf3fcd0204de5b6648c054ca3a491d045c88c1c5fc",
+            "accepted": true,
+            "reasons": [],
+            "report_ref": "sha256:3a9d131dcd0373f9de865caf858bd080e80bf1a6e99bf82747394bae2ccc465a"
+          },
+          "cross_metric_scores": {
+            "latency": {
+              "valid": true,
+              "objective": 4.0049485,
+              "reference": 4.243588,
+              "parent_values": [
+                4.244305,
+                4.242871
+              ],
+              "candidate_values": [
+                3.73315,
+                4.276747
+              ],
+              "paired_gains": [
+                0.5111549999999996,
+                -0.03387600000000024
+              ],
+              "noise_bounds": [
+                0.02520400000000045,
+                0.2097320000000007
+              ],
+              "constraints": [],
+              "reasons": [
+                "paired_gain_not_above_noise"
+              ],
+              "aggregation_order": "samples_then_ranks",
+              "framework_source": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+              "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+            },
+            "memory_with_throughput": {
+              "valid": true,
+              "objective": 177409024.0,
+              "reference": 280169472.0,
+              "parent_values": [
+                280169472.0,
+                280169472.0
+              ],
+              "candidate_values": [
+                177409024.0,
+                177409024.0
+              ],
+              "paired_gains": [
+                102760448.0,
+                102760448.0
+              ],
+              "noise_bounds": [
+                0.0,
+                0.0
+              ],
+              "constraints": [
+                {
+                  "metric": "images_per_second",
+                  "values": [
+                    8571.849510467031,
+                    7482.322428705743
+                  ],
+                  "limit": 7158.875463119193,
+                  "original_reference": 7535.65838223073,
+                  "passed": true
+                }
+              ],
+              "reasons": [],
+              "aggregation_order": "samples_then_ranks",
+              "framework_source": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+              "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+            }
+          },
+          "lifecycle_memory": [
+            {
+              "pair": 0,
+              "arm": "parent",
+              "ranks": [
+                {
+                  "rank": 0,
+                  "metrics": {
+                    "peak_allocated_bytes": 280169472,
+                    "framework.peak_allocated_bytes": 280169472.0,
+                    "framework.peak_reserved_bytes": 396361728.0,
+                    "framework.allocated_bytes": 74776576.0,
+                    "framework.reserved_bytes": 396361728.0,
+                    "framework.lifecycle_peak_allocated_bytes": 280425472.0,
+                    "framework.lifecycle_peak_reserved_bytes": 396361728.0
+                  }
+                }
+              ]
+            },
+            {
+              "pair": 0,
+              "arm": "candidate",
+              "ranks": [
+                {
+                  "rank": 0,
+                  "metrics": {
+                    "peak_allocated_bytes": 177409024,
+                    "framework.peak_allocated_bytes": 177409024.0,
+                    "framework.peak_reserved_bytes": 406847488.0,
+                    "framework.allocated_bytes": 74776576.0,
+                    "framework.reserved_bytes": 406847488.0,
+                    "framework.lifecycle_peak_allocated_bytes": 280297472.0,
+                    "framework.lifecycle_peak_reserved_bytes": 406847488.0
+                  }
+                }
+              ]
+            },
+            {
+              "pair": 1,
+              "arm": "candidate",
+              "ranks": [
+                {
+                  "rank": 0,
+                  "metrics": {
+                    "peak_allocated_bytes": 177409024,
+                    "framework.peak_allocated_bytes": 177409024.0,
+                    "framework.peak_reserved_bytes": 406847488.0,
+                    "framework.allocated_bytes": 74776576.0,
+                    "framework.reserved_bytes": 406847488.0,
+                    "framework.lifecycle_peak_allocated_bytes": 280553472.0,
+                    "framework.lifecycle_peak_reserved_bytes": 406847488.0
+                  }
+                }
+              ]
+            },
+            {
+              "pair": 1,
+              "arm": "parent",
+              "ranks": [
+                {
+                  "rank": 0,
+                  "metrics": {
+                    "peak_allocated_bytes": 280169472,
+                    "framework.peak_allocated_bytes": 280169472.0,
+                    "framework.peak_reserved_bytes": 396361728.0,
+                    "framework.allocated_bytes": 74776576.0,
+                    "framework.reserved_bytes": 396361728.0,
+                    "framework.lifecycle_peak_allocated_bytes": 280425472.0,
+                    "framework.lifecycle_peak_reserved_bytes": 396361728.0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "free_data_bytes": 11570978816
+}

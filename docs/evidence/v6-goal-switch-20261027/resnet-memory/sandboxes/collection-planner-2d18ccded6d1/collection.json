@@ -1,0 +1,30 @@
+{
+  "collectors": [
+    "nsys",
+    "execution_timeline",
+    "candidate_diagnostics"
+  ],
+  "requested_fields": [
+    "nsys.per_kernel_intervals_names_and_streams_within_batch32_forward",
+    "nsys.kernel_sequence_repetition_for_declared_stem_microbatch_rows8_and_stage0_microbatch_rows8_routes",
+    "nsys.cuda_memory_api_events_and_segment_growth_within_invocation_window",
+    "nsys.serialization_or_overlap_between_microbatch_chunks",
+    "execution_timeline.cpu_to_cuda_submit_associations_for_infer",
+    "execution_timeline.synchronization_points_between_microbatch_chunks",
+    "execution_timeline.per_device_intervals",
+    "candidate_diagnostics.exceptions_in_candidate_files_on_worker_thread",
+    "candidate_diagnostics.false_returns_in_candidate_files_on_worker_thread"
+  ],
+  "unavailable_fields": {
+    "per_collective_wire_bytes": "Single-device workload with no communication (observations.json marks communication not_applicable); device_telemetry PCIe rates are device-wide readings with native windows and cannot be attributed per collective or per operator, and logical payload sizes must not be converted into wire traffic.",
+    "nccl_algorithm_protocol_channel_selection": "No NCCL collectives exist in this single-device task; there are no actual algorithm/protocol/channel decisions to capture.",
+    "collective_reference_calibration": "No collectives in the workload; a synthetic full-world allreduce reference experiment is not applicable.",
+    "bucket_gradient_storage_membership": "Inference-only single-device workload has no gradient buckets or communication hooks, so native bucket correlation and observed gradient-storage membership are unavailable.",
+    "first_numerical_divergence_site": "Quality already passes (logits atol/rtol 1e-4, exact top-1); candidate_diagnostics does not compare intermediate tensors or locate the first numerical divergence, and no other available collector supplies per-site numerical error.",
+    "successful_path_proof_from_diagnostics": "candidate_diagnostics records only exceptions and False returns; empty events rule out handled-exception fallback but do not establish which successful path executed, so route proof must come from trace corroboration.",
+    "gpu_readiness_and_consumer_completion_bounds": "execution_timeline reports clock alignment bounds for CPU submissions only; GPU readiness and consumer completion may remain unknown.",
+    "per_group_binding_overhead": "binding_cost reports whole-invocation cost, not per-group effects; not selected because the observed uncertainty is memory attribution and route verification, not binding overhead."
+  },
+  "rationale": "The accepted candidate 02ef15633279e44bc56fdcb2bc52aadfc2f66efcdd461ae53138fe634679afce reduces peak_allocated_bytes to 177409024 (original reference 280169472, paired parent 203099136) with quality pass and images_per_second 8506.03 versus the 7158.88 limit, so the open uncertainties are: (1) the declared routes stem_microbatch_rows8 and stage0_microbatch_rows8 are candidate-reported telemetry that the endpoint interpretation explicitly asks to corroborate with traces or actual exception evidence, and (2) attribution of the remaining 177 MB peak within the batch-32 forward to a specific stage/interval to guide any further memory revision. nsys (available at the request's tools.nsys path) supplies the native per-kernel timeline to verify the chunked kernel sequence actually executed and to observe memory API/segment events and chunk serialization versus overlap; execution_timeline adds CPU-to-CUDA submit associations, synchronization placement and per-device intervals that bound when chunk buffers coexist; candidate_diagnostics supplies actual exception/False-return evidence to rule out handled-exception fallback inside the candidate files. Excluded collectors: nccl_tuning, collective_calibration and any communication attribution are not applicable to this single-device task (observations.json communication not_applicable); device_telemetry is device-wide NVML sampling that cannot attribute the process-level torch allocator peak; python_runtime perturbs a GPU-bound 3.76 ms invocation and host dispatch is not the uncertainty; binding_cost is eligible (additive candidate, direct bindings) but binding overhead is not the observed uncertainty given the throughput margin; torch already ran (coverage shows 103 associated kernels, 0 unassociated, 0 ambiguous sequences).",
+  "revision": "02ef15633279e44bc56fdcb2bc52aadfc2f66efcdd461ae53138fe634679afce"
+}

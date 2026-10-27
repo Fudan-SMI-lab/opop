@@ -1,0 +1,581 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "failure": null,
+  "wall_s": 42.75879526510835,
+  "ranks": [
+    {
+      "rank": 0,
+      "pid": 205597,
+      "exit_code": 0,
+      "status": "passed",
+      "binding": {
+        "pid": 205597,
+        "status": "verified",
+        "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+        "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+        "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+        "logical_device": 0,
+        "nvidia_smi_pid_uuids": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+        ],
+        "pid_query_status": "observed",
+        "occupancy": {
+          "status": "sampled_clear",
+          "samples": 52,
+          "unavailable_samples": 0,
+          "wait_s": 0.03658188879489899,
+          "external_clients": [],
+          "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+        }
+      },
+      "framework_source": {
+        "sha256": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+        "files": 162,
+        "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+      },
+      "result": {
+        "valid": false,
+        "scope": "Developer readiness of the original full inference loop using official library TP; no autonomous optimization or formal speedup acceptance.",
+        "workload": {
+          "id": "interactive",
+          "batch": 1,
+          "prompt_tokens": 256,
+          "new_tokens": 32,
+          "goals": [
+            {
+              "id": "ttft",
+              "metric": "ttft_ms",
+              "direction": "min"
+            },
+            {
+              "id": "decode",
+              "metric": "decode_tokens_per_second",
+              "direction": "max"
+            }
+          ]
+        },
+        "quality": {
+          "atol": 0.02,
+          "rtol": 0.02
+        },
+        "checks": [
+          {
+            "step": 0,
+            "full_logits": {
+              "passed": false,
+              "compared_elements": 4861952,
+              "max_abs_error": 3.0,
+              "observation_path": "output",
+              "atol": 0.02,
+              "rtol": 0.02,
+              "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+              "error": "Tensor-likes are not close!\n\nMismatched elements: 1567446 / 4861952 (32.2%)\nGreatest absolute difference: 3.0 at index (0, 3, 35791) (up to 0.02 allowed)\nGreatest relative difference: 37632.0 at index (0, 23, 82333) (up to 0.02 allowed)"
+            },
+            "exact_tokens": {
+              "passed": true,
+              "compared_elements": 32,
+              "max_abs_error": 0.0
+            }
+          },
+          {
+            "step": 1,
+            "full_logits": {
+              "passed": false,
+              "compared_elements": 4861952,
+              "max_abs_error": 3.0,
+              "observation_path": "output",
+              "atol": 0.02,
+              "rtol": 0.02,
+              "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+              "error": "Tensor-likes are not close!\n\nMismatched elements: 1567446 / 4861952 (32.2%)\nGreatest absolute difference: 3.0 at index (0, 3, 35791) (up to 0.02 allowed)\nGreatest relative difference: 37632.0 at index (0, 23, 82333) (up to 0.02 allowed)"
+            },
+            "exact_tokens": {
+              "passed": true,
+              "compared_elements": 32,
+              "max_abs_error": 0.0
+            }
+          }
+        ],
+        "samples": [
+          {
+            "ttft_ms": 53.632113,
+            "decode_ms": 1591.780369,
+            "end_to_end_ms": 1645.412482,
+            "decode_tokens_per_second": 19.47504857059837,
+            "generated_tokens_per_second": 19.448010969932582,
+            "peak_allocated_bytes": 4063909888
+          },
+          {
+            "ttft_ms": 57.969052,
+            "decode_ms": 1345.332112,
+            "end_to_end_ms": 1403.301164,
+            "decode_tokens_per_second": 23.04263737071936,
+            "generated_tokens_per_second": 22.803373089769632,
+            "peak_allocated_bytes": 4063909888
+          },
+          {
+            "ttft_ms": 50.679708,
+            "decode_ms": 1571.579425,
+            "end_to_end_ms": 1622.259133,
+            "decode_tokens_per_second": 19.725379135706106,
+            "generated_tokens_per_second": 19.7255785768475,
+            "peak_allocated_bytes": 4063909888
+          },
+          {
+            "ttft_ms": 45.8933,
+            "decode_ms": 1393.744139,
+            "end_to_end_ms": 1439.637439,
+            "decode_tokens_per_second": 22.242245999500486,
+            "generated_tokens_per_second": 22.22781870845747,
+            "peak_allocated_bytes": 4063909888
+          },
+          {
+            "ttft_ms": 60.947437,
+            "decode_ms": 1648.575096,
+            "end_to_end_ms": 1709.522533,
+            "decode_tokens_per_second": 18.804117613578217,
+            "generated_tokens_per_second": 18.718676930127366,
+            "peak_allocated_bytes": 4063909888
+          }
+        ],
+        "summary": {
+          "ttft_ms": {
+            "median": 53.632113,
+            "min": 45.8933,
+            "max": 60.947437
+          },
+          "decode_ms": {
+            "median": 1571.579425,
+            "min": 1345.332112,
+            "max": 1648.575096
+          },
+          "end_to_end_ms": {
+            "median": 1622.259133,
+            "min": 1403.301164,
+            "max": 1709.522533
+          },
+          "decode_tokens_per_second": {
+            "median": 19.725379135706106,
+            "min": 18.804117613578217,
+            "max": 23.04263737071936
+          },
+          "generated_tokens_per_second": {
+            "median": 19.7255785768475,
+            "min": 18.718676930127366,
+            "max": 22.803373089769632
+          },
+          "peak_allocated_bytes": {
+            "median": 4063909888,
+            "min": 4063909888,
+            "max": 4063909888
+          }
+        },
+        "diagnostic": {
+          "trace_file": "tp2-rank0-trace.json",
+          "trace_sha256": "8ac92f0be15862ade445d655e3963cd7fbd87ca42be80911f4c3378d7850791b",
+          "cuda_kernel_count": 69001,
+          "nccl_kernel_count": 2368,
+          "nccl_kernel_sum_ms": 625.789556,
+          "cpu_allreduce_event_count": 2336,
+          "nccl_kernel_names": [
+            "ncclDevKernel_AllGather_RING_LL(ncclDevKernelArgsStorage<4096ul>)",
+            "ncclDevKernel_AllReduce_Sum_bf16_RING_LL(ncclDevKernelArgsStorage<4096ul>)"
+          ],
+          "top_cuda_kernels_by_total_us": [
+            {
+              "name": "ncclDevKernel_AllReduce_Sum_bf16_RING_LL(ncclDevKernelArgsStorage<4096ul>)",
+              "total_us": 620877.065,
+              "calls": 2336
+            },
+            {
+              "name": "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, __nv_bfloat16, __nv_bfloat16, __nv_bfloat16, float, false, true, true, false, 6, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16>, float>)",
+              "total_us": 137694.329,
+              "calls": 5612
+            },
+            {
+              "name": "void at::native::elementwise_kernel<128, 4, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1})",
+              "total_us": 12271.199,
+              "calls": 6985
+            },
+            {
+              "name": "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, __nv_bfloat16, __nv_bfloat16, __nv_bfloat16, float, false, true, true, false, 7, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16>, float>)",
+              "total_us": 10421.071,
+              "calls": 2232
+            },
+            {
+              "name": "void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::MeanOps<float, float, float, float>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::MeanOps<float, float, float, float>, unsigned int, float, 4, 4>)",
+              "total_us": 10067.307,
+              "calls": 4640
+            },
+            {
+              "name": "void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>, 4, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithCast<1>, at::native::memory::StoreWithCast<1> >(int, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithCast<1>, at::native::memory::StoreWithCast<1>)",
+              "total_us": 9124.967,
+              "calls": 4672
+            },
+            {
+              "name": "void pytorch_flash::flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 64, 128, 4, false, false, cutlass::bfloat16_t, Flash_kernel_traits<128, 64, 128, 4, cutlass::bfloat16_t> >, false, false, false, false, true, false, true, false>(pytorch_flash::Flash_fwd_params)",
+              "total_us": 7011.929,
+              "calls": 1116
+            },
+            {
+              "name": "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1})",
+              "total_us": 6611.012,
+              "calls": 4640
+            },
+            {
+              "name": "ncclDevKernel_AllGather_RING_LL(ncclDevKernelArgsStorage<4096ul>)",
+              "total_us": 4912.491,
+              "calls": 32
+            },
+            {
+              "name": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::pow_tensor_scalar_kernel_impl<float, float>(at::TensorIteratorBase&, float)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::pow_tensor_scalar_kernel_impl<float, float>(at::TensorIteratorBase&, float)::{lambda(float)#1}, std::array<char*, 2ul>)",
+              "total_us": 4839.877,
+              "calls": 4640
+            },
+            {
+              "name": "void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)",
+              "total_us": 4836.582,
+              "calls": 4704
+            },
+            {
+              "name": "void at::native::vectorized_elementwise_kernel<4, at::native::rsqrt_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#2}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::rsqrt_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#2}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+              "total_us": 4780.535,
+              "calls": 4640
+            },
+            {
+              "name": "void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctor_add<c10::BFloat16>, std::array<char*, 3ul> >(int, at::native::CUDAFunctor_add<c10::BFloat16>, std::array<char*, 3ul>)",
+              "total_us": 4759.119,
+              "calls": 4536
+            },
+            {
+              "name": "void at::native::(anonymous namespace)::CatArrayBatchedCopy<at::native::(anonymous namespace)::OpaqueType<2u>, unsigned int, 4, 64, 64>(at::native::(anonymous namespace)::OpaqueType<2u>*, at::native::(anonymous namespace)::CatArrInputTensorMetadata<at::native::(anonymous namespace)::OpaqueType<2u>, unsigned int, 64, 64>, at::native::(anonymous namespace)::TensorSizeStride<unsigned int, 4u>, int, unsigned int)",
+              "total_us": 4741.259,
+              "calls": 2376
+            },
+            {
+              "name": "void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctorOnSelf_add<float>, std::array<char*, 2ul> >(int, at::native::CUDAFunctorOnSelf_add<float>, std::array<char*, 2ul>)",
+              "total_us": 4528.74,
+              "calls": 4640
+            }
+          ]
+        },
+        "tp_plan": {
+          "lm_head": "colwise_gather_output",
+          "model.layers.*.self_attn.q_proj": "colwise",
+          "model.layers.*.self_attn.k_proj": "colwise",
+          "model.layers.*.self_attn.v_proj": "colwise",
+          "model.layers.*.self_attn.q_norm": "replicated_with_grad_allreduce",
+          "model.layers.*.self_attn.k_norm": "replicated_with_grad_allreduce",
+          "model.layers.*.self_attn.o_proj": "rowwise",
+          "model.layers.*.mlp.gate_proj": "colwise",
+          "model.layers.*.mlp.up_proj": "colwise",
+          "model.layers.*.mlp.down_proj": "rowwise",
+          "model.embed_tokens": "embedding_rowwise"
+        },
+        "world_size": 2,
+        "torch": "2.13.0+cu129",
+        "transformers": "5.16.1",
+        "reference_sha256": "af929f424e8ceb372b06ac171841df496f9a9ef4c26c16dc2f69b4014a2678da",
+        "source_sha256": {
+          "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+          "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+          "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+        },
+        "interpretation": "NCCL kernel duration includes waiting; it is neither link traffic nor exposed critical-path cost. Quality failure disqualifies this case at the unchanged tolerance."
+      }
+    },
+    {
+      "rank": 1,
+      "pid": 205598,
+      "exit_code": 0,
+      "status": "passed",
+      "binding": {
+        "pid": 205598,
+        "status": "verified",
+        "torch_uuid": "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+        "requested_uuid": "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+        "torch_raw_uuid": "cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+        "logical_device": 1,
+        "nvidia_smi_pid_uuids": [
+          "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+        ],
+        "pid_query_status": "observed",
+        "occupancy": {
+          "status": "sampled_clear",
+          "samples": 52,
+          "unavailable_samples": 0,
+          "wait_s": 0.05586288869380951,
+          "external_clients": [],
+          "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+        }
+      },
+      "framework_source": {
+        "sha256": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+        "files": 162,
+        "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+      },
+      "result": {
+        "valid": false,
+        "scope": "Developer readiness of the original full inference loop using official library TP; no autonomous optimization or formal speedup acceptance.",
+        "workload": {
+          "id": "interactive",
+          "batch": 1,
+          "prompt_tokens": 256,
+          "new_tokens": 32,
+          "goals": [
+            {
+              "id": "ttft",
+              "metric": "ttft_ms",
+              "direction": "min"
+            },
+            {
+              "id": "decode",
+              "metric": "decode_tokens_per_second",
+              "direction": "max"
+            }
+          ]
+        },
+        "quality": {
+          "atol": 0.02,
+          "rtol": 0.02
+        },
+        "checks": [
+          {
+            "step": 0,
+            "full_logits": {
+              "passed": false,
+              "compared_elements": 4861952,
+              "max_abs_error": 3.0,
+              "observation_path": "output",
+              "atol": 0.02,
+              "rtol": 0.02,
+              "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+              "error": "Tensor-likes are not close!\n\nMismatched elements: 1567446 / 4861952 (32.2%)\nGreatest absolute difference: 3.0 at index (0, 3, 35791) (up to 0.02 allowed)\nGreatest relative difference: 37632.0 at index (0, 23, 82333) (up to 0.02 allowed)"
+            },
+            "exact_tokens": {
+              "passed": true,
+              "compared_elements": 32,
+              "max_abs_error": 0.0
+            }
+          },
+          {
+            "step": 1,
+            "full_logits": {
+              "passed": false,
+              "compared_elements": 4861952,
+              "max_abs_error": 3.0,
+              "observation_path": "output",
+              "atol": 0.02,
+              "rtol": 0.02,
+              "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+              "error": "Tensor-likes are not close!\n\nMismatched elements: 1567446 / 4861952 (32.2%)\nGreatest absolute difference: 3.0 at index (0, 3, 35791) (up to 0.02 allowed)\nGreatest relative difference: 37632.0 at index (0, 23, 82333) (up to 0.02 allowed)"
+            },
+            "exact_tokens": {
+              "passed": true,
+              "compared_elements": 32,
+              "max_abs_error": 0.0
+            }
+          }
+        ],
+        "samples": [
+          {
+            "ttft_ms": 53.553869,
+            "decode_ms": 1591.75704,
+            "end_to_end_ms": 1645.310909,
+            "decode_tokens_per_second": 19.475333999465146,
+            "generated_tokens_per_second": 19.44921158971055,
+            "peak_allocated_bytes": 4063909888
+          },
+          {
+            "ttft_ms": 57.609548,
+            "decode_ms": 1345.435958,
+            "end_to_end_ms": 1403.045506,
+            "decode_tokens_per_second": 23.040858850005552,
+            "generated_tokens_per_second": 22.80752823992866,
+            "peak_allocated_bytes": 4063909888
+          },
+          {
+            "ttft_ms": 50.409317,
+            "decode_ms": 1571.556157,
+            "end_to_end_ms": 1621.965474,
+            "decode_tokens_per_second": 19.72567118389012,
+            "generated_tokens_per_second": 19.72914991900746,
+            "peak_allocated_bytes": 4063909888
+          },
+          {
+            "ttft_ms": 45.40937,
+            "decode_ms": 1393.551552,
+            "end_to_end_ms": 1438.960922,
+            "decode_tokens_per_second": 22.245319848777292,
+            "generated_tokens_per_second": 22.238268955576267,
+            "peak_allocated_bytes": 4063909888
+          },
+          {
+            "ttft_ms": 60.537047,
+            "decode_ms": 1648.503661,
+            "end_to_end_ms": 1709.040708,
+            "decode_tokens_per_second": 18.804932456865195,
+            "generated_tokens_per_second": 18.723954233628472,
+            "peak_allocated_bytes": 4063909888
+          }
+        ],
+        "summary": {
+          "ttft_ms": {
+            "median": 53.553869,
+            "min": 45.40937,
+            "max": 60.537047
+          },
+          "decode_ms": {
+            "median": 1571.556157,
+            "min": 1345.435958,
+            "max": 1648.503661
+          },
+          "end_to_end_ms": {
+            "median": 1621.965474,
+            "min": 1403.045506,
+            "max": 1709.040708
+          },
+          "decode_tokens_per_second": {
+            "median": 19.72567118389012,
+            "min": 18.804932456865195,
+            "max": 23.040858850005552
+          },
+          "generated_tokens_per_second": {
+            "median": 19.72914991900746,
+            "min": 18.723954233628472,
+            "max": 22.80752823992866
+          },
+          "peak_allocated_bytes": {
+            "median": 4063909888,
+            "min": 4063909888,
+            "max": 4063909888
+          }
+        },
+        "diagnostic": {
+          "trace_file": "tp2-rank1-trace.json",
+          "trace_sha256": "db6844d7449dc5fae16bd56d5412356be1c43774448721669c64fbbd6d31167d",
+          "cuda_kernel_count": 69001,
+          "nccl_kernel_count": 2368,
+          "nccl_kernel_sum_ms": 1707.2185160000001,
+          "cpu_allreduce_event_count": 2336,
+          "nccl_kernel_names": [
+            "ncclDevKernel_AllGather_RING_LL(ncclDevKernelArgsStorage<4096ul>)",
+            "ncclDevKernel_AllReduce_Sum_bf16_RING_LL(ncclDevKernelArgsStorage<4096ul>)"
+          ],
+          "top_cuda_kernels_by_total_us": [
+            {
+              "name": "ncclDevKernel_AllReduce_Sum_bf16_RING_LL(ncclDevKernelArgsStorage<4096ul>)",
+              "total_us": 1696606.703,
+              "calls": 2336
+            },
+            {
+              "name": "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, __nv_bfloat16, __nv_bfloat16, __nv_bfloat16, float, false, true, true, false, 6, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16>, float>)",
+              "total_us": 137750.16,
+              "calls": 5612
+            },
+            {
+              "name": "void at::native::elementwise_kernel<128, 4, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1})",
+              "total_us": 12133.046,
+              "calls": 6985
+            },
+            {
+              "name": "ncclDevKernel_AllGather_RING_LL(ncclDevKernelArgsStorage<4096ul>)",
+              "total_us": 10611.813,
+              "calls": 32
+            },
+            {
+              "name": "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, __nv_bfloat16, __nv_bfloat16, __nv_bfloat16, float, false, true, true, false, 7, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16>, float>)",
+              "total_us": 10427.929,
+              "calls": 2232
+            },
+            {
+              "name": "void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::MeanOps<float, float, float, float>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::MeanOps<float, float, float, float>, unsigned int, float, 4, 4>)",
+              "total_us": 9953.548999999999,
+              "calls": 4640
+            },
+            {
+              "name": "void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>, 4, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithCast<1>, at::native::memory::StoreWithCast<1> >(int, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithCast<1>, at::native::memory::StoreWithCast<1>)",
+              "total_us": 9036.396,
+              "calls": 4672
+            },
+            {
+              "name": "void pytorch_flash::flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 64, 128, 4, false, false, cutlass::bfloat16_t, Flash_kernel_traits<128, 64, 128, 4, cutlass::bfloat16_t> >, false, false, false, false, true, false, true, false>(pytorch_flash::Flash_fwd_params)",
+              "total_us": 7008.576,
+              "calls": 1116
+            },
+            {
+              "name": "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1})",
+              "total_us": 6552.816,
+              "calls": 4640
+            },
+            {
+              "name": "void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)",
+              "total_us": 4775.024,
+              "calls": 4704
+            },
+            {
+              "name": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::pow_tensor_scalar_kernel_impl<float, float>(at::TensorIteratorBase&, float)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::pow_tensor_scalar_kernel_impl<float, float>(at::TensorIteratorBase&, float)::{lambda(float)#1}, std::array<char*, 2ul>)",
+              "total_us": 4773.247,
+              "calls": 4640
+            },
+            {
+              "name": "void at::native::vectorized_elementwise_kernel<4, at::native::rsqrt_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#2}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::rsqrt_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#2}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+              "total_us": 4728.471,
+              "calls": 4640
+            },
+            {
+              "name": "void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctor_add<c10::BFloat16>, std::array<char*, 3ul> >(int, at::native::CUDAFunctor_add<c10::BFloat16>, std::array<char*, 3ul>)",
+              "total_us": 4696.819,
+              "calls": 4536
+            },
+            {
+              "name": "void at::native::(anonymous namespace)::CatArrayBatchedCopy<at::native::(anonymous namespace)::OpaqueType<2u>, unsigned int, 4, 64, 64>(at::native::(anonymous namespace)::OpaqueType<2u>*, at::native::(anonymous namespace)::CatArrInputTensorMetadata<at::native::(anonymous namespace)::OpaqueType<2u>, unsigned int, 64, 64>, at::native::(anonymous namespace)::TensorSizeStride<unsigned int, 4u>, int, unsigned int)",
+              "total_us": 4695.77,
+              "calls": 2376
+            },
+            {
+              "name": "void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctorOnSelf_add<float>, std::array<char*, 2ul> >(int, at::native::CUDAFunctorOnSelf_add<float>, std::array<char*, 2ul>)",
+              "total_us": 4480.8589999999995,
+              "calls": 4640
+            }
+          ]
+        },
+        "tp_plan": {
+          "lm_head": "colwise_gather_output",
+          "model.layers.*.self_attn.q_proj": "colwise",
+          "model.layers.*.self_attn.k_proj": "colwise",
+          "model.layers.*.self_attn.v_proj": "colwise",
+          "model.layers.*.self_attn.q_norm": "replicated_with_grad_allreduce",
+          "model.layers.*.self_attn.k_norm": "replicated_with_grad_allreduce",
+          "model.layers.*.self_attn.o_proj": "rowwise",
+          "model.layers.*.mlp.gate_proj": "colwise",
+          "model.layers.*.mlp.up_proj": "colwise",
+          "model.layers.*.mlp.down_proj": "rowwise",
+          "model.embed_tokens": "embedding_rowwise"
+        },
+        "world_size": 2,
+        "torch": "2.13.0+cu129",
+        "transformers": "5.16.1",
+        "reference_sha256": "af929f424e8ceb372b06ac171841df496f9a9ef4c26c16dc2f69b4014a2678da",
+        "source_sha256": {
+          "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+          "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+          "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+        },
+        "interpretation": "NCCL kernel duration includes waiting; it is neither link traffic nor exposed critical-path cost. Quality failure disqualifies this case at the unchanged tolerance."
+      }
+    }
+  ],
+  "lease_wait_s": 0.000335104763507843,
+  "device_selectors": [
+    "0",
+    "1"
+  ],
+  "entry_sha256": "1beaf911eea2a4ece3f1d4baa2c0ed8fda279955bba8e8296a84a8612bdedf30",
+  "devices": [
+    "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+    "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+  ],
+  "worker_pids_reaped": true
+}

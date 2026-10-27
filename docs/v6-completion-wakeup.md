@@ -58,3 +58,5 @@
 ## 当前等待：目标切换与 TP 准备
 
 新的普通守候 PID `65792` 等待 `/root/autodl-tmp/dev/v6-work/goal-switch-20261027/followup-completed.json`；远端单控制器 PID `179345`。状态 `.scratch/v6-goal-switch-wakeup.json`，取消文件 `.scratch/v6-goal-switch-wakeup.stop`。真实 SSH probe 已确认 running，范围包含 intake A/B、TP 基线和 ResNet 目标切换后的完整检查。仍使用已实证的终态单次 queue，不使用 Goal 或模型轮询。见[部署证据](evidence/v6-goal-switch-20261027/wakeup-setup.json)。
+
+后续更新：该批于 `2026-10-27T07:09:12.612180Z` 结束，已真实唤起本轮审计。守候状态 queued，未复用；本轮已区分 TP 依赖错误/后续质量失败、ResNet 冻结接受/源资源状态偏差，并完成真实追加诊断。见[投递回执](evidence/v6-goal-switch-20261027/wakeup-delivery.json)。

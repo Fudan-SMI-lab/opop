@@ -1,0 +1,368 @@
+{
+  "runs": [
+    {
+      "world_size": 1,
+      "source_fidelity_valid": true,
+      "execution": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 29.154997140169144,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 180651,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 180651,
+              "status": "verified",
+              "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 34,
+                "unavailable_samples": 0,
+                "wait_s": 0.06340501829981804,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "valid": true,
+              "scope": "Developer readiness of the original full inference loop using official library TP; no autonomous optimization or formal speedup acceptance.",
+              "workload": {
+                "id": "interactive",
+                "batch": 1,
+                "prompt_tokens": 256,
+                "new_tokens": 32,
+                "goals": [
+                  {
+                    "id": "ttft",
+                    "metric": "ttft_ms",
+                    "direction": "min"
+                  },
+                  {
+                    "id": "decode",
+                    "metric": "decode_tokens_per_second",
+                    "direction": "max"
+                  }
+                ]
+              },
+              "quality": {
+                "atol": 0.02,
+                "rtol": 0.02
+              },
+              "checks": [
+                {
+                  "step": 0,
+                  "full_logits": {
+                    "passed": true,
+                    "compared_elements": 4861952,
+                    "max_abs_error": 0.0
+                  },
+                  "exact_tokens": {
+                    "passed": true,
+                    "compared_elements": 32,
+                    "max_abs_error": 0.0
+                  }
+                },
+                {
+                  "step": 1,
+                  "full_logits": {
+                    "passed": true,
+                    "compared_elements": 4861952,
+                    "max_abs_error": 0.0
+                  },
+                  "exact_tokens": {
+                    "passed": true,
+                    "compared_elements": 32,
+                    "max_abs_error": 0.0
+                  }
+                }
+              ],
+              "samples": [
+                {
+                  "ttft_ms": 24.279746,
+                  "decode_ms": 679.80443,
+                  "end_to_end_ms": 704.084176,
+                  "decode_tokens_per_second": 45.60135037660758,
+                  "generated_tokens_per_second": 45.44911118695558,
+                  "peak_allocated_bytes": 8168429568
+                },
+                {
+                  "ttft_ms": 24.026542,
+                  "decode_ms": 667.189822,
+                  "end_to_end_ms": 691.216364,
+                  "decode_tokens_per_second": 46.463538528020294,
+                  "generated_tokens_per_second": 46.29520026814643,
+                  "peak_allocated_bytes": 8168429568
+                },
+                {
+                  "ttft_ms": 23.973491,
+                  "decode_ms": 674.494753,
+                  "end_to_end_ms": 698.468244,
+                  "decode_tokens_per_second": 45.96032787819181,
+                  "generated_tokens_per_second": 45.81453813381958,
+                  "peak_allocated_bytes": 8168429568
+                },
+                {
+                  "ttft_ms": 25.009047,
+                  "decode_ms": 674.327047,
+                  "end_to_end_ms": 699.336094,
+                  "decode_tokens_per_second": 45.97175827058291,
+                  "generated_tokens_per_second": 45.75768400136373,
+                  "peak_allocated_bytes": 8168429568
+                },
+                {
+                  "ttft_ms": 24.084986,
+                  "decode_ms": 680.197415,
+                  "end_to_end_ms": 704.282401,
+                  "decode_tokens_per_second": 45.57500413317507,
+                  "generated_tokens_per_second": 45.436319230132234,
+                  "peak_allocated_bytes": 8168429568
+                }
+              ],
+              "summary": {
+                "ttft_ms": {
+                  "median": 24.084986,
+                  "min": 23.973491,
+                  "max": 25.009047
+                },
+                "decode_ms": {
+                  "median": 674.494753,
+                  "min": 667.189822,
+                  "max": 680.197415
+                },
+                "end_to_end_ms": {
+                  "median": 699.336094,
+                  "min": 691.216364,
+                  "max": 704.282401
+                },
+                "decode_tokens_per_second": {
+                  "median": 45.96032787819181,
+                  "min": 45.57500413317507,
+                  "max": 46.463538528020294
+                },
+                "generated_tokens_per_second": {
+                  "median": 45.75768400136373,
+                  "min": 45.436319230132234,
+                  "max": 46.29520026814643
+                },
+                "peak_allocated_bytes": {
+                  "median": 8168429568,
+                  "min": 8168429568,
+                  "max": 8168429568
+                }
+              },
+              "diagnostic": {
+                "trace_file": "tp1-rank0-trace.json",
+                "trace_sha256": "836a8b7c9edab9e41d25023de6459c1aa97736361d62cff0d1895eef4e17db93",
+                "cuda_kernel_count": 66441,
+                "nccl_kernel_count": 0,
+                "nccl_kernel_sum_ms": 0.0,
+                "cpu_allreduce_event_count": 0,
+                "nccl_kernel_names": [],
+                "top_cuda_kernels_by_total_us": [
+                  {
+                    "name": "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, __nv_bfloat16, __nv_bfloat16, __nv_bfloat16, float, false, true, true, false, 6, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16>, float>)",
+                    "total_us": 219081.635,
+                    "calls": 6728
+                  },
+                  {
+                    "name": "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, __nv_bfloat16, __nv_bfloat16, __nv_bfloat16, float, false, true, true, false, 7, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16 const>, cublasGemvTensorStridedBatched<__nv_bfloat16>, float>)",
+                    "total_us": 61211.237,
+                    "calls": 1116
+                  },
+                  {
+                    "name": "void at::native::elementwise_kernel<128, 4, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1})",
+                    "total_us": 12323.083,
+                    "calls": 6985
+                  },
+                  {
+                    "name": "void at::native::reduce_kernel<512, 1, at::native::ReduceOp<float, at::native::MeanOps<float, float, float, float>, unsigned int, float, 4, 4> >(at::native::ReduceOp<float, at::native::MeanOps<float, float, float, float>, unsigned int, float, 4, 4>)",
+                    "total_us": 10033.219,
+                    "calls": 4640
+                  },
+                  {
+                    "name": "void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>, 4, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithCast<1>, at::native::memory::StoreWithCast<1> >(int, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithCast<1>, at::native::memory::StoreWithCast<1>)",
+                    "total_us": 9460.25,
+                    "calls": 4672
+                  },
+                  {
+                    "name": "ampere_bf16_s1688gemm_bf16_64x128_sliced1x2_ldg8_f2f_tn",
+                    "total_us": 9255.528,
+                    "calls": 108
+                  },
+                  {
+                    "name": "void pytorch_flash::flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 64, 128, 4, false, false, cutlass::bfloat16_t, Flash_kernel_traits<128, 64, 128, 4, cutlass::bfloat16_t> >, false, false, false, false, true, false, true, false>(pytorch_flash::Flash_fwd_params)",
+                    "total_us": 7022.642,
+                    "calls": 1116
+                  },
+                  {
+                    "name": "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1})",
+                    "total_us": 6546.195,
+                    "calls": 4640
+                  },
+                  {
+                    "name": "void at::native::(anonymous namespace)::CatArrayBatchedCopy<at::native::(anonymous namespace)::OpaqueType<2u>, unsigned int, 4, 64, 64>(at::native::(anonymous namespace)::OpaqueType<2u>*, at::native::(anonymous namespace)::CatArrInputTensorMetadata<at::native::(anonymous namespace)::OpaqueType<2u>, unsigned int, 64, 64>, at::native::(anonymous namespace)::TensorSizeStride<unsigned int, 4u>, int, unsigned int)",
+                    "total_us": 5302.218,
+                    "calls": 2376
+                  },
+                  {
+                    "name": "void at::native::vectorized_elementwise_kernel<4, at::native::(anonymous namespace)::pow_tensor_scalar_kernel_impl<float, float>(at::TensorIteratorBase&, float)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::(anonymous namespace)::pow_tensor_scalar_kernel_impl<float, float>(at::TensorIteratorBase&, float)::{lambda(float)#1}, std::array<char*, 2ul>)",
+                    "total_us": 4773.82,
+                    "calls": 4640
+                  },
+                  {
+                    "name": "void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)",
+                    "total_us": 4770.596,
+                    "calls": 4704
+                  },
+                  {
+                    "name": "void at::native::vectorized_elementwise_kernel<4, at::native::rsqrt_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#2}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::rsqrt_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#2}::operator()() const::{lambda(float)#1}, std::array<char*, 2ul>)",
+                    "total_us": 4736.666,
+                    "calls": 4640
+                  },
+                  {
+                    "name": "void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctor_add<c10::BFloat16>, std::array<char*, 3ul> >(int, at::native::CUDAFunctor_add<c10::BFloat16>, std::array<char*, 3ul>)",
+                    "total_us": 4655.714,
+                    "calls": 4536
+                  },
+                  {
+                    "name": "void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctorOnSelf_add<float>, std::array<char*, 2ul> >(int, at::native::CUDAFunctorOnSelf_add<float>, std::array<char*, 2ul>)",
+                    "total_us": 4468.514,
+                    "calls": 4640
+                  },
+                  {
+                    "name": "void at::native::elementwise_kernel<128, 4, at::native::gpu_kernel_impl_nocast<at::native::neg_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#9}::operator()() const::{lambda(c10::BFloat16)#1}>(at::TensorIteratorBase&, at::native::neg_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#9}::operator()() const::{lambda(c10::BFloat16)#1} const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::neg_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#9}::operator()() const::{lambda(c10::BFloat16)#1}>(at::TensorIteratorBase&, at::native::neg_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#9}::operator()() const::{lambda(c10::BFloat16)#1} const&)::{lambda(int)#1})",
+                    "total_us": 3987.8469999999998,
+                    "calls": 2304
+                  }
+                ]
+              },
+              "tp_plan": {
+                "lm_head": "colwise_gather_output",
+                "model.layers.*.self_attn.q_proj": "colwise",
+                "model.layers.*.self_attn.k_proj": "colwise",
+                "model.layers.*.self_attn.v_proj": "colwise",
+                "model.layers.*.self_attn.q_norm": "replicated_with_grad_allreduce",
+                "model.layers.*.self_attn.k_norm": "replicated_with_grad_allreduce",
+                "model.layers.*.self_attn.o_proj": "rowwise",
+                "model.layers.*.mlp.gate_proj": "colwise",
+                "model.layers.*.mlp.up_proj": "colwise",
+                "model.layers.*.mlp.down_proj": "rowwise",
+                "model.embed_tokens": "embedding_rowwise"
+              },
+              "world_size": 1,
+              "torch": "2.13.0+cu129",
+              "transformers": "5.16.1",
+              "reference_sha256": "af929f424e8ceb372b06ac171841df496f9a9ef4c26c16dc2f69b4014a2678da",
+              "source_sha256": {
+                "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+                "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+                "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+              },
+              "interpretation": "NCCL kernel duration includes waiting; it is neither link traffic nor exposed critical-path cost. Quality failure disqualifies this case at the unchanged tolerance."
+            }
+          }
+        ],
+        "lease_wait_s": 0.00022333860397338867,
+        "device_selectors": [
+          "0"
+        ],
+        "entry_sha256": "1beaf911eea2a4ece3f1d4baa2c0ed8fda279955bba8e8296a84a8612bdedf30",
+        "devices": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+        ],
+        "worker_pids_reaped": true
+      }
+    },
+    {
+      "world_size": 2,
+      "source_fidelity_valid": false,
+      "execution": {
+        "schema_version": 1,
+        "status": "failed",
+        "failure": "rank_failed",
+        "wall_s": 6.398087687790394,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 180834,
+            "exit_code": 1,
+            "status": "failed",
+            "binding": {
+              "pid": 180834,
+              "status": "verified",
+              "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+              ],
+              "pid_query_status": "observed"
+            },
+            "framework_source": {
+              "sha256": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "error_type": "ValueError",
+            "error": "Using a `device_map`, `tp_plan`, `torch.device` context manager or setting `torch.set_default_device(device)` requires `accelerate`. You can install it with `pip install accelerate`",
+            "traceback": "Traceback (most recent call last):\n  File \"/root/autodl-tmp/dev/v6-work/goal-switch-20261027/framework/1d6f3a5bd822/src/kernel_optimizer/runtime/worker.py\", line 82, in main\n    result = getattr(module, request.function)(context)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/autodl-tmp/dev/v6-work/goal-switch-20261027/framework/1d6f3a5bd822/scripts/experiments/v6_tp_qwen_readiness_20261027.py\", line 32, in run\n    model = Qwen3ForCausalLM.from_pretrained(params['assets'], **options).eval()\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/modeling_utils.py\", line 4226, in from_pretrained\n    device_map = check_and_set_device_map(device_map)  # warn, error and fix the device map\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/integrations/accelerate.py\", line 137, in check_and_set_device_map\n    raise ValueError(\nValueError: Using a `device_map`, `tp_plan`, `torch.device` context manager or setting `torch.set_default_device(device)` requires `accelerate`. You can install it with `pip install accelerate`\n"
+          },
+          {
+            "rank": 1,
+            "pid": 180835,
+            "exit_code": 1,
+            "status": "failed",
+            "binding": {
+              "pid": 180835,
+              "status": "verified",
+              "torch_uuid": "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+              "requested_uuid": "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+              "torch_raw_uuid": "cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+              "logical_device": 1,
+              "nvidia_smi_pid_uuids": [
+                "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+              ],
+              "pid_query_status": "observed"
+            },
+            "framework_source": {
+              "sha256": "ed1f8a63296fa915e6c18737293e94d9fa3d82fd3918958400e5033754156ebd",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "error_type": "ValueError",
+            "error": "Using a `device_map`, `tp_plan`, `torch.device` context manager or setting `torch.set_default_device(device)` requires `accelerate`. You can install it with `pip install accelerate`",
+            "traceback": "Traceback (most recent call last):\n  File \"/root/autodl-tmp/dev/v6-work/goal-switch-20261027/framework/1d6f3a5bd822/src/kernel_optimizer/runtime/worker.py\", line 82, in main\n    result = getattr(module, request.function)(context)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/autodl-tmp/dev/v6-work/goal-switch-20261027/framework/1d6f3a5bd822/scripts/experiments/v6_tp_qwen_readiness_20261027.py\", line 32, in run\n    model = Qwen3ForCausalLM.from_pretrained(params['assets'], **options).eval()\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/modeling_utils.py\", line 4226, in from_pretrained\n    device_map = check_and_set_device_map(device_map)  # warn, error and fix the device map\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/transformers/integrations/accelerate.py\", line 137, in check_and_set_device_map\n    raise ValueError(\nValueError: Using a `device_map`, `tp_plan`, `torch.device` context manager or setting `torch.set_default_device(device)` requires `accelerate`. You can install it with `pip install accelerate`\n"
+          }
+        ],
+        "lease_wait_s": 0.0003088228404521942,
+        "device_selectors": [
+          "0",
+          "1"
+        ],
+        "entry_sha256": "1beaf911eea2a4ece3f1d4baa2c0ed8fda279955bba8e8296a84a8612bdedf30",
+        "devices": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+          "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+        ],
+        "worker_pids_reaped": true
+      }
+    }
+  ]
+}

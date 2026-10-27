@@ -9,3 +9,7 @@
 - `manifest.json` 列出逐字导出文件的远端路径、长度和 SHA。
 
 无私有配置/API key、模型权重或原始大 trace。旧批次保持独立，不覆盖其失败或独立接受结论。
+
+终态已归档：controller/followup 记录保留原 TP 依赖失败、ResNet 初始字段不匹配；`manual-audit/` 来自另建的 `goal-switch-audit-20261027`，含两个 bundle 的 trial/反馈/完整独立结果摘要、完整源码入口与数值审计、单行持有 images 的手工因果对照、依赖 overlay 身份及真实 TP 重跑。TP 重跑执行成功但 logits 质量失败；ResNet 原冻结接受不等于源资源状态一致。所有区别见主报告，不以派生结果覆盖冻结文件。
+
+`wakeup-delivery.json` 确认本次真实自动续行。大 trial、trace、tensor 和依赖 wheel 留在远端，导出文件的路径/长度/SHA 见 manifest。审计生成脚本单独归档供复现，不属于优化流程。
