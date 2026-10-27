@@ -1,0 +1,40 @@
+{
+  "at": "2026-10-27T10:52:58.011711+00:00",
+  "framework_source": {
+    "sha256": "cb4ea28c3d90ccad5bc723ed5b6dc124488d572fca8a69b3ed3b12ec0e994016",
+    "files": 162,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "argv": [
+    "/root/autodl-tmp/dev-venv/bin/python",
+    "-B",
+    "-m",
+    "kernel_optimizer.cli",
+    "--config",
+    "/root/autodl-tmp/dev/v6-work/ddp-semantics-20261027/private-config.yaml",
+    "optimize-project",
+    "--project",
+    "/root/autodl-tmp/dev/v6-work/ddp-semantics-20261027/framework/a44a6f379c93/examples/v6_validation",
+    "--command",
+    "torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp --profile",
+    "--goal",
+    "Reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks.",
+    "--devices",
+    "auto",
+    "--output",
+    "/root/autodl-tmp/dev/v6-work/ddp-semantics-20261027/ddp-communication",
+    "--rounds",
+    "3"
+  ],
+  "specification": {
+    "name": "ddp-communication",
+    "case": "ddp",
+    "devices": [
+      "auto"
+    ],
+    "command": "torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp --profile",
+    "goal": "Reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks."
+  },
+  "scope": "Three complete original-entry autonomous rounds; no supplied adapter, groups, candidates, replay output or developer diagnosis. Agent/API usage is observe-only, not capped.",
+  "free_data_bytes": 10863403008
+}

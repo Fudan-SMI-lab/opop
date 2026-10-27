@@ -18,3 +18,9 @@ ResNet 同 adapter 显存候选的独立吞吐拒绝、其固定80样本、旧 Q
 启动前做脚本编译、实际环境导入、配置与旧 TP 请求结构核查。已有 intake 6项检查通过，采用段落与实际 treatment 逐字一致。启动后记录真实会话/快照和单个普通完成守候。守候仅检查文件/进程，结束或控制器异常退出后 queue 一次；不启用 Goal、额外投递测试或模型轮询。
 
 脚本：`v6_ddp_semantics_20261027.py`、`v6_tp_block_audit_20261027.py`。初始阶段/生成失败也应记录，不把 controller completed 当自主优化成功。终态后审计实际生成代码、inputs、controls、负例、完整版本、TP 输出，再决定下一步最小改动。
+
+## 已启动
+
+2026-10-27 10:52:57 UTC 启动单控制器 PID `240963`，冻结提交 `a44a6f379c93e6384624b5ed6ef3da23b140b47e`，核心 SHA `cb4ea28c3d90ccad5bc723ed5b6dc124488d572fca8a69b3ed3b12ec0e994016`。启动 df 可用10,863,415,296 bytes。脚本编译、实际依赖导入及源/资产/reference 路径检查通过。TP 请求的依赖 overlay 保留，但框架导入路径明确改为本次冻结源码。
+
+真实 intake 会话 `ses_e83020a1dffetsO3CcM8qBPlMI`，生成前快照 `generation-ea83ca2cbb72` 已保存。仅表示实际角色已开始，不预判最终合同与优化结果。本机普通守候 PID `20504`，状态 `.scratch/v6-ddp-semantics-wakeup.json`；真实 probe 确认控制器 running。见[启动证据](evidence/v6-ddp-semantics-20261027/README.md)。
