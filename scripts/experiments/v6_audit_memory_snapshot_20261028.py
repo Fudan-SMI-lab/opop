@@ -68,6 +68,9 @@ def audit(root, output):
             path = root/'controls'/f'{lifetime}-{policy}'/'run/receipt.json'
             raw = read(path); assert raw['status'] == 'passed'
             v = raw['ranks'][0]['result']; assert v['valid']
+            ev = v['evaluation_source']
+            assert sha(ev['path']) == ev['sha256'] == expected[
+                'isolated_evaluator_sha256' if policy == 'snapshot' else 'production_evaluator_sha256']
             assert all(c['passed'] for c in v['controls']['reset'])
             assert all(v['controls'][k] for k in ['identity_covered', 'wrong_output_rejected', 'missing_coverage_rejected'])
             assert v['controls']['identity']['passed']
