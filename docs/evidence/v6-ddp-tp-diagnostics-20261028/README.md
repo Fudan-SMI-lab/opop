@@ -11,3 +11,5 @@
 - `wakeup-setup.json`：唯一新完成监听及启动前真实进程探查；不是新的消息投递测试。
 
 上述记录仅证明启动与首端点状态。最终结果在服务器 `followup-results.json`、`followup-completed.json`、`ddp-fixed/result.json`、`tp-result.json`、`diagnostic-review/result.json`；须区分执行错误、质量失败、诊断发现和原有正式接受/拒绝。
+
+终态新增 `terminal-audit.json`（约56KB）与 `agent-review-original.json`（约19KB）。前者保留所有干净整步样本、逐rank值、原始证据SHA/路径、时间线范围和TP比较矩阵；后者是未经纠正的真实模型回答，包含主文指出的推断错误，不能直接引用为验收结论。完整审计和原始数据仍在服务器；没有原始trace/张量归档下载。

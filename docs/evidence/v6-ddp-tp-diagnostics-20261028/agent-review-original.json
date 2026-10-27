@@ -1,0 +1,140 @@
+{
+  "findings": [
+    {
+      "claim": "Standing scope guard (observation of record, not a new result): the prior DDP independent rejection and the prior full TP 32-token logits failure both remain in force. This review is diagnostic only; the fixed endpoints B/C/N are developer diagnostics with original quality, continuous steps and full work retained; N is a parameter ablation, not a frozen accepted version; no formal acceptance, publication, sample removal or until-pass repetition is implied by anything below.",
+      "evidence_paths": [
+        "inputs/scope.txt",
+        "inputs/ddp-protocol.json",
+        "inputs/tp-summary.json"
+      ],
+      "limitations": [
+        "No artifact here can overturn a prior independent failure; only a new full-framework acceptance run could, and none is requested.",
+        "The tp-colwise stage status 'passed' means the projection diagnostic passed, not that tensor-parallel execution was accepted."
+      ]
+    },
+    {
+      "claim": "Observation (DDP, clean endpoints): the fixed diagnostic reproduces a large, run-direction-flipping baseline communication cost and a stable barrier-arm reduction. Per aligned invocation the max-rank communication_kernel_sum_ms median was 53.50 ms and 40.09 ms for the two B (baseline) endpoints, 35.32 ms and 35.18 ms for the two C endpoints, and 43.85 ms and 41.60 ms for the two N endpoints, against the original baseline evaluation's 53.63 ms. Median max-rank step_ms: B 122.13/109.71, C 111.39/113.57, N 119.33/114.42, versus the 120.90 ms constraint bound (1.05 x original baseline 115.14 ms). All six endpoints passed every correctness check (checks_passed [true, true], math_policy_unchanged true per rank).",
+      "evidence_paths": [
+        "inputs/ddp-clean-result.json",
+        "inputs/ddp-protocol.json"
+      ],
+      "limitations": [
+        "communication_kernel_sum_ms is a per-rank sum of device NCCL kernel durations; it includes in-kernel device waiting and is explicitly NOT wire time, critical-path time or exposed communication.",
+        "Only two endpoints per arm (order B,C,N,N,C,B, 20 clean samples each); these are fixed diagnostics, not an acceptance trial; no version is frozen and nothing is adopted.",
+        "Baseline step_ms re-measurement drifts (109.71-122.13 ms across the two B endpoints, ~11%) around the original 115.14 ms, so the 1.05x band is within run-to-run noise for near-boundary arms; the N endpoint at 119.33 ms sits within 1.3% of the bound. The B endpoint at 122.13 ms exceeding 120.90 ms is baseline drift, not a candidate violation.",
+        "clean-1-C rank 0 contains one 444.32 ms step_ms outlier sample; the median-based constraint is robust to it but the cause is unexplained."
+      ]
+    },
+    {
+      "claim": "Observation (DDP, timeline captures): the baseline arm shows multi-millisecond cross-rank CPU submission skew of the 13 bucket allreduces, and the early rank's first NCCL kernel carries a matching excess duration. In arm B the clock-anchored cross-rank CPU submit spread bounds were ~7.5-8.8 ms (repetition 0) and ~4.8-5.9 ms (repetition 1); the early rank's first collective kernel lasted 9.54 ms and 6.74 ms respectively, versus ~1.9-2.2 ms steady-state collectives and ~1.93 ms for the same-position collective in arm C. In arm C the per-collective gloo barrier compresses the allreduce submit spread to <=0.17 ms in both repetitions, and per-collective durations equalize across ranks (rank sums 35.0-35.6 ms on both ranks).",
+      "evidence_paths": [
+        "inputs/ddp-timeline-result.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-B/run/timeline-analysis-rank-0-0.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-B/run/timeline-analysis-rank-0-1.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-C/run/timeline-analysis-rank-0-0.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-C/run/timeline-analysis-rank-1-0.json"
+      ],
+      "limitations": [
+        "Kernel-duration excess approximately equaling the submit-spread bound is consistent with in-kernel spin-wait on the early rank, but the collector marks gpu_input_ready and consumer_completion 'unknown' for every collective: CPU submission does not establish GPU producer completion, so a GPU-side arrival component is not excluded.",
+        "Cross-rank comparisons are CPU-submission-only with monotonic-clock anchor bounds retained; no GPU cross-rank clock alignment is claimed.",
+        "cpu_submit_spread_bounds_us are bounds (anchor hull), not point estimates; two repetitions only.",
+        "Profiler and hooks perturb execution; timeline numbers are never the clean objective."
+      ]
+    },
+    {
+      "claim": "Observation supporting a causal hypothesis (DDP): arm N - the same trial-25f69b0d87 code as C with only per_collective_align changed from 'barrier' to 'none' - reintroduces the skew and the waiter's in-kernel time. N timeline submit spreads were ~1.6-2.1 ms (repetition 0) and ~11.6-12.8 ms (repetition 1); the repetition-1 late rank's first collective kernel lasted 13.9 ms and its rank sum rose to 52.68 ms, while its clean endpoints' max-rank medians were 41.60/43.85 ms. The hypothesis 'the per-collective gloo barrier, not other code changes, removes the skew-attributable in-kernel wait' is the best-supported explanation of the C-versus-N difference, because C and N differ only in that parameter (same version hash, same declared route).",
+      "evidence_paths": [
+        "inputs/ddp-clean-result.json",
+        "inputs/ddp-timeline-result.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-N/run/timeline-analysis-rank-1-1.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/protocol.json"
+      ],
+      "limitations": [
+        "Parameter isolation is evidenced by protocol and receipts (identical version hash for C and N, identical declared candidate route), but the skew's underlying origin is not identified; only its magnitude and direction are bounded.",
+        "N is a parameter ablation; its results must not be described as a frozen full version in either direction.",
+        "Two timeline repetitions per arm; the direction of skew flips across runs (baseline clean-0 had rank 1 waiting at 53.5 ms, clean-5 had rank 0 at 37.0-40.4 ms), so per-run direction is not predictable from this sample."
+      ]
+    },
+    {
+      "claim": "Observation (DDP, residual structure): in every arm including C, the 13 collectives are 12 buckets of 7,087,872 fp32 elements (~1.9 ms each) plus one 39,385,344-element bucket (~10.35-10.57 ms on both ranks in every capture), summing to ~35 ms; the element counts total exactly the model's 124,439,808 parameters, consistent with the documented bucket inventory (12x 7,087,872-element buckets plus the last-ready bucket holding the tied wte/lm_head, wpe and early-block parameters). This ~35 ms is the current floor under zero submit skew.",
+      "evidence_paths": [
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-C/run/timeline-analysis-rank-0-0.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-C/run/timeline-analysis-rank-1-0.json",
+        "inputs/trial-25f69b0d87.py"
+      ],
+      "limitations": [
+        "Kernel duration includes device waiting and is not wire time; the collector cannot decompose the symmetric ~10.4 ms large-bucket duration into transport versus residual in-kernel wait, so 'payload-bound' is not established.",
+        "Bucket-to-collective identity is by count and size only; the collector records timed_collective_identity 'unknown'."
+      ]
+    },
+    {
+      "claim": "Observation (DDP, CPU-side wait relocation): in arm C the absorbed skew reappears as CPU-side gloo barrier waits (13 gloo:barrier ranges per capture; largest single wait 37.46 ms on rank 0, repetition 1) without regressing median clean step time relative to the constraint. Only counts and maxima are cited; nested CPU ranges (gloo:barrier inside c10d::barrier, plus enclosing allreduce-hook ranges) are not summed as additive cost.",
+      "evidence_paths": [
+        "inputs/ddp-timeline-result.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-C/run/timeline-analysis-rank-0-1.json"
+      ],
+      "limitations": [
+        "Whether adverse scheduling can grow these CPU waits enough to threaten the step constraint is untested (two repetitions only).",
+        "The barrier wait is bounded wait, not added work; no claim is made about critical-path equivalence."
+      ]
+    },
+    {
+      "claim": "Observation (DDP, candidate mechanics): the trial hook reproduces the installed torch 2.13.0+cu129 official default-hooks arithmetic and future chain exactly - buffer.div_(group size) then dist.all_reduce(..., async_op=True).get_future().then(lambda fut: fut.value()[0]) - matching torch.distributed.algorithms.ddp_comm_hooks.default_hooks._allreduce_fut, plus a pre-step torch.cuda.synchronize(device) completion barrier before optimizer.step(). The exact cross-rank gradient equality (atol=0, rtol=0), serial global-batch reference gradient and post-step parameter comparisons, and the +1-corruption negative control all passed on every C and N endpoint.",
+      "evidence_paths": [
+        "inputs/trial-25f69b0d87.py",
+        "inputs/ddp-clean-result.json",
+        "inputs/opop_adapter.py",
+        "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/distributed/algorithms/ddp_comm_hooks/default_hooks.py"
+      ],
+      "limitations": [
+        "Library inspection was CPU-only with the measured worker's interpreter (/root/autodl-tmp/dev-venv/bin/python, torch 2.13.0+cu129); no GPU work was run for it.",
+        "Chaining/arithmetic equivalence plus passing checks is diagnostic evidence of semantic equivalence for this workload; it is not formal acceptance, and the official docstring's 'same as no hook' expectation is not a substitute for the harness checks."
+      ]
+    },
+    {
+      "claim": "Observation (TP, same-input projection evidence): at block level the colwise projections are exact on both ranks. Inputs are bit-identical to the prior TP inputs (sha256 match, same_input exact for all six projections), local weight shards equal the checkpoint row slices exactly (checkpoint_row_slice exact, e.g. 5,242,880 elements, 0.0 error), and the local shard outputs are bit-identical to the official module on the same shard and to the recorded TP observations (exact_equal, 0.0 error). The single non-exact comparison - q_proj official shard output versus the recorded single-GPU full-matrix slice (max_abs 4.88e-4 rank 0 / 9.77e-4 rank 1, i.e. 1-2 bf16 ULP; rms ~3.7e-6/6.3e-6) - is reproduced exactly by the full_bf16_slice variant, identifying it as bf16 shard-GEMM versus full-GEMM accumulation arithmetic, not a sharding or checkpoint mapping error; k_proj and v_proj agree exactly across all variants.",
+      "evidence_paths": [
+        "inputs/tp-summary.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/tp-result.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/tp-colwise/colwise-outputs-rank-0.pt",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/tp-colwise/colwise-outputs-rank-1.pt"
+      ],
+      "limitations": [
+        "This is local BF16 arithmetic and layout evidence only; it does not establish full-model quality and must not be turned into acceptance of the TP model. The prior full TP 32-token logits failure remains.",
+        "No NCCL execution is emulated: rowwise o_proj/down_proj partial-sum allreduces, lm_head colwise_gather_output, embedding_rowwise and q_norm/k_norm grad allreduce are untested by this evidence.",
+        "Projection inputs are 256-token blocks; the prior failing check was full 32-token logits - different shapes and code paths; neither explains nor exhausts that failure.",
+        "The FP32-cast controls (full_fp32_cast_slice, local_fp32_cast; rms ~3e-5) differ from the bf16 source contract and are controls, not a quality verdict."
+      ]
+    },
+    {
+      "claim": "Collector adequacy (DDP): the existing collectors expose the information a barrier-class candidate actually needs - the clean objective with three aligned per-rank samples and 20-sample step times, full correctness verdicts, per-collective NCCL kernel durations/sizes, per-range CPU inventories, and cross-rank CPU submit spread bounds under evidenced monotonic-clock anchors; the causal question the fixed run leaves open (GPU-side producer readiness) is exactly what the collector marks 'unknown' (gpu_input_ready, consumer_completion, timed_collective_identity), and the two opt-in mechanisms that bear on it (gradient_readiness hooks and gpu_gradient_markers CUDA events) were disabled in these captures (collector_options {\"repeats\": 2, \"gradient_readiness\": false}; gradient_hooks_enabled false, buckets empty, markers not_collected). The remaining gap is therefore one configuration of existing code, not new collector code.",
+      "evidence_paths": [
+        "inputs/timeline-collector.py",
+        "inputs/ddp-timeline-result.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-B/run/timeline-analysis-rank-0-0.json",
+        "/root/autodl-tmp/dev/v6-work/ddp-tp-diagnostics-20261028/ddp-fixed/timeline-B/run/request.json"
+      ],
+      "limitations": [
+        "Gradient hooks and CUDA event markers perturb execution and add overhead; any such capture remains a separate diagnostic, never the clean objective, and must be compared against the clean evaluation.",
+        "Markers are rank-local stream timings: they do not prove cross-rank GPU clock alignment, reducer bucket readiness, or unique consumption (per the collector's own scope notes); only within-rank comparisons of marker time versus that rank's kernel start are valid.",
+        "For the TP question the projection harness does expose block-level mapping, but nothing in it emulates collectives, so TP-side collector adequacy holds only for the colwise projection question it was run for."
+      ]
+    }
+  ],
+  "unresolved": [
+    "Root cause of the cross-rank CPU submission skew in arms B and N (magnitude bounded at ~1.6-12.8 ms, direction flipping across runs): not identified. Current captures cannot separate CPU-side scheduling/autograd timing from GPU-side producer lag, because gpu_input_ready and consumer_completion are 'unknown' and gradient-readiness hooks were disabled.",
+    "Composition of the ~35 ms residual floor in arm C: how much of it, especially the symmetric ~10.4 ms of the 39,385,344-element bucket, is transport versus residual in-kernel device waiting. The metric includes waiting and is not wire time, so this cannot be read off the existing sums.",
+    "Whether the CPU-side gloo barrier waits observed in arm C (max single wait 37.46 ms in one repetition) can grow under adverse scheduling enough to threaten the 1.05x step constraint; only two timeline repetitions exist.",
+    "Cause of the prior full TP 32-token logits failure remains open: layer-0 colwise projections are exact on both ranks, so a numerical divergence, if any, must enter through paths this evidence does not cover (rowwise partial-sum allreduce arithmetic, lm_head gather, embedding rowwise, q_norm/k_norm grad handling, or inter-block composition) - or through the full-check harness itself; no evidence discriminates among these.",
+    "The single 444.32 ms step_ms outlier in clean-1-C rank 0 is unexplained; occupancy sampling was 'sampled_clear' but sub-sample interference can be missed.",
+    "Prior independent failures are preserved unresolved by construction: the earlier DDP independent rejection and the TP full 32-token logits failure both stand; nothing in this review retried, re-scored, or replaced them."
+  ],
+  "next_minimal_experiment": {
+    "name": "Single arm-C execution_timeline capture with the existing gradient-readiness and GPU-marker options enabled",
+    "question": "With cross-rank allreduce submit spread already compressed to <=0.17 ms in arm C, is the residual in-kernel time of the 39,385,344-element bucket (and the ~35 ms floor generally) still wait that a skew/alignment lever could remove, or is it producer/payload-bound so that only bucket-layout levers remain?",
+    "change": "No new code, no prompt/workload/metric/threshold change: re-run the existing timeline collector once on arm C with collector_options {\"repeats\": 2, \"gradient_readiness\": true, \"gpu_gradient_markers\": true} - both options already implemented in timeline-collector.py capture() (post-accumulate hooks recording opop.grad_ready:: ranges plus per-callback CUDA events on the current stream relative to a rank-local GPU origin). One leased-worker GPU diagnostic run; read-only; no candidate generation and no acceptance.",
+    "falsifiable_test": "For each rank separately (never cross-rank subtraction; markers are rank-local GPU clocks), compare per-parameter gradient-callback marker times against that rank's own NCCL kernel starts for the 12x 7,087,872-element and 1x 39,385,344-element collectives in the same trace. Decision rule: (a) if on both ranks marker readiness precedes the large bucket's kernel start by much less than 1 ms while submit spread stays <=0.17 ms and its duration remains ~10.4 ms, then the residual is not CPU-skew-attributable wait and the hypothesis 'an alignment lever can reduce the floor further' is refuted - remaining candidate work must target bucket layout/payload; (b) if marker readiness lags kernel start or tracks the excess duration on either rank, producer-side wait remains and the alignment lever retains measurable headroom. Both outcomes are decisive for the stated hypothesis.",
+    "cost_and_scope": "One 2-repetition profiler run on the existing fixed arm C; hooks/markers perturb execution, so results are diagnostic only and must be compared against the existing clean evaluation; the capture adds no adoption, no threshold change, and leaves N as a parameter ablation and all prior independent failures standing.",
+    "expected_limitations": "timed_collective_identity stays 'unknown', so bucket-to-collective association remains by size and count; markers prove neither cross-rank GPU clock alignment nor unique reducer consumption; hook overhead shifts absolute times, which is why only within-rank marker-versus-kernel-start ordering, not cross-run magnitude comparison, is used in the decision rule."
+  }
+}
