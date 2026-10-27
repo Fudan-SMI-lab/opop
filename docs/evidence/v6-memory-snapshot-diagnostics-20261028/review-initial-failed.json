@@ -1,0 +1,95 @@
+{
+  "review": {
+    "subject": "Proposed coalescing of adjacent CUDA allocator statistics reads in the isolated worker evaluator invoke() (inputs/invoke-before.py vs inputs/invoke-after.py)",
+    "scope": "Only the coalescing change. No GC disablement, no before_run observer, no formal candidate acceptance, no production adoption, no score adjustment. DDP independent rejection and TP full-model failure contexts remain unchanged and are not re-examined.",
+    "environment_checked": "/root/autodl-tmp/dev-venv (torch 2.13.0+cu129, Python 3.12.4) per inputs/worker-environment.json; CPU-only source/API inspection and simulation; no GPU work executed in this review.",
+    "method": [
+      "Line-by-line diff of invoke-before.py (verbatim extract of kernel_optimizer/project/evaluation.py:239-268) against invoke-after.py (matches the mechanical rewrite in v6_memory_snapshot_probe_20261028.py patched_source(), which asserts the replaced fragments occur exactly twice/once and compiles the result).",
+      "Inspection of installed torch.cuda.memory.py (torch 2.13.0) for the exact semantics of the four helper functions and memory_stats().",
+      "CPU-only simulation of both invoke bodies under a mock reproducing torch 2.13.0 helper semantics (memory_stats().get(key, 0)), across quiescent and mutating allocator states, using /root/autodl-tmp/dev-venv/bin/python.",
+      "Inspection of indexed endpoints (inputs/stage-index.json, followup-results.json, controls/legacy-original/) for this batch's outcome."
+    ]
+  },
+  "findings": [
+    {
+      "id": "F1",
+      "category": "changed field meaning",
+      "status": "checked",
+      "title": "No field-meaning change: after-code reads the identical keys with identical defaults as the torch helpers",
+      "evidence": "torch/cuda/memory.py in the worker env: max_memory_allocated() == memory_stats().get('allocated_bytes.all.peak', 0) (line 568); max_memory_reserved() == .get('reserved_bytes.all.peak', 0) (line 604); memory_allocated() == .get('allocated_bytes.all.current', 0) (line 547); memory_reserved() == .get('reserved_bytes.all.current', 0) (line 583). memory_stats() returns a flat OrderedDict with these dotted keys (lines 326-349).",
+      "detail": "The before code's helpers are themselves thin reads of the same memory_stats() snapshot with the same .get(..., 0) missing-key default, so the after code introduces no new silent-zero path and no key drift. Device scoping is identical (device=None resolves to current device in both). In the simulated quiescent cases (steady state; adapter.metrics performing a post-timer allocation; empty/uninitialized stats; before_run observer present) all framework.* memory metrics and both lifecycle peaks were bit-identical between variants."
+    },
+    {
+      "id": "F2",
+      "category": "timer boundary",
+      "status": "checked",
+      "title": "Timer boundary unchanged; all allocator reads remain outside the timed window",
+      "evidence": "In both variants the pre-block precedes before_run/barrier, synchronize() and reset_peak_memory_stats(); 'started = time.perf_counter_ns()' and the elapsed computation enclose only operation(track) and synchronize(); the post-block runs after elapsed and after adapter.metrics. adapter.metrics call position is identical, so a post-timer allocation made inside adapter.metrics is captured identically by both (verified in simulation).",
+      "detail": "framework.elapsed_ms semantics are untouched by the coalescing. reset_peak_memory_stats() and synchronize() call counts are identical (1 and 1 per invoke in simulation). The change removes host-side work between samples, not inside the measured interval; elapsed_ms cannot be deflated by this change."
+    },
+    {
+      "id": "F3",
+      "category": "lifecycle ownership",
+      "status": "checked",
+      "title": "Lifecycle peak ownership and semantics unchanged; internal consistency strictly improved",
+      "evidence": "lifecycle_allocated_peak/lifecycle_reserved_peak remain closure locals of _worker_entry updated via nonlocal max() from the same peaks; initialization at evaluation.py line 162 and the legacy/invocation measurement_lifetime handling are untouched by the patch.",
+      "detail": "The before code computed lifecycle maxima from two earlier reads and then re-read four different values for metrics (6 independent snapshots in the post-block; 8 per invoke total). The after code derives lifecycle maxima and all metrics fields from one snapshot (2 per invoke total). Consequence demonstrated in simulation with a concurrent allocation landing mid-block: before can emit a torn sample (lifecycle_peak_reserved_bytes=10MB while peak_reserved_bytes=12MB in the same metrics dict); after cannot, because a single memory_stats() call is one consistent allocator snapshot. lifecycle_peak_* >= peak_* within a sample is now structurally guaranteed."
+    },
+    {
+      "id": "F4",
+      "category": "call-count / overhead",
+      "status": "checked",
+      "title": "memory_stats() invocations per invoke drop from 8 to 2",
+      "evidence": "Counting simulation: before = 2 pre-block + 6 post-block calls = 8; after = 1 pre + 1 post = 2. Each helper call in torch rebuilds and sorts the full flattened stats dict (torch/cuda/memory.py lines 326-349), so the before path constructed the complete snapshot 8 times per invocation.",
+      "detail": "This is the mechanism the framework's own control asserts (pair['snapshot']['memory_stats_calls'] < pair['original']['memory_stats_calls']). The reduction is host-side and outside the timed region."
+    },
+    {
+      "id": "F5",
+      "category": "asynchronous-allocation caveat",
+      "status": "checked",
+      "title": "Post-synchronize reads make async execution a non-difference; cudaMallocAsync zero-stat caveat applies equally to both variants",
+      "evidence": "Both variants read allocator state only after synchronize(); allocator counters are host-side bookkeeping updated at allocation/free time. torch documents that with backend=cudaMallocAsync some stats are not meaningful and are always reported as zero (memory_stats docstring, torch/cuda/memory.py lines 322-324).",
+      "detail": "Because before's helpers read the same counters from the same memory_stats() source, any async-allocation backend semantics (pools, zeroed stats) affect both variants identically; the coalescing neither introduces nor masks them. The only asynchronous-window difference is the torn-read window between adjacent reads (F3), which the coalescing closes."
+    },
+    {
+      "id": "F6",
+      "category": "indexed endpoints",
+      "status": "checked",
+      "title": "Both quality endpoints for this batch produced no data: cuda-controls errored on a stale output directory; ddp was skipped by gating",
+      "evidence": "inputs/stage-index.json and followup-results.json: cuda-controls status=error (FileExistsError, exist_ok=False mkdir on controls/legacy-original, pre-existing since 03:00 with only protocol.json inside; no result.json, no controls-result.json anywhere); ddp status=skipped_failed_controls (batch main() line 133 gate). The ddp/ output directory does not exist, so no fixed-candidate receipts were produced.",
+      "detail": "Read of the indexed raw artifact for the concrete uncertainty 'did any control or ddp measurement land?': controls/legacy-original contains only protocol.json (request dump, no measurement data). The intended real-CUDA controls (legacy/invocation lifetimes x original/snapshot policies, asserting exact framework.* field equality, fewer memory_stats_calls, and lifecycle_peak > peak on device) never executed in this batch. The failure is an output-directory collision from a prior partial attempt, not a defect in the coalescing or in the control logic. This review stage itself is not gated on controls and ran anyway."
+    },
+    {
+      "id": "F7",
+      "category": "isolation",
+      "status": "checked",
+      "title": "Patch scope confined to isolated per-rank evaluator copies; production core untouched",
+      "evidence": "v6_memory_snapshot_probe_20261028.py evaluator(): the snapshot policy writes evaluation-snapshot-rank-N.py and imports it as a separate module; original policy returns the production evaluation module unchanged; both sha256s are recorded per rank in evaluation-snapshot-rank-N.json and the batch protocol.json.",
+      "detail": "The before/after extracts supplied as inputs match the production source and the mechanical rewrite exactly, so the review objects are the artifacts actually executed by the arms."
+    },
+    {
+      "id": "F8",
+      "category": "hypothesis",
+      "status": "hypothesis",
+      "title": "On real CUDA the framework's field-equality assertion will pass, and tearing was historically absent",
+      "detail": "Given identical key/default semantics (F1), exact integer equality of all framework.* fields between original and snapshot policies is expected on device, which is what the errored controls were designed to prove. The torn-read improvement (F3) is defensive: the evaluator measurement path is single-threaded per rank, so adjacent-read tearing probably never materialized in prior data. Both statements remain hypotheses until the controls actually run on a leased worker."
+    }
+  ],
+  "limitations": [
+    "No real-CUDA evidence exists for this batch: the cuda-controls stage errored before any measurement (stale controls/legacy-original directory) and ddp was skipped, so the framework's on-device equality, call-count, and lifetime assertions were not executed; this review's equivalence evidence is source inspection plus CPU-only simulation against torch 2.13.0 documented semantics.",
+    "The simulation mock reproduces helper semantics (.get on a flat dict) but not the C++ allocator internals; it cannot validate device-specific behaviors (private pools, expandable segments, cudaMallocAsync zeroed stats) beyond what the torch docstring states, though those affect both variants equally.",
+    "All allocator reads in both variants target only the current device (device=None), while synchronize() may cover multiple devices when world_size==1; multi-device per-process memory accounting is a pre-existing scope limitation unchanged by this proposal.",
+    "lifecycle peak initialization (evaluation.py line 162) still performs one un-coalesced max_memory_allocated() read outside invoke(); the 8-to-2 reduction is per-invoke only.",
+    "No performance claim is made about framework.elapsed_ms or objective scores: the removed work sits outside the timed region, and per instructions no GC-time subtraction or long-tail causal inference was attempted; the existing DDP independent rejection and TP full-model failure were not re-examined.",
+    "Reviewer did not execute the framework validator; review.json contents (findings/limitations/recommendation keys) follow the validator's stated requirements."
+  ],
+  "recommendation": {
+    "verdict": "approve_for_isolated_experimental_use_conditioned_on_controls",
+    "reasoning": "The coalescing is semantically neutral by construction in the inspected torch version (identical keys, identical .get defaults, identical device scoping), leaves the timer boundary, synchronization, reset and lifecycle ownership untouched, strictly reduces snapshot constructions (8 to 2 per invoke), and strictly improves within-sample consistency by eliminating the torn-read window between adjacent reads. No changed field meaning, timer boundary, lifecycle ownership, or asynchronous-allocation regression was found.",
+    "conditions": [
+      "Rerun the cuda-controls stage on a leased worker after clearing or rotating the stale controls/legacy-original output directory (use a fresh output root); the FileExistsError is an operational artifact, not a code defect.",
+      "Require the controls' own assertions to pass on device (exact framework.* field equality between original and snapshot, fewer memory_stats_calls, lifecycle_peak > peak for the snapshot policy across legacy and invocation lifetimes) before the ddp fixed-candidate arms are interpreted.",
+      "Do not treat this batch as evidence for or against the coalescing on real CUDA, and make no production-adoption decision from it; adoption remains gated on the controls and endpoint stages completing."
+    ]
+  }
+}
