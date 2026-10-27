@@ -72,3 +72,5 @@
 新的单控制器 PID `240963` 负责 `/root/autodl-tmp/dev/v6-work/ddp-semantics-20261027`，包括新 DDP 三轮、独立源码/关系负例/整版复测及 TP 小型诊断。本机普通守候 PID `20504`，状态 `.scratch/v6-ddp-semantics-wakeup.json`，取消文件 `.scratch/v6-ddp-semantics-wakeup.stop`。已确认 controller running 和真实 intake 会话/初始快照；结束或异常退出后只 queue 一次。等待不调用模型，未启用 Goal 或重复投递测试。见[部署证据](evidence/v6-ddp-semantics-20261027/wakeup-setup.json)。
 
 2026-10-27 用户补充要求：本批结束后做大规模空间清理。已更新同一守候在投递时读取的 prompt 文件，要求先审计本批，再按[清理方案](v6-storage-cleanup-20261027.md)核对本地完整归档/依赖并清理冗余服务器副本，然后继续新实验。更新时仍 waiting，未重启守候、增加 Goal 或提交额外消息；见[追加指令记录](evidence/v6-storage-cleanup-20261027/deferred-cleanup.json)。
+
+后续更新：该批14:28:37 UTC结束，守候14:28:53 UTC提交 `01a17dc3-9a70-7be1-ba2f-723d5110b8ff`，本消息已实际开启当前新轮次。附加的全盘清理指令随同送达；已核查DDP/TP结果并补做独立源数值审计，开始维护。原守候现为queued且退出，不复用它等待下一项工作。见[投递回执](evidence/v6-ddp-semantics-20261027/wakeup-delivery.json)。

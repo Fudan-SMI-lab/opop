@@ -1,0 +1,28 @@
+{
+  "collectors": [
+    "candidate_diagnostics",
+    "execution_timeline",
+    "binding_cost"
+  ],
+  "requested_fields": [
+    "candidate_diagnostics.exceptions",
+    "candidate_diagnostics.handled_exceptions_with_traceback_locations",
+    "candidate_diagnostics.false_returns",
+    "execution_timeline.cpu_to_cuda_submit_associations",
+    "execution_timeline.synchronization_events",
+    "execution_timeline.per_device_intervals",
+    "execution_timeline.clock_alignment_bounds",
+    "binding_cost.parent_vs_binding_only_invocation_ms",
+    "binding_cost.quality_check_results"
+  ],
+  "unavailable_fields": {
+    "numerical.first_divergence_site": "No available collector compares intermediate tensors or locates the first numerical divergence; candidate_diagnostics explicitly does not, and all candidates failed before quality checks produced metrics.",
+    "numerical.per_site_error": "Per-site numerical error measurement is not supplied by any listed collector; candidate_diagnostics records only exceptions and False returns.",
+    "failure.non_python_thread_or_native_cause": "candidate_diagnostics records only the worker's current Python thread in supplied candidate files; failures raised on other threads or in native code (NCCL watchdog, C++ reducer) are not captured by any listed collector.",
+    "successful_path_executed": "candidate_diagnostics does not record normal calls or scalar returns other than False, so empty events cannot establish which successful path executed.",
+    "nccl.wait_vs_wire_separation": "No selected collector separates NCCL kernel waiting from wire transfer; nsys timelines alone cannot, and no such question is open for the failing candidates.",
+    "bucket_identity.native_correlation": "Exact bucket-to-collective links require native correlation plus observed gradient-storage membership; the earlier torch evidence lists bucket candidates without native proof, and no selected collector adds it."
+  },
+  "rationale": "Evaluation shows all three parameter_screening candidates (d6aab973 buckets_per_flush=3/flush_alignment=barrier, e1d0eb30 3/none, 7f0e96bf 6/none) failed with rank_failed, empty metrics/coverage and invalid quality, while the parent (547a0039) executed the same step cleanly in discovery (observations.json: 13 fp32 allreduces, 12x28351488B + 1x157541376B, ncclDevKernel_AllReduce_Sum_f32_RING_LL). The dominant uncertainty is the cause of the family-wide candidate failure, and evaluation's interpretation explicitly asks for actual exception evidence or traces rather than candidate-reported labels. Revision e1d0eb30ef98ae3db7ac5b7899da3aa89f61833e0e8b5ebe7a7df5d55fb48b6c is selected because it is the intersection configuration (shares buckets_per_flush=3 with d6aab973 and flush_alignment=none with 7f0e96bf), so its failure evidence is the most likely to explain the shared rank_failed cause. candidate_diagnostics supplies actual exceptions, handled exceptions with propagated library traceback locations, and False returns in the candidate files on the worker's current thread in a separate instrumented run. execution_timeline records a separate plain Torch trace with CPU-to-CUDA submit associations, synchronization and per-device intervals to attribute how far the step progressed, distinguishing a mid-step Python exception from a hang at a flush/collective boundary (clock alignment bounds cover CPU submissions only; GPU readiness may remain unknown). binding_cost is eligible because the candidate is additive (retains parent 547a0039's installed bundles and adds trial-7d98173269-param-06a15c1a) and provides a clean AB/BA parent-vs-binding-only-passthrough control with full quality checks, isolating whether mere binding attachment breaks the step versus the candidate's flush computation; it reports whole-invocation cost only. nsys is not selected: no overlap, graph-tracing or attribution question remains that the torch evidence and execution_timeline do not already cover, and nsys cannot separate NCCL waiting from wire time. nccl_tuning, collective_calibration, device_telemetry and python_runtime address tuning choices, synthetic reference allreduce behavior, device-wide rates, and perturbed host dispatch costs - none explains a hard rank failure, and python_runtime's inclusive/self times are not clean scores. The torch collector already ran and is not re-requested.",
+  "revision": "e1d0eb30ef98ae3db7ac5b7899da3aa89f61833e0e8b5ebe7a7df5d55fb48b6c"
+}

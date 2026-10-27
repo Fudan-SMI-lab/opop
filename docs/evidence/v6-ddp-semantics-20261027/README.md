@@ -8,3 +8,7 @@
 - wakeup-setup 为普通守候部署和真实远端 probe；终态将单次唤起当前会话核查。
 
 不归档私有 provider 配置、密钥、权重和大参考张量。此前所有失败、接受和追加诊断均保留原记录，未用此批覆盖。
+
+终态已补充：actual intake/request、两版evaluator及understanding、所有fresh角色快照、三轮候选/选择/采集方案、完整控制器和TP结果。`terminal-export-manifest.json`记录远端导出字节SHA；`manual-audit/trial-audit.json`保留端点、反馈输入哈希与原trial路径/SHA；`parameter-native-audit.json`记录参数筛选和原生kernel；`source-mapping-audit.json`为代码审查后的loss名称映射和真实GPU独立两步源码数值审计。原始 `KeyError: loss` 和独立性能拒绝没有覆盖。
+
+`wakeup-delivery.json`确认本次为实际队列消息开启的新轮次。清理另有授权与归档清单；本批完整运行状态作为保留集合，未因磁盘清理改变结果。

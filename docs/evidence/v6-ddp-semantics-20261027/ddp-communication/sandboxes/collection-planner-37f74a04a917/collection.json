@@ -1,0 +1,34 @@
+{
+  "collectors": [
+    "nsys",
+    "execution_timeline",
+    "nccl_tuning",
+    "collective_calibration",
+    "candidate_diagnostics",
+    "binding_cost"
+  ],
+  "requested_fields": [
+    "communication_kernel_sum_ms",
+    "nccl.algorithm",
+    "nccl.protocol",
+    "nccl.channel_count",
+    "collective_calibration.allreduce_f32_28351488B_ms",
+    "collective_calibration.allreduce_f32_157541376B_ms",
+    "timeline.nccl_kernel_intervals_per_rank",
+    "timeline.cpu_submit_association",
+    "timeline.per_device_intervals",
+    "candidate_diagnostics.handled_exceptions",
+    "binding_cost.invocation_overhead_ms"
+  ],
+  "unavailable_fields": {
+    "pcie_bytes": "Hardware counters require a successful collector-specific probe; topology and logical payload do not measure traffic (capability probe, both ranks: status unknown).",
+    "nvlink_bytes": "NVLink per-link counters unavailable: nvmlDeviceGetNvLinkState returned NVML status 3 on both GPU-6c11763a and GPU-cc3c3439; links list empty.",
+    "hardware_utilization": "Hardware counters require a successful collector-specific probe; no successful counter probe was observed in capability evidence.",
+    "per_collective_bus_bytes": "device_telemetry supplies device-wide NVML rates with native ~20 ms sampling windows that are not aligned to operator ranges, not per-collective bytes; idle probe rates (390-1562 KB/s) are not workload traffic and must not be inferred from logical payload or memcpy sizes.",
+    "nccl_wait_vs_wire_split": "Nsys timelines alone do not separate NCCL waiting from wire transfer and no collector reports this split directly; it can only be bounded indirectly by comparing collective_calibration reference durations at the observed sizes with in-step kernel intervals and submit associations.",
+    "exact_bucket_to_kernel_binding": "Exact bucket links require native correlation and observed gradient-storage membership; the parent bucket inventory reports many-to-many parameter ownership, so per-bucket cost attribution for the candidate's collectives remains ambiguous.",
+    "gpu_readiness_and_consumer_completion_bounds": "execution_timeline reports clock alignment bounds for matching CPU submissions only; GPU readiness and consumer completion of each collective may remain unknown."
+  },
+  "rationale": "Candidate 75e28d3d is accepted (communication_kernel_sum_ms 35.24 vs paired parent 52.98 and original aggregate 53.63; step_ms 113.96 <= 120.90 limit) and quality passed, so collection targets the remaining uncertainty for the frozen objective: what the candidate actually does on the wire and how much of its ~35 ms max-rank NCCL kernel sum is device waiting versus collective progress. Parent traces show the objective includes waiting (identical 28,351,488 B / 157,541,376 B f32 allreduces over SHM/direct with peer_access disabled took ~13.6 ms on rank 0 versus ~1.86 ms on rank 1), and the candidate's route label invoke:aligned-official-bucket-allreduce (count 2, versus the parent's 13 collectives) is candidate-reported telemetry with 0 framework fallbacks, not native proof. Selections: nsys (available per capability probe) for native per-collective kernel intervals, overlap and attribution of the candidate's actual collectives; execution_timeline for CPU-to-CUDA submit associations, synchronization and per-device intervals to bound submission skew behind the balanced per-rank kernel times (clock alignment bounds apply to CPU submissions only; it never replaces a communication hook); nccl_tuning because kernel entry names such as ncclDevKernel_AllReduce_Sum_f32_RING_LL do not identify the actual algorithm/protocol/channel decisions, which are the main tunable lever on this SHM, no-P2P, no-NVLink transport; collective_calibration as a correctness-checked full-world SUM allreduce reference at the actually observed sizes/dtypes (28,351,488 B x12, 157,541,376 B x1) to contextualize in-step durations - a reference experiment, not a lower bound or critical-path estimate; candidate_diagnostics to record handled exceptions and False returns that would reveal a silent fallback path (empty events do not establish which successful path executed; the trace collectors provide that corroboration); binding_cost because the candidate is additive (retains parent bundle, direct binding, no functional replacements does not imply zero binding overhead) and its whole-invocation overhead informs the step_ms budget in subsequent candidate resource feedback. Excluded: torch (already ran and supplies communication_kernel_sum_ms), python_runtime (perturbs execution and its cProfile times are host dispatch costs, not device kernel or clean step evidence), device_telemetry (device-wide native-window NVML readings cannot attribute per-collective traffic). No per-collective PCIe/NVLink bytes, wait-versus-wire split, exact bucket binding, or GPU-readiness bounds are claimed beyond the listed unavailable fields with observed reasons; bucket identity stays ambiguous absent native correlation and observed gradient-storage membership.",
+  "revision": "75e28d3d2ccd5fab06175ef1b827a325ed2159d011758c7b2deccda6173b9e2d"
+}

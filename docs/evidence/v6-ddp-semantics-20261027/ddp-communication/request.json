@@ -1,0 +1,101 @@
+{
+  "schema_version": "project-request.v1",
+  "source_root": "/root/autodl-tmp/dev/v6-work/ddp-semantics-20261027/ddp-communication.intake/source",
+  "entry": "gpt2_ddp_training.py",
+  "files": [
+    "gpt2_ddp_training.py",
+    "common.py",
+    "workloads.json",
+    "README.md"
+  ],
+  "goal": "Reduce the source's diagnostic maximum-rank summed NCCL kernel duration for the accumulated training step, retaining its step-time constraint and full correctness checks.",
+  "objective": {
+    "name": "communication_kernel_sum_ms",
+    "unit": "ms",
+    "direction": "minimize",
+    "constraints": [
+      {
+        "metric": "step_ms",
+        "op": "le",
+        "baseline_ratio": 1.05,
+        "rank_aggregation": "max",
+        "aggregation_order": "ranks_then_samples"
+      }
+    ],
+    "source": {
+      "collector": "torch_communication",
+      "field": "communication_kernel_sum_ms",
+      "project_metric": "diagnostic.max_rank_nccl_kernel_sum_ms"
+    },
+    "rank_aggregation": "max",
+    "aggregation_order": "ranks_then_samples"
+  },
+  "workload": {
+    "id": "accumulated_step",
+    "world_size": 2,
+    "micro_batch": 1,
+    "sequence_length": 128,
+    "accumulation_steps": 4,
+    "goals": [
+      {
+        "id": "step",
+        "metric": "step_ms",
+        "direction": "min"
+      },
+      {
+        "id": "communication",
+        "metric": "diagnostic.max_rank_nccl_kernel_sum_ms",
+        "direction": "min",
+        "constraints": {
+          "step_ms_max_baseline_ratio": 1.05
+        }
+      }
+    ]
+  },
+  "quality": {
+    "atol": 1e-06,
+    "rtol": 0.0001,
+    "grad_atol": 1e-06,
+    "grad_rtol": 0.0001,
+    "parameter_atol": 1e-06,
+    "parameter_rtol": 0.0001
+  },
+  "assets": {},
+  "devices": [
+    "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+    "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+  ],
+  "distributed_backend": "nccl",
+  "communication": "auto",
+  "required_observations": [
+    "communication_kernel_sum_ms"
+  ],
+  "tools": {
+    "ncu": "/usr/local/cuda/bin/ncu",
+    "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+  },
+  "profiling": {
+    "agent_plan": true,
+    "feedback_agent_plan": true
+  },
+  "binding_backend": "legacy",
+  "measurement_lifetime": "invocation",
+  "warmup": 2,
+  "repeats": 5,
+  "continuous_steps": 2,
+  "worker_timeout_s": 900.0,
+  "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+  "notes": [
+    "Command provenance: torchrun --standalone --nproc_per_node=2 gpt2_ddp_training.py --output /tmp/original-ddp --profile. The entry reads LOCAL_RANK itself, calls dist.init_process_group('nccl', timeout=120s, device_id=cuda:rank) and creates a separate gloo control group; the worker only binds ranks/devices and environment. The entry raises unless the launched world size equals workload world_size (gpt2_ddp_training.py:56-57) and asserts a finite accumulated loss.",
+    "Workload row is copied verbatim from workloads.json gpt2_ddp_training.workloads[0]; the entry always uses workloads[0] and ignores held_out_workloads. Model spec lives in workloads.json gpt2_ddp_training.model (n_layer=12, n_embd=768, n_head=12, vocab_size=50257, n_positions=1024) with deterministic init torch.manual_seed(20261020) and per-rank synthetic inputs torch.randint(0, 50257, (1,128)) from generator seed 31000+rank. Per-rank input sharding (each rank processes only its own microbatches) is required workload semantics, matching the reference that consumes all ranks' shards serially.",
+    "Effective batch = world_size * micro_batch * accumulation_steps = 8; tokens per step = 1024. The accumulated loss is the sum of per-microbatch CE losses each divided by accumulation_steps (gpt2_ddp_training.py:36-45).",
+    "Numerical policy: FP32 everywhere (.float()), TF32 disabled (torch.backends.cuda.matmul.allow_tf32=False, cudnn.allow_tf32=False, float32_matmul_precision='highest', cudnn.benchmark=False), eager attention, all dropout 0, use_cache=False; SGD lr=0.001, momentum=0.0, weight_decay=0.0 (common.py configure() lines 34-42, make_model line 24-27, optimizer line 60).",
+    "Correctness (harness-side, must be retained in full): full-gradient comparison of every parameter against a serial single-GPU reference that processes the exact same global batch serially without DDP (grad_atol=1e-6, grad_rtol=1e-4); post-step parameter comparison vs the reference update (parameter_atol=1e-6, parameter_rtol=1e-4); EXACT cross-rank gradient equality asserted with atol=0.0, rtol=0.0 via rank-0 broadcast (gpt2_ddp_training.py:81-86) - discrete exact tensor comparison; plus a +1-corruption negative control that must be rejected (common.py negative_check).",
+    "Baseline implementation choices, not frozen requirements (semantics-equivalent alternatives are allowed subject to the quality checks and the step-time constraint): DDP with bucket_cap_mb=25, gradient_as_bucket_view=True, broadcast_buffers=False; no_sync() on the first 3 of 4 microbatches; foreach=False SGD; gloo control group for barriers; communication measured with the default reducer (the bucket-inventory comm hook runs once in an extra step outside all measurements). Required semantics: distributed data-parallel training whose synchronized gradients equal the single-GPU global-batch reference.",
+    "Objective definition (workloads.json gpt2_ddp_training.communication_metric_caveat and gpt2_ddp_training.py:156-157): per-rank sum of device NCCL kernel durations from torch.profiler traces of separately profiled invocations of the same step; take the maximum across ranks per aligned invocation, then the median of the 3 values. Includes device waiting; is NOT wire time, critical-path time or exposed communication. Mapped to the installed collector torch_communication.communication_kernel_sum_ms (per-rank sum of device communication-kernel durations in a separately profiled invocation); the diagnostic runs exactly 3 profiled invocations (range(3), source-fixed) and is separate from the 5 clean-timing repeats. Collector availability must be verified by the actual workload worker per deployment.json.",
+    "Step-time constraint semantics: clean step_ms is wall time of step() excluding reset, control-group barrier, checks and profiling (gpt2_ddp_training.py:111-119); per aligned repeat the max across ranks is taken (never summing rank times), then the median over repeats; constraint is <= 1.05x the same quantity measured on the original baseline (workloads.json step_ms_max_baseline_ratio).",
+    "Outputs the run must still produce: per-rank rank-{rank}.json records (correctness checks, 5 clean samples, 3 profile summaries), result.json on rank 0 (workload row, parameter_count, effective_batch, tokens_per_step, combined samples/summary, ranks, diagnostic block when --profile), rank-{rank}-step-{i}-trace.json chrome traces, and a printed JSON summary. The --output directory is per-run provenance (command used /tmp/original-ddp); each run writes to a fresh directory.",
+    "peak_allocated_bytes is also collected per repeat (per-process CUDA allocated peak, max across ranks) but is reported context, not part of this request's objective or constraints.",
+    "One measured invocation: One complete DDP-accumulated GPT-2 training step, repeated per rank process (2 ranks launched together, equivalent of gpt2_ddp_training.py step() at lines 102-105) on the seeded initial weights: optimizer.zero_grad(set_to_none=True); forward+backward over accumulation_steps=4 microbatches of input_ids=labels with shape (micro_batch=1, sequence_length=128), each microbatch loss divided by 4, with real NCCL gradient synchronization for the step (baseline uses model.no_sync() on the first 3 microbatches and lets the 4th trigger the DDP all-reduce); then SGD optimizer.step() and torch.cuda.synchronize(). Completion boundary: after synchronize, every rank's full gradients are bit-identical across ranks and match the serial single-GPU reference that processes the identical 8-sample global batch within workloads.json tolerances, and post-step parameters match the reference update. Required work includes the gradient collectives themselves (real NCCL, backend 'nccl', world_size 2). Excluded from the repeated work (setup/harness): model/optimizer/input construction, initial-state reset before each measured step, Gloo control-group barriers at measurement boundaries, reference construction and all correctness checks, warmup/repeats bookkeeping, the 3 separately profiled diagnostic invocations that collect the communication metric, the separate bucket-inventory comm-hook run, and report/trace writing."
+  ]
+}

@@ -1,0 +1,3548 @@
+{
+  "runs": [
+    {
+      "world_size": 1,
+      "execution": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 10.720979984849691,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 290581,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 290581,
+              "status": "verified",
+              "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 18,
+                "unavailable_samples": 0,
+                "wait_s": 0.0579296313226223,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "cb4ea28c3d90ccad5bc723ed5b6dc124488d572fca8a69b3ed3b12ec0e994016",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "scope": "First-block prefill diagnostic; original BF16 model output unchanged. Neither intermediate error nor same-input arithmetic establishes full 32-token quality.",
+              "rank": 0,
+              "world_size": 1,
+              "actual_tp_plan": {
+                "lm_head": "colwise_gather_output",
+                "model.layers.*.self_attn.q_proj": "colwise",
+                "model.layers.*.self_attn.k_proj": "colwise",
+                "model.layers.*.self_attn.v_proj": "colwise",
+                "model.layers.*.self_attn.q_norm": "replicated_with_grad_allreduce",
+                "model.layers.*.self_attn.k_norm": "replicated_with_grad_allreduce",
+                "model.layers.*.self_attn.o_proj": "rowwise",
+                "model.layers.*.mlp.gate_proj": "colwise",
+                "model.layers.*.mlp.up_proj": "colwise",
+                "model.layers.*.mlp.down_proj": "rowwise",
+                "model.embed_tokens": "embedding_rowwise"
+              },
+              "source_first_logits": {
+                "passed": true,
+                "compared_elements": 151936,
+                "max_abs_error": 0.0
+              },
+              "source_first_token": {
+                "passed": true,
+                "compared_elements": 1,
+                "max_abs_error": 0.0
+              },
+              "metadata": {
+                "embed_tokens.input": {
+                  "global_shape": [
+                    1,
+                    256
+                  ],
+                  "dtype": "torch.int64",
+                  "stride": [
+                    256,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256
+                  ]
+                },
+                "embed_tokens.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.input_layernorm.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.input_layernorm.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.q_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.q_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    4096
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    1048576,
+                    4096,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    4096
+                  ]
+                },
+                "layer.0.self_attn.q_norm.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    32,
+                    128
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    1048576,
+                    4096,
+                    128,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    32,
+                    128
+                  ]
+                },
+                "layer.0.self_attn.q_norm.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    32,
+                    128
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    1048576,
+                    4096,
+                    128,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    32,
+                    128
+                  ]
+                },
+                "layer.0.self_attn.k_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.k_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    1024
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    262144,
+                    1024,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    1024
+                  ]
+                },
+                "layer.0.self_attn.k_norm.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    8,
+                    128
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    262144,
+                    1024,
+                    128,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    8,
+                    128
+                  ]
+                },
+                "layer.0.self_attn.k_norm.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    8,
+                    128
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    262144,
+                    1024,
+                    128,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    8,
+                    128
+                  ]
+                },
+                "layer.0.self_attn.v_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.v_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    1024
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    262144,
+                    1024,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    1024
+                  ]
+                },
+                "layer.0.self_attn.o_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    4096
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    1048576,
+                    4096,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    4096
+                  ]
+                },
+                "layer.0.self_attn.o_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.post_attention_layernorm.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.post_attention_layernorm.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.mlp.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.mlp.gate_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.mlp.gate_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    9728
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    2490368,
+                    9728,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    9728
+                  ]
+                },
+                "layer.0.mlp.up_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.mlp.up_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    9728
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    2490368,
+                    9728,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    9728
+                  ]
+                },
+                "layer.0.mlp.down_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    9728
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    2490368,
+                    9728,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    9728
+                  ]
+                },
+                "layer.0.mlp.down_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.mlp.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                }
+              },
+              "observations": {
+                "path": "/root/autodl-tmp/dev/v6-work/ddp-semantics-20261027/tp-block-1/block-observations-rank-0.pt",
+                "sha256": "c03d7d8169a412697d25349f59480c6e9dfa54886ffac72af3b03405ae7baeb5"
+              }
+            }
+          }
+        ],
+        "lease_wait_s": 0.00017780810594558716,
+        "device_selectors": [
+          "0"
+        ],
+        "entry_sha256": "0ba992aaec73cc6adf42aab8e25158f59de545faba4ce01c96a2734fa0a37125",
+        "devices": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+        ],
+        "worker_pids_reaped": true
+      }
+    },
+    {
+      "world_size": 2,
+      "execution": {
+        "schema_version": 1,
+        "status": "passed",
+        "failure": null,
+        "wall_s": 11.107641477137804,
+        "ranks": [
+          {
+            "rank": 0,
+            "pid": 290739,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 290739,
+              "status": "verified",
+              "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+              "logical_device": 0,
+              "nvidia_smi_pid_uuids": [
+                "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 16,
+                "unavailable_samples": 0,
+                "wait_s": 0.07197840884327888,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "cb4ea28c3d90ccad5bc723ed5b6dc124488d572fca8a69b3ed3b12ec0e994016",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "scope": "First-block prefill diagnostic; original BF16 model output unchanged. Neither intermediate error nor same-input arithmetic establishes full 32-token quality.",
+              "rank": 0,
+              "world_size": 2,
+              "actual_tp_plan": {
+                "lm_head": "colwise_gather_output",
+                "model.layers.*.self_attn.q_proj": "colwise",
+                "model.layers.*.self_attn.k_proj": "colwise",
+                "model.layers.*.self_attn.v_proj": "colwise",
+                "model.layers.*.self_attn.q_norm": "replicated_with_grad_allreduce",
+                "model.layers.*.self_attn.k_norm": "replicated_with_grad_allreduce",
+                "model.layers.*.self_attn.o_proj": "rowwise",
+                "model.layers.*.mlp.gate_proj": "colwise",
+                "model.layers.*.mlp.up_proj": "colwise",
+                "model.layers.*.mlp.down_proj": "rowwise",
+                "model.embed_tokens": "embedding_rowwise"
+              },
+              "source_first_logits": {
+                "passed": false,
+                "compared_elements": 151936,
+                "max_abs_error": 0.4375,
+                "observation_path": "output",
+                "atol": 0.02,
+                "rtol": 0.02,
+                "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+                "error": "Tensor-likes are not close!\n\nMismatched elements: 29513 / 151936 (19.4%)\nGreatest absolute difference: 0.4375 at index (0, 0, 89070) (up to 0.02 allowed)\nGreatest relative difference: 330.0 at index (0, 0, 3485) (up to 0.02 allowed)"
+              },
+              "source_first_token": {
+                "passed": true,
+                "compared_elements": 1,
+                "max_abs_error": 0.0
+              },
+              "metadata": {
+                "embed_tokens.input": {
+                  "global_shape": [
+                    1,
+                    256
+                  ],
+                  "dtype": "torch.int64",
+                  "stride": [
+                    256,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256
+                  ]
+                },
+                "embed_tokens.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.input_layernorm.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.input_layernorm.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.q_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.q_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2048
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    524288,
+                    2048,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2048
+                  ]
+                },
+                "layer.0.self_attn.q_norm.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    16,
+                    128
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    524288,
+                    2048,
+                    128,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    16,
+                    128
+                  ]
+                },
+                "layer.0.self_attn.q_norm.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    16,
+                    128
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    524288,
+                    2048,
+                    128,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    16,
+                    128
+                  ]
+                },
+                "layer.0.self_attn.k_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.k_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    512
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    131072,
+                    512,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    512
+                  ]
+                },
+                "layer.0.self_attn.k_norm.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    4,
+                    128
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    131072,
+                    512,
+                    128,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    4,
+                    128
+                  ]
+                },
+                "layer.0.self_attn.k_norm.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    4,
+                    128
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    131072,
+                    512,
+                    128,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    4,
+                    128
+                  ]
+                },
+                "layer.0.self_attn.v_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.v_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    512
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    131072,
+                    512,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    512
+                  ]
+                },
+                "layer.0.self_attn.o_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2048
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    524288,
+                    2048,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2048
+                  ]
+                },
+                "layer.0.self_attn.o_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.post_attention_layernorm.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.post_attention_layernorm.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.mlp.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.mlp.gate_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.mlp.gate_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    4864
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    1245184,
+                    4864,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    4864
+                  ]
+                },
+                "layer.0.mlp.up_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.mlp.up_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    4864
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    1245184,
+                    4864,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    4864
+                  ]
+                },
+                "layer.0.mlp.down_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    4864
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    1245184,
+                    4864,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    4864
+                  ]
+                },
+                "layer.0.mlp.down_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.mlp.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                }
+              },
+              "observations": {
+                "path": "/root/autodl-tmp/dev/v6-work/ddp-semantics-20261027/tp-block-2/block-observations-rank-0.pt",
+                "sha256": "44256ec48b160879f832639c0c2be1a0f8d101b582bec3bd8e2ab5e0e2c3f653"
+              },
+              "boundaries": [
+                {
+                  "name": "embed_tokens.input",
+                  "actual_shape": [
+                    1,
+                    256
+                  ],
+                  "reference_shape": [
+                    1,
+                    256
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 256,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "embed_tokens.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 655360,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "layer.0.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 655360,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "layer.0.input_layernorm.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 655360,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "layer.0.input_layernorm.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 655360,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "layer.0.self_attn.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 655360,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "layer.0.self_attn.q_proj.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 655360,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "layer.0.self_attn.q_proj.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2048
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    4096
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 524288,
+                      "max_abs_error": 0.00048828125,
+                      "rms_error": 3.6930418900738005e-06
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.self_attn.q_norm.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    16,
+                    128
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    32,
+                    128
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 524288,
+                      "max_abs_error": 0.00048828125,
+                      "rms_error": 3.6930418900738005e-06
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.self_attn.q_norm.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    16,
+                    128
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    32,
+                    128
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 524288,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.00014866871060803533
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.self_attn.k_proj.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 655360,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "layer.0.self_attn.k_proj.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    512
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    1024
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": true,
+                      "elements": 131072,
+                      "max_abs_error": 0.0,
+                      "rms_error": 0.0
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.self_attn.k_norm.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    4,
+                    128
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    8,
+                    128
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": true,
+                      "elements": 131072,
+                      "max_abs_error": 0.0,
+                      "rms_error": 0.0
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.self_attn.k_norm.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    4,
+                    128
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    8,
+                    128
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": true,
+                      "elements": 131072,
+                      "max_abs_error": 0.0,
+                      "rms_error": 0.0
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.self_attn.v_proj.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 655360,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "layer.0.self_attn.v_proj.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    512
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    1024
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": true,
+                      "elements": 131072,
+                      "max_abs_error": 0.0,
+                      "rms_error": 0.0
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.self_attn.o_proj.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2048
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    4096
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 524288,
+                      "max_abs_error": 0.00048828125,
+                      "rms_error": 2.5784440822462784e-06
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.self_attn.o_proj.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.015625,
+                  "rms_error": 0.00025159589131362736
+                },
+                {
+                  "name": "layer.0.self_attn.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.015625,
+                  "rms_error": 0.00025159589131362736
+                },
+                {
+                  "name": "layer.0.post_attention_layernorm.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.015625,
+                  "rms_error": 0.0002611926174722612
+                },
+                {
+                  "name": "layer.0.post_attention_layernorm.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.01171875,
+                  "rms_error": 0.0005036020884290338
+                },
+                {
+                  "name": "layer.0.mlp.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.01171875,
+                  "rms_error": 0.0005036020884290338
+                },
+                {
+                  "name": "layer.0.mlp.gate_proj.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.01171875,
+                  "rms_error": 0.0005036020884290338
+                },
+                {
+                  "name": "layer.0.mlp.gate_proj.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    4864
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    9728
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 1245184,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.0009590839617885649
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.mlp.up_proj.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.01171875,
+                  "rms_error": 0.0005036020884290338
+                },
+                {
+                  "name": "layer.0.mlp.up_proj.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    4864
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    9728
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 1245184,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.0007891324930824339
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.mlp.down_proj.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    4864
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    9728
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 1245184,
+                      "max_abs_error": 0.0234375,
+                      "rms_error": 0.000237739528529346
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.mlp.down_proj.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.03125,
+                  "rms_error": 0.0009097544243559241
+                },
+                {
+                  "name": "layer.0.mlp.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.03125,
+                  "rms_error": 0.0009097544243559241
+                },
+                {
+                  "name": "layer.0.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.0625,
+                  "rms_error": 0.001036685542203486
+                }
+              ],
+              "layout_scope": "Same-shape comparisons and reported rank-contiguous layout hypotheses; mismatch alone is not evidence of wrong sharding or weights.",
+              "same_input_projection_diagnostics": [
+                {
+                  "name": "layer.0.self_attn.o_proj",
+                  "input_shape": [
+                    1,
+                    256,
+                    4096
+                  ],
+                  "weight_shape": [
+                    2560,
+                    4096
+                  ],
+                  "checkpoint_key": "model.layers.0.self_attn.o_proj.weight",
+                  "weight_sha256": "619b512cd8923f4f7fe0aba1aa51182f15295ea3f4b5e994d2f96cc28bd87d1b",
+                  "against_recorded_single_gpu_output": {
+                    "full_bf16": {
+                      "status": "compared",
+                      "exact_equal": true,
+                      "elements": 655360,
+                      "max_abs_error": 0.0,
+                      "rms_error": 0.0
+                    },
+                    "split_bf16_then_bf16_sum": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.00025113276205956936
+                    },
+                    "split_bf16_then_fp32_sum_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.00025113276205956936
+                    },
+                    "split_fp32_sum_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.0001874330482678488
+                    },
+                    "full_fp32_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.0001874475710792467
+                    }
+                  },
+                  "against_full_bf16": {
+                    "full_bf16": {
+                      "status": "compared",
+                      "exact_equal": true,
+                      "elements": 655360,
+                      "max_abs_error": 0.0,
+                      "rms_error": 0.0
+                    },
+                    "split_bf16_then_bf16_sum": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.00025113276205956936
+                    },
+                    "split_bf16_then_fp32_sum_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.00025113276205956936
+                    },
+                    "split_fp32_sum_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.0001874330482678488
+                    },
+                    "full_fp32_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.0001874475710792467
+                    }
+                  },
+                  "scope": "Identical saved single-GPU operands; local contiguous halves and local sum, no NCCL. Descriptive arithmetic isolation, not an optimized model or a quality threshold."
+                },
+                {
+                  "name": "layer.0.mlp.down_proj",
+                  "input_shape": [
+                    1,
+                    256,
+                    9728
+                  ],
+                  "weight_shape": [
+                    2560,
+                    9728
+                  ],
+                  "checkpoint_key": "model.layers.0.mlp.down_proj.weight",
+                  "weight_sha256": "edf534353405dab5179894b9641d12c6e53c4c6a8100b8c079257a9f3584945f",
+                  "against_recorded_single_gpu_output": {
+                    "full_bf16": {
+                      "status": "compared",
+                      "exact_equal": true,
+                      "elements": 655360,
+                      "max_abs_error": 0.0,
+                      "rms_error": 0.0
+                    },
+                    "split_bf16_then_bf16_sum": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.0007262063445523381
+                    },
+                    "split_bf16_then_fp32_sum_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.0007262063445523381
+                    },
+                    "split_fp32_sum_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.0006299139349721372
+                    },
+                    "full_fp32_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.0006299146916717291
+                    }
+                  },
+                  "against_full_bf16": {
+                    "full_bf16": {
+                      "status": "compared",
+                      "exact_equal": true,
+                      "elements": 655360,
+                      "max_abs_error": 0.0,
+                      "rms_error": 0.0
+                    },
+                    "split_bf16_then_bf16_sum": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.0007262063445523381
+                    },
+                    "split_bf16_then_fp32_sum_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.0007262063445523381
+                    },
+                    "split_fp32_sum_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.0006299139349721372
+                    },
+                    "full_fp32_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.0006299146916717291
+                    }
+                  },
+                  "scope": "Identical saved single-GPU operands; local contiguous halves and local sum, no NCCL. Descriptive arithmetic isolation, not an optimized model or a quality threshold."
+                }
+              ]
+            }
+          },
+          {
+            "rank": 1,
+            "pid": 290740,
+            "exit_code": 0,
+            "status": "passed",
+            "binding": {
+              "pid": 290740,
+              "status": "verified",
+              "torch_uuid": "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+              "requested_uuid": "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+              "torch_raw_uuid": "cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4",
+              "logical_device": 1,
+              "nvidia_smi_pid_uuids": [
+                "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+              ],
+              "pid_query_status": "observed",
+              "occupancy": {
+                "status": "sampled_clear",
+                "samples": 17,
+                "unavailable_samples": 0,
+                "wait_s": 0.07638684287667274,
+                "external_clients": [],
+                "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+              }
+            },
+            "framework_source": {
+              "sha256": "cb4ea28c3d90ccad5bc723ed5b6dc124488d572fca8a69b3ed3b12ec0e994016",
+              "files": 162,
+              "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+            },
+            "result": {
+              "scope": "First-block prefill diagnostic; original BF16 model output unchanged. Neither intermediate error nor same-input arithmetic establishes full 32-token quality.",
+              "rank": 1,
+              "world_size": 2,
+              "actual_tp_plan": {
+                "lm_head": "colwise_gather_output",
+                "model.layers.*.self_attn.q_proj": "colwise",
+                "model.layers.*.self_attn.k_proj": "colwise",
+                "model.layers.*.self_attn.v_proj": "colwise",
+                "model.layers.*.self_attn.q_norm": "replicated_with_grad_allreduce",
+                "model.layers.*.self_attn.k_norm": "replicated_with_grad_allreduce",
+                "model.layers.*.self_attn.o_proj": "rowwise",
+                "model.layers.*.mlp.gate_proj": "colwise",
+                "model.layers.*.mlp.up_proj": "colwise",
+                "model.layers.*.mlp.down_proj": "rowwise",
+                "model.embed_tokens": "embedding_rowwise"
+              },
+              "source_first_logits": {
+                "passed": false,
+                "compared_elements": 151936,
+                "max_abs_error": 0.4375,
+                "observation_path": "output",
+                "atol": 0.02,
+                "rtol": 0.02,
+                "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+                "error": "Tensor-likes are not close!\n\nMismatched elements: 29513 / 151936 (19.4%)\nGreatest absolute difference: 0.4375 at index (0, 0, 89070) (up to 0.02 allowed)\nGreatest relative difference: 330.0 at index (0, 0, 3485) (up to 0.02 allowed)"
+              },
+              "source_first_token": {
+                "passed": true,
+                "compared_elements": 1,
+                "max_abs_error": 0.0
+              },
+              "metadata": {
+                "embed_tokens.input": {
+                  "global_shape": [
+                    1,
+                    256
+                  ],
+                  "dtype": "torch.int64",
+                  "stride": [
+                    256,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256
+                  ]
+                },
+                "embed_tokens.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.input_layernorm.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.input_layernorm.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.q_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.q_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2048
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    524288,
+                    2048,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2048
+                  ]
+                },
+                "layer.0.self_attn.q_norm.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    16,
+                    128
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    524288,
+                    2048,
+                    128,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    16,
+                    128
+                  ]
+                },
+                "layer.0.self_attn.q_norm.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    16,
+                    128
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    524288,
+                    2048,
+                    128,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    16,
+                    128
+                  ]
+                },
+                "layer.0.self_attn.k_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.k_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    512
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    131072,
+                    512,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    512
+                  ]
+                },
+                "layer.0.self_attn.k_norm.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    4,
+                    128
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    131072,
+                    512,
+                    128,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    4,
+                    128
+                  ]
+                },
+                "layer.0.self_attn.k_norm.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    4,
+                    128
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    131072,
+                    512,
+                    128,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    4,
+                    128
+                  ]
+                },
+                "layer.0.self_attn.v_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.v_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    512
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    131072,
+                    512,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    512
+                  ]
+                },
+                "layer.0.self_attn.o_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2048
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    524288,
+                    2048,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2048
+                  ]
+                },
+                "layer.0.self_attn.o_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.self_attn.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.post_attention_layernorm.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.post_attention_layernorm.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.mlp.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.mlp.gate_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.mlp.gate_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    4864
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    1245184,
+                    4864,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    4864
+                  ]
+                },
+                "layer.0.mlp.up_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.mlp.up_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    4864
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    1245184,
+                    4864,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    4864
+                  ]
+                },
+                "layer.0.mlp.down_proj.input": {
+                  "global_shape": [
+                    1,
+                    256,
+                    4864
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    1245184,
+                    4864,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    4864
+                  ]
+                },
+                "layer.0.mlp.down_proj.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.mlp.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                },
+                "layer.0.output": {
+                  "global_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "dtype": "torch.bfloat16",
+                  "stride": [
+                    655360,
+                    2560,
+                    1
+                  ],
+                  "local_shape": [
+                    1,
+                    256,
+                    2560
+                  ]
+                }
+              },
+              "observations": {
+                "path": "/root/autodl-tmp/dev/v6-work/ddp-semantics-20261027/tp-block-2/block-observations-rank-1.pt",
+                "sha256": "0292fe7c889878f13208717010d3191ce61a05cc62724bffc52bff03d569686b"
+              },
+              "boundaries": [
+                {
+                  "name": "embed_tokens.input",
+                  "actual_shape": [
+                    1,
+                    256
+                  ],
+                  "reference_shape": [
+                    1,
+                    256
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 256,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "embed_tokens.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 655360,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "layer.0.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 655360,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "layer.0.input_layernorm.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 655360,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "layer.0.input_layernorm.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 655360,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "layer.0.self_attn.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 655360,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "layer.0.self_attn.q_proj.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 655360,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "layer.0.self_attn.q_proj.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2048
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    4096
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 524288,
+                      "max_abs_error": 0.0009765625,
+                      "rms_error": 6.316325652733212e-06
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.self_attn.q_norm.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    16,
+                    128
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    32,
+                    128
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 524288,
+                      "max_abs_error": 0.0009765625,
+                      "rms_error": 6.316325652733212e-06
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.self_attn.q_norm.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    16,
+                    128
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    32,
+                    128
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 524288,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.00022954509768169373
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.self_attn.k_proj.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 655360,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "layer.0.self_attn.k_proj.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    512
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    1024
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": true,
+                      "elements": 131072,
+                      "max_abs_error": 0.0,
+                      "rms_error": 0.0
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.self_attn.k_norm.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    4,
+                    128
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    8,
+                    128
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": true,
+                      "elements": 131072,
+                      "max_abs_error": 0.0,
+                      "rms_error": 0.0
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.self_attn.k_norm.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    4,
+                    128
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    8,
+                    128
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": true,
+                      "elements": 131072,
+                      "max_abs_error": 0.0,
+                      "rms_error": 0.0
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.self_attn.v_proj.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": true,
+                  "elements": 655360,
+                  "max_abs_error": 0.0,
+                  "rms_error": 0.0
+                },
+                {
+                  "name": "layer.0.self_attn.v_proj.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    512
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    1024
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": true,
+                      "elements": 131072,
+                      "max_abs_error": 0.0,
+                      "rms_error": 0.0
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.self_attn.o_proj.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2048
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    4096
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 524288,
+                      "max_abs_error": 0.0009765625,
+                      "rms_error": 5.277357104205294e-06
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.self_attn.o_proj.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.015625,
+                  "rms_error": 0.00025159589131362736
+                },
+                {
+                  "name": "layer.0.self_attn.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.015625,
+                  "rms_error": 0.00025159589131362736
+                },
+                {
+                  "name": "layer.0.post_attention_layernorm.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.015625,
+                  "rms_error": 0.0002611926174722612
+                },
+                {
+                  "name": "layer.0.post_attention_layernorm.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.01171875,
+                  "rms_error": 0.0005036020884290338
+                },
+                {
+                  "name": "layer.0.mlp.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.01171875,
+                  "rms_error": 0.0005036020884290338
+                },
+                {
+                  "name": "layer.0.mlp.gate_proj.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.01171875,
+                  "rms_error": 0.0005036020884290338
+                },
+                {
+                  "name": "layer.0.mlp.gate_proj.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    4864
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    9728
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 1245184,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.0007970762671902776
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.mlp.up_proj.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.01171875,
+                  "rms_error": 0.0005036020884290338
+                },
+                {
+                  "name": "layer.0.mlp.up_proj.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    4864
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    9728
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 1245184,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.0007854440482333302
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.mlp.down_proj.input",
+                  "actual_shape": [
+                    1,
+                    256,
+                    4864
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    9728
+                  ],
+                  "status": "layout_hypotheses",
+                  "hypotheses": [
+                    {
+                      "layout": "contiguous_rank_slice",
+                      "axis": 2,
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 1245184,
+                      "max_abs_error": 0.0625,
+                      "rms_error": 0.00018416342209093273
+                    }
+                  ]
+                },
+                {
+                  "name": "layer.0.mlp.down_proj.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.03125,
+                  "rms_error": 0.0009097544243559241
+                },
+                {
+                  "name": "layer.0.mlp.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.03125,
+                  "rms_error": 0.0009097544243559241
+                },
+                {
+                  "name": "layer.0.output",
+                  "actual_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "reference_shape": [
+                    1,
+                    256,
+                    2560
+                  ],
+                  "layout": "same_shape",
+                  "status": "compared",
+                  "exact_equal": false,
+                  "elements": 655360,
+                  "max_abs_error": 0.0625,
+                  "rms_error": 0.001036685542203486
+                }
+              ],
+              "layout_scope": "Same-shape comparisons and reported rank-contiguous layout hypotheses; mismatch alone is not evidence of wrong sharding or weights.",
+              "same_input_projection_diagnostics": [
+                {
+                  "name": "layer.0.self_attn.o_proj",
+                  "input_shape": [
+                    1,
+                    256,
+                    4096
+                  ],
+                  "weight_shape": [
+                    2560,
+                    4096
+                  ],
+                  "checkpoint_key": "model.layers.0.self_attn.o_proj.weight",
+                  "weight_sha256": "619b512cd8923f4f7fe0aba1aa51182f15295ea3f4b5e994d2f96cc28bd87d1b",
+                  "against_recorded_single_gpu_output": {
+                    "full_bf16": {
+                      "status": "compared",
+                      "exact_equal": true,
+                      "elements": 655360,
+                      "max_abs_error": 0.0,
+                      "rms_error": 0.0
+                    },
+                    "split_bf16_then_bf16_sum": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.00025113276205956936
+                    },
+                    "split_bf16_then_fp32_sum_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.00025113276205956936
+                    },
+                    "split_fp32_sum_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.0001874330482678488
+                    },
+                    "full_fp32_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.0001874475710792467
+                    }
+                  },
+                  "against_full_bf16": {
+                    "full_bf16": {
+                      "status": "compared",
+                      "exact_equal": true,
+                      "elements": 655360,
+                      "max_abs_error": 0.0,
+                      "rms_error": 0.0
+                    },
+                    "split_bf16_then_bf16_sum": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.00025113276205956936
+                    },
+                    "split_bf16_then_fp32_sum_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.00025113276205956936
+                    },
+                    "split_fp32_sum_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.0001874330482678488
+                    },
+                    "full_fp32_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.015625,
+                      "rms_error": 0.0001874475710792467
+                    }
+                  },
+                  "scope": "Identical saved single-GPU operands; local contiguous halves and local sum, no NCCL. Descriptive arithmetic isolation, not an optimized model or a quality threshold."
+                },
+                {
+                  "name": "layer.0.mlp.down_proj",
+                  "input_shape": [
+                    1,
+                    256,
+                    9728
+                  ],
+                  "weight_shape": [
+                    2560,
+                    9728
+                  ],
+                  "checkpoint_key": "model.layers.0.mlp.down_proj.weight",
+                  "weight_sha256": "edf534353405dab5179894b9641d12c6e53c4c6a8100b8c079257a9f3584945f",
+                  "against_recorded_single_gpu_output": {
+                    "full_bf16": {
+                      "status": "compared",
+                      "exact_equal": true,
+                      "elements": 655360,
+                      "max_abs_error": 0.0,
+                      "rms_error": 0.0
+                    },
+                    "split_bf16_then_bf16_sum": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.0007262063445523381
+                    },
+                    "split_bf16_then_fp32_sum_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.0007262063445523381
+                    },
+                    "split_fp32_sum_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.0006299139349721372
+                    },
+                    "full_fp32_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.0006299146916717291
+                    }
+                  },
+                  "against_full_bf16": {
+                    "full_bf16": {
+                      "status": "compared",
+                      "exact_equal": true,
+                      "elements": 655360,
+                      "max_abs_error": 0.0,
+                      "rms_error": 0.0
+                    },
+                    "split_bf16_then_bf16_sum": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.0007262063445523381
+                    },
+                    "split_bf16_then_fp32_sum_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.0007262063445523381
+                    },
+                    "split_fp32_sum_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.0006299139349721372
+                    },
+                    "full_fp32_cast": {
+                      "status": "compared",
+                      "exact_equal": false,
+                      "elements": 655360,
+                      "max_abs_error": 0.03125,
+                      "rms_error": 0.0006299146916717291
+                    }
+                  },
+                  "scope": "Identical saved single-GPU operands; local contiguous halves and local sum, no NCCL. Descriptive arithmetic isolation, not an optimized model or a quality threshold."
+                }
+              ]
+            }
+          }
+        ],
+        "lease_wait_s": 0.00029048696160316467,
+        "device_selectors": [
+          "0",
+          "1"
+        ],
+        "entry_sha256": "0ba992aaec73cc6adf42aab8e25158f59de545faba4ce01c96a2734fa0a37125",
+        "devices": [
+          "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+          "GPU-cc3c3439-2f34-c8f6-34cb-c3e8feb69ae4"
+        ],
+        "worker_pids_reaped": true
+      }
+    }
+  ]
+}

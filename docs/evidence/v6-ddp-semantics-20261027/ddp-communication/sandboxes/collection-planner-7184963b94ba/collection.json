@@ -1,0 +1,33 @@
+{
+  "collectors": [
+    "nccl_tuning",
+    "collective_calibration",
+    "execution_timeline"
+  ],
+  "requested_fields": [
+    "communication_kernel_sum_ms",
+    "nccl_tuning.algorithm_by_message_size",
+    "nccl_tuning.protocol_by_message_size",
+    "nccl_tuning.channel_count_by_message_size",
+    "nccl_tuning.transport_per_channel",
+    "collective_calibration.reference_allreduce_ms_by_observed_size",
+    "collective_calibration.observed_sizes_and_dtypes",
+    "collective_calibration.correctness_checks",
+    "execution_timeline.cpu_to_cuda_submit_associations",
+    "execution_timeline.synchronization_events",
+    "execution_timeline.per_device_intervals",
+    "execution_timeline.passive_post_accumulate_callbacks",
+    "execution_timeline.cpu_submission_clock_alignment_bounds"
+  ],
+  "unavailable_fields": {
+    "per_collective_wire_transfer_ms": "No available collector separates NCCL in-kernel waiting from wire transfer: device kernel durations include waiting (rank 0 sums 196.136 ms vs rank 1 33.998 ms over the same 13 matched collectives), and nsys timelines cannot make this separation either.",
+    "cross_rank_arrival_skew_ms": "The observed clock_policy forbids subtracting timestamps from different rank clocks; only same-trace intervals are comparable, and peer GPU readiness remains unknown even with execution_timeline's clock-alignment bounds for matching CPU submissions.",
+    "fused_single_allreduce_ms": "collective_calibration runs only at actually observed sizes/dtypes (28351488 B and 157541376 B f32 SUM at world 2); the fully fused 497759232 B gradient size was never observed, so no reference measurement exists for it.",
+    "alternative_nccl_configuration_timings_ms": "nccl_tuning captures the algorithm/protocol/channel decisions NCCL actually made in a warmed worker; it does not sweep or time alternative configurations.",
+    "per_collective_pcie_nvlink_bytes": "device_telemetry was not selected; its device-wide NVML samples with native windows are not per-collective bytes, and PCIe/NVLink traffic must not be derived from logical payload or memcpy sizes (transport already observed as SHM/direct/direct channels 00-01).",
+    "candidate_binding_overhead_ms": "binding_cost is inapplicable before any candidate exists; re-evaluate once an additive candidate that retains all installed parent bundles is authored.",
+    "candidate_exception_sites": "candidate_diagnostics is inapplicable because no candidate files exist yet; empty events would not establish which successful path executed in any case."
+  },
+  "rationale": "The torch collector already ran and supplies the required observation communication_kernel_sum_ms: 13 matched f32 SUM allreduces per rank (12x 28,351,488 B buckets + 1x 157,541,376 B last bucket, world 2), per-rank kernel-sum 196.136 ms on rank 0 vs 33.998 ms on rank 1, with rank-0 compute overlap of only 7.686 of 196.136 ms (188.450 ms without compute). Because the objective aggregates max across ranks, the reducible mass is rank-0 in-kernel waiting for the later-arriving rank plus per-collective NCCL overheads, not attributed bytes or bucket identity (bucket_attribution already observed via gradient-storage membership; unmatched_communication_kernels empty). Plan: (1) nccl_tuning to capture the actual NCCL algorithm/protocol/channel decisions in a separate warmed worker - every observed kernel shares the single entry name ncclDevKernel_AllReduce_Sum_f32_RING_LL, which alone does not identify the protocol; (2) collective_calibration as a reference experiment measuring clean both-peers-ready SUM allreduce at the two actually observed sizes/dtypes (rank-1 kernels already run about 1.87 ms vs rank-0 about 13.6 ms at 28,351,488 B) to quantify per-collective waiting inflation - a reference, not a lower bound or critical-path estimate; (3) execution_timeline for CPU-to-CUDA submit associations, synchronization events and per-device intervals plus passive post-accumulate callbacks to establish what gates the late rank's collective cadence (host submit vs device intervals); it never replaces a communication hook and GPU readiness/consumer completion may remain unknown. Exclusions: nsys - eager execution so no graph-tracing question, bucket identity already observed, overlap already quantified, and nsys cannot separate NCCL waiting from wire transfer; device_telemetry - device-wide NVML windows cannot attribute per-collective bytes and traffic must not be invented from logical payloads; python_runtime - host dispatch is not implicated at 1.9-13.6 ms kernel scale and it perturbs execution with non-clean inclusive/self times; candidate_diagnostics and binding_cost - inapplicable before any candidate exists.",
+  "revision": null
+}
