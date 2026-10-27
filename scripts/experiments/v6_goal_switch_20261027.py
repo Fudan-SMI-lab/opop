@@ -37,7 +37,7 @@ INTAKE_NOTE = (
 )
 
 
-def intake_ab(args, config):
+def intake_ab(args, config, *, note=INTAKE_NOTE):
     snapshot = args.cohort/'ddp-communication.intake/generation-snapshots/generation-4b715484e927.json'
     saved, prompt, inputs = load(snapshot)
     assert prompt.count(INTAKE_ANCHOR) == 1
@@ -48,7 +48,7 @@ def intake_ab(args, config):
     output.mkdir()
     write_json(output/'protocol.json', {'at': now(), 'framework_source': framework_source(),
         'snapshot': str(snapshot), 'original_framework': saved['framework_source'],
-        'order': ['control', 'treatment'], 'difference': INTAKE_NOTE,
+        'order': ['control', 'treatment'], 'difference': note,
         'input_sha256': {name: hashlib.sha256(raw).hexdigest() for name, raw in inputs.items()},
         'scope': 'One fresh real intake session per arm; one added generic paragraph only. No production prompt adoption and no artifacts injected into the independent goal-switch run.'})
 
@@ -63,7 +63,7 @@ def intake_ab(args, config):
         store = RunStore.create(output, arm, {'kind': 'intake-semantics-replay', 'arm': arm})
         try:
             edit = None if arm == 'control' else {'path': 'prompt', 'old': INTAKE_ANCHOR,
-                                                 'new': INTAKE_ANCHOR+'\n\n'+INTAKE_NOTE}
+                                                 'new': INTAKE_ANCHOR+'\n\n'+note}
             with Runtime(runtime_config, log_dir=store.run_dir) as runtime:
                 directory, receipt = ProjectAgents(runtime, store).replay_snapshot(
                     snapshot, edit=edit, validator=validate)
