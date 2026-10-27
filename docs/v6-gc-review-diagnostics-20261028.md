@@ -23,3 +23,9 @@ GPU作业串行执行，直接复用原参考，不复制多GB控制文件。错
 工作目录 `/root/autodl-tmp/dev/v6-work/gc-review-diagnostics-20261028`。源代码Git冻结，使用现有真实provider配置，API/费用只统计、不限额。启动前数据盘约48.91 GiB可用。本批不启动大型TP重测，不大体积转存本地；原始trace/张量/样本留服务器，GitHub仅存代码、协议和小型证据。
 
 旧DDP独立拒绝、TP完整32-token失败、旧Qwen拒绝及80样本、ResNet独立拒绝及80样本、旧不同adapter的36.68%接受与missing images事实均保持。长批次挂唯一普通完成监听；不启用Goal、不增加投递测试或模型进度轮询。
+
+## 已启动
+
+2026-10-27 18:31:35 UTC（香港时间10月28日02:31）启动，冻结提交 `00a8d89e12b3a77ecc3984abba32824632b35e88`，控制器PID `309314`。生产核心SHA仍为 `cb4ea28c3d90ccad5bc723ed5b6dc124488d572fca8a69b3ed3b12ec0e994016`。冻结环境已核对真实重放的model/agent/tool settings与原快照一致。
+
+启动核查时首个U端点 `valid=true`，后续双卡worker已运行，数据盘剩52,405,944,320 bytes（约48.81 GiB）。普通完成监听PID `52568`，状态 `.scratch/v6-gc-review-wakeup.json` 为waiting，已真实探查控制器存活。这里只有启动与首端点确认，不预判GC因果或角色对照结果；详见[启动证据](evidence/v6-gc-review-diagnostics-20261028/README.md)。
