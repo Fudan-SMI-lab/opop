@@ -18,3 +18,7 @@
 终态需核查真实快照差异、完整请求/合同语义、所有原始 clean/profile 样本、实际源文件/参数/overlay SHA、rank 聚合和独立 trace 重算。采集发生在 clean 测量后不代表其资源生命周期没有成本；不同端点的数值变化也不能自动归因为此接口。次级数值不等于 wire time 或关键路径。完成审计后再决定生产采用，随后继续目标切换/更强通信案例。
 
 目录 `/root/autodl-tmp/dev/v6-work/secondary-metrics-20261028`。原始数据留服务器，只将代码、索引和小摘要提交 GitHub；无本地大归档。启动前核查实际容器 df 及 GPU 空闲，单控制器、一个普通终态监听器；不启用 Goal、额外送达测试或模型轮询。旧 DDP 两种接受/通信拒绝、Qwen/ResNet 拒绝及全部样本、TP 完整质量失败和 memory adapter 历史事实保持不变。allocator 合并仍未采用。
+
+启动记录：冻结 `f43046fc2df77c0965d33473cf0a479314f34bcb`，2026-10-27 23:52:40 UTC 启动 controller PID412316；[launch](evidence/v6-secondary-metrics-20261028/launch.json)、[protocol](evidence/v6-secondary-metrics-20261028/protocol.json)、[overlay 文件哈希](evidence/v6-secondary-metrics-20261028/overlay-manifest.json)已留档。生产核心仍 `cb4ea28c…`，隔离核心的真实 SHA 由 protocol/worker 逐次记录。启动 df 可用 40,440,446,976 bytes（37.66 GiB），GPU 无计算进程。
+
+启动核查：本批 CPU 检查及固定 off/on/on/off 四个双卡端点全部 valid，全部样本留服务器，尚未把数值变化解释为接口性能影响。真实 control intake 会话 `ses_e8036c9a6ffe7aedh9CJYoD1ck` 已建立，初始快照 `generation-e4376e067093`；等待两臂和条件式集成完成后再审计生成语义与所有输入差异。相关 21 项[预检日志](evidence/v6-secondary-metrics-20261028/precheck-pytest.log)及[CPU 摘要](evidence/v6-secondary-metrics-20261028/precheck-summary.json)留档。唯一普通监听 PID19852，状态 waiting、controller 存活，[监听设置](evidence/v6-secondary-metrics-20261028/wakeup-setup.json)已保存；旧批次监听已提交一次续行后退出，没有恢复旧归档监听。
