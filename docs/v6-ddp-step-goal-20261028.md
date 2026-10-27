@@ -1,5 +1,41 @@
 # DDP整步目标变体与证据索引对照
 
+## 终态审计（2026-10-28）
+
+21:33:15 UTC正常完成并自动唤醒。核查时无GPU计算进程，实际150GiB容器数据盘剩45,704,740,864 bytes，约42.57GiB。审计脚本`v6_audit_step_goal_20261028.py`重算独立配对判据、核对真实快照与provider工具记录；[终态证据](evidence/v6-ddp-step-goal-20261028/terminal-audit.json)约123KB，原始模型/trace/参考仍在服务器。
+
+**本批整步目标的完整版本独立评测通过，耗时降低55.73%。** 这属于复用已审计baseline adapter的目标变体；不是新原入口evaluator cohort，也不是已证明的通信链路加速。
+
+|三轮搜索|结果|实际反馈与执行|
+|---|---|---|
+|trial-0ee027f2e6|拒绝：无有效参数候选|CUDA graph捕获失败，退到更慢的整步实现；3个screening配置均未满足整步上限|
+|trial-592873c70d|拒绝：约束/噪声/收益|尝试修复mask与fallback，最终仍有捕获失败；独立搜索配对116.05/119.05ms，对应parent114.12/101.29ms|
+|trial-08c5dfa5f6|搜索接受|弃用graph/额外communicator/flat buffer，把本rank当前4份输入沿batch维合并，逐原微批次计算loss并除4后求和，一次backward/DDP reducer和一次原SGD更新|
+
+最终候选代码读取每次调用的当前输入，没有读取参考文件、改TF32/精度、跳过层或按measure/quality选择不同计算。zero_grad、cat、forward、loss、backward、SGD及CUDA同步均在替换的整步内。保留4个微批次的样本及权重、每rank分片、总8样本/1024tokens；计算执行被批量化，不是换一个更小workload。静态代码中异常后的parent fallback不保证任意部分更新可回滚，这是一项候选局限；本次质量端点未触发fallback，仍需独立trace确认实际运行路径，不能只凭候选自报route。
+
+原合同中的工作量、FP32/noTF32/eager、两连续步、完整梯度/参数、精确rank关系、invocation生命周期、rank先max再median及1.05倍baseline约束均保留。baseline adapter实际SHA为`a4056384…`，新controls全部通过。真实`variant_contract`只适配目标合同，未生成adapter。最终只有一个新bundle，无旧通信候选导入；三轮结束在首次接受处，本批没有接受后重新发现或多bundle共存证据。
+
+完整版本独立AB/BA：B为113.926/114.807ms，C为51.540/49.715ms，均值参考114.3668→50.6274ms；两对收益62.386/65.093ms，均大于噪声界4.089/1.838ms；候选均低于新baseline锚定上限117.6254ms。全部四端点、每rank五个样本保留。两连续步全量检查每rank约2.489亿元素通过；候选对baseline参考最大误差约1.19e-7/1.68e-7。覆盖无fallback、reference调用计数为空，实际声明`batched_eager_step`每rank两次；这仍是质量阶段遥测，不等于原生执行路径证明。
+
+独立原项目serial global-batch两步轨迹与baseline controls的完整梯度/参数/loss比较通过，精确rank梯度/参数关系通过。该源审计没有直接将新候选输出对独立serial模型再比较；新候选由冻结evaluator与已审计baseline参考作全量比较，两个层次分别保留。实际rank1约2.500019e-7的容差内梯度扰动被observe精确关系断言拒绝，rank0无扰动；不是因普通容差比较失败而拒绝。
+
+### 真实审阅对照
+
+初始快照逐字核对：control不变，treatment仅`inputs/ddp-index.json`由4,551增至7,751 bytes，其他文件、prompt/model/tools/core相同，原端点值全部保留。control后续有一次输出schema修复（缺少顶层findings），treatment无修复，因此不能把最终回复差异全部归因于唯一初始改动。[control](evidence/v6-ddp-step-goal-20261028/review-control.json)和[treatment](evidence/v6-ddp-step-goal-20261028/review-treatment.json)保留，估算费用分别0.23084993464/0.17263070314，仅统计。
+
+只读核查两个真实会话的21/15次工具记录：两者都未读取GC旁文件；treatment读到了新索引，但只读1-S receipt，并未进一步核对P/Q事件。它认识到空列表不等于没有GC，且承认计时外分配可能改变GC调度；然而仍错误建议高置信采纳、把非零内存值当成native backend证明，未用已有P/Q证据审查实际影响。control还误称该固定顺序“没有交错”、断言计时外改动不可能产生长尾。**单独增加路径索引没有解决主动取证问题；不采纳任何回答，不修改生产prompt或allocator逻辑，也不继续重复审阅直到通过。**
+
+### 信息与诊断边界
+
+轮2/3的选择Agent实际获得此前反馈文件1.72MB/30.46MB，最大部分是resources.groups；三轮理由明确引用前次失败、实际route和新采集证据，说明确有反馈消费。文件大小不等于全部进入模型context，当前没有证据支持一次性重构或扩充上下文；这一体积问题单独记录。大文件未下载到本地。
+
+通信交叉评分在旧通信版本上仍保留原拒绝；新整步版本的通信评分为unavailable。原因已定位：evaluator的summarize仅对`objective.source`执行独立metric采集，整步目标没有source；`required_observations`负责发现阶段能力要求，并不会自动给每个evaluate端点增加数值。因而新请求/合同写了保留通信诊断，实际正式端点中却没有该字段。不得填0或从旧trace推算。下一步用现有显式collector接口单独补采冻结版本，保留原整步接受结果；再决定是否需要通用多指标采集接口。
+
+后续按主计划D/E：补充固定B/C原生路径与B/C/C/B通信诊断，然后从原项目入口做全新DDP整步目标三轮，不提供现成adapter、候选或开发诊断。新adapter需独立源一致性核对，字段命名变化单列待人工审查，不能自动当数值失败或通过。旧DDP独立拒绝、TP完整32token失败和所有历史样本/结果不变。
+
+---
+
 依据[allocator审计](v6-memory-snapshot-audit-20261028.md)及主计划C/E开展。当前生产evaluator、提示、GC、计时及接受规则均不改。快照改动不采纳；不再重测旧固定候选以寻求通过。
 
 ## 固定实验协议

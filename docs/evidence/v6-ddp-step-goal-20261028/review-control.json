@@ -1,0 +1,85 @@
+{
+  "findings": [
+    {
+      "id": "F1",
+      "area": "field meaning",
+      "status": "checked",
+      "claim": "No changed field meaning: each coalesced read evaluates the identical key expression the replaced library call evaluates, including the same .get(..., 0) fallback and current-device default.",
+      "evidence": "torch 2.13.0+cu129 torch/cuda/memory.py (inspected with /root/autodl-tmp/dev-venv/bin/python per inputs/worker-environment.json): max_memory_allocated() == memory_stats().get('allocated_bytes.all.peak', 0); max_memory_reserved() == .get('reserved_bytes.all.peak', 0); memory_allocated() == .get('allocated_bytes.all.current', 0); memory_reserved() == .get('reserved_bytes.all.current', 0). invoke-after.py uses exactly these keys and defaults.",
+      "rationale": "The silent-zero fallback is pre-existing library behavior of the original calls, so the coalescing introduces no new masking risk. Stats values are non-negative Python ints and the float() cast is exact for observed magnitudes (< 2^53). Key names in the flattened memory_stats() dict cannot collide with the private-pool flattened prefixes."
+    },
+    {
+      "id": "F2",
+      "area": "timer boundary",
+      "status": "checked",
+      "claim": "No timer-boundary change: every allocator-stat read lies outside the timed region in both versions, and the timed block is byte-identical.",
+      "evidence": "invoke-before.py and invoke-after.py: pre-run reads precede synchronize()/reset_peak_memory_stats()/started; post-run reads occur after elapsed is computed. started -> operation(track=track) -> synchronize() -> elapsed is unchanged, as are the before_run/elif-barrier block and reset placement.",
+      "rationale": "framework.elapsed_ms and step scores mechanically exclude the stat reads in both versions, so the coalescing cannot affect measured step time through the timer path. Moreover, each original convenience call internally rebuilds the full memory_stats() dict, so the change cuts full stats-dict constructions from 8 to 2 per invoke (indexed controls: memory_stats_calls 74 -> 20) — harness host overhead strictly decreases."
+    },
+    {
+      "id": "F3",
+      "area": "lifecycle ownership",
+      "status": "checked",
+      "claim": "Lifecycle ownership and accumulation semantics are unchanged; lifecycle peaks remain harness-owned nonlocal accumulators updated at identical program points.",
+      "evidence": "Both versions update lifecycle_allocated_peak/lifecycle_reserved_peak (a) pre-run, before before_run/barrier/synchronize/reset_peak_memory_stats(), capturing peak-since-last-reset of the preceding invoke, and (b) post-run, after adapter.metrics and the finiteness validation. reset_peak_memory_stats() still runs once per invoke after the pre-run read, preserving monotone lifecycle maxima.",
+      "rationale": "The after version derives lifecycle peaks and the four per-step metric fields from one snapshot, eliminating the theoretical possibility of the original's six sequential calls observing different instants; no allocator activity occurs between those calls in this harness, so realized values are identical (see F4)."
+    },
+    {
+      "id": "F4",
+      "area": "real CUDA lifetime/quality controls",
+      "status": "checked",
+      "claim": "Empirical equivalence on real CUDA: all six framework.* memory fields identical between original and snapshot implementations, and all quality controls pass for both, under both lifetime modes.",
+      "evidence": "inputs/cuda-controls.json (verified byte-identical to the indexed controls-result.json): lifetimes 'legacy' and 'invocation' each report all_memory_fields_equal=true with two matching memory_fields rows, and controls (reset x2 with max_abs_error 0.0 over 16384 compared elements, identity, identity_covered, wrong_output_rejected, missing_coverage_rejected) all passing for both 'original' and 'snapshot'.",
+      "rationale": "Non-zero, plausible stat values confirm the native caching allocator was in use, which also rules out the cudaMallocAsync zero-stats condition for these runs."
+    },
+    {
+      "id": "F5",
+      "area": "indexed fixed-candidate endpoints",
+      "status": "checked",
+      "claim": "The snapshot implementation ran end-to-end in the fixed-candidate DDP endpoints with unchanged correctness and memory-field reporting.",
+      "evidence": "ddp/protocol.json: L=original (unobserved), S=snapshot (unobserved), P=original+passive GC callbacks, Q=snapshot+passive GC callbacks; order L,S,P,Q,Q,P,S,L; 20 samples per run. All 8 endpoints in inputs/ddp-index.json are valid=true and status=passed; both ranks pass continuous-step checks with max_abs_error 0.0 over 248,879,630 compared elements; required coverage satisfied; GPU binding verified and occupancy sampled_clear; both arms emit the full framework.* memory field set with plausible values (e.g., L rank-0 framework.peak_allocated_bytes 1977712640.0, lifecycle_peak_allocated_bytes 1983637504.0).",
+      "rationale": "Raw receipts were read only to resolve the concrete uncertainty of arm-label semantics; no other history was consulted."
+    },
+    {
+      "id": "F6",
+      "area": "asynchronous-allocation caveat",
+      "status": "checked",
+      "claim": "No asynchronous-allocation semantic is added, removed, or reordered by the coalescing.",
+      "evidence": "The stats are host-side caching-allocator counters; synchronize() does not gate their update in either version; the diff adds/removes no synchronization and reads no stream-ordered state; post-run 'current' fields reflect host accounting at the same program point as before.",
+      "rationale": "Per the torch docstring, under backend:cudaMallocAsync some stats are always reported zero; that property applies equally to both implementations because both read the same counters, and F4's non-zero control values indicate it does not apply in this environment. This caveat is pre-existing, not introduced."
+    },
+    {
+      "id": "F7",
+      "area": "experiment scope",
+      "status": "checked",
+      "claim": "The proposal is confined to read coalescing: no before_run observer added, no GC disablement, no score adjustment, no acceptance or adoption step.",
+      "evidence": "The before_run/elif-barrier block is byte-identical in invoke-before.py and invoke-after.py; ddp/protocol.json scope declares L/S unobserved evaluator copies and P/Q adding only identical passive GC callbacks, with no formal acceptance, performance-score adjustment, or production adoption.",
+      "rationale": "Consistent with the frozen task constraints under which this review was performed."
+    },
+    {
+      "id": "H1",
+      "area": "DDP endpoint long-tail co-occurrence",
+      "status": "hypothesis",
+      "claim": "The >200 ms max-rank step samples in this endpoint co-occur only with snapshot-arm runs, but this is confounded and is not attributable to the coalescing.",
+      "evidence": "Per inputs/ddp-index.json (n=2 runs x 20 samples per arm): tails only in S (438.8/427.1/293.9/490.7 ms) and Q (459.4/499.1/461.1/508.3 ms); none in L (max 149.0) or P (max 124.1). Medians do not separate the implementations (P 112.9, S 115.8, L 119.4, Q 123.2 ms).",
+      "rationale": "With 2 runs per arm, non-interleaved order (S/Q at positions 1,3,4,6; L/P at 0,2,5,7), a single host/GPU pair, and a pre-existing long-tail phenomenon whose causes must not be inferred from this endpoint, the co-occurrence cannot establish causation. Mechanically the coalescing cannot produce it: it reduces host-side read work and all reads are outside the timed region (F2). Flag for a dedicated interleaved tail-detection A/B; do not adjust or GC-correct scores."
+    }
+  ],
+  "limitations": [
+    "No GPU work was executed for this review (policy); equivalence rests on library-source inspection in the measured worker's environment plus the indexed control and endpoint receipts, not on new measurement.",
+    "Arm-label semantics required reading indexed raw receipts/protocol (the only concrete uncertainty pursued); no unrelated history (e.g., previous attempts, other endpoints) was consulted.",
+    "Long-tail attribution is unresolvable from this endpoint by design (2 runs per arm, no interleaving, shared lease); per instructions no GC time is subtracted from scores and no causal claim about the original long tail is made.",
+    "cuda-controls exercised a small tensor workload and two lifetime modes; equality is demonstrated for the six framework.* fields actually consumed, not for every key in memory_stats().",
+    "The internals of adapter.metrics, the operation, and the workload were not re-audited; only the diffed stat-read sites were reviewed.",
+    "The existing DDP independent rejection and TP full-model failure are unchanged and out of scope; nothing in this review speaks to them."
+  ],
+  "recommendation": {
+    "verdict": "proceed",
+    "summary": "The coalescing of adjacent CUDA allocator statistics reads is measurement-equivalent: library-identical key expressions and fallbacks (F1), no timer-boundary change (F2), unchanged lifecycle ownership with slightly improved intra-read consistency (F3), empirically identical memory fields with all quality controls passing on real CUDA (F4, F6), and clean end-to-end fixed-candidate DDP endpoints (F5), while reducing harness stats overhead (74 -> 20 memory_stats calls) without touching scored regions.",
+    "conditions": [
+      "Report the S/Q long-tail co-occurrence (H1) as an unresolved, confounded observation; do not attribute it to the coalescing and do not adjust or GC-correct scores.",
+      "Before any performance claim or production adoption, run a dedicated, interleaved A/B sized for tail detection; this review confers no formal candidate acceptance.",
+      "Retain the .get(key, 0) defaults only because they mirror the library's own behavior of the replaced calls; if the allocator backend ever changes, re-verify field availability rather than relying on silent zeros."
+    ]
+  }
+}

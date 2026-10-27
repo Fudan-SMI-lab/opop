@@ -1,0 +1,115 @@
+{
+  "review_type": "measurement_review",
+  "subject": "Coalescing adjacent CUDA allocator statistics reads in invoke(): replace per-field torch.cuda accessor calls with one torch.cuda.memory_stats() snapshot per read site",
+  "inputs_reviewed": [
+    "inputs/worker-environment.json",
+    "inputs/invoke-before.py",
+    "inputs/invoke-after.py",
+    "inputs/cuda-controls.json",
+    "inputs/stage-index.json",
+    "inputs/ddp-index.json",
+    "/root/autodl-tmp/dev-v6-work/memory-snapshot-validation-20261028/ddp/protocol.json (arm semantics)",
+    "/root/autodl-tmp/dev-v6-work/memory-snapshot-validation-20261028/ddp/1-S/run/receipt.json (verify snapshot path ran)"
+  ],
+  "environment_note": "Library/API facts checked with the measured worker's interpreter /root/autodl-tmp/dev-venv/bin/python (torch 2.13.0+cu129, Python 3.12.4). No GPU work executed by this review; all measurements are framework-produced.",
+  "checked_facts": [
+    {
+      "id": "F1",
+      "claim": "No changed field meaning: the coalesced keys are exactly the fields the individual accessors return.",
+      "evidence": "In the installed torch 2.13.0, inspected source shows torch.cuda.max_memory_allocated == memory_stats().get('allocated_bytes.all.peak', 0), max_memory_reserved == 'reserved_bytes.all.peak', memory_allocated == 'allocated_bytes.all.current', memory_reserved == 'reserved_bytes.all.current'. Device selection is identical (device=None -> current device), return types identical (int, cast to float in metrics). The .get(key, 0) default in the after code is the accessor's own semantics in this version, not a newly introduced masking behavior.",
+      "sources": ["torch.cuda source inspection via measured interpreter", "inputs/invoke-before.py", "inputs/invoke-after.py"]
+    },
+    {
+      "id": "F2",
+      "claim": "No timer boundary change: diff of the two invoke files shows only the two stats-reading blocks differ.",
+      "evidence": "Line-diff confirms before_run/barrier, synchronize(), reset_peak_memory_stats(), started = time.perf_counter_ns(), operation, synchronize, elapsed computation, adapter.metrics call and its finite-numeric validation are byte-identical. In both versions all memory-stat reads occur outside the timed window (pre-run before reset, post-run after elapsed is computed), so framework.elapsed_ms semantics are unchanged; only unmeasured harness overhead shrinks (8 full memory_stats dict builds per invoke -> 2).",
+      "sources": ["diff inputs/invoke-before.py inputs/invoke-after.py"]
+    },
+    {
+      "id": "F3",
+      "claim": "No lifecycle ownership change.",
+      "evidence": "lifecycle_allocated_peak/lifecycle_reserved_peak remain closure-owned and are updated at the same two points from the same peak fields (pre-run before reset_peak_memory_stats, and post-run). reset_peak_memory_stats still bounds only per-invocation peak fields; lifecycle fields still accumulate across invocations identically in both versions.",
+      "sources": ["inputs/invoke-before.py:2-5,22-23", "inputs/invoke-after.py:2-6,23-25"]
+    },
+    {
+      "id": "F4",
+      "claim": "The claimed call-count reduction is arithmetically consistent with the diff.",
+      "evidence": "Before: 2 accessor calls pre-run + 6 post-run (including duplicate peak reads for lifecycle vs metrics) = 8 memory_stats builds per invoke; after: 1 + 1 = 2. cuda-controls.json reports original=74 vs snapshot=20, matching 9 invokes plus 2 harness-level calls unchanged in both (8*9+2=74, 2*9+2=20), which corroborates that only the invoke-adjacent sites were coalesced.",
+      "sources": ["inputs/cuda-controls.json", "diff of invoke files"]
+    },
+    {
+      "id": "F5",
+      "claim": "Quality controls pass identically for both variants under both allocator lifetimes, with byte-equal memory fields.",
+      "evidence": "cuda-controls.json: for lifetimes 'legacy' and 'invocation', all_memory_fields_equal=true with identical values across the two runs; reset/identity controls passed (16384 compared elements, max_abs_error 0.0), identity_covered, wrong_output_rejected, missing_coverage_rejected for both original and snapshot.",
+      "sources": ["inputs/cuda-controls.json"]
+    },
+    {
+      "id": "F6",
+      "claim": "The snapshot evaluator actually ran and produced valid DDP results.",
+      "evidence": "1-S receipt: evaluation_source.policy='snapshot' (sha256 1bbf3af4..., identical on both ranks); status passed; continuous_step comparisons exact (248,879,630 / 248,879,624 elements, max_abs_error 0.0); memory fields non-zero and coherent (peak_allocated 1,977,712,640 B; peak_reserved 2,235,564,032 B rank 0 / 2,080,374,784 B rank 1), confirming the stats keys were present and populated (native caching allocator), not silently zero.",
+      "sources": ["/root/autodl-tmp/dev-v6-work/memory-snapshot-validation-20261028/ddp/1-S/run/receipt.json", "/root/autodl-tmp/dev/v6-work/memory-snapshot-validation-20261028/ddp/protocol.json"]
+    },
+    {
+      "id": "F7",
+      "claim": "Asynchronous-allocation caveat is symmetric and currently out of scope.",
+      "evidence": "torch 2.13.0 memory_stats docstring: with backend:cudaMallocAsync some stats are always reported as zero. Because the four accessors read the same stats dict, both variants would report zeros identically under that backend (no differential risk, but quality fields could silently become 0 for both). Current evidence (non-zero, segment-shaped reserved sizes such as 25,165,824 B in controls and ~2.1-2.2 GB in DDP) indicates the native caching allocator; allocator backend/config is fixed and was not modified in this experiment.",
+      "sources": ["torch.cuda.memory_stats docstring (measured interpreter)", "inputs/cuda-controls.json", "1-S receipt"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "D1",
+      "status": "checked_fact",
+      "severity": "none",
+      "finding": "Semantically equivalent measurement: same fields, same defaults, same device, same read points, same lifecycle accounting. Observed field values are equal across variants in both lifetime configurations."
+    },
+    {
+      "id": "D2",
+      "status": "checked_fact",
+      "severity": "info",
+      "finding": "Internal consistency improvement: the after code reports peak/current allocated/reserved from a single snapshot instead of six sequential reads. Under concurrent host-thread allocation the before code could emit mutually inconsistent fields; the after code cannot. No behavioral difference in this single-host-thread-per-rank harness (consistent with F5)."
+    },
+    {
+      "id": "D3",
+      "status": "checked_fact",
+      "severity": "info",
+      "finding": "Overhead removed is outside the timed region; framework.elapsed_ms is not flattered by the change. Per-run total wall time shrinks slightly (72 -> 18 stats dict builds over 9 invokes)."
+    },
+    {
+      "id": "H1",
+      "status": "hypothesis",
+      "severity": "info",
+      "finding": "The four >290 ms long-tail samples appear in the S endpoints (1-S: 438.78/427.15 ms; 6-S: 293.87/490.68 ms) and Q endpoints (3-Q, 4-Q), while L/P endpoints show none above ~149 ms in this 20-sample set. Checked in the 1-S receipt: the tails occur at identical sample indices on both ranks with memory fields identical to neighboring samples, i.e., no memory-stat anomaly accompanies them. With 2 endpoints per arm, no GC disablement, and passive observers only on P/Q (whose artifacts must not be used to explain S), this design cannot attribute the tails to the coalescing or to GC; empty passive_gc_artifacts on L/S mean no observer file, not no GC. No causal claim is made and no GC time is subtracted from any score."
+    },
+    {
+      "id": "H2",
+      "status": "hypothesis",
+      "severity": "info",
+      "finding": "Fewer host-side stats reads outside the timer could in principle shift host pacing and thus GC scheduling relative to the timed region. Medians across arms (~110-126 ms) show no material effect; nothing in the controls or receipts supports or refutes a scheduling shift. Kept as hypothesis only."
+    }
+  ],
+  "limitations": [
+    "Review-only: no GPU work run by the reviewer; reliance on framework-produced controls, receipts and the fixed candidate (protocol candidate 75e28d3d...). The framework executes and validates independently.",
+    "Field-equality evidence covers the exercised workloads, both allocator lifetimes, and the native caching allocator only; allocator backend or PYTORCH_CUDA_ALLOC_CONF changes are fixed here and untested (F7 applies if that ever changes).",
+    "DDP evidence is limited to the 8 indexed fixed-candidate endpoints (20 samples each, 2 per arm); long-tail behavior is not attributable with this design, and per scope no inference is drawn from P/Q GC artifacts about S-arm tails.",
+    "The 2 residual per-run memory_stats calls (constant in both variants, see F4) were not located in the reviewed snippets; they cancel out of the comparison but were not independently audited.",
+    "No formal candidate acceptance, no score adjustment, no GC-time subtraction, and no production adoption is expressed or implied by this review.",
+    "Out of scope and unchanged: the existing DDP independent rejection and the TP full-model failure; original long-tail causes are not investigated here."
+  ],
+  "recommendation": {
+    "verdict": "accept_for_measurement_path",
+    "confidence": "high",
+    "rationale": "The coalescing is verified semantically equivalent for this fixed configuration: identical field meaning (F1), unchanged timer boundaries (F2), unchanged lifecycle ownership (F3), passing quality controls with byte-equal memory fields under both lifetimes (F5), and confirmed deployment on the snapshot endpoints with exact-output checks (F6). It modestly improves field-set consistency (D2) and reduces unmeasured harness overhead (D3).",
+    "conditions": [
+      "Re-verify F1 field mapping if the measured worker's torch version changes (accessor implementations are version-specific).",
+      "If the allocator backend is ever switched (e.g., cudaMallocAsync), treat zero-valued memory fields as backend-truncated for BOTH variants before comparing (F7).",
+      "Do not use the S/Q long-tail samples as evidence for or against this change; a dedicated design (e.g., paired runs with controlled GC observation) would be required, which is outside this experiment's scope (H1)."
+    ],
+    "explicit_non_actions": [
+      "No formal candidate acceptance.",
+      "No automatic production adoption.",
+      "No GC disablement, no added before_run observer, no GC-time subtraction from scores.",
+      "No change to DDP independent rejection or TP full-model failure status."
+    ]
+  }
+}
