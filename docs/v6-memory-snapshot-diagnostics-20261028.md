@@ -27,3 +27,11 @@ AST检查确认`invoke`之外无变化，计时调用不变；基准源码SHA `5
 首次冻结`0d3dec2`于19:00:57 UTC启动，PID315735。CUDA控制在创建worker前失败：协议写入已创建`controls/legacy-original`，而LocalExecutor要求运行输出目录不存在，抛出FileExistsError；DDP按协议跳过。没有任何GPU质量/性能结论，后续真实语义审阅仍保留运行，不取消、不重启。
 
 已将worker输出改为其独立`run`子目录，协议留父目录。首个根目录、错误日志及审阅均保留；修正后的验证使用新目录`/root/autodl-tmp/dev/v6-work/memory-snapshot-validation-20261028`。首次普通监听被标记停止，由新验证批次的唯一监听接管；新续行指令同时核对首次审阅终态。该修正只涉及实验目录布局，不涉及生产逻辑或实验判据。
+
+## 修正后的实际执行
+
+修正版冻结`f8d717fe61e3f87b60c6af3b29d227c1bd18ddec`于19:04:40 UTC启动，PID317239。首次失败批次后来以`completed_with_errors`结束，其审阅正常完成，旧错误没有覆盖。新普通监听PID28004，状态`.scratch/v6-memory-snapshot-validation-wakeup.json`为waiting；首次监听已停止。
+
+截至本轮启动核查，legacy与invocation共4个真实CUDA控制均通过，全部内存字段逐样本相等，prepare生命周期峰值保留；每种生命期的整个控制流程中`memory_stats`调用次数从74减为20。8个固定DDP端点也均执行完成、质量检查通过；所有160样本及逐rank值留在服务器。尚未据此给出性能收益或长尾归因，仍需终态审计实际副本SHA、全部样本、GC时间窗和观察器影响。
+
+当前真实`measurement_review`会话`ses_e813b810dffecH7QzlXGDM1rDd`已启动，初始快照`generation-1697496b45a9`。此次输入6文件总16,725 bytes，仅含invoke前后代码、CUDA控制、全部DDP样本小型索引和环境，不预载旧大trace。GPU阶段已结束，当前等待该审阅；生产是否采纳仍未决定。核查时数据盘剩51,032,162,304 bytes（约47.53 GiB）。
