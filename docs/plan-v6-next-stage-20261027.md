@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态（2026-10-28 17:53 UTC）：[新原入口Qwen](v6-qwen-original-end-to-end-20261029.md)intake/evaluator与controls通过，但外部源fixture不认识新`generated_tokens/step_logits`命名，按协议停止搜索。源代码、完整工作、生命周期与真实初始输入审计已完成，当前不能把schema停止当数值失败或优化成功。仅在外部审计加入经过人工review的字段映射，另目录比较原源参考后续行此前未执行的三轮；不改生成adapter/request/contract或生产prompt，不重跑controls，不删除错误记录。外部人工审计这一边界明确保留，不称无人工间断的完整批次。
+
 当前执行（2026-10-28 17:46 UTC／香港10月29日01:46）：[Qwen原入口完整生成＋TTFT约束](v6-qwen-original-end-to-end-20261029.md)已冻结16e38722并启动，控制器PID754329。真实新intake会话和provider回复已核验；新evaluator/source门控/三轮搜索尚待执行，不复用现成adapter或旧候选。单个普通完成/8GiB监听PID48148运行，真实df余16.28GiB。新阶段仍用生产核心ed24af7a，无Goal、模型等待轮询或本地raw转存。
 
 最新终态（2026-10-28 17:25 UTC，香港时间10月29日）：[Qwen完整生成＋TTFT约束](v6-qwen-end-to-end-20261028.md)三轮结束。首轮decode-only因TTFT超限拒绝，第二轮实际消费反馈后以一个joint bundle优化prefill/decode两组，独立全版本705.5819415→374.366936ms（46.9421%）且TTFT约21.34ms满足原25.49943795ms上限；第三轮质量通过但TTFT超限，旧接受版本保留。80个clean样本、30次evaluate质量检查、源码/参考/真实角色及32次Graph launch路径核验。属于同adapter目标变体，不冒充原入口evaluator泛化。GPU结束后服务器内无损压缩55份冷JSON，净回收6.81GiB，余16.29GiB；无raw本地转存。接着按[原入口协议](v6-qwen-original-end-to-end-20261029.md)重新生成intake/evaluator，源一致性门控后做三轮及独立验证，生产核心不改。以下“当前执行”段落均为历史时间点。

@@ -1,0 +1,998 @@
+{
+  "at": "2026-10-28T17:59:11.553715+00:00",
+  "terminal": {
+    "phase": "completed_with_errors",
+    "finished_at": "2026-10-28T17:53:00.229102+00:00",
+    "results": {
+      "prepare": {
+        "status": "completed",
+        "revision": "009b4178a52cac5cd898cebd04509e2e05607bdc027f985b6ae14d3e3321a7b7",
+        "adapter_sha256": "498c90f3f6f91b993ac8a586ac3230ffe2e6901752165b26948142d978f7cff7",
+        "request_sha256": "919166b104745b6a008adf23900ebf038f9a8bb51085c1dfb50a6fe0b1694e04",
+        "scope": "New real intake, evaluator and controls; no supplied request, adapter, groups or candidate."
+      },
+      "source": {
+        "status": "source_check_requires_audit",
+        "worker_status": "passed",
+        "observation_statuses": [
+          "observation_schema_requires_manual_audit"
+        ],
+        "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/source-check.json",
+        "source_reference_sha256": "af929f424e8ceb372b06ac171841df496f9a9ef4c26c16dc2f69b4014a2678da",
+        "controls_reference_sha256": "948870860ae9e3a0c0dbb16e529def4c6b163b86f5378dbccb3ca1bef6df1343",
+        "scope": "Independent full source logits/exact tokens; additional observations and source ownership require code review. No result passed to candidate agents."
+      },
+      "search": {
+        "status": "not_run",
+        "reason": "Required prior stage failed; retained for audit, no retry."
+      },
+      "independent": {
+        "status": "not_run",
+        "reason": "Required prior stage failed; retained for audit, no retry."
+      },
+      "native": {
+        "status": "not_run",
+        "reason": "Required prior stage failed; retained for audit, no retry."
+      }
+    },
+    "disk": {
+      "at": "2026-10-28T17:53:00.231986+00:00",
+      "path": "/root/autodl-tmp",
+      "df_returncode": 0,
+      "df": "   1B-blocks         Used       Avail Use% Mounted on\n161061273600 143597666304 17463607296  90% /root/autodl-tmp\n",
+      "df_error": "",
+      "statvfs_free_bytes": 17463631872,
+      "interpretation": "df reflects the 150 GiB container quota; statvfs has reported host space for some nested paths and quota for the mount root. Compare both; plan against df."
+    }
+  },
+  "terminal_sha256": "11e79b79d57c1f315d430e1bd72b76825038c5c706d45f2e1561db7ea025e9e1",
+  "core": {
+    "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+    "files": 163,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "intent": {
+    "project": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/framework/16e38722c448/examples/v6_validation",
+    "goal": "Minimize end_to_end_ms for the source's complete interactive Qwen3-4B generation (batch 1, prompt 256 tokens, exactly 32 new greedy tokens), while keeping ttft_ms <= 1.05 times this task's freshly measured ORIGINAL baseline TTFT. Preserve the source model, inputs, full workload, BF16/SDPA/noTF32 policies, full logits at the source 0.02/0.02 tolerance and exact tokens, both completion synchronization boundaries, and state lifetimes. The primary metric covers the complete generation; the first-token metric is a constraint. The source's listed goals are provenance, not a requirement to optimize only one phase.",
+    "command": "python qwen_inference.py --assets /root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c --output /tmp/original-qwen",
+    "context": [],
+    "project_ref": null
+  },
+  "request": {
+    "schema_version": "project-request.v1",
+    "source_root": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original.intake/source",
+    "entry": "qwen_inference.py",
+    "files": [
+      "qwen_inference.py",
+      "common.py",
+      "workloads.json",
+      "README.md"
+    ],
+    "goal": "Minimize end_to_end_ms for the source's complete interactive Qwen3-4B generation (batch 1, prompt 256 tokens, exactly 32 new greedy tokens), while keeping ttft_ms <= 1.05 times this task's freshly measured ORIGINAL baseline TTFT. Preserve the source model, inputs, full workload, BF16/SDPA/noTF32 policies, full logits at the source 0.02/0.02 tolerance and exact tokens, both completion synchronization boundaries, and state lifetimes. The primary metric covers the complete generation; the first-token metric is a constraint. The source's listed goals are provenance, not a requirement to optimize only one phase.",
+    "objective": {
+      "name": "end_to_end_ms",
+      "unit": "ms",
+      "direction": "minimize",
+      "constraints": [
+        {
+          "metric": "ttft_ms",
+          "op": "le",
+          "baseline_ratio": 1.05
+        }
+      ]
+    },
+    "workload": {
+      "id": "interactive",
+      "batch": 1,
+      "prompt_tokens": 256,
+      "new_tokens": 32,
+      "goals": [
+        {
+          "id": "ttft",
+          "metric": "ttft_ms",
+          "direction": "min"
+        },
+        {
+          "id": "decode",
+          "metric": "decode_tokens_per_second",
+          "direction": "max"
+        }
+      ],
+      "prompt": "Explain how a computer executes a neural network and why memory access, arithmetic and communication affect performance. Use concrete examples.",
+      "correctness": {
+        "logits_atol": 0.02,
+        "logits_rtol": 0.02,
+        "require_exact_greedy_tokens": true
+      }
+    },
+    "quality": {
+      "atol": 0.02,
+      "rtol": 0.02
+    },
+    "assets": {
+      "qwen3_4b_weights": "/root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c"
+    },
+    "devices": [
+      "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+    ],
+    "distributed_backend": null,
+    "communication": "auto",
+    "required_observations": [],
+    "tools": {
+      "ncu": "/usr/local/cuda/bin/ncu",
+      "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+    },
+    "profiling": {
+      "agent_plan": true,
+      "feedback_agent_plan": true
+    },
+    "binding_backend": "legacy",
+    "measurement_lifetime": "invocation",
+    "warmup": 2,
+    "repeats": 5,
+    "continuous_steps": 2,
+    "worker_timeout_s": 900.0,
+    "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+    "notes": [
+      "Command provenance: python qwen_inference.py --assets /root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c --output /tmp/original-qwen (run from the repository root). Defaults apply: --workloads workloads.json, --warmup 2, --repeats 5, no --profile.",
+      "Workload row is copied unchanged from workloads.json qwen_inference.workloads[id='interactive'] with the section's prompt and correctness fields; the 'offline' (batch 8) and held_out 'long_prompt' rows are out of scope for this task per the user goal (batch 1, prompt 256, exactly 32 new greedy tokens).",
+      "The row's 'goals' list (ttft, decode_tokens_per_second) is provenance only: per the user, the primary objective end_to_end_ms covers the complete generation and ttft_ms is a constraint at <= 1.05 times this task's freshly measured ORIGINAL baseline TTFT. The constraint baseline is the evaluator's fresh measurement of the unmodified source in the same environment, not a constant recorded here.",
+      "Source-required task semantics: fixed 32-token greedy generation with EOS early stopping disabled by the explicit loop; per-step logits_to_keep=1 with the last-position logits used for argmax; KV cache created at prefill and threaded through all 31 decode steps, request-scoped (no state may leak across measured invocations); the explicit first-token and final torch.cuda.synchronize() boundaries define ttft_ms and end_to_end_ms (qwen_inference.py:16-40).",
+      "Numerical policies to preserve: BF16 weights (dtype=torch.bfloat16 at qwen_inference.py:49), SDPA attention (attn_implementation='sdpa'), TF32 disabled for matmul and cudnn, float32_matmul_precision('highest'), torch.manual_seed(20261020) (common.py:34-42).",
+      "Quality: full per-step last-position logits for all 32 generated positions compared with torch.testing.assert_close at atol=0.02, rtol=0.02 (workloads.json qwen_inference.correctness logits_atol/logits_rtol; check at qwen_inference.py:61), and the generated greedy token sequence is a discrete output requiring exact comparison (torch.equal at qwen_inference.py:62, require_exact_greedy_tokens). The reference is the unmodified source's own capture run with fixed-context teacher forcing (qwen_inference.py:59-60) plus a corrupted-output negative control (common.py:79-84); these checks and reference construction are measurement infrastructure, not work repeated by the measured invocation.",
+      "Baseline implementation choices (not frozen requirements): single .cuda() device placement, one process, greedy argmax sampling, teacher-forced reference capture, torch.profiler-based optional diagnostics. Semantics-equivalent implementations that keep the model, inputs, numerical policies, token outputs and both timing boundaries are acceptable; no multi-process or distributed execution is part of this workload (device_count=1 from the single-device .cuda() placement in the source).",
+      "Measured invocation statistics: the source records per-repeat metrics ttft_ms, decode_ms, end_to_end_ms, decode_tokens_per_second, generated_tokens_per_second and peak_allocated_bytes (qwen_inference.py:37-40,73-76) and reduces samples by median/min/max (common.py:66-71); only end_to_end_ms (objective) and ttft_ms (constraint) carry acceptance meaning for this task, and peak_allocated_bytes is informational.",
+      "All main timing excludes model loading, tokenization, host input transfer, correctness checks and profiling (README.md '\u8ba1\u91cf\u4e0e\u6b63\u786e\u6027' section); warmup=2 and repeats=5 are the harness's statistical warmup/repeats fields, kept out of the measured unit.",
+      "One measured invocation: One complete interactive generation unit, equal to a single infer(model, inputs, new_tokens=32) call in qwen_inference.py:14-41 on the fixed GPU-resident input tensor of shape (1, 256): prefill forward pass with use_cache=True and logits_to_keep=1, greedy argmax next-token selection from the last-position logits, torch.cuda.synchronize() at the explicit first-token-ready boundary, then exactly 31 cached decode steps (each a single-token forward with past_key_values, use_cache=True, logits_to_keep=1, argmax), with one KV cache living across the whole request, and the final torch.cuda.synchronize() completion boundary. The unit returns the 32 generated token ids; end_to_end_ms spans start (before prefill) to final synchronize and ttft_ms spans start to the first-token synchronize. Setup excluded from the measured unit: model/tokenizer loading, chat-template tokenization and prompt replication/truncation to 256 tokens, host-to-GPU input transfer, warmup iterations, statistical repeats, reference construction, correctness checks, result writing and profiling."
+    ]
+  },
+  "contract": {
+    "schema_version": "project.v2",
+    "id": "task",
+    "goal": "Minimize end_to_end_ms for the source's complete interactive Qwen3-4B generation (batch 1, prompt 256 tokens, exactly 32 new greedy tokens), while keeping ttft_ms <= 1.05 times this task's freshly measured ORIGINAL baseline TTFT. Preserve the source model, inputs, full workload, BF16/SDPA/noTF32 policies, full logits at the source 0.02/0.02 tolerance and exact tokens, both completion synchronization boundaries, and state lifetimes. The primary metric covers the complete generation; the first-token metric is a constraint. The source's listed goals are provenance, not a requirement to optimize only one phase.",
+    "objective": {
+      "name": "end_to_end_ms",
+      "unit": "ms",
+      "direction": "minimize",
+      "required_metrics": [
+        {
+          "name": "end_to_end_ms",
+          "unit": "ms"
+        }
+      ],
+      "aggregation": {
+        "kind": "sum",
+        "case_weights": {},
+        "callable": null
+      },
+      "improvement_threshold": 0.0
+    },
+    "workload": {
+      "batch": 1,
+      "correctness": {
+        "logits_atol": 0.02,
+        "logits_rtol": 0.02,
+        "require_exact_greedy_tokens": true
+      },
+      "goals": [
+        {
+          "direction": "min",
+          "id": "ttft",
+          "metric": "ttft_ms"
+        },
+        {
+          "direction": "max",
+          "id": "decode",
+          "metric": "decode_tokens_per_second"
+        }
+      ],
+      "id": "interactive",
+      "new_tokens": 32,
+      "prompt": "Explain how a computer executes a neural network and why memory access, arithmetic and communication affect performance. Use concrete examples.",
+      "prompt_tokens": 256
+    },
+    "quality": {
+      "atol": 0.02,
+      "rtol": 0.02
+    },
+    "completion": "One measured invocation is one complete interactive generation unit, exactly a single infer(model, inputs, new_tokens=32) call (qwen_inference.py:14-41): prefill forward on the fixed GPU-resident input of shape (1, 256) with use_cache=True and logits_to_keep=1, greedy argmax of the last-position logits, torch.cuda.synchronize() at the explicit first-token-ready boundary (this ends ttft_ms), then exactly 31 single-token cached decode steps each threading past_key_values through one request-scoped KV cache, concatenation of the 32 generated token ids, and the final torch.cuda.synchronize() which ends end_to_end_ms. end_to_end_ms spans start (before prefill) to the final synchronize; ttft_ms spans start to the first-token synchronize; decode covers only the 31 post-first-token steps. EOS early stopping is disabled by the explicit fixed-length loop. Model/tokenizer loading, chat-template tokenization, prompt replication/truncation, host-to-GPU input transfer, warmup, statistical repeats, reference construction, correctness checks and profiling are all outside the measured unit.",
+    "invariants": [
+      "Workload is exactly the frozen 'interactive' row from request['workload'] (batch=1, prompt_tokens=256, new_tokens=32); the 'offline' batch-8 row and the held-out 'long_prompt' row in workloads.json are out of scope for this task (request.json notes; the adapter must read these dimensions from the request).",
+      "Exactly 32 new tokens are generated; generation is greedy argmax sampling and EOS early stopping is disabled by the explicit fixed-length loop (qwen_inference.py:25-33; README '\u8ba1\u91cf\u4e0e\u6b63\u786e\u6027'). The full declared token count must be produced even though the objective could tempt shorter work.",
+      "Next-token selection at every step is argmax over the last-position logits of a forward called with logits_to_keep=1 (qwen_inference.py:18-19, 27-29).",
+      "Prefill creates the KV cache with use_cache=True and all 31 decode steps are single-token forwards threading past_key_values from the previous step; exactly one KV cache lives across the request and it is request-scoped, so no state may leak across measured invocations (qwen_inference.py:18, 22, 27-28; request note on state lifetimes).",
+      "Inputs are unchanged: the local Qwen3-4B assets from request['assets'], the fixed prompt string from the workload, chat-template tokenization with add_generation_prompt=True and enable_thinking=False, then replication/truncation to exactly 256 tokens as a GPU-resident int64 tensor of shape (1, 256) (qwen_inference.py:48, 55-58).",
+      "Numerical policies are frozen: BF16 weights (dtype=torch.bfloat16), SDPA attention (attn_implementation='sdpa'), TF32 disabled for matmul and cudnn, cudnn.benchmark=False, float32_matmul_precision('highest'), torch.manual_seed(20261020) (qwen_inference.py:49; common.py:34-42).",
+      "Correctness is reference fidelity at the source thresholds: full per-step last-position logits for all 32 generated positions compared with torch.testing.assert_close at atol=0.02, rtol=0.02, plus exact equality of the 32 greedy token ids; a fixed-context teacher-forced replay must reproduce the free-run greedy tokens exactly (torch.equal) and its captured logits within tolerance (qwen_inference.py:59-64; workloads.json qwen_inference.correctness, require_exact_greedy_tokens).",
+      "Both completion synchronization boundaries stay inside the timed invocation with their source meaning: the explicit first-token-ready torch.cuda.synchronize() defines the ttft_ms boundary and the final torch.cuda.synchronize() defines end_to_end_ms; ttft_ms spans start to the first boundary, end_to_end_ms spans start to the final boundary, decode_tokens_per_second counts only the 31 decode tokens over the decode phase (qwen_inference.py:16-40).",
+      "Timing excludes model/tokenizer loading, tokenization, host input transfer, warmup iterations, statistical repeats, reference construction, correctness checks and profiling; the measured unit is one infer() call on the fixed GPU-resident input (README '\u8ba1\u91cf\u4e0e\u6b63\u786e\u6027'; request note on the measured invocation).",
+      "The objective end_to_end_ms is minimized over the complete generation while ttft_ms <= 1.05 times this task's freshly measured ORIGINAL baseline TTFT in the same environment; the constraint baseline is the evaluator's fresh measurement of the unmodified source, not a constant recorded in the request (request.json goal/objective/notes). The full 32-token workload is kept even though the constraint measures only the first phase.",
+      "No multi-process or distributed execution is part of this workload: one process, one device (request.json note; the source uses a single .cuda() placement, device_count=1), so no communication collectives are required or fabricated."
+    ],
+    "frozen_files": [
+      "opop_adapter.py",
+      "opop_evaluate.py"
+    ],
+    "task_definition": null,
+    "state_protocol": "prepare(context, request) runs outside timing: it loads the Qwen3-4B tokenizer and BF16 SDPA model from request['assets']['qwen3_4b_weights'] onto context['device'], applies the source numerical policies and seed from common.configure (torch.set_num_threads(4), interop threads 1, torch.manual_seed(20261020), TF32 disabled for matmul and cudnn, cudnn.benchmark=False, float32_matmul_precision('highest')), builds the chat-templated prompt (enable_thinking=False) replicated/truncated to workload['prompt_tokens'] as a GPU-resident int64 tensor of shape (workload['batch'], prompt_tokens), and keeps model/inputs/dimensions in state. Workload dimensions (batch, prompt_tokens, new_tokens) are read from request['workload'], never embedded as constants. reset(state) runs outside timing and only re-establishes the starting point (eval mode, seed): generation is stateless greedy inference and each run() creates its own request-scoped KV cache (no past_key_values is passed in), so no cache, generator, counter or optimizer state can leak across measured invocations and none needs restoration. set_mode(state, mode) toggles the source's capture flag outside timing: 'quality' retains the full per-step last-position logits inside run() (the source's correctness-capture path), 'measure'/'profile' keep the source's clean no-capture timing path; execution semantics and the full work amount are identical in every mode. observe() collects tokens and (in quality mode) full logits plus the source's teacher-forced relational replay check, outside the timer. metrics() queries CUDA peak statistics outside the timer, after the framework's peak-stat reset and timer boundaries.",
+    "world_size": 1,
+    "allowed_scopes": [
+      "group",
+      "joint",
+      "region",
+      "execution_plan"
+    ]
+  },
+  "source_files": {
+    "README.md": "97dbce99c0065e87f4accf1bbe6d52aa4438a289d7eaec1c85a9c6b1cb25f68d",
+    "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+    "opop_adapter.py": "498c90f3f6f91b993ac8a586ac3230ffe2e6901752165b26948142d978f7cff7",
+    "opop_evaluate.py": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+    "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+    "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+  },
+  "baseline_revision": "009b4178a52cac5cd898cebd04509e2e05607bdc027f985b6ae14d3e3321a7b7",
+  "active_bundles": [],
+  "controls": {
+    "pid": 756008,
+    "core": {
+      "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+      "files": 163,
+      "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+    },
+    "checks": [],
+    "controls": {
+      "reset": [
+        {
+          "passed": true,
+          "compared_elements": 4861988,
+          "max_abs_error": 0.0
+        },
+        {
+          "passed": true,
+          "compared_elements": 4861988,
+          "max_abs_error": 0.0
+        }
+      ],
+      "identity": {
+        "passed": true,
+        "compared_elements": 4861988,
+        "max_abs_error": 0.0
+      },
+      "identity_covered": true,
+      "wrong_output_rejected": true,
+      "missing_coverage_rejected": true
+    },
+    "samples": [
+      {
+        "ttft_ms": 24.002493,
+        "decode_ms": 666.118031,
+        "end_to_end_ms": 690.120524,
+        "decode_tokens_per_second": 46.53829885592753,
+        "generated_tokens_per_second": 46.368712256991216,
+        "generated_tokens": 32.0,
+        "decode_tokens": 31.0,
+        "generated_tokens_per_second_from_elapsed": 46.355653597441,
+        "parameter_count": 4022468096.0,
+        "peak_allocated_bytes": 8168429568.0,
+        "framework.elapsed_ms": 690.314935,
+        "framework.peak_allocated_bytes": 8168429568.0,
+        "framework.peak_reserved_bytes": 8281653248.0,
+        "framework.allocated_bytes": 8110232064.0,
+        "framework.reserved_bytes": 8281653248.0,
+        "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+        "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+      },
+      {
+        "ttft_ms": 24.364504,
+        "decode_ms": 692.742773,
+        "end_to_end_ms": 717.107277,
+        "decode_tokens_per_second": 44.74965486215184,
+        "generated_tokens_per_second": 44.6237278944807,
+        "generated_tokens": 32.0,
+        "decode_tokens": 31.0,
+        "generated_tokens_per_second_from_elapsed": 44.61035307371383,
+        "parameter_count": 4022468096.0,
+        "peak_allocated_bytes": 8168429568.0,
+        "framework.elapsed_ms": 717.322276,
+        "framework.peak_allocated_bytes": 8168429568.0,
+        "framework.peak_reserved_bytes": 8281653248.0,
+        "framework.allocated_bytes": 8110232064.0,
+        "framework.reserved_bytes": 8281653248.0,
+        "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+        "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+      },
+      {
+        "ttft_ms": 24.414139,
+        "decode_ms": 662.365113,
+        "end_to_end_ms": 686.779252,
+        "decode_tokens_per_second": 46.80198185498335,
+        "generated_tokens_per_second": 46.59430218197681,
+        "generated_tokens": 32.0,
+        "decode_tokens": 31.0,
+        "generated_tokens_per_second_from_elapsed": 46.58064261306622,
+        "parameter_count": 4022468096.0,
+        "peak_allocated_bytes": 8168429568.0,
+        "framework.elapsed_ms": 686.980647,
+        "framework.peak_allocated_bytes": 8168429568.0,
+        "framework.peak_reserved_bytes": 8281653248.0,
+        "framework.allocated_bytes": 8110232064.0,
+        "framework.reserved_bytes": 8281653248.0,
+        "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+        "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+      },
+      {
+        "ttft_ms": 24.051052,
+        "decode_ms": 670.529572,
+        "end_to_end_ms": 694.580624,
+        "decode_tokens_per_second": 46.23211457704359,
+        "generated_tokens_per_second": 46.07096554999784,
+        "generated_tokens": 32.0,
+        "decode_tokens": 31.0,
+        "generated_tokens_per_second_from_elapsed": 46.05775331663933,
+        "parameter_count": 4022468096.0,
+        "peak_allocated_bytes": 8168429568.0,
+        "framework.elapsed_ms": 694.779873,
+        "framework.peak_allocated_bytes": 8168429568.0,
+        "framework.peak_reserved_bytes": 8281653248.0,
+        "framework.allocated_bytes": 8110232064.0,
+        "framework.reserved_bytes": 8281653248.0,
+        "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+        "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+      },
+      {
+        "ttft_ms": 24.000548,
+        "decode_ms": 662.3982,
+        "end_to_end_ms": 686.398748,
+        "decode_tokens_per_second": 46.79964408115843,
+        "generated_tokens_per_second": 46.62013165560145,
+        "generated_tokens": 32.0,
+        "decode_tokens": 31.0,
+        "generated_tokens_per_second_from_elapsed": 46.60795211450061,
+        "parameter_count": 4022468096.0,
+        "peak_allocated_bytes": 8168429568.0,
+        "framework.elapsed_ms": 686.578117,
+        "framework.peak_allocated_bytes": 8168429568.0,
+        "framework.peak_reserved_bytes": 8281653248.0,
+        "framework.allocated_bytes": 8110232064.0,
+        "framework.reserved_bytes": 8281653248.0,
+        "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+        "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+      }
+    ],
+    "metrics": {
+      "ttft_ms": 24.051052,
+      "decode_ms": 666.118031,
+      "end_to_end_ms": 690.120524,
+      "decode_tokens_per_second": 46.53829885592753,
+      "generated_tokens_per_second": 46.368712256991216,
+      "generated_tokens": 32.0,
+      "decode_tokens": 31.0,
+      "generated_tokens_per_second_from_elapsed": 46.355653597441,
+      "parameter_count": 4022468096.0,
+      "peak_allocated_bytes": 8168429568.0,
+      "framework.elapsed_ms": 690.314935,
+      "framework.peak_allocated_bytes": 8168429568.0,
+      "framework.peak_reserved_bytes": 8281653248.0,
+      "framework.allocated_bytes": 8110232064.0,
+      "framework.reserved_bytes": 8281653248.0,
+      "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+      "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+    }
+  },
+  "fresh_baseline_ttft_limit_ms": 25.2536046,
+  "failed_source_check": {
+    "schema_version": 1,
+    "status": "passed",
+    "failure": null,
+    "wall_s": 3.30700122192502,
+    "ranks": [
+      {
+        "rank": 0,
+        "pid": 756233,
+        "exit_code": 0,
+        "status": "passed",
+        "binding": {
+          "pid": 756233,
+          "status": "verified",
+          "torch_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+          "requested_uuid": "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+          "torch_raw_uuid": "6c11763a-1e00-9af3-e17d-274f5d7f78ba",
+          "logical_device": 0,
+          "nvidia_smi_pid_uuids": [
+            "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+          ],
+          "pid_query_status": "observed",
+          "occupancy": {
+            "status": "sampled_clear",
+            "samples": 6,
+            "unavailable_samples": 0,
+            "wait_s": 0.10387339815497398,
+            "external_clients": [],
+            "scope": "CUDA process snapshots every 0.5s outside the workload; sub-sample interference can be missed"
+          }
+        },
+        "framework_source": {
+          "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+          "files": 163,
+          "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+        },
+        "result": {
+          "valid": false,
+          "status": "observation_schema_requires_manual_audit",
+          "missing_names": [
+            "logits",
+            "tokens"
+          ],
+          "observed_names": [
+            "generated_token_count",
+            "generated_tokens",
+            "step_logits",
+            "teacher_forced_replay_exact_tokens",
+            "teacher_forced_replay_logits_close",
+            "teacher_forced_replay_logits_max_abs_error"
+          ],
+          "scope": "A naming mismatch does not establish numerical infidelity."
+        }
+      }
+    ],
+    "lease_wait_s": 0.00013308972120285034,
+    "device_selectors": [
+      "0"
+    ],
+    "entry_sha256": "d97b697491aeb4108dd9059f4f7e7e34725055784e30f7a2b2e6b5de22f0b469",
+    "devices": [
+      "GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba"
+    ],
+    "worker_pids_reaped": true
+  },
+  "independent_reference": {
+    "path": "/root/autodl-tmp/dev/v6-work/validation-runs/readiness-20261020-a/qwen_inference/interactive-reference.pt",
+    "sha256": "af929f424e8ceb372b06ac171841df496f9a9ef4c26c16dc2f69b4014a2678da"
+  },
+  "reviewed_mapping": {
+    "tokens": "generated_tokens",
+    "logits": "step_logits"
+  },
+  "controls_reference_sha256": "948870860ae9e3a0c0dbb16e529def4c6b163b86f5378dbccb3ca1bef6df1343",
+  "agents": [
+    {
+      "session": "ses_e7c613ce3ffe5y0Y4f44bUi4ob",
+      "role": "project-intake",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 7,
+        "reported_cost": 0.09377703424,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 156708.0,
+          "input": 21772.0,
+          "output": 3568.0,
+          "reasoning": 3496.0,
+          "cache.read": 127872.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_e7c613ce3ffe5y0Y4f44bUi4ob",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "contract_repairs": 0,
+      "snapshot": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original.intake/generation-snapshots/generation-744292500593.json",
+      "framework_source": {
+        "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+        "files": 163,
+        "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+      },
+      "model": "zhipuai/glm-5.3",
+      "prompt_sha256": "4887e4f6534c586af6f9ce24b35cb63b0d20ab12e9dad9494339d9f0a1c1cca3",
+      "settings_sha256": "d983ae2c8db7bb5ae559313f6dc7faa909bab8ebdd0776e0d7fd45c439bb7e64",
+      "inputs": {
+        "inputs/deployment.json": {
+          "bytes": 1699,
+          "sha256": "7a95a4cb97650c47adb71bb253e8ecf9437c4bc0236b491b1fed1fb5288572e0"
+        },
+        "inputs/intake.schema.json": {
+          "bytes": 11345,
+          "sha256": "ae4ca903d24c8c6f18e9e1a071c1892b162ad5fbaa00a06b5e794dc5e9f8eeac"
+        },
+        "inputs/intent.json": {
+          "bytes": 974,
+          "sha256": "edd0b081abe12b9b3a3cad607c8b79c7bacea6016126a6f8e59ad904037674cf"
+        },
+        "inputs/repository.json": {
+          "bytes": 1499,
+          "sha256": "ae3ba1ce508aa356e17fc67dc23ee1ae12525fb319bfd990fcaf84585b471236"
+        },
+        "inputs/worker-environment.json": {
+          "bytes": 3570,
+          "sha256": "402b748fed11185707bf914480f4bad033c65f3756d8e2ae697455b40f0326b7"
+        }
+      },
+      "tools": [
+        {
+          "part": "prt_1839ed2e1001esXmfuGwgRAIxe",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "ea6a47fe808c475ffe2a30a83a4c1b06bc1ab7e92ae029003f6c27276e2d31f5",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original.intake/sandboxes/project-intake-9aa5ca55f6c0/inputs/intent.json"
+        },
+        {
+          "part": "prt_1839ed48a0013tiyrvSXppDK2s",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "0467cb15dedae8d456d9cf9763dafefd491f63d17a9161f02b599691ef9eb802",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original.intake/sandboxes/project-intake-9aa5ca55f6c0/inputs/deployment.json"
+        },
+        {
+          "part": "prt_1839ed6050012hI5cwtXIkF6VG",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "138eeb6cc8aea97ec3f38d17b34dc7bff4cae005c354dc2bf53f0b1aea6e9aec",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original.intake/sandboxes/project-intake-9aa5ca55f6c0/inputs/intake.schema.json"
+        },
+        {
+          "part": "prt_1839ed7a5001spZS89M1w0fUfD",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "ec59fae19c0467b4db088ba2a8923165d57119a903ed217f4d0a840be6088a83",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original.intake/sandboxes/project-intake-9aa5ca55f6c0/inputs/worker-environment.json"
+        },
+        {
+          "part": "prt_1839ed9160010usY5mt1m11BRH",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "2b2ebe649f372b569683bc419089519ffadb4b33984705941e7e4bafc04c9443",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original.intake/sandboxes/project-intake-9aa5ca55f6c0/inputs/repository.json"
+        },
+        {
+          "part": "prt_1839ee429001Lt3gJOtci07iiY",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "b58342d03b11ef8d40eb3500237612d4983f2a306ae50e1503ba4af4cfa10fea",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/framework/16e38722c448/examples/v6_validation/qwen_inference.py"
+        },
+        {
+          "part": "prt_1839ee573001jZ7ffyP4JZh8oK",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "9646129d02b0fb26808ecc5daf33636895e9078998f9fec2d51908b95eb74229",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/framework/16e38722c448/examples/v6_validation/common.py"
+        },
+        {
+          "part": "prt_1839ee6e6001NlMACLaEw6rtmx",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "cf5bb74e8caab91c3c5cb2eebdb16a52899d87a24488646b06e0350943d8b3fe",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/framework/16e38722c448/examples/v6_validation/workloads.json"
+        },
+        {
+          "part": "prt_1839ef0f10010IPRJlAsKs0faE",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "8a85c37178bd1d2da99a0d81095fdd6f99465205357c872b07263043f07aa5ff",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/framework/16e38722c448/examples/v6_validation/README.md"
+        },
+        {
+          "part": "prt_1839f9536001A7hCnuhvyU5UZD",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "8ba1c72c19f4ab5ab3ee36eac47de83207a83b48e3b920adc8aea0e147d981e2",
+          "path": null
+        },
+        {
+          "part": "prt_183a04d37001ljGI1sQ3JRtaN4",
+          "tool": "write",
+          "status": "completed",
+          "input_sha256": "3f9f9fb016c936019dedf4ae6c447d32f939b4533422a3aa43721cdb93f6bc02",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original.intake/sandboxes/project-intake-9aa5ca55f6c0/intake.json"
+        },
+        {
+          "part": "prt_183a05bad001VAHLwMLQBcs4On",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "a5ddca5db622b122ca796422a0902a8715c9ac3d63fb49090865d4d6fc58f06d",
+          "path": null
+        }
+      ],
+      "fresh_session": true,
+      "tools_actual_inputs": [
+        {
+          "part": "prt_1839ed2e1001esXmfuGwgRAIxe",
+          "tool": "read",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original.intake/sandboxes/project-intake-9aa5ca55f6c0/inputs/intent.json",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_1839ed48a0013tiyrvSXppDK2s",
+          "tool": "read",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original.intake/sandboxes/project-intake-9aa5ca55f6c0/inputs/deployment.json",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_1839ed6050012hI5cwtXIkF6VG",
+          "tool": "read",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original.intake/sandboxes/project-intake-9aa5ca55f6c0/inputs/intake.schema.json",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_1839ed7a5001spZS89M1w0fUfD",
+          "tool": "read",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original.intake/sandboxes/project-intake-9aa5ca55f6c0/inputs/worker-environment.json",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_1839ed9160010usY5mt1m11BRH",
+          "tool": "read",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original.intake/sandboxes/project-intake-9aa5ca55f6c0/inputs/repository.json",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_1839ee429001Lt3gJOtci07iiY",
+          "tool": "read",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/framework/16e38722c448/examples/v6_validation/qwen_inference.py",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_1839ee573001jZ7ffyP4JZh8oK",
+          "tool": "read",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/framework/16e38722c448/examples/v6_validation/common.py",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_1839ee6e6001NlMACLaEw6rtmx",
+          "tool": "read",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/framework/16e38722c448/examples/v6_validation/workloads.json",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_1839ef0f10010IPRJlAsKs0faE",
+          "tool": "read",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/framework/16e38722c448/examples/v6_validation/README.md",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_1839f9536001A7hCnuhvyU5UZD",
+          "tool": "bash",
+          "status": "completed",
+          "path": null,
+          "command_sha256": "0b9bc5213358dde846e5a36f7f1e4797f61ad2e577aa37ec9a9553023e013b63"
+        },
+        {
+          "part": "prt_183a04d37001ljGI1sQ3JRtaN4",
+          "tool": "write",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original.intake/sandboxes/project-intake-9aa5ca55f6c0/intake.json",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_183a05bad001VAHLwMLQBcs4On",
+          "tool": "bash",
+          "status": "completed",
+          "path": null,
+          "command_sha256": "e28c4744ebc37b099a150b3d8b011cc06663e30dee190b77927993eecd10cf00"
+        }
+      ],
+      "old_result_tool_mentions": []
+    },
+    {
+      "session": "ses_e7c5f8645ffeFuw9Kc0ShVEXh2",
+      "role": "project-evaluator",
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 10,
+        "reported_cost": 0.18697620862,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 285359.0,
+          "input": 32080.0,
+          "output": 6312.0,
+          "reasoning": 12471.0,
+          "cache.read": 234496.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_e7c5f8645ffeFuw9Kc0ShVEXh2",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "contract_repairs": 0,
+      "snapshot": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/generation-snapshots/generation-1cf1bf54245b.json",
+      "framework_source": {
+        "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+        "files": 163,
+        "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+      },
+      "model": "zhipuai/glm-5.3",
+      "prompt_sha256": "3ad74c692104019752062ff49d77082a805f6dfa2450eb9788e8a67a54062215",
+      "settings_sha256": "d983ae2c8db7bb5ae559313f6dc7faa909bab8ebdd0776e0d7fd45c439bb7e64",
+      "inputs": {
+        "inputs/request.json": {
+          "bytes": 7344,
+          "sha256": "919166b104745b6a008adf23900ebf038f9a8bb51085c1dfb50a6fe0b1694e04"
+        },
+        "inputs/source/README.md": {
+          "bytes": 8363,
+          "sha256": "97dbce99c0065e87f4accf1bbe6d52aa4438a289d7eaec1c85a9c6b1cb25f68d"
+        },
+        "inputs/source/common.py": {
+          "bytes": 4614,
+          "sha256": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327"
+        },
+        "inputs/source/qwen_inference.py": {
+          "bytes": 4541,
+          "sha256": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8"
+        },
+        "inputs/source/workloads.json": {
+          "bytes": 2814,
+          "sha256": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+        },
+        "inputs/understanding.schema.json": {
+          "bytes": 1780,
+          "sha256": "b5ecaf493d3f40a2efd21135617fb0fc05bc8c2fc68506d76458a86de10a85e5"
+        },
+        "inputs/worker-environment.json": {
+          "bytes": 3570,
+          "sha256": "402b748fed11185707bf914480f4bad033c65f3756d8e2ae697455b40f0326b7"
+        }
+      },
+      "tools": [
+        {
+          "part": "prt_183a087df001nj2ltbHcEgQ3Z9",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "0350b878ff898a30fcefc960b51881bafe74998e18545346b9d4a306ff13855f",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/inputs/request.json"
+        },
+        {
+          "part": "prt_183a08971001Pq0vjbEzupmNWp",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "c2f2abf6525b6bbbf7023728bb80ec3e3553e9c6aae8df5a1155934ba8095895",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/inputs/worker-environment.json"
+        },
+        {
+          "part": "prt_183a09317001mBy4Gy66S5RiiV",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "883550a167d6d5af698bd009cbefa29ff219a4a141f6e8407256a2cc90ccf65b",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/inputs/source/qwen_inference.py"
+        },
+        {
+          "part": "prt_183a09475001k82fcG2rcFPop7",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "887775f789ab8a644d25470475b6fd3ed68bb7a23ae02537ef99827dbc67659b",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/inputs/source/common.py"
+        },
+        {
+          "part": "prt_183a095f600144Yd325xduHJYg",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "e6d065df9017d92e676734e0bb0d36672cf85b164a29a7acc7a9c13b8172df31",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/inputs/understanding.schema.json"
+        },
+        {
+          "part": "prt_183a09ee10019mjMxKeuMGE1ck",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "8745402988dba7def43d4fd2001a24fa8f1662a74919441dcac189df62e611b7",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/inputs/source/workloads.json"
+        },
+        {
+          "part": "prt_183a0a11d001rFaeyQVsUL3IDB",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "9c553502e59c267bcad108a57645ea5862cc4d914de1e3da5730a95dcef4e0af",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/inputs/source/README.md"
+        },
+        {
+          "part": "prt_183a0a277001ZE3VrlK8gXY4rj",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "2ad0f4761fb1e73ef215fb5976969f618886e8bd65f4f2a82ab19950e2e5eb6f",
+          "path": null
+        },
+        {
+          "part": "prt_183a22a7a001gB7WaTb8Mm5nLb",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "495b74f6b09c0902ed434a135b44d69208393aba111b59f04927e23e796acbf1",
+          "path": null
+        },
+        {
+          "part": "prt_183a22cc8001Hc3hZUJZRPVBEu",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "0a4533deb2ed357a571b99319c2a47e157c8da2224675685387928d81e5f0581",
+          "path": null
+        },
+        {
+          "part": "prt_183a25231001liaCwCE95C5EBs",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "da25d684201841ef6ae533cec663cbc77d3198edf8842d25de0288a437773d17",
+          "path": null
+        },
+        {
+          "part": "prt_183a37fa6001yGeaPtKrtq4FLE",
+          "tool": "write",
+          "status": "completed",
+          "input_sha256": "cff7ccd4a805703f394fd520adefe7bb1d3d56baf66c76631bb938686e0a05f1",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/adapter.py"
+        },
+        {
+          "part": "prt_183a3e456001rshHsJZl6W20wM",
+          "tool": "write",
+          "status": "completed",
+          "input_sha256": "093e311bfaf01066d7cbf5b6b681a98a28c03419756e61cada902beb4e57189f",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/understanding.json"
+        },
+        {
+          "part": "prt_183a40793001cAooKXzzf87g6x",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "52ce799f6debdc0f31634de924585c2a099f505aa71aa023649e07a15e54b140",
+          "path": null
+        },
+        {
+          "part": "prt_183a43f26001k4Mj2nVp0KAOcT",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "cb21306abb4563a49ff2cf47ba469739e8356050005ca73a92621bcafc56d4ee",
+          "path": null
+        }
+      ],
+      "fresh_session": true,
+      "tools_actual_inputs": [
+        {
+          "part": "prt_183a087df001nj2ltbHcEgQ3Z9",
+          "tool": "read",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/inputs/request.json",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_183a08971001Pq0vjbEzupmNWp",
+          "tool": "read",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/inputs/worker-environment.json",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_183a09317001mBy4Gy66S5RiiV",
+          "tool": "read",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/inputs/source/qwen_inference.py",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_183a09475001k82fcG2rcFPop7",
+          "tool": "read",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/inputs/source/common.py",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_183a095f600144Yd325xduHJYg",
+          "tool": "read",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/inputs/understanding.schema.json",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_183a09ee10019mjMxKeuMGE1ck",
+          "tool": "read",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/inputs/source/workloads.json",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_183a0a11d001rFaeyQVsUL3IDB",
+          "tool": "read",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/inputs/source/README.md",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_183a0a277001ZE3VrlK8gXY4rj",
+          "tool": "bash",
+          "status": "completed",
+          "path": null,
+          "command_sha256": "1169140119a4f1a86f3a16234a842f4a8edbe3327ff85cd33fe39974fef109f6"
+        },
+        {
+          "part": "prt_183a22a7a001gB7WaTb8Mm5nLb",
+          "tool": "bash",
+          "status": "completed",
+          "path": null,
+          "command_sha256": "6398491ed14efa088e586f41bdc109c3b84ba592f213825a21d67399aa8139d8"
+        },
+        {
+          "part": "prt_183a22cc8001Hc3hZUJZRPVBEu",
+          "tool": "bash",
+          "status": "completed",
+          "path": null,
+          "command_sha256": "ad7bbfbb50bea7917b08a54f9646a39c5fe45c0eb57283610209173f435d8bb1"
+        },
+        {
+          "part": "prt_183a25231001liaCwCE95C5EBs",
+          "tool": "bash",
+          "status": "completed",
+          "path": null,
+          "command_sha256": "abb93293e25119e1df1959ad29bdec74a6974104036a8770556188acfe978912"
+        },
+        {
+          "part": "prt_183a37fa6001yGeaPtKrtq4FLE",
+          "tool": "write",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/adapter.py",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_183a3e456001rshHsJZl6W20wM",
+          "tool": "write",
+          "status": "completed",
+          "path": "/root/autodl-tmp/dev/v6-work/qwen-end-to-end-original-20261029/qwen-original/sandboxes/project-evaluator-0c6ec782c686/understanding.json",
+          "command_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "part": "prt_183a40793001cAooKXzzf87g6x",
+          "tool": "bash",
+          "status": "completed",
+          "path": null,
+          "command_sha256": "c2eed0d3da9bde5836adea0dad3b35dd987948b3855f481012096517251ed307"
+        },
+        {
+          "part": "prt_183a43f26001k4Mj2nVp0KAOcT",
+          "tool": "bash",
+          "status": "completed",
+          "path": null,
+          "command_sha256": "e738ac3a7806f4c4982e1cc36e951fefb3369d275ff45fa13df871c52b79e0e3"
+        }
+      ],
+      "old_result_tool_mentions": []
+    }
+  ],
+  "code_review": {
+    "mapping": "observe generated_tokens is run tokens.detach, and step_logits is run full stacked logits.detach. Both come from the full original infer mirror, not a reduced/renormalized output.",
+    "complete_work": "One prefill plus31cached single-token forwards, fixed32token greedy output, logits_to_keep1, no EOS early exit. Teacher-forced32step replay is in observe outside measurement, as source correctness work.",
+    "timers": "Original sync before start, first-token sync, final sync retained. The framework also brackets run; primary and TTFT use the adapter internal source clocks. Phase annotations add instrumentation and are not assumed zero-cost.",
+    "owners": "prepare owns model, tokenizer, inputs and CPU dimensions/metadata; no prepared CUDA reference logits or cache owner in this adapter. _infer locals own output/cache until return; quality result owns full logits/tokens, clean result tokens/CPUmetrics. Invocation lifetime clears last quality result before warmup and releases each clean result after metrics before next invocation. No model/cache global owner introduced in reviewed code.",
+    "memory_limits": "Source clean assignment discards returned tokens before peak query; framework keeps current tokens (32int64 values, allocator rounding not separately measured) through metrics then releases. Both computation peaks include tokens. Framework allocated/lifecycle fields are not numerically identical source metrics, and lifecycle includes quality/prepare history; no cross-adapter memory gain inferred.",
+    "math": "Source BF16/SDPA, TF32off/highest, seed and prompt construction preserved. requires_gradFalse differs from original parameter flags but run is inference_mode in both; no source gradient workload exists here.",
+    "contract": "New completion text correctly calls first boundary ttft_ms and complete generation end_to_end_ms; old variant stale prose is not inherited. Source one-device workload preserved.",
+    "next": "Only external reviewed mapping is needed. No production prompt/adapter/request edits. Compare full existing controls to independent source in a recorded CPU worker, then continue unstarted search with shared read-only controls.",
+    "limits": "This is manual source review plus controls, not independent numerical source pass yet. Tool input path audit is not exhaustive external filesystem isolation."
+  },
+  "disk": {
+    "at": "2026-10-28T17:59:11.557045+00:00",
+    "path": "/root/autodl-tmp",
+    "df_returncode": 0,
+    "df": "   1B-blocks         Used       Avail Use% Mounted on\n161061273600 143595659264 17465614336  90% /root/autodl-tmp\n",
+    "df_error": "",
+    "statvfs_free_bytes": 17465614336,
+    "interpretation": "df reflects the 150 GiB container quota; statvfs has reported host space for some nested paths and quota for the mount root. Compare both; plan against df."
+  }
+}
