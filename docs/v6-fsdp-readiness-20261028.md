@@ -29,3 +29,25 @@
 [完整源审计](evidence/v6-fsdp-readiness-20261028/source-audit.json)包含所有五样本、两步质量、source observation SHA 与六个 profile 索引。每 rank 每次有 74 个 NCCL kernel，实际名称为 AllGather_RING_LL / ReduceScatter_Sum_f32_RING_LL；sum 约 167.82–178.01 ms，独立 profiler 完整窗口约 184.62–193.93 ms。kernel 等待/同步可能包含在这些区间中，不能据此宣称等量的可消除通信成本。原始[后处理失败](evidence/v6-fsdp-readiness-20261028/initial-completion.json)保留。
 
 后续启动：冻结 `fe3b5cebd77aa3ccba080d2a79d0eb2b312315d3`，04:00:15 UTC、controller PID514609；[launch](evidence/v6-fsdp-readiness-20261028/followup-launch.json)、[protocol](evidence/v6-fsdp-readiness-20261028/followup-protocol.json)。旧源证据重新解析通过，真实 intake 会话 `ses_e7f55659fffek6273dGICeudTy`、初始快照 `generation-6351535b2857` 已建立；此时 evaluator/discovery 尚待完成，不预判质量或泛化成功。唯一普通监听 PID26684，[启动核验](evidence/v6-fsdp-readiness-20261028/wakeup-setup.json)为 waiting、controller 存活。实际 df 可用 30,006,849,536 bytes（约 27.95 GiB），未转存任何 raw 到本地。
+
+## 原入口终态与独立审计
+
+04:19:01 UTC，followup 两阶段完成，普通监听投递本轮。原始 source GPU 测量没有重跑。新真实 intake/evaluator/discovery 执行完成，**本批没有候选搜索或正式优化接受**。[终态审计](evidence/v6-fsdp-readiness-20261028/terminal-audit.json)保存实际生成输入索引、完整 request/contract、controls、全部五个 clean 样本与每个次级指标三份 profile 的 SHA/重算值；私有模型配置只记录哈希，原始配置留服务器。
+
+Intake 自主选择四个次级字段：communication_kernel_sum_ms、communication_union_ms、compute_overlap_ms、communication_without_compute_ms，全部使用已安装 torch_communication 接口、max rank 后 median。主目标、原始 1.05 显存约束、FP32/noTF32/eager、完整两 rank 工作、共享 embedding/head、两步质量与完成边界均传到 request 和 contract。四个指标分别来自四组独立 profile 调用，每组每 rank 3 次，**不是同一组 trace 的四列**，不能将跨字段端点中位数相减当作同时发生的物理分解。
+
+Evaluator 会话 `ses_e7f517c42ffe479VAZZwcOBCNV`，初始快照 `generation-0f8efd0b671d`，零 contract repair；adapter SHA `788366bf0c3961e1ce15408873bf271c9867ec9eb7092ea9903dc40891012ecd`。实际代码保留每 block/root fully_shard、完整 loss/backward/SGD、reset、两次同步、返回 logits 至 metrics 读取、tied_embedding 精确布尔观察。双 rank reset/identity/negative/coverage controls 通过。
+
+独立检查直接比较此前 source 写出的四个全量 observation 与新 controls 的两 rank 两步 reference。经代码审阅，loss/logits/gradients/parameters 四个名称和嵌套容器完全一致，新增 tied_embedding=True 单独检查；两步各 rank 分别比较 361,257,089 / 361,255,041 元素，全部零误差。对存储观察量添加完整 logits +1 和改 tied_embedding=False，实际 comparator 均拒绝；这是 CPU 观察量负例，不冒充实时 GPU 模型注入。源码本身的真实 GPU +1 负例此前已经通过。
+
+Discovery 每 rank 2,248 个 call site、809 个 group，实际 49 次 all-gather、25 次 reduce-scatter；74 个 collective 全匹配，payload coverage 74/74，logical input 2,733,563,904 bytes/rank。peer access 为 0，实际 NCCL 日志为 SHM/direct/direct；这不是 wire 流量计。自动 planner 选择 nsys、nccl_tuning、execution_timeline、device_telemetry，均 observed；collective_calibration 为 unavailable（当前实现针对 all-reduce，不能作为 FSDP 两类 collective 的校准结果）。planner 对拓扑/字节计/跨 rank 时钟的限制大多说明清楚，但 rationale 把扰动 discovery 中的 NCCL 非重叠区间称为 exposed 时间并推断主要杠杆，证据不足，不能直接采纳该因果结论。尤其 rank0 discovery NCCL sum 564.99 ms、rank1 174.15 ms，与 clean step 177.60 ms 不在同一测量条件。
+
+### 实测的 512-byte 源生命周期差异
+
+完整数值通过，但资源读数并非严格源一致：source allocated/peak 为 1,462,069,760 / 2,239,245,312 bytes，adapter 为 1,462,069,248 / 2,239,244,800 bytes，均少 512。代码审阅定位到 source `main()` 的 GPU `passed` 标量在 quality 后一直被局部变量持有，adapter 的 prepare/state 未保留它。
+
+独立双卡 [A/H/H/A 探针](evidence/v6-fsdp-readiness-20261028/owner-probe.json)已实证：A 使用未改 adapter，H 只在计时外增加并持有源脚本同款 CUDA scalar/all_reduce；每臂三次完整 step、两 rank 的 allocated/peak 差值都严格为 512，H 与源读数相等。每臂末次完整 logits/梯度/参数比较仍零误差。没有改旧分数、减去开销或进行接受。探针首次配置遗漏 `function='worker_entry'`、在 adapter 执行前失败，原[错误记录](evidence/v6-fsdp-readiness-20261028/owner-probe-initial-error.json)保留；只修入口函数后在新目录执行。
+
+这是一处有实证的 evaluator 生命周期遗漏，大小约为源峰值的 0.000023%，不影响数值通过结论，但本任务存在显存约束，继续搜索前应由负责 evaluator 的 Agent 修复。使用既有 `--feedback` 接口，提供当前 adapter、这一处 source owner 及隔离实测证据；不增加生产 prompt、硬编码路由或全局审核门槛。原错误 adapter/参考及全部结果保持冻结，新输出目录执行真实修复、controls、完整 source 比对和原生内存读数检查，再人工审阅实际 ownership 后决定搜索。该后续属于开发者证据辅助的 evaluator 修复，不再称为完全无辅助的新原入口 cohort。
+
+审计时实际 df 可用 23,854,616,576 bytes（约 22.22 GiB），GPU 无进程。下一批预计新增约 5.4 GiB controls 参考，无其他大型并行实验；raw 留服务器。详见[修复批次](v6-fsdp-owner-repair-20261028.md)。

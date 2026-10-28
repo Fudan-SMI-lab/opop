@@ -88,6 +88,8 @@ clean 端点结束后，对 P/T/C 各做单独的 Python runtime profile；对 C
 
 [FSDP2 完整源就绪性](v6-fsdp-readiness-20261028.md)已通过两步全量数值检查，源 step 为 176.6510 ms；两 rank 各五个 clean 样本、三份独立 profile 保留，实际 all-gather/reduce-scatter 路径成立。后处理因同名 CPU/GPU marker 误判失败，原错误保留，只修 parser 并读取已有 trace，无 GPU 重测。后续冻结 `fe3b5ceb` 的真实原入口 intake/evaluator/discovery 已启动，唯一普通监听运行。本批不搜索候选；下一步需独立审核新 adapter 与完整源一致性，确认后才开展自主搜索。
 
+FSDP 原入口终态完成，独立两步全量数值为零误差；四项通信指标自主选定并执行，74 collective/rank 全匹配。手工源审阅与双卡隔离验证发现 adapter 缺少 source 持有的 512-byte GPU 质量标量，原生显存读数因此不严格相等。先用已有反馈机制启动[真实 evaluator 修复](v6-fsdp-owner-repair-20261028.md)，不改生产提示或添加框架门槛；修复、独立数值与生命周期检查通过后再搜索。原生成结果保留，修复后不冒充无辅助 original-entry cohort。
+
 在相同 workload 上验证 Qwen 的 TTFT/decode 吞吐、ResNet 的延迟/带吞吐约束显存、DDP 的整步/带整步约束通信目标。保存候选并交叉评价；目标改变不强制要求换组，选择是否合理由测量与交叉结果支持。
 
 当前仍缺少有说服力的自主通信优化正例。先判断 B 阶段的结果，再按实际通信瓶颈选一个真实通信敏感项目，兼作未经框架针对性修改的新项目测试。不能为获得正例故意弱化基线、放宽质量或把换 shape 当作新项目。
