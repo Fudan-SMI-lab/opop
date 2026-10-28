@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态（2026-10-28 21:15 UTC）：[原样Qwen两候选固定验证](v6-qwen-feedback-fixed-validation-20261029.md)B通过、C/T的U/O四端点均完整质量失败，未进入clean计时。12新张量复核并与旧C1/C2比较：四种实现greedy逐元素相同、teacher源零误差。事实反馈被读取但未修复质量，不改生产prompt/默认反馈结构，不重复该角色A/B。准备[同输入首decode四项控制](v6-qwen-first-decode-20261029.md)，区分cache表示和Graph执行的共同数值路径；GPU已空闲，df余12.22GiB，无清理/本地raw转存。
+
 当前执行（2026-10-28 21:14 UTC／香港10月29日05:14）：[Qwen两份生成代码固定GPU验证](v6-qwen-feedback-fixed-validation-20261029.md)冻结aa1ab0ed、控制器PID889627，两候选stage成功、首baseline观察端点真实GPU运行。预部署上传副本不一致已在GPU启动前修正并记录，未重启旧实验。唯一普通完成/磁盘监听PID52576 waiting，df余12.34GiB；无新Agent生成/搜索/正式接受或生产core修改。
 
 最新终态（2026-10-28 21:04 UTC）：[完整输出事实反馈A/B](v6-qwen-relation-feedback-replay-20261029.md)两臂真实生成均0修复，实际只增加原反馈1,979字节。Treatment读到新增事实并纠正哪侧先偏离源；两臂均生成single StaticCache Graph，仍有不支持的因果/TTFT保证。CPU mock探针未验证CUDA Graph，早期探针错误完整保留。准备[原样代码固定GPU验证](v6-qwen-feedback-fixed-validation-20261029.md)，B-observed、C-U/O、T-U/O各一次，原工作/质量/TTFT合同不变，无新搜索或正式接受；生产核心不改，df余12.46GiB，无清理/本地raw转存。

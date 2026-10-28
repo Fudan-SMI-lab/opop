@@ -35,3 +35,6 @@ Control记录74个工具、treatment89个，工具状态均completed；但输出
 实际探针为CPU随机小Qwen：control主要FP32、prompt7/new5，treatmentBF16、prompt12/new5；测试runner覆盖了_capture/_replay或_setup/_run_step，绕过真实CUDA Graph。因此零误差或0.0029296875 toy误差均不能证明完整Qwen3-4B BF16/32token GPU质量。双方仍把shared-pool原因和prefill不改保证TTFT说得过满；profile窗口/空隙不能提供新候选的因果成本或原生执行证明。没有据此修改生产prompt/collector或接受规则。
 
 当前GPU空闲，实际数据盘剩13,383,286,784字节（12.46GiB）。下一步按[固定GPU验证协议](v6-qwen-feedback-fixed-validation-20261029.md)，原样执行两份生成代码各一组U/O，不修代码、不重开搜索、不重试到通过。原失败、旧同adapter收益及所有历史决定保持。
+
+
+后续[原样GPU验证](v6-qwen-feedback-fixed-validation-20261029.md)已结束：两份代码U/O四端点全部复现相同完整质量失败，greedy值与旧两候选逐元素相同。新增事实被读取这一结果成立，但不能提升为优化收益或质量改善；本次事实输入A/B到此归档，不重复生成直到通过。生产prompt与默认反馈结构没有采纳该实验字段。

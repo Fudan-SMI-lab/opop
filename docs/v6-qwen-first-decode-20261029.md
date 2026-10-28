@@ -1,0 +1,15 @@
+# Qwen真实同输入首decode数值诊断
+
+四种不同生成实现复现逐元素相同的错误greedy输出，既有事实不足以把原因归给单Graph/多Graph、pool共享、clone或某一种cache设计。本批缩小到第一个已出现差异的decode，直接检查共同执行路径，不继续让Agent根据同一猜测改写代码。
+
+使用未修改的fresh adapter498c90f3准备真实Qwen3-4B，原BF16/SDPA/noTF32、模型资产和源参考不变。先跑一次原完整32-token baseline并与完整源参考核对，保存原始输出；再运行原prefill一次，保存完整36层prefix KV、实际token和prefill logits检查。共享同一模型和同一份token/prefix，以固定顺序运行 **DynamicCache eager、DynamicCache Graph、StaticCache eager、StaticCache Graph**，各一次首decode。
+
+每个模式从同样数值的prefix副本开始，核对全量值SHA；DynamicCache保留实际257长度，StaticCache使用原候选长度287但仅前257位置有效。StaticCache使用库本身mask，无开发者重写attention。Graph使用3次独立warmup、单私有Graph捕获及一次replay；Static warmup后恢复完整prefix/清空tail/reset累计长度。所有工作使用当前token和KV，不缓存最终答案。记录完整首decode logits/token、更新后KV及逐层差异、prefix是否被改变、原失败greedy首decode是否复现。KV差异只作描述，不创造隐藏状态质量阈值。
+
+同进程固定顺序有分配/库缓存和warmup状态影响，不能消除所有混杂；CPU读取和持有KV用于诊断，也不能代替未观测运行。该小型对照只覆盖首decode，不能建立完整32-token候选正确性、性能、lifetime或泛化接受。没有candidate安装/搜索、额外Agent角色、profile/Nsight、计时优化或生产修改。
+
+另从实际token和teacher切片计算tensor_description，并与冻结binding signature比较，记录stride和匹配predicate；这是源构造与代码分派控制，不把它冒充旧运行逐调用事件。旧teacher缺少route本身不能证明回退。
+
+控制器`scripts/experiments/v6_qwen_first_decode_20261029.py`；目录`/root/autodl-tmp/dev/v6-work/qwen-first-decode-20261029`。预检核对已完成B控制、27项冻结身份、adapter/参考、执行请求schema和core。实际CUDA执行再验证新增探针；接口预检不是数值通过。逐arm错误保留；不改旧candidate或重启已完成批次。
+
+实际150GiB配额余约12.22GiB，预计raw输出约200MiB（完整baseline、prefix和4组更新后KV），留服务器。没有本地raw下载、引用复制或清理；只取小型摘要/索引至GitHub。启动前配置一个普通完成/8GiB监听，无Goal或模型轮询。后续仅根据真实对照结果决定下一步，不自动把诊断写入生产提示或接受候选。
