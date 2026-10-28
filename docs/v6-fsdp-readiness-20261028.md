@@ -17,3 +17,11 @@
 数据盘启动前可用约 33.40 GiB。预计 source 全量两步梯度/参数分片证据约 5.6 GiB，新的 evaluator 参考可能再占相近空间，trace 另计；不启动并行 Qwen 或多个大 trace。保留已有模型/接受版本/冻结结果，只保存新必要工作集；raw 不下载本地，GitHub 仅代码、协议、索引、小摘要。旧 Qwen 拒绝/all80 与 TTFT14.06%/decode88.88%分别记录；DDP Graph40.61%/合批55.73%/旧通信拒绝，TP失败，ResNet拒绝/all80，另 memory adapter36.68%接受/缺 images 事实不变。
 
 执行脚本 `scripts/experiments/v6_fsdp_readiness_20261028.py`，输出 `/root/autodl-tmp/dev/v6-work/fsdp-readiness-20261028`。新批冻结后只启用一个普通完成监听器，终态后自动审计；无 Goal、模型轮询、额外投递测试、旧归档控制器或本地大转存。本批没有候选搜索，也不会产生新的正式性能接受。
+
+## 完整源执行与后处理修正
+
+首次冻结 `21809f6c`，03:56:22 UTC 启动、03:56:57 终态。完整 GPU 源执行成功，两 rank 两步均零误差（每步分别比较 361,257,089 / 361,255,041 个元素，因 vocab 分片不等长），完整五样本和六个 profile 都已写出；source step 中位数 176.6510 ms、allocated peak 2,239,245,312 bytes。这只是源基线，不是优化接受。
+
+控制器后处理断言失败：同一个 `record_function` 在 profiler 中有 `user_annotation` 和 `gpu_user_annotation` 两种同名区间，原 parser 错误要求只出现一次。原结果、日志、冻结代码及终态 `completed_with_errors` 全保留，后续真实 intake 尚未执行。启动监听前检查已经发现终态，所以未启动第一个监听、也没有提交额外续行。
+
+最小修正只在实验 parser 明确选择 CPU `user_annotation` 完整窗口；不改源代码、production、GPU执行或样本。新目录 `fsdp-readiness-followup-20261028` 从原目录只读解析原六个 trace、核对全部源文件 SHA 后继续真实原入口阶段，不重新跑源性能。复用的 source tensors 仍原地保存，未复制第二套。当前实际 df 可用约 27.96 GiB，后续参考体积继续核查。

@@ -43,6 +43,13 @@ def union_ms(events):
 
 
 def source_readiness(args, project):
+    if args.source_results:
+        original=read(args.source_results.parent/'source-protocol.json')
+        assert {p.name:sha(p) for p in project.iterdir() if p.is_file()}==original['source_hashes']
+        write_json(args.output/'source-reuse-protocol.json',{'at':now(),'original':str(args.source_results),
+            'source_protocol_sha256':sha(args.source_results.parent/'source-protocol.json'),
+            'scope':'Parse existing completed source measurements only; no GPU re-execution or changed samples. Original terminal parser error is retained.'})
+        return audit_source(args.source_results)
     out=args.output/'source-readiness'
     command=[sys.executable,'-B','-m','torch.distributed.run','--standalone','--nproc-per-node=2',str(project/'train.py'),'--output',str(out),'--profile']
     write_json(args.output/'source-protocol.json',{'at':now(),'argv':command,'source_hashes':{p.name:sha(p) for p in project.iterdir() if p.is_file()},
@@ -52,13 +59,18 @@ def source_readiness(args, project):
     record={'status':'error' if result.returncode else 'completed','returncode':result.returncode,'ranks':[]}
     if result.returncode:
         record['quality_files']=[str(p) for p in out.glob('quality-rank-*.json')];return record
+    return audit_source(out)
+
+
+def audit_source(out):
+    record={'status':'completed','ranks':[]}
     for rank in range(2):
         path=out/f'result-rank-{rank}.json';data=read(path)
         assert data['passed'] and len(data['samples'])==5 and len(data['communication_profiles'])==3
         traces=[]
         for filename in data['communication_profiles']:
             raw=read(filename);events=raw['traceEvents']
-            windows=[e for e in events if e.get('name')=='source.complete_training_step' and e.get('ph')=='X']
+            windows=[e for e in events if e.get('name')=='source.complete_training_step' and e.get('ph')=='X' and e.get('cat')=='user_annotation']
             assert len(windows)==1;window=windows[0];start=window['ts'];stop=start+window['dur']
             kernels=[e for e in events if e.get('cat')=='kernel' and e.get('ph')=='X' and start<=e['ts']<stop]
             nccl=[e for e in kernels if 'nccl' in e.get('name','').lower()]
@@ -97,6 +109,7 @@ def original_entry(args, project):
 def main():
     parser=argparse.ArgumentParser(__doc__)
     for name in ['output','config']:parser.add_argument('--'+name,type=Path,required=True)
+    parser.add_argument('--source-results',type=Path,help='Audit preserved source measurements instead of running them again')
     args=parser.parse_args();os.umask(0o077);args.output.mkdir(parents=True,exist_ok=True)
     project=Path(__file__).resolve().parents[2]/'examples/v6_fsdp_training'
     write_json(args.output/'protocol.json',{'at':now(),'framework_source':framework_source(),'disk':disk_observation(Path('/root/autodl-tmp')),
