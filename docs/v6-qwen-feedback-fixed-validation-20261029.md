@@ -13,3 +13,10 @@ U使用原evaluate entry。O复用已验证的外部observer（SHA a06b6c0e）�
 此批不采大型profile或Nsight，不因schema有效、CPU toy通过、role完成或worker完成而接受候选。若质量通过，也只建立固定执行证据，后续完整独立评测/原生路径仍需单独决定。原始样本和失败全部保存；同输入CPU/CUDA比较器计数差与相对阈值方向须分开报告。
 
 控制器`scripts/experiments/v6_qwen_feedback_fixed_validation_20261029.py`，目录`/root/autodl-tmp/dev/v6-work/qwen-feedback-fixed-validation-20261029`。预检已核对生成源码、初始输入、27项旧源码/controls/request身份、原执行请求和observer SHA；生产core仍ed24af7a，正式执行前再次核对。现约12.46GiB可用，预计观察张量约百余MB；不做本地raw转存。GPU结束后才允许授权无损冷压缩；当前无需清理。唯一普通终态/8GiB监听，不启用Goal或模型轮询。
+
+
+已冻结`aa1ab0eda399612991f118990dfcf1658843bd25`，2026-10-28 21:13:43 UTC启动控制器PID889627（PPID1、独立session）。[启动及精确预检](evidence/v6-qwen-feedback-fixed-validation-20261029/launch.json)、[冻结协议](evidence/v6-qwen-feedback-fixed-validation-20261029/protocol.json)、[两份隔离候选身份](evidence/v6-qwen-feedback-fixed-validation-20261029/staged-identities.json)已存档，生产core不变。
+
+部署前曾发现服务器临时上传副本缺少最后一条生成代码末尾SHA复核，版本检查在新批目录/worker创建前停止。同步精确已提交字节后才启动一次正式批次，记录见[部署修正](evidence/v6-qwen-feedback-fixed-validation-20261029/deployment-preflight-correction.json)；没有重新运行任何旧实验。监听先于launch记录启动，初次只记录launch_record_missing并等待，未发送通知；同一个监听现已跟踪真实controller。
+
+21:14:07 UTC[启动验证](evidence/v6-qwen-feedback-fixed-validation-20261029/startup-verification.json)：两候选已成功stage，首B-observed真实GPU worker PID889699运行、占约8362MiB；此时尚无端点终态，不提前宣称质量通过。实际df余13,249,826,816字节（12.34GiB）。唯一普通完成/8GiB监听PID52576已核验waiting，见[设置](evidence/v6-qwen-feedback-fixed-validation-20261029/wakeup-setup.json)、[运行状态](evidence/v6-qwen-feedback-fixed-validation-20261029/wakeup-verification.json)。结束后自动审计全部实际结果；当前无新清理、raw本地转存或生产修改。
