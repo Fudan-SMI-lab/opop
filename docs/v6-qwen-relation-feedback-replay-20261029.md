@@ -20,3 +20,18 @@
 20:24:32 UTC[实际启动核验](evidence/v6-qwen-relation-feedback-replay-20261029/startup-verification.json)：control真实快照`generation-6673f453e913`全部33输入与原快照相同，prompt/model/tools/core一致；真实provider已有6条assistant记录。当前control进行中，尚未得到两臂最终结果，不提前推断反馈有效或代码正确。GPU暂空闲；实际df剩13,723,664,384字节（12.78GiB）。
 
 唯一普通完成/8GiB监听PID59096已核验waiting，见[监听设置](evidence/v6-qwen-relation-feedback-replay-20261029/wakeup-setup.json)和[实际状态](evidence/v6-qwen-relation-feedback-replay-20261029/wakeup-verification.json)。旧关系诊断监听已标记handled，不重启；等待期间只有普通进程检查，不调用模型轮询。到达终态后继续核查实际输入、工具读取和输出，再决定下一步。
+
+
+## 终态审计（2026-10-28 21:04:13 UTC）
+
+Control和treatment都完成真实candidate角色，各0次schema repair。重新加载实际初始快照并核对生成后的输入文件：33输入中只有原反馈增加1,979字节，其他32文件、prompt、model/tool配置、core一致，旧JSON字段和值全部保留。模型分别记录费用3.06461253976和3.5705464758（provider估计，非账单）；使用统计没有限额。见[实际输入/工具/输出审计](evidence/v6-qwen-relation-feedback-replay-20261029/terminal-audit.json)。
+
+Treatment通过工具`prt_184415d8d0017jxOmX5QpyntIw`实际打印并读取新增完整事实和限制，最终rationale明确greedy从decode位置1先偏离源、teacher与源相同；没有另行读取所链接audit文件或raw张量。Control读了原失败反馈/候选代码，最终说明greedy与teacher不一致，但没有独立建立哪一侧匹配源。两组都采用原selection已经提出的single StaticCache Graph方向，因此这不是“补充事实才使Agent想到单Graph”的证据，也不能从一次随机生成推断稳定优越性。
+
+两组均保留完整任务/质量/TTFT合同且parameter_space为空；并未执行真实完整GPU质量检查。Control代码SHA`777488e03148618b7a56f2c56302d1e99c5abced778f0f56129040adaf0f4931`，使用显式2D mask、首decode才分配StaticCache，正常步不更新返回DynamicCache的KV，guard fallback时才物化。Treatment代码SHA`313aa7bc7818fa72269b00134d91096102692fb33b56c0c3bb5c96060141d562`，让库的StaticCache路径生成mask，每步把调用方DynamicCache层重绑到真实静态KV的narrow views，使用长度/identity guard。其proposal声称build分配StaticCache，但实际build仅分配static_input，StaticCache在_setup里延迟分配；跨下一次refresh的view稳定性也不能由同一步内声明保证。Control的eliminated_calls为空，treatment声明23,225个；这只是生成的plan声明，不能替代实际路径证据。
+
+Control记录74个工具、treatment89个，工具状态均completed；但输出内分别存在3/2次Traceback。Control早期toy测试token mismatch、shape错位、list传torch.equal失败，treatment出现NameError和计数断言失败；还有control较早mock输出range-overflow为False。后续修改的是Agent自建探针/自身候选，不是开发者运行中修补。全部早期内容和输出已保存在服务器audit session-parts，另保全7份最终临时探针文件。shell管道exit0只可能是tail退出状态，不能把这些失败写成通过。
+
+实际探针为CPU随机小Qwen：control主要FP32、prompt7/new5，treatmentBF16、prompt12/new5；测试runner覆盖了_capture/_replay或_setup/_run_step，绕过真实CUDA Graph。因此零误差或0.0029296875 toy误差均不能证明完整Qwen3-4B BF16/32token GPU质量。双方仍把shared-pool原因和prefill不改保证TTFT说得过满；profile窗口/空隙不能提供新候选的因果成本或原生执行证明。没有据此修改生产prompt/collector或接受规则。
+
+当前GPU空闲，实际数据盘剩13,383,286,784字节（12.46GiB）。下一步按[固定GPU验证协议](v6-qwen-feedback-fixed-validation-20261029.md)，原样执行两份生成代码各一组U/O，不修代码、不重开搜索、不重试到通过。原失败、旧同adapter收益及所有历史决定保持。
