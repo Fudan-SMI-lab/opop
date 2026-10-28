@@ -76,3 +76,7 @@
 后续更新：该批14:28:37 UTC结束，守候14:28:53 UTC提交 `01a17dc3-9a70-7be1-ba2f-723d5110b8ff`，本消息已实际开启当前新轮次。附加的全盘清理指令随同送达；已核查DDP/TP结果并补做独立源数值审计，开始维护。原守候现为queued且退出，不复用它等待下一项工作。见[投递回执](evidence/v6-ddp-semantics-20261027/wakeup-delivery.json)。
 
 2026-10-28 更新：当前 FSDP 搜索监听按用户要求增加可选磁盘提前提醒，详见[FSDP运行记录](v6-fsdp-search-20261028.md)及[配置回执](evidence/v6-fsdp-search-20261028/wakeup-disk-update.json)。只复用一个普通监听，不新增模型轮询。指定 `--min-free-bytes` 时使用实际远端 `df`；低空间是 `terminal=false, requires_attention=true` 的独立事件，投递一次后退出，需处理后恢复监听。它不会停止实验或自动清理，完成事件仍优先；不指定该选项时维持原行为。当前8 GiB阈值只用于提前处置空间，不是实验/API使用限制。没有新增真实投递测试。
+
+2026-10-28 10:30 UTC当前状态：本机重启期间FSDP首批已完成，用户轮次直接审计，旧fsdp-search监听记为handled_in_user_turn并写stop标记。初次后续批次的启动配置错误已通过真实完成通知投递一次（消息01a1820b-47b9-75d2-899f-f7057140c550），且已在同一用户轮次处理；如果该排队消息后续开始新轮次，先查原目录HANDLED_RECOVERY.json与[后续记录](v6-fsdp-continuation-20261028.md)，不要重复启动失败批次。
+
+当前只监听`/root/autodl-tmp/dev/v6-work/fsdp-continuation-followup-20261028`：本机PID23708，状态`.scratch/v6-fsdp-continuation-followup-wakeup.json`，启动参数`.scratch/v6-fsdp-continuation-followup-wakeup-launch.json`；远端PID631783。已真实确认运行与df余量，继续30秒普通检查及8GiB提醒。旧已处理/已投递监听均不恢复；没有Goal或额外投递测试。

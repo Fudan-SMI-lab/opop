@@ -23,3 +23,7 @@
 原目录、配置、发现结果和终态均冻结；监听已于10:25:39成功queue一次真实失败通知。当前用户轮次已直接处理该错误，后续若这条通知到达，应检查本节及恢复批次，不能再次启动旧批次或覆盖原失败。
 
 恢复输出为`/root/autodl-tmp/dev/v6-work/fsdp-continuation-followup-20261028`，还原`server_url=null`使用原自动启动方式；生产框架/prompt保持不变。控制器可选`--discovery-from`复用上述已完成GPU发现：先验证相同bundle/source/contract及raw trace SHA，再fork到新目录，通过现有plan_collectors/collect_extra执行尚未开始的发现尾部，随后用同一CLI --resume开始原定三轮。原样前轮反馈不变，不重复GPU发现或参考生成。独立检查和原生路径阶段仍只在新bundle接受时执行。新批使用一个新的完成/磁盘监听，旧已投递监听不复用。
+
+恢复批次已冻结`85a0707d8775e9468ffa7e0a3da94645238b51ca`，10:29:33 UTC启动PID631783、PPID1，生产core仍`ed24af7a…`。部署先真实启动并关闭OpenCode健康预检，随后由框架自行启动服务；真实collector-planner会话`ses_e7df11836ffeHbaVCwEUL88m5o`及生成前快照已记录。新分支adapter SHA保持`8b014f6f…`，controls_path与已核实baseline相同，新目录没有reference-rank张量副本。见[启动](evidence/v6-fsdp-continuation-20261028/followup-launch.json)、[协议](evidence/v6-fsdp-continuation-20261028/followup-protocol.json)、[复用依据](evidence/v6-fsdp-continuation-20261028/discovery-reuse.json)、[真实会话核验](evidence/v6-fsdp-continuation-20261028/startup-verification.json)。
+
+唯一普通完成/磁盘监听PID23708，状态`.scratch/v6-fsdp-continuation-followup-wakeup.json`，配置`.scratch/v6-fsdp-continuation-followup-wakeup-launch.json`；每30秒检查，8GiB提前通知阈值。启动核验为running，实际余约13.98GiB，[监听记录](evidence/v6-fsdp-continuation-20261028/followup-wakeup-setup.json)保存。本机以后重启应先查此新批终态与监听状态，不能恢复旧fsdp-search或初次continuation的已处理监听。
