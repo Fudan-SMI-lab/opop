@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态（2026-10-28 23:20 UTC）：[原失败反馈续行](v6-qwen-joint-feedback-20261029.md)新ce85候选仍teacher token断言失败，零clean/接受；三角色0修复，selector/candidate实际输入均无被省略事实，完整工具记录未见读取新诊断。自检直接replay而非framework实际分派/连续顺序，不是完整质量等价验证。旧失败冻结。按[一次接口修正试验](v6-qwen-joint-feedback-routed-20261029.md)从同一原试验前a866/b619状态另建分支，相同事实只改放既有supplemental_evidence，真实完整路由预检已通过；不将ce85新失败/手工答案加入，不改生产core，不不断重试。df约10.32GiB，GPU空闲，无raw转存/清理。
+
 当前执行及更正（2026-10-28 23:02 UTC／香港10月29日07:02）：[一轮普通Qwen反馈续行](v6-qwen-joint-feedback-20261029.md)冻结adde9525、PID909953，真实selector已回复。初始快照实证新顶层事实字段被现有反馈路由省略，实际只收到原失败反馈/历史a866代码；这是实验脚本接入错误，不是新事实已被Agent使用。CPU完整路由回放与实际输入逐字相等；同事实经现有supplemental_evidence可保留，但修正payload未提交。保留当前冻结试验，不修改输入/重启/并发补跑，后续按结果决定；生产core/prompt不变。唯一普通监听PID56328已补充该更正，df约10.55GiB。以下协议意图和执行状态按各自时间保留。
 
 最新终态（2026-10-28 22:51 UTC）：[新联合候选完整关系诊断](v6-qwen-joint-relation-20261029.md)B通过、C-U/O均原token断言失败，无clean计时/接受。12份完整输出重算确认只有第二次teacher偏离源（12tokens、logits max31.125），两个greedy/after及第一次teacher全精确，原43哈希/current不变。尚不宣称唯一cache/pool原因。准备[普通失败反馈加小事实的一轮续行](v6-qwen-joint-feedback-20261029.md)：原5,211,596字节反馈只追加2,251字节现有证据，原字段/历史代码保留，不给手工组/实现/原因；生产core不改，后续接受须独立核查。df约10.75GiB，无raw转存/清理；以下“当前执行”为历史记录。

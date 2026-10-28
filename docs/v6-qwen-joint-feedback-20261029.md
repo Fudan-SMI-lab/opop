@@ -17,3 +17,15 @@
 检查初始输入时发现`previous-feedback.txt`经过普通路由后为5,735,456字节，使用`previous_trial`等已有字段，`supplemental_evidence=null`，不含新增字段/事实。启动核查脚本最初错误假设文件未经路由并读取`trial`而KeyError；此处没有生产执行错误。随后`v6_check_qwen_feedback_routing_20261029.py`在服务器真实CPU复现完整`feedback_artifacts→route(registry)`，得到与实际snapshot逐字相同的输出：原feedback和顶层加字段feedback输出相同。将相同事实放入现有`supplemental_evidence`可保留内容且其他路由字段相等；**这个修正payload只做CPU序列化检查，未提交角色/GPU**，也未改生产路由。
 
 本批保持冻结等待其原始结果；后续是否再通过正确现有接口续行，取决于实际结果，不自动重复直到通过。须检查candidate初始快照与实际工具读取；外部文件可访问，初始输入没有事实不代表后续绝无可能从其他路径发现事实。不能将潜在成功/失败解释为新增诊断效果。单监听的未来通知已追加此更正，无新通知/重启。详见[启动证据](evidence/v6-qwen-joint-feedback-20261029/startup-verification.json)、[路由实证](evidence/v6-qwen-joint-feedback-20261029/routing-interface-audit.json)及[原问题记录](evidence/v6-qwen-joint-feedback-20261029/startup-discrepancy.json)。
+
+2026-10-28 23:20:25 UTC终态审计：控制器正常结束，但唯一trial-b46364b259、空参数的唯一screen仍为`no_valid_parameter_candidate`，错误是完整teacher token关系断言，零clean样本/配对/接受。新代码SHA`ce85acc72901aa6bfe77ca88b28977a8a28d83ff2dbd94dd566076e95d4ceba3`，revision`2aa45a8b208ec37d469bb2b5cc664890fc1a856417538fb8285d5a8a5d2761a4`；当前/source均维持b61996e1空bundle，没有新发现/替换/共存或独立接受。
+
+实际三个角色均0schema修复，selector/candidate/planner分别37/39/12次工具调用；费用只记录provider估计合计2.53929430368，不是账单。candidate初始generation-62e1890de41e同样没有新事实；完整`feedback_artifacts→route`对selector/candidate分别重算，与实际快照逐字一致。两者确实读原反馈/a866历史代码；candidate还显式打印`supplemental_evidence=null`。全部tool输入/输出未发现新diagnostic路径/字段/数值，审阅命令未见另行取新报告；外部文件系统非封闭，因此只陈述已记录访问，不宣称任何理论访问都不可能。
+
+ce85实际改为按传入cache tensor长度/data_ptr解析步数、prefill独立Graph pool，并增加构建阶段eager对照。它仍返回预建复用mirror；自检直接replay graphs，使用独立eager cache并按greedy/greedy/teacher顺序运行，不经过framework签名分派或真实run/observe/run/observe顺序。故“自检覆盖原失败”的提案说法不成立，也没有证明任意生命周期/跨调用状态正确。CPU探针仅import/view/步数/mock route/schema：首个简化runner缺Graph字段、fallback返回字符串而出现AttributeError(exit1)，随后补全mock后路径检查通过；不构成真实GPU质量证明。
+
+本批candidate_diagnostics仍只采run，记录两种正常False各32次，不能推翻screen失败或给出新的native证明。selector将旧错误称为FIRST observe缺乏原screen支持，a866全量观察实际是第二次teacher；不能把a866第二步张量事实移植给尚无全输出观察的ce85。跨profile窗口扣除host成本、decode不在TTFT计时内所以其setup无法影响TTFT、分离pool或自检保证质量等说法均不采纳。
+
+原始角色会话、探针/请求、源/adapter/contract/参考和所有结果已保留在服务器；审计脚本`v6_audit_qwen_joint_feedback_20261029.py`通过，完整audit SHA`28f4e0cc3c22d82a42f7b730f4518e33286c8491cb6a85d1f578ae5a65147936`。仅51,596字节[公开摘要](evidence/v6-qwen-joint-feedback-20261029/public-audit.json)及小终态记录取回本机。GPU已空闲，实际df约10.32GiB，无需清理。
+
+接续[一次修正接口的固定重放](v6-qwen-joint-feedback-routed-20261029.md)：从该试验**原来的**a866反馈/b61996e1空版本起点做一个新分支，仅修正实验输入容器，用既有supplemental_evidence传递完全相同事实。不是以ce85作为最新待修候选，也不向Agent提供ce85实现/本轮失败/新根因答案。生产route不改；一次协议化新证据输入试验，不重跑本批或不断重试直到通过。
