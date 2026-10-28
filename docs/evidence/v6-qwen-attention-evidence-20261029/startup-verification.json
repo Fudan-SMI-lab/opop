@@ -1,0 +1,226 @@
+{
+  "at": "2026-10-28T21:39:28.190864+00:00",
+  "state": {
+    "phase": "running",
+    "stage": "candidate-continuation",
+    "at": "2026-10-28T21:36:02.264480+00:00"
+  },
+  "controller": "   PID   PPID    SID STAT     ELAPSED\n892781      1 892781 Ssl        03:38\n",
+  "gpu_workers": "",
+  "df": "Filesystem        1B-blocks         Used   Available Use% Mounted on\n/dev/md0       161061273600 148466274304 12594999296  93% /root/autodl-tmp\n",
+  "snapshots": [
+    {
+      "role": "candidate",
+      "session": "ses_e7b8eef34ffeaX3PRxMH7viur1",
+      "model": "zhipuai/glm-5.3",
+      "fresh_session": true,
+      "framework_source": {
+        "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+        "files": 163,
+        "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+      },
+      "path": "/root/autodl-tmp/dev/v6-work/qwen-attention-evidence-20261029/candidate-continuation/generation-snapshots/generation-109aba42bca3.json",
+      "changed_inputs": [
+        "inputs/previous-feedback.txt"
+      ]
+    }
+  ],
+  "session_activity": {
+    "ses_e7b8eef34ffeaX3PRxMH7viur1": {
+      "message_count": 9,
+      "assistant_count": 8
+    }
+  },
+  "initial_input_audit": {
+    "input_count": 33,
+    "only_changed_file": "inputs/previous-feedback.txt",
+    "original_bytes": 5294114,
+    "new_bytes": 5297455,
+    "previous_fields_and_prefix_preserved": true,
+    "prompt_model_tools_core_equal": true
+  },
+  "attention_probe": {
+    "worker_status": "passed",
+    "logical_inputs": {
+      "q_equal": true,
+      "dynamic_k_shape": [
+        1,
+        8,
+        257,
+        128
+      ],
+      "static_k_shape": [
+        1,
+        32,
+        287,
+        128
+      ],
+      "k_valid_equal": true,
+      "v_valid_equal": true,
+      "head_replication": 4,
+      "first_attention_output_max_abs_error": 0.00048828125
+    },
+    "rows": {
+      "dynamic": {
+        "attention_calls": 36,
+        "first_interface": {
+          "q": {
+            "shape": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "stride": [
+              4096,
+              128,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0"
+          },
+          "k": {
+            "shape": [
+              1,
+              8,
+              257,
+              128
+            ],
+            "stride": [
+              263168,
+              32896,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0"
+          },
+          "v": {
+            "shape": [
+              1,
+              8,
+              257,
+              128
+            ],
+            "stride": [
+              263168,
+              32896,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0"
+          },
+          "kwargs": {
+            "attn_mask": null,
+            "dropout_p": 0.0,
+            "scale": 0.08838834764831845,
+            "is_causal": false,
+            "enable_gqa": true
+          }
+        },
+        "full_decode_preserved": true,
+        "profile_output_exact": true,
+        "cpu_ops": [
+          "aten::_flash_attention_forward",
+          "aten::_scaled_dot_product_flash_attention",
+          "aten::scaled_dot_product_attention"
+        ],
+        "kernels": [
+          "void pytorch_flash::flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 64, 128, 4, false, false, cutlass::bfloat16_t, Flash_kernel_traits<128, 64, 128, 4, cutlass::bfloat16_t> >, 4, 2, true>(pytorch_flash::Flash_fwd_params)",
+          "void pytorch_flash::flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 64, 128, 4, false, false, cutlass::bfloat16_t, Flash_kernel_traits<128, 64, 128, 4, cutlass::bfloat16_t> >, false, false, false, false, true, false, true, false>(pytorch_flash::Flash_fwd_params)"
+        ],
+        "trace_sha256": "245eeb239fd6ab629be5763a42fecc17851420772219f10e528733cfa939e1de"
+      },
+      "static": {
+        "attention_calls": 36,
+        "first_interface": {
+          "q": {
+            "shape": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "stride": [
+              4096,
+              128,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0"
+          },
+          "k": {
+            "shape": [
+              1,
+              32,
+              287,
+              128
+            ],
+            "stride": [
+              1175552,
+              36736,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0"
+          },
+          "v": {
+            "shape": [
+              1,
+              32,
+              287,
+              128
+            ],
+            "stride": [
+              1175552,
+              36736,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0"
+          },
+          "kwargs": {
+            "attn_mask": {
+              "shape": [
+                1,
+                1,
+                1,
+                287
+              ],
+              "stride": [
+                287,
+                287,
+                287,
+                1
+              ],
+              "dtype": "torch.bool",
+              "device": "cuda:0"
+            },
+            "dropout_p": 0.0,
+            "scale": 0.08838834764831845,
+            "is_causal": false
+          }
+        },
+        "full_decode_preserved": true,
+        "profile_output_exact": true,
+        "cpu_ops": [
+          "aten::_efficient_attention_forward",
+          "aten::_scaled_dot_product_efficient_attention",
+          "aten::scaled_dot_product_attention"
+        ],
+        "kernels": [
+          "fmha_cutlassF_bf16_aligned_64x128_rf_sm80(PyTorchMemEffAttention::AttentionKernel<cutlass::bfloat16_t, cutlass::arch::Sm80, true, 64, 128, 128, true, true>::Params)",
+          "void at::native::elementwise_kernel<128, 4, at::native::gpu_kernel_impl_nocast<at::native::(anonymous namespace)::where_kernel_impl(at::TensorIterator&)::{lambda()#1}::operator()() const::{lambda()#2}::operator()() const::{lambda(bool, unsigned short, unsigned short)#1}>(at::TensorIteratorBase&, at::native::(anonymous namespace)::where_kernel_impl(at::TensorIterator&)::{lambda()#1}::operator()() const::{lambda()#2}::operator()() const::{lambda(bool, unsigned short, unsigned short)#1} const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::(anonymous namespace)::where_kernel_impl(at::TensorIterator&)::{lambda()#1}::operator()() const::{lambda()#2}::operator()() const::{lambda(bool, unsigned short, unsigned short)#1}>(at::TensorIteratorBase&, at::native::(anonymous namespace)::where_kernel_impl(at::TensorIterator&)::{lambda()#1}::operator()() const::{lambda()#2}::operator()() const::{lambda(bool, unsigned short, unsigned short)#1} const&)::{lambda(int)#1})",
+          "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<c10::BFloat16>, std::array<char*, 1ul> >(int, at::native::FillFunctor<c10::BFloat16>, std::array<char*, 1ul>)"
+        ],
+        "trace_sha256": "3c33e7dad9740184d74adf092eba8d3c25412febfe538ee56040477f1c5e9ed6"
+      }
+    }
+  },
+  "scope": "Startup identity/real provider response and reported probe/trace summary check. Full raw tensor audit deferred to terminal. No new generated code quality or acceptance."
+}

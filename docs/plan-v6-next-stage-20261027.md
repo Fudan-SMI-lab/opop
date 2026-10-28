@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前执行（2026-10-28 21:39 UTC）：[首attention证据＋单次事实候选续行](v6-qwen-attention-evidence-20261029.md)冻结575c6981，PID892781。小型GPU对照通过且复现前批完整首decode；首层有效Q/K/V相同、接口及实际独立attention kernel不同，尚非单因素归因。真实candidate已开始，初始33输入仅原反馈追加3,341字节，prompt/模型/工具/core不变；已有provider回复。单监听PID55420等待完成/8GiB事件；df余11.73GiB，无raw转存/清理。完整张量及最终Agent输出在终态复核，生产核心和旧质量/接受结论不改。以下“当前执行”均为历史时间点。
+
 新增数值定位（2026-10-28 21:26 UTC）：[真实同输入首decode](v6-qwen-first-decode-20261029.md)短计算已完成并原始值复核。Dynamic eager源零误差；Dynamic Graph/Static eager/Static Graph三者逐元素相同并复现旧首decode0.1875差异，prefix全部相同且未变。Graph replay和framework binding均非必要条件，唯一算术原因未定。实际teacher stride不匹配候选signature，不能假定双方同候选路径。准备[首attention接口控制＋一次事实候选续行](v6-qwen-attention-evidence-20261029.md)，不改生产核心、不放宽质量；df余12.03GiB。
 
 最新终态（2026-10-28 21:15 UTC）：[原样Qwen两候选固定验证](v6-qwen-feedback-fixed-validation-20261029.md)B通过、C/T的U/O四端点均完整质量失败，未进入clean计时。12新张量复核并与旧C1/C2比较：四种实现greedy逐元素相同、teacher源零误差。事实反馈被读取但未修复质量，不改生产prompt/默认反馈结构，不重复该角色A/B。准备[同输入首decode四项控制](v6-qwen-first-decode-20261029.md)，区分cache表示和Graph执行的共同数值路径；GPU已空闲，df余12.22GiB，无清理/本地raw转存。

@@ -1,0 +1,207 @@
+{
+  "snapshot": "/root/autodl-tmp/dev/v6-work/qwen-relation-feedback-replay-20261029/treatment/generation-snapshots/generation-713b51281927.json",
+  "change_file": "inputs/previous-feedback.txt",
+  "added_field": "same_input_attention_diagnostic",
+  "original_bytes": 5294114,
+  "new_bytes": 5297455,
+  "facts": {
+    "scope": "New fixed numerical diagnostic facts, not a root-cause prescription or candidate acceptance.",
+    "first_decode": {
+      "dynamic-eager": {
+        "max_abs_logit_error": 0.0,
+        "matches_prior_failed_first_decode": false
+      },
+      "dynamic-graph": {
+        "max_abs_logit_error": 0.1875,
+        "matches_prior_failed_first_decode": true
+      },
+      "static-eager": {
+        "max_abs_logit_error": 0.1875,
+        "matches_prior_failed_first_decode": true
+      },
+      "static-graph": {
+        "max_abs_logit_error": 0.1875,
+        "matches_prior_failed_first_decode": true
+      }
+    },
+    "input_control": "All four first-decode modes use exact same real model, token and complete prefix KV; all prefixes unchanged. Dynamic eager matches source; the other three outputs are bitwise equal. Static eager failure means Graph replay and framework binding are not necessary for this observed difference.",
+    "binding_signature_predicate": {
+      "greedy_matches": true,
+      "teacher_matches": false
+    },
+    "binding_limit": "Actual greedy token stride [1,1], teacher slice [32,1]. Frozen signature admits first only; do not assume teacher executes the same replacement from missing route labels.",
+    "attention_logical_inputs": {
+      "q_equal": true,
+      "dynamic_k_shape": [
+        1,
+        8,
+        257,
+        128
+      ],
+      "static_k_shape": [
+        1,
+        32,
+        287,
+        128
+      ],
+      "k_valid_equal": true,
+      "v_valid_equal": true,
+      "head_replication": 4,
+      "first_attention_output_max_abs_error": 0.00048828125
+    },
+    "attention_interfaces": {
+      "dynamic": {
+        "interface": {
+          "q": {
+            "shape": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "stride": [
+              4096,
+              128,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0"
+          },
+          "k": {
+            "shape": [
+              1,
+              8,
+              257,
+              128
+            ],
+            "stride": [
+              263168,
+              32896,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0"
+          },
+          "v": {
+            "shape": [
+              1,
+              8,
+              257,
+              128
+            ],
+            "stride": [
+              263168,
+              32896,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0"
+          },
+          "kwargs": {
+            "attn_mask": null,
+            "dropout_p": 0.0,
+            "scale": 0.08838834764831845,
+            "is_causal": false,
+            "enable_gqa": true
+          }
+        },
+        "full_decode_preserved": true,
+        "profile_cpu_ops": [
+          "aten::_flash_attention_forward",
+          "aten::_scaled_dot_product_flash_attention",
+          "aten::scaled_dot_product_attention"
+        ],
+        "profile_output_exact": true
+      },
+      "static": {
+        "interface": {
+          "q": {
+            "shape": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "stride": [
+              4096,
+              128,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0"
+          },
+          "k": {
+            "shape": [
+              1,
+              32,
+              287,
+              128
+            ],
+            "stride": [
+              1175552,
+              36736,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0"
+          },
+          "v": {
+            "shape": [
+              1,
+              32,
+              287,
+              128
+            ],
+            "stride": [
+              1175552,
+              36736,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0"
+          },
+          "kwargs": {
+            "attn_mask": {
+              "shape": [
+                1,
+                1,
+                1,
+                287
+              ],
+              "stride": [
+                287,
+                287,
+                287,
+                1
+              ],
+              "dtype": "torch.bool",
+              "device": "cuda:0"
+            },
+            "dropout_p": 0.0,
+            "scale": 0.08838834764831845,
+            "is_causal": false
+          }
+        },
+        "full_decode_preserved": true,
+        "profile_cpu_ops": [
+          "aten::_efficient_attention_forward",
+          "aten::_scaled_dot_product_efficient_attention",
+          "aten::scaled_dot_product_attention"
+        ],
+        "profile_output_exact": true
+      }
+    },
+    "limits": "Python wrapper retains first-attention tensors; compare full decode to preceding no-wrapper controls. Interface pairs can differ in padding/mask/head layout/GQA option; a pair difference does not isolate a single factor. No new full32-token candidate quality or optimization acceptance.",
+    "evidence": {
+      "path": "/root/autodl-tmp/dev/v6-work/qwen-attention-evidence-20261029/run/attention-evidence.json",
+      "sha256": "f2a279ffa9c4c5c688207e9cd52a5b953ad835a9d1b8c5bf3d972154f303a570"
+    }
+  },
+  "scope": "One fresh candidate role, same original prompt/model/tools/core/other inputs. Only new observed facts appended; no developer candidate, manual optimization code or unique cause answer. Generation/schema only; no search/acceptance. Not an A/B superiority test or retry of a frozen arm."
+}
