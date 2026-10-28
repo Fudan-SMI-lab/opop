@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前执行（2026-10-28 22:06 UTC／香港10月29日06:06）：[attention事实候选原样GPU验证](v6-qwen-attention-fixed-20261029.md)冻结4d7dd205，控制器PID898327，B-observed真实GPU worker已启动，原样候选已stage；无新角色生成、搜索、正式接受或生产核心修改。唯一普通监听PID48488 waiting，实际df余11.59GiB，无raw转存或清理。上一批attention/候选证据已终态审计推送，以下“当前执行”为历史状态。
+
 最新终态（2026-10-28 21:59 UTC）：[attention接口＋事实续行](v6-qwen-attention-evidence-20261029.md)原始张量/trace和33输入变化全部核验。Agent读了新增事实、外部报告及安装库源码，生成capture期间临时调整mask判断的per-length DynamicCache Graph；0 schema修复，71工具，CPU探针有已保留ImportError，尚无新候选GPU质量。源码支持具体capture/mask路径假设，不能认定历史唯一因果或保证TTFT。按[原样固定执行](v6-qwen-attention-fixed-20261029.md)做B-O/C-U/C-O三端点，无新Agent/参数搜索/接受/生产改动；df约11.72GiB，raw留服务器。以下执行状态为历史记录。
 
 当前执行（2026-10-28 21:39 UTC）：[首attention证据＋单次事实候选续行](v6-qwen-attention-evidence-20261029.md)冻结575c6981，PID892781。小型GPU对照通过且复现前批完整首decode；首层有效Q/K/V相同、接口及实际独立attention kernel不同，尚非单因素归因。真实candidate已开始，初始33输入仅原反馈追加3,341字节，prompt/模型/工具/core不变；已有provider回复。单监听PID55420等待完成/8GiB事件；df余11.73GiB，无raw转存/清理。完整张量及最终Agent输出在终态复核，生产核心和旧质量/接受结论不改。以下“当前执行”均为历史时间点。

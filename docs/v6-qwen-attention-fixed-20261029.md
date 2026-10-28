@@ -1,5 +1,7 @@
 # Attention事实候选的原样固定执行验证
 
+已启动（2026-10-28 22:06:37 UTC，香港10月29日06:06）：冻结`4d7dd205`，生产core不变；控制器PID898327，隔离候选stage完成。22:06:59启动核查时B-observed的真实GPU worker PID898399运行，尚无完成端点，不能报告质量结论。唯一普通完成/8GiB监听PID48488已核验waiting，旧attention-evidence监听标记已处理；没有Goal或模型等待轮询。实际df余12,442,140,672字节（11.59GiB），没有清理或raw本地转存。证据：[启动核查](evidence/v6-qwen-attention-fixed-20261029/startup-verification.json)、[原样版本](evidence/v6-qwen-attention-fixed-20261029/staged-identities.json)、[监听回执](evidence/v6-qwen-attention-fixed-20261029/wakeup-setup.json)。
+
 前置[真实角色审计](v6-qwen-attention-evidence-20261029.md)完成；候选`f12e2f50…`只经过CPU探针和生成校验，完整CUDA结果未知。下一批不再调用Agent，不修改生成代码，不开展参数搜索或正式接受；使用既有bundle_from_outputs/stage接口，从原发现版本b61996e1的空bundles建立隔离分支，保留原proposal声明和空参数空间。
 
 固定顺序：B-observed、candidate-unobserved、candidate-observed，各一次。U使用原evaluate；O使用已核验的外部观察器`a06b6c0e…`，保存greedy/teacher/observe后的完整CPU张量和phase routes。O改变CPU工作、同步和生命周期，计时只能诊断，不能扣除观察成本或当接受；缺少route标签不证明无native/fallback。每个端点保留原warmup、2个连续质量步骤及若到达则全部5个clean样本。失败可能早于clean，不能把控制器完成当质量通过。
