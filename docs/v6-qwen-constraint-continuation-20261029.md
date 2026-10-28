@@ -1,5 +1,9 @@
 # Qwen完整质量通过后的约束反馈续行
 
+已启动（2026-10-28 22:16:07 UTC／香港10月29日06:16）：冻结`89595894`，控制器PID899959，生产core不变。native worker已完成采集，实际staged revision72112d72；collector observed允许进入一轮普通trial，但原始native/API/kernel仍须终态复核，不预报Graph数量。22:16:50启动核查时真实selection会话`generation-05e1b6eeb267`已有provider Assistant回复，28输入，收到的历史代码SHA确为f12e2f50，质量通过/TTFT失败及完整end_to_end目标均核验。实际routed feedback文件3,053,797字节，不代表全量内容进入模型context；未新增大量资源数据。
+
+空bundle父版本、原request/discovery和adapter498c90f3、共享controls路径均核验相同，未导入已接受版本或复制大参考。唯一普通完成/8GiB监听PID23140 waiting；实际df余11,964,661,760字节（11.14GiB）。仅取小型[启动核查](evidence/v6-qwen-constraint-continuation-20261029/startup-verification.json)、[复用身份](evidence/v6-qwen-constraint-continuation-20261029/preparation-reuse.json)和[监听回执](evidence/v6-qwen-constraint-continuation-20261029/wakeup-setup.json)，没有raw本地转存或清理。新trial独立接受仍未执行。
+
 [固定候选](v6-qwen-attention-fixed-20261029.md)已通过完整质量，但两个端点的TTFT均超过原上限。下一步先为该固定候选采集一次单独Nsight native trace，核查实际Graph/API/kernel；它是侵入式路径证据，不重测clean分数、不作该候选的AB/BA接受。保留其约束失败。
 
 随后从原b61996e1空bundle基线fork，复用未修改request、完成的discovery和只读controls，不重新做intake/evaluator/大参考生成。将一次明确标注为developer-supplied diagnostic的反馈经既有`--feedback`接口给普通流程：原候选完整质量/coverage、无观察器全部5样本、原24.051052 anchor及25.2536046上限、26.510787失败值、原始候选bundle/proposal和完整实现。`decision`中的false是诊断“不接受”标记，明确没有对这份代码执行正式paired-noise判定。基线观察器timing不被伪装成clean配对baseline，旧测量不回写。
