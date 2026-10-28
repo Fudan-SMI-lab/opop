@@ -1,0 +1,2088 @@
+{
+  "at": "2026-10-28T13:27:57.685313+00:00",
+  "completed_at": "2026-10-28T13:20:38.012300+00:00",
+  "snapshot": "/root/autodl-tmp/dev/v6-work/fsdp-continuation-followup-20261028/fsdp-search/generation-snapshots/generation-914fba16905e.json",
+  "core": {
+    "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+    "files": 163,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "change": {
+    "old": "Read inputs/previous-feedback.txt and repair the concrete failure.",
+    "new": "Read inputs/previous-feedback.txt and determine the previous outcome from its evidence. Continue the current goal from the installed version; explain the concrete change in this attempt and how it follows from the feedback and selected optimization. Do not presume a failure when the previous attempt was accepted."
+  },
+  "arms": {
+    "control": {
+      "session": "ses_e7d6c535effeamprJU7o5DiCDo",
+      "snapshot": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/generation-snapshots/generation-22e84c81423f.json",
+      "schema_repairs": 0,
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 36,
+        "reported_cost": 1.0870607659,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 2918579.0,
+          "input": 107316.0,
+          "output": 11789.0,
+          "reasoning": 18802.0,
+          "cache.read": 2780672.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_e7d6c535effeamprJU7o5DiCDo",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "all_input_files_unchanged": true,
+      "input_count": 43,
+      "prompt_sha256": "0171d951810260cb63026cc0521c01a49e0d42363f9d6c9f983471f64e2935d2",
+      "settings_sha256": "d983ae2c8db7bb5ae559313f6dc7faa909bab8ebdd0776e0d7fd45c439bb7e64",
+      "candidate": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/sandboxes/candidate-replay-f3bba47f4b5b/candidate.py",
+      "candidate_sha256": "d8bbde731e85018db994e79efafb0449be7021985fb7d22a6ab10960c84cb98e",
+      "proposal": {
+        "implementation": "distributed",
+        "replacement_calls": [
+          "b08a96298d855d7c8dcd7497"
+        ],
+        "rationale": "Continuation at the accepted editable boundary (model forward b08a96298d855d7c8dcd7497 + the 24 FSDP2 block units). inputs/previous-feedback.txt shows the prior joint candidate trial-4f5fce6e6b-param-a224c6cb (keep_unsharded_tail, selected keep=3) was ACCEPTED (objective 171.46 ms vs parent 175.46 ms, peak_allocated_bytes 2239245312 B exactly at baseline, quality max_abs_error 0.0 on both ranks, coverage 2/2 boundary invocations), so there is no failure to repair; it is installed in current revision 799a80d2. Because this candidate writes the same boundary call, it explicitly REPLACES that whole bundle (replaces: [trial-4f5fce6e6b-param-a224c6cb]) and preserves its needed behavior itself: build resets every block to set_reshard_after_forward(True, recurse=False) and clears all forward-prefetch lists, then reapplies the keep-unsharded-tail policy with the same public API and the same keep_unsharded_blocks parameter (code default 3 = the accepted selection), making this bundle authoritative over any live module state from the replaced bundle. New work in this attempt: an explicit depth-D forward all-gather prefetch installed at build time via the public FSDPModule.set_modules_to_forward_prefetch - the root unit prefetches blocks[0:D] (its all-gather is in flight during the ~1.80 ms embedding window measured after the root gather) and each block i prefetches blocks[i+1:i+1+D]. Mechanism verified in the measured worker's torch 2.13.0+cu129 source: FSDPState._pre_forward issues _states_to_forward_prefetch all-gathers immediately after the current unit's own unshard copy-out, and FSDPParamGroup.unshard() is a documented no-op when the all-gather result is already pending, so block i's compute launches while block i+1's all-gather runs on the FSDP comm stream. Measured motivation (current-revision nsys observations/current/nsys-9ed9145c.json, rank 0): the forward all-gather chain spans 79.43 ms with only 57.37 ms NCCL-busy; 22.06 ms of NCCL-idle exposure sits between successive forward all-gathers (24 gaps of 0.42-0.92 ms containing the block compute kernels plus dispatch, 1.80 ms after the root gather, one anomalous 5.0 ms stall). Default FSDP2 scheduling cannot overlap this (default _states_to_forward_prefetch is empty; the next all-gather is only issued at the next block's pre-forward). The backward AG/RS chain is already gap-free, so it is untouched. Expected effect: convert the serialized AG_i -> compute_i -> AG_i+1 forward chain into a comm-stream chain with compute hidden under the all-gathers, removing most of the 22.06 ms exposure, i.e. roughly 10-18 ms off the current accepted ~171 ms; the 5.0 ms stall of unknown cause may only be partially absorbed. Safety: the identical collectives execute (same NCCL ops, payloads, counts and per-rank order - 25 forward all-gathers, 24-K+1 backward block all-gathers with keep K, 25 reduce-scatters; NCCL tuning log observations/current/nccl_tuning-f6198e01.json), only CPU issue timing changes, so loss, logits, every gradient and post-update parameter, DTensor shard layouts, completion boundaries and the tied-embedding/negative-control checks are bit-identical (prior accepted run measured max_abs_error 0.0 with the same delegation pattern). Both ranks install identical policies behind the same symmetric build-time agreement all_reduce with rollback as the accepted bundle, so collective participation and ordering stay symmetric on all ranks; the fallback path restores the source default policy (reshard after forward, no explicit prefetch) and delegates every call to the parent. Memory: depth D keeps at most D extra ~50.4 MB unsharded block units in flight mid-forward (all_gather_comm.allocate buffer), inside the measured 111.96 MB headroom below the frozen 2351207577.6 B peak limit for D<=2; the keep-tail retention window is unchanged from the accepted bundle (keep=3 measured peak exactly at baseline because allocator reuse absorbs the retained bytes). The parameter search re-measures keep in {0..4} and depth in {0,1,2} under the frozen peak constraint, with depth=0 as the regression anchor that reproduces the accepted state.",
+        "setup_work": {
+          "description": "One-time build-time policy installation on the live adapter state after prepare and before any invocation; no fixture output is precomputed or captured, and every invocation executes the full workload on its current inputs through the parent forward.",
+          "steps": [
+            "Structural guards, no GPU compute: resolve the model boundary (context.references and context.modules must contain b08a96298d855d7c8dcd7497), list module.transformer.h, require every block to expose the public set_reshard_after_forward and set_modules_to_forward_prefetch and the root to expose set_modules_to_forward_prefetch; failures record a concise setup-failure category reported later by the replacement's fallback route label while still delegating to the parent.",
+            "Normalize prior state to the source policy so this bundle is authoritative over the replaced bundle's live mutations: root and every block get set_modules_to_forward_prefetch([]) and every block set_reshard_after_forward(True, recurse=False).",
+            "Apply the composed policy: root prefetches blocks[:D], each block i prefetches blocks[i+1:i+1+D] (empty list near the tail = default no-op), and the trailing K blocks get set_reshard_after_forward(False, recurse=False).",
+            "Symmetric agreement: one 8-element int64 all_reduce(MIN) over the setup-success flags (plus rollback to the source policy on any rank disagreement or exception), mirroring the accepted bundle's guard; the tiny tensor and collective are installation-time only, never inside the timed step.",
+            "Install the single boundary replacement {b08a96298d855d7c8dcd7497: model_forward} that records the chosen route label (candidate.fwd_ag_prefetch_d{D}_keep_tail_k{K} or fallback.{reason}.parent_delegated) and delegates all compute to the current parent callable. No parameters are transformed, no packed weights are built, no GPU kernels are launched at setup; retained memory is unchanged from the parent state."
+          ],
+          "memory_note": "No setup-time allocation beyond one 8-byte flag tensor per rank. Depth-D prefetch adds at most D ~50.4 MB transient all-gather buffers mid-forward during each invocation (D=1 default), inside the 111.96 MB headroom under the 2351207577.6 B peak_allocated_bytes limit; the framework independently revalidates the constraint for the selected parameter candidate."
+        },
+        "quality_risks": [
+          "Peak-memory risk: depth=2 keeps ~100.8 MB of extra in-flight all-gather buffers (vs 111.96 MB measured headroom) and keep=4 adds another retained block; mitigated by the declared constraint (keep_unsharded_blocks - 3) + forward_prefetch_depth <= 2 and by independent framework revalidation of peak_allocated_bytes <= 1.05x baseline before publication.",
+          "Cross-rank symmetry: the prefetch lists change CPU issue order of the forward all-gathers; all ranks install identical lists from the same deterministic build path and the agreement all_reduce rolls every rank back together, so per-rank NCCL ordering stays matched and no rank can deadlock or reorder collectives alone.",
+          "Policy-state risk on re-entry: repeated builds (parameter trials) or the replaced bundle's live mutations could leave stale flags; build clears both policies on every path (including every failure branch) before applying, and the fallback path equals the source default policy, so the parent always executes a coherent FSDP schedule.",
+          "Numerical risk is nil by construction: no operator, dtype, reduction or payload changes; the same collectives produce the same values in the same per-rank order, and the prior accepted bundle already demonstrated max_abs_error 0.0 with this delegation pattern; quality re-verification with two continuous updates, gradients, post-update parameters, negative control and tied-embedding check remains the binding gate.",
+          "Timing risk: the 5.0 ms anomalous forward stall may not be absorbed by earlier issue, and dispatch-heavy gaps may leave residual exposure; this is a measured-effect hypothesis under the AB/BA paired protocol, not a guaranteed gain, and depth=0 reproduces the accepted behavior as the in-search control."
+        ],
+        "eliminated_calls": [],
+        "requires": [],
+        "replaces": [
+          "trial-4f5fce6e6b-param-a224c6cb"
+        ],
+        "parameter_space": {
+          "params": [
+            {
+              "name": "keep_unsharded_blocks",
+              "kind": "int",
+              "choices": [
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "description": "Trailing (backward-first) transformer blocks that skip FSDP's post-forward reshard via public FSDPModule.set_reshard_after_forward(False, recurse=False); preserved dimension of the replaced bundle trial-4f5fce6e6b-param-a224c6cb whose selected value was 3 (each kept block removes one ~2.0 ms backward block all-gather of 25192448 B per rank plus its copy-in/split companions while retaining 50384896 B unsharded from forward until post-backward; keep=3 measured peak exactly at the 2239245312 B baseline). 0 is the unchanged source policy; build clamps to the 24 blocks of the frozen workload. Changes reshard timing only, never workload semantics, batch, sequence length, data or thresholds."
+            },
+            {
+              "name": "forward_prefetch_depth",
+              "kind": "int",
+              "choices": [
+                0,
+                1,
+                2
+              ],
+              "description": "Number of following transformer units each FSDP unit explicitly prefetches in forward via public FSDPModule.set_modules_to_forward_prefetch (root prefetches the first D blocks, block i prefetches blocks i+1..i+D; issued right after the current unit's all-gather copy-out per torch 2.13.0 FSDPState._pre_forward). 0 disables explicit prefetch (accepted-status-quo anchor); 1 adds at most one ~50.4 MB in-flight all-gather buffer mid-forward to hide the 24 measured 0.42-0.92 ms compute/dispatch gaps plus the 1.80 ms post-root-gather embedding window; 2 hides more but keeps ~100.8 MB extra in flight against the 111.96 MB headroom. Only CPU issue timing of the identical collectives changes."
+            }
+          ],
+          "constraints": [
+            {
+              "expr": "keep_unsharded_blocks >= 0 and keep_unsharded_blocks <= 4",
+              "rationale": "Matches the declared choices; the value is additionally clamped in build to the frozen 24-block workload, and keep beyond 4 stacks retained unsharded blocks (+50.4 MB each) that cannot fit the frozen 1.05x peak budget."
+            },
+            {
+              "expr": "forward_prefetch_depth >= 0 and forward_prefetch_depth <= 2",
+              "rationale": "Matches the declared choices; depth > 2 would need more than ~151 MB of simultaneous in-flight all-gather buffers, exceeding the 111.96 MB measured headroom below the 2351207577.6 B peak_allocated_bytes limit."
+            },
+            {
+              "expr": "(keep_unsharded_blocks - 3) + forward_prefetch_depth <= 2",
+              "rationale": "Memory guard over the frozen peak_allocated_bytes <= 1.05x baseline budget: keep<=3 was measured to add nothing to the true peak (allocator reuse absorbs retained blocks), so the worst unmeasured corner is one extra retained block plus depth-2 in-flight buffers (+151 MB) or deeper retention with depth-2; this excludes those corners while leaving (keep=3, depth=2), (keep=4, depth=1) and all smaller combinations to measurement. The framework revalidates the actual constraint before publication."
+            }
+          ]
+        },
+        "state_lifecycle": "Warm-model lifecycle is unchanged: FSDP policy flags and prefetch lists are set once at build on the live module state and persist across reset()/zero_grad()/warmup/repeats/continuous quality updates; reset() copies initial values into sharded parameters and never touches scheduling state, keep blocks reshard after backward by default (reshard_after_backward untouched), so each invocation starts from the same sharded state. No parameters are transformed, no caches or aliases are introduced, and the returned loss/logits are produced by the parent forward unchanged.",
+        "synchronization": "Completion boundaries are exactly the source's: the step is bracketed by dist.barrier + torch.cuda.synchronize before and torch.cuda.synchronize after, and FSDP's own events (wait_for_unshard, all-gather copy-out events) still order every prefetched all-gather against its consumer, so the measured step still ends only when all compute and communication complete. The only added synchronization is the installation-time agreement all_reduce, outside every timed invocation.",
+        "communication_plan": "Same collectives, same payloads, same process groups, same per-rank order (forward all-gathers root-then-blocks, backward reduce-scatters/re-gathers in reverse order with the kept tail re-gathers removed exactly as in the replaced bundle); the explicit forward prefetch only moves each block all-gather's CPU issue point earlier so the NCCL kernel overlaps the preceding block's compute. Expected diagnostics: communication_kernel_sum_ms roughly unchanged or slightly lower (same wire volume, less waiting), communication_without_compute_ms lower as forward exposure shrinks; collected by the installed torch_communication collector during the separate profile invocations."
+      },
+      "feasible_parameter_combinations": 14,
+      "startup_ask_preview": [
+        {
+          "keep_unsharded_blocks": 1,
+          "forward_prefetch_depth": 2
+        },
+        {
+          "keep_unsharded_blocks": 0,
+          "forward_prefetch_depth": 0
+        },
+        {
+          "keep_unsharded_blocks": 4,
+          "forward_prefetch_depth": 0
+        }
+      ],
+      "preview_scope": "CPU sampler ask preview only, no told scores, candidate execution, quality or performance inference.",
+      "tools": [
+        {
+          "part": "prt_18293bdde001Dc9wXtEu880cbX",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "b55ac4d187b75d631872c5b738d72e0fbc224683a0aac5c0ce6b2a7af2123bdf",
+          "output_sha256": "e05a2f9ae7216f324b91e4f4513f2bcfde0677ee3207552064f2a013ec0e2ce2",
+          "output_bytes": 244,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18293bf670011vneoQ4L5SIm9w",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "b981d0048bd7b9570876ac88bf037699ba4b85b696355aa59c3ef09302d7f8cf",
+          "output_sha256": "d710603a4f0935edc4115dc1893d4fd6808a3cccfbc0cb6596efe78abe128dcb",
+          "output_bytes": 11646,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/sandboxes/candidate-replay-f3bba47f4b5b/inputs/request.json",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18293c9d0001D7CyQUoiAIrPKV",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "3a9907f5b0ed2ab3e53d3699835bd5afe38686f429eab341fd789ecb7d38cc7c",
+          "output_sha256": "ae3d53c489eb899b79bf9c90e3f80db47e77f03c2074bab0c15c768f011c46d6",
+          "output_bytes": 1787,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18293cb5c001eHv2w5BdIGP0nG",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "2aa3057d6529d7df8265ab8e977ab75c8a9d8da9c14a80d0243636ea02ebccaa",
+          "output_sha256": "d54eb891d406fc65e98622bd1bbb4d400cbce5f6001269498e5b2db0dff25fd4",
+          "output_bytes": 59959,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/sandboxes/candidate-replay-f3bba47f4b5b/inputs/selection.json",
+          "reads_feedback": false,
+          "reads_selection": true
+        },
+        {
+          "part": "prt_18293dde9001hdGenvNN7tJsiB",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "01d16c98c7a84c5feeea637fdff600925261730b842be134ec5606504e6aafbc",
+          "output_sha256": "5b2a66ddf79ae376b5430e5a1f2851ae20dc2c23ee1dfe19e085dc767d12916e",
+          "output_bytes": 1315,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": true
+        },
+        {
+          "part": "prt_18293df9d001ZgBwUMhY9F2BtU",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "aadeecf2fffce4a0971b9a2655d07fa094135e8693e92894719789ee9e0b16b8",
+          "output_sha256": "a4f1f17b7d5ca9f568372526050035aa5efebb99386e7f46257fceba5d9c9e1e",
+          "output_bytes": 5570,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/sandboxes/candidate-replay-f3bba47f4b5b/inputs/adapter.py",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18293ebab0016PG10g1H3RAhNu",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "45fade69ab1e0e6900958d80340fd37b60d6534685d002cccad992aa1d058a7a",
+          "output_sha256": "0e6672cc349768abe6ffddeed117174ae4bdab3cdd7c09a4fa43ec6393947fb1",
+          "output_bytes": 4158,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/sandboxes/candidate-replay-f3bba47f4b5b/inputs/binding-contract.md",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18293ed27001yY24tzbqKnyPwe",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "d27405508daa78fb89c799aa45469d5758ea4f3b84e2e227d6a4ff99382e21ee",
+          "output_sha256": "a3b226daabde42715cf324eedc772a00950df5b03841134e06193ee002d5b74c",
+          "output_bytes": 4309,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/sandboxes/candidate-replay-f3bba47f4b5b/inputs/worker-environment.json",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18293eebb001JjaMkSFodflPe2",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "6baa4a594482f114f559107a37bbf985807bbd66eaa9a86d4e540c680513cdb5",
+          "output_sha256": "ac60cf2fee9a26cbf6f636bd75188d0adf671b003be8ac9a6210ea54aec42dc5",
+          "output_bytes": 650,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/sandboxes/candidate-replay-f3bba47f4b5b/inputs/communication-ownership.json",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18293f06100185oaHf2q6NjqyA",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "79b72d84992c6fb72d7bb252d30e1a743c3f805dd0156fae09faece9875661c3",
+          "output_sha256": "226195933931500259096a8a1ce57cfddb0622f253d3c50f8573c369379d67f8",
+          "output_bytes": 2307,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/sandboxes/candidate-replay-f3bba47f4b5b/inputs/proposal.schema.json",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18293f2090016sojiOgWfKyPix",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "c91ef6b7071b549745e33f9954e7eec8ea1a4495a8519ba3146a42eb0ffdeaf5",
+          "output_sha256": "f098787d8b0d1e2eb9261f77432a74384d7e97b24cfafc745bc55c6c79dfdcf4",
+          "output_bytes": 2244,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/sandboxes/candidate-replay-f3bba47f4b5b/inputs/parameter-space.schema.json",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182940178001qgK1Geu8bP5WTA",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "aa4a5cd74d5477253f6e5a1451683c1e9243f3c581b92ee64263f1c9eb0c67c5",
+          "output_sha256": "8408be43a95d3b84bfea3ae7e8555064f98142327157541f239441747df9386d",
+          "output_bytes": 1032,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/sandboxes/candidate-replay-f3bba47f4b5b/inputs/previous-candidate/manifest.json",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18294033c001NIXvJ4qMoWvfUu",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "67cb5d31e5bd2ef6011eeecce5db04c4ffa8d0f226075f7c18e07be50572cb3b",
+          "output_sha256": "a4970a5a9b3e326f7980cf3d9006f296fc37f7930635a45d9bf13d4a5c99e861",
+          "output_bytes": 4277,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/sandboxes/candidate-replay-f3bba47f4b5b/inputs/previous-candidate/candidate.py",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829411dc001I3apRtqy3tNacE",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "7fdc14f076e21adcce927e955019f34c728824f1ea501a1ab67169fe15524f49",
+          "output_sha256": "ae9d84db97b89b3d7598bc7be0dbec30ba4659bc8f7865b05d56782624a55e93",
+          "output_bytes": 8012,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": true,
+          "reads_selection": false,
+          "command": "head -c 4000 inputs/previous-feedback.txt; echo; echo '---TAIL---'; tail -c 4000 inputs/previous-feedback.txt",
+          "output_excerpt": "{\n  \"current_revision\": \"799a80d2b4d7810555f73386ec586109159692b93eaf28ddb8dbf6a932b79b1b\",\n  \"previous_trial\": \"trial-4f5fce6e6b\",\n  \"previous_bundle\": {\n    \"schema_version\": \"project.v2\",\n    \"id\": \"trial-4f5fce6e6b-param-a224c6cb\",\n    \"parent_revision\": \"fa5f081ddc5d7e496b1dbd266a3cc392a403e9981133586f966abc50651a7790\",\n    \"contract_ref\": \"sha256:e0e5cfd6cef3eb2195c264057fce4180cb7ba533d02b262f9826b8eeadb8c36d\",\n    \"scope\": \"joint\",\n    \"implementation\": \"distributed\",\n    \"groups\": [\n      \"6d8291a335bb2fbe9907\",\n      \"6e0a232106a5e06c05fe\",\n      \"04dbf05d596cce5394b5\"\n    ],\n    \"calls\": [\n      \"b08a96298d855d7c8dcd7497\"\n    ],\n    \"affected_calls\": [\n      \"003d0cc5667c509afa4925ce\",\n      \"005dfcfa48cca01a1d11572c\",\n      \"009504b524dfe5abdc78ddb0\",\n      \"0096b657100ed5bc576259dd\",\n      \"00a38b3b97047f87b5107c22\",\n      \"00a6e8d640f3c5d7d7b861de\",\n      \"00aa76eceaf956117e20814e\",\n      \"00b31ee3320349cafdb6b95f\",\n      \"00bec2ee5de3d00d75f51678\",\n      \"00c579c4170552a307c6a6c3\",\n      \"011976bab624b771c98b7679\",\n      \"0123735d95248ad50232ab64\",\n      \"0128afb584e2d772cf27f3e9\",\n      \"015886e05c3f51d3c0b7dc0a\",\n      \"017e804adf4b70fa829efea9\",\n      \"01baaa4abed799d207dd1bab\",\n      \"01e03a149a5e4d44f2b80965\",\n      \"023e824f431d448d01bb6c3b\",\n      \"0249b7e9725eba636946237d\",\n      \"025ecc4dbc0779f06fecbb01\",\n      \"027cb286dfb9e461c995709f\",\n      \"02b99776e1b905b2c2e00cdd\",\n      \"02c6b9aacb8004083da31f6d\",\n      \"02cef9325d74d8702e67655c\",\n      \"02e5ccce72911642d2b4a987\",\n      \"02fa24acb9f1a1edbff29f78\",\n      \"030f9e4479a6fb6fbe1c75fb\",\n      \"0327d0688a62c3d9c8156252\",\n      \"039195c830106c8f3d53549c\",\n      \"0395a56695415df505615595\",\n      \"0398eb399ff3001204265777\",\n      \"03a1ce6a8c57711d31a82471\",\n      \"03a50ba08c0632d43439cd67\",\n      "
+        },
+        {
+          "part": "prt_1829413a60017eSGmRJU54aWsz",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "ca39f6fd3cf73300595029f699ed2501a67271c910eb7ca9b528019fa4a967a6",
+          "output_sha256": "381872f4bda56cc3fa8384ac313262f81e696ac0012bf7ef5dddb20a8a245a8d",
+          "output_bytes": 5278,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": true
+        },
+        {
+          "part": "prt_182948826001iLNGLIhwOuRBgN",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "ed93ef3dd36dcb6bf42f249c4eb4e0990fcaac71a359cc9358d2455bc48984b5",
+          "output_sha256": "66e5926dbb43ffe64d0f5d4a6c3ef286ea71a453a577f02667f981e2394b14c3",
+          "output_bytes": 169,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182948c76001KOH3jyjcqkolBM",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "d99fae9ce5a61ccb51e401a7e4b9263165193bd27fd2d5eba284fd9a4416fcb2",
+          "output_sha256": "891ea699b8fecb4ecf8c95ef560c81dac57ec60038beab9f6d590598414ad74e",
+          "output_bytes": 21,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829498f4001t72qNwpcC0MPzg",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "6f8b15e6d5c327fbafc3b12f4dd762424e29a160e1ab2ffff26464484a17975f",
+          "output_sha256": "d657ccef7a29b6329c58d6b0fa81406a33236cf8f499f490c97cf90343613faf",
+          "output_bytes": 6158,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182949d01001K2lw1tYlGoQyD2",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "8d7076031985107a09c66be0a25ed7a452866c480f14ee9c010734bf5f4ac5c3",
+          "output_sha256": "9553b2f2e408df1eb8b76476e0beae5ccc0faec668c383addbff4e4ee87a5689",
+          "output_bytes": 2371,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182956b49001ExZjiSXYq0bPeU",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "da3534a6e5853257e022040ad8e3d87db126453beff089270ce28ab730c4e2b9",
+          "output_sha256": "f32e587aa3c8f5abaab5cce8e332ff220731a84d3f52926391a3459da23a21e4",
+          "output_bytes": 155,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182956e14001FjPl5gwPqTPrbJ",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "19601b78d7fcf0aa5e0c128eb3caf39feb15c1632116eb4165ab9ea3fc5d127e",
+          "output_sha256": "efefc15c24ee8645a3f5f6958389db729c1577eb6b32aeac4caab2a86d90daa3",
+          "output_bytes": 11,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829577c2001UHedGUh3e1owX1",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "99bcdfa98c0f072d18016593a17bd62676f6d658fe10ee88ad9c516b793c8216",
+          "output_sha256": "a44990cb6a51d58a188845aa08bacf6adfe7511186e2a61bd398851c9827cdb7",
+          "output_bytes": 387,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182958b53001VF9GedUcLTOZc6",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "69c428cc9c2e269aa6dbc7038f9acb0110800c86ffcb1d06e7c30a3bb6bc5275",
+          "output_sha256": "cb7be6a1931e67fc001e6ccd7f7fdd6652c8c7c0a0d05e304f600e39e61dce17",
+          "output_bytes": 4188,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18295a29f0015MOxHJ01Bj1C4q",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "0fd15ad8d18c325549ea8cebf40739a846ea5346da9429994bcf7cd47adc77cd",
+          "output_sha256": "40b6b7d8398eb509c071c63aa7ed22d6e13d07a70d7bc6f1feed67eac6dae424",
+          "output_bytes": 1220,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18295afb0001VIZCZAVPRKohKy",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "88c6c81bdb3b098eb01a3a768e89a9ebf42a9d7af431a71af5072bcb3f7f04ed",
+          "output_sha256": "942ea686c6e63dab005bf6cb2ccb54ec9f50d5ce499963c84efbbb4893d5f590",
+          "output_bytes": 8057,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18295d1f2001HkjqOH4FIUGs3u",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "97ba0b80866083cdd21ab52053c63a08460058140adb2495c6dc5bd3d20f75a1",
+          "output_sha256": "d26221e52416a47a3b3fc89135ec617c16d1ea14d133a68bcf34a49f6afe0003",
+          "output_bytes": 597,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18295e703001jqwdfqG9Kpc6Ou",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "dbbadd9a3d1475b904d3d1318a5894487655dbef5391bc9cec2a1cc351e07f43",
+          "output_sha256": "00f8684f58c1f8b9e82e7eb64a6e7e23e5cc193b1c5b6fecb39bed47c23cde6a",
+          "output_bytes": 4858,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18295e8c9001NeEqDgUHk2lZW0",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "57d2b169842ca5469276e6dbd04beb1b2d3c1ac8be103dcb8520ae667cebee21",
+          "output_sha256": "978217828b756e312b7acea990709e763e4f139a6130553d135296fa914a9418",
+          "output_bytes": 4356,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18296c477001FKPcr8VNHj7l11",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "92b42a6d909e7793399488fcd5c7cd0bb24e4b0d9180e9fd79db0fe00848e72d",
+          "output_sha256": "7649a207cdf69a725264bcf055a9fb75607abfa7f95c980dc7962e3a316376e6",
+          "output_bytes": 735,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18296c687001C2wCSbmy1AvNQf",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "bb255f7d0d2c1ecc06f54e366e2008d11b25d5450a23cd5691c2516cf3ec35e6",
+          "output_sha256": "69e35f56bf34c9bd5b5dd8c286a52f4fbeff183057e131e27b34d541c579d476",
+          "output_bytes": 975,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18296db1d001yin4hhOmIhWShp",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "4c7db56fb44e97a7c3156a7bb386d1789b462d3513456aaa3e8db1f21737805f",
+          "output_sha256": "9af31249cbfe35b0c492a87002613091d7f15c47087c609cb663003f5a44dde2",
+          "output_bytes": 1319,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182970aae0011kMPcDthTPziRV",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "052173d5006591159044882d191e7b857ce891304eb72575fb5ea19227035b56",
+          "output_sha256": "94b92098faa03928a60ec3707b831d01443aa0c683914acab9699674eb8f95af",
+          "output_bytes": 3008,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829739e5001tdGJeBMF23SEwd",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "c447a37719e9354eb85f85e396e1e76ce6e3d1262cadba4d9d5122111631230f",
+          "output_sha256": "7ae5c2f3d4f30a877eb0c3087904ed7c53f9b3c8631daf95e90bc2002276e8cf",
+          "output_bytes": 5101,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18297712d001RKoxrR0b50ehQz",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "9086f53d7e2294072b0cb6b22989065e02dd1912ec9f84700396ed94b211275a",
+          "output_sha256": "89ff7e4e3268b31a1177c2dd5dc8d2b1629ecaa12d8939f9097d886920be2b5d",
+          "output_bytes": 2818,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829773c8001mG9Z7LotGkRJxw",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "baeaa1b6e5f8be2d1c5e04c1025bb8bbb1b958dc6744e8cbd92c29e877e970e3",
+          "output_sha256": "6926893cf7877634f73db03c47643455600dd83c41fbd24faffac2e7e422e991",
+          "output_bytes": 102,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182977f65001DB3d93YyLTgHJ0",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "defefb6798f6f16798c2532ee6f16d1f4bb1f8e2af9aa0657aaca86710df1834",
+          "output_sha256": "8a09a776c9d036e3a5d135bc3066d6a780b2bc5ad289fcb6f20836bd94b7c632",
+          "output_bytes": 20,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_18297814a0012bFqHfafJL4Jwn",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "40262939cdbe6272b587a711e3b8c101219c0f45b663b9372ba3032cbaadc698",
+          "output_sha256": "c2434d458c15043f8604d6570fe5c4a7c262784c6d2788dcae980896b38a4b5d",
+          "output_bytes": 3501,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182979e08001m7vUQXPyjiTe7m",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "12d8251aee25897c66ef4a7bd4fc356e568104efeb09380bffa429233c2b2121",
+          "output_sha256": "5e3ccdcd9c3b891892396412ae925ebe06b146ebfc5a5585710ea419ae992635",
+          "output_bytes": 2672,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": true,
+          "reads_selection": false,
+          "command": "python3 - <<'EOF'\nimport json\nd = json.load(open('inputs/previous-feedback.txt'))\nprint('top keys:', list(d.keys()))\nfor k in d:\n    v = d[k]\n    if isinstance(v, dict):\n        print(k, '-> dict keys:', list(v.keys())[:20])\n    elif isinstance(v, list):\n        print(k, '-> list len', len(v))\n    else:\n        print(k, '=', str(v)[:200])\nEOF",
+          "output_excerpt": "top keys: ['current_revision', 'previous_trial', 'previous_bundle', 'previous_selection', 'previous_proposal', 'decision', 'supplemental_evidence', 'project_measurement', 'evaluation', 'parameter_search', 'binding_execution', 'missing_coverage', 'complete_version', 'quality_and_coverage', 'resources', 'routing', 'version_policy', 'attribution_policy']\ncurrent_revision = 799a80d2b4d7810555f73386ec586109159692b93eaf28ddb8dbf6a932b79b1b\nprevious_trial = trial-4f5fce6e6b\nprevious_bundle -> dict keys: ['schema_version', 'id', 'parent_revision', 'contract_ref', 'scope', 'implementation', 'groups', 'calls', 'affected_calls', 'edits', 'read_set', 'write_set', 'requires', 'replaces', 'external_invariants', 'plan_ref', 'registry_ref', 'installer', 'parameters']\nprevious_selection -> dict keys: ['scope', 'groups', 'rationale', 'hypothesis', 'affected_calls']\nprevious_proposal -> dict keys: ['implementation', 'replacement_calls', 'rationale', 'setup_work', 'quality_risks', 'eliminated_calls', 'requires', 'replaces', 'parameter_space', 'state_lifecycle', 'synchronization', 'communication_plan']\ndecision -> dict keys: ['state', 'revision', 'parent', 'bundle', 'accepted', 'reasons', 'report_ref']\nsupplemental_evidence = None\nproject_measurement -> dict keys: ['valid', 'objective', 'reference', 'parent_values', 'candidate_values', 'paired_gains', 'noise_bounds', 'constraints', 'reasons', 'aggregation_order', 'framework_source', 'protocol']\nevaluation -> dict keys: ['schema_version', 'id', 'revision_id', 'parent_id', 'contract_ref', 'bundle_id', 'quality', 'feasible', 'objective', 'reference_objective', 'metrics', 'required_ranks', 'rank_bundle_hashes', 'required_calls', 'executed_calls', 'rank_executed_calls', 'evidence', 'reasons']\nparameter_search -> dict keys: ['engine', 'measuremen"
+        },
+        {
+          "part": "prt_18297aad8001VGP4LAChRNP2iV",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "65016eabcf599cfc077f9fd2369d5aab02911cc222e4e305fbc462dadad8fd77",
+          "output_sha256": "170406eede3a35a92e85fcb8bd6a2b504a6927a65a76df6095eee5d2c4a4021d",
+          "output_bytes": 1198,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": true,
+          "reads_selection": false,
+          "command": "python3 - <<'EOF'\nimport json\nd = json.load(open('inputs/previous-feedback.txt'))\nprint('=== decision ===')\nprint(json.dumps(d['decision'], indent=1)[:2000])\nprint('=== project_measurement ===')\nprint(json.dumps(d['project_measurement'], indent=1)[:3500])\nEOF",
+          "output_excerpt": "=== decision ===\n{\n \"state\": \"evaluated\",\n \"revision\": \"3007940f06c3a77c32c40b9c49b53e2b7a93af0fd66ba33f1cac90ed37cdf05f\",\n \"parent\": \"fa5f081ddc5d7e496b1dbd266a3cc392a403e9981133586f966abc50651a7790\",\n \"bundle\": \"trial-4f5fce6e6b-param-a224c6cb\",\n \"accepted\": true,\n \"reasons\": [],\n \"report_ref\": \"sha256:dd31d922b56054e0dc42a8f40bdd51be4ee795e43c71a1d2ac5a85c31cd0e183\"\n}\n=== project_measurement ===\n{\n \"valid\": true,\n \"objective\": 171.46259750000002,\n \"reference\": 175.4571855,\n \"parent_values\": [\n  175.310089,\n  175.604282\n ],\n \"candidate_values\": [\n  171.193951,\n  171.731244\n ],\n \"paired_gains\": [\n  4.1161380000000065,\n  3.873038000000008\n ],\n \"noise_bounds\": [\n  0.6232120000000236,\n  0.6593440000000328\n ],\n \"constraints\": [\n  {\n   \"metric\": \"peak_allocated_bytes\",\n   \"values\": [\n    2239245312.0,\n    2239245312.0\n   ],\n   \"limit\": 2351207577.6,\n   \"original_reference\": 2239245312.0,\n   \"passed\": true\n  }\n ],\n \"reasons\": [],\n \"aggregation_order\": \"ranks_then_samples\",\n \"framework_source\": \"ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f\",\n \"protocol\": \"AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound\"\n}\n"
+        },
+        {
+          "part": "prt_18297c3d7001HjA93XHZx6XmRR",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "a380676287330f437d8a5acca732cff46233d5e95282322015c7dd575488572f",
+          "output_sha256": "5d2d2b4b3f104fb3972c9860043951117577c2d536890e84f2857ee6ba55e98c",
+          "output_bytes": 3377,
+          "exit": 1,
+          "path": null,
+          "reads_feedback": true,
+          "reads_selection": false,
+          "command": "python3 - <<'EOF'\nimport json\nd = json.load(open('inputs/previous-feedback.txt'))\nprint('=== previous_proposal.parameter_space ===')\nprint(json.dumps(d['previous_proposal'].get('parameter_space'), indent=1))\nprint('=== previous_proposal.requires/replaces/setup_work ===')\nprint('requires:', d['previous_proposal'].get('requires'))\nprint('replaces:', d['previous_proposal'].get('replaces'))\nprint('setup_work:', json.dumps(d['previous_proposal'].get('setup_work'))[:800])\nprint('=== parameter_search.selected/stats ===')\nprint(json.dumps(d['parameter_search'].get('selected'), indent=1)[:500])\nprint(json.dumps(d['parameter_search'].get('stats'), indent=1)[:800])\nprint('=== parameter_trials (brief) ===')\nfor t in d['parameter_search'].get('parameter_trials', [])[:10]:\n    print({k: t[k] for k in t if k in ('params','objective','feasible','constraints','values')} if isinstance(t, dict) else t)\nEOF",
+          "output_excerpt": "=== previous_proposal.parameter_space ===\n{\n \"params\": [\n  {\n   \"name\": \"keep_unsharded_blocks\",\n   \"kind\": \"int\",\n   \"choices\": [\n    0,\n    1,\n    2,\n    3\n   ],\n   \"description\": \"Trailing (backward-first) transformer blocks that skip FSDP's post-forward reshard via the public FSDPModule.set_reshard_after_forward(False, recurse=False). Each kept block removes one of the 24 backward block all-gathers (c10d::_allgather_base_ payload 25,192,448 B per rank, ~2.0 ms on the serialized critical path) plus its fsdp.all_gather_copy_in and fsdp.split_with_sizes_copy companions, while retaining 50,384,896 B of unsharded parameters from forward until the block's post-backward reshard; the measured peak_allocated_bytes <= 2,351,207,577 B (1.05x baseline) constraint gates the ceiling. 2 is the first revision (worst-aligned +100.77 MB inside the 111.96 MB headroom); 0 is the unchanged source policy; 1 and 3 let the search measure the slope and the ceiling. The parameter changes reshard timing only, never workload semantics, batch, sequence length, data or thresholds.\"\n  }\n ],\n \"constraints\": [\n  {\n   \"expr\": \"keep_unsharded_blocks >= 0 and keep_unsharded_blocks <= 3\",\n   \"rationale\": \"Matches the declared choices; 4 or more kept blocks (+201 MB worst-aligned) cannot fit the frozen 1.05x peak budget while 3 is left to measurement, and the value never exceeds the 24 blocks of the frozen workload because build clamps to the block count.\"\n  }\n ]\n}\n=== previous_proposal.requires/replaces/setup_work ===\nrequires: []\nreplaces: []\nsetup_work: {\"description\": \"All build-time work is one-time installation on the adapter state after prepare and before any invocation; no fixture output is precomputed or captured, and every invocation executes the full workload on its current inputs through the"
+        },
+        {
+          "part": "prt_18297d902001rbgZGznSws1dEA",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "84ea0ef75a97fb8779e140729aa5abf594a7166ef2fd3867d48e1be134351bbb",
+          "output_sha256": "f4d7c753a677721b0d1cbf3e5bb547b08270fb1de41f1a70d263efccb7744bac",
+          "output_bytes": 3446,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": true,
+          "reads_selection": false,
+          "command": "python3 - <<'EOF'\nimport json\nd = json.load(open('inputs/previous-feedback.txt'))\nbe = d['binding_execution']\nprint('binding_execution keys:', list(be.keys()))\nprint(json.dumps(be, indent=1)[:2500])\nprint()\nqc = d['quality_and_coverage']\nprint(json.dumps(qc, indent=1)[:1500])\nEOF",
+          "output_excerpt": "binding_execution keys: ['baseline', 'candidate']\n{\n \"baseline\": [\n  {\n   \"rank\": 0,\n   \"setup\": [],\n   \"framework_source\": {\n    \"sha256\": \"ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f\",\n    \"files\": 163,\n    \"scope\": \"kernel_optimizer Python sources and role prompts at worker entry\"\n   }\n  },\n  {\n   \"rank\": 1,\n   \"setup\": [],\n   \"framework_source\": {\n    \"sha256\": \"ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f\",\n    \"files\": 163,\n    \"scope\": \"kernel_optimizer Python sources and role prompts at worker entry\"\n   }\n  }\n ],\n \"candidate\": [\n  {\n   \"rank\": 0,\n   \"setup\": [\n    {\n     \"bundle\": \"trial-4f5fce6e6b-param-a224c6cb\",\n     \"binding\": {\n      \"requested\": \"legacy\",\n      \"effective\": \"direct\",\n      \"reason\": \"no functional replacements\"\n     },\n     \"elapsed_ms\": 28.197801,\n     \"allocated_bytes\": 709649920,\n     \"reserved_bytes\": 1568669696,\n     \"peak_allocated_bytes\": 709650432,\n     \"scope\": \"installation after model prepare; separate from the declared warm-model score\"\n    }\n   ],\n   \"framework_source\": {\n    \"sha256\": \"ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f\",\n    \"files\": 163,\n    \"scope\": \"kernel_optimizer Python sources and role prompts at worker entry\"\n   }\n  },\n  {\n   \"rank\": 1,\n   \"setup\": [\n    {\n     \"bundle\": \"trial-4f5fce6e6b-param-a224c6cb\",\n     \"binding\": {\n      \"requested\": \"legacy\",\n      \"effective\": \"direct\",\n      \"reason\": \"no functional replacements\"\n     },\n     \"elapsed_ms\": 26.990785,\n     \"allocated_bytes\": 709649920,\n     \"reserved_bytes\": 1568669696,\n     \"peak_allocated_bytes\": 709650432,\n     \"scope\": \"installation after model prepare; separate from the declared warm-model score\"\n    }\n   ],\n   \"framework_source\": {\n    \"sha256\": \"ed24af7acc8caa15578e0b859c85ef8a901"
+        },
+        {
+          "part": "prt_182988563001uMAow0s4sKlsAw",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "bf64cfffa4ada77e91f7ab4e23bff0c9591dd567585720347ab6bc6fa34f9c8a",
+          "output_sha256": "43622692ad4a71de2bc5eadb01e9ccf276b80846f4cb72474277d4714dff9d00",
+          "output_bytes": 665,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182988c61001ueGi9bahNV5vLR",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "da60a571f4b0b1fd72d3879dcc57d159316ada11cefc159c58628755c6c08e84",
+          "output_sha256": "118b2875edb6f04a371875b5927b4be10dd77f9b1882c264f062200a50114e67",
+          "output_bytes": 1688,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182989e15001hTOT3YvR8Xw2t4",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "d3c11d4e4f12e9c9c876e52b3cdc8412b1cb8443dfd9a8a59fef852b86688473",
+          "output_sha256": "3374ff10c96a1085f76a2fae23b4bb03e85a3a4f5c289cc7ce916018249714d7",
+          "output_bytes": 179,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182989f73001R6dU2e8ubivGof",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "1d3337cebc2ad383ecb5e8893c746ee27dd2bada78e61fd57d3263b4da303ac4",
+          "output_sha256": "e974752c78ce339ec09451202ed6c85b5bb7d2094d1fd4f395aaef83665e5ec3",
+          "output_bytes": 10503,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/sandboxes/candidate-replay-f3bba47f4b5b/inputs/source/train.py",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829a2497001vIYDJB7h9KBFVp",
+          "tool": "write",
+          "status": "completed",
+          "input_sha256": "9318214043d26e093dfc15a8da500592a4801abfcac22baf7788883d95475e89",
+          "output_sha256": "e3e06ec0f8c958669ed3682941ab88218ff9ee42a7ab9b48fd78126336aa968c",
+          "output_bytes": 24,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/sandboxes/candidate-replay-f3bba47f4b5b/candidate.py",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829ad561001BgD7cEZuKEmYvt",
+          "tool": "write",
+          "status": "completed",
+          "input_sha256": "3cddd36a887d227651e1cd28a90c89d2e3e0728d467dc78abe8656258259400e",
+          "output_sha256": "e3e06ec0f8c958669ed3682941ab88218ff9ee42a7ab9b48fd78126336aa968c",
+          "output_bytes": 24,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/sandboxes/candidate-replay-f3bba47f4b5b/proposal.json",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829b0151001YFhLZVRXKVVnks",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "35e946ba92612882db362b6ae77dc8d48a531c5116462a8577743383b6771ab6",
+          "output_sha256": "f7be70cfe8a5eeef4eb4f2262adda5e368d3f841db1319b249e07fa13b03b730",
+          "output_bytes": 312,
+          "exit": 1,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829b208c001hoewId8sxu3HgD",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "9a6dcc95d1222a89e2237cb30d9fab9c80bb4cf26d09bbba1e50f01dd474c573",
+          "output_sha256": "6b54104572ca88df59d8b4d27e69d4233f81a9c3ae2fdb9fb814696cba9e04d5",
+          "output_bytes": 199,
+          "exit": 1,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829b4e05001p4PXHSW2fZrnEP",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "a883f4952479e5e8aaee320ff5119dcfd39b88294af97facb5f438def4971da7",
+          "output_sha256": "add271912679a8663cb8ee5b19e25fdf98be05c118be10148003714eddd88e32",
+          "output_bytes": 831,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829ba3700018FnNPyFCp2DuI6",
+          "tool": "edit",
+          "status": "completed",
+          "input_sha256": "91fc922fc53a93e67495a462a7aa100c8f450c90c4398f56804d4fab123119fa",
+          "output_sha256": "8caec1349d76de16c89d9b64f22a46c79f641ab12a2540c8d2433217dac59f07",
+          "output_bytes": 26,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/sandboxes/candidate-replay-f3bba47f4b5b/candidate.py",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829bbe2f001wXooGzibv6tvfP",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "a49ccebc69996498818ad35cc9accbcb2d297a19750b2a4a2b7f8d55349f7c94",
+          "output_sha256": "8ea3528869fbd2e31bc8f3964af8b12ad4f5cad45f80669121337dfad62c580d",
+          "output_bytes": 39,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829bd894001KChwtQ5oGlNlO4",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "d8dc77c8c7f10904dbf025ec7bbc1bb2bc6621d44989b33820d4ed67a9970477",
+          "output_sha256": "7ee548c2ae08629ed5f6b92f70d0525be1b6db43f736f2311696f21932a7f5a1",
+          "output_bytes": 23,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829bfae0001eZ1sKKk1S5eX8H",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "cf81f57de2e46d830ec3ae1491fb17e8844093091290104cc2a61da84ecfa76f",
+          "output_sha256": "dc683dd9e1ce36dfaf30a0c48811ce41c5640cb5ffe51a517588d75fec5e7439",
+          "output_bytes": 188,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829c0a46001AZEnr1BzAYOp3z",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "4abc469e4477996deeeab87e0cb83f8913d06f606e1aa9eb0ece53135296dc61",
+          "output_sha256": "bba87343ecdb04cf2421ced07f9d8a137633b40810407be2893f94be11c660d2",
+          "output_bytes": 48,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        }
+      ],
+      "preserved_toy_probe_sources": []
+    },
+    "treatment": {
+      "session": "ses_e7d63c934ffe5AfmxpOgaLqqR6",
+      "snapshot": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/generation-snapshots/generation-1c4ed3d2013f.json",
+      "schema_repairs": 0,
+      "usage": {
+        "schema_version": 1,
+        "mode": "observe_only",
+        "messages": 82,
+        "reported_cost": 1.59527088416,
+        "messages_without_cost": 0,
+        "unfinished_messages": 0,
+        "tokens": {
+          "total": 4536950.0,
+          "input": 90914.0,
+          "output": 17206.0,
+          "reasoning": 23518.0,
+          "cache.read": 4405312.0,
+          "cache.write": 0.0
+        },
+        "sessions": [
+          {
+            "id": "ses_e7d63c934ffe5AfmxpOgaLqqR6",
+            "status": "observed",
+            "detail": null
+          }
+        ],
+        "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+      },
+      "all_input_files_unchanged": true,
+      "input_count": 43,
+      "prompt_sha256": "c6bf2cc7dcdb00f67b0238753b65e4dc5fb64fdc5eba5b0043917f41ebb71c3c",
+      "settings_sha256": "d983ae2c8db7bb5ae559313f6dc7faa909bab8ebdd0776e0d7fd45c439bb7e64",
+      "candidate": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/candidate.py",
+      "candidate_sha256": "077f5cdce46b8e9ef36951f29767910c7f4a78c14ae1179a8c5392818f30b75c",
+      "proposal": {
+        "implementation": "distributed",
+        "replacement_calls": [
+          "b08a96298d855d7c8dcd7497"
+        ],
+        "rationale": "Previous outcome from evidence: trial-4f5fce6e6b-param-a224c6cb (keep_unsharded_tail) was ACCEPTED (previous-feedback decision.accepted=true; AB/BA paired gains 4.12/3.87 ms vs MAD noise bounds 0.62/0.66 ms; peak_allocated_bytes 2239245312 B exactly at baseline; selected parameter keep=3 measured 170.94 ms) and is installed in current revision 799a80d2..., so the accepted timing baseline is ~171.46 ms, not the 176.15 ms original. There is no failure to repair; this attempt is the selection's continuation at the same joint boundary (model forward b08a96298d855d7c8dcd7497 + the 24 FSDP block modules + the _allgather_base_ family). Because this bundle writes the same model-forward call, it explicitly replaces the installed bundle trial-4f5fce6e6b-param-a224c6cb and preserves its needed behavior itself: build re-applies the accepted policy (K trailing blocks keep forward all-gathered bytes via public FSDPModule.set_reshard_after_forward(False, recurse=False), default K=3) and then adds the new step, an explicit forward all-gather prefetch via the public FSDPModule.set_modules_to_forward_prefetch: the FSDP root prefetches the first D blocks and each block i prefetches blocks i+1..i+D (default D=1), so the next block's all-gather is issued on FSDP's all-gather stream at the current block's entry, right after its own unshard copy-out, and runs concurrently with that block's compute. Measured basis (current-revision nsys, observations/current/nsys-9ed9145c, rank 0): the forward all-gather chain (root 105029632 B gather 8.25 ms + 24 block 25192448 B gathers, 2.0-2.4 ms each, RING over SHM per nccl_tuning) spans 79.43 ms of which only 57.37 ms is NCCL-busy; the 22.06 ms of NCCL-idle gaps contain exactly the per-block compute (25 kernels, ~0.3 ms GPU busy) plus dispatch latency, including 1.80 ms after the root gather and one anomalous 5.0 ms stall. Backward is already gap-free (~2.1 ms AG/RS back-to-back), so only forward rescheduling attacks existing volume. Code mechanism verified in the measured worker's torch 2.13.0+cu129: FSDPState._pre_forward calls its param groups' pre_forward (unshard + synchronous wait_for_unshard) and only then iterates self._states_to_forward_prefetch, which is empty by default, so by default the next block's all-gather is issued at that block's own pre-forward and block compute cannot overlap it; the public set_modules_to_forward_prefetch API (fully_shard.py:862 region) exists precisely to issue the next all-gather earlier from the CPU. FSDP's default backward prefetch is preserved because _states_to_backward_prefetch is never set, and the root's lazy-init auto no-reshard-after-forward policy is untouched. The replacement delegates the complete forward (and therefore backward, gradient reduction and SGD update) to the parent boundary callable; no custom math is introduced, so the earlier family's vocab-shard reassociation failure mode cannot recur. Expected effect: most of the 22.06 ms forward NCCL-idle exposure is converted to overlap (bounded by the unexplained 5.0 ms stall), i.e. roughly 10-18 ms off 171.46 ms toward ~153-161 ms, with communication_kernel_sum_ms roughly unchanged (same wire volume, less waiting) and peak_allocated_bytes gated by the frozen 1.05x budget. CPU FSDP2 fixture checks on the measured worker's Python confirm bit-identical loss, logits and gradients for every parameter variant (depth 0/1/2 x keep 0/2/3), stable repeated invocations, correct warm-process reset, and full rollback with parent-delegated fallback labels.",
+        "setup_work": {
+          "description": "All build-time work is one-time installation on the adapter state after prepare and before any invocation; no fixture output is precomputed or captured, and every invocation executes the full workload on its current inputs through the parent forward.",
+          "steps": [
+            "Structural guards, no GPU work: resolve the model boundary (context.references and context.modules must both contain b08a96298d855d7c8dcd7497), list module.transformer.h, require every block to expose the public FSDPModule.set_reshard_after_forward and FSDPModule.set_modules_to_forward_prefetch, and require the root module to expose set_modules_to_forward_prefetch; any failure records a concise setup-failure category (missing_boundary, missing_transformer_blocks, unsupported_fsdp_module, unsupported_fsdp_root) that the replacement's route label later reports while still delegating to the parent.",
+            "Reset both policies to the source state before applying anything: set_reshard_after_forward(True, recurse=False) on every block and set_modules_to_forward_prefetch([]) on the root and every block, so repeated builds in a warm process (parameter trials) measure exactly the requested policy with no leakage from an earlier trial.",
+            "Re-apply the replaced bundle's accepted policy: set_reshard_after_forward(False, recurse=False) on the last K blocks (K = context['parameters']['keep_unsharded_blocks'], default 3, clamped to [0, block_count]); this flips only post_forward_mesh_info to None on those blocks' param groups, no parameters are copied.",
+            "Apply the new forward prefetch: root.set_modules_to_forward_prefetch(blocks[:D]) and blocks[i].set_modules_to_forward_prefetch(blocks[i+1:i+1+D]) for each i with a nonempty target slice (D = context['parameters']['forward_prefetch_depth'], default 1, clamped to [0, 2]); these are plain per-state list assignments through the public API, no collective is issued and no tensor is touched.",
+            "Symmetric agreement: one int64 MIN all_reduce of an 8-byte ok flag on the default process group; if any rank fails its guards or disagrees, both policies are rolled back identically on every rank (prefetch lists cleared, all blocks restored to reshard_after_forward=True) so the NCCL collective sequence stays symmetric, and the wrapper reports fallback.<reason>.parent_delegated.",
+            "Install the single model-boundary replacement that records the chosen route (candidate.fwd_ag_prefetch_dD_keep_kK or the fallback category) and delegates to the parent forward from context.references; the framework's phase/signature guards around the module boundary are untouched and no other module forward is wrapped."
+          ],
+          "memory": {
+            "setup_allocation": "The only allocation during build is the transient 8-byte int64 agreement flag tensor (CUDA when available, else CPU), freed immediately after the all_reduce; no parameter copies, no packed weights, no CUDA Graph capture and no retained pools are created, so framework.lifecycle_peak_allocated_bytes is unaffected by installation.",
+            "runtime_delta": "The prefetch policy changes runtime allocations only: depth D keeps up to D extra in-flight block all-gather output units (50384896 B each) alive mid-forward while the current block computes, i.e. about +50.38 MB at the default D=1 and +100.77 MB worst-aligned at D=2, against the measured 111.96 MB headroom below the frozen 2351207577.6 B limit (measured keep=3 peak is exactly the 2239245312 B baseline and was insensitive to keep 1 vs 3, indicating the global peak does not sit in the mid-forward window; the measured peak_allocated_bytes constraint remains the arbiter). reserved/pool memory is not otherwise increased; the keep=3 retention window is unchanged from the replaced bundle."
+          }
+        },
+        "quality_risks": [
+          "Numerics must be untouched: mitigated by construction - the identical collectives with identical payloads, kernel sequence and counts execute (25 forward all-gathers, 45 block all-gathers total, 25 reduce-scatters at keep=3), producing identical bytes; only their CPU issue order changes, so loss, logits, gradients, post-update parameters, DTensor shard layouts, the tied-embedding identity and the negative control are bit-identical (verified on a CPU FSDP2 fixture across all parameter variants); any deviation would surface loudly at the 1e-6/1e-4 gate rather than silently.",
+          "Memory ceiling: depth 2 combined with keep 3 is worst-aligned +100.77 MB against the measured 111.96 MB headroom (limit 2351207577.6 B), so it fits only narrowly and is left to the parameter search under the frozen peak_allocated_bytes constraint; the default depth 1 adds about +50.38 MB transient mid-forward and the measured constraint remains the arbiter - reduce depth or keep on breach.",
+          "Cross-rank asymmetry (one rank issuing prefetches while the peer does not) would desynchronize NCCL: mitigated by deterministic structural guards identical on both ranks plus the build-time MIN agreement collective that forces symmetric rollback to pure parent delegation; the failure-mode of one rank silently installing a different policy cannot occur because parameters are clamped deterministically and all policy mutation happens before the agreement flag is reduced.",
+          "Warm-process reuse across parameter trials could leak a previous keep or prefetch list: mitigated by the full reset of both policies (all blocks' reshard policy, root's and all blocks' forward-prefetch lists) before applying the requested configuration.",
+          "FSDP internals interaction: the candidate only uses public FSDPModule APIs verified on the measured worker's torch 2.13.0+cu129; FSDP's default backward prefetch remains active because _states_to_backward_prefetch is never set, and the root's automatic no-reshard-after-forward (lazy-init policy) is untouched; if a guard fails the wrapper still delegates through the parent boundary, so the parent's collective sequence is always preserved.",
+          "Coverage/effectiveness risk: the prefetch could under-deliver if the observed 5.0 ms forward stall (cause unknown) is CPU-side and not hidden by earlier issue; the paired AB/BA project measurement, not the diagnostic nsys reasoning, decides acceptance, and no measurement boundary, quality threshold or workload parameter is modified."
+        ],
+        "eliminated_calls": [
+          "c917c08825afcaacd65b752f",
+          "43c061f2583864806b2c4a79",
+          "e6d4fa912fd7f93a8db5d567",
+          "9231f94b292e95bae47425aa"
+        ],
+        "requires": [],
+        "replaces": [
+          "trial-4f5fce6e6b-param-a224c6cb"
+        ],
+        "parameter_space": {
+          "params": [
+            {
+              "name": "forward_prefetch_depth",
+              "kind": "int",
+              "choices": [
+                0,
+                1,
+                2
+              ],
+              "description": "Explicit forward all-gather prefetch depth via the public FSDPModule.set_modules_to_forward_prefetch. 0 disables explicit prefetch (the replaced bundle's behavior, default FSDP scheduling where each block's 25192448 B all-gather is issued at that block's pre-forward and cannot overlap the preceding block's compute). 1 (first revision) makes the root prefetch block 0 and each block i prefetch block i+1 at its own entry, so the ~2.1 ms all-gather runs concurrently with the ~0.42-0.92 ms of block compute and dispatch that the current-revision nsys shows as 22.06 ms of NCCL-idle exposure inside the 79.43 ms forward chain; it holds about one extra 50384896 B all-gather output unit mid-forward. 2 prefetches two blocks ahead for more aggressive overlap at up to ~100.77 MB extra worst-aligned mid-forward allocation, gated by the frozen peak_allocated_bytes <= 2351207577.6 B constraint. The parameter changes all-gather issue order only, never workload semantics, batch, sequence length, data or thresholds."
+            },
+            {
+              "name": "keep_unsharded_blocks",
+              "kind": "int",
+              "choices": [
+                0,
+                1,
+                2,
+                3
+              ],
+              "description": "Trailing (backward-first) transformer blocks that skip FSDP's post-forward reshard via the public FSDPModule.set_reshard_after_forward(False, recurse=False), re-applied from the replaced accepted bundle. Each kept block removes one of the 24 backward block all-gathers (c10d::_allgather_base_ payload 25192448 B per rank, ~2.0 ms on the serialized critical path) plus its fsdp.all_gather_copy_in and fsdp.split_with_sizes_copy companions, while retaining 50384896 B of unsharded parameters from forward until the block's post-backward reshard. 3 is the previously measured best (170.94 ms search trial, accepted 171.46 ms paired measurement); 0 is the unchanged source policy; 1 and 2 let the search re-measure the slope jointly with prefetch depth under the same frozen peak budget."
+            }
+          ],
+          "constraints": [
+            {
+              "expr": "forward_prefetch_depth >= 0 and forward_prefetch_depth <= 2",
+              "rationale": "Matches the declared choices; depth 3 or more would stack three extra in-flight 50384896 B all-gather output units (~151 MB) against the measured 111.96 MB headroom below the frozen 2351207577.6 B peak limit and cannot fit worst-aligned, while depths 0/1/2 remain measurable; build additionally clamps to this range so warm-process trials never leak a larger value."
+            },
+            {
+              "expr": "keep_unsharded_blocks >= 0 and keep_unsharded_blocks <= 3",
+              "rationale": "Matches the declared choices and the replaced bundle's accepted space; 4 or more kept blocks (+201 MB worst-aligned retention) cannot fit the frozen 1.05x peak budget, and the value never exceeds the 24 blocks of the frozen workload because build clamps to the block count."
+            }
+          ]
+        },
+        "state_lifecycle": "The replacement is the model-boundary forward during the adapter's forward_loss phase; the framework's phase/signature guards around the module boundary are untouched and no other module forward is wrapped. The prefetch lists and the keep policy live on the existing FSDP states of the prepared model and are refreshed by nothing (they are static policy attributes consulted by FSDP's own pre-forward hooks each pass), so warm-model lifecycle equals the source's: every non-kept block still reshards in its own post-forward callback, kept blocks reshard in their post-backward callback before optimizer.step(), and parameters are DTensor shards (same shapes/placements) at the SGD update, at reset()'s copy of initial values, at zero_grad and at observe()'s gradient/parameter capture between continuous updates. The tied transformer.wte.weight is lm_head.weight identity is untouched because no module or parameter object is replaced. The all-gathered bytes consumed in backward are produced by each invocation's own forward, so no state crosses invocation boundaries; the prefetch policy itself is installation-time state, symmetric on all ranks, and is either fully applied or fully rolled back before validation runs.",
+        "synchronization": "No new streams, process groups, tags or barriers are introduced in the workload. The prefetches reuse FSDP's existing all-gather stream and its existing event discipline (unshard/wait_for_unshard/copy-out events), so cross-stream ordering is exactly the parent's; forward, backward, reduce-scatter and SGD run as the source on the existing streams and NCCL group, the leading/trailing torch.cuda.synchronize completion boundaries, the detached loss and full logits lifetime across peak sampling, and the reset/barrier discipline between invocations are unchanged. The only added synchronization is the single build-time int64 MIN all_reduce of an 8-byte flag on the default process group, issued before validation and outside every measured invocation, guaranteeing symmetric installation or symmetric rollback to parent delegation on all ranks.",
+        "communication_plan": "Per rank per step (world 2, NCCL, existing default process group): the same collectives execute with the same payloads and the same count as the replaced accepted bundle (25 forward all-gathers including the 105029632 B root gather, 21 backward block all-gathers at keep=3, 25 reduce-scatters, plus copy-in/split companions); the candidate removes K of the 24 backward block all-gathers and their companions via the re-applied keep policy (K = keep_unsharded_blocks, 0 removes nothing) and adds no messages. The new prefetch reschedules the existing forward all-gathers onto a gap-free chain on FSDP's all-gather stream with block compute hidden underneath: communication_kernel_sum_ms and communication_union_ms (both including wait, neither wire time) should stay roughly constant in volume terms while their exposed/serialized share falls, and compute_overlap_ms should rise; the previously measured diagnostic values (communication_kernel_sum_ms ~173.9, communication_without_compute_ms ~127 at keep=3) bound the expectation. Nothing here claims PCIe/NVLink byte counts, which remain unmeasurable on this system."
+      },
+      "feasible_parameter_combinations": 12,
+      "startup_ask_preview": [
+        {
+          "forward_prefetch_depth": 1,
+          "keep_unsharded_blocks": 2
+        },
+        {
+          "forward_prefetch_depth": 1,
+          "keep_unsharded_blocks": 3
+        },
+        {
+          "forward_prefetch_depth": 0,
+          "keep_unsharded_blocks": 3
+        }
+      ],
+      "preview_scope": "CPU sampler ask preview only, no told scores, candidate execution, quality or performance inference.",
+      "tools": [
+        {
+          "part": "prt_1829c4763001q7QiD7jYBgi5vz",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "b55ac4d187b75d631872c5b738d72e0fbc224683a0aac5c0ce6b2a7af2123bdf",
+          "output_sha256": "531f40170b52bd31a6261ca78dfdc24649e4e3c76e7cfce2b67ce86340d70ade",
+          "output_bytes": 244,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829c4837001chiaw9MdWvf0ZS",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "029835a952d964b8c7d83afb63981972ccf38a4bf3279fc143973f12a5a9a911",
+          "output_sha256": "de7a7cb74c2cbf0cf2e2a0cdad275e76d285588c6fdd5954054de17f8b010b53",
+          "output_bytes": 1446,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829c5153001NGrbkJCuAgsjUB",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "edb61986bdc809379634f4efbe514680c6e516ecf14921235cbac0510208c56c",
+          "output_sha256": "832d62e25e6b70c85b48d48274a4f3260348af58f7851389e95ac32bf28a364c",
+          "output_bytes": 11648,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/inputs/request.json",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829c52e5001SHxa7Rj88nfrrQ",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "c30328e299f79890520f3afd489b1cd15f2530593bc5bbe11d45a937727316f4",
+          "output_sha256": "ccd85142ce43961d96eef0fcd7927bdc0f5e5553986526ebb31181a0ba2b1814",
+          "output_bytes": 4160,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/inputs/binding-contract.md",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829c5d99001e1L0IlhdjAtVab",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "fc32b386c13727c8cbf2f354e683488fa19f80732ad3dc710d70179b9ca4404e",
+          "output_sha256": "4670e1dc15613bdf6501fb1b169d8772979e282cf72584a422216e40a48fbcaf",
+          "output_bytes": 5572,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/inputs/adapter.py",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829c5f6b001VcyJjT2ugmRRr9",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "e3123f46bbddd1a3f81d5e40cc9f96ca0b92eb08159fb60740332bd145cdf4f8",
+          "output_sha256": "4a82d2ccf7e5074654433ffa6536ec183707c5c6f4016ccdad555d8de4617518",
+          "output_bytes": 4311,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/inputs/worker-environment.json",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829c6607001KEmo2lNfGWcAZV",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "a75b3d68d79ab210f38ddf771086d9773589ffd325685eb84c1b5b4595c24d89",
+          "output_sha256": "005ec15082bf387eda8188aaae85f5ada429855a47d3612b4fe1a3b24a184ad3",
+          "output_bytes": 3090,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": true
+        },
+        {
+          "part": "prt_1829c670b001ifhiRNQg41u6jp",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "ff6a0cc11a20490ac18b3c77141ae3b4b03263e2707a56f0c36b2092393ff8d4",
+          "output_sha256": "124b0fa222474624516a6f6551a8759e91eb524cbdc83aac9e770c2cb0ac715a",
+          "output_bytes": 241,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829c748b001yTLmeYJ4vYbUN5",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "fb8509552d82ff48eab6d792bbd321902424ec8db6e12a7e8f15820dfba9e057",
+          "output_sha256": "46b080bdd563571681a724da68030f8d82c7b1ad243053a37e6c1c71dafa63cf",
+          "output_bytes": 5414,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": true
+        },
+        {
+          "part": "prt_1829c765f001SRvh10ozPqaL1W",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "e1c285d9ffc06fde63d15b2cd6d8b143d8a6f1e4fb91245f11986d867867eb14",
+          "output_sha256": "df7bff807adafc9745707292c2c69e333f5be440ffa4bc23a4a85a4c69ac9da0",
+          "output_bytes": 1034,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/inputs/previous-candidate/manifest.json",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829c994700196L5rdfHCXbgwK",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "74199641deb29ae19da6c5b806e24f5e7ea3a960571ebb7cecc2cd2f2ed3053e",
+          "output_sha256": "fb045333d5da4bf8fcda407cbbe665d8e6ce146e67b4f0e55203d2447f89bf8d",
+          "output_bytes": 4036,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": true,
+          "reads_selection": false,
+          "command": "wc -l inputs/previous-feedback.txt && head -c 4000 inputs/previous-feedback.txt",
+          "output_excerpt": "139220 inputs/previous-feedback.txt\n{\n  \"current_revision\": \"799a80d2b4d7810555f73386ec586109159692b93eaf28ddb8dbf6a932b79b1b\",\n  \"previous_trial\": \"trial-4f5fce6e6b\",\n  \"previous_bundle\": {\n    \"schema_version\": \"project.v2\",\n    \"id\": \"trial-4f5fce6e6b-param-a224c6cb\",\n    \"parent_revision\": \"fa5f081ddc5d7e496b1dbd266a3cc392a403e9981133586f966abc50651a7790\",\n    \"contract_ref\": \"sha256:e0e5cfd6cef3eb2195c264057fce4180cb7ba533d02b262f9826b8eeadb8c36d\",\n    \"scope\": \"joint\",\n    \"implementation\": \"distributed\",\n    \"groups\": [\n      \"6d8291a335bb2fbe9907\",\n      \"6e0a232106a5e06c05fe\",\n      \"04dbf05d596cce5394b5\"\n    ],\n    \"calls\": [\n      \"b08a96298d855d7c8dcd7497\"\n    ],\n    \"affected_calls\": [\n      \"003d0cc5667c509afa4925ce\",\n      \"005dfcfa48cca01a1d11572c\",\n      \"009504b524dfe5abdc78ddb0\",\n      \"0096b657100ed5bc576259dd\",\n      \"00a38b3b97047f87b5107c22\",\n      \"00a6e8d640f3c5d7d7b861de\",\n      \"00aa76eceaf956117e20814e\",\n      \"00b31ee3320349cafdb6b95f\",\n      \"00bec2ee5de3d00d75f51678\",\n      \"00c579c4170552a307c6a6c3\",\n      \"011976bab624b771c98b7679\",\n      \"0123735d95248ad50232ab64\",\n      \"0128afb584e2d772cf27f3e9\",\n      \"015886e05c3f51d3c0b7dc0a\",\n      \"017e804adf4b70fa829efea9\",\n      \"01baaa4abed799d207dd1bab\",\n      \"01e03a149a5e4d44f2b80965\",\n      \"023e824f431d448d01bb6c3b\",\n      \"0249b7e9725eba636946237d\",\n      \"025ecc4dbc0779f06fecbb01\",\n      \"027cb286dfb9e461c995709f\",\n      \"02b99776e1b905b2c2e00cdd\",\n      \"02c6b9aacb8004083da31f6d\",\n      \"02cef9325d74d8702e67655c\",\n      \"02e5ccce72911642d2b4a987\",\n      \"02fa24acb9f1a1edbff29f78\",\n      \"030f9e4479a6fb6fbe1c75fb\",\n      \"0327d0688a62c3d9c8156252\",\n      \"039195c830106c8f3d53549c\",\n      \"0395a56695415df505615595\",\n      \"0398eb399ff3001204265777\",\n      \"03a1ce6a8c57711d31a82471\",\n    "
+        },
+        {
+          "part": "prt_1829ca8a6001Gn5PG36EAr9bKx",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "599c37c7ff85031cd9518e26dcf97488537b1503052c196d7cc08322669fe441",
+          "output_sha256": "20c436bfad31a05555fcdd563f8cbdf8868e10ee8a61b6aa6459b029e42c2c55",
+          "output_bytes": 2626,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": true,
+          "reads_selection": false,
+          "command": "python3 -c \"\nimport json\nd = json.load(open('inputs/previous-feedback.txt'))\nprint(list(d.keys()))\nfor k,v in d.items():\n    if isinstance(v, dict):\n        print(k, 'dict keys:', list(v.keys())[:40])\n    elif isinstance(v, list):\n        print(k, 'list len', len(v))\n    else:\n        print(k, '=', str(v)[:500])\n\"",
+          "output_excerpt": "['current_revision', 'previous_trial', 'previous_bundle', 'previous_selection', 'previous_proposal', 'decision', 'supplemental_evidence', 'project_measurement', 'evaluation', 'parameter_search', 'binding_execution', 'missing_coverage', 'complete_version', 'quality_and_coverage', 'resources', 'routing', 'version_policy', 'attribution_policy']\ncurrent_revision = 799a80d2b4d7810555f73386ec586109159692b93eaf28ddb8dbf6a932b79b1b\nprevious_trial = trial-4f5fce6e6b\nprevious_bundle dict keys: ['schema_version', 'id', 'parent_revision', 'contract_ref', 'scope', 'implementation', 'groups', 'calls', 'affected_calls', 'edits', 'read_set', 'write_set', 'requires', 'replaces', 'external_invariants', 'plan_ref', 'registry_ref', 'installer', 'parameters']\nprevious_selection dict keys: ['scope', 'groups', 'rationale', 'hypothesis', 'affected_calls']\nprevious_proposal dict keys: ['implementation', 'replacement_calls', 'rationale', 'setup_work', 'quality_risks', 'eliminated_calls', 'requires', 'replaces', 'parameter_space', 'state_lifecycle', 'synchronization', 'communication_plan']\ndecision dict keys: ['state', 'revision', 'parent', 'bundle', 'accepted', 'reasons', 'report_ref']\nsupplemental_evidence = None\nproject_measurement dict keys: ['valid', 'objective', 'reference', 'parent_values', 'candidate_values', 'paired_gains', 'noise_bounds', 'constraints', 'reasons', 'aggregation_order', 'framework_source', 'protocol']\nevaluation dict keys: ['schema_version', 'id', 'revision_id', 'parent_id', 'contract_ref', 'bundle_id', 'quality', 'feasible', 'objective', 'reference_objective', 'metrics', 'required_ranks', 'rank_bundle_hashes', 'required_calls', 'executed_calls', 'rank_executed_calls', 'evidence', 'reasons']\nparameter_search dict keys: ['engine', 'measurement_scope', 'resource_fields', 'r"
+        },
+        {
+          "part": "prt_1829cb7c2001tTiwkrJ4DeN66N",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "81ce60aa147db2dac1b167db7f9f2730d023d75fb8d541234ac1e2a7c1b105bf",
+          "output_sha256": "fccccf4d5f4eec5c98d90119b46ab14b7032ab3c60b7f8fa93917ffe6b96f316",
+          "output_bytes": 367,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": true,
+          "reads_selection": false,
+          "command": "python3 -c \"\nimport json\nd = json.load(open('inputs/previous-feedback.txt'))\nprint('DECISION:', json.dumps(d['decision'], indent=1)[:3000])\n\"",
+          "output_excerpt": "DECISION: {\n \"state\": \"evaluated\",\n \"revision\": \"3007940f06c3a77c32c40b9c49b53e2b7a93af0fd66ba33f1cac90ed37cdf05f\",\n \"parent\": \"fa5f081ddc5d7e496b1dbd266a3cc392a403e9981133586f966abc50651a7790\",\n \"bundle\": \"trial-4f5fce6e6b-param-a224c6cb\",\n \"accepted\": true,\n \"reasons\": [],\n \"report_ref\": \"sha256:dd31d922b56054e0dc42a8f40bdd51be4ee795e43c71a1d2ac5a85c31cd0e183\"\n}\n"
+        },
+        {
+          "part": "prt_1829ccaaf001fb5QL0F1Nf15tM",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "00298193f1748c5f17f00531cc6a828eaf7f3e2d007194f7e9cf388fcfba30d2",
+          "output_sha256": "9d03077e3440e235c202605ed6c8b7bc248dab59897436cb3005b2b7a0474bc3",
+          "output_bytes": 4279,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/inputs/previous-candidate/candidate.py",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829cd70f001cC4smx3feNBpAx",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "dd8535b183058c864c72920c96dab6ac8b30b3310d668cd43fb325bd902e6a72",
+          "output_sha256": "81fc5b2084d4fad9b76040c15704ec80a6bf8d0210e7f28d32fc4fcb21c5c41b",
+          "output_bytes": 792,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": true,
+          "reads_selection": false,
+          "command": "python3 -c \"\nimport json\nd = json.load(open('inputs/previous-feedback.txt'))\npm = d['project_measurement']\nprint(json.dumps({k:v for k,v in pm.items() if k!='reasons'}, indent=1)[:4000])\nprint('REASONS:', json.dumps(pm.get('reasons'), indent=1)[:2000])\n\"",
+          "output_excerpt": "{\n \"valid\": true,\n \"objective\": 171.46259750000002,\n \"reference\": 175.4571855,\n \"parent_values\": [\n  175.310089,\n  175.604282\n ],\n \"candidate_values\": [\n  171.193951,\n  171.731244\n ],\n \"paired_gains\": [\n  4.1161380000000065,\n  3.873038000000008\n ],\n \"noise_bounds\": [\n  0.6232120000000236,\n  0.6593440000000328\n ],\n \"constraints\": [\n  {\n   \"metric\": \"peak_allocated_bytes\",\n   \"values\": [\n    2239245312.0,\n    2239245312.0\n   ],\n   \"limit\": 2351207577.6,\n   \"original_reference\": 2239245312.0,\n   \"passed\": true\n  }\n ],\n \"aggregation_order\": \"ranks_then_samples\",\n \"framework_source\": \"ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f\",\n \"protocol\": \"AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound\"\n}\nREASONS: []\n"
+        },
+        {
+          "part": "prt_1829ce5890013rbylQkRxyU5uo",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "374e0a211e27473a1a91a2bb77f77f471dffbd972476d2a77d2a331e823b060f",
+          "output_sha256": "1c5351132b75fc933b3aed306bb9e96d7816333727d1e09ab123dd983fdae017",
+          "output_bytes": 2681,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": true,
+          "reads_selection": false,
+          "command": "python3 -c \"\nimport json\nd = json.load(open('inputs/previous-feedback.txt'))\nps = d['parameter_search']\nprint('engine:', ps['engine'])\nprint('selected:', json.dumps(ps['selected'], indent=1))\nprint('space:', json.dumps(ps['space'], indent=1))\nprint('stats:', json.dumps(ps['stats'], indent=1)[:1500])\npt = ps['parameter_trials']\nprint('trials:', len(pt))\nfor t in pt[:12]:\n    print({k: t.get(k) for k in ('params','objective','feasible','accepted') if k in t})\n\" 2>/dev/null | head -60",
+          "output_excerpt": "engine: existing TaskSearch + OptunaTPETuner\nselected: \"trial-4f5fce6e6b-param-a224c6cb\"\nspace: {\n \"params\": [\n  {\n   \"name\": \"keep_unsharded_blocks\",\n   \"kind\": \"int\",\n   \"choices\": [\n    0,\n    1,\n    2,\n    3\n   ],\n   \"description\": \"Trailing (backward-first) transformer blocks that skip FSDP's post-forward reshard via the public FSDPModule.set_reshard_after_forward(False, recurse=False). Each kept block removes one of the 24 backward block all-gathers (c10d::_allgather_base_ payload 25,192,448 B per rank, ~2.0 ms on the serialized critical path) plus its fsdp.all_gather_copy_in and fsdp.split_with_sizes_copy companions, while retaining 50,384,896 B of unsharded parameters from forward until the block's post-backward reshard; the measured peak_allocated_bytes <= 2,351,207,577 B (1.05x baseline) constraint gates the ceiling. 2 is the first revision (worst-aligned +100.77 MB inside the 111.96 MB headroom); 0 is the unchanged source policy; 1 and 3 let the search measure the slope and the ceiling. The parameter changes reshard timing only, never workload semantics, batch, sequence length, data or thresholds.\"\n  }\n ],\n \"constraints\": [\n  {\n   \"expr\": \"keep_unsharded_blocks >= 0 and keep_unsharded_blocks <= 3\",\n   \"rationale\": \"Matches the declared choices; 4 or more kept blocks (+201 MB worst-aligned) cannot fit the frozen 1.05x peak budget while 3 is left to measurement, and the value never exceeds the 24 blocks of the frozen workload because build clamps to the block count.\"\n  }\n ]\n}\nstats: [\n {\n  \"candidate_id\": \"cand-80809ef9\",\n  \"space_id\": \"space-cand-80809ef9\",\n  \"n_complete\": 3,\n  \"n_fail\": 0,\n  \"best\": {\n   \"trial_id\": \"tr-4138dbe1\",\n   \"candidate_id\": \"cand-80809ef9\",\n   \"space_id\": \"space-cand-80809ef9\",\n   \"params\": {\n    \"values\": {\n     \"keep_unsharded_bloc"
+        },
+        {
+          "part": "prt_1829cf2f60014v43bMOKvhthWW",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "9bd88c5f5fbcec7e6e9bf13f2a1debfc6340b5fe63010cbc87a2edb51a8593f7",
+          "output_sha256": "4eee1df4b948c95c95684993be826e144e564f839d62a64f52f1231d10421b90",
+          "output_bytes": 119,
+          "exit": 1,
+          "path": null,
+          "reads_feedback": true,
+          "reads_selection": false,
+          "command": "python3 -c \"\nimport json\nd = json.load(open('inputs/previous-feedback.txt'))\nps = d['parameter_search']\npt = ps['parameter_trials']\nprint('num trials:', len(pt))\nfor t in pt:\n    te = t.get('task_evaluation') or {}\n    vals = (t.get('params') or {}).get('values')\n    print(t.get('trial_id'), vals, 'status=', t.get('status'), 'score=', te.get('score'), 'valid=', te.get('valid'), 'peak=', (te.get('metrics') or {}).get('peak_allocated_bytes'))\n\"",
+          "output_excerpt": "Traceback (most recent call last):\n  File \"<string>\", line 6, in <module>\nTypeError: object of type 'int' has no len()\n"
+        },
+        {
+          "part": "prt_1829d03a6001RmjTeRyITHdK0t",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "98a3af7de62834a77e6c4aa8d0847ea6f8d6f6a5a9bb1b52a02fdbff59bd47ba",
+          "output_sha256": "8eb3ac3dd4e85f5b0aa58c25402e0eb2560c70e71f43adc286c2a34f3bf39eb2",
+          "output_bytes": 2034,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": true,
+          "reads_selection": false,
+          "command": "python3 -c \"\nimport json\nd = json.load(open('inputs/previous-feedback.txt'))\nps = d['parameter_search']\npt = ps['parameter_trials']\nprint(type(pt), pt if isinstance(pt,int) else '')\nresp = ps.get('responses')\nprint(type(resp))\nif isinstance(resp, dict):\n    print(list(resp.keys())[:10])\nelif isinstance(resp, list):\n    print(len(resp))\n    print(json.dumps(resp[0], indent=1)[:2000])\n\"",
+          "output_excerpt": "<class 'int'> 3\n<class 'list'>\n2\n{\n \"candidate_id\": \"trial-4f5fce6e6b\",\n \"axis\": \"keep_unsharded_blocks\",\n \"a_params\": {\n  \"values\": {\n   \"keep_unsharded_blocks\": 1\n  }\n },\n \"b_params\": {\n  \"values\": {\n   \"keep_unsharded_blocks\": 3\n  }\n },\n \"a\": {\n  \"score\": 173.868969,\n  \"valid\": true,\n  \"metrics\": {\n   \"step_ms\": 173.868969,\n   \"peak_allocated_bytes\": 2239245312.0,\n   \"allocated_bytes\": 1462069760.0,\n   \"global_samples_per_second\": 11.50322902828342,\n   \"global_tokens_per_second\": 1472.4133156202777,\n   \"framework.elapsed_ms\": 173.868969,\n   \"framework.peak_allocated_bytes\": 2239245312.0,\n   \"framework.peak_reserved_bytes\": 3680501760.0,\n   \"framework.allocated_bytes\": 1462069760.0,\n   \"framework.reserved_bytes\": 3680501760.0,\n   \"framework.lifecycle_peak_allocated_bytes\": 2264977408.0,\n   \"framework.lifecycle_peak_reserved_bytes\": 3680501760.0,\n   \"communication_kernel_sum_ms\": 180.26205499999998,\n   \"communication_union_ms\": 173.03495654296876,\n   \"communication_without_compute_ms\": 127.0908623046875,\n   \"compute_overlap_ms\": 43.71074755859375,\n   \"replacement.max_shared_memory_bytes\": 96384.0,\n   \"replacement.diagnostic_kernel_sum_us\": 372888.501,\n   \"replacement.max_registers_per_thread\": 134.0,\n   \"replacement.kernel_launches\": 651.0\n  },\n  \"detail\": null\n },\n \"b\": {\n  \"score\": 170.940959,\n  \"valid\": true,\n  \"metrics\": {\n   \"step_ms\": 170.940959,\n   \"peak_allocated_bytes\": 2239245312.0,\n   \"allocated_bytes\": 1462069760.0,\n   \"global_samples_per_second\": 11.703597064861915,\n   \"global_tokens_per_second\": 1498.0604243023251,\n   \"framework.elapsed_ms\": 170.940959,\n   \"framework.peak_allocated_bytes\": 2239245312.0,\n   \"framework.peak_reserved_bytes\": 3680501760.0,\n   \"framework.allocated_bytes\": 1462069760.0,\n   \"framework.reserved_bytes\": 3680501760.0,\n   \"framework"
+        },
+        {
+          "part": "prt_1829d1be2001BcY54fZOV2Os7K",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "66822663d17a4fba9903b48f4f2ce3cfbe9eda38fcbcca4d63576ba239504a43",
+          "output_sha256": "dc6dcf6cf22b07acd345df6655d56765eeb58cc533d69e35f50aa1e80bbd507d",
+          "output_bytes": 8062,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": true,
+          "reads_selection": false,
+          "command": "python3 -c \"\nimport json\nd = json.load(open('inputs/previous-feedback.txt'))\nps = d['previous_selection']\nprint('prev selection hypothesis:', ps['hypothesis'][:600])\nprint()\npp = d['previous_proposal']\nfor k in pp:\n    v = pp[k]\n    print('==', k, '==')\n    print(json.dumps(v, indent=1)[:1200] if not isinstance(v,str) else v[:1200])\n    print()\n\"",
+          "output_excerpt": "prev selection hypothesis: A model-boundary replacement that applies set_reshard_after_forward(False, recurse=False) to the K trailing transformer blocks (K parameter, first revision K=2, ceiling explored under the peak gate) and otherwise delegates to the parent forward will (1) remove exactly K of the 24 backward block AllGather invocations and their fsdp::all_gather_copy_in / fsdp::split_with_sizes_copy companions, cutting the serialized wire chain by ~K x 2.0 ms: expected step_ms ~172.1 ms at K=2 (-4.1 ms, -2.3%), ~170.1/~168.1 ms at K=3/4 if memory permits; communication_kernel_sum_ms and communication_union_ms sho\n\n== implementation ==\ndistributed\n\n== replacement_calls ==\n[\n \"b08a96298d855d7c8dcd7497\"\n]\n\n== rationale ==\nRepair of the previous trial's concrete, now-measured failure on the same model-forward joint boundary, reduced to the one edit that survived measurement. Previous trial-86e14487d0 did not hang and was fully covered (worker exit 0 both ranks, 2/2 invocations of b08a96298d855d7c8dcd7497, zero exception/false-return events), but failed quality at continuous update 2: logits max_abs_error 4.53e-6 vs atol 1e-6 (1898/6432896 elements; greatest abs diff 3.56e-6 at (0,24,8451), greatest rel 3.14 at (0,119,28805)), while update 0 passed at 2.28e-7, and it failed identically at keep_unsharded_blocks=0/6/8. The measured locus is the vocab-sharded head's shard-local fp32 GEMM reassociation (shard N=25129/25128-column mm vs the reference's full N=50257-column mm on near-zero logits), amplified ~20x by the second update; it is inherent to that shard-local math, so this attempt contains zero custom math: the replacement delegates the complete forward (and therefore backward, gradient reduction and the SGD update) to the parent boundary callable from context.refe"
+        },
+        {
+          "part": "prt_1829d4041001CyLqJcREhO2Wak",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "5f2953e94e01c6a62b080b11812f19441861c63640faa606b259a14975bf5786",
+          "output_sha256": "5c5a12ed8cebe004e2796792852fb4a5b61100f964a2432cfcefd05a08ffc10b",
+          "output_bytes": 157,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829d420f0015aSJtd5nhV4XIM",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "33c2d8f0b93ae003c867151252f62742eee29dc272c44d6a7de20e1fec716717",
+          "output_sha256": "291875d10132a252d2c569f7134e38f209c8e63bee6d5ca24fc7e91434fe65f8",
+          "output_bytes": 1894,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": true,
+          "reads_selection": false,
+          "command": "python3 -c \"\nimport json\nd = json.load(open('inputs/previous-feedback.txt'))\nbe = d['binding_execution']\nprint(json.dumps(be, indent=1)[:3000])\n\"",
+          "output_excerpt": "{\n \"baseline\": [\n  {\n   \"rank\": 0,\n   \"setup\": [],\n   \"framework_source\": {\n    \"sha256\": \"ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f\",\n    \"files\": 163,\n    \"scope\": \"kernel_optimizer Python sources and role prompts at worker entry\"\n   }\n  },\n  {\n   \"rank\": 1,\n   \"setup\": [],\n   \"framework_source\": {\n    \"sha256\": \"ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f\",\n    \"files\": 163,\n    \"scope\": \"kernel_optimizer Python sources and role prompts at worker entry\"\n   }\n  }\n ],\n \"candidate\": [\n  {\n   \"rank\": 0,\n   \"setup\": [\n    {\n     \"bundle\": \"trial-4f5fce6e6b-param-a224c6cb\",\n     \"binding\": {\n      \"requested\": \"legacy\",\n      \"effective\": \"direct\",\n      \"reason\": \"no functional replacements\"\n     },\n     \"elapsed_ms\": 28.197801,\n     \"allocated_bytes\": 709649920,\n     \"reserved_bytes\": 1568669696,\n     \"peak_allocated_bytes\": 709650432,\n     \"scope\": \"installation after model prepare; separate from the declared warm-model score\"\n    }\n   ],\n   \"framework_source\": {\n    \"sha256\": \"ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f\",\n    \"files\": 163,\n    \"scope\": \"kernel_optimizer Python sources and role prompts at worker entry\"\n   }\n  },\n  {\n   \"rank\": 1,\n   \"setup\": [\n    {\n     \"bundle\": \"trial-4f5fce6e6b-param-a224c6cb\",\n     \"binding\": {\n      \"requested\": \"legacy\",\n      \"effective\": \"direct\",\n      \"reason\": \"no functional replacements\"\n     },\n     \"elapsed_ms\": 26.990785,\n     \"allocated_bytes\": 709649920,\n     \"reserved_bytes\": 1568669696,\n     \"peak_allocated_bytes\": 709650432,\n     \"scope\": \"installation after model prepare; separate from the declared warm-model score\"\n    }\n   ],\n   \"framework_source\": {\n    \"sha256\": \"ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f\",\n    \"files\": 163,\n"
+        },
+        {
+          "part": "prt_1829d4bab001KWspyWO4P8MFrG",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "fd5f93882bffb2c806431eb1c14740e8c21132a545076826c503b4298605d8ba",
+          "output_sha256": "6867eb1e8ff43d2809db5f2fafada651145818fc45836bdcf3402e2815c161cc",
+          "output_bytes": 2635,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829d63b1001op2oSpv0G0MFdw",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "0432ecb00264944880fa57cd27c8e615e90513550f73b306b5971532e1e0c1a1",
+          "output_sha256": "b191886be4b82c7058643cede570f6296198862edf43248a03756c352fd396ad",
+          "output_bytes": 20,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829d72f40017kKMUbXcCsRozg",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "e8a0729a8ccee6ff1bf2d64fc58b542bb98d5833ebc5cc3ae4e62efd5d1a3301",
+          "output_sha256": "efefc15c24ee8645a3f5f6958389db729c1577eb6b32aeac4caab2a86d90daa3",
+          "output_bytes": 11,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829d7d39001va8FC1eOzhwiIm",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "95668e1267470b6f3035100d0cb9434315f0cf7ff11ac111c627086fdcd715ba",
+          "output_sha256": "66300b0601b423c926aef63d8d5d24954fecd4c8ac14f6816adad1e7b6c630c5",
+          "output_bytes": 1648,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829d89cf001UCWfjn3ZfIcxBi",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "35d9899bd80fb8effdab86e84582cf5cdaac59eb2fcc58ee0f4ffbcf1c8d01d2",
+          "output_sha256": "218333d27265796f973af7c273b830832b356bc93727d3eab526c2cb6abc5e42",
+          "output_bytes": 2306,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829d9526001gMvtJ5gacPQjvN",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "2edb88a9e72585801c3acdf272bbdc078fc79fe5c6612f87f534ab746d25ee98",
+          "output_sha256": "503d1e2a90fbf1373549e5047c5f77279ffa048ec03c811bb0941c7dd90c32e4",
+          "output_bytes": 1370,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829d95aa001Y0nyfPXKQDrXSS",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "17fa972bd21b633eee4e5b7941a3005954fc8d98a2159158b4d60aaf796113f9",
+          "output_sha256": "8572059a21007b768755aa2d3c9c3079df321f13c277157269f0de82673ac132",
+          "output_bytes": 399,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829d9d78001SuAMFGtejw9KEg",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "0a11bfb6fcaa08c5dfc59aa11d71d30c4079f23abe2f5754d67fdff71ce00e90",
+          "output_sha256": "07070ebd8f119f586d4a6f3fba46883fd795f08789fec5fb9366e049e9997e47",
+          "output_bytes": 2501,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829dab84001gPAcA59aScGjkZ",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "fea59220d9b3227bf3c89ccd39b894274d146f710c57db452f6b92658c53541b",
+          "output_sha256": "30595f6c21583d27b71161198cd84da53e9e2cf7e6b049b3762c4d89a21db7e7",
+          "output_bytes": 10505,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/inputs/source/train.py",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829dbe22001zxSoPb6lDBKonN",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "037aefd2ed93e59ed28809c33c0284b4b0780d94fcd026635f6da4e47d80f6bb",
+          "output_sha256": "ac8e625ba1cba55caeb15dd9b2d26eeb0811711bc390a5314d55a6aa13a0b5b3",
+          "output_bytes": 13,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829dd12b001pFuW1J7istRYjN",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "7bcd3d376874384c19c287bffe0ab1ec368743f2ec4b06bf846d982fd12b533a",
+          "output_sha256": "13bfff7e6821de32ba215e98e522972a667d553a2ee879234792ec76ddda2c57",
+          "output_bytes": 155,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829deb2d001CpOoIbD9vJlYTP",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "c08c71e8eab4cd8e6b8b8c6b3b60541f43c7607bf41463838317bb81e7f7a7dd",
+          "output_sha256": "4f8022282fc23616366c9dab3352807faa4d97c56dddff8305adc9c3b6cc9915",
+          "output_bytes": 71,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829e0ab00014l6ZNI4l4M7HrU",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "1d7e5862bd2cb87830eaf7173b8443b7ead6c0903c815df76f88cc286daa638c",
+          "output_sha256": "98ab092c573a22c78a9b0c4e4bed7a52e04bb94cbfe03f27d7c61a5e9a411613",
+          "output_bytes": 1252,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829e1ee7001Fm08W4AdAkoRa6",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "5353e469afc57d4fd1708263357404d20addb6a605cff09c1e15e2fdfa976854",
+          "output_sha256": "e61fb205bed950df84922c3e6af30b5c2d722b495c47387773423a0f3e188b31",
+          "output_bytes": 2201,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829e54ff001MJwZZ8nkOUofhL",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "95832b8f5597f3dc569a3a93eb78eac312a0964ee31748c93c3bc45c8cc537e7",
+          "output_sha256": "f4e1313537381a493c9d517f940ee4817ae3e25565d82803a0f644b3cf1c37ae",
+          "output_bytes": 160,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829eb415001jhdgx75d87A8rW",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "c87c20150cb1a9334b5a2a28989521672c46991f927ee1dbf6c1584ce9b2c63d",
+          "output_sha256": "a7e733886792d4d68f7636f2ea18970890fa1c056e327bd41cba0079d9625ff3",
+          "output_bytes": 132,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829ed7aa001RqtrGw18XWOH92",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "9085f5c58be4f189c90736ed36c886b0d12d719bea7b41fafa4c43a454100e3d",
+          "output_sha256": "1ae7a981da0263e4079dd520701ccbde654f1b44faca5b772bb0bd2eac2ee8d4",
+          "output_bytes": 277,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829ef69b001Tvz6HDkyCDXCUB",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "6135785d89b72f506ef422dec8022d1fcb0d7f6d45606f9bb69dd017e931d96e",
+          "output_sha256": "eddc8e7758d5f2f1a6f2c802fd36f207d99f000cc775b8d771c4f0ec8c0d9135",
+          "output_bytes": 44,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829f16c1001VwYwAOTxqznaYj",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "63827cdd605a2ec0de7c20e54decd21d418a6921dc5680bd50cac8dbf58c4640",
+          "output_sha256": "9b5964b8329d91933cab2c5d3f7f319ba7004629e3580b059162818e561e51ab",
+          "output_bytes": 50,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829f3cd6001LuGtXF0MuiJojI",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "448aa65b57cd31b1aa1451399b5c68e2577aacc757cdc54c1c8212351cf021c2",
+          "output_sha256": "5f41a9e1f56fcf1058c51f0ec5476f0173e879719b057b74460ac0596c551708",
+          "output_bytes": 1930,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829fa7da001MNC0DiTrC81m8J",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "40c2c3f94e2479e08d832dc9a1d4998a19df2932bf79857058bf7e1ba9d22e11",
+          "output_sha256": "5fbfe94ceb81c012b17bc29d0f677d33e96f66c2f8d3464c93932cd0f01b692c",
+          "output_bytes": 3028,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829fc5b4001OgZECgdBWy5Y4q",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "c829f782740df2f03c0133ad2c287ec1901fd19d26965d334c227939b0bd247a",
+          "output_sha256": "cd54527add96f161c96f5314433dea5a602d57fb37dc48000c293d5f4049224c",
+          "output_bytes": 2727,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829fe417001P5OKk9Q4lCcqs0",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "b83cb96714aac3fc09b7274c19813773f952f5d5c1b8f009cae37b3563d36e43",
+          "output_sha256": "223634db8b087bb0871bad54b4170a841ec77de7986238eb247efb0658c34c80",
+          "output_bytes": 1699,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_1829ff42e001z3evfnUHyLNkft",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "26c495bdf62b9ba941957be228f37ee145d4cde97480e63849cc57c1d1624005",
+          "output_sha256": "efefc15c24ee8645a3f5f6958389db729c1577eb6b32aeac4caab2a86d90daa3",
+          "output_bytes": 11,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a00de4001Dfy5qP5yXF2I3H",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "93981a39360717af2fd33e09538dabc995bd921449780348759a11c9fd4ab4a3",
+          "output_sha256": "1c40dcb9ce727ce23e1a94b32358639d39b43bf9e1bd35ce41e745076bfe82d2",
+          "output_bytes": 187,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a02436001PrEpcXcAkUVZif",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "fbc195565c4f3966460f01206ca32079e5ad25dcf25d4a1802e00c51cb3625fe",
+          "output_sha256": "7e195202f509ca3a50d595cb42d58a5c3b4b766eb39367631a2e088463a51941",
+          "output_bytes": 205,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a03aed0018q9YMOTGU0CZ4g",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "f6f85019098efafbfeb6fc3d0e3f3be8e2f03349e5f08a466a196879e740a08f",
+          "output_sha256": "4ad9015101a43e13e3f6dc2da8d2d0c4ef04a602b83817f72832be794d7c547b",
+          "output_bytes": 3038,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a06da8001NclrYv87ifQws1",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "28f542bd8c5fbc88e29d9098f8847512e16ca21307cd7351fb5566c0455287cc",
+          "output_sha256": "87403765d1de6e2f9bf442764d05488e3fe5ae457096b1e96f0b41508129659c",
+          "output_bytes": 4426,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a0d9a9001i3cEhRcRq9Re8y",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "15f13b0566a32fa043f260d5612866af112c780b39aa1731be55006d1c5a8eab",
+          "output_sha256": "a05775c70b7f5ff35a8491722f972779654dde4a70a77f15a5c9fe72adf9a8b4",
+          "output_bytes": 3201,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a29548001C5b3bQEBjKd7eK",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "b849ee7534a543cb325592fcd071c3d57f19206f1a89d8ae56c18c75c85ba772",
+          "output_sha256": "9d323e7799749d72027eef459f4279c874cf0e7fa9ebfceb6a58ea60bdb6fd8a",
+          "output_bytes": 623,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a2ca7e0010WEoyJRNkOGVv5",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "798fb522e3897e76de7ae8ed2707dcd14eebc2c3caec417ea388ccb49567a779",
+          "output_sha256": "18d16a33e3fac303b93171480b418d1207b4f20694b1505a518b84b9fa3b6390",
+          "output_bytes": 3,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a2e9e3001n6OyLR5Pry7EE4",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "8b66c1b1b37dfe2f825da2e694c85313b0dbba458714c7ca3315500e14184ba6",
+          "output_sha256": "e59dd9c39db9fb68d55a4c7ddc7c88e09404dff03ee46c826b6fbf4acd2dc241",
+          "output_bytes": 976,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a30224001P1LQecGB9i5In1",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "15870c33ecf12486e133dcd2fdcd579f839c62322b24628781698c029b227038",
+          "output_sha256": "efefc15c24ee8645a3f5f6958389db729c1577eb6b32aeac4caab2a86d90daa3",
+          "output_bytes": 11,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a333c6001hCPXAOIUGRpPFh",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "6540dc895c4481804423cf5133f4494a7d592cda33d97b2803b6799414af5082",
+          "output_sha256": "6c5f990313a76ea2a764dc4111a55a74f80550ea97f38af6b501e79b73fec129",
+          "output_bytes": 1032,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a3567e001Si5F69n5qXgTW8",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "26087eb7c89b7d15e673e050e26c85252aab856e82fece57243ecd17e396abfa",
+          "output_sha256": "5027356e6cf1cf89587109a9602ad36f29fcd398c9f3b106e0598d6bb92ab513",
+          "output_bytes": 901,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a42f3f001UmIkwAuinWtUy7",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "3d41bbc9b638844673f0e0eb3412ec3eee0b436d5c1eb2e311059abe7cc83520",
+          "output_sha256": "aa55b0ad0a89ae6ff30570f580da8a0430dfdc82c87c4c8592605f2e888f1eea",
+          "output_bytes": 2246,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/inputs/parameter-space.schema.json",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a430f2001tx6t5uc4YynL2N",
+          "tool": "read",
+          "status": "completed",
+          "input_sha256": "75fa9abad39f6fbe9571f2a02d480d50695605b11ff57f096039768797a7550b",
+          "output_sha256": "5abdc074cbb2bcdc9be8474f458d2efbeafc57e478224a3d6ed85a3f873e9589",
+          "output_bytes": 2309,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/inputs/proposal.schema.json",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a451a5001bMOvmFu9o5oPVZ",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "0366f0964441044c712f0f33b2c9b49e56c8124c4e7556c28a37478a76846d9e",
+          "output_sha256": "faa56b6a9eb5d3ec161dac8dfadf3db261f6b62f18af957b45e0ba8345c0b844",
+          "output_bytes": 3001,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a45f95001KviywmWDMpRQLk",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "4cb13702a07f1c76c904b8459f8858a18cd7eb96f903f54f746fd3b84a7bb992",
+          "output_sha256": "d0b1641405b0914a26f22741a663b422612114b6bd454f5b08614c7682dd9026",
+          "output_bytes": 103,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a461e5001F0NzUQ6RKXVqMt",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "ff53511281443fd56b90702f8a5a259e5212bfe6a246d67deaa9fa1e0ffdcbc3",
+          "output_sha256": "2af894340914b752b9649b402988b591455bb0e0523869d1dbbdc0a79b3b5b45",
+          "output_bytes": 350,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a47177001zdso21onQr0871",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "fe917f4d8006232e6e18f88f107a8fadd891cb1fc96dd8556298c7b420501ad9",
+          "output_sha256": "79579c23f8266528741b4953925f7c3b8b9fa592a12526083c3e3a3243a02ba8",
+          "output_bytes": 4404,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a47f32001hVWp4moenc02y1",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "f148e73c171c7bb77fbd7c5f074c58e2239d0d1264622ff60674aee1a90471ca",
+          "output_sha256": "57e105fd537d21d54a64600b2789e1fbebbba06542d71a4bad9acfb49deddb8d",
+          "output_bytes": 3001,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a49b9f001L8cKHuLuyrCGJx",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "1a8981dedf001faf37b4b3b6f1d0838284eb46f9541e6faf892b910c279caff0",
+          "output_sha256": "6f6ea2d47928cea4859e5fafcd80fd0ecaa91f26ae267d9e0749a4eac1826a51",
+          "output_bytes": 19,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a4aad000113WCYXBiAF27VW",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "d438a61f9e246097e2a501c4ea8dfac9ff9ab45f89a0be207763edb047124118",
+          "output_sha256": "06e1871ee5de159f0b4fd4aefafed9e770380ecfe3e6c8aed5bb2c9145dd6484",
+          "output_bytes": 1536,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a4f621001YZVnwUHT3ruxXa",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "aa788c51863cbcd9661f0a62b2f277cf194ac96e19bd34541c8b6245cd67e5ff",
+          "output_sha256": "31c61b6838de4e712a1a0d7750a213d6735e7e2fb3d1babb4bdc4f53d133166d",
+          "output_bytes": 1501,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a50fa4001X2kWqJjIMKpmKB",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "cbf08fb06c2fd5d95d07dda6297b83b4a8d92342dcaee44ac612e327bece596b",
+          "output_sha256": "009de2ce0d8f5f6bda7760c1d7c3d926f21a8c9748bc9ea7adb00b7c4a667336",
+          "output_bytes": 1948,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a62d04001CFDnA8wqa3VyVz",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "0f49f16418ed6414d85b056762ea0ba8c3d7a1e2409ba419ac65f52f6ff47511",
+          "output_sha256": "eaf03c2571d0aa52dd95b822c22837f0f023f6158870d07f997a6ea2d83db0b0",
+          "output_bytes": 309,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a63ca40017CLWnSEP27NghG",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "bc4b5da6c6d771d1c2e3711f01856f53cd33f34f90fba6d8042c712aa8778124",
+          "output_sha256": "d8811797f514bb778d805da62c8e8d394e258cc545dd084372ad5439de4a359d",
+          "output_bytes": 23,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a66dc1001GuwIp5Y2TpTdEj",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "97ec542261477b65501ed155d9d5fe2a14d31bbd70af623d3eab4fac3449c94b",
+          "output_sha256": "c472ff355d48d97fb11597c521180df8e238ee1b0038fedd1e97e9b39f26ee92",
+          "output_bytes": 2530,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a70078001DaVca8ezlYzrsq",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "5b5cfb2912efcdcde843859e0b00645f1e85314ba99f420f066bf94a81b3a348",
+          "output_sha256": "5713e14ef8907d49d917a35da983d8c542875a2d4b89cfb0cd2fae7628ffee4d",
+          "output_bytes": 2601,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a7322a001N1P6nCa3J8iSnV",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "da66f745c51def537367db17baae0ec9f09cd300cefcf3a3a8b6dccbdf287a5d",
+          "output_sha256": "60bb001e4827525da65e30d1cf50e8b85771488f9d0e8860a64642bb839f03a7",
+          "output_bytes": 1755,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a75c00001AlDBdQsHOWdJ9K",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "afe94339c3d57d9d7531f3bd3d3de26fb977e1083c156bc523cd3c7a34cf933e",
+          "output_sha256": "efefc15c24ee8645a3f5f6958389db729c1577eb6b32aeac4caab2a86d90daa3",
+          "output_bytes": 11,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a783ab001W0LbsMVYoDuq3C",
+          "tool": "write",
+          "status": "completed",
+          "input_sha256": "b8785d8c102e406b8dd8fe78c30a24868aa8bab4c778259cbf7cfe2c0599d6a0",
+          "output_sha256": "e3e06ec0f8c958669ed3682941ab88218ff9ee42a7ab9b48fd78126336aa968c",
+          "output_bytes": 24,
+          "exit": null,
+          "path": "/tmp/opencode/candtest/cpu_probe.py",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a790d0001SlvraIrnhNIeiX",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "94dacb4c3f89e4da72a32f0c4820aec082ac00a1b524fa33acd3124b0d9cdc66",
+          "output_sha256": "5883adfafd78e16cee646f959186ae74bd0d4a730a243f96763dcc434ac7bfcb",
+          "output_bytes": 566,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false,
+          "command": "/root/autodl-tmp/dev-venv/bin/python /tmp/opencode/candtest/cpu_probe.py 2>&1 | tail -20",
+          "output_excerpt": "[transformers] Model config: bos_token_id must be `None` or an integer within the vocabulary (between 0 and 127), got 50256. This may result in unexpected behavior.\n[transformers] Model config: eos_token_id must be `None` or an integer within the vocabulary (between 0 and 127), got 50256. This may result in unexpected behavior.\n[transformers] `loss_type=None` was set in the config but it is unrecognized. Using the default loss: `ForCausalLMLoss`.\nforward-prefetch + keep world1 CPU: outputs identical\nsecond invocation identical\nreset-to-parent policy identical\n"
+        },
+        {
+          "part": "prt_182a7f2a4001QYAI0F4e6HL82c",
+          "tool": "write",
+          "status": "completed",
+          "input_sha256": "aa08fb3c72bd4f3c0ec32f22f1ee9698ab1eec25b88d9b0ed143cdb9171c1801",
+          "output_sha256": "e3e06ec0f8c958669ed3682941ab88218ff9ee42a7ab9b48fd78126336aa968c",
+          "output_bytes": 24,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/candidate.py",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a8399e001M1sSWOiMgw610h",
+          "tool": "write",
+          "status": "completed",
+          "input_sha256": "54d1d117a5f5e9dff8cd9cd3ae1cd5a708cee1199593c8ad97fba1e91c26a1d6",
+          "output_sha256": "e3e06ec0f8c958669ed3682941ab88218ff9ee42a7ab9b48fd78126336aa968c",
+          "output_bytes": 24,
+          "exit": null,
+          "path": "/tmp/opencode/candtest/build_probe.py",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a85a37001IYXY9ovDci0agB",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "aa20e01cc3cfaec7a760c163f8bdd56e1a0e2d85486bc9903049585f269b4a67",
+          "output_sha256": "ea5853fb6643295fe2b71d031dac1f769268bd0203a6830651d8c2aff71261de",
+          "output_bytes": 811,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false,
+          "command": "/root/autodl-tmp/dev-venv/bin/python /tmp/opencode/candtest/build_probe.py /root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/candidate.py 2>&1 | tail -15",
+          "output_excerpt": "[transformers] Model config: bos_token_id must be `None` or an integer within the vocabulary (between 0 and 127), got 50256. This may result in unexpected behavior.\n[transformers] Model config: eos_token_id must be `None` or an integer within the vocabulary (between 0 and 127), got 50256. This may result in unexpected behavior.\n[transformers] `loss_type=None` was set in the config but it is unrecognized. Using the default loss: `ForCausalLMLoss`.\n[rank0]: Traceback (most recent call last):\n[rank0]:   File \"/tmp/opencode/candtest/build_probe.py\", line 89, in <module>\n[rank0]:     main()\n[rank0]:   File \"/tmp/opencode/candtest/build_probe.py\", line 63, in main\n[rank0]:     assert out.loss.backward() is None\n[rank0]:            ^^^^^^^^\n[rank0]: AttributeError: 'function' object has no attribute 'loss'\n"
+        },
+        {
+          "part": "prt_182a87e66001YZXEDfGYRjTppM",
+          "tool": "edit",
+          "status": "completed",
+          "input_sha256": "1a4505d275dc96f164d2032d9c835dfe57cb91f209f382941352634915cedae3",
+          "output_sha256": "8caec1349d76de16c89d9b64f22a46c79f641ab12a2540c8d2433217dac59f07",
+          "output_bytes": 26,
+          "exit": null,
+          "path": "/tmp/opencode/candtest/build_probe.py",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a88f2c001Cq2JtzqrdWfRYc",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "d2a657767b3d7338d862d33ad68a528416e21978b07a7a54ac586ec88181aeb2",
+          "output_sha256": "d62bf0cf7dd6edd587992b8cfa8417dc36fe2ee17dcc4c8534d9f7fe6b72d08c",
+          "output_bytes": 989,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false,
+          "command": "/root/autodl-tmp/dev-venv/bin/python /tmp/opencode/candtest/build_probe.py /root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/candidate.py 2>&1 | tail -12",
+          "output_excerpt": "[rank0]:     return self._call_impl(*args, **kwargs)\n[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n[rank0]:   File \"/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/module.py\", line 1789, in _call_impl\n[rank0]:     return forward_call(*args, **kwargs)\n[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n[rank0]:   File \"/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/modules/sparse.py\", line 189, in forward\n[rank0]:     return F.embedding(\n[rank0]:            ^^^^^^^^^^^^\n[rank0]:   File \"/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/nn/functional.py\", line 2615, in embedding\n[rank0]:     return torch.embedding(weight, input, padding_idx, scale_grad_by_freq, sparse)\n[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n[rank0]: RuntimeError: aten.embedding.default got mixed torch.Tensor and DTensor, need to convert all torch.Tensor to DTensor before calling distributed operators!\n"
+        },
+        {
+          "part": "prt_182a90e02001vNaUz07I6psD06",
+          "tool": "write",
+          "status": "completed",
+          "input_sha256": "a241ce9f635bbdbbea736ef4843b77dd645e29d41328e76e87ff6b45743e89aa",
+          "output_sha256": "e3e06ec0f8c958669ed3682941ab88218ff9ee42a7ab9b48fd78126336aa968c",
+          "output_bytes": 24,
+          "exit": null,
+          "path": "/tmp/opencode/candtest/build_probe2.py",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a91bbb001p6GymZrLCcspEA",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "b63b4ebe1c80d2fb82a5e30705b29aa6539ef246090b5706519a905586be5d5d",
+          "output_sha256": "ce31d57404c86f050a5509ea8e0c3455b79bce1a47c2482ed30a46e4f5595070",
+          "output_bytes": 1180,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false,
+          "command": "/root/autodl-tmp/dev-venv/bin/python /tmp/opencode/candtest/build_probe2.py /root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/candidate.py 2>&1 | tail -10",
+          "output_excerpt": "[transformers] Model config: eos_token_id must be `None` or an integer within the vocabulary (between 0 and 127), got 50256. This may result in unexpected behavior.\n[transformers] `loss_type=None` was set in the config but it is unrecognized. Using the default loss: `ForCausalLMLoss`.\nparent policy loss 4.847668170928955\nparams {'keep_unsharded_blocks': 3, 'forward_prefetch_depth': 1} -> ('b08a96298d855d7c8dcd7497', 'candidate.fwd_ag_prefetch_d1_keep_k3') identical loss+grads\nparams {'keep_unsharded_blocks': 2, 'forward_prefetch_depth': 2} -> ('b08a96298d855d7c8dcd7497', 'candidate.fwd_ag_prefetch_d2_keep_k2') identical loss+grads\nparams {'keep_unsharded_blocks': 0, 'forward_prefetch_depth': 2} -> ('b08a96298d855d7c8dcd7497', 'candidate.fwd_ag_prefetch_d2_keep_k0') identical loss+grads\nparams {'keep_unsharded_blocks': 3, 'forward_prefetch_depth': 0} -> ('b08a96298d855d7c8dcd7497', 'candidate.fwd_ag_prefetch_d0_keep_k3') identical loss+grads\nparams None -> ('b08a96298d855d7c8dcd7497', 'candidate.fwd_ag_prefetch_d1_keep_k3') identical loss+grads\nmissing boundary -> {} ok\nrebuild after restore ok ('b08a96298d855d7c8dcd7497', 'candidate.fwd_ag_prefetch_d1_keep_k3')\n"
+        },
+        {
+          "part": "prt_182a96b2c0011rn7vw5WhdH8UK",
+          "tool": "write",
+          "status": "completed",
+          "input_sha256": "b85a588b78ebba8795bffd20890e8e14cb4d23b0f75f8cdd6d4c4e827ee162ea",
+          "output_sha256": "e3e06ec0f8c958669ed3682941ab88218ff9ee42a7ab9b48fd78126336aa968c",
+          "output_bytes": 24,
+          "exit": null,
+          "path": "/tmp/opencode/candtest/rollback_probe.py",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a978de00137CxNvNWZJFDb7",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "8d3041f758c7f02ad957fde3d497cac7b8079a353f76fc33a720b9a373f35521",
+          "output_sha256": "83158d8c16e70f48866509088e92c49060691e55c572e8602ecf4aace519a59e",
+          "output_bytes": 437,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false,
+          "command": "/root/autodl-tmp/dev-venv/bin/python /tmp/opencode/candtest/rollback_probe.py /root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/candidate.py 2>&1 | tail -5",
+          "output_excerpt": "[transformers] Model config: eos_token_id must be `None` or an integer within the vocabulary (between 0 and 127), got 50256. This may result in unexpected behavior.\n[transformers] `loss_type=None` was set in the config but it is unrecognized. Using the default loss: `ForCausalLMLoss`.\nrollback route: ('b08a96298d855d7c8dcd7497', 'fallback.prefetch_reset_failed.parent_delegated')\nloss: 4.847668170928955\nrollback-to-parent identity ok\n"
+        },
+        {
+          "part": "prt_182a9a50500155QYJpcOnmNCZ3",
+          "tool": "edit",
+          "status": "completed",
+          "input_sha256": "93ea6ea840c683db0ced390e590c06fdd7ffffc1721e2e97d97a3bc39c7c58ea",
+          "output_sha256": "8caec1349d76de16c89d9b64f22a46c79f641ab12a2540c8d2433217dac59f07",
+          "output_bytes": 26,
+          "exit": null,
+          "path": "/tmp/opencode/candtest/rollback_probe.py",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182a9b659001OxaGXGEOEtFu97",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "efb9f8c66b6c01f8fa75c055e1e15524ae92167fa46c19edadc2e095e10cf494",
+          "output_sha256": "f94542dd9158b91c08bca889a58238c4e8cd09a06d445c0810356112e7516487",
+          "output_bytes": 278,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false,
+          "command": "/root/autodl-tmp/dev-venv/bin/python /tmp/opencode/candtest/rollback_probe.py /root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/candidate.py 2>&1 | tail -4",
+          "output_excerpt": "[transformers] `loss_type=None` was set in the config but it is unrecognized. Using the default loss: `ForCausalLMLoss`.\nrollback route: ('b08a96298d855d7c8dcd7497', 'fallback.set_forward_prefetch_failed.parent_delegated')\nloss: 4.847668170928955\nrollback-to-parent identity ok\n"
+        },
+        {
+          "part": "prt_182aaeca2001JBHNFejI9pdCBX",
+          "tool": "write",
+          "status": "completed",
+          "input_sha256": "b386b599b87449fda1a764c75e6365631f81263de0cb9eb40b986290a92ba01c",
+          "output_sha256": "e3e06ec0f8c958669ed3682941ab88218ff9ee42a7ab9b48fd78126336aa968c",
+          "output_bytes": 24,
+          "exit": null,
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1/proposal.json",
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182ab18ba001lv1Kjo8WEOV2k3",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "ef5663710622cf6394b14662749e238f84b583d233c452737c5901d735f452f2",
+          "output_sha256": "e0429fe0d8f0e934adb516501b7e47bf50c05a225eddf95dfda05bcae57c47b8",
+          "output_bytes": 249,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182ab264f001cWKXVknNXGetj7",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "692c1782a57cbc81d51491beb789c9615cecfacb5f3d4126b2452ecd73f7d39f",
+          "output_sha256": "6c89885aaa359614514006dff34624d407cd11ec4e9de84fdf36c1be6eb88cd1",
+          "output_bytes": 161,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        },
+        {
+          "part": "prt_182ab3b57001N8g14KXj0E9ADe",
+          "tool": "bash",
+          "status": "completed",
+          "input_sha256": "0156a07457ed5e51eee5b16f440518be25b46c27c61ccdcebd095c5d46102aaa",
+          "output_sha256": "41281c2d8416ed886a7aacc62e1bbc599e1023a9690511ae23bf8642d2a28241",
+          "output_bytes": 22,
+          "exit": 0,
+          "path": null,
+          "reads_feedback": false,
+          "reads_selection": false
+        }
+      ],
+      "preserved_toy_probe_sources": [
+        {
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/audit-cpu-probes/treatment/prt_182a783ab001W0LbsMVYoDuq3C-cpu_probe.py",
+          "sha256": "e5692b28180e6004172ba1426b1151e424ae235fdefbcba69e28085ea290f1ad",
+          "original": "/tmp/opencode/candtest/cpu_probe.py"
+        },
+        {
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/audit-cpu-probes/treatment/prt_182a8399e001M1sSWOiMgw610h-build_probe.py",
+          "sha256": "c4b8fc75a06e88feb49d19664bd9ff80fffb3df69d1708075037811f7c66e233",
+          "original": "/tmp/opencode/candtest/build_probe.py"
+        },
+        {
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/audit-cpu-probes/treatment/prt_182a90e02001vNaUz07I6psD06-build_probe2.py",
+          "sha256": "2eac554794a533ca2e6c1101c5d033738d515bd2dc25bdd4c325d43e03674200",
+          "original": "/tmp/opencode/candtest/build_probe2.py"
+        },
+        {
+          "path": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/audit-cpu-probes/treatment/prt_182a96b2c0011rn7vw5WhdH8UK-rollback_probe.py",
+          "sha256": "537f2d8c7e22de38a856518be459de25624ea8c8cbedde746d8bf2caf9995713",
+          "original": "/tmp/opencode/candtest/rollback_probe.py"
+        }
+      ]
+    }
+  },
+  "review": {
+    "finding": "Both fresh arms explicitly recognize accepted feedback and implement actual forward prefetch plus keep-tail. No demonstrated treatment superiority; the earlier unchanged-policy outcome is not causally isolated to the original sentence.",
+    "budget_evidence": "The current request omits parameter_trials, but previous-feedback contains the actual integer 3. Treatment reads and prints that integer after two inspection type errors; do not claim this information was unavailable or wholly unread.",
+    "toy_scope": "Treatment probes use a small CPU world_size=1 FSDP model; initial placeholder-call and mixed Tensor/DTensor failures are retained in tool receipts. Pipeline shell exit 0 did not make those probes successful. Later partial toy tests are not full two-rank GPT2Medium quality or performance.",
+    "unverified_claims": [
+      "Full bitwise equivalence of generated candidates before GPU execution",
+      "Elimination of all old numerical failure modes",
+      "Predicted 10-18ms gain or exact memory safety from a few profiled gaps"
+    ],
+    "production_adoption": "Not adopted from this role-only result.",
+    "historical_results": "All accepted/rejected experiments and samples retained unchanged."
+  }
+}

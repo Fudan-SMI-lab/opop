@@ -1,0 +1,300 @@
+{
+  "phase": "completed",
+  "finished_at": "2026-10-28T13:20:38.012300+00:00",
+  "results": {
+    "tuner-replay": {
+      "status": "passed",
+      "seed": 0,
+      "parameter_trials": 3,
+      "observed_sequence": [
+        {
+          "keep_unsharded_blocks": 1
+        },
+        {
+          "keep_unsharded_blocks": 2
+        },
+        {
+          "keep_unsharded_blocks": 3
+        }
+      ],
+      "selected": {
+        "keep_unsharded_blocks": 3
+      },
+      "declared_space": {
+        "params": [
+          {
+            "name": "keep_unsharded_blocks",
+            "kind": "int",
+            "choices": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "description": "Trailing (backward-first) transformer blocks that skip FSDP's post-forward reshard via the public FSDPModule.set_reshard_after_forward(False, recurse=False). Each kept block removes one of the 24 backward block all-gathers (c10d::_allgather_base_ payload 25,192,448 B per rank, ~2.0 ms on the serialized critical path; inventoried as call c917c08825afcaacd65b752f) plus its un-inventoried fsdp.all_gather_copy_in / fsdp.split_with_sizes_copy companions, while retaining 50,384,896 B of unsharded parameters from forward until the block's post-backward reshard. Measured on the accepted prior trial: K=0/1/3 step_ms 176.81/173.87/170.94 ms with peak_allocated_bytes byte-identical to the 2,239,245,312 B baseline at every point; 3 is the installed operating point (default), 0 is the unchanged source policy, 4 and 5 extend the measured slope under the frozen peak gate - worst case at 5 is 2,340,015,104 B, inside the 2,351,207,577.6 B (1.05x) cap, while 6 would risk 2,390,400,000 B and is excluded. The parameter changes reshard timing only, never workload semantics, batch, sequence length, data or thresholds."
+          }
+        ],
+        "constraints": [
+          {
+            "expr": "keep_unsharded_blocks >= 0 and keep_unsharded_blocks <= 5",
+            "rationale": "Matches the declared choices; 6 or more kept blocks (+302 MB worst-aligned beyond the measured-flat K=3 point) cannot fit the frozen 1.05x peak budget under any alignment, while 4 and 5 fit even in the worst case (2,289,630,208 / 2,340,015,104 B vs the 2,351,207,577.6 B cap), and the value never exceeds the 24 blocks of the frozen workload because build clamps to the block count."
+          }
+        ]
+      },
+      "scope": "CPU-only exact sampler replay with the original recorded scores; no new timing or GPU validation."
+    },
+    "control": {
+      "status": "completed",
+      "agent": {
+        "role": "candidate",
+        "session": "ses_e7d6c535effeamprJU7o5DiCDo",
+        "message": "msg_1829c0ade001R46Uxl82s7xY0T",
+        "model": "zhipuai/glm-5.3",
+        "usage": {
+          "schema_version": 1,
+          "mode": "observe_only",
+          "messages": 36,
+          "reported_cost": 1.0870607659,
+          "messages_without_cost": 0,
+          "unfinished_messages": 0,
+          "tokens": {
+            "total": 2918579.0,
+            "input": 107316.0,
+            "output": 11789.0,
+            "reasoning": 18802.0,
+            "cache.read": 2780672.0,
+            "cache.write": 0.0
+          },
+          "sessions": [
+            {
+              "id": "ses_e7d6c535effeamprJU7o5DiCDo",
+              "status": "observed",
+              "detail": null
+            }
+          ],
+          "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+        },
+        "sandbox": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/sandboxes/candidate-replay-f3bba47f4b5b",
+        "outputs": [
+          "candidate.py",
+          "proposal.json"
+        ],
+        "feedback_provided": true,
+        "contract_repairs": 0,
+        "generation_snapshots": [
+          "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/control/generation-snapshots/generation-22e84c81423f.json"
+        ]
+      },
+      "candidate_sha256": "d8bbde731e85018db994e79efafb0449be7021985fb7d22a6ab10960c84cb98e",
+      "proposal": {
+        "implementation": "distributed",
+        "replacement_calls": [
+          "b08a96298d855d7c8dcd7497"
+        ],
+        "rationale": "Continuation at the accepted editable boundary (model forward b08a96298d855d7c8dcd7497 + the 24 FSDP2 block units). inputs/previous-feedback.txt shows the prior joint candidate trial-4f5fce6e6b-param-a224c6cb (keep_unsharded_tail, selected keep=3) was ACCEPTED (objective 171.46 ms vs parent 175.46 ms, peak_allocated_bytes 2239245312 B exactly at baseline, quality max_abs_error 0.0 on both ranks, coverage 2/2 boundary invocations), so there is no failure to repair; it is installed in current revision 799a80d2. Because this candidate writes the same boundary call, it explicitly REPLACES that whole bundle (replaces: [trial-4f5fce6e6b-param-a224c6cb]) and preserves its needed behavior itself: build resets every block to set_reshard_after_forward(True, recurse=False) and clears all forward-prefetch lists, then reapplies the keep-unsharded-tail policy with the same public API and the same keep_unsharded_blocks parameter (code default 3 = the accepted selection), making this bundle authoritative over any live module state from the replaced bundle. New work in this attempt: an explicit depth-D forward all-gather prefetch installed at build time via the public FSDPModule.set_modules_to_forward_prefetch - the root unit prefetches blocks[0:D] (its all-gather is in flight during the ~1.80 ms embedding window measured after the root gather) and each block i prefetches blocks[i+1:i+1+D]. Mechanism verified in the measured worker's torch 2.13.0+cu129 source: FSDPState._pre_forward issues _states_to_forward_prefetch all-gathers immediately after the current unit's own unshard copy-out, and FSDPParamGroup.unshard() is a documented no-op when the all-gather result is already pending, so block i's compute launches while block i+1's all-gather runs on the FSDP comm stream. Measured motivation (current-revision nsys observations/current/nsys-9ed9145c.json, rank 0): the forward all-gather chain spans 79.43 ms with only 57.37 ms NCCL-busy; 22.06 ms of NCCL-idle exposure sits between successive forward all-gathers (24 gaps of 0.42-0.92 ms containing the block compute kernels plus dispatch, 1.80 ms after the root gather, one anomalous 5.0 ms stall). Default FSDP2 scheduling cannot overlap this (default _states_to_forward_prefetch is empty; the next all-gather is only issued at the next block's pre-forward). The backward AG/RS chain is already gap-free, so it is untouched. Expected effect: convert the serialized AG_i -> compute_i -> AG_i+1 forward chain into a comm-stream chain with compute hidden under the all-gathers, removing most of the 22.06 ms exposure, i.e. roughly 10-18 ms off the current accepted ~171 ms; the 5.0 ms stall of unknown cause may only be partially absorbed. Safety: the identical collectives execute (same NCCL ops, payloads, counts and per-rank order - 25 forward all-gathers, 24-K+1 backward block all-gathers with keep K, 25 reduce-scatters; NCCL tuning log observations/current/nccl_tuning-f6198e01.json), only CPU issue timing changes, so loss, logits, every gradient and post-update parameter, DTensor shard layouts, completion boundaries and the tied-embedding/negative-control checks are bit-identical (prior accepted run measured max_abs_error 0.0 with the same delegation pattern). Both ranks install identical policies behind the same symmetric build-time agreement all_reduce with rollback as the accepted bundle, so collective participation and ordering stay symmetric on all ranks; the fallback path restores the source default policy (reshard after forward, no explicit prefetch) and delegates every call to the parent. Memory: depth D keeps at most D extra ~50.4 MB unsharded block units in flight mid-forward (all_gather_comm.allocate buffer), inside the measured 111.96 MB headroom below the frozen 2351207577.6 B peak limit for D<=2; the keep-tail retention window is unchanged from the accepted bundle (keep=3 measured peak exactly at baseline because allocator reuse absorbs the retained bytes). The parameter search re-measures keep in {0..4} and depth in {0,1,2} under the frozen peak constraint, with depth=0 as the regression anchor that reproduces the accepted state.",
+        "setup_work": {
+          "description": "One-time build-time policy installation on the live adapter state after prepare and before any invocation; no fixture output is precomputed or captured, and every invocation executes the full workload on its current inputs through the parent forward.",
+          "steps": [
+            "Structural guards, no GPU compute: resolve the model boundary (context.references and context.modules must contain b08a96298d855d7c8dcd7497), list module.transformer.h, require every block to expose the public set_reshard_after_forward and set_modules_to_forward_prefetch and the root to expose set_modules_to_forward_prefetch; failures record a concise setup-failure category reported later by the replacement's fallback route label while still delegating to the parent.",
+            "Normalize prior state to the source policy so this bundle is authoritative over the replaced bundle's live mutations: root and every block get set_modules_to_forward_prefetch([]) and every block set_reshard_after_forward(True, recurse=False).",
+            "Apply the composed policy: root prefetches blocks[:D], each block i prefetches blocks[i+1:i+1+D] (empty list near the tail = default no-op), and the trailing K blocks get set_reshard_after_forward(False, recurse=False).",
+            "Symmetric agreement: one 8-element int64 all_reduce(MIN) over the setup-success flags (plus rollback to the source policy on any rank disagreement or exception), mirroring the accepted bundle's guard; the tiny tensor and collective are installation-time only, never inside the timed step.",
+            "Install the single boundary replacement {b08a96298d855d7c8dcd7497: model_forward} that records the chosen route label (candidate.fwd_ag_prefetch_d{D}_keep_tail_k{K} or fallback.{reason}.parent_delegated) and delegates all compute to the current parent callable. No parameters are transformed, no packed weights are built, no GPU kernels are launched at setup; retained memory is unchanged from the parent state."
+          ],
+          "memory_note": "No setup-time allocation beyond one 8-byte flag tensor per rank. Depth-D prefetch adds at most D ~50.4 MB transient all-gather buffers mid-forward during each invocation (D=1 default), inside the 111.96 MB headroom under the 2351207577.6 B peak_allocated_bytes limit; the framework independently revalidates the constraint for the selected parameter candidate."
+        },
+        "quality_risks": [
+          "Peak-memory risk: depth=2 keeps ~100.8 MB of extra in-flight all-gather buffers (vs 111.96 MB measured headroom) and keep=4 adds another retained block; mitigated by the declared constraint (keep_unsharded_blocks - 3) + forward_prefetch_depth <= 2 and by independent framework revalidation of peak_allocated_bytes <= 1.05x baseline before publication.",
+          "Cross-rank symmetry: the prefetch lists change CPU issue order of the forward all-gathers; all ranks install identical lists from the same deterministic build path and the agreement all_reduce rolls every rank back together, so per-rank NCCL ordering stays matched and no rank can deadlock or reorder collectives alone.",
+          "Policy-state risk on re-entry: repeated builds (parameter trials) or the replaced bundle's live mutations could leave stale flags; build clears both policies on every path (including every failure branch) before applying, and the fallback path equals the source default policy, so the parent always executes a coherent FSDP schedule.",
+          "Numerical risk is nil by construction: no operator, dtype, reduction or payload changes; the same collectives produce the same values in the same per-rank order, and the prior accepted bundle already demonstrated max_abs_error 0.0 with this delegation pattern; quality re-verification with two continuous updates, gradients, post-update parameters, negative control and tied-embedding check remains the binding gate.",
+          "Timing risk: the 5.0 ms anomalous forward stall may not be absorbed by earlier issue, and dispatch-heavy gaps may leave residual exposure; this is a measured-effect hypothesis under the AB/BA paired protocol, not a guaranteed gain, and depth=0 reproduces the accepted behavior as the in-search control."
+        ],
+        "eliminated_calls": [],
+        "requires": [],
+        "replaces": [
+          "trial-4f5fce6e6b-param-a224c6cb"
+        ],
+        "parameter_space": {
+          "params": [
+            {
+              "name": "keep_unsharded_blocks",
+              "kind": "int",
+              "choices": [
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "description": "Trailing (backward-first) transformer blocks that skip FSDP's post-forward reshard via public FSDPModule.set_reshard_after_forward(False, recurse=False); preserved dimension of the replaced bundle trial-4f5fce6e6b-param-a224c6cb whose selected value was 3 (each kept block removes one ~2.0 ms backward block all-gather of 25192448 B per rank plus its copy-in/split companions while retaining 50384896 B unsharded from forward until post-backward; keep=3 measured peak exactly at the 2239245312 B baseline). 0 is the unchanged source policy; build clamps to the 24 blocks of the frozen workload. Changes reshard timing only, never workload semantics, batch, sequence length, data or thresholds."
+            },
+            {
+              "name": "forward_prefetch_depth",
+              "kind": "int",
+              "choices": [
+                0,
+                1,
+                2
+              ],
+              "description": "Number of following transformer units each FSDP unit explicitly prefetches in forward via public FSDPModule.set_modules_to_forward_prefetch (root prefetches the first D blocks, block i prefetches blocks i+1..i+D; issued right after the current unit's all-gather copy-out per torch 2.13.0 FSDPState._pre_forward). 0 disables explicit prefetch (accepted-status-quo anchor); 1 adds at most one ~50.4 MB in-flight all-gather buffer mid-forward to hide the 24 measured 0.42-0.92 ms compute/dispatch gaps plus the 1.80 ms post-root-gather embedding window; 2 hides more but keeps ~100.8 MB extra in flight against the 111.96 MB headroom. Only CPU issue timing of the identical collectives changes."
+            }
+          ],
+          "constraints": [
+            {
+              "expr": "keep_unsharded_blocks >= 0 and keep_unsharded_blocks <= 4",
+              "rationale": "Matches the declared choices; the value is additionally clamped in build to the frozen 24-block workload, and keep beyond 4 stacks retained unsharded blocks (+50.4 MB each) that cannot fit the frozen 1.05x peak budget."
+            },
+            {
+              "expr": "forward_prefetch_depth >= 0 and forward_prefetch_depth <= 2",
+              "rationale": "Matches the declared choices; depth > 2 would need more than ~151 MB of simultaneous in-flight all-gather buffers, exceeding the 111.96 MB measured headroom below the 2351207577.6 B peak_allocated_bytes limit."
+            },
+            {
+              "expr": "(keep_unsharded_blocks - 3) + forward_prefetch_depth <= 2",
+              "rationale": "Memory guard over the frozen peak_allocated_bytes <= 1.05x baseline budget: keep<=3 was measured to add nothing to the true peak (allocator reuse absorbs retained blocks), so the worst unmeasured corner is one extra retained block plus depth-2 in-flight buffers (+151 MB) or deeper retention with depth-2; this excludes those corners while leaving (keep=3, depth=2), (keep=4, depth=1) and all smaller combinations to measurement. The framework revalidates the actual constraint before publication."
+            }
+          ]
+        },
+        "state_lifecycle": "Warm-model lifecycle is unchanged: FSDP policy flags and prefetch lists are set once at build on the live module state and persist across reset()/zero_grad()/warmup/repeats/continuous quality updates; reset() copies initial values into sharded parameters and never touches scheduling state, keep blocks reshard after backward by default (reshard_after_backward untouched), so each invocation starts from the same sharded state. No parameters are transformed, no caches or aliases are introduced, and the returned loss/logits are produced by the parent forward unchanged.",
+        "synchronization": "Completion boundaries are exactly the source's: the step is bracketed by dist.barrier + torch.cuda.synchronize before and torch.cuda.synchronize after, and FSDP's own events (wait_for_unshard, all-gather copy-out events) still order every prefetched all-gather against its consumer, so the measured step still ends only when all compute and communication complete. The only added synchronization is the installation-time agreement all_reduce, outside every timed invocation.",
+        "communication_plan": "Same collectives, same payloads, same process groups, same per-rank order (forward all-gathers root-then-blocks, backward reduce-scatters/re-gathers in reverse order with the kept tail re-gathers removed exactly as in the replaced bundle); the explicit forward prefetch only moves each block all-gather's CPU issue point earlier so the NCCL kernel overlaps the preceding block's compute. Expected diagnostics: communication_kernel_sum_ms roughly unchanged or slightly lower (same wire volume, less waiting), communication_without_compute_ms lower as forward exposure shrinks; collected by the installed torch_communication collector during the separate profile invocations."
+      },
+      "scope": "Generated output only; schema validity does not establish quality, execution or performance."
+    },
+    "treatment": {
+      "status": "completed",
+      "agent": {
+        "role": "candidate",
+        "session": "ses_e7d63c934ffe5AfmxpOgaLqqR6",
+        "message": "msg_182ab3c0b001kCDCmsosmWRJg8",
+        "model": "zhipuai/glm-5.3",
+        "usage": {
+          "schema_version": 1,
+          "mode": "observe_only",
+          "messages": 82,
+          "reported_cost": 1.59527088416,
+          "messages_without_cost": 0,
+          "unfinished_messages": 0,
+          "tokens": {
+            "total": 4536950.0,
+            "input": 90914.0,
+            "output": 17206.0,
+            "reasoning": 23518.0,
+            "cache.read": 4405312.0,
+            "cache.write": 0.0
+          },
+          "sessions": [
+            {
+              "id": "ses_e7d63c934ffe5AfmxpOgaLqqR6",
+              "status": "observed",
+              "detail": null
+            }
+          ],
+          "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+        },
+        "sandbox": "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/sandboxes/candidate-replay-7a04284bd6e1",
+        "outputs": [
+          "candidate.py",
+          "proposal.json"
+        ],
+        "feedback_provided": true,
+        "contract_repairs": 0,
+        "generation_snapshots": [
+          "/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028/treatment/generation-snapshots/generation-1c4ed3d2013f.json"
+        ]
+      },
+      "candidate_sha256": "077f5cdce46b8e9ef36951f29767910c7f4a78c14ae1179a8c5392818f30b75c",
+      "proposal": {
+        "implementation": "distributed",
+        "replacement_calls": [
+          "b08a96298d855d7c8dcd7497"
+        ],
+        "rationale": "Previous outcome from evidence: trial-4f5fce6e6b-param-a224c6cb (keep_unsharded_tail) was ACCEPTED (previous-feedback decision.accepted=true; AB/BA paired gains 4.12/3.87 ms vs MAD noise bounds 0.62/0.66 ms; peak_allocated_bytes 2239245312 B exactly at baseline; selected parameter keep=3 measured 170.94 ms) and is installed in current revision 799a80d2..., so the accepted timing baseline is ~171.46 ms, not the 176.15 ms original. There is no failure to repair; this attempt is the selection's continuation at the same joint boundary (model forward b08a96298d855d7c8dcd7497 + the 24 FSDP block modules + the _allgather_base_ family). Because this bundle writes the same model-forward call, it explicitly replaces the installed bundle trial-4f5fce6e6b-param-a224c6cb and preserves its needed behavior itself: build re-applies the accepted policy (K trailing blocks keep forward all-gathered bytes via public FSDPModule.set_reshard_after_forward(False, recurse=False), default K=3) and then adds the new step, an explicit forward all-gather prefetch via the public FSDPModule.set_modules_to_forward_prefetch: the FSDP root prefetches the first D blocks and each block i prefetches blocks i+1..i+D (default D=1), so the next block's all-gather is issued on FSDP's all-gather stream at the current block's entry, right after its own unshard copy-out, and runs concurrently with that block's compute. Measured basis (current-revision nsys, observations/current/nsys-9ed9145c, rank 0): the forward all-gather chain (root 105029632 B gather 8.25 ms + 24 block 25192448 B gathers, 2.0-2.4 ms each, RING over SHM per nccl_tuning) spans 79.43 ms of which only 57.37 ms is NCCL-busy; the 22.06 ms of NCCL-idle gaps contain exactly the per-block compute (25 kernels, ~0.3 ms GPU busy) plus dispatch latency, including 1.80 ms after the root gather and one anomalous 5.0 ms stall. Backward is already gap-free (~2.1 ms AG/RS back-to-back), so only forward rescheduling attacks existing volume. Code mechanism verified in the measured worker's torch 2.13.0+cu129: FSDPState._pre_forward calls its param groups' pre_forward (unshard + synchronous wait_for_unshard) and only then iterates self._states_to_forward_prefetch, which is empty by default, so by default the next block's all-gather is issued at that block's own pre-forward and block compute cannot overlap it; the public set_modules_to_forward_prefetch API (fully_shard.py:862 region) exists precisely to issue the next all-gather earlier from the CPU. FSDP's default backward prefetch is preserved because _states_to_backward_prefetch is never set, and the root's lazy-init auto no-reshard-after-forward policy is untouched. The replacement delegates the complete forward (and therefore backward, gradient reduction and SGD update) to the parent boundary callable; no custom math is introduced, so the earlier family's vocab-shard reassociation failure mode cannot recur. Expected effect: most of the 22.06 ms forward NCCL-idle exposure is converted to overlap (bounded by the unexplained 5.0 ms stall), i.e. roughly 10-18 ms off 171.46 ms toward ~153-161 ms, with communication_kernel_sum_ms roughly unchanged (same wire volume, less waiting) and peak_allocated_bytes gated by the frozen 1.05x budget. CPU FSDP2 fixture checks on the measured worker's Python confirm bit-identical loss, logits and gradients for every parameter variant (depth 0/1/2 x keep 0/2/3), stable repeated invocations, correct warm-process reset, and full rollback with parent-delegated fallback labels.",
+        "setup_work": {
+          "description": "All build-time work is one-time installation on the adapter state after prepare and before any invocation; no fixture output is precomputed or captured, and every invocation executes the full workload on its current inputs through the parent forward.",
+          "steps": [
+            "Structural guards, no GPU work: resolve the model boundary (context.references and context.modules must both contain b08a96298d855d7c8dcd7497), list module.transformer.h, require every block to expose the public FSDPModule.set_reshard_after_forward and FSDPModule.set_modules_to_forward_prefetch, and require the root module to expose set_modules_to_forward_prefetch; any failure records a concise setup-failure category (missing_boundary, missing_transformer_blocks, unsupported_fsdp_module, unsupported_fsdp_root) that the replacement's route label later reports while still delegating to the parent.",
+            "Reset both policies to the source state before applying anything: set_reshard_after_forward(True, recurse=False) on every block and set_modules_to_forward_prefetch([]) on the root and every block, so repeated builds in a warm process (parameter trials) measure exactly the requested policy with no leakage from an earlier trial.",
+            "Re-apply the replaced bundle's accepted policy: set_reshard_after_forward(False, recurse=False) on the last K blocks (K = context['parameters']['keep_unsharded_blocks'], default 3, clamped to [0, block_count]); this flips only post_forward_mesh_info to None on those blocks' param groups, no parameters are copied.",
+            "Apply the new forward prefetch: root.set_modules_to_forward_prefetch(blocks[:D]) and blocks[i].set_modules_to_forward_prefetch(blocks[i+1:i+1+D]) for each i with a nonempty target slice (D = context['parameters']['forward_prefetch_depth'], default 1, clamped to [0, 2]); these are plain per-state list assignments through the public API, no collective is issued and no tensor is touched.",
+            "Symmetric agreement: one int64 MIN all_reduce of an 8-byte ok flag on the default process group; if any rank fails its guards or disagrees, both policies are rolled back identically on every rank (prefetch lists cleared, all blocks restored to reshard_after_forward=True) so the NCCL collective sequence stays symmetric, and the wrapper reports fallback.<reason>.parent_delegated.",
+            "Install the single model-boundary replacement that records the chosen route (candidate.fwd_ag_prefetch_dD_keep_kK or the fallback category) and delegates to the parent forward from context.references; the framework's phase/signature guards around the module boundary are untouched and no other module forward is wrapped."
+          ],
+          "memory": {
+            "setup_allocation": "The only allocation during build is the transient 8-byte int64 agreement flag tensor (CUDA when available, else CPU), freed immediately after the all_reduce; no parameter copies, no packed weights, no CUDA Graph capture and no retained pools are created, so framework.lifecycle_peak_allocated_bytes is unaffected by installation.",
+            "runtime_delta": "The prefetch policy changes runtime allocations only: depth D keeps up to D extra in-flight block all-gather output units (50384896 B each) alive mid-forward while the current block computes, i.e. about +50.38 MB at the default D=1 and +100.77 MB worst-aligned at D=2, against the measured 111.96 MB headroom below the frozen 2351207577.6 B limit (measured keep=3 peak is exactly the 2239245312 B baseline and was insensitive to keep 1 vs 3, indicating the global peak does not sit in the mid-forward window; the measured peak_allocated_bytes constraint remains the arbiter). reserved/pool memory is not otherwise increased; the keep=3 retention window is unchanged from the replaced bundle."
+          }
+        },
+        "quality_risks": [
+          "Numerics must be untouched: mitigated by construction - the identical collectives with identical payloads, kernel sequence and counts execute (25 forward all-gathers, 45 block all-gathers total, 25 reduce-scatters at keep=3), producing identical bytes; only their CPU issue order changes, so loss, logits, gradients, post-update parameters, DTensor shard layouts, the tied-embedding identity and the negative control are bit-identical (verified on a CPU FSDP2 fixture across all parameter variants); any deviation would surface loudly at the 1e-6/1e-4 gate rather than silently.",
+          "Memory ceiling: depth 2 combined with keep 3 is worst-aligned +100.77 MB against the measured 111.96 MB headroom (limit 2351207577.6 B), so it fits only narrowly and is left to the parameter search under the frozen peak_allocated_bytes constraint; the default depth 1 adds about +50.38 MB transient mid-forward and the measured constraint remains the arbiter - reduce depth or keep on breach.",
+          "Cross-rank asymmetry (one rank issuing prefetches while the peer does not) would desynchronize NCCL: mitigated by deterministic structural guards identical on both ranks plus the build-time MIN agreement collective that forces symmetric rollback to pure parent delegation; the failure-mode of one rank silently installing a different policy cannot occur because parameters are clamped deterministically and all policy mutation happens before the agreement flag is reduced.",
+          "Warm-process reuse across parameter trials could leak a previous keep or prefetch list: mitigated by the full reset of both policies (all blocks' reshard policy, root's and all blocks' forward-prefetch lists) before applying the requested configuration.",
+          "FSDP internals interaction: the candidate only uses public FSDPModule APIs verified on the measured worker's torch 2.13.0+cu129; FSDP's default backward prefetch remains active because _states_to_backward_prefetch is never set, and the root's automatic no-reshard-after-forward (lazy-init policy) is untouched; if a guard fails the wrapper still delegates through the parent boundary, so the parent's collective sequence is always preserved.",
+          "Coverage/effectiveness risk: the prefetch could under-deliver if the observed 5.0 ms forward stall (cause unknown) is CPU-side and not hidden by earlier issue; the paired AB/BA project measurement, not the diagnostic nsys reasoning, decides acceptance, and no measurement boundary, quality threshold or workload parameter is modified."
+        ],
+        "eliminated_calls": [
+          "c917c08825afcaacd65b752f",
+          "43c061f2583864806b2c4a79",
+          "e6d4fa912fd7f93a8db5d567",
+          "9231f94b292e95bae47425aa"
+        ],
+        "requires": [],
+        "replaces": [
+          "trial-4f5fce6e6b-param-a224c6cb"
+        ],
+        "parameter_space": {
+          "params": [
+            {
+              "name": "forward_prefetch_depth",
+              "kind": "int",
+              "choices": [
+                0,
+                1,
+                2
+              ],
+              "description": "Explicit forward all-gather prefetch depth via the public FSDPModule.set_modules_to_forward_prefetch. 0 disables explicit prefetch (the replaced bundle's behavior, default FSDP scheduling where each block's 25192448 B all-gather is issued at that block's pre-forward and cannot overlap the preceding block's compute). 1 (first revision) makes the root prefetch block 0 and each block i prefetch block i+1 at its own entry, so the ~2.1 ms all-gather runs concurrently with the ~0.42-0.92 ms of block compute and dispatch that the current-revision nsys shows as 22.06 ms of NCCL-idle exposure inside the 79.43 ms forward chain; it holds about one extra 50384896 B all-gather output unit mid-forward. 2 prefetches two blocks ahead for more aggressive overlap at up to ~100.77 MB extra worst-aligned mid-forward allocation, gated by the frozen peak_allocated_bytes <= 2351207577.6 B constraint. The parameter changes all-gather issue order only, never workload semantics, batch, sequence length, data or thresholds."
+            },
+            {
+              "name": "keep_unsharded_blocks",
+              "kind": "int",
+              "choices": [
+                0,
+                1,
+                2,
+                3
+              ],
+              "description": "Trailing (backward-first) transformer blocks that skip FSDP's post-forward reshard via the public FSDPModule.set_reshard_after_forward(False, recurse=False), re-applied from the replaced accepted bundle. Each kept block removes one of the 24 backward block all-gathers (c10d::_allgather_base_ payload 25192448 B per rank, ~2.0 ms on the serialized critical path) plus its fsdp.all_gather_copy_in and fsdp.split_with_sizes_copy companions, while retaining 50384896 B of unsharded parameters from forward until the block's post-backward reshard. 3 is the previously measured best (170.94 ms search trial, accepted 171.46 ms paired measurement); 0 is the unchanged source policy; 1 and 2 let the search re-measure the slope jointly with prefetch depth under the same frozen peak budget."
+            }
+          ],
+          "constraints": [
+            {
+              "expr": "forward_prefetch_depth >= 0 and forward_prefetch_depth <= 2",
+              "rationale": "Matches the declared choices; depth 3 or more would stack three extra in-flight 50384896 B all-gather output units (~151 MB) against the measured 111.96 MB headroom below the frozen 2351207577.6 B peak limit and cannot fit worst-aligned, while depths 0/1/2 remain measurable; build additionally clamps to this range so warm-process trials never leak a larger value."
+            },
+            {
+              "expr": "keep_unsharded_blocks >= 0 and keep_unsharded_blocks <= 3",
+              "rationale": "Matches the declared choices and the replaced bundle's accepted space; 4 or more kept blocks (+201 MB worst-aligned retention) cannot fit the frozen 1.05x peak budget, and the value never exceeds the 24 blocks of the frozen workload because build clamps to the block count."
+            }
+          ]
+        },
+        "state_lifecycle": "The replacement is the model-boundary forward during the adapter's forward_loss phase; the framework's phase/signature guards around the module boundary are untouched and no other module forward is wrapped. The prefetch lists and the keep policy live on the existing FSDP states of the prepared model and are refreshed by nothing (they are static policy attributes consulted by FSDP's own pre-forward hooks each pass), so warm-model lifecycle equals the source's: every non-kept block still reshards in its own post-forward callback, kept blocks reshard in their post-backward callback before optimizer.step(), and parameters are DTensor shards (same shapes/placements) at the SGD update, at reset()'s copy of initial values, at zero_grad and at observe()'s gradient/parameter capture between continuous updates. The tied transformer.wte.weight is lm_head.weight identity is untouched because no module or parameter object is replaced. The all-gathered bytes consumed in backward are produced by each invocation's own forward, so no state crosses invocation boundaries; the prefetch policy itself is installation-time state, symmetric on all ranks, and is either fully applied or fully rolled back before validation runs.",
+        "synchronization": "No new streams, process groups, tags or barriers are introduced in the workload. The prefetches reuse FSDP's existing all-gather stream and its existing event discipline (unshard/wait_for_unshard/copy-out events), so cross-stream ordering is exactly the parent's; forward, backward, reduce-scatter and SGD run as the source on the existing streams and NCCL group, the leading/trailing torch.cuda.synchronize completion boundaries, the detached loss and full logits lifetime across peak sampling, and the reset/barrier discipline between invocations are unchanged. The only added synchronization is the single build-time int64 MIN all_reduce of an 8-byte flag on the default process group, issued before validation and outside every measured invocation, guaranteeing symmetric installation or symmetric rollback to parent delegation on all ranks.",
+        "communication_plan": "Per rank per step (world 2, NCCL, existing default process group): the same collectives execute with the same payloads and the same count as the replaced accepted bundle (25 forward all-gathers including the 105029632 B root gather, 21 backward block all-gathers at keep=3, 25 reduce-scatters, plus copy-in/split companions); the candidate removes K of the 24 backward block all-gathers and their companions via the re-applied keep policy (K = keep_unsharded_blocks, 0 removes nothing) and adds no messages. The new prefetch reschedules the existing forward all-gathers onto a gap-free chain on FSDP's all-gather stream with block compute hidden underneath: communication_kernel_sum_ms and communication_union_ms (both including wait, neither wire time) should stay roughly constant in volume terms while their exposed/serialized share falls, and compute_overlap_ms should rise; the previously measured diagnostic values (communication_kernel_sum_ms ~173.9, communication_without_compute_ms ~127 at keep=3) bound the expectation. Nothing here claims PCIe/NVLink byte counts, which remain unmeasurable on this system."
+      },
+      "scope": "Generated output only; schema validity does not establish quality, execution or performance."
+    },
+    "initial-input-audit": {
+      "status": "passed",
+      "all_inputs_equal": true,
+      "prompt_only_change": {
+        "old": "Read inputs/previous-feedback.txt and repair the concrete failure.",
+        "new": "Read inputs/previous-feedback.txt and determine the previous outcome from its evidence. Continue the current goal from the installed version; explain the concrete change in this attempt and how it follows from the feedback and selected optimization. Do not presume a failure when the previous attempt was accepted."
+      },
+      "model_tools_core_equal": true,
+      "settings_sha256": "d983ae2c8db7bb5ae559313f6dc7faa909bab8ebdd0776e0d7fd45c439bb7e64"
+    }
+  }
+}
