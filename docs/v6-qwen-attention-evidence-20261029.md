@@ -1,5 +1,13 @@
 # 首attention接口证据与一次候选事实续行
 
+终态核查：2026-10-28 21:59:36 UTC完成，attention worker通过，真实candidate完成且0次schema修复；这不是新候选的CUDA质量或性能接受。完整原始Q/K/V、首层输出、两组完整首decode和独立profile输出已在服务器重新加载、哈希和逐元素核对；两份trace算子/kernel集合重算一致。有效257位置的K/V按head展开后相同，Static末尾30位置K/V为0且bool mask为false、前257为true；首层差仍0.00048828125。两组首decode各与前批无wrapper控制逐元素一致。保存的是首层完整接口及36调用计数，不是逐层完整native执行证明；padding、mask、head布局、GQA仍共同变化。
+
+实际输入仍只增加原反馈3,341字节，其他32文件/提示/模型工具/core不变，运行后输入也未改。候选在`prt_184718063001M7pocV241p4d6c`打印新增事实，在`prt_18474af21001tCek7cMlJOEqsU`读取链接的attention报告；还读了first-decode报告、实验脚本和已安装Transformers源码。实际71次工具调用（14 read、53 bash、2 write、2 edit）；有一个ImportError（从transformers.utils导入is_jit_tracing失败，最终改为utils.import_utils）和一个grep exit2，均保留。4份inline CPU导入/view/假Graph/patch探针及完整会话留服务器；没有真实GPU模型验证。Provider估算费用3.4100155725，observe-only，不是账单或用量限制。
+
+生成代码SHA`f12e2f50cfd5f960dddd51537556a73ff8b0793df0786bd78fe6dfcff849e013`，参数空间空。它改为每个cache长度一张DynamicCache Graph，在capture窗口临时替换masking_utils.is_tracing，去掉stream-capture项，退出恢复；用master KV、逐步tail copy、logits clone和cache mirror维护当前输入状态，并在setup中逐元素比较每张Graph的logits/所有层追加KV。实际源码支持“capture会使is_tracing返回true，从而影响mask省略和GQA接口”的具体假设；尚未单独干预验证历史唯一因果，也未执行这份代码中的GPU自检。
+
+不采纳候选关于“已排除所有生命周期问题”“kernel-for-kernel相同”“完整质量必过”“prefill不变保证TTFT”“profile差值证明host因果”的过度结论。候选自身stride宽松不改变框架的teacher signature过滤；临时全局patch的多线程可组合性也未证明。下一步按[固定执行协议](v6-qwen-attention-fixed-20261029.md)原样验证，不改生产prompt/默认反馈/算子实现，不重复旧角色A/B。完整[审计摘要](evidence/v6-qwen-attention-evidence-20261029/terminal-audit.json)服务器SHA`ac64552afd5ae19d9a49f92b4c64b6a2f214cf8d54f121c23d5e90c838271577`；所有旧失败和接受保持。
+
 已启动并核验（2026-10-28 21:39 UTC）：冻结`575c6981`，控制器PID892781，生产core仍`ed24af7a…`。GPU对照已完成，正在进行真实候选会话`generation-109aba42bca3`，启动核查时已有8条provider Assistant消息。实际33输入中只有原`previous-feedback.txt`从5,294,114增至5,297,455字节（+3,341），追加`same_input_attention_diagnostic`；原字段和值、结束括号前原字节、其余32文件、prompt、模型/工具配置和core均核验相同。这是新证据驱动的一次候选续行，不是已生成代码的质量验证。
 
 worker报告两个完整首decode均逐元素复现前批对应无wrapper对照，各记录36次attention调用。首层Q相同，Dynamic K/V为`[1,8,257,128]`，Static为`[1,32,287,128]`；按4倍head展开、裁到257有效长度后K/V相同，首层attention输出最大绝对差`0.00048828125`。Dynamic接口无mask、`enable_gqa=true`；Static使用长度287的bool mask、已展开head。两次独立attention profile的实际trace核验：Dynamic包含`_scaled_dot_product_flash_attention`及Flash split-KV kernel，Static包含`_scaled_dot_product_efficient_attention`及CUTLASS memory-efficient kernel；profile输出各自精确匹配完整forward捕获的对应首层输出。这里多种输入表示/选项共同变化，不能宣称某单因素已被隔离；独立小调用也不能代表完整模型历史native路径。启动核查已重读trace并验证哈希/算子集合，完整原始张量复核留待终态。

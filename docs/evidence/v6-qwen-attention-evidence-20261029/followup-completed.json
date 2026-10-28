@@ -1,0 +1,88 @@
+{
+  "phase": "completed",
+  "finished_at": "2026-10-28T21:59:36.456673+00:00",
+  "results": {
+    "attention-probe": {
+      "status": "completed",
+      "worker_status": "passed",
+      "result": "/root/autodl-tmp/dev/v6-work/qwen-attention-evidence-20261029/worker-result.json"
+    },
+    "candidate-continuation": {
+      "status": "completed",
+      "agent": {
+        "role": "candidate",
+        "session": "ses_e7b8eef34ffeaX3PRxMH7viur1",
+        "message": "msg_184862a9e001DCQBli4wMa2sfu",
+        "model": "zhipuai/glm-5.3",
+        "usage": {
+          "schema_version": 1,
+          "mode": "observe_only",
+          "messages": 57,
+          "reported_cost": 3.4100155725,
+          "messages_without_cost": 0,
+          "unfinished_messages": 0,
+          "tokens": {
+            "total": 9612202.0,
+            "input": 235667.0,
+            "output": 16516.0,
+            "reasoning": 67603.0,
+            "cache.read": 9292416.0,
+            "cache.write": 0.0
+          },
+          "sessions": [
+            {
+              "id": "ses_e7b8eef34ffeaX3PRxMH7viur1",
+              "status": "observed",
+              "detail": null
+            }
+          ],
+          "scope": "Observed assistant message snapshots; provider estimates, not invoice"
+        },
+        "sandbox": "/root/autodl-tmp/dev/v6-work/qwen-attention-evidence-20261029/candidate-continuation/sandboxes/candidate-replay-9aa8ec88b2bd",
+        "outputs": [
+          "candidate.py",
+          "proposal.json"
+        ],
+        "feedback_provided": true,
+        "contract_repairs": 0,
+        "generation_snapshots": [
+          "/root/autodl-tmp/dev/v6-work/qwen-attention-evidence-20261029/candidate-continuation/generation-snapshots/generation-109aba42bca3.json"
+        ]
+      },
+      "candidate_sha256": "f12e2f50cfd5f960dddd51537556a73ff8b0793df0786bd78fe6dfcff849e013",
+      "proposal": {
+        "implementation": "composite",
+        "replacement_calls": [
+          "323bcbe006b343648b346af9"
+        ],
+        "rationale": "Boundary and measured motivation (unchanged from selection): ORIGINAL baseline is end_to_end_ms 690.12 with ttft_ms 24.05 and decode_ms 666.12, so 96.5% of the objective is the 31 single-token decode steps at the decode-phase Qwen3ForCausalLM call 323bcbe006b343648b346af9 (group 3e293c00b1fb98fbe29f, 374.18 ms inclusive diagnostic CUDA over 31 invocations); execution_timeline measured a 1441.75 ms profiled window with only 386.81 ms kernel-active union and 1054.37 ms of launch gaps, and python_runtime counted ~546 Python module dispatches per decode forward - decode is host-dispatch bound. Prefill (e0861b46dbeeb562f67f) is untouched, so the ttft_ms <= 1.05x constraint is not put at risk. How the previous feedback changes this attempt: trial-d5c20fcae5 and its aliasing-repaired successor trial-e74f5ba6cf (immediate logits clones, caller-owned DynamicCache returned, cache-identity step tracking, per-invocation prefill refresh) failed with a byte-identical quality fingerprint, which rules buffer lifetime out as the cause. The fixed diagnostics in inputs/previous-feedback.txt locate the divergence: same_input_attention_diagnostic records first-decode max-abs error 0.0 for dynamic-eager, while dynamic-graph, static-eager and static-graph all err by 0.1875 and are mutually bitwise equal, with the static interface showing 32-head replicated K/V (head_replication 4), a bool mask and _efficient_attention_forward versus the dynamic interface's 8-head K/V, enable_gqa=True and _flash_attention_forward; static eager failing without any graph or binding proves the mechanism is not replay, pools or the framework. Reading the installed library source (torch 2.13.0+cu129, transformers 5.16.1 per inputs/worker-environment.json) gives the exact cause: transformers.utils.import_utils.is_tracing() includes is_cuda_stream_capturing(), and masking_utils._ignore_causal_mask_sdpa returns False while a graph is being captured, so EVERY capture of this parent materializes an explicit bool mask; sdpa_attention.use_gqa_in_sdpa then returns False (mask not None), repeat_kv replicates the 8 KV heads to 32, and SDPA dispatches to the memory-efficient kernel instead of the eager decode path's unmasked flash/GPA attention - precisely the bitwise-equal-to-static computation the diagnostics recorded. The repair, at the same boundary: capture one CUDA graph per decode cache length (257..287), each recording the parent forward itself (DynamicCache cat append, SDPA with attn_mask=None and enable_gqa=True, BF16/SDPA/noTF32, logits_to_keep=1, positions from the parent's own arange), so replay is kernel-for-kernel the eager parent at that length; during each capture window only, transformers.masking_utils.is_tracing is replaced by a capture-blind equivalent (dynamo/jit/fx/fake/jax terms kept, the stream-capture term removed - exactly the value is_tracing returns for the same eager call), so the graph records the parent's real eager decode op sequence instead of the tracing/masked variant; this is a runtime-scoped toggle inside the candidate, no external file or source is modified, and it exists to preserve the parent's actual execution semantics during composition as the binding contract requires. All step-varying state is self-owned: per-layer K/V master buffers (length 287), a static input-id buffer and per-step static logits buffers; each graph records a tail copy of its newly computed K/V into the masters and a copy of its logits into the static buffer, so replays advance real state; all 31 graphs share one private pool with strict in-capture-order replay (1..31 within every invocation, greedy and teacher alike), the documented safe pattern for shared pools, and no cross-graph pool tensor is ever read by another graph. At each invocation's first decode step (fresh length-256 prefill cache detected by object identity and get_seq_length) the master prefix is rewritten from that invocation's own prefill cache, so every invocation executes on its current inputs, no cross-invocation state is readable, and the request-scoped cache lifetime is preserved. Per step the replacement does one device copy of the incoming token, one graph replay and one logits clone; the caller gets freshly cloned last-position logits (never aliasing the pool) and a per-step DynamicCache mirror holding true current state as views of the masters, which the parent itself can consume on fallback, so state/alias semantics stay truthful. The token guard is shape/dtype/device based and deliberately stride-agnostic, so the teacher-forced replay's slice inputs (stride 32,1 versus the greedy run's 1,1, recorded in binding_signature_predicate) also replay; since graph replays are bitwise equal to the eager parent, the greedy logits, the teacher-forced replay logits and the freshly captured ORIGINAL reference all agree bitwise (well within 0.02/0.02) and the 32 greedy tokens match exactly. Expected effect (mechanism already evidenced, magnitude to be measured by the framework): per-step host cost drops from ~546 Python dispatches plus ~2,000 eager launches to three device ops plus one graph launch, removing the inter-kernel gaps; the prior bundle's execution_timeline (inputs/observations/previous-after) showed this boundary's window collapse from 1441.75 ms to 454.93 ms with gaps down to 46.62 ms under graph replay, against a decode kernel-active floor of 374.18 ms inclusive, so end_to_end_ms is expected to move from ~690 ms toward roughly 0.42-0.45 s, subject to the framework's paired measurement. Safety: every captured graph is verified at build time BITWISE (logits and both appended K/V tails of all 36 layers) against a plain eager parent run on identical inputs; any mismatch, setup error or replay error permanently disables the graphs and all calls use the parent with the caller's own objects, so quality can only degrade to exact parent behavior with distinct route labels for setup failure, signature fallback and replay failure.",
+        "setup_work": {
+          "when": "One-time, inside build(context) at installation, outside every measured invocation (the adapter's normal invocation has not started; no other bundles are installed so no inherited dispatch modes exist to lose).",
+          "steps": [
+            "One parent prefill forward on the workload's own GPU-resident input tensor to obtain the real DynamicCache template, layer shapes/dtypes and the first greedy token.",
+            "Master buffer construction: 36x2 K/V masters of shape (1, 8, 287, 128) bfloat16 (40.3 MiB total) prefilled from the build-time prefill; static (1,1) int64 input buffer; 31 static logits buffers of (1, 1, 151936) bfloat16 (9.0 MiB total).",
+            "31 capture iterations, one per decode length 257..287: eager parent verify run on a side stream over master views (also the per-length warmup), capture of the parent forward plus recorded K/V tail copies into the masters and a logits copy into the static buffer (capture records without executing), one replay on the current stream to materialize the state, then bitwise comparison of logits and all 36 layers' appended K and V against the eager reference.",
+            "3 additional warmup iterations for the first length before the first capture.",
+            "Prebuild of 31 caller-visible DynamicCache mirrors (pure view objects, no GPU memory)."
+          ],
+          "workload_executes_every_invocation": "Each invocation still executes the full workload on current inputs: the prefill runs the parent, the first decode step rewrites the master prefix (36x2 device copies, ~38 MiB) from that invocation's own prefill cache, and all 31 decode steps replay their recorded kernels on the current token and cache state; nothing fixture-dependent is cached (graphs contain kernels and fixed addresses only, never captured outputs).",
+          "memory": "Retained setup allocations: 40.3 MiB K/V masters + 9.0 MiB static logits (counted in per-run framework.peak_allocated_bytes since they stay alive) plus retained CUDA-graph private pools from the single shared pool (exact size reported by the framework's lifecycle counters; build-time transients - prefill cache, verify tensors - are freed after setup). lifecycle_peak_allocated/reserved include this setup; warm-run peak_allocated can shift relative to baseline because replay intermediates live in the retained graph pool rather than the regular allocator - these are counter observations, not general physical-memory savings."
+        },
+        "quality_risks": [
+          "SDPA backend selection during capture could deviate from eager dispatch through some torch-internal capture-dependent condition beyond the transformers mask term identified here; mitigated by the build-time bitwise verification of every graph (logits plus all 36 layers' appended K/V tails), which converts any such deviation into a permanent parent fallback (exact quality, no speedup) rather than a silent numerical change.",
+          "If the framework's own composition guard rejects the teacher-forced slice token (stride 32,1) at its layer, the teacher replay runs the plain parent; because graph replays are bitwise equal to eager, the teacher-versus-greedy assertion (qwen_inference.py:59-64 semantics in adapter.observe) and the source reference comparison at 0.02/0.02 with exact tokens still hold either way.",
+          "Build-time setup runs the parent once at installation to seed the masters and capture; with installed_bundles empty there are no inherited functional dispatch modes or required inherited calls that could be bypassed (binding-contract caveat acknowledged; the captured parent is context['references'][call], the current parent).",
+          "Retained graph pools and master buffers increase reserved/allocated memory counters (informational only; the objective and ttft constraint are timing metrics).",
+          "Any unexpected signature, cache state, device or step beyond 31 falls back to the plain parent with the caller's own objects (exact outputs, reduced speed), and replay-time errors permanently disable the graphs; these paths carry distinct route labels (parent_fallback_signature, parent_fallback_setup_failure, parent_fallback_replay_failure) for diagnosis.",
+          "The is_tracing replacement is scoped to the capture windows only, restored in finally-style context exit, and never active during eager fallback or ordinary execution; if the transformers introspection helpers it replicates are absent, setup fails up front into the parent-fallback category instead of building wrong graphs."
+        ],
+        "eliminated_calls": [],
+        "requires": [],
+        "replaces": [],
+        "parameter_space": {}
+      },
+      "only_declared_feedback_field_changed": true,
+      "scope": "Generated code not independently GPU validated in this batch."
+    }
+  }
+}
