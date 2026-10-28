@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态（2026-10-28 22:07 UTC）：[attention候选原样执行](v6-qwen-attention-fixed-20261029.md)三个端点完整质量通过，15样本/6检查、12份全量观察张量均复核，候选与源zero error；但U/O TTFT26.510787/25.917823都超过原25.2536046，无接受。记录setup/replay代码路径与标签，native仍待补；不重测同候选直到通过。下一步按[约束反馈续行](v6-qwen-constraint-continuation-20261029.md)单次native核查，再用真实质量/约束事实和历史代码交回普通selector/candidate的一轮自主搜索；无手工group/实现答案、无生产改动。独立接受留待新结果后核查，df约11.50GiB，无raw转存。
+
 当前执行（2026-10-28 22:06 UTC／香港10月29日06:06）：[attention事实候选原样GPU验证](v6-qwen-attention-fixed-20261029.md)冻结4d7dd205，控制器PID898327，B-observed真实GPU worker已启动，原样候选已stage；无新角色生成、搜索、正式接受或生产核心修改。唯一普通监听PID48488 waiting，实际df余11.59GiB，无raw转存或清理。上一批attention/候选证据已终态审计推送，以下“当前执行”为历史状态。
 
 最新终态（2026-10-28 21:59 UTC）：[attention接口＋事实续行](v6-qwen-attention-evidence-20261029.md)原始张量/trace和33输入变化全部核验。Agent读了新增事实、外部报告及安装库源码，生成capture期间临时调整mask判断的per-length DynamicCache Graph；0 schema修复，71工具，CPU探针有已保留ImportError，尚无新候选GPU质量。源码支持具体capture/mask路径假设，不能认定历史唯一因果或保证TTFT。按[原样固定执行](v6-qwen-attention-fixed-20261029.md)做B-O/C-U/C-O三端点，无新Agent/参数搜索/接受/生产改动；df约11.72GiB，raw留服务器。以下执行状态为历史记录。
