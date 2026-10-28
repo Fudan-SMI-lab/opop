@@ -25,10 +25,12 @@ def save(path, value):
     os.replace(temporary, path)
 
 
-def probe_script(root):
-    return '''import json, os
+def probe_script(root, disk_path=None, min_free_bytes=None):
+    return '''import json, os, subprocess
 from pathlib import Path
 root = Path(ROOT_LITERAL)
+disk_path = DISK_PATH_LITERAL
+min_free_bytes = MIN_FREE_LITERAL
 def alive(pid):
     try:
         os.kill(pid, 0)
@@ -61,8 +63,23 @@ def probe():
             return {'terminal': True, 'reason': 'controller_exited_without_completion',
                     'controllers': controllers, 'missing_record': str(root / completion)}
     return {'terminal': False, 'reason': 'waiting', 'controllers': controllers}
-print(json.dumps(probe()))
-'''.replace('ROOT_LITERAL', repr(root))
+observation = probe()
+if min_free_bytes is not None:
+    try:
+        result = subprocess.run(['df', '-B1', '--output=size,used,avail', disk_path],
+                                capture_output=True, text=True, check=True, timeout=10,
+                                env={**os.environ, 'LC_ALL': 'C'})
+        size, used, available = map(int, result.stdout.strip().splitlines()[-1].split())
+        observation['disk'] = {'path': disk_path, 'size_bytes': size, 'used_bytes': used,
+                               'available_bytes': available, 'min_free_bytes': min_free_bytes,
+                               'source': 'df -B1 --output=size,used,avail'}
+        if not observation['terminal'] and available < min_free_bytes:
+            observation.update(requires_attention=True, experiment_reason=observation['reason'],
+                               reason='low_disk_space')
+    except Exception as exc:
+        observation['disk_error'] = f'{type(exc).__name__}: {exc}'
+print(json.dumps(observation))
+'''.replace('ROOT_LITERAL', repr(root)).replace('DISK_PATH_LITERAL', repr(disk_path or root)).replace('MIN_FREE_LITERAL', repr(min_free_bytes))
 
 
 def probe(args):
@@ -105,7 +122,8 @@ def probe(args):
     command = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=12',
                '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=2',
                '-p', str(args.port), args.host, shlex.quote(args.remote_python) + ' -']
-    result = subprocess.run(command, input=probe_script(args.remote_root),
+    result = subprocess.run(command, input=probe_script(args.remote_root, getattr(args, 'disk_path', None),
+                                                       getattr(args, 'min_free_bytes', None)),
                             text=True, encoding='utf-8', capture_output=True, timeout=45)
     if result.returncode:
         raise RuntimeError(result.stderr.strip() or f'SSH exited {result.returncode}')
@@ -114,6 +132,11 @@ def probe(args):
 
 def queue_continuation(args, state, observation, runner=subprocess.run):
     prompt = args.prompt_file.read_text(encoding='utf-8')
+    if not observation['terminal'] and observation.get('requires_attention'):
+        prompt = ('This is a disk-space attention event, NOT experiment completion. Check actual df and live workers first. '
+                  'Follow the user-authorized server-only cleanup scope; preserve active/frozen data and dependencies, '
+                  'do not restart experiments or transfer raw archives locally. Apply the batch-result audit below only '
+                  'if the batch has actually finished. After handling space, restore one completion watcher if still running.\n' + prompt)
     prompt += '\nCompletion watcher event: ' + json.dumps(observation, ensure_ascii=False)
     state.update(phase='queueing', observed_at=now(), observation=observation)
     save(args.state, state)
@@ -159,8 +182,12 @@ def main():
     parser.add_argument('--prompt-file', type=Path, required=True)
     parser.add_argument('--state', type=Path, required=True)
     parser.add_argument('--interval', type=float, default=30)
+    parser.add_argument('--disk-path', help='Remote path on the data mount to inspect with df.')
+    parser.add_argument('--min-free-bytes', type=int, help='Optional disk warning; queues attention without stopping the experiment.')
     parser.add_argument('--probe-once', action='store_true')
     args = parser.parse_args()
+    if args.min_free_bytes is not None and (args.min_free_bytes <= 0 or args.local_root):
+        parser.error('--min-free-bytes must be positive and requires a remote experiment')
     if args.probe_once:
         print(json.dumps(probe(args))); return 0
     args.state.parent.mkdir(parents=True, exist_ok=True)
@@ -170,7 +197,8 @@ def main():
         print('Existing delivery record; inspect it before submitting another continuation.'); return 0
     state = {'pid': os.getpid(), 'started_at': now(), 'thread': args.thread,
              'remote_root': args.remote_root, 'phase': 'waiting', 'poll_interval_s': args.interval,
-             'scope': 'SSH/file checks only; no model calls until a terminal event is queued.'}
+             'disk_path': args.disk_path, 'min_free_bytes': args.min_free_bytes,
+             'scope': 'SSH/file/optional df checks only; no model calls until terminal or disk-attention delivery.'}
     save(args.state, state)
     while not args.state.with_suffix('.stop').exists():
         try:
@@ -180,7 +208,7 @@ def main():
                            'error': f'{type(exc).__name__}: {exc}'}
         state.update(last_checked_at=now(), observation=observation)
         save(args.state, state)
-        if observation['terminal']:
+        if observation['terminal'] or observation.get('requires_attention'):
             return queue_continuation(args, state, observation)
         time.sleep(args.interval)
     state.update(phase='stopped', finished_at=now()); save(args.state, state)
