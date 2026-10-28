@@ -38,6 +38,7 @@ def test_resolved_description_keeps_task_semantics_and_uses_deployment(tmp_path)
     request = resolve_request(proposal, tmp_path, "reduce elapsed time", environment)
     assert request.workload == {"items": 12} and request.devices == ["GPU-A"]
     assert request.binding_backend == "legacy" and request.distributed_backend is None
+    assert "diagnostic_metrics" not in request.portable()
     proposal.description.device_count = 3
     with pytest.raises(ValueError, match="more GPUs"):
         resolve_request(proposal, tmp_path, "reduce elapsed time", environment)
@@ -75,3 +76,24 @@ def test_intake_diagnostic_source_must_match_an_installed_metric_interface(tmp_p
         resolve_request(proposal, tmp_path, "reduce communication duration", environment)
     proposal.description.objective.source = {"collector": "torch_communication", "field": "communication_kernel_sum_ms"}
     assert resolve_request(proposal, tmp_path, "reduce communication duration", environment).objective["source"] == proposal.description.objective.source
+
+
+def test_secondary_intake_metric_preserves_primary_and_validates_provider(tmp_path):
+    (tmp_path/"entry.py").write_text("def run(): pass\n")
+    raw = dict(status="ready", description={
+        "entry": "entry.py", "files": ["entry.py"], "invocation": "one full update",
+        "objective": {"name": "step_ms", "unit": "ms", "direction": "minimize"},
+        "workload": {}, "quality": {"atol": 0, "rtol": 0}, "device_count": 2,
+        "diagnostic_metrics": {"comm": {"source": {"collector": "torch_communication",
+            "field": "communication_kernel_sum_ms"}, "unit": "ms", "rank_aggregation": "max",
+            "aggregation_order": "ranks_then_samples"}},
+    }, evidence={}, assumptions=[], questions=[])
+    environment = {"devices": ["0", "1"], "lease_dir": str(tmp_path/"leases"),
+        "tools": {}, "profiling": {"metric_repeats": 4}, "worker_timeout_s": 600}
+    request = resolve_request(IntakeProposal(**raw), tmp_path, "reduce step time", environment)
+    assert request.objective == raw["description"]["objective"]
+    assert request.portable()["diagnostic_metrics"] == raw["description"]["diagnostic_metrics"]
+    assert request.profiling["metric_repeats"] == 4
+    raw["description"]["diagnostic_metrics"]["comm"]["source"]["field"] = "unknown"
+    with pytest.raises(ValueError, match="field unavailable"):
+        resolve_request(IntakeProposal(**raw), tmp_path, "reduce step time", environment)

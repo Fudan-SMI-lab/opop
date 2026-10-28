@@ -23,7 +23,15 @@ DESCRIPTION = (
     "aggregation. required_observations only checks discovery capabilities; it does not request evaluator "
     "metric samples. Leave empty when no secondary metric is needed or applicable. An explicitly requested "
     "metric must be observed; unavailable/failed collection is an error, never a fabricated zero. "
-    "Use a distinct metric name, not an adapter metric or the objective name."
+    "Use a distinct metric name, not an adapter metric or the objective name. "
+    "Discovery requirements, output aliases, and sampling configuration are different interfaces. "
+    "required_observations uses exact field names from the discovery/capability manifest, not "
+    "collector-qualified paths or evaluator metric aliases; a numeric collector field required in "
+    "discovery uses its field name without inventing a collector prefix. source is forwarded unchanged "
+    "to the provider and is not framework configuration. The evaluator obtains the number of profiled "
+    "repetitions from deployment.profiling.metric_repeats (default 3), not source.profiling. "
+    "Preserve the source repetition count; if it differs from available sampling configuration, report "
+    "the missing setup rather than declaring an ignored nested override."
 )
 
 

@@ -12,6 +12,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from kernel_optimizer.project.agents import ProjectAgents
+from kernel_optimizer.project.metric_diagnostics import DiagnosticMetric, DESCRIPTION, validate_sources
 from kernel_optimizer.project.request import ProjectRequest
 from kernel_optimizer.project.runtime_config import project_agent_config
 from kernel_optimizer.runtime.execution import gpu_inventory, resolve_devices, write_json
@@ -82,6 +83,7 @@ class Description(BaseModel):
     distributed_backend: str | None = None
     communication: Literal["auto", "off", "required"] = "auto"
     required_observations: list[str] = Field(default_factory=list)
+    diagnostic_metrics: dict[str, DiagnosticMetric] = Field(default_factory=dict, description=DESCRIPTION)
     notes: list[str] = Field(default_factory=list)
 
 
@@ -152,12 +154,13 @@ def resolve_request(proposal, source, goal, environment):
         fields = getattr(provider, "metric_fields", None)
         if fields is not None and source_spec.get("field") not in fields:
             raise ValueError(f"collector metric field is unavailable; supported fields: {sorted(fields)}")
+    validate_sources({k: v.model_dump() for k, v in d.diagnostic_metrics.items()}, environment["profiling"], d.objective.model_dump())
     return ProjectRequest(source_root=source, entry=d.entry, files=list(dict.fromkeys(d.files)), goal=goal,
         objective=d.objective.model_dump(exclude_none=True, exclude_unset=True),
         workload=d.workload, quality=d.quality.model_dump(exclude_none=True, exclude_unset=True), assets=d.assets,
         warmup=d.warmup, repeats=d.repeats, measurement_lifetime="invocation",
         devices=environment["devices"][:d.device_count], distributed_backend=d.distributed_backend,
-        communication=d.communication, required_observations=d.required_observations,
+        communication=d.communication, required_observations=d.required_observations, diagnostic_metrics=d.diagnostic_metrics,
         notes=[*d.notes, "One measured invocation: " + d.invocation],
         lease_dir=Path(environment["lease_dir"]), tools=environment["tools"],
         profiling=environment["profiling"], worker_timeout_s=environment["worker_timeout_s"])
