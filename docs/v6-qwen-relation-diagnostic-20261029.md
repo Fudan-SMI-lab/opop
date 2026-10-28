@@ -19,3 +19,26 @@ B-observed为实际CUDA观测器控制；随后C1/C2两种路径保留原异常�
 20:10:00 UTC核验：B-observed通过两个连续全量质量检查；其6份完整观察均匹配独立源，teacher/greedy与greedy前后比较零误差。C1-unobserved已按固定协议执行并失败，C1-observed的真实GPU worker正在运行，后续C2尚未完成。这里只确认观测器baseline控制和实际进度，不提前认定候选的原因或任何优化收益。见[真实运行记录](evidence/v6-qwen-relation-diagnostic-20261029/startup-verification.json)。
 
 唯一普通完成/8GiB监听PID1180已核验waiting，状态`.scratch/v6-qwen-relation-wakeup.json`、同前缀`-wakeup-launch.json`；旧搜索监听已投递并标记handled/stop，不重启。见[设置](evidence/v6-qwen-relation-diagnostic-20261029/wakeup-setup.json)与[核验](evidence/v6-qwen-relation-diagnostic-20261029/wakeup-verification.json)。实际df剩14,081,044,480字节（13.11GiB）。本机在线时终态自动唤醒，本批无模型等待轮询或新Agent生成。
+
+
+## 终态核查：2026-10-28 20:10 UTC（香港10月29日）
+
+五次固定尝试均结束，但只有观察baseline通过，四次候选worker均保留原AssertionError；controller的completed表示尝试完成。没有新Agent生成、搜索或正式接受。[完整小型审计](evidence/v6-qwen-relation-diagnostic-20261029/terminal-audit.json)逐项核对请求、源码、entry、controls/reference SHA及12份完整CPU张量，原始张量仍留服务器。B保留5个clean样本、2次全量检查及6份零误差观察；四个失败候选均在quality阶段停止，没有clean样本。
+
+| 固定端点 | 实际worker | greedy对独立源 | teacher对独立源 | observe前后greedy |
+| --- | --- | --- | --- | --- |
+| B-observed | 通过 | 两步零误差 | 两步零误差 | 逐元素相同 |
+| C1-unobserved | 原关系断言失败 | 未额外保存 | 未额外保存 | 未额外观察 |
+| C1-observed | 原关系断言失败 | max abs 1.0 | 零误差 | 逐元素相同 |
+| C2-unobserved | 原关系断言失败 | 未额外保存 | 未额外保存 | 未额外观察 |
+| C2-observed | 原关系断言失败 | max abs 1.0 | 零误差 | 逐元素相同 |
+
+C1/C2的完整greedy tokens/logits也逐元素相同；两者32 tokens全部正确且logits有限。prefill位置0零误差，首个decode位置1已出现0.1875最大误差，后续位置都有误差。故“greedy capture正确、只是后续teacher/replay出错”的前提不成立。输出在observe前后不变，仅排除该记录区间内的值变化，不能排除生成期间的问题；立即clone的C2与C1相同，也不构成排除全部alias机制的证明。未唯一定位shared pool、cache、alias或算术原因。
+
+原GPU断言为teacher(actual)对greedy(expected)：1,132,088/4,861,952不匹配，max abs1.0；保存后CPU同方向比较为1,130,457。额外只把这份保存张量送到CUDA做原assert_close（没有重新运行模型），精确复现1,132,088及原最大误差位置。CPU greedy对source则为1,131,606，预期值方向不同。设备上的BF16比较与相对阈值方向必须分开，不能把计数差解释成观察器改变输出。所有比较仍失败，阈值保持0.02/0.02。
+
+U请求保留原evaluate entry；O仅更换外部observer entry/function、添加诊断源路径和输出目录；嵌套request、参数、adapter、原质量/工作量及controls完全一致。observer SHA为`a06b6c0e14495bffb68aa498c845ce66378223e9c95579b0b66a7bd463cc566c`，原entry为`aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af`。两候选观察run各记录31个graph_capture回调；这不替代原生kernel证据，teacher缺少该回调不证明没有原生执行或回退。O的CPU复制改变同步、host工作和生命期；不使用它的计时作接受，不扣除观察开销。
+
+服务器GPU已空闲，实际150GiB配额剩约13.06GiB。没有本地raw下载或清理；旧源命名映射的人工边界、原入口三轮零接受、旧同adapter46.9421%及其余历史结果全部保持。
+
+下一步是[已有反馈单文件事实补充对照](v6-qwen-relation-feedback-replay-20261029.md)：从原第三候选初始状态各启动一次真实角色，验证是否读取和正确使用这项缺失观察，不提供优化实现答案，不自动改生产prompt。

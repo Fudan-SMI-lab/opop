@@ -71,3 +71,6 @@
 17:47:39 UTC核验处于prepare，真实`project-intake`会话`ses_e7c613ce3ffe5y0Y4f44bUi4ob`，新快照`generation-744292500593`，已观察到5条assistant消息。GPU空闲符合intake阶段，不是卡住；不提前声明evaluator/source或优化成功。见[启动](evidence/v6-qwen-original-end-to-end-20261029/launch.json)、[协议](evidence/v6-qwen-original-end-to-end-20261029/protocol.json)、[真实活动](evidence/v6-qwen-original-end-to-end-20261029/startup-verification.json)。
 
 唯一普通完成/磁盘监听PID48148核验为waiting，状态`.scratch/v6-qwen-original-end-to-end-wakeup.json`，启动参数同名前缀`-wakeup-launch.json`；每30秒SSH/df检查，终态或8GiB空间告警投递一次，不用模型等待。见[设置](evidence/v6-qwen-original-end-to-end-20261029/wakeup-setup.json)、[waiting核验](evidence/v6-qwen-original-end-to-end-20261029/wakeup-verification.json)。上一批监听已投递且标记handled并写stop文件，不重启。实际df剩17,483,948,032字节（16.28GiB）。本机监听进程需要本机在线，远端任务独立运行。
+
+
+补充固定诊断已完成，见[关系输出审计](v6-qwen-relation-diagnostic-20261029.md)。C1/C2的greedy在进入observe前已偏离源（max1.0），teacher与源精确相同，greedy在observe前后不变；U/O都保留原失败。旧三轮零接受不变，尚无唯一底层原因。下一项只在原第三候选生成前做真实角色输入对照，不重新开展搜索直到通过。

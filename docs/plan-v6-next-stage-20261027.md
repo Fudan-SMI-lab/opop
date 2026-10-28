@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新核查（2026-10-28 20:10 UTC终态）：[Qwen固定关系诊断](v6-qwen-relation-diagnostic-20261029.md)B通过、C1/C2的U/O四端点均原断言失败。12份完整张量复核：greedy先偏离源max1.0，teacher与源零误差，greedy在observe前后不变且C1/C2逐元素一致；同保存张量CUDA比较精确复现原断言计数。唯一底层原因仍未知；原入口零接受与旧同adapter接受分开保留。准备[单文件事实反馈真实对照](v6-qwen-relation-feedback-replay-20261029.md)，只补1,979字节现有证据、其余33输入/提示/模型工具配置保持，生产核心不改。df余13.06GiB，无GPU实验、无清理或raw转存；以下“当前执行”为历史记录。
+
 当前执行（2026-10-28 20:09 UTC／香港10月29日04:09）：[Qwen固定关系输出诊断](v6-qwen-relation-diagnostic-20261029.md)冻结ba50554f，PID857099。首个观察baseline完整质量与6份源比较通过；C1无观察对照已执行失败，C1观察端点在真实GPU运行。单个普通完成/磁盘监听PID1180 waiting，df余13.11GiB；没有新Agent生成/搜索/性能接受，生产核心保持。诊断结束后先区分greedy/teacher对源的差异及观测影响，再决定最小真实Agent实验。
 
 最新终态（2026-10-28 19:54 UTC）：[原入口Qwen续行](v6-qwen-original-end-to-end-20261029.md)三轮零接受。前两轮observe的teacher-forced完整logits关系报错，第三轮质量通过但Graph内部禁用、主要parent路径，paired TTFT26.186706ms超过原25.2536046ms且噪声判据失败。全部25clean样本、10次全量检查、10真实角色与源/参考身份核验；无最终独立/native接受，旧46.9421%属于另一同adapter任务不覆盖。Agent曾把candidate_diagnostics执行成功误当质量曾通过，且现有异常未区分greedy/teacher各自偏离源；按[固定关系诊断](v6-qwen-relation-diagnostic-20261029.md)只补该缺失观察并保留无观察对照，不盲改prompt、扩充上下文或重复自主搜索直到通过。
