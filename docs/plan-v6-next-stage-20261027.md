@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前执行（2026-10-28 20:09 UTC／香港10月29日04:09）：[Qwen固定关系输出诊断](v6-qwen-relation-diagnostic-20261029.md)冻结ba50554f，PID857099。首个观察baseline完整质量与6份源比较通过；C1无观察对照已执行失败，C1观察端点在真实GPU运行。单个普通完成/磁盘监听PID1180 waiting，df余13.11GiB；没有新Agent生成/搜索/性能接受，生产核心保持。诊断结束后先区分greedy/teacher对源的差异及观测影响，再决定最小真实Agent实验。
+
 最新终态（2026-10-28 19:54 UTC）：[原入口Qwen续行](v6-qwen-original-end-to-end-20261029.md)三轮零接受。前两轮observe的teacher-forced完整logits关系报错，第三轮质量通过但Graph内部禁用、主要parent路径，paired TTFT26.186706ms超过原25.2536046ms且噪声判据失败。全部25clean样本、10次全量检查、10真实角色与源/参考身份核验；无最终独立/native接受，旧46.9421%属于另一同adapter任务不覆盖。Agent曾把candidate_diagnostics执行成功误当质量曾通过，且现有异常未区分greedy/teacher各自偏离源；按[固定关系诊断](v6-qwen-relation-diagnostic-20261029.md)只补该缺失观察并保留无观察对照，不盲改prompt、扩充上下文或重复自主搜索直到通过。
 
 当前执行（2026-10-28 18:01 UTC／香港10月29日02:01）：[原入口Qwen续行](v6-qwen-original-end-to-end-20261029.md)冻结a80d8f8b、PID757316。外部已审字段映射的真实CPU全量比较通过（两个输出各4,861,984元素、零误差/精确token、两个破坏负例被拒绝），复用原始fresh preparation及只读controls，adapter/request/contract/空bundle基线不变；已进入原先未运行的三轮搜索，真实collection-planner有provider回复。唯一普通完成/8GiB监听PID55228运行，df剩15.70GiB，无新增清理、本地raw转存或生产核心改动。原schema错误与所有旧结果保留。

@@ -13,3 +13,9 @@ B-observed为实际CUDA观测器控制；随后C1/C2两种路径保留原异常�
 源码与参数身份在执行前后核对。先前全量源参考和manual映射保持，当前只有约13.17GiB可用；预计新增完整CPU输出百余MB、不产生大型profile。GPU工作串行，单个普通完成/8GiB监听；无Goal、模型等待轮询、本地大转存或旧controller重启。若低空间先查df/活跃worker，只有GPU结束后才做授权无损冷压缩，保存全部原始内容。
 
 [接口预检查](evidence/v6-qwen-original-followup-20261029/relation-preflight.json)通过导入/语法/CLI和三个冻结screen执行请求schema。实际CUDA观测行为由首个B端点验证，不以CPU接口检查冒充实验结果。
+
+已冻结`ba50554ffe266771e4ba9d13360224f507bc09cd`，2026-10-28 20:09:18 UTC启动，控制器PID857099、PPID1、独立session，生产core仍ed24af7a。见[启动](evidence/v6-qwen-relation-diagnostic-20261029/launch.json)、[冻结协议](evidence/v6-qwen-relation-diagnostic-20261029/protocol.json)。
+
+20:10:00 UTC核验：B-observed通过两个连续全量质量检查；其6份完整观察均匹配独立源，teacher/greedy与greedy前后比较零误差。C1-unobserved已按固定协议执行并失败，C1-observed的真实GPU worker正在运行，后续C2尚未完成。这里只确认观测器baseline控制和实际进度，不提前认定候选的原因或任何优化收益。见[真实运行记录](evidence/v6-qwen-relation-diagnostic-20261029/startup-verification.json)。
+
+唯一普通完成/8GiB监听PID1180已核验waiting，状态`.scratch/v6-qwen-relation-wakeup.json`、同前缀`-wakeup-launch.json`；旧搜索监听已投递并标记handled/stop，不重启。见[设置](evidence/v6-qwen-relation-diagnostic-20261029/wakeup-setup.json)与[核验](evidence/v6-qwen-relation-diagnostic-20261029/wakeup-verification.json)。实际df剩14,081,044,480字节（13.11GiB）。本机在线时终态自动唤醒，本批无模型等待轮询或新Agent生成。
