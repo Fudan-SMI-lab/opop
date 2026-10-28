@@ -1,0 +1,13 @@
+{
+  "model": {"n_layer": 24, "n_embd": 1024, "n_head": 16, "vocab_size": 50257, "n_positions": 1024},
+  "world_size": 2,
+  "batch_per_rank": 1,
+  "sequence_length": 128,
+  "seed": 20261028,
+  "learning_rate": 0.001,
+  "warmup": 2,
+  "repeats": 5,
+  "profile_repeats": 3,
+  "quality": {"atol": 0.000001, "rtol": 0.0001, "continuous_updates": 2},
+  "objective": {"name": "step_ms", "unit": "ms", "direction": "minimize", "rank_aggregation": "max", "aggregation_order": "ranks_then_samples", "constraints": [{"metric": "peak_allocated_bytes", "op": "le", "baseline_ratio": 1.05, "rank_aggregation": "max", "aggregation_order": "ranks_then_samples"}]}
+}
