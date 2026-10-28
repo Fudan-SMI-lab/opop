@@ -1,0 +1,47 @@
+{
+  "status": "passed",
+  "seed": 0,
+  "parameter_trials": 3,
+  "observed_sequence": [
+    {
+      "keep_unsharded_blocks": 1
+    },
+    {
+      "keep_unsharded_blocks": 2
+    },
+    {
+      "keep_unsharded_blocks": 3
+    }
+  ],
+  "selected": {
+    "keep_unsharded_blocks": 3
+  },
+  "declared_space": {
+    "params": [
+      {
+        "name": "keep_unsharded_blocks",
+        "kind": "int",
+        "choices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "description": "Trailing (backward-first) transformer blocks that skip FSDP's post-forward reshard via the public FSDPModule.set_reshard_after_forward(False, recurse=False). Each kept block removes one of the 24 backward block all-gathers (c10d::_allgather_base_ payload 25,192,448 B per rank, ~2.0 ms on the serialized critical path; inventoried as call c917c08825afcaacd65b752f) plus its un-inventoried fsdp.all_gather_copy_in / fsdp.split_with_sizes_copy companions, while retaining 50,384,896 B of unsharded parameters from forward until the block's post-backward reshard. Measured on the accepted prior trial: K=0/1/3 step_ms 176.81/173.87/170.94 ms with peak_allocated_bytes byte-identical to the 2,239,245,312 B baseline at every point; 3 is the installed operating point (default), 0 is the unchanged source policy, 4 and 5 extend the measured slope under the frozen peak gate - worst case at 5 is 2,340,015,104 B, inside the 2,351,207,577.6 B (1.05x) cap, while 6 would risk 2,390,400,000 B and is excluded. The parameter changes reshard timing only, never workload semantics, batch, sequence length, data or thresholds."
+      }
+    ],
+    "constraints": [
+      {
+        "expr": "keep_unsharded_blocks >= 0 and keep_unsharded_blocks <= 5",
+        "rationale": "Matches the declared choices; 6 or more kept blocks (+302 MB worst-aligned beyond the measured-flat K=3 point) cannot fit the frozen 1.05x peak budget under any alignment, while 4 and 5 fit even in the worst case (2,289,630,208 / 2,340,015,104 B vs the 2,351,207,577.6 B cap), and the value never exceeds the 24 blocks of the frozen workload because build clamps to the block count."
+      }
+    ]
+  },
+  "scope": "CPU-only exact sampler replay with the original recorded scores; no new timing or GPU validation.",
+  "snapshot": "/root/autodl-tmp/dev/v6-work/fsdp-continuation-followup-20261028/fsdp-search/generation-snapshots/generation-914fba16905e.json",
+  "parameters_visible_in_objective": null,
+  "no_gpu_workers": true,
+  "df": "Filesystem        1B-blocks         Used   Available Use% Mounted on\n/dev/md0       161061273600 147947028480 13114245120  92% /root/autodl-tmp\n"
+}

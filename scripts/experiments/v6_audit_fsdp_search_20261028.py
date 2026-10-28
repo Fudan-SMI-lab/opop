@@ -71,7 +71,7 @@ def agent_record(agent, database):
             'inputs': {k: {'bytes': len(v), 'sha256': hashlib.sha256(v).hexdigest()} for k, v in files.items()}, 'tools': tools}
 
 
-def audit(root, output):
+def audit(root, output, *, limits=None):
     terminal = read(root / 'followup-completed.json')
     assert terminal['phase'] == 'completed'
     search = ProjectSearch(load_config(root / 'private-config.yaml', []), root / 'fsdp-search')
@@ -141,7 +141,7 @@ def audit(root, output):
         report['native'].append({'arm': label, 'path': str(path), 'sha256': sha(path), 'ranks': rows})
     current = search.revisions.current()
     report['current'] = {'revision': current.id, 'bundles': list(current.bundles)}
-    report['limits'] = ['Developer-assisted evaluator baseline; subsequent search autonomous, not a fresh unaided original-entry cohort.',
+    report['limits'] = limits if limits is not None else ['Developer-assisted evaluator baseline; subsequent search autonomous, not a fresh unaided original-entry cohort.',
                        'Final-round acceptance: no post-accept rediscovery or bundle composition in this batch.',
                        'P2P ordering and reassociated GEMM are plausible failure mechanisms, not independently isolated unique causes.',
                        'NCCL kernel count reduction is observed; kernel durations/logical payload are not wire time, bandwidth or exposed critical path.',

@@ -19,10 +19,20 @@ def main():
     save(output / 'state.json', state)
     try:
         roots = [r for g in settings['groups'] for r in g['roots']]
-        for name in roots:
-            root = checked(BASE, name)
-            final = json.loads((root / 'followup-completed.json').read_text())
-            assert final['phase'] in {'completed', 'completed_with_errors', 'complete'}
+        if settings.get('terminal_records'):
+            # Explicit audited terminal records also support older controller schemas
+            # and cold subdirectories, without treating an arbitrary state as terminal.
+            for record in settings['terminal_records']:
+                terminal = checked(BASE, record['path'])
+                assert sha(terminal) == record['sha256']
+                final = json.loads(terminal.read_text())
+                assert final[record['time_field']] == record['time']
+                assert isinstance(final['results'], dict) and final['results']
+        else:
+            for name in roots:
+                root = checked(BASE, name)
+                final = json.loads((root / 'followup-completed.json').read_text())
+                assert final['phase'] in {'completed', 'completed_with_errors', 'complete'}
         no_users(BASE, roots)
         plan = json_plan(settings, output)
         selected = {path for row in plan['records'] for path in row['files']}

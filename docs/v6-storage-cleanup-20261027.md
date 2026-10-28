@@ -1,5 +1,7 @@
 # box4-3 实验结束后的归档与空间清理
 
+2026-10-28 12:44 UTC磁盘告警处理：收到提醒时实验仍在运行；实际核查时FSDP continuation已完成且GPU worker退出，才开始压缩旧next-stage/ddp-semantics的7个jobs/sandboxes目录。479份大JSON完整保存在服务器gzip，逐一校验压缩及解压SHA，另2,650个保留文件SHA不变；实际df净回收5,644,873,728 bytes（5.26GiB），余12.21GiB。15个当前/参考run的源码/bundle/参考路径及六份FSDP完整参考hash在维护后复核。未下载raw、未动当前FSDP/接受版本/模型/环境/私有provider。见[本次范围与验收](v6-fsdp-continuation-20261028.md)；恢复journal与RESTORE.md在服务器`dev/storage-audit-20261028/disk-attention/`，独立于下列历史清理数值。
+
 2026-10-28追加维护：FSDP首批终态审计后，按用户“继续推进并及时清理空间”的授权，仅服务器内无损压缩三个已完成旧诊断批次。179份payload逐一验证gzip及解压SHA，2,827个未压缩保留文件SHA不变；实际净回收2,044,243,968 bytes（1.90 GiB），余14.07 GiB。当前FSDP及已接受项目版本、源参考、模型、provider状态不在处理范围。详情见[清单](evidence/v6-fsdp-search-20261028/cold-diagnostic-plan.json)、[结果](evidence/v6-fsdp-search-20261028/cold-diagnostic-result.json)；恢复journal/RESTORE.md留在服务器`dev/storage-audit-20261028/terminal-diagnostics/`。不累加为上一轮42.24 GiB的结果，不下载raw、不恢复旧归档控制器。
 
 ## 2026-10-27 终态后的执行更新

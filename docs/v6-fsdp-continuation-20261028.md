@@ -27,3 +27,27 @@
 恢复批次已冻结`85a0707d8775e9468ffa7e0a3da94645238b51ca`，10:29:33 UTC启动PID631783、PPID1，生产core仍`ed24af7a…`。部署先真实启动并关闭OpenCode健康预检，随后由框架自行启动服务；真实collector-planner会话`ses_e7df11836ffeHbaVCwEUL88m5o`及生成前快照已记录。新分支adapter SHA保持`8b014f6f…`，controls_path与已核实baseline相同，新目录没有reference-rank张量副本。见[启动](evidence/v6-fsdp-continuation-20261028/followup-launch.json)、[协议](evidence/v6-fsdp-continuation-20261028/followup-protocol.json)、[复用依据](evidence/v6-fsdp-continuation-20261028/discovery-reuse.json)、[真实会话核验](evidence/v6-fsdp-continuation-20261028/startup-verification.json)。
 
 唯一普通完成/磁盘监听PID23708，状态`.scratch/v6-fsdp-continuation-followup-wakeup.json`，配置`.scratch/v6-fsdp-continuation-followup-wakeup-launch.json`；每30秒检查，8GiB提前通知阈值。启动核验为running，实际余约13.98GiB，[监听记录](evidence/v6-fsdp-continuation-20261028/followup-wakeup-setup.json)保存。本机以后重启应先查此新批终态与监听状态，不能恢复旧fsdp-search或初次continuation的已处理监听。
+
+## 12:34 UTC终态与磁盘告警处理
+
+监听12:30:52 UTC提交的是low_disk_space，非完成事件，随后退出；当前会话实际核查时，本批已于12:34:47 UTC完成，控制器与GPU worker均退出。因此直接审计终态，没有重启实验或恢复已完成批次的监听。[告警投递](evidence/v6-fsdp-continuation-20261028/disk-attention-delivery.json)与[实际完成](evidence/v6-fsdp-continuation-20261028/followup-completion.json)分别保留。
+
+全部7个参数点、12个搜索配对端点和4个独立端点通过完整两步质量：92份rank/step检查最大误差均为0；230个clean rank样本全保留。552份次级指标raw trace逐份重算通过，各字段仍是独立的三次profile采样。source/adapter/合同、共享controls及六份完整source/reference SHA核验不变。见[端点与原生审计](evidence/v6-fsdp-continuation-20261028/followup-terminal-audit.json)、[代码与继承审计](evidence/v6-fsdp-continuation-20261028/continuation-identity-audit.json)。
+
+| 轮次 | 真实实施与结果 |
+|---|---|
+| c0a2a514fe | selection提出forward prefetch，candidate改为扩展原keep参数域0..5；实际仅筛选K=1/2/3，仍选3，搜索接受并替换旧bundle。 |
+| 423948159b | 实际实现FSDP forward-prefetch API，深度2/1均质量通过；配对收益2.756/0.845ms，噪声界3.711/0.143ms，拒绝。 |
+| c0e29fed87 | 实际尝试K=5/4，质量通过；选择K=5后配对收益2.773/2.226ms，噪声界1.499/3.557ms，拒绝。 |
+
+第一轮必须与新增优化区分：新旧代码只移除模块docstring并将DEFAULT_KEEP从2改为3；两个已选bundle均显式传入K=3，默认值不参与该路径。调用边界与实际策略相同。新bundle ID及搜索接受不能证明在旧接受版本之上又得到收益，原判定与全部波动样本仍冻结保存。其参数域确实扩展，不能称代码逐字相同或候选完全没有提出变化，但新值4/5在该轮未执行。CPU使用相同seed、原参数空间和已记录分数重放TaskSearch，精确复现1→2→3及选择3；原candidate request中没有显式parameter_trials，使用框架默认3。没有补测未访问点或将其当作失败。
+
+完整版本独立AB/BA相对**原始修复baseline**为176.6046395→172.7938785ms（2.157792%），配对收益4.839005/2.782517ms超过界限0.096898/2.649656ms，原peak约束通过。它验证的是K=3策略的另一组独立测量，不能与此前3.095099%叠加、不能覆盖旧结果，也不证明继续搜索获得增量收益。原生每rank仍为baseline49AllGather+25ReduceScatter、candidate46+25，与原K=3机制一致；不以profile时长推断wire bandwidth或关键路径。
+
+复用了失败初次批次的完整GPU发现并核对raw SHA；本轮第一轮接受后又实际重发现（9951946f→a6ea4101），后两轮使用新registry和call映射。共11个真实角色会话，selection/candidate无schema repair；真实工具记录读取反馈与候选代码，第二轮selection也明确识别前轮未实现预取。所有版本只有一个active bundle；本批证明接受后重发现和替换链，没有多bundle共存正例。Agent关于协议饱和、仅剩一个优化方向及精确内存上界的推论未被审计采纳。
+
+明确提示问题：存在反馈时统一追加`Read inputs/previous-feedback.txt and repair the concrete failure.`，即便反馈已经接受。第一轮candidate确实把成功后的参数域扩展表述为修复concrete failure，但不能据此认定该句是唯一原因。下一步按[成功反馈最小对照](v6-accepted-feedback-replay-20261028.md)，从真实生成前快照仅替换此句，做两个新的真实会话；生产提示、调参逻辑与接受规则暂不变，不追加开发者优化答案。
+
+补充审计初次从snapshot读取selection.json漏了inputs/前缀，产生KeyError。端点审计已完成，之后仅修正读取路径并复用已核实端点结果完成继承检查。这是审计脚本错误，不是实验或质量失败。
+
+空间整理12:44:18 UTC完成。明确范围仅旧next-stage与ddp-semantics的7个jobs/sandboxes目录：479份大JSON的6,159,922,685 bytes原内容保留在514,399,020 bytes gzip中，全部压缩及解压SHA验收，另2,650个未选文件SHA不变。实际df净回收**5,644,873,728 bytes（5.26GiB）**，余**13,114,265,600 bytes（12.21GiB）**。未下载raw或压缩当前FSDP、当前接受项目、参考张量、模型、环境、provider状态。15个保留run的源码/bundle与参考路径、六份完整FSDP参考SHA在维护后复查通过；不把维护后检查称为全盘维护前快照。[清单](evidence/v6-fsdp-continuation-20261028/disk-attention-plan.json)、[回执](evidence/v6-fsdp-continuation-20261028/disk-attention-cleanup.json)、[保留版本核查](evidence/v6-fsdp-continuation-20261028/retained-versions-check.json)。完整journal及RESTORE.md位于服务器`/root/autodl-tmp/dev/storage-audit-20261028/disk-attention/`。本批新增约7GiB主要是测量/profile JSON，并非模型重新下载。
