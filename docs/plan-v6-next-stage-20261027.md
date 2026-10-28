@@ -2,6 +2,8 @@
 
 最新状态（2026-10-28 13:58 UTC终态）：[固定生成策略执行](v6-feedback-execution-validation-20261028.md)五端点全部质量/覆盖/原peak约束通过，50样本、20次零误差两步检查、120份通信trace已核验；独立失败反馈角色也识别真实质量失败，但因果解释有超证据部分。没有新性能接受，生产prompt/sampler保持不变，不继续重复该提示实验。转回E的[同核心Qwen目标交叉测量](v6-qwen-goal-contrast-20261028.md)，固定TTFT/decode已接受版本做对称交错测量，保留各自合同/参考，不跨合同导入、不改写旧结果。以下较早“正在执行”段为历史进展。
 
+当前运行（14:17 UTC）：上述Qwen八端点批次已冻结`02c5a188`并启动，core保持`ed24af7a…`，首baseline通过、TTFT候选在真实GPU运行；唯一普通完成/磁盘监听PID54948已验证。实际余10.61GiB，没有新增大trace或参考副本，终态自动续行核查。
+
 当前运行（2026-10-28）：[接口说明与 Qwen decode 批次](v6-metric-mapping-decode-20261028.md)已冻结 `04d966cf` 并启动。采用版显式次级接口的真实双卡 smoke 和 raw trace 重算通过，真实 intake 对照正在运行；随后执行 Qwen 同 adapter decode 三轮和完整独立验证。单控制器/单普通监听已核验，无 Goal 或模型等待轮询。自动 intake/prompt 仍未采用，旧接受/拒绝均保留。
 
 最新进展（2026-10-28）：[次级指标审计](v6-secondary-metrics-20261028.md)确认五个真实双卡端点质量/采集/聚合通过；真实 intake 主动选到通信指标，但生成了 discovery 不认识的 qualified 字段名，并把采样配置放在被忽略的 source 子字段。已采用默认关闭的显式 request 运行时，自动 intake schema/prompt 暂不采用。26 项相关检查通过。按[下一批协议](v6-metric-mapping-decode-20261028.md)补一段通用 schema 说明做真实对照，并经过 discovery 实际检查；同时推进同一 Qwen workload 的 decode 目标变体三轮与独立验证。旧结果不回写，无本地大转存。

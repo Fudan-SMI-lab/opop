@@ -11,3 +11,7 @@
 本批不做新的正式候选接受，也没有新Agent生成需要重复调用；GPU执行使用真实框架worker。机制沿用已审阅的冻结代码，记录实际quality coverage/routes；旧Nsight证明不能自动充当当前执行路径证明。若当前发生fallback，先根据本批证据报告，不能只引用旧Graph数量。没有新大型trace或controls生成，现有参考共享只读；估计新增以小型结果/日志为主，实际df由单普通完成/8GiB告警监听检查。启动前约10.65GiB，不额外转存或清理原始证据。
 
 终态需检查八端点所有样本、actual core/adapter/bundle SHA、完整quality/coverage、原生内存生命周期、当前route、两baseline可比性、对称顺序与聚合，再判断目标偏好是否在本时段得到支持。保留旧固定Qwen拒绝及80样本，TTFT14.06%、decode88.8847%也不被本诊断覆盖；所有FSDP/DDP/ResNet/TP历史结论保持。
+
+已冻结`02c5a1880ba57ea7785b4002c2f8596093965018`，14:17:30 UTC启动远端controller PID703501、PPID1、独立session。14:18:13核验首个BT端点执行/质量通过，T端点真实GPU worker正在运行，余11,390,205,952 bytes（10.61GiB）。当前只确认启动，不预判待完成结果。见[启动](evidence/v6-qwen-goal-contrast-20261028/launch.json)、[实际协议](evidence/v6-qwen-goal-contrast-20261028/protocol.json)、[现场核验](evidence/v6-qwen-goal-contrast-20261028/startup-verification.json)。旧两套独立接受结果也已用原始样本在CPU完整重算一致，属于检查计分接口，不是新测量。
+
+唯一普通完成/8GiB空间监听PID54948，状态`.scratch/v6-qwen-goal-contrast-wakeup.json`，启动参数`.scratch/v6-qwen-goal-contrast-wakeup-launch.json`，每30秒SSH/df查询且已记录waiting；无Goal、等待模型调用或额外投递测试。[设置回执](evidence/v6-qwen-goal-contrast-20261028/wakeup-setup.json)保存。前批PID21576对应监听已标记handled_in_user_turn、保留原投递回执并写stop文件，不恢复；本机现场仅有一个watcher进程。远端实验独立于本机；若本机再次重启，需恢复这一批的监听而非重启实验。
