@@ -15,3 +15,11 @@
 维护已于10:16:57 UTC完成：179份冷payload共2,235,372,450 bytes压缩为191,322,914 bytes，全部gzip和解压内容SHA复验通过，另2,827个保留文件SHA不变。实际df净回收2,044,243,968 bytes（约1.90 GiB），可用15,109,062,656 bytes（14.07 GiB）。服务器恢复清单和指令位于`/root/autodl-tmp/dev/storage-audit-20261028/terminal-diagnostics/`；仅回传小型结果，未转存raw，也未删除任何样本内容。见[验收结果](evidence/v6-fsdp-search-20261028/cold-diagnostic-result.json)。
 
 本批只开一个GPU任务。启动前记录实际150GiB配额df；一个普通完成/磁盘监听每30秒查终态及余量，低于8GiB提前通知，不停止实验或自动删除。没有Goal、模型轮询或额外投递测试。代码、协议和小摘要归档GitHub v6；raw留服务器。
+
+## 启动配置错误及恢复范围
+
+初次冻结`0e77a659`，10:23:49 UTC启动PID630857，10:25:14以completed_with_errors结束。原生GPU重新发现已经完成（新revision`799a80d2…`），但首次collector planner的Runtime启动前失败，没有任何Agent会话/生成快照，也没有新候选或独立性能测量。原因是本轮部署脚本误将原配置`server_url=null`改成`http://127.0.0.1:19060`；框架将非空URL解释为连接既有服务，因此不会自动启动OpenCode，而该端口没有服务。不是provider请求失败，也不是FSDP质量失败。
+
+原目录、配置、发现结果和终态均冻结；监听已于10:25:39成功queue一次真实失败通知。当前用户轮次已直接处理该错误，后续若这条通知到达，应检查本节及恢复批次，不能再次启动旧批次或覆盖原失败。
+
+恢复输出为`/root/autodl-tmp/dev/v6-work/fsdp-continuation-followup-20261028`，还原`server_url=null`使用原自动启动方式；生产框架/prompt保持不变。控制器可选`--discovery-from`复用上述已完成GPU发现：先验证相同bundle/source/contract及raw trace SHA，再fork到新目录，通过现有plan_collectors/collect_extra执行尚未开始的发现尾部，随后用同一CLI --resume开始原定三轮。原样前轮反馈不变，不重复GPU发现或参考生成。独立检查和原生路径阶段仍只在新bundle接受时执行。新批使用一个新的完成/磁盘监听，旧已投递监听不复用。

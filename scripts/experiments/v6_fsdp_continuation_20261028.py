@@ -29,6 +29,28 @@ def search_rounds(args, config):
     command = [sys.executable, '-B', '-m', 'kernel_optimizer.cli', '--config', str(args.config), 'optimize-project',
                '--request', str(args.parent / 'request.json'), '--branch-from', str(args.parent),
                '--feedback', str(feedback), '--output', str(args.output / 'fsdp-search'), '--rounds', '3']
+    if args.discovery_from:
+        # Preserve the failed attempt and reuse its completed GPU discovery.
+        # Complete the exact previously unstarted tail of discover() in a new branch.
+        failed = ProjectSearch(config, args.discovery_from)
+        assert failed.revisions.current().bundles == parent.revisions.current().bundles
+        assert failed.revisions.current().files == parent.revisions.current().files
+        assert failed.revisions.current().contract_ref == parent.revisions.current().contract_ref
+        discovery = read(args.discovery_from / 'discovery.json')
+        assert discovery['revision'] == failed.revisions.current().id and 'collection_plan' not in discovery
+        for path in discovery['raw_discovery']:
+            raw = read(path)
+            assert sha(raw['trace']) == raw['trace_sha256']
+        fork_run(args.discovery_from, args.output / 'fsdp-search')
+        resumed = ProjectSearch(config, args.output / 'fsdp-search')
+        write_json(args.output / 'discovery-reuse.json', {'source': str(args.discovery_from),
+            'source_discovery_sha256': sha(args.discovery_from / 'discovery.json'),
+            'source_revision': failed.revisions.current().id, 'raw_discovery': discovery['raw_discovery'],
+            'scope': 'Unmodified completed GPU discovery reused; real collector planner/collectors were not previously executed.'})
+        discovery['collection_plan'] = resumed.plan_collectors(discovery)
+        discovery['extra_collectors'] = resumed.collect_extra(resumed.revisions.current(), discovery['collection_plan']['plan']['collectors'])
+        write_json(resumed.output / 'discovery.json', discovery)
+        index = command.index('--branch-from'); command[index:index+2] = ['--resume']
     write_json(args.output / 'search-protocol.json', {'at': now(), 'argv': command,
         'parent_revision': parent.revisions.current().id, 'parent_bundles': list(parent.revisions.current().bundles),
         'feedback_sha256': sha(feedback), 'prior_audit_sha256': sha(args.parent.parent / 'terminal-audit.json'),
@@ -66,12 +88,14 @@ def main():
     parser = argparse.ArgumentParser(__doc__)
     for name in ['config', 'output', 'parent', 'baseline']:
         parser.add_argument('--' + name, type=Path, required=True)
+    parser.add_argument('--discovery-from', type=Path, help='Reuse completed GPU discovery from an attempt that failed before agent planning.')
     args = parser.parse_args(); os.umask(0o077); args.output.mkdir(parents=True, exist_ok=True)
     config = load_config(args.config, [])
     assert read(args.parent / 'request.json') == read(args.baseline / 'request.json')
     assert read(args.parent / 'prepared.json')['controls_path'] == read(args.baseline / 'prepared.json')['controls_path']
     write_json(args.output / 'protocol.json', {'at': now(), 'framework_source': framework_source(),
         'disk': disk_observation(Path('/root/autodl-tmp')), 'baseline': str(args.baseline), 'parent': str(args.parent),
+        'discovery_from': str(args.discovery_from) if args.discovery_from else None,
         'sequence': ['accepted-version rediscovery and three autonomous rounds', 'conditional new full-version AB/BA', 'conditional separate B/C native paths'],
         'scope': 'Same corrected adapter, source, workload, full quality, original memory constraint and core; shared read-only controls. Historical results untouched. No API caps, new optimization hints, bulk local transfer, Goal or model polling.'})
     results = {}
