@@ -13,3 +13,9 @@
 生产核心继续`ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f`；不调整prompt、sampler、allocator或接受规则。旧同adapter合同completion的“ttft_ms objective”文字局限保留，本次由新evaluator生成合同，不人为修复旧记录。
 
 启动前真实df余约16.29GiB，上一批GPU与服务器内压缩均结束并核查。单GPU串行，不复制旧controls；新evaluator必要的新参考另行记录。仅一个普通完成/8GiB磁盘监听；低空间不是终态，不停止活跃任务或删除证据。raw留服务器，不恢复旧转存/监听。没有Goal、模型轮询或额外投递测试。历史Qwen、FSDP、DDP、ResNet、TP结果及全部样本保留。
+
+已冻结`16e38722c4482a96da7bcd3400f9d3076f0d5b26`，2026-10-28 17:46:18 UTC（香港10月29日01:46）启动。控制器PID754329、PPID1、独立session；OpenCode server_url=null自动启动服务健康检查通过。CPU导入/语法/CLI原入口参数检查通过，生产163文件core SHA不变。
+
+17:47:39 UTC核验处于prepare，真实`project-intake`会话`ses_e7c613ce3ffe5y0Y4f44bUi4ob`，新快照`generation-744292500593`，已观察到5条assistant消息。GPU空闲符合intake阶段，不是卡住；不提前声明evaluator/source或优化成功。见[启动](evidence/v6-qwen-original-end-to-end-20261029/launch.json)、[协议](evidence/v6-qwen-original-end-to-end-20261029/protocol.json)、[真实活动](evidence/v6-qwen-original-end-to-end-20261029/startup-verification.json)。
+
+唯一普通完成/磁盘监听PID48148核验为waiting，状态`.scratch/v6-qwen-original-end-to-end-wakeup.json`，启动参数同名前缀`-wakeup-launch.json`；每30秒SSH/df检查，终态或8GiB空间告警投递一次，不用模型等待。见[设置](evidence/v6-qwen-original-end-to-end-20261029/wakeup-setup.json)、[waiting核验](evidence/v6-qwen-original-end-to-end-20261029/wakeup-verification.json)。上一批监听已投递且标记handled并写stop文件，不重启。实际df剩17,483,948,032字节（16.28GiB）。本机监听进程需要本机在线，远端任务独立运行。

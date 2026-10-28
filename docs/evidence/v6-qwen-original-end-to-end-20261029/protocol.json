@@ -1,0 +1,50 @@
+{
+  "at": "2026-10-28T17:46:19.523081+00:00",
+  "core": {
+    "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+    "files": 163,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "goal": "Minimize end_to_end_ms for the source's complete interactive Qwen3-4B generation (batch 1, prompt 256 tokens, exactly 32 new greedy tokens), while keeping ttft_ms <= 1.05 times this task's freshly measured ORIGINAL baseline TTFT. Preserve the source model, inputs, full workload, BF16/SDPA/noTF32 policies, full logits at the source 0.02/0.02 tolerance and exact tokens, both completion synchronization boundaries, and state lifetimes. The primary metric covers the complete generation; the first-token metric is a constraint. The source's listed goals are provenance, not a requirement to optimize only one phase.",
+  "source_files": {
+    "README.md": "97dbce99c0065e87f4accf1bbe6d52aa4438a289d7eaec1c85a9c6b1cb25f68d",
+    "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+    "deployment.box42.example.json": "3746b1dbc8dda8e84a7731f99d1396a5be864bad2122e6c52611d5becd30efeb",
+    "gpt2_ddp_training.py": "37d1632436c8f927a52401b6d1fb9e63bd7b8d33d643d0f914916bb89b3364fe",
+    "make_project_requests.py": "190d66273a70aa2cfa5f803c91f942ed8fa94720f8eb956d318dd898d5deec97",
+    "prepare_resnet_assets.py": "27d2943825c829a3296a8ee3db765db8ae7a133e3247dc3e093be1ff4e7884c9",
+    "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+    "resnet_inference.py": "b98cd81b4aa6fb8211be6382d9870bbf433eb352c248a4b2aaf8f5fde2b50997",
+    "run_autonomous.py": "2df907c61c8a8ce13b7716de212c92b7fe85e7dddbd912a63fa764f96ee042cc",
+    "run_binding_ablation.py": "bb66444d1c1d421b5f2a71d22976a861e38febb18b4eda1d9d76ecd287dbe362",
+    "run_binding_backends.py": "94dece68a7ba9ead9a0ad87191420c24bff585153c68920e0194e7920a173935",
+    "run_comparison.py": "95072588acacf5df2aeaaac0777fa0eacec191947c78c8ce9f54798f3631826f",
+    "run_interaction.py": "2516c83fcd8ba739bbac15d3d7510fa6f914198f47a6e04702567814733d0ebe",
+    "run_suite.py": "139a0535511dd15f3ae6dd11717d209b54fa7f600796be97ca08e4fb08430ab5",
+    "run_timeline_comparison.py": "c1fb45ece80dfda8dea19cffa2f45a61d3138c6c18382ef4af7c6d7b5ae0bea1",
+    "source_fidelity.py": "73f879ad64c9d1cf9d445fb9507b7746b0549db604498d64a1dc60aa520ab104",
+    "unregistered_signal.py": "dbe7cb64df53837c888e4dcc509b52836fa7d86093ce497fa503f0d39cb3393a",
+    "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+  },
+  "independent_source_reference": {
+    "path": "/root/autodl-tmp/dev/v6-work/validation-runs/readiness-20261020-a/qwen_inference/interactive-reference.pt",
+    "sha256": "af929f424e8ceb372b06ac171841df496f9a9ef4c26c16dc2f69b4014a2678da"
+  },
+  "sequence": [
+    "fresh original-entry prepare",
+    "external full source gate",
+    "three autonomous rounds",
+    "conditional independent full-version AB/BA",
+    "conditional separate native paths"
+  ],
+  "disk": {
+    "at": "2026-10-28T17:46:19.563292+00:00",
+    "path": "/root/autodl-tmp",
+    "df_returncode": 0,
+    "df": "   1B-blocks         Used       Avail Use% Mounted on\n161061273600 143574953984 17486319616  90% /root/autodl-tmp\n",
+    "df_error": "",
+    "statvfs_free_bytes": 17486319616,
+    "interpretation": "df reflects the 150 GiB container quota; statvfs has reported host space for some nested paths and quota for the mount root. Compare both; plan against df."
+  },
+  "scope": "No adapter/request/groups/candidates/old bundles/developer diagnoses supplied. Unknown source schema stops dependent work for review; no automatic mapping or retries. API observe-only. No production changes or bulk transfers."
+}
