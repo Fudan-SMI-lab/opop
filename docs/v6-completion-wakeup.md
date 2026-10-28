@@ -80,3 +80,5 @@
 2026-10-28 10:30 UTC当前状态：本机重启期间FSDP首批已完成，用户轮次直接审计，旧fsdp-search监听记为handled_in_user_turn并写stop标记。初次后续批次的启动配置错误已通过真实完成通知投递一次（消息01a1820b-47b9-75d2-899f-f7057140c550），且已在同一用户轮次处理；如果该排队消息后续开始新轮次，先查原目录HANDLED_RECOVERY.json与[后续记录](v6-fsdp-continuation-20261028.md)，不要重复启动失败批次。
 
 当前只监听`/root/autodl-tmp/dev/v6-work/fsdp-continuation-followup-20261028`：本机PID23708，状态`.scratch/v6-fsdp-continuation-followup-wakeup.json`，启动参数`.scratch/v6-fsdp-continuation-followup-wakeup-launch.json`；远端PID631783。已真实确认运行与df余量，继续30秒普通检查及8GiB提醒。旧已处理/已投递监听均不恢复；没有Goal或额外投递测试。
+
+2026-10-28 12:56 UTC更新：上述监听12:30:52投递low_disk_space（非终态）后退出，消息实际唤起本轮。核查时实验已于12:34:47结束，故直接审计并完成服务器内无损清理，而非恢复已完成批次。旧状态标记handled_in_user_turn并保留投递回执、stop文件。现在唯一监听为PID13320，等待`accepted-feedback-replay-20261028`的两个真实角色对照；状态`.scratch/v6-accepted-feedback-replay-wakeup.json`，远端PID676688。已实际确认真实会话、controller和普通监听运行，剩约12.11GiB；见[新批启动/监听证据](v6-accepted-feedback-replay-20261028.md)。没有新增投递测试或Goal。

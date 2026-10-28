@@ -9,3 +9,7 @@
 独立CPU预检查已用原记录分数重放TaskSearch，精确复现seed0、3次筛选K=1/2/3及选择3。它解释采样结果而不产生新性能数据。后续应区分：角色是否理解成功反馈、是否提出具体新实施、参数空间是否能在实际筛选次数内覆盖新值、代码是否仍执行旧路径。当前实验只检查一条提示，不同时修改调参或去重逻辑；不把一个对照结果视为普遍有效。
 
 代码`scripts/experiments/v6_accepted_feedback_replay_20261028.py`，新目录`/root/autodl-tmp/dev/v6-work/accepted-feedback-replay-20261028`。启动前已完成服务器内空间整理，raw仍留服务器；本批不生成大型profile或另一套reference。使用一个普通完成/8GiB空间监听，终态自动审计，无Goal、模型轮询或额外投递测试。
+
+已冻结`d5b6ce6ed191ab3f41496ea38102b68c0888254f`，12:54:35 UTC启动远端PID676688，PPID1、独立session；生产core仍`ed24af7a…`。真实OpenCode服务健康预检通过，server_url保持null由框架启动，CPU sampler重放通过。控制臂真实会话`ses_e7d6c535effeamprJU7o5DiCDo`及初次快照已生成，source_change=false；当前只确认运行，不预判输出。见[启动](evidence/v6-accepted-feedback-replay-20261028/launch.json)、[协议](evidence/v6-accepted-feedback-replay-20261028/protocol.json)、[真实会话](evidence/v6-accepted-feedback-replay-20261028/startup-verification.json)。
+
+唯一新监听PID13320，状态`.scratch/v6-accepted-feedback-replay-wakeup.json`，启动参数`.scratch/v6-accepted-feedback-replay-wakeup-launch.json`；12:56:36 UTC实际记录running、磁盘约12.11GiB。旧FSDP followup监听已标记handled_in_user_turn并写stop文件，不能恢复。[监听设置](evidence/v6-accepted-feedback-replay-20261028/wakeup-setup.json)保存。仍每30秒普通SSH检查，结束或低空间时才投递一次；本机重启后需按该新批实际状态恢复，不能重复启动服务器实验。
