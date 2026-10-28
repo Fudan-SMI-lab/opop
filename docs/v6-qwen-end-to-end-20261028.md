@@ -13,3 +13,7 @@
 这是同adapter目标变体，不是原入口重新生成evaluator的自主cohort。不承诺多个active bundle，只有实际重发现/替换/共存记录能证明。生产core、prompt、sampler、allocator和接受规则保持，成功反馈提示研究已结束。
 
 [预检查](evidence/v6-qwen-goal-contrast-20261028/end-to-end-preflight.json)通过schema、语法与原baseline约束接口；正式任务重新测量anchor，不使用该CPU接口检查里的旧值。服务器内无损整理后实际余16.40GiB，raw留服务器，单GPU串行；一个普通完成/8GiB告警监听，无Goal、模型轮询、本地大转存或额外投递测试。所有历史接受/拒绝及样本保持。
+
+已冻结`387ae6bc2b110676e4dfb1bcfda4d5068e9a79f8`，15:02:55 UTC启动远端controller PID707981、PPID1、独立session；生产core仍ed24af7a。OpenCode自动启动服务健康检查通过，server_url=null。15:03:56实际处于prepare的variant_contract真实会话`ses_e7cf6d14fffeojk3mtdVSt1xz8`，初始快照generation-bf6faced27a2，已观察到6条assistant消息；GPU空闲符合尚在合同生成的阶段，不表示卡住。尚未宣称controls、源检查或优化通过。见[启动](evidence/v6-qwen-end-to-end-20261028/launch.json)、[协议](evidence/v6-qwen-end-to-end-20261028/protocol.json)、[真实活动](evidence/v6-qwen-end-to-end-20261028/startup-verification.json)。
+
+唯一普通完成/8GiB磁盘监听PID54204已核验waiting，状态`.scratch/v6-qwen-end-to-end-wakeup.json`，启动参数`.scratch/v6-qwen-end-to-end-wakeup-launch.json`；每30秒只用SSH/df查询，终态或低空间时才投递一次。[设置回执](evidence/v6-qwen-end-to-end-20261028/wakeup-setup.json)保存。上一批Qwen对照监听已完成投递，标记handled_in_user_turn并写stop文件，不恢复。启动后实际余17,600,995,328 bytes（16.39GiB）；本机重启不影响远端任务，但需要恢复此批监听。
