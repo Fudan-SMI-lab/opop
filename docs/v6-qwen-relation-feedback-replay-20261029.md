@@ -13,3 +13,10 @@
 控制器：`scripts/experiments/v6_qwen_relation_feedback_replay_20261029.py`。服务器目录：`/root/autodl-tmp/dev/v6-work/qwen-relation-feedback-replay-20261029`。生产核心仍为`ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f`。真实启动前完成snapshot哈希、单文件差异、旧JSON字段保留和CLI导入预检，并检查本地OpenCode服务健康。
 
 实际数据盘约13.06GiB可用，当前无需清理。所有raw/私有配置留服务器；GitHub仅代码、小型审计和脱敏元数据。启动后只保留一个普通完成/8GiB磁盘监听，无Goal、模型等待轮询或投递测试。历史接受/拒绝均不改变。
+
+
+已冻结`826a757e0e50bdf5aba3ff2a1e013cbd5ad033f6`，2026-10-28 20:22:59 UTC启动独立session控制器PID859520，实际OpenCode健康检查通过。见[启动](evidence/v6-qwen-relation-feedback-replay-20261029/launch.json)、[精确输入协议](evidence/v6-qwen-relation-feedback-replay-20261029/protocol.json)、[预检](evidence/v6-qwen-relation-feedback-replay-20261029/preflight.json)。
+
+20:24:32 UTC[实际启动核验](evidence/v6-qwen-relation-feedback-replay-20261029/startup-verification.json)：control真实快照`generation-6673f453e913`全部33输入与原快照相同，prompt/model/tools/core一致；真实provider已有6条assistant记录。当前control进行中，尚未得到两臂最终结果，不提前推断反馈有效或代码正确。GPU暂空闲；实际df剩13,723,664,384字节（12.78GiB）。
+
+唯一普通完成/8GiB监听PID59096已核验waiting，见[监听设置](evidence/v6-qwen-relation-feedback-replay-20261029/wakeup-setup.json)和[实际状态](evidence/v6-qwen-relation-feedback-replay-20261029/wakeup-verification.json)。旧关系诊断监听已标记handled，不重启；等待期间只有普通进程检查，不调用模型轮询。到达终态后继续核查实际输入、工具读取和输出，再决定下一步。

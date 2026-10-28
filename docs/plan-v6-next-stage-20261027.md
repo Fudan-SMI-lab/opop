@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前执行（2026-10-28 20:24 UTC／香港10月29日04:24）：[Qwen完整输出事实反馈对照](v6-qwen-relation-feedback-replay-20261029.md)冻结826a757e，控制器PID859520。Control真实初始33输入/提示/模型工具配置核验相同、provider已有6条assistant记录；随后treatment只改原反馈一个字段（+1,979字节）。唯一普通完成/8GiB监听PID59096 waiting，实际df余12.78GiB。该批仅真实候选角色生成，未进行新自主搜索或性能接受，生产核心不改；旧诊断已完整审计存档。
+
 最新核查（2026-10-28 20:10 UTC终态）：[Qwen固定关系诊断](v6-qwen-relation-diagnostic-20261029.md)B通过、C1/C2的U/O四端点均原断言失败。12份完整张量复核：greedy先偏离源max1.0，teacher与源零误差，greedy在observe前后不变且C1/C2逐元素一致；同保存张量CUDA比较精确复现原断言计数。唯一底层原因仍未知；原入口零接受与旧同adapter接受分开保留。准备[单文件事实反馈真实对照](v6-qwen-relation-feedback-replay-20261029.md)，只补1,979字节现有证据、其余33输入/提示/模型工具配置保持，生产核心不改。df余13.06GiB，无GPU实验、无清理或raw转存；以下“当前执行”为历史记录。
 
 当前执行（2026-10-28 20:09 UTC／香港10月29日04:09）：[Qwen固定关系输出诊断](v6-qwen-relation-diagnostic-20261029.md)冻结ba50554f，PID857099。首个观察baseline完整质量与6份源比较通过；C1无观察对照已执行失败，C1观察端点在真实GPU运行。单个普通完成/磁盘监听PID1180 waiting，df余13.11GiB；没有新Agent生成/搜索/性能接受，生产核心保持。诊断结束后先区分greedy/teacher对源的差异及观测影响，再决定最小真实Agent实验。
