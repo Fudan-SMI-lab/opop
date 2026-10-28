@@ -1,5 +1,7 @@
 # DDP冻结路径补核与新原入口整步目标
 
+后续：[次级指标接口审计](v6-secondary-metrics-20261028.md)已完成。显式 mapping 的双卡采集/聚合通过；真实 intake treatment 选到指标，但 required discovery 名称错误，完整自动映射暂不采用。此处原入口 40.61% 独立收益及旧同 adapter 55.73% 收益均不改写。
+
 终态审计：四阶段均正常完成。新原入口任务的最终完整版本独立 AB/BA 通过，`step_ms` 从 118.1469 降至 70.1677 ms（40.61%）。这是新生成 adapter 的新任务，与先前同 adapter 批次的 55.73% 收益分别记录，不能将两次百分比当作配对性能比较。完整审计见 [audit.json](evidence/v6-ddp-step-followup-20261028/audit.json)，原始证据仍在服务器。
 
 ## 固定旧候选的路径和通信补核

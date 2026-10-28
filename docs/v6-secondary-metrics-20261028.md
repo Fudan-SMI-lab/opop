@@ -1,5 +1,31 @@
 # 次级诊断指标接口的隔离验证
 
+## 终态审计与采用范围
+
+2026-10-28 00:30:40 UTC 四阶段完成。五个真实双卡端点（固定 off/on/on/off + intake mapping 集成）质量、两步连续状态、覆盖和 FP32 policy 检查通过；[完整小型审计](evidence/v6-secondary-metrics-20261028/audit.json)保留全部 25 个 aligned clean 样本、18 个 rank-local profile 样本及 raw trace SHA。逐 raw trace 重算通信 sum、先取 rank 最大再取中位数均一致。五个端点除次级映射外参数一致，源文件/adapter/candidate 完全一致；overlay 全部文件与改动清单逐字核验。
+
+| 固定端点 | clean step 中位数 ms | 次级 NCCL sum 中位数 ms |
+|---|---:|---:|
+| off 0 | 70.0886 | 未采集 |
+| on 1 | 70.1034 | 33.4753 |
+| on 2 | 69.9316 | 33.3771 |
+| off 3 | 70.1820 | 未采集 |
+| intake mapping | 69.8401 | 33.0703 |
+
+没有新候选接受，也不据此声称采集无资源成本。原先 Graph 候选 40.61% 独立接受与这些诊断端点分开。
+
+真实 intake 两臂均一次生成成功、零合同修复。control `ses_e8036c9…`，treatment `ses_e802480…`；初始实际快照只改变 schema 文件（8,684→10,621 bytes），prompt/模型/工具/其他输入相同，两臂共同使用同一隔离核心。删除新增 schema 字段/定义后与原 schema 完全相同。两臂保留完整 global batch、FP32/noTF32、全量梯度/参数质量、精确 rank 关系、完成同步、max-rank-then-median 与 1.05 倍原基线限制。treatment 主动选择 `max_rank_nccl_kernel_sum_ms` → `torch_communication.communication_kernel_sum_ms`，映射执行成功。输出文字并不完全等价：treatment 将线程数列入 source-required numerics，control 更明确允许线程设置替换；两者均保留 DDP/no_sync/foreach 的实现自由度。
+
+但本次不能宣称完整请求可直接完成原入口流程：
+
+- treatment 的 `required_observations` 写成 `torch_communication.communication_kernel_sum_ms`，现有 discovery 的真实可用名是 `communication_kernel_sum_ms`。用保留的真实 discovery/capability 字段集合重放现行名称检查，该 required name 不可用；本批仅提取 metric mapping 的集成没有经过这一步，因此没有暴露错误。这是代码/证据重放结论，未新跑原入口 discovery。
+- treatment 在 `source.profiling.metric_repeats` 写入 3，但现有采样器读取的是 request.profiling.metric_repeats（默认 3），该嵌套设置被转交 provider 后未使用。实际恰好采到 3 次不能证明该 override 生效。
+- CPU fixture 实测默认关闭、双指标输出互不覆盖、旧 objective.source 共存、缺失值/字段/名称冲突拒绝及 inner-loop 聚合；最初 fixture 没有专门注入 NaN/Inf，非有限值分支此前只有代码检查，不能把它当作已完成的动态测试。
+
+据此分开推进：采用已验证的**显式 request 运行时接口**，默认不采集次级指标，空映射保留旧 portable request；不采用自动 intake schema。运行时追加非有限值检查测试并在生产版本做一次真实双卡验证。自动映射只做新的小型 schema 说明对照：解释 discovery 字段名、输出别名和 provider 参数/框架采样配置的区别，不自动修正模型输出，不按错误类型路由，也不以重复直到通过替代分析。并继续既定 Qwen 同 workload decode 目标变体，避免工作停留在 DDP 重复诊断。
+
+当前实际数据盘可用 40,323,956,736 bytes（约37.56 GiB），终态无 GPU worker。旧结果和所有原始样本保持，生产 intake/prompt 与 allocator 均不作自动采用。
+
 起因：[原入口 DDP 整步任务](v6-ddp-step-followup-20261028.md)已获得 40.61% 独立收益，但主目标改为 step_ms 后，`required_observations` 只验证 discovery 能力，不会自动向 evaluator 添加通信样本。不能把后来手动补采的数据回填冻结端点。
 
 本批只在复制的框架源码中验证最小原型，生产代码和提示词不变。`v6_secondary_metrics_prototype_20261028.py` 使用精确锚点生成隔离 overlay，并记录全部改动文件 SHA：新增通用 `diagnostic_metrics` 显式映射，经现有采集器注册表解析 collector/field，不按模型或指标名硬编码。默认空映射；每个已声明指标必须实际采到，否则明确报错。来源未验证或环境不适用时，由 intake 留空，不能编造零值。

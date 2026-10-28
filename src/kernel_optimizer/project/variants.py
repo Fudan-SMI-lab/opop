@@ -21,7 +21,7 @@ def prepare_variant(parent_output: Path, request: ProjectRequest, output: Path, 
     parent_output, output = parent_output.resolve(), output.resolve()
     old_request = ProjectRequest.model_validate_json((parent_output/"request.json").read_bytes())
     allowed = {"goal", "objective", "workload", "warmup", "repeats", "worker_timeout_s", "tools", "profiling",
-               "communication", "required_observations", "notes", "devices", "lease_dir"}
+               "communication", "required_observations", "diagnostic_metrics", "notes", "devices", "lease_dir"}
     if old_request.model_dump(exclude=allowed) != request.model_dump(exclude=allowed):
         raise ValueError("variant may change goal/workload/collection protocol/device placement, not source, quality or assets")
     if len(old_request.devices) != len(request.devices):

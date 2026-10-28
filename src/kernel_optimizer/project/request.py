@@ -4,6 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from kernel_optimizer.models.contract_common import Name
+from kernel_optimizer.project.metric_diagnostics import DiagnosticMetric
 
 
 class ProjectUnderstanding(BaseModel):
@@ -35,6 +36,7 @@ class ProjectRequest(BaseModel):
     distributed_backend: str | None = None
     communication: Literal["auto", "off", "required"] = "auto"
     required_observations: list[str] = Field(default_factory=list)
+    diagnostic_metrics: dict[str, DiagnosticMetric] = Field(default_factory=dict)
     tools: dict[str, str] = Field(default_factory=dict)
     profiling: dict[str, Any] = Field(default_factory=dict)
     binding_backend: Literal["legacy", "scoped"] = "legacy"
@@ -47,4 +49,6 @@ class ProjectRequest(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
     def portable(self) -> dict:
-        return self.model_dump(mode="json")
+        # Preserve the portable form of existing requests when this opt-in
+        # sampling interface is unused.
+        return self.model_dump(mode="json", exclude={"diagnostic_metrics"} if not self.diagnostic_metrics else set())

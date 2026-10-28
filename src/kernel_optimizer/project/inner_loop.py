@@ -33,6 +33,9 @@ class ProjectTaskEvaluator:
         if valid:
             metrics[objective["name"]] = metric(run, objective["name"], reducer,
                 objective.get("aggregation_order", "samples_then_ranks"))
+        if valid:
+            for name, spec in getattr(request, "diagnostic_metrics", {}).items():
+                metrics[name] = metric(run, name, spec.rank_aggregation, spec.aggregation_order)
         constraints = constraints_for_runs([run], objective, self.coordinator.prepared["evaluation"]) if valid else []
         feasible = valid and all(row["passed"] for row in constraints)
         from kernel_optimizer.project.candidate_diagnostics import reference_sites, should_trace

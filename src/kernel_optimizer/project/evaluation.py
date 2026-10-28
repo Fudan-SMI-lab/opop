@@ -278,9 +278,15 @@ def _worker_entry(context: dict, *, candidate_trace=None) -> dict:
                 adapter, state, operation, synchronize, context, source, int(request.get("profiling", {}).get("metric_repeats", 3)))
             metric_samples[request["objective"]["name"]] = diagnostics["values"]
             metrics[request["objective"]["name"]] = statistics.median(diagnostics["values"])
+        secondary = {}
+        if request.get("diagnostic_metrics"):
+            from kernel_optimizer.project.metric_diagnostics import collect
+            mode("profile")
+            secondary = collect(request, adapter, state, operation, synchronize, context, metrics, metric_samples)
         if request["objective"]["name"] not in metrics:
             raise ValueError(f"evaluator omitted objective {request['objective']['name']}")
-        return {"metrics": metrics, "metric_samples": metric_samples, "diagnostics": diagnostics}
+        return {"metrics": metrics, "metric_samples": metric_samples, "diagnostics": diagnostics,
+                **({"diagnostic_metrics": secondary} if secondary else {})}
 
     def measure_once():
         # Keep the current result alive through metrics(), then release the
