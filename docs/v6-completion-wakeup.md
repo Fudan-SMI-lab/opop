@@ -82,3 +82,5 @@
 当前只监听`/root/autodl-tmp/dev/v6-work/fsdp-continuation-followup-20261028`：本机PID23708，状态`.scratch/v6-fsdp-continuation-followup-wakeup.json`，启动参数`.scratch/v6-fsdp-continuation-followup-wakeup-launch.json`；远端PID631783。已真实确认运行与df余量，继续30秒普通检查及8GiB提醒。旧已处理/已投递监听均不恢复；没有Goal或额外投递测试。
 
 2026-10-28 12:56 UTC更新：上述监听12:30:52投递low_disk_space（非终态）后退出，消息实际唤起本轮。核查时实验已于12:34:47结束，故直接审计并完成服务器内无损清理，而非恢复已完成批次。旧状态标记handled_in_user_turn并保留投递回执、stop文件。现在唯一监听为PID13320，等待`accepted-feedback-replay-20261028`的两个真实角色对照；状态`.scratch/v6-accepted-feedback-replay-wakeup.json`，远端PID676688。已实际确认真实会话、controller和普通监听运行，剩约12.11GiB；见[新批启动/监听证据](v6-accepted-feedback-replay-20261028.md)。没有新增投递测试或Goal。
+
+2026-10-28 13:41 UTC更新：accepted-feedback-replay于13:20:38结束，13:21:03的真实终态通知已触发本轮审计；旧监听标记handled并保留stop文件。当前唯一监听PID21576，状态`.scratch/v6-feedback-execution-validation-wakeup.json`，等待新目录`feedback-execution-validation-20261028`；远端PID694059。固定双卡执行验证正在运行，前三端点已通过质量/覆盖/原约束，后续含独立真实失败反馈角色回归。8GiB提醒和普通30秒检查保持，当前df约11.08GiB。见[新批与监听回执](v6-feedback-execution-validation-20261028.md)，没有恢复任何旧批次或投递额外测试。

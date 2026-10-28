@@ -11,3 +11,7 @@
 第二部分从历史`fsdp-search-20261028`第三轮candidate初始快照generation-c519752a5f2d做一个新真实会话。当时前轮为连续第二步logits质量失败；输入、模型、工具及core原样，仅替换同一中性提示句。不给它旧第三轮答案、当前审计结论或新证据。核对是否仍识别真实失败、解释具体改动与保持原语义。此输出只做生成/schema回归，不在本批执行其GPU性能验证；不自动采用生产提示。
 
 启动前CPU检查已确认两个D0/D1点均在各自合法空间内、生成父版本一致、原约束计算接口在冻结baseline通过、历史失败快照为fresh session且反馈确实rejected，见[预检查](evidence/v6-accepted-feedback-replay-20261028/execution-validation-preflight.json)。正式批次重新核对六份完整source/reference SHA，避免复制大张量。磁盘当前约12GiB，预计新增主要为五端点独立profile，按实际df观察；raw留服务器，没有本地大转存。只启用一个普通完成/8GiB磁盘监听，无Goal、模型轮询或投递测试。
+
+已冻结`a6395bb81e8fe4d1fac6cc0e039bc6e22fe5e005`，13:38:28 UTC启动远端PID694059、PPID1、独立session。实际core仍`ed24af7a…`，OpenCode健康预检通过，server_url为null。13:41 UTC已完成继承K3、control D0及D1三个端点，full quality/coverage和原peak约束通过；treatment D1双卡worker正在运行，后续结果不预判。见[启动](evidence/v6-feedback-execution-validation-20261028/launch.json)、[协议/参考哈希](evidence/v6-feedback-execution-validation-20261028/protocol.json)、[固定参数与revision](evidence/v6-feedback-execution-validation-20261028/fixed-protocol.json)、[现场核验](evidence/v6-feedback-execution-validation-20261028/startup-verification.json)。
+
+唯一新普通监听PID21576，状态`.scratch/v6-feedback-execution-validation-wakeup.json`，启动参数`.scratch/v6-feedback-execution-validation-wakeup-launch.json`，每30秒SSH查询、低于8GiB提醒；实际已记录controller running，[设置回执](evidence/v6-feedback-execution-validation-20261028/wakeup-setup.json)保存。此前accepted-feedback-replay已完成的监听标记handled_in_user_turn并保留投递回执、stop文件，不恢复。13:41 UTC实际余11,891,998,720 bytes（11.08GiB），无需当前清理。
