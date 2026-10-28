@@ -1,5 +1,27 @@
 # Qwen原入口完整生成目标验证
 
+## 三轮搜索终态（2026-10-28 19:54 UTC）
+
+续行控制器正常结束，但**三轮均拒绝，当前没有active bundle**。因此完整版本独立AB/BA和条件式B/C native阶段均not_run；不能把completed说成自主优化成功。搜索内collector曾独立采集baseline Nsight等诊断，这与未执行的最终整版B/C native不同。[终态与全部审计](evidence/v6-qwen-original-followup-20261029/terminal-audit.json)、[控制器结果](evidence/v6-qwen-original-followup-20261029/followup-completed.json)及[自动投递](evidence/v6-qwen-original-followup-20261029/wakeup-delivery.json)保存。
+
+| 轮次 | 真实结果 | 判定 |
+|---|---|---|
+| `d5c20fcae5` | 31个decode位置Graph、共享pool；worker在observe的teacher-forced logits关系检查抛AssertionError，1,132,088/4,861,952元素超限（23.3%），max abs1.0 | 参数无效，未产生clean样本或paired结果 |
+| `e74f5ba6cf` | 真实读取反馈，增加即时logits clone、cache对象身份及回退处理，仍保留31图/shared pool；相同关系检查错误指纹 | 参数无效，未产生clean样本或paired结果 |
+| `b8ecdd4254` | 改为单Graph/StaticCache并增加内部逐步数值门控；门控实际禁用Graph，后续parent路径；全量质量通过 | screen可行，但paired TTFT超原锚且增益未超过噪声，拒绝 |
+
+三轮各实际只执行一个`{}`参数点。第三轮screen end_to_end710.62052ms、TTFT24.581114ms。paired parent为721.015889/758.602095ms，candidate为695.556654/766.685883ms，配对增益25.459235/-8.083788ms，噪声8.35978/71.410706ms；candidate TTFT24.253561/26.186706ms，后一端超过原25.2536046ms上限。质量通过不等于性能接受。五个实际clean端点的25样本与10次全量零误差检查全部保留；前两轮缺少clean样本是质量阶段异常停止，不能补造。
+
+第三轮quality阶段计数62次replacement，明确记录1次graph_disabled_numerics、61次parent_fallback_disabled、65次reference调用。源码的disabled状态在此进程后续测量持续，支持其主要执行parent；空`fallbacks`字典不代表没有回退。没有把该候选当作真实Graph加速。第三轮内部Graph/parent数值门控失败的具体张量差异未在旧结果中保存，不编造唯一原因。
+
+10个真实搜索角色均fresh/0schema修复，原core、六份baseline源文件、request/contract、两个完整参考SHA与原准备指针保持；实际工具读取与反馈输入已索引，未发现对已列旧成功答案路径的引用。只有初始discovery，没有接受后rediscovery、替换或bundle共存。10个会话完成不等于候选质量通过。最新feedback文件约155.5MB，文件大小不能代表模型实际上下文；审计保留逐角色输入/工具输出字节统计，不据此盲目扩充或裁剪上下文。
+
+两个重要证据边界：其一，前两轮异常发生于`observe()`关系检查，早于外层对原参考的compare返回，因此现有错误不能证明“greedy capture已匹配源，而只有replay错”。其二，四次candidate_diagnostics虽执行passed/valid=true，实际均不调用observe/compare，输出已有明确“no quality or performance acceptance”scope。Agent将一次诊断执行成功作为“质量曾通过、因此可能随机clobber”的依据不成立；不能据此认定非确定性、alias或shared-pool唯一因果。亦不把clean wall减另一次profile CUDA总时长认定为精确host开销，或把prefill代码未改当作TTFT必然合格。
+
+首次只读审计将framework_source误读为started记录字段，实际字段在rank结果；修正后完整复核通过，未重跑GPU，[错误说明](evidence/v6-qwen-original-followup-20261029/audit-attempt1.json)保留。原入口准备、外部手工映射边界、旧同adapter46.9421%及全部历史接受/拒绝互不覆盖。
+
+下一步仅补已证实缺失的关系检查输入，按[固定输出诊断协议](v6-qwen-relation-diagnostic-20261029.md)比较greedy/teacher/独立源，先建立数据再决定是否需要改候选信息。生产prompt/sampler/allocator/接受规则不变，不重复自主三轮直到通过。
+
 ## 续行已启动（2026-10-28 18:01 UTC／香港10月29日02:01）
 
 冻结`a80d8f8b81adb24ea43960b2876531a82dc12335`，控制器PID757316、PPID1、独立session；生产核心仍ed24af7a，OpenCode自动服务健康检查通过。新目录`qwen-end-to-end-original-followup-20261029`先完成外部映射比较，再通过既有API复用原准备，18:01:53 UTC开始此前未执行的搜索。[启动](evidence/v6-qwen-original-followup-20261029/launch.json)、[协议](evidence/v6-qwen-original-followup-20261029/protocol.json)已保存。原错误批次没有重启。

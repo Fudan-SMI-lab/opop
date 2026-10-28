@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态（2026-10-28 19:54 UTC）：[原入口Qwen续行](v6-qwen-original-end-to-end-20261029.md)三轮零接受。前两轮observe的teacher-forced完整logits关系报错，第三轮质量通过但Graph内部禁用、主要parent路径，paired TTFT26.186706ms超过原25.2536046ms且噪声判据失败。全部25clean样本、10次全量检查、10真实角色与源/参考身份核验；无最终独立/native接受，旧46.9421%属于另一同adapter任务不覆盖。Agent曾把candidate_diagnostics执行成功误当质量曾通过，且现有异常未区分greedy/teacher各自偏离源；按[固定关系诊断](v6-qwen-relation-diagnostic-20261029.md)只补该缺失观察并保留无观察对照，不盲改prompt、扩充上下文或重复自主搜索直到通过。
+
 当前执行（2026-10-28 18:01 UTC／香港10月29日02:01）：[原入口Qwen续行](v6-qwen-original-end-to-end-20261029.md)冻结a80d8f8b、PID757316。外部已审字段映射的真实CPU全量比较通过（两个输出各4,861,984元素、零误差/精确token、两个破坏负例被拒绝），复用原始fresh preparation及只读controls，adapter/request/contract/空bundle基线不变；已进入原先未运行的三轮搜索，真实collection-planner有provider回复。唯一普通完成/8GiB监听PID55228运行，df剩15.70GiB，无新增清理、本地raw转存或生产核心改动。原schema错误与所有旧结果保留。
 
 最新终态（2026-10-28 17:53 UTC）：[新原入口Qwen](v6-qwen-original-end-to-end-20261029.md)intake/evaluator与controls通过，但外部源fixture不认识新`generated_tokens/step_logits`命名，按协议停止搜索。源代码、完整工作、生命周期与真实初始输入审计已完成，当前不能把schema停止当数值失败或优化成功。仅在外部审计加入经过人工review的字段映射，另目录比较原源参考后续行此前未执行的三轮；不改生成adapter/request/contract或生产prompt，不重跑controls，不删除错误记录。外部人工审计这一边界明确保留，不称无人工间断的完整批次。
