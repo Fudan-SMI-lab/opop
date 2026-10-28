@@ -26,6 +26,8 @@
 
 当前实际数据盘可用 40,323,956,736 bytes（约37.56 GiB），终态无 GPU worker。旧结果和所有原始样本保持，生产 intake/prompt 与 allocator 均不作自动采用。
 
+运行时采用验证已完成：提交 `70bbf83d`，相关 [26 项测试](evidence/v6-secondary-metrics-20261028/production-pytest.txt)通过（含 NaN/Inf/bool 注入）。随后冻结 `04d966cf` 的真实双卡验证质量/覆盖通过，全部 5 clean 样本和 3×2 profile 样本保留；逐 raw trace 重算一致，[小型审计](evidence/v6-metric-mapping-decode-20261028/production-smoke-audit.json)留档。实际 worker 核心 SHA `e2b2860f372409e050422fba69af5adfb2077b8999787aeb7ba06bf6a1998d53`。这验证显式运行时接口，未自动采用 intake 字段或建立新的性能接受结论。
+
 起因：[原入口 DDP 整步任务](v6-ddp-step-followup-20261028.md)已获得 40.61% 独立收益，但主目标改为 step_ms 后，`required_observations` 只验证 discovery 能力，不会自动向 evaluator 添加通信样本。不能把后来手动补采的数据回填冻结端点。
 
 本批只在复制的框架源码中验证最小原型，生产代码和提示词不变。`v6_secondary_metrics_prototype_20261028.py` 使用精确锚点生成隔离 overlay，并记录全部改动文件 SHA：新增通用 `diagnostic_metrics` 显式映射，经现有采集器注册表解析 collector/field，不按模型或指标名硬编码。默认空映射；每个已声明指标必须实际采到，否则明确报错。来源未验证或环境不适用时，由 intake 留空，不能编造零值。

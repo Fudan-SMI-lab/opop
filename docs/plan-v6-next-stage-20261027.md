@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前运行（2026-10-28）：[接口说明与 Qwen decode 批次](v6-metric-mapping-decode-20261028.md)已冻结 `04d966cf` 并启动。采用版显式次级接口的真实双卡 smoke 和 raw trace 重算通过，真实 intake 对照正在运行；随后执行 Qwen 同 adapter decode 三轮和完整独立验证。单控制器/单普通监听已核验，无 Goal 或模型等待轮询。自动 intake/prompt 仍未采用，旧接受/拒绝均保留。
+
 最新进展（2026-10-28）：[次级指标审计](v6-secondary-metrics-20261028.md)确认五个真实双卡端点质量/采集/聚合通过；真实 intake 主动选到通信指标，但生成了 discovery 不认识的 qualified 字段名，并把采样配置放在被忽略的 source 子字段。已采用默认关闭的显式 request 运行时，自动 intake schema/prompt 暂不采用。26 项相关检查通过。按[下一批协议](v6-metric-mapping-decode-20261028.md)补一段通用 schema 说明做真实对照，并经过 discovery 实际检查；同时推进同一 Qwen workload 的 decode 目标变体三轮与独立验证。旧结果不回写，无本地大转存。
 
 正在执行：[次级诊断指标隔离验证](v6-secondary-metrics-20261028.md)，冻结 `f43046f`。生产代码/提示词保持，原型增加默认空的通用指标映射。21 项相关测试及 CPU 集成通过；固定已接受 DDP 完整版本 off/on/on/off 四端点质量/覆盖通过，真实 intake 单 schema 对照进行中。已设置单个普通完成监听，终态自动核查后再决定生产采用；没有开启 Goal 或本地大转存。

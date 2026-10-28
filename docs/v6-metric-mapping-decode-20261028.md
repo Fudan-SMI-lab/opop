@@ -15,3 +15,7 @@
 原 Qwen TTFT cohort 的 14.06% 独立接受，与更早固定 RMS 候选的独立拒绝/全部 80 个诊断样本分别保留。DDP Graph 40.61%、同 adapter 合批 55.73%、旧通信目标拒绝；TP 完整 32-token 失败、ResNet 独立拒绝及全部 80 样本、另一个 memory adapter 的 36.68% 接受/缺少 images allocation 事实均不改写。allocator 合并与之前 reviewer 建议不采用。
 
 执行脚本 `scripts/experiments/v6_metric_mapping_decode_20261028.py`，目录 `/root/autodl-tmp/dev/v6-work/metric-mapping-decode-20261028`。GPU 阶段串行，仅一个 Qwen 任务；旧同类 Qwen 主目录约 6.8 GiB，当前实际容器剩约 37.5 GiB，够开展此批且不需要本地转存。模型资产共享、raw 留服务器，GitHub 只存代码/索引/小摘要。新长批启用一个普通完成监听；没有 Goal、额外送达测试或模型轮询。
+
+启动：2026-10-28 00:48:48 UTC，冻结 `04d966cf8d245f97cc74033a2bbb9b4c904a771a`，controller PID418751，[launch](evidence/v6-metric-mapping-decode-20261028/launch.json)、[protocol](evidence/v6-metric-mapping-decode-20261028/protocol.json)留档。启动实际 df 可用 40,313,094,144 bytes（37.55 GiB），GPU 空闲。生产核心 SHA `e2b2860f…`；[intake overlay](evidence/v6-metric-mapping-decode-20261028/intake-overlay-manifest.json)只修改 intake 文件，Qwen 阶段使用生产核心。
+
+生产运行时双卡 smoke 已完整通过，step 中位数 70.1717 ms、次级通信 sum 33.3534 ms；这仅是接口执行检查，不替代旧正式接受。两步质量/覆盖、全部样本及逐 trace 重算见 [smoke 审计](evidence/v6-metric-mapping-decode-20261028/production-smoke-audit.json)。新 control intake 会话 `ses_e80046f18ffeeOu89iXmAtWG3s` 已建立；Qwen 搜索尚在后续队列。唯一普通监听 PID39216、状态 waiting，controller 存活，[设置证据](evidence/v6-metric-mapping-decode-20261028/wakeup-setup.json)保存；无恢复旧归档监听、无额外送达测试。
