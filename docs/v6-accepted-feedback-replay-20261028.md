@@ -27,3 +27,5 @@
 控制臂执行了CPU对象替身检查。处理臂使用单rank/Gloo、小型CPU FSDP模型探测API，最初的placeholder parent函数及绕开module hooks分别产生AttributeError、Tensor/DTensor混用错误；带tail的管道exit0没有让这些检查变成成功。Agent随后修正toy probe，并在若干参数点检查loss/梯度及两种回滚路径。初始写入版本、修改与工具输出均保留。这不等同于双4090、24层GPT2Medium、完整两步loss/logits/gradients/updated-parameters源一致性，也不足以证明预测的10–18ms收益或严格内存上界；本次不采纳这些推论。
 
 下一阶段见[真实执行及失败反馈回归协议](v6-feedback-execution-validation-20261028.md)：固定两臂共同合法的K=3、D=0/1，对源已核实的同一父版本做真实双卡完整质量和实际路径核验；独立另做一次历史质量失败输入的中性提示真实角色回归。不会重放成功两臂直到通过，也不将开发固定参数验证包装为新的自主优化或正式性能验收。
+
+13:58 UTC后续执行已通过完整双卡质量/原peak约束，50样本和120份通信trace核验；独立失败反馈会话识别历史质量失败，但仍有未证实的因果解释。两臂有效而无提示优越性证据，生产提示维持，结束该提示对照分支。详见[终态](v6-feedback-execution-validation-20261028.md)，转回同核心目标交叉测量。

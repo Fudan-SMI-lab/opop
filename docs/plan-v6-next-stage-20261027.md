@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新状态（2026-10-28 13:58 UTC终态）：[固定生成策略执行](v6-feedback-execution-validation-20261028.md)五端点全部质量/覆盖/原peak约束通过，50样本、20次零误差两步检查、120份通信trace已核验；独立失败反馈角色也识别真实质量失败，但因果解释有超证据部分。没有新性能接受，生产prompt/sampler保持不变，不继续重复该提示实验。转回E的[同核心Qwen目标交叉测量](v6-qwen-goal-contrast-20261028.md)，固定TTFT/decode已接受版本做对称交错测量，保留各自合同/参考，不跨合同导入、不改写旧结果。以下较早“正在执行”段为历史进展。
+
 当前运行（2026-10-28）：[接口说明与 Qwen decode 批次](v6-metric-mapping-decode-20261028.md)已冻结 `04d966cf` 并启动。采用版显式次级接口的真实双卡 smoke 和 raw trace 重算通过，真实 intake 对照正在运行；随后执行 Qwen 同 adapter decode 三轮和完整独立验证。单控制器/单普通监听已核验，无 Goal 或模型等待轮询。自动 intake/prompt 仍未采用，旧接受/拒绝均保留。
 
 最新进展（2026-10-28）：[次级指标审计](v6-secondary-metrics-20261028.md)确认五个真实双卡端点质量/采集/聚合通过；真实 intake 主动选到通信指标，但生成了 discovery 不认识的 qualified 字段名，并把采样配置放在被忽略的 source 子字段。已采用默认关闭的显式 request 运行时，自动 intake schema/prompt 暂不采用。26 项相关检查通过。按[下一批协议](v6-metric-mapping-decode-20261028.md)补一段通用 schema 说明做真实对照，并经过 discovery 实际检查；同时推进同一 Qwen workload 的 decode 目标变体三轮与独立验证。旧结果不回写，无本地大转存。
@@ -112,6 +114,8 @@ FSDP 原入口终态完成，独立两步全量数值为零误差；四项通信
 - 首批工作目录：`/root/autodl-tmp/dev/v6-work/next-stage-20261027`。实验 protocol 在首个端点前写入，框架源码使用独立快照，开发修改不进入正在运行的批次。
 
 ## 进展
+
+- 2026-10-28：完成反馈执行终态审计并决定不采用中性提示。Qwen目标对照预检查确认两baseline源文件/adapter相同、参考4 tensor共9,723,968元素完全一致，合同保持完整源语义；准备BT/T/D/BD/BD/D/T/BT八个真实worker端点。只做新测量期诊断，不把角色随机差异或旧跨时期分数当作严格目标因果证据。当前数据盘约10.65GiB；不复制controls/大型trace，保留单普通监听。
 
 - 2026-10-28 13:20 UTC：成功反馈prompt对照结束，43份输入完全相同且只变单句；两臂均识别accepted并实现实际预取，不能证明新提示更优。处理臂已从旧反馈读到3次参数筛选，故不再扩充重复上下文或改TPE。生产提示保持不变。接续[固定双卡完整质量/原生路径及历史质量失败输入的单次角色回归](v6-feedback-execution-validation-20261028.md)，不将toy probe或生成完成当作端到端优化接受。磁盘约12.02GiB，无需本轮追加清理。
 

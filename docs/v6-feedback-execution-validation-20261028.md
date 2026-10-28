@@ -15,3 +15,25 @@
 已冻结`a6395bb81e8fe4d1fac6cc0e039bc6e22fe5e005`，13:38:28 UTC启动远端PID694059、PPID1、独立session。实际core仍`ed24af7a…`，OpenCode健康预检通过，server_url为null。13:41 UTC已完成继承K3、control D0及D1三个端点，full quality/coverage和原peak约束通过；treatment D1双卡worker正在运行，后续结果不预判。见[启动](evidence/v6-feedback-execution-validation-20261028/launch.json)、[协议/参考哈希](evidence/v6-feedback-execution-validation-20261028/protocol.json)、[固定参数与revision](evidence/v6-feedback-execution-validation-20261028/fixed-protocol.json)、[现场核验](evidence/v6-feedback-execution-validation-20261028/startup-verification.json)。
 
 唯一新普通监听PID21576，状态`.scratch/v6-feedback-execution-validation-wakeup.json`，启动参数`.scratch/v6-feedback-execution-validation-wakeup-launch.json`，每30秒SSH查询、低于8GiB提醒；实际已记录controller running，[设置回执](evidence/v6-feedback-execution-validation-20261028/wakeup-setup.json)保存。此前accepted-feedback-replay已完成的监听标记handled_in_user_turn并保留投递回执、stop文件，不恢复。13:41 UTC实际余11,891,998,720 bytes（11.08GiB），无需当前清理。
+
+## 终态审计
+
+本批13:58:14 UTC正常结束，13:58:23普通监听实际投递当前核查消息。controller和GPU workers已退出，实际150GiB数据盘余11,437,936,640 bytes（10.65GiB）。没有本地大转存或额外清理。见[完整小型审计](evidence/v6-feedback-execution-validation-20261028/terminal-audit.json)、[端点回执](evidence/v6-feedback-execution-validation-20261028/fixed-results.json)、[投递回执](evidence/v6-feedback-execution-validation-20261028/wakeup-delivery.json)。
+
+五个固定端点全部执行、质量、覆盖及原peak<=1.05 baseline约束通过；共50个clean rank样本、20个全量连续两步质量检查，均零误差。120份各指标各自独立的raw profile全部重算与保存值一致，按max-rank再median复核。下表仅是固定参数诊断，没有正式性能接受、没有筛选参数或发布版本。
+
+| 固定端点 | step_ms，max rank再median | peak allocated bytes |
+|---|---:|---:|
+| 继承K3 | 172.458288 | 2,239,245,312 |
+| control D0/K3 | 172.658893 | 2,239,245,312 |
+| control D1/K3 | 173.450037 | 2,239,245,312 |
+| treatment D1/K3 | 171.766889 | 2,239,245,312 |
+| treatment D0/K3 | 171.670931 | 2,239,245,312 |
+
+包括treatment D1的184.409388/184.392792ms首样本在内，全部样本保留。两个D1的真实代码调用公开forward-prefetch设置API并重建K3，实际质量期route为D1/K3，无fallback记录，父forward实际调用；D0为恢复原策略的对照。独立Nsight SQLite均为每rank 2,106个kernel，其中46 AllGather+25 ReduceScatter，当前native名称为RING_LL。它证明实际collective路径/计数，不能仅凭相同计数或自报route证明预取重叠收益；本批没有隔离得到wire time或暴露关键路径。五端点的源文件、合同、adapter和六份完整source/reference SHA保持，staged分支current仍799a80d2，未发布候选。
+
+单独失败反馈会话`ses_e7d402b99ffe6SfrCalOEhk5Zu`，初始快照generation-fc97c139955a；与历史generation-c519752a5f2d的37份输入完全相同，模型/工具/core相同，仅替换声明的单句，0次schema repair。44个工具调用正常完成，实际读取previous-feedback中的decision、三参数质量与旧candidate，并检查安装环境的FSDP实现。它识别了前轮第二次连续更新的logits失败，生成了删除自定义sharded head、委托原forward并仅改reshard的代码（SHA `3f10bf25c1d7759399c0c36091b0efe4e9d170733b1c9a371a0fed108bc1650e`，参数K=1/2）。代码没有改工作量或质量门槛，但这份单独输出没有在本批GPU执行，不能借用前五端点的通过结论。provider报告费用约1.4653，纯统计，不施加限额。
+
+其rationale把历史logits失败唯一归因于分片GEMM重结合、称step为wire-bound、用NCCL区间推算每减少一次collective就减少约2ms关键路径，均超出证据。保留原回答，不采用这些因果断言或其严格内存预测。
+
+结论：中性句可在该历史失败输入上生成合理方向，两种成功反馈提示也都产生可运行代码，仍无处理提示的因果优越性证据。生产prompt、sampler、上下文和接受规则保持原样；本条提示研究到此结束，不重复直到通过。FSDP原3.095099%与重复K3独立2.157792%分开保留，其他历史接受/拒绝不改写。下一步回到E的[同核心Qwen目标交叉测量](v6-qwen-goal-contrast-20261028.md)，补足旧跨时期比较的限制。
