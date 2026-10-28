@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态（2026-10-28 22:51 UTC）：[新联合候选完整关系诊断](v6-qwen-joint-relation-20261029.md)B通过、C-U/O均原token断言失败，无clean计时/接受。12份完整输出重算确认只有第二次teacher偏离源（12tokens、logits max31.125），两个greedy/after及第一次teacher全精确，原43哈希/current不变。尚不宣称唯一cache/pool原因。准备[普通失败反馈加小事实的一轮续行](v6-qwen-joint-feedback-20261029.md)：原5,211,596字节反馈只追加2,251字节现有证据，原字段/历史代码保留，不给手工组/实现/原因；生产core不改，后续接受须独立核查。df约10.75GiB，无raw转存/清理；以下“当前执行”为历史记录。
+
 最新终态（2026-10-28 22:39 UTC）：[约束反馈一轮搜索](v6-qwen-constraint-continuation-20261029.md)selector自主选joint prefill/decode，但新a86694e7完整token关系失败，未进入clean计时，零接受。三角色0修复、实际反馈读取及全部源码/请求/参考已核验。单独native证实上一份f12e2f50执行31GraphLaunch/66495Graph kernels，不改变旧TTFT失败，也不代表新候选路径。按[新联合候选关系诊断](v6-qwen-joint-relation-20261029.md)补greedy/teacher/source完整值，暂不改生产规则/增加Agent上下文；GPU空闲、df10.86GiB，无清理或raw转存。
 
 当前执行（2026-10-28 22:16 UTC／香港10月29日06:16）：[Qwen约束反馈续行](v6-qwen-constraint-continuation-20261029.md)冻结89595894，PID899959。固定候选单次native采集已完成、原始trace待终态审计；普通selection会话真实provider已回复，初始28输入中的原目标、约束失败和历史候选代码SHA已核验。未安装失败候选，当前仍原空bundle基线。单监听PID23140 waiting，df余11.14GiB，无raw转存/清理/生产核心改动；一轮搜索与后续独立接受分开记录。以下状态为历史记录。
