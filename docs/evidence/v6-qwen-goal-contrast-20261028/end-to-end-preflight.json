@@ -1,0 +1,105 @@
+{
+  "request": {
+    "schema_version": "project-request.v1",
+    "source_root": "/root/autodl-tmp/dev/v6-work/autonomous-cohort-20261027/qwen-ttft.intake/source",
+    "entry": "qwen_inference.py",
+    "files": [
+      "qwen_inference.py",
+      "common.py",
+      "workloads.json"
+    ],
+    "goal": "Minimize end_to_end_ms for the same complete interactive Qwen3-4B generation (batch 1, prompt 256 tokens, exactly 32 new greedy tokens), while keeping ttft_ms <= 1.05 times this goal variant's newly measured original baseline TTFT. Keep the complete source workload, BF16/SDPA/noTF32 policies, full logits tolerance, exact tokens, state lifetimes and both completion boundaries. This is an explicit new goal and constraint; the source workload goals remain provenance, not limits on optimization scope.",
+    "objective": {
+      "name": "end_to_end_ms",
+      "unit": "ms",
+      "direction": "minimize",
+      "constraints": [
+        {
+          "metric": "ttft_ms",
+          "op": "le",
+          "baseline_ratio": 1.05
+        }
+      ]
+    },
+    "workload": {
+      "id": "interactive",
+      "batch": 1,
+      "prompt_tokens": 256,
+      "new_tokens": 32,
+      "goals": [
+        {
+          "id": "ttft",
+          "metric": "ttft_ms",
+          "direction": "min"
+        },
+        {
+          "id": "decode",
+          "metric": "decode_tokens_per_second",
+          "direction": "max"
+        }
+      ]
+    },
+    "quality": {
+      "atol": 0.02,
+      "rtol": 0.02,
+      "logits_atol": 0.02,
+      "logits_rtol": 0.02,
+      "require_exact_greedy_tokens": true
+    },
+    "assets": {
+      "assets": "/root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c"
+    },
+    "devices": [
+      "0"
+    ],
+    "distributed_backend": null,
+    "communication": "auto",
+    "required_observations": [],
+    "tools": {
+      "ncu": "/usr/local/cuda/bin/ncu",
+      "nsys": "/root/autodl-tmp/tools/nsys-2025.3.1/opt/nvidia/nsight-systems-cli/2025.3.1/target-linux-x64/nsys"
+    },
+    "profiling": {
+      "agent_plan": true,
+      "feedback_agent_plan": true
+    },
+    "binding_backend": "legacy",
+    "measurement_lifetime": "invocation",
+    "warmup": 2,
+    "repeats": 5,
+    "continuous_steps": 2,
+    "worker_timeout_s": 900.0,
+    "lease_dir": "/root/autodl-tmp/dev/v6-work/device-leases",
+    "notes": [
+      "Command provenance (inputs/intent.json): python qwen_inference.py --assets /root/autodl-tmp/c3-qwen3-4b-operator-goals/assets/Qwen3-4B/1cfa9a7208912126459214e8b04321603b3df60c --output /tmp/original-qwen, run from the repository root; it uses the defaults --workloads workloads.json, --warmup 2, --repeats 5, no --profile.",
+      "workload is the verbatim interactive row from workloads.json; its source-declared TTFT/decode goals remain provenance. This explicit variant minimizes complete end_to_end_ms and adds ttft_ms <= 1.05x the newly measured original baseline. No previous optimized version or historical timing is the constraint anchor.",
+      "Input construction (qwen_inference.py:55-58): chat template applied to workloads.json qwen_inference.prompt with add_generation_prompt=True and enable_thinking=False, encoded without special tokens, then token ids repeated/truncated to exactly prompt_tokens=256 and tiled to batch=1 on cuda. Generation length is fixed at new_tokens=32; EOS early stopping is disabled by the explicit loop.",
+      "Model/precision policy: Qwen3ForCausalLM.from_pretrained(assets, dtype=bfloat16, attn_implementation='sdpa', local_files_only=True).cuda().eval(); common.configure() sets matmul/cudnn TF32 off, float32 matmul precision 'highest', cudnn.benchmark False, seed 20261020, device 0.",
+      "ttft_ms is measured inside infer() (qwen_inference.py:16-24): perf_counter_ns around prefill forward + argmax terminated by torch.cuda.synchronize() ('explicit first-token-ready boundary'); decode is timed separately after that boundary. Per-repeat samples are reduced by median via common.summarize().",
+      "Discrete exact comparison: the full 32-step greedy token sequence must satisfy torch.equal(actual_tokens, tokens) (qwen_inference.py:62); logits are compared with torch.testing.assert_close at source tolerances (atol=rtol=0.02, source keys logits_atol/logits_rtol in workloads.json qwen_inference.correctness) against a teacher-forced reference captured with logits_to_keep=1 per step.",
+      "Reference construction, negative (+1 corruption) control, reference tensor saving, warmup/repeats loops and --profile tracing are the project's benchmark/quality harness, not the work repeated per invocation.",
+      "Single-process, single-GPU task (torch.cuda.set_device(0)); the machine's second RTX 4090 is not used, so device_count=1, no distributed backend, and no communication collector fields are required.",
+      "Model weights stay at the absolute asset path (revision directory 1cfa9a7208912126459214e8b04321603b3df60c, 3 safetensors shards plus tokenizer files; matches deployment.box42.example.json assets.qwen_inference); peak_allocated_bytes and decode metrics are recorded per sample by the source but are not objectives or constraints for this request.",
+      "One measured invocation: One clean infer(model, inputs, 32) call on the 'interactive' workload exactly as timed in qwen_inference.py main(): single forward prefill over the 256-token prompt (batch 1, use_cache=True, logits_to_keep=1), argmax of the last-position logits (greedy first token, explicit cuda-synchronize first-token-ready boundary), then the fixed loop of 31 cached decode steps to 32 new tokens, under torch.inference_mode() with the model already loaded BF16/SDPA on one GPU and inputs already resident on device. Excludes model loading and tokenization, reference construction (capture=True / teacher-forced runs), close_check/negative_check/torch.equal verification, torch.save of reference tensors, warmup, statistical repeats, summarize/report writing, and the optional --profile trace.",
+      "End-to-end objective uses source infer() end_to_end_ms from prefill start through the final synchronization after all 32 new tokens. The TTFT constraint uses the original first-token synchronization boundary, median of five clean samples, against this variant's original controls anchor. Decode throughput and allocation metrics remain diagnostics; quality is unchanged."
+    ]
+  },
+  "changed_fields": [
+    "devices",
+    "goal",
+    "notes",
+    "objective"
+  ],
+  "constraint_fixture": [
+    {
+      "metric": "ttft_ms",
+      "values": [
+        24.610881
+      ],
+      "limit": 25.84142505,
+      "original_reference": 24.610881,
+      "passed": true
+    }
+  ],
+  "scope": "Read-only schema/AST and existing-baseline constraint plumbing check; no new timing or acceptance. Formal new task uses a freshly measured controls anchor."
+}
