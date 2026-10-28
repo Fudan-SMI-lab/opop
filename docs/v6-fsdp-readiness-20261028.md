@@ -25,3 +25,7 @@
 控制器后处理断言失败：同一个 `record_function` 在 profiler 中有 `user_annotation` 和 `gpu_user_annotation` 两种同名区间，原 parser 错误要求只出现一次。原结果、日志、冻结代码及终态 `completed_with_errors` 全保留，后续真实 intake 尚未执行。启动监听前检查已经发现终态，所以未启动第一个监听、也没有提交额外续行。
 
 最小修正只在实验 parser 明确选择 CPU `user_annotation` 完整窗口；不改源代码、production、GPU执行或样本。新目录 `fsdp-readiness-followup-20261028` 从原目录只读解析原六个 trace、核对全部源文件 SHA 后继续真实原入口阶段，不重新跑源性能。复用的 source tensors 仍原地保存，未复制第二套。当前实际 df 可用约 27.96 GiB，后续参考体积继续核查。
+
+[完整源审计](evidence/v6-fsdp-readiness-20261028/source-audit.json)包含所有五样本、两步质量、source observation SHA 与六个 profile 索引。每 rank 每次有 74 个 NCCL kernel，实际名称为 AllGather_RING_LL / ReduceScatter_Sum_f32_RING_LL；sum 约 167.82–178.01 ms，独立 profiler 完整窗口约 184.62–193.93 ms。kernel 等待/同步可能包含在这些区间中，不能据此宣称等量的可消除通信成本。原始[后处理失败](evidence/v6-fsdp-readiness-20261028/initial-completion.json)保留。
+
+后续启动：冻结 `fe3b5cebd77aa3ccba080d2a79d0eb2b312315d3`，04:00:15 UTC、controller PID514609；[launch](evidence/v6-fsdp-readiness-20261028/followup-launch.json)、[protocol](evidence/v6-fsdp-readiness-20261028/followup-protocol.json)。旧源证据重新解析通过，真实 intake 会话 `ses_e7f55659fffek6273dGICeudTy`、初始快照 `generation-6351535b2857` 已建立；此时 evaluator/discovery 尚待完成，不预判质量或泛化成功。唯一普通监听 PID26684，[启动核验](evidence/v6-fsdp-readiness-20261028/wakeup-setup.json)为 waiting、controller 存活。实际 df 可用 30,006,849,536 bytes（约 27.95 GiB），未转存任何 raw 到本地。

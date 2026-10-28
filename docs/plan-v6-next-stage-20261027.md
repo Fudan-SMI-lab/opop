@@ -86,6 +86,8 @@ clean 端点结束后，对 P/T/C 各做单独的 Python runtime profile；对 C
 
 2026-10-28 最新进展：[Qwen decode 同 workload 目标变体及指标接口审计](v6-metric-mapping-decode-20261028.md)完成。第三轮自主候选完整独立 AB/BA 为 45.4228→85.7968 tokens/s（+88.8847%），完整 logits/token 和源参考通过；两轮失败保留。与旧 TTFT 目标的交叉分数仅作跨时期/核心版本诊断。经过实际接口重放与双卡集成，采用默认空的 intake diagnostic_metrics 字段及一段接口说明，27 项相关检查通过；两臂均正确，不宣称新增说明的因果优越性。下一步验证 FSDP2 分片训练源任务就绪性，再从新源入口检查真实 intake/adapter；不将 DDP dispatch 加速或失败 TP 基线包装成通信优化正例。
 
+[FSDP2 完整源就绪性](v6-fsdp-readiness-20261028.md)已通过两步全量数值检查，源 step 为 176.6510 ms；两 rank 各五个 clean 样本、三份独立 profile 保留，实际 all-gather/reduce-scatter 路径成立。后处理因同名 CPU/GPU marker 误判失败，原错误保留，只修 parser 并读取已有 trace，无 GPU 重测。后续冻结 `fe3b5ceb` 的真实原入口 intake/evaluator/discovery 已启动，唯一普通监听运行。本批不搜索候选；下一步需独立审核新 adapter 与完整源一致性，确认后才开展自主搜索。
+
 在相同 workload 上验证 Qwen 的 TTFT/decode 吞吐、ResNet 的延迟/带吞吐约束显存、DDP 的整步/带整步约束通信目标。保存候选并交叉评价；目标改变不强制要求换组，选择是否合理由测量与交叉结果支持。
 
 当前仍缺少有说服力的自主通信优化正例。先判断 B 阶段的结果，再按实际通信瓶颈选一个真实通信敏感项目，兼作未经框架针对性修改的新项目测试。不能为获得正例故意弱化基线、放宽质量或把换 shape 当作新项目。
