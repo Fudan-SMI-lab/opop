@@ -13,3 +13,5 @@
 脚本 `scripts/experiments/v6_fsdp_search_20261028.py`，目录 `/root/autodl-tmp/dev/v6-work/fsdp-search-20261028`。启动前约 16.58 GiB，可用空间按实际容器 df 记录；GPU 串行、只运行这一任务，不开额外 Qwen 或大 trace 批次。原始数据留服务器，不本地转存、不清除冻结证据。共享参考避免新增第二套大文件，后续若空间不足需保留现场并基于真实占用处理。
 
 旧 Qwen/ResNet/DDP/TP 的所有接受、拒绝与全部样本均不改变；不采用旧 allocator 合并或 reviewer 建议。真实 API 用量仅统计，不加开发调用配额。每阶段代码、协议与小摘要推送 GitHub v6；一个普通完成监听在终态提交续行，等待不调用模型，无 Goal 或额外投递测试。
+
+启动：冻结 `aa5d497ec9dd54e5abf0daff1bc287bd14499390`，2026-10-28 04:42:52 UTC、controller PID523981；[launch](evidence/v6-fsdp-search-20261028/launch.json)、[protocol](evidence/v6-fsdp-search-20261028/protocol.json)。实际 df 可用 17,794,297,856 bytes（16.57 GiB）。已核实新分支 adapter SHA 不变、controls_path 与修复 baseline 完全相同，未生成另一套参考。唯一普通完成监听 PID33456、waiting，控制器存活，[启动核验](evidence/v6-fsdp-search-20261028/wakeup-setup.json)保存。当前只确认搜索流程启动，尚无本批性能结果。
