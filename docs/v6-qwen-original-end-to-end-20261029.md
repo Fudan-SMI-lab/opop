@@ -1,5 +1,17 @@
 # Qwen原入口完整生成目标验证
 
+## 续行已启动（2026-10-28 18:01 UTC／香港10月29日02:01）
+
+冻结`a80d8f8b81adb24ea43960b2876531a82dc12335`，控制器PID757316、PPID1、独立session；生产核心仍ed24af7a，OpenCode自动服务健康检查通过。新目录`qwen-end-to-end-original-followup-20261029`先完成外部映射比较，再通过既有API复用原准备，18:01:53 UTC开始此前未执行的搜索。[启动](evidence/v6-qwen-original-followup-20261029/launch.json)、[协议](evidence/v6-qwen-original-followup-20261029/protocol.json)已保存。原错误批次没有重启。
+
+[独立源比较](evidence/v6-qwen-original-followup-20261029/reviewed-source-check.json)由实际CPU worker执行，复核真实CUDA controls保存的两个完整输出：每个4,861,984元素、logits零误差、exact tokens、finite logits通过；token+1和单个超阈logit均被拒绝。比较使用原0.02/0.02，完整tensor无抽样。它没有重新运行GPU，也不独立认证额外观察字段或所有内存所有权。
+
+[复用身份](evidence/v6-qwen-original-followup-20261029/preparation-reuse.json)确认原baseline009b4178、六个文件、adapter498c90f3、request919166b1、contract52c861f1均不变，空bundle、没有初始feedback，controls路径仍是原批次。原current指针不动，不复制大参考，不给候选提供手工诊断。
+
+18:03:34 UTC的[实际活动](evidence/v6-qwen-original-followup-20261029/startup-verification.json)显示真实collection-planner会话`ses_e7c51ef5dffe4vpnT09RUAmASg`已开始，有5条assistant消息，初始快照`generation-a61334228721`。这只是自主搜索已运行的证据，不宣称新候选或独立收益。
+
+唯一普通完成/8GiB磁盘监听PID55228已核验waiting；状态`.scratch/v6-qwen-original-followup-wakeup.json`、同前缀`-wakeup-launch.json`。见[设置](evidence/v6-qwen-original-followup-20261029/wakeup-setup.json)与[核验](evidence/v6-qwen-original-followup-20261029/wakeup-verification.json)。上一批监听已经完成投递、标记handled并写stop文件，不恢复。当前实际df剩16,858,550,272字节（15.70GiB），无需清理；没有本地raw转存或模型等待轮询。
+
 ## 终态与外部审计映射（2026-10-28 17:53 UTC）
 
 原批次以`completed_with_errors`结束：真实intake/evaluator/controls完成，独立源检查返回`observation_schema_requires_manual_audit`，因此search/independent/native均为not_run。不是数值失败，也没有新优化接受。旧监听已实际投递。[终态](evidence/v6-qwen-original-end-to-end-20261029/followup-completed.json)、[原始检查](evidence/v6-qwen-original-end-to-end-20261029/source-check.json)、[完整准备审计](evidence/v6-qwen-original-end-to-end-20261029/preparation-audit.json)保留；下文原运行状态是历史时间点。

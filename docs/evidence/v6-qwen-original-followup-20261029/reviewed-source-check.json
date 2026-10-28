@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "failure": null,
+  "wall_s": 3.707731246948242,
+  "ranks": [
+    {
+      "rank": 0,
+      "pid": 757382,
+      "exit_code": 0,
+      "status": "passed",
+      "binding": {
+        "pid": 757382,
+        "status": "cpu"
+      },
+      "framework_source": {
+        "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+        "files": 163,
+        "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+      },
+      "result": {
+        "valid": true,
+        "mapping": {
+          "tokens": "generated_tokens",
+          "logits": "step_logits"
+        },
+        "adapter_sha256": "498c90f3f6f91b993ac8a586ac3230ffe2e6901752165b26948142d978f7cff7",
+        "source_reference_sha256": "af929f424e8ceb372b06ac171841df496f9a9ef4c26c16dc2f69b4014a2678da",
+        "controls_reference_sha256": "948870860ae9e3a0c0dbb16e529def4c6b163b86f5378dbccb3ca1bef6df1343",
+        "checks": [
+          {
+            "step": 0,
+            "passed": true,
+            "compared_elements": 4861984,
+            "max_abs_error": 0.0,
+            "exact_tokens": true,
+            "finite_logits": true,
+            "additional_observations": [
+              "generated_token_count",
+              "teacher_forced_replay_exact_tokens",
+              "teacher_forced_replay_logits_close",
+              "teacher_forced_replay_logits_max_abs_error"
+            ]
+          },
+          {
+            "step": 1,
+            "passed": true,
+            "compared_elements": 4861984,
+            "max_abs_error": 0.0,
+            "exact_tokens": true,
+            "finite_logits": true,
+            "additional_observations": [
+              "generated_token_count",
+              "teacher_forced_replay_exact_tokens",
+              "teacher_forced_replay_logits_close",
+              "teacher_forced_replay_logits_max_abs_error"
+            ]
+          }
+        ],
+        "negative_checks": {
+          "integer_token_plus_one": {
+            "passed": false,
+            "compared_elements": 32,
+            "max_abs_error": 0.0,
+            "observation_path": "output.tokens",
+            "atol": 0.02,
+            "rtol": 0.02,
+            "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+            "error": "output.tokens: integer/bool tensors must match exactly"
+          },
+          "logit_outside_tolerance": {
+            "passed": false,
+            "compared_elements": 4861984,
+            "max_abs_error": 54.0,
+            "observation_path": "output.logits",
+            "atol": 0.02,
+            "rtol": 0.02,
+            "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+            "error": "Tensor-likes are not close!\n\nMismatched elements: 1 / 4861952 (0.0%)\nGreatest absolute difference: 54.0 at index (0, 0, 0) (up to 0.02 allowed)\nGreatest relative difference: 10.1875 at index (0, 0, 0) (up to 0.02 allowed)"
+          }
+        },
+        "scope": "CPU full comparison of fresh real CUDA controls to independent source tensors; no GPU rerun, sample selection or tolerance change. Additional adapter observations and ownership are separate code review."
+      }
+    }
+  ],
+  "lease_wait_s": 5.107372999191284e-06,
+  "device_selectors": [
+    "cpu"
+  ],
+  "entry_sha256": "8f7d5bb5f22a0234b4977f1497f6b797cebb992b9df2366c4370ca98fecc83c0",
+  "devices": [],
+  "worker_pids_reaped": true
+}
