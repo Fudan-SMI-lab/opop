@@ -1,5 +1,9 @@
 # 第二种任务的诊断作者：FSDP完整质量拒绝
 
+已于2026-10-29 01:11:02 UTC启动，冻结`31049b1a7a8b5951ef29485eaf372a6688e2a0db`，controller933494，真实OpenCode服务健康检查通过。01:12:44核对初始`generation-9204734ad7e7`／session `ses_e7ac9e991ffe8fpV8xyL6ydRap`：7份初始文件与协议逐字一致，六份显式输入44,527 bytes；9条真实assistant消息、15个工具调用，初始访问记录未见后来诊断/接受版本，最终仍需全量审查。13个源/参考文件哈希保持，无GPU worker。见[启动核验](evidence/v6-fsdp-diagnostic-author-20261029/startup-verification.json)、[启动回执](evidence/v6-fsdp-diagnostic-author-20261029/launch.json)。
+
+唯一普通监听PID53880已确认运行，状态waiting；30秒SSH/df检查不调用模型，8GiB提醒。实际df余10,539,532,288B（约9.82GiB）。见[监听回执](evidence/v6-fsdp-diagnostic-author-20261029/wakeup-setup.json)。没有重启已经处理的Qwen作者/验证批次，没有额外投递测试、GPU运行或raw转存；当前尚无新生成物执行结论。
+
 Qwen原样Agent探针已在真实GPU保存缺失连续输出并保留原异常，但它专门围绕推理adapter的_infer/observe设计，尚无跨任务证明。此处用已有FSDP训练失败现场，检验同一作者接口能否根据不同源码选择必要观测点。不是重新优化失败候选，也不自动采纳Qwen诊断代码。
 
 固定输入来自原`fsdp-search-20261028`第二轮第一个参数端点`trial-86e14487d0-param-b3a4c7d3-screen`，参数keep_unsharded_blocks=6，不从三参数中按新结果挑选。两个worker当时正常完成，但result.valid=false：连续第一步全量比较通过，第二步在output.logits首先拒绝，未进入clean计时。这个断言只指出比较遍历首先失败的位置，不直接证明执行中差异最先发生在logits或第二步；原文件/数值/其余参数结果保留。
