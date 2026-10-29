@@ -1,5 +1,22 @@
 # 从原失败现场生成诊断采集脚本
 
+终态审计：角色于2026-10-29 00:47:21 UTC完成。实际7份初始输入与协议逐字相同，六份显式输入54,368 bytes；完整50次工具调用为18 read、1 glob、13 bash、11 write、7 edit，0次框架schema修复。工具路径、命令与输出未见读取后来的诊断、ce85/d5bd或成功实现；文件系统仍非隔离，不能扩大为不可访问证明。32条assistant消息，provider估计费用1.06761073206，仅统计。见[小型审计摘要](evidence/v6-diagnostic-author-20261029/terminal-audit.json)，服务器完整审计SHA `7f0647189d04840e7747a0f11e2880d7511aae2d5625779f32f53fa02c542908`。
+
+最终`diagnostic.py`为35,453 bytes，SHA `16af16d674dc05872e5ff835a5b165c5473819ed9b4e743be12bb2ef64e74110`；plan SHA `12e6a7e991e2f9780cf5cf1dfe855711ad2335a4ebcf827ab18a76a3fc2138dc`。Agent从原adapter/evaluator源码选择包裹run、_infer、observe、phase和binding记录，保留greedy/teacher完整CPU张量与顺序，原评测只调用一次、原异常在保存后重新抛出。它自行读取所提供源/controls参考的字段与形状。代码检查及真实BindingSession.install返回接口匹配，适合进入一次声明清楚的固定GPU观察验证；这还不是诊断已成功或生产采纳。
+
+作者会话CPU检查曾出现event参数`kind`冲突、测试自身缺status键、reference摘要status被字典覆盖。Agent依次修改生成脚本、测试和摘要字典合并顺序，最终mock通过；0 schema修复不代表没有这些开发错误。mock BindingSession直接替换forward，没有真实框架的phase/signature筛选，因此不能证明teacher实际走候选或完整CUDA质量。部分caught traceback/管道返回0，已按内容记录。Agent删除过早期临时mock run目录：完整命令/输出/修改历史和最终18个fixture文件已在服务器归档，不声称早期每个临时产物都仍存在。
+
+仍有明确限制，原样保留并在固定验证中单独审计：
+
+- 事件`kind`被greedy_run/teacher_forced_replay覆盖，infer begin/end需依字段与顺序辨认；没有observe之后的greedy再次快照，不能回答输出是否在observe内改变。
+- 脚本源摘要只比较第一次greedy；controls下teacher仅比较tokens。原始完整张量允许后续独立补核，但不能把摘要等同所有输出源一致性。
+- CPU float32绝对误差摘要不等于原GPU BF16容差断言；没有完整finite检查。原源logits容差仍有效，不能采纳plan将其仅视为advisory的说法。
+- 审核用真实controls在CPU执行既有corrupt/compare，实际只改`generated_tokens`且被拒绝；这不是logits负例。
+- CPU拷贝/digest、binding强引用、异常栈和原入口模块保留、allocator查询会改变同步/分配/生命期。恢复hook并不证明所有对象生命期不变，也没有量化其开销；所有诊断耗时不得进入验收。
+- route标签及其缺失不证明native/fallback路径；物理安装不绕过teacher stride的框架签名筛选。baseline通过也不能排除候选特有的观察效应。plan对生命周期、路径、唯一原因的过度断言不采纳。
+
+原21文件/参考哈希保持；生产core仍ed24af7a。下一步见[原生成脚本固定验证](v6-diagnostic-author-validation-20261029.md)，仅baseline/candidate各一次、不手工改脚本、不重跑搜索。该单案例即使成功也只证明诊断作者可行性的一部分，还需要不同任务验证和适当的接口约束，不能宣布通用无人干预闭环完成。以下为冻结启动记录。
+
 2026-10-29 00:32 UTC已启动，冻结`5a5a9f181f4fb5ed63f2301dddc6727bec9c0a88`，controller PID928001，实际OpenCode健康检查通过。00:34:26核查初始snapshot `generation-6e81a3220da0`（session `ses_e7aedd58bffetSzUIuSb2IzLpd`）：六份显式输入与协议逐字相同，另有worker-environment共7份，真实provider已有10条assistant记录/18工具调用；目前未见后续诊断或成功实现的路径/字段命中，但不能由此替代终态完整访问审核或宣称环境隔离。21个源/参考/manifest哈希保持，无GPU worker。唯一普通监听PID14176正在等待，实际df10,639,929,344B（9.91GiB）。见[启动核查](evidence/v6-diagnostic-author-20261029/startup-verification.json)、[监听回执](evidence/v6-diagnostic-author-20261029/wakeup-setup.json)。尚无生成物执行结论。
 
 Qwen事实辅助候选已经通过独立整版验收45.17%，但关键观测仍由开发者手工设计。这是当前真实缺口：已有candidate_diagnostics只运行run，不运行完整observe/compare；错误摘要不能告诉下一角色哪一次连续调用、哪一边输出首先不符合原关系。直接把本案例的诊断脚本硬编码到生产不能保证泛化。
