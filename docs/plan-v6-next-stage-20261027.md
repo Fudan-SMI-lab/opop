@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前执行（2026-10-29 00:19 UTC／香港08:19）：[Qwen固定接受整版独立验证](v6-qwen-routed-independent-20261029.md)冻结8e90cf1a、controller PID925432。CPU全量源检查/负例通过，独立AB/BA已开始，两个真实worker启动记录和共享source/controls/pointer核验一致。唯一普通监听PID52480，df约10.09GiB；无新Agent/搜索/重复候选native，生产核心保持，等待不调用模型。搜索43.99%仍单独保留，不能提前宣布独立通过。
+
 最新终态（2026-10-29 00:02 UTC）：[修正事实接口的一轮试验](v6-qwen-joint-feedback-routed-20261029.md)新joint候选搜索接受：696.0155735→389.841659ms（43.99%），TTFT21.58/21.59低于原25.2536046；25样本10zero-error检查。真实selector/candidate均读事实，candidate另有selection/resources输入变化，不是完整单变量A/B。当前32GraphLaunch/68712Graph kernels原生已核验，一bundle覆盖两组、无接受后重发现。生产core保持；独立验收待按[新协议](v6-qwen-routed-independent-20261029.md)执行，不把开发事实辅助续行称原入口完全无人干预。GPU结束后冷压缩旧失败worker JSON净回收1.45GiB，余10.13GiB，所有证据可恢复、无本地raw转存。以下当前执行均为历史记录。
 
 当前执行（2026-10-28 23:29 UTC／香港10月29日07:29）：[修正事实接口的一轮试验](v6-qwen-joint-feedback-routed-20261029.md)已冻结65402c5a、PID916254。实际初始selector29份文件仅previous-feedback改变，prompt/model/tool/core相同，内部仅supplemental_evidence新增相同事实；真实工具已读到该字段。该记录限初始输入/读取，不预判最终生成/质量/接受。单普通监听PID49084等待完成/8GiB事件，df余10.13GiB；无重复GPU发现/参考复制、raw转存或生产改动。上一批事实未送达及ce85质量失败保持冻结。
