@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态（2026-10-29 00:21 UTC）：[Qwen事实辅助候选独立整版验证](v6-qwen-routed-independent-20261029.md)通过，完整生成710.8134195→389.7449015ms（45.17%），TTFT21.591340/21.595316低于原25.2536046；20原样本/8zero-error检查、源全量/负例、实际原生路径均核查。仍属手工外部映射和事实辅助续行，不追认原无人干预搜索成功；搜索43.99%单独保留。下一步优先补人工诊断缺口：按[诊断作者实验](v6-diagnostic-author-20261029.md)让一个真实Agent从原a866失败/代码生成观测脚本，不提供后来的事实/成功实现，先审阅再执行；不改生产或加入失败类型路由。GPU空闲，df9.92GiB，无raw转存或本轮清理。
+
 当前执行（2026-10-29 00:19 UTC／香港08:19）：[Qwen固定接受整版独立验证](v6-qwen-routed-independent-20261029.md)冻结8e90cf1a、controller PID925432。CPU全量源检查/负例通过，独立AB/BA已开始，两个真实worker启动记录和共享source/controls/pointer核验一致。唯一普通监听PID52480，df约10.09GiB；无新Agent/搜索/重复候选native，生产核心保持，等待不调用模型。搜索43.99%仍单独保留，不能提前宣布独立通过。
 
 最新终态（2026-10-29 00:02 UTC）：[修正事实接口的一轮试验](v6-qwen-joint-feedback-routed-20261029.md)新joint候选搜索接受：696.0155735→389.841659ms（43.99%），TTFT21.58/21.59低于原25.2536046；25样本10zero-error检查。真实selector/candidate均读事实，candidate另有selection/resources输入变化，不是完整单变量A/B。当前32GraphLaunch/68712Graph kernels原生已核验，一bundle覆盖两组、无接受后重发现。生产core保持；独立验收待按[新协议](v6-qwen-routed-independent-20261029.md)执行，不把开发事实辅助续行称原入口完全无人干预。GPU结束后冷压缩旧失败worker JSON净回收1.45GiB，余10.13GiB，所有证据可恢复、无本地raw转存。以下当前执行均为历史记录。

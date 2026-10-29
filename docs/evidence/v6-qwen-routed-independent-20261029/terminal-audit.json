@@ -1,0 +1,952 @@
+{
+  "at": "2026-10-29T00:29:22.242740+00:00",
+  "finished_at": "2026-10-29T00:21:30.150714+00:00",
+  "core": {
+    "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+    "files": 163,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "terminal_sha256": "fadaf2e5561d2771a96c8bd0ccea2ae9900cf379632a42f28b5f052073ca180e",
+  "source_check": {
+    "valid": true,
+    "mapping": {
+      "tokens": "generated_tokens",
+      "logits": "step_logits"
+    },
+    "adapter_sha256": "498c90f3f6f91b993ac8a586ac3230ffe2e6901752165b26948142d978f7cff7",
+    "source_reference_sha256": "af929f424e8ceb372b06ac171841df496f9a9ef4c26c16dc2f69b4014a2678da",
+    "controls_reference_sha256": "948870860ae9e3a0c0dbb16e529def4c6b163b86f5378dbccb3ca1bef6df1343",
+    "checks": [
+      {
+        "step": 0,
+        "passed": true,
+        "compared_elements": 4861984,
+        "max_abs_error": 0.0,
+        "exact_tokens": true,
+        "finite_logits": true,
+        "additional_observations": [
+          "generated_token_count",
+          "teacher_forced_replay_exact_tokens",
+          "teacher_forced_replay_logits_close",
+          "teacher_forced_replay_logits_max_abs_error"
+        ]
+      },
+      {
+        "step": 1,
+        "passed": true,
+        "compared_elements": 4861984,
+        "max_abs_error": 0.0,
+        "exact_tokens": true,
+        "finite_logits": true,
+        "additional_observations": [
+          "generated_token_count",
+          "teacher_forced_replay_exact_tokens",
+          "teacher_forced_replay_logits_close",
+          "teacher_forced_replay_logits_max_abs_error"
+        ]
+      }
+    ],
+    "negative_checks": {
+      "integer_token_plus_one": {
+        "passed": false,
+        "compared_elements": 32,
+        "max_abs_error": 0.0,
+        "observation_path": "output.tokens",
+        "atol": 0.02,
+        "rtol": 0.02,
+        "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+        "error": "output.tokens: integer/bool tensors must match exactly"
+      },
+      "logit_outside_tolerance": {
+        "passed": false,
+        "compared_elements": 4861984,
+        "max_abs_error": 54.0,
+        "observation_path": "output.logits",
+        "atol": 0.02,
+        "rtol": 0.02,
+        "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+        "error": "Tensor-likes are not close!\n\nMismatched elements: 1 / 4861952 (0.0%)\nGreatest absolute difference: 54.0 at index (0, 0, 0) (up to 0.02 allowed)\nGreatest relative difference: 10.1875 at index (0, 0, 0) (up to 0.02 allowed)"
+      }
+    },
+    "scope": "CPU full comparison of fresh real CUDA controls to independent source tensors; no GPU rerun, sample selection or tolerance change. Additional adapter observations and ownership are separate code review."
+  },
+  "source_check_sha256": "39dd43c6c3855e240f3fdb0a75e30fd0529c7c0b6b741ceece1bdd8de1020519",
+  "source_reference_scope": "Unchanged real CUDA controls compared by reviewed manual external mapping; candidate full comparisons to those controls all zero. Arbitrary extra owners not certified.",
+  "frozen_files_verified": 45,
+  "baseline_source_files": {
+    "README.md": "97dbce99c0065e87f4accf1bbe6d52aa4438a289d7eaec1c85a9c6b1cb25f68d",
+    "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+    "opop_adapter.py": "498c90f3f6f91b993ac8a586ac3230ffe2e6901752165b26948142d978f7cff7",
+    "opop_evaluate.py": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+    "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+    "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+  },
+  "trial": {
+    "path": "/root/autodl-tmp/dev/v6-work/qwen-routed-independent-20261029/qwen-independent/version-trials/version-d9eef5425fc1/result.json",
+    "sha256": "0fff78a1af4e9168db1c5d834977ce87f83f8b1f64e85b4704931dff3de74283",
+    "id": "version-d9eef5425fc1",
+    "decision": {
+      "state": "evaluated",
+      "kind": "complete_version",
+      "revision": "b3d1a4fc802e38e2a09dbe61eb2d5ba254b9eef7494815a5cfc5a186005bb9df",
+      "parent": "009b4178a52cac5cd898cebd04509e2e05607bdc027f985b6ae14d3e3321a7b7",
+      "accepted": true,
+      "reasons": [],
+      "report_ref": "sha256:f0db19c1e97c62beb059ff659e68247cdd82def2704278eb29ef6a363a97ef4a"
+    },
+    "publication": "exploration",
+    "source_revision": "a3766b5026d1e6eb137962285bd5300e2e3f579ea09069f5ad18da43cb4771de",
+    "revision": "b3d1a4fc802e38e2a09dbe61eb2d5ba254b9eef7494815a5cfc5a186005bb9df",
+    "bundles": [
+      "trial-9523ac3f5f-param-ae0ac4b9"
+    ],
+    "quality": "pass",
+    "coverage_errors": [],
+    "measurement": {
+      "valid": true,
+      "objective": 389.7449015,
+      "reference": 710.8134195,
+      "parent_values": [
+        686.777612,
+        734.849227
+      ],
+      "candidate_values": [
+        389.603713,
+        389.88609
+      ],
+      "paired_gains": [
+        297.17389899999995,
+        344.963137
+      ],
+      "noise_bounds": [
+        2.5346819999999752,
+        6.982087999999976
+      ],
+      "constraints": [
+        {
+          "metric": "ttft_ms",
+          "values": [
+            21.59134,
+            21.595316
+          ],
+          "limit": 25.2536046,
+          "original_reference": 24.051052,
+          "passed": true
+        }
+      ],
+      "reasons": [],
+      "aggregation_order": "samples_then_ranks",
+      "framework_source": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+      "protocol": "AB then BA in fresh workers; median within each endpoint; every pair must exceed its MAD-derived noise bound"
+    },
+    "pairs": [
+      {
+        "parent": {
+          "pid": 925632,
+          "core": {
+            "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+            "files": 163,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 4861988,
+              "max_abs_error": 0.0
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 4861988,
+              "max_abs_error": 0.0
+            }
+          ],
+          "samples": [
+            {
+              "ttft_ms": 23.866007,
+              "decode_ms": 661.713022,
+              "end_to_end_ms": 685.579029,
+              "decode_tokens_per_second": 46.84810328547532,
+              "generated_tokens_per_second": 46.67587345353296,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 46.660207027605765,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8168429568.0,
+              "framework.elapsed_ms": 685.809216,
+              "framework.peak_allocated_bytes": 8168429568.0,
+              "framework.peak_reserved_bytes": 8281653248.0,
+              "framework.allocated_bytes": 8110232064.0,
+              "framework.reserved_bytes": 8281653248.0,
+              "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+              "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+            },
+            {
+              "ttft_ms": 26.071545,
+              "decode_ms": 705.902195,
+              "end_to_end_ms": 731.97374,
+              "decode_tokens_per_second": 43.915432222164995,
+              "generated_tokens_per_second": 43.71741532694875,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 43.7064234836165,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8168429568.0,
+              "framework.elapsed_ms": 732.157826,
+              "framework.peak_allocated_bytes": 8168429568.0,
+              "framework.peak_reserved_bytes": 8281653248.0,
+              "framework.allocated_bytes": 8110232064.0,
+              "framework.reserved_bytes": 8281653248.0,
+              "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+              "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+            },
+            {
+              "ttft_ms": 23.995087,
+              "decode_ms": 662.782525,
+              "end_to_end_ms": 686.777612,
+              "decode_tokens_per_second": 46.77250656239013,
+              "generated_tokens_per_second": 46.594413447478544,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 46.58171083569478,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8168429568.0,
+              "framework.elapsed_ms": 686.964893,
+              "framework.peak_allocated_bytes": 8168429568.0,
+              "framework.peak_reserved_bytes": 8281653248.0,
+              "framework.allocated_bytes": 8110232064.0,
+              "framework.reserved_bytes": 8281653248.0,
+              "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+              "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+            },
+            {
+              "ttft_ms": 23.919187,
+              "decode_ms": 661.591084,
+              "end_to_end_ms": 685.510271,
+              "decode_tokens_per_second": 46.85673786982292,
+              "generated_tokens_per_second": 46.6805551335058,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 46.66873447078719,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8168429568.0,
+              "framework.elapsed_ms": 685.683903,
+              "framework.peak_allocated_bytes": 8168429568.0,
+              "framework.peak_reserved_bytes": 8281653248.0,
+              "framework.allocated_bytes": 8110232064.0,
+              "framework.reserved_bytes": 8281653248.0,
+              "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+              "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+            },
+            {
+              "ttft_ms": 23.960034,
+              "decode_ms": 672.819897,
+              "end_to_end_ms": 696.779931,
+              "decode_tokens_per_second": 46.074737293329484,
+              "generated_tokens_per_second": 45.92554776093286,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 45.91355579369387,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8168429568.0,
+              "framework.elapsed_ms": 696.96192,
+              "framework.peak_allocated_bytes": 8168429568.0,
+              "framework.peak_reserved_bytes": 8281653248.0,
+              "framework.allocated_bytes": 8110232064.0,
+              "framework.reserved_bytes": 8281653248.0,
+              "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+              "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+            }
+          ],
+          "metrics": {
+            "ttft_ms": 23.960034,
+            "decode_ms": 662.782525,
+            "end_to_end_ms": 686.777612,
+            "decode_tokens_per_second": 46.77250656239013,
+            "generated_tokens_per_second": 46.594413447478544,
+            "generated_tokens": 32.0,
+            "decode_tokens": 31.0,
+            "generated_tokens_per_second_from_elapsed": 46.58171083569478,
+            "parameter_count": 4022468096.0,
+            "peak_allocated_bytes": 8168429568.0,
+            "framework.elapsed_ms": 686.964893,
+            "framework.peak_allocated_bytes": 8168429568.0,
+            "framework.peak_reserved_bytes": 8281653248.0,
+            "framework.allocated_bytes": 8110232064.0,
+            "framework.reserved_bytes": 8281653248.0,
+            "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+            "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+          },
+          "coverage": {},
+          "setup": [],
+          "bundle_hashes": {}
+        },
+        "candidate": {
+          "pid": 925868,
+          "core": {
+            "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+            "files": 163,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 4861988,
+              "max_abs_error": 0.0
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 4861988,
+              "max_abs_error": 0.0
+            }
+          ],
+          "samples": [
+            {
+              "ttft_ms": 21.479581,
+              "decode_ms": 367.699159,
+              "end_to_end_ms": 389.17874,
+              "decode_tokens_per_second": 84.3080524967967,
+              "generated_tokens_per_second": 82.22442983396267,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 82.17939002738103,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8171462656.0,
+              "framework.elapsed_ms": 389.392036,
+              "framework.peak_allocated_bytes": 8171462656.0,
+              "framework.peak_reserved_bytes": 8598323200.0,
+              "framework.allocated_bytes": 8170839040.0,
+              "framework.reserved_bytes": 8598323200.0,
+              "framework.lifecycle_peak_allocated_bytes": 8322147840.0,
+              "framework.lifecycle_peak_reserved_bytes": 8598323200.0
+            },
+            {
+              "ttft_ms": 21.522268,
+              "decode_ms": 367.995036,
+              "end_to_end_ms": 389.517304,
+              "decode_tokens_per_second": 84.24026676272884,
+              "generated_tokens_per_second": 82.15296129693894,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 82.10933103241776,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8171462656.0,
+              "framework.elapsed_ms": 389.724281,
+              "framework.peak_allocated_bytes": 8171462656.0,
+              "framework.peak_reserved_bytes": 8598323200.0,
+              "framework.allocated_bytes": 8170839040.0,
+              "framework.reserved_bytes": 8598323200.0,
+              "framework.lifecycle_peak_allocated_bytes": 8322147840.0,
+              "framework.lifecycle_peak_reserved_bytes": 8598323200.0
+            },
+            {
+              "ttft_ms": 21.59134,
+              "decode_ms": 368.012373,
+              "end_to_end_ms": 389.603713,
+              "decode_tokens_per_second": 84.23629821815801,
+              "generated_tokens_per_second": 82.13474084627114,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 82.08412622537813,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8171462656.0,
+              "framework.elapsed_ms": 389.84395,
+              "framework.peak_allocated_bytes": 8171462656.0,
+              "framework.peak_reserved_bytes": 8598323200.0,
+              "framework.allocated_bytes": 8170839040.0,
+              "framework.reserved_bytes": 8598323200.0,
+              "framework.lifecycle_peak_allocated_bytes": 8322147840.0,
+              "framework.lifecycle_peak_reserved_bytes": 8598323200.0
+            },
+            {
+              "ttft_ms": 21.643298,
+              "decode_ms": 368.213338,
+              "end_to_end_ms": 389.856636,
+              "decode_tokens_per_second": 84.19032338258208,
+              "generated_tokens_per_second": 82.08145519421144,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 82.03302108010746,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8171462656.0,
+              "framework.elapsed_ms": 390.086816,
+              "framework.peak_allocated_bytes": 8171462656.0,
+              "framework.peak_reserved_bytes": 8598323200.0,
+              "framework.allocated_bytes": 8170839040.0,
+              "framework.reserved_bytes": 8598323200.0,
+              "framework.lifecycle_peak_allocated_bytes": 8322147840.0,
+              "framework.lifecycle_peak_reserved_bytes": 8598323200.0
+            },
+            {
+              "ttft_ms": 21.617072,
+              "decode_ms": 368.199751,
+              "end_to_end_ms": 389.816823,
+              "decode_tokens_per_second": 84.19343010365046,
+              "generated_tokens_per_second": 82.0898383854511,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 82.04030211382273,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8171462656.0,
+              "framework.elapsed_ms": 390.052196,
+              "framework.peak_allocated_bytes": 8171462656.0,
+              "framework.peak_reserved_bytes": 8598323200.0,
+              "framework.allocated_bytes": 8170839040.0,
+              "framework.reserved_bytes": 8598323200.0,
+              "framework.lifecycle_peak_allocated_bytes": 8322147840.0,
+              "framework.lifecycle_peak_reserved_bytes": 8598323200.0
+            }
+          ],
+          "metrics": {
+            "ttft_ms": 21.59134,
+            "decode_ms": 368.012373,
+            "end_to_end_ms": 389.603713,
+            "decode_tokens_per_second": 84.23629821815801,
+            "generated_tokens_per_second": 82.13474084627114,
+            "generated_tokens": 32.0,
+            "decode_tokens": 31.0,
+            "generated_tokens_per_second_from_elapsed": 82.08412622537813,
+            "parameter_count": 4022468096.0,
+            "peak_allocated_bytes": 8171462656.0,
+            "framework.elapsed_ms": 389.84395,
+            "framework.peak_allocated_bytes": 8171462656.0,
+            "framework.peak_reserved_bytes": 8598323200.0,
+            "framework.allocated_bytes": 8170839040.0,
+            "framework.reserved_bytes": 8598323200.0,
+            "framework.lifecycle_peak_allocated_bytes": 8322147840.0,
+            "framework.lifecycle_peak_reserved_bytes": 8598323200.0
+          },
+          "coverage": {
+            "trial-9523ac3f5f-param-ae0ac4b9": {
+              "counts": {
+                "900c23e99c808d2c9bda215a": 2,
+                "323bcbe006b343648b346af9": 62
+              },
+              "fallbacks": {},
+              "required": [
+                "900c23e99c808d2c9bda215a",
+                "323bcbe006b343648b346af9"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [
+                {
+                  "call": "323bcbe006b343648b346af9",
+                  "route": "decode_graph_replay",
+                  "count": 62
+                },
+                {
+                  "call": "900c23e99c808d2c9bda215a",
+                  "route": "prefill_graph_replay",
+                  "count": 2
+                }
+              ],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "setup": [
+            {
+              "bundle": "trial-9523ac3f5f-param-ae0ac4b9",
+              "binding": {
+                "requested": "legacy",
+                "effective": "direct",
+                "reason": "no functional replacements"
+              },
+              "elapsed_ms": 8014.499767,
+              "allocated_bytes": 8170838528,
+              "reserved_bytes": 8535408640,
+              "peak_allocated_bytes": 8322147840,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            }
+          ],
+          "bundle_hashes": {
+            "trial-9523ac3f5f-param-ae0ac4b9": "171ce298ec83aa90525438e8c46fa43fdc47459394dbe0ca3ca55234e751bf5b"
+          }
+        }
+      },
+      {
+        "candidate": {
+          "pid": 926171,
+          "core": {
+            "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+            "files": 163,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 4861988,
+              "max_abs_error": 0.0
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 4861988,
+              "max_abs_error": 0.0
+            }
+          ],
+          "samples": [
+            {
+              "ttft_ms": 21.542549,
+              "decode_ms": 368.007427,
+              "end_to_end_ms": 389.549976,
+              "decode_tokens_per_second": 84.23743034946955,
+              "generated_tokens_per_second": 82.14607103454166,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 82.11203569377348,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8171462656.0,
+              "framework.elapsed_ms": 389.711444,
+              "framework.peak_allocated_bytes": 8171462656.0,
+              "framework.peak_reserved_bytes": 8598323200.0,
+              "framework.allocated_bytes": 8170839040.0,
+              "framework.reserved_bytes": 8598323200.0,
+              "framework.lifecycle_peak_allocated_bytes": 8322147840.0,
+              "framework.lifecycle_peak_reserved_bytes": 8598323200.0
+            },
+            {
+              "ttft_ms": 21.601217,
+              "decode_ms": 368.417682,
+              "end_to_end_ms": 390.018899,
+              "decode_tokens_per_second": 84.14362696087969,
+              "generated_tokens_per_second": 82.04730612297841,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 82.00596639533882,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8171462656.0,
+              "framework.elapsed_ms": 390.21551,
+              "framework.peak_allocated_bytes": 8171462656.0,
+              "framework.peak_reserved_bytes": 8598323200.0,
+              "framework.allocated_bytes": 8170839040.0,
+              "framework.reserved_bytes": 8598323200.0,
+              "framework.lifecycle_peak_allocated_bytes": 8322147840.0,
+              "framework.lifecycle_peak_reserved_bytes": 8598323200.0
+            },
+            {
+              "ttft_ms": 21.548533,
+              "decode_ms": 368.264195,
+              "end_to_end_ms": 389.812728,
+              "decode_tokens_per_second": 84.17869676415324,
+              "generated_tokens_per_second": 82.0907007428449,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 82.04825846776744,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8171462656.0,
+              "framework.elapsed_ms": 390.014372,
+              "framework.peak_allocated_bytes": 8171462656.0,
+              "framework.peak_reserved_bytes": 8598323200.0,
+              "framework.allocated_bytes": 8170839040.0,
+              "framework.reserved_bytes": 8598323200.0,
+              "framework.lifecycle_peak_allocated_bytes": 8322147840.0,
+              "framework.lifecycle_peak_reserved_bytes": 8598323200.0
+            },
+            {
+              "ttft_ms": 21.60496,
+              "decode_ms": 368.28113,
+              "end_to_end_ms": 389.88609,
+              "decode_tokens_per_second": 84.17482589998569,
+              "generated_tokens_per_second": 82.07525433903015,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 82.03979753141992,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8171462656.0,
+              "framework.elapsed_ms": 390.054595,
+              "framework.peak_allocated_bytes": 8171462656.0,
+              "framework.peak_reserved_bytes": 8598323200.0,
+              "framework.allocated_bytes": 8170839040.0,
+              "framework.reserved_bytes": 8598323200.0,
+              "framework.lifecycle_peak_allocated_bytes": 8322147840.0,
+              "framework.lifecycle_peak_reserved_bytes": 8598323200.0
+            },
+            {
+              "ttft_ms": 21.595316,
+              "decode_ms": 368.43105,
+              "end_to_end_ms": 390.026366,
+              "decode_tokens_per_second": 84.14057392828319,
+              "generated_tokens_per_second": 82.04573533882579,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 81.98632197594578,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8171462656.0,
+              "framework.elapsed_ms": 390.309008,
+              "framework.peak_allocated_bytes": 8171462656.0,
+              "framework.peak_reserved_bytes": 8598323200.0,
+              "framework.allocated_bytes": 8170839040.0,
+              "framework.reserved_bytes": 8598323200.0,
+              "framework.lifecycle_peak_allocated_bytes": 8322147840.0,
+              "framework.lifecycle_peak_reserved_bytes": 8598323200.0
+            }
+          ],
+          "metrics": {
+            "ttft_ms": 21.595316,
+            "decode_ms": 368.28113,
+            "end_to_end_ms": 389.88609,
+            "decode_tokens_per_second": 84.17482589998569,
+            "generated_tokens_per_second": 82.07525433903015,
+            "generated_tokens": 32.0,
+            "decode_tokens": 31.0,
+            "generated_tokens_per_second_from_elapsed": 82.03979753141992,
+            "parameter_count": 4022468096.0,
+            "peak_allocated_bytes": 8171462656.0,
+            "framework.elapsed_ms": 390.054595,
+            "framework.peak_allocated_bytes": 8171462656.0,
+            "framework.peak_reserved_bytes": 8598323200.0,
+            "framework.allocated_bytes": 8170839040.0,
+            "framework.reserved_bytes": 8598323200.0,
+            "framework.lifecycle_peak_allocated_bytes": 8322147840.0,
+            "framework.lifecycle_peak_reserved_bytes": 8598323200.0
+          },
+          "coverage": {
+            "trial-9523ac3f5f-param-ae0ac4b9": {
+              "counts": {
+                "900c23e99c808d2c9bda215a": 2,
+                "323bcbe006b343648b346af9": 62
+              },
+              "fallbacks": {},
+              "required": [
+                "900c23e99c808d2c9bda215a",
+                "323bcbe006b343648b346af9"
+              ],
+              "reference_invocations": {},
+              "candidate_declared_routes": [
+                {
+                  "call": "323bcbe006b343648b346af9",
+                  "route": "decode_graph_replay",
+                  "count": 62
+                },
+                {
+                  "call": "900c23e99c808d2c9bda215a",
+                  "route": "prefill_graph_replay",
+                  "count": 2
+                }
+              ],
+              "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+            }
+          },
+          "setup": [
+            {
+              "bundle": "trial-9523ac3f5f-param-ae0ac4b9",
+              "binding": {
+                "requested": "legacy",
+                "effective": "direct",
+                "reason": "no functional replacements"
+              },
+              "elapsed_ms": 7942.257512,
+              "allocated_bytes": 8170838528,
+              "reserved_bytes": 8535408640,
+              "peak_allocated_bytes": 8322147840,
+              "scope": "installation after model prepare; separate from the declared warm-model score"
+            }
+          ],
+          "bundle_hashes": {
+            "trial-9523ac3f5f-param-ae0ac4b9": "171ce298ec83aa90525438e8c46fa43fdc47459394dbe0ca3ca55234e751bf5b"
+          }
+        },
+        "parent": {
+          "pid": 926408,
+          "core": {
+            "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+            "files": 163,
+            "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+          },
+          "checks": [
+            {
+              "continuous_step": 0,
+              "passed": true,
+              "compared_elements": 4861988,
+              "max_abs_error": 0.0
+            },
+            {
+              "continuous_step": 1,
+              "passed": true,
+              "compared_elements": 4861988,
+              "max_abs_error": 0.0
+            }
+          ],
+          "samples": [
+            {
+              "ttft_ms": 25.607121,
+              "decode_ms": 705.183117,
+              "end_to_end_ms": 730.790238,
+              "decode_tokens_per_second": 43.96021296125273,
+              "generated_tokens_per_second": 43.78821491591955,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 43.77423931814925,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8168429568.0,
+              "framework.elapsed_ms": 731.023554,
+              "framework.peak_allocated_bytes": 8168429568.0,
+              "framework.peak_reserved_bytes": 8281653248.0,
+              "framework.allocated_bytes": 8110232064.0,
+              "framework.reserved_bytes": 8281653248.0,
+              "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+              "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+            },
+            {
+              "ttft_ms": 27.627055,
+              "decode_ms": 693.246933,
+              "end_to_end_ms": 720.873988,
+              "decode_tokens_per_second": 44.717110923013635,
+              "generated_tokens_per_second": 44.39055997675977,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 44.37278923064196,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8168429568.0,
+              "framework.elapsed_ms": 721.162689,
+              "framework.peak_allocated_bytes": 8168429568.0,
+              "framework.peak_reserved_bytes": 8281653248.0,
+              "framework.allocated_bytes": 8110232064.0,
+              "framework.reserved_bytes": 8281653248.0,
+              "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+              "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+            },
+            {
+              "ttft_ms": 24.770228,
+              "decode_ms": 710.078999,
+              "end_to_end_ms": 734.849227,
+              "decode_tokens_per_second": 43.657114269901115,
+              "generated_tokens_per_second": 43.54634777345966,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 43.534904393935186,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8168429568.0,
+              "framework.elapsed_ms": 735.042386,
+              "framework.peak_allocated_bytes": 8168429568.0,
+              "framework.peak_reserved_bytes": 8281653248.0,
+              "framework.allocated_bytes": 8110232064.0,
+              "framework.reserved_bytes": 8281653248.0,
+              "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+              "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+            },
+            {
+              "ttft_ms": 25.948418,
+              "decode_ms": 712.391853,
+              "end_to_end_ms": 738.340271,
+              "decode_tokens_per_second": 43.5153769227622,
+              "generated_tokens_per_second": 43.34045054410963,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 43.327814980957875,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8168429568.0,
+              "framework.elapsed_ms": 738.555591,
+              "framework.peak_allocated_bytes": 8168429568.0,
+              "framework.peak_reserved_bytes": 8281653248.0,
+              "framework.allocated_bytes": 8110232064.0,
+              "framework.reserved_bytes": 8281653248.0,
+              "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+              "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+            },
+            {
+              "ttft_ms": 24.942266,
+              "decode_ms": 710.722158,
+              "end_to_end_ms": 735.664424,
+              "decode_tokens_per_second": 43.61760731821731,
+              "generated_tokens_per_second": 43.49809363623651,
+              "generated_tokens": 32.0,
+              "decode_tokens": 31.0,
+              "generated_tokens_per_second_from_elapsed": 43.48409778254936,
+              "parameter_count": 4022468096.0,
+              "peak_allocated_bytes": 8168429568.0,
+              "framework.elapsed_ms": 735.901206,
+              "framework.peak_allocated_bytes": 8168429568.0,
+              "framework.peak_reserved_bytes": 8281653248.0,
+              "framework.allocated_bytes": 8110232064.0,
+              "framework.reserved_bytes": 8281653248.0,
+              "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+              "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+            }
+          ],
+          "metrics": {
+            "ttft_ms": 25.607121,
+            "decode_ms": 710.078999,
+            "end_to_end_ms": 734.849227,
+            "decode_tokens_per_second": 43.657114269901115,
+            "generated_tokens_per_second": 43.54634777345966,
+            "generated_tokens": 32.0,
+            "decode_tokens": 31.0,
+            "generated_tokens_per_second_from_elapsed": 43.534904393935186,
+            "parameter_count": 4022468096.0,
+            "peak_allocated_bytes": 8168429568.0,
+            "framework.elapsed_ms": 735.042386,
+            "framework.peak_allocated_bytes": 8168429568.0,
+            "framework.peak_reserved_bytes": 8281653248.0,
+            "framework.allocated_bytes": 8110232064.0,
+            "framework.reserved_bytes": 8281653248.0,
+            "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+            "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+          },
+          "coverage": {},
+          "setup": [],
+          "bundle_hashes": {}
+        }
+      }
+    ],
+    "gain_percent": 45.16916946022851
+  },
+  "native": {
+    "baseline": {
+      "sqlite": "/root/autodl-tmp/dev/v6-work/qwen-routed-independent-20261029/qwen-independent/jobs/nsys-a568ce5ca7/run/nsys-rank-0.sqlite",
+      "sha256": "c5f28a28b7ab775586b7c453a1ab3a70afceec5863736611b0a59f120b9a36f7",
+      "kernel_count": 66441,
+      "graph_kernel_count": 0,
+      "graph_runtime_calls": [],
+      "graph_nodes_per_correlation": {},
+      "flash_graph": 0,
+      "flash_outside_graph": 2304
+    },
+    "candidate_reused": {
+      "sqlite": "/root/autodl-tmp/dev/v6-work/qwen-joint-feedback-routed-20261029/qwen-continuation/jobs/nsys-b26eadbf7d/run/nsys-rank-0.sqlite",
+      "sha256": "85ffae22bf3392600dbe5b7c55e99eff49a69f0004fea0160185f15a7962f9f4",
+      "kernel_count": 68745,
+      "graph_kernel_count": 68712,
+      "graph_runtime_calls": [
+        [
+          "cudaGraphLaunch_v10000",
+          32
+        ]
+      ],
+      "graph_nodes_per_correlation": {
+        "16": 2217,
+        "281": 2145,
+        "542": 2145,
+        "803": 2145,
+        "1064": 2145,
+        "1325": 2145,
+        "1586": 2145,
+        "1847": 2145,
+        "2108": 2145,
+        "2369": 2145,
+        "2630": 2145,
+        "2891": 2145,
+        "3152": 2145,
+        "3413": 2145,
+        "3674": 2145,
+        "3935": 2145,
+        "4196": 2145,
+        "4457": 2145,
+        "4718": 2145,
+        "4979": 2145,
+        "5240": 2145,
+        "5501": 2145,
+        "5762": 2145,
+        "6023": 2145,
+        "6284": 2145,
+        "6545": 2145,
+        "6806": 2145,
+        "7067": 2145,
+        "7328": 2145,
+        "7589": 2145,
+        "7850": 2145,
+        "8111": 2145
+      },
+      "flash_graph": 2304,
+      "flash_outside_graph": 0
+    }
+  },
+  "jobs": [
+    {
+      "path": "/root/autodl-tmp/dev/v6-work/qwen-routed-independent-20261029/qwen-independent/jobs/nsys-a568ce5ca7/run/rank-0-started.json",
+      "request_sha256": "001f876230494db6393baab435a920b7b0785e128628bb347f518f0944c9aea1",
+      "revision": "009b4178a52cac5cd898cebd04509e2e05607bdc027f985b6ae14d3e3321a7b7",
+      "action": "nsys_profile",
+      "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+      "source_files": {
+        "README.md": "97dbce99c0065e87f4accf1bbe6d52aa4438a289d7eaec1c85a9c6b1cb25f68d",
+        "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+        "opop_adapter.py": "498c90f3f6f91b993ac8a586ac3230ffe2e6901752165b26948142d978f7cff7",
+        "opop_evaluate.py": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+        "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+      }
+    },
+    {
+      "path": "/root/autodl-tmp/dev/v6-work/qwen-routed-independent-20261029/qwen-independent/jobs/version-d9eef5425fc1-pair-0-candidate/run/rank-0-started.json",
+      "request_sha256": "1207474993cccc6334253c4a67c292facce25cc4c471c47b8d35f7485d1aaf7a",
+      "revision": "b3d1a4fc802e38e2a09dbe61eb2d5ba254b9eef7494815a5cfc5a186005bb9df",
+      "action": "evaluate",
+      "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+      "source_files": {
+        "README.md": "97dbce99c0065e87f4accf1bbe6d52aa4438a289d7eaec1c85a9c6b1cb25f68d",
+        "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+        "opop_adapter.py": "498c90f3f6f91b993ac8a586ac3230ffe2e6901752165b26948142d978f7cff7",
+        "opop_candidates/trial-9523ac3f5f.py": "d5bd32d47d6b4d8165f617810a4dbeabed5c5c850932e6f74aaafd9adaa4bf2b",
+        "opop_candidates/trial-9523ac3f5f.targets.json": "794eeb060feab6376c47c02a401204a5bf81155f5234e0ac6aaf2d13f4ce0212",
+        "opop_evaluate.py": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+        "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+      }
+    },
+    {
+      "path": "/root/autodl-tmp/dev/v6-work/qwen-routed-independent-20261029/qwen-independent/jobs/version-d9eef5425fc1-pair-0-parent/run/rank-0-started.json",
+      "request_sha256": "cfd827f4de41e9c32e096aa8f4352967a6a6875f0a57c98f756ad33b28378480",
+      "revision": "009b4178a52cac5cd898cebd04509e2e05607bdc027f985b6ae14d3e3321a7b7",
+      "action": "evaluate",
+      "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+      "source_files": {
+        "README.md": "97dbce99c0065e87f4accf1bbe6d52aa4438a289d7eaec1c85a9c6b1cb25f68d",
+        "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+        "opop_adapter.py": "498c90f3f6f91b993ac8a586ac3230ffe2e6901752165b26948142d978f7cff7",
+        "opop_evaluate.py": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+        "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+      }
+    },
+    {
+      "path": "/root/autodl-tmp/dev/v6-work/qwen-routed-independent-20261029/qwen-independent/jobs/version-d9eef5425fc1-pair-1-candidate/run/rank-0-started.json",
+      "request_sha256": "5b445ce1ea185f38d71e4165e03d3c255ab434f3222c1d41ad75141131d757eb",
+      "revision": "b3d1a4fc802e38e2a09dbe61eb2d5ba254b9eef7494815a5cfc5a186005bb9df",
+      "action": "evaluate",
+      "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+      "source_files": {
+        "README.md": "97dbce99c0065e87f4accf1bbe6d52aa4438a289d7eaec1c85a9c6b1cb25f68d",
+        "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+        "opop_adapter.py": "498c90f3f6f91b993ac8a586ac3230ffe2e6901752165b26948142d978f7cff7",
+        "opop_candidates/trial-9523ac3f5f.py": "d5bd32d47d6b4d8165f617810a4dbeabed5c5c850932e6f74aaafd9adaa4bf2b",
+        "opop_candidates/trial-9523ac3f5f.targets.json": "794eeb060feab6376c47c02a401204a5bf81155f5234e0ac6aaf2d13f4ce0212",
+        "opop_evaluate.py": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+        "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+      }
+    },
+    {
+      "path": "/root/autodl-tmp/dev/v6-work/qwen-routed-independent-20261029/qwen-independent/jobs/version-d9eef5425fc1-pair-1-parent/run/rank-0-started.json",
+      "request_sha256": "d438b2fe156573859334f70d83e1d378c0fe002cb6d3905a5a8fc64d9d8ac555",
+      "revision": "009b4178a52cac5cd898cebd04509e2e05607bdc027f985b6ae14d3e3321a7b7",
+      "action": "evaluate",
+      "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+      "source_files": {
+        "README.md": "97dbce99c0065e87f4accf1bbe6d52aa4438a289d7eaec1c85a9c6b1cb25f68d",
+        "common.py": "3237be9bccc5269884f6b007ff8043b183d08bad1d3f05eaa61fb19435801327",
+        "opop_adapter.py": "498c90f3f6f91b993ac8a586ac3230ffe2e6901752165b26948142d978f7cff7",
+        "opop_evaluate.py": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+        "qwen_inference.py": "5b1da4c76fbd617d7e987864ee9ad62dd0da659ddfcccb7a80268c089acfd6b8",
+        "workloads.json": "43708d25375952cbcae6bd2af6afe8848a62c710ed3d83dfc173860b8d6ba2ba"
+      }
+    }
+  ],
+  "counts": {
+    "clean_endpoints": 4,
+    "clean_samples": 20,
+    "quality_checks": 8,
+    "source_checks": 2
+  },
+  "pointers": {
+    "source_current": "a3766b5026d1e6eb137962285bd5300e2e3f579ea09069f5ad18da43cb4771de",
+    "independent_current": "009b4178a52cac5cd898cebd04509e2e05607bdc027f985b6ae14d3e3321a7b7",
+    "original_pretrial_current": "b61996e1a998de911fa0412b595ef484b75dc79765d404aed835051e885b8a3c"
+  },
+  "scope": "Independent pass of fact-assisted fresh-adapter continuation, not unaided original-entry success, new agent, additional search, prompt causal superiority, multiple active bundle proof or unique root-cause isolation. Search43.9895% remains separately frozen. Profiles are separate perturbed periods; no score backfill or host/critical-path subtraction.",
+  "df": "Filesystem        1B-blocks         Used   Available Use% Mounted on\n/dev/md0       161061273600 150407802880 10653470720  94% /root/autodl-tmp\n"
+}
