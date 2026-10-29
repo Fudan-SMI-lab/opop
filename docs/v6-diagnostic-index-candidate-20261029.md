@@ -1,5 +1,28 @@
 # 原候选角色按需读取 Agent 诊断产物
 
+## 终态审计
+
+本批在 **2026-10-29 04:31:56 UTC** 完成。Qwen/FSDP 均生成有效接口输出、0 schema修复，32/37初始文件实际核对仅原反馈字段变化；120冻结文件与生产core保持。**两角色都没有打开新诊断索引或其 probe/plan/观察产物，因此此次未证明诊断证据被消费，也未闭合通用诊断工作流。** 不以新代码生成反推索引有效，不重复这轮直到通过。
+
+[公开审计](evidence/v6-diagnostic-index-candidate-20261029/public-audit.json)记录输出身份、完整工具历史索引、临时探针留档和代码审查，终态审计SHA `f72977c7ee1ec5d796fa4b6791c39d93da437678a5bc6062a1091b1a12531052`；脚本为 `scripts/experiments/v6_audit_diagnostic_index_candidate_20261029.py`。完整私密会话/CPU命令保留服务器 `audit/`。审计自身初版把引用旧错误的 traceback 文本与新工具失败混列，已保留初版并拆分“非零退出”和“异常文本出现”，没有角色/模型重跑。
+
+| 项目 | Qwen | FSDP |
+|---|---:|---:|
+| assistant／工具 | 39 / 51 | 61 / 75 |
+| candidate bytes／SHA前缀 | 34,565 / 2c08b3b1 | 2,854 / 206a02b8 |
+| 参数空间 | 空 | keep_unsharded_blocks=[1,2,3]，默认2 |
+| provider费用估计，仅统计 | 2.0055740928 | 1.56904011006 |
+
+Qwen 的 grep 输出包含完整新增索引路径，但随后只读原反馈、候选、adapter、框架分派/计量及安装库源码；没有进一步读取索引。FSDP 遍历反馈时仅打印 `supplemental_evidence.diagnostic_artifacts.index. ...`，自己的深度限制将路径截掉，也未继续读取。该结论来自完整工具命令/输出审查；不能因文件系统可访问就把“未观察到读取”写成隔离保证。
+
+Qwen 新实现取消持久复用的 cache/layer 对象，每次返回新 view mirror；按实际 cache长度与data_ptr判断位置并刷新外来prefix，分开prefill池，在build中直接交替调用greedy/teacher并检查完整tokens/logits。它仍共享master张量和全局临时mask patch；任意并发、owner组合和所有生命期没有证明。完整KV比较实际只在第二greedy后做一次，不覆盖文案宣称的全部链。runtime fallback捕获异常，不自动检测任意数值错误。唯一mirror根因、自检保证最终质量、parent fallback必然保真等声明不采纳。
+
+FSDP 新实现删除vocab-sharded head，父forward原样执行，只在build对尾部K个block设置reshard-after-forward=False。它按源码推断减少backward all-gather，但wire-bound、等量时长收益、无条件显存界、唯一shard GEMM数值原因仍不是实验证明。恢复策略写回True，适用于本源baseline，不能证明任意既有policy组合均可回滚。proposal将一个包含24次调用的site列为eliminated，实际只拟减少K次；声明不是真实路径/完整消除证明。后续固定K2来自生成代码默认和proposal明确primary，不挑选K3旧接受结果。
+
+Qwen CPU探针出现错误import、缺失torch导入、外来prefix测试期望不正确及shape比较错误，最后只通过CPU对象/guard/copy模拟；没有真实Graph或模型。其临时ctest目录由Agent删除，精确脚本和修改仍在完整工具命令中。FSDP模拟最初空block路径失败，Agent修改自己的候选处理；取消build-time route后旧测试断言又失败，pipeline尾部成功不能抹掉该失败。随后错误`cd /tmp/opencode`使相对import读取了旧DDP `candidate.py`（现存SHA `ebb1046d…`、早于本批mtime），并在call-ID断言失败；未进入模型/Graph执行，输出没有展示旧源码，但这是实际间接跨案例代码访问，不能宣称完全无污染。原文件和仍存的测试另存audit；正确sandbox cwd的最终模拟通过，复制的测试随后由Agent删除。没有观察到读取后来Qwen/FSDP成功答案或解读/核验报告；不是绝对隔离声明。
+
+两候选尚未经过本批真实GPU质量/约束，既有历史接受和失败不变。下一步按[原样固定执行协议](v6-diagnostic-index-fixed-20261029.md)，Qwen B/C及FSDP B/C(K2)各一次，保留原evaluator和任务语义，不加observer、搜索、接受或Nsight。代码能否运行与索引是否被读是两个问题；固定执行不会将本次索引消费失败追认为成功。实际df约9.12GiB、GPU空闲，无本轮清理/raw转存。以下为历史启动记录。
+
 已于 **2026-10-29 03:58:31 UTC（香港11:58）** 启动，冻结 `2a76a0af246787d5621f7dc7a0a4052bf452465a`，controller957415。真实 OpenCode 本地服务健康检查通过、120冻结文件核验，core不变。见[启动回执](evidence/v6-diagnostic-index-candidate-20261029/launch.json)与[冻结预检](evidence/v6-diagnostic-index-candidate-20261029/preflight.json)。
 
 04:00:57 实际 Qwen `generation-9e85d07b98af` / session `ses_e7a30a566ffe7OdlVv8eIZKFM7` 核对32初始文件，仅previous-feedback内supplemental_evidence变化，其余输入、prompt、model/tool设置均与原快照相同。已有9条assistant/15次工具；`prt_185cfbf64001opWtVrq2R7Ec6K` 对原反馈grep的实际输出含新增索引（输出SHA `cc07cea59ad023072a128caa685654eb63e3d4f8d44612734931f2c41c71eeb9`）。这证明初始投递及索引文字进入工具输出，**尚不等于已经读取索引文件或正确使用原始观察**。早期完整工具访问未见后来答案，终态仍须审计。FSDP随后按序执行。见[初始输入核查](evidence/v6-diagnostic-index-candidate-20261029/startup-verification.json)。
