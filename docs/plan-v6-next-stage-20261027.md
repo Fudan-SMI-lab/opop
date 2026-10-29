@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+2026-10-30香港时间断电恢复：用户确认服务器欠费关机后已重启。SSH/GPU/数据盘已检查，两卡空闲、余约11.17GiB；旧控制器不存在，running状态为残留，无完成记录。[Qwen两轮续行](v6-qwen-accepted-continuation-20261029.md)第一轮安装声明错误拒绝，第二轮停在原selector会话，尚无候选/GPU评估。按[同会话恢复协议](v6-qwen-accepted-recovery-20261030.md)只续原剩余一轮，271冻结文件/33初始输入核验；不重跑第一轮、controls、参考或discovery。生产核心、原约束和历史接受/拒绝保持，不做本次空间清理。以下为历史状态。
+
 当前执行（2026-10-29 08:51 UTC／香港16:51）：[Qwen已接受版本两轮续行](v6-qwen-accepted-continuation-20261029.md)冻结b18cef24/controller986775已启动。实际已对e5ad完整版本执行新discovery，发现后eb9dfd94仍为相同源码/合同/单bundle，真实collection-planner快照已建立；155冻结文件及40,824B原始framework反馈核验。尚不能宣称后续selector/candidate反馈消费或新优化成功。唯一普通完成/8GiB监听36120运行，旧42372已处理；启动核验df约12.01GiB，源分支current仍009b。两轮仅原样反馈、原质量/TTFT/默认参数探索；只有新活动bundle集被接受才进行一次完整版本独立AB/BA。FSDP K2独立拒绝保持，不重试；生产prompt/core/allocator不变。以下为历史状态。
 
 2026-10-29 08:33 UTC空间维护已完成：GPU退出后仅压缩旧FSDP明确worker RUN JSON，397 payload/342其余文件/149当前冻结依赖/10版本+新Qwen探索源码/6源参考核验。净释放3.62GiB，余12.50GiB，无raw归档本地转存；恢复journal见[Qwen接受后续行](v6-qwen-accepted-continuation-20261029.md)。新续行预检155文件和40,824B原样完整版本反馈通过，生产core保持。FSDP K2拒绝封存，不因维护或Qwen续行重测。

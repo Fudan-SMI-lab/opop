@@ -1,5 +1,7 @@
 # Qwen 独立接受版本的接受后续行
 
+2026-10-30香港时间用户确认欠费停机后已重启。实际检查原控制器消失、无completion，第一轮45c44c1619已因安装位置与bundle声明不一致失败；第二轮selector原会话27消息仍在但尚无selection.json。271既有文件/33初始输入核验，保留原日志和中断状态；按[断电恢复协议](v6-qwen-accepted-recovery-20261030.md)只恢复原第二轮会话，不重复第一轮、controls或初始discovery。下面“运行”描述均为停机前历史状态。
+
 已于 **2026-10-29 08:51:03 UTC（香港16:51）** 启动，冻结 `b18cef24ebfe3d50223de67c55f43dbe9e2bc4ce`，控制器986775；真实本地 OpenCode server 健康预检通过，`server_url=null`，生产核心仍为ed24af7a。见[启动回执](evidence/v6-qwen-accepted-continuation-20261029/launch.json)、[预检](evidence/v6-qwen-accepted-continuation-20261029/preflight.json)、[准备复用](evidence/v6-qwen-accepted-continuation-20261029/preparation-reuse.json)与[两轮协议](evidence/v6-qwen-accepted-continuation-20261029/search-protocol.json)。
 
 08:52:38 的[实际启动核验](evidence/v6-qwen-accepted-continuation-20261029/startup-verification.json)确认155冻结文件保持，原分支current仍009b4178，新分支已对接受版本执行 `discover-04002e90dc`，实际worker代码为f065、entry为aed604ee，request/adapter/共享controls一致。发现后的revision eb9dfd94保留同一套源码、合同和单bundle；这只是重新发现产生的revision，尚非新优化。真实collection-planner generation-b3e06c43befb已创建，初始6文件；此角色没有previous-feedback输入。新分支保存的40,824B原始framework反馈字节相等，但此时尚不能声称后续selector/candidate已收到或读过，须在终态审计实际快照和工具记录。
