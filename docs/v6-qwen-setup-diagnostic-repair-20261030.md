@@ -1,0 +1,13 @@
+# Qwen setup观察器后续失败证据的有限修复
+
+准备一次真实diagnostic_author修复。上一份[生成观察器](v6-qwen-setup-author-20261030.md)保留原样：probe `8ab9078e…`、plan `c0dc33c9…`。独立CPU接口测试发现128次成功比较耗尽上限后，第129次失败仍原样传播，但操作数和失败结果均未保存。尚未执行该probe的GPU观察，不将这个持久化缺陷解释为模型数值原因。
+
+使用既有ProjectAgents/Runtime/snapshot接口生成一次修复，保持通用作者指令，只追加有界后续失败保留要求。原六输入75,682B逐字不变，另加原probe25,567B、原plan28,511B和1,324B执行失败记录，总九显式输入131,084B，另有自动worker-environment。失败输入只含真实CPU截断结果、fixture源码与原结果路径/SHA；不提供开发者terminal audit、候选chain E计数分析、手写修复、其他任务答案或后来接受版本。命名CPU fixture可以读取，外部FS非隔离，终态审核完整实际访问。
+
+修复应保持有界资源、真实总计/省略范围/比较来源，保留原一次entry、return/validity、内部catch/fallback、未捕获异常和hook恢复。不得删除所有上限、按固定错误文本路由、改候选/质量阈值、强制快路径或重跑模型。不提供实现答案；原输出与失败证据冻结。controller仅生成与syntax/schema校验，无GPU/model/collective执行、搜索、性能接受、生产collector或提示采用。
+
+终态先审核实际diff、完整工具/CPU失败、保留上限语义与资源占用，再在新目录对原CPU边界做独立检查。若适合才另行声明原样固定B/C观察；否则保留具体缺陷，不隐藏手修或反复执行到通过。365旧文件预检；共享controls/source/接受版本和生产core `ed24af7a…`不变。
+
+当前设备原TTFT anchor23.285755、limit24.45004275及B1/prompt256/32tokens、BF16/SDPA/noTF32、full logits .02/.02/exact tokens保持。前序04df只在父回退路径质量通过且TTFT拒绝，仍无新接受。人工源映射、跨设备测量时期、观察器CPU拷贝/同步/持有影响均保留。已关闭提示/解释/核验研究不重开，不增加reviewer。
+
+启动前检查真实150GiB df与GPU，当前约9.57GiB空闲、无GPU进程；本轮不清理、不复制参考、不下载raw/private历史。仅代码/哈希/小摘要进GitHub v6。新长任务只设一个普通完成/8GiB监听，旧13092完成事件已处理，不重启。

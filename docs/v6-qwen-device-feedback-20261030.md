@@ -1,5 +1,7 @@
 # 当前设备原基线上的一次普通反馈试验
 
+后续证据状态：独立[setup诊断作者](v6-qwen-setup-author-20261030.md)已完成，原样生成脚本的128记录上限会丢失后续失败，CPU接口负例已确认；因此未执行GPU观察，仅安排[一次窄范围真实修复](v6-qwen-setup-diagnostic-repair-20261030.md)。这是观察器证据保留缺陷，不改变本页04df父路径质量通过/当前TTFT拒绝，也不提供模型数值原因或手工候选修复。
+
 **终态已审计：2026-10-29 18:31:36 UTC（香港10月30日02:31）完成，未接受新版本。** [终态](evidence/v6-qwen-device-feedback-20261030/followup-completed.json)、[审计小摘要](evidence/v6-qwen-device-feedback-20261030/public-terminal-audit.json)、[原样候选](evidence/v6-qwen-device-feedback-20261030/candidate.py)与[proposal](evidence/v6-qwen-device-feedback-20261030/proposal.json)保留；服务器terminal-audit SHA为`bf1d6eb32eb5161cb43211418fbc99c768b62add39230186e0ffbc26b84b1e1c`。299冻结文件、11 worker的源文件/adapter/entry/core/设备及当前空bundle均核验。事件是真正完成，不是空间警告；两卡空闲，df余10,307,497,984B（约9.60GiB），本轮无清理。旧监听44008已投递退出并标记处理，不重新启动。
 
 ## 执行、质量与接受边界
