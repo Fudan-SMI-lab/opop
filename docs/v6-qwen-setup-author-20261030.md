@@ -1,5 +1,7 @@
 # Qwen内部setup失败的诊断作者
 
+后续：[一次真实保留修复](v6-qwen-setup-diagnostic-repair-20261030.md)已于19:41UTC完成并通过独立CPU边界；原probe8ab9/原截断失败仍冻结。新bc4751原样probe将按[固定B/C观察协议](v6-qwen-setup-observation-20261030.md)执行一次，不修改04df候选、强制快路径或接受性能；不追认本页旧probe已执行GPU。
+
 **终态已审计：2026-10-29 19:12:25 UTC完成；发现具体CPU证据保留缺陷，未启动GPU观察。** [审计小摘要](evidence/v6-qwen-setup-author-20261030/public-terminal-audit.json)、[原样probe](evidence/v6-qwen-setup-author-20261030/diagnostic.py)、[原样plan](evidence/v6-qwen-setup-author-20261030/diagnostic-plan.json)保留。服务器terminal-audit SHA `6e55536a0dd76551ad729f8760fac96f9133b3b79271a1d08dfa2f17437ca6d1`。事件为batch_finished，GPU空闲，实际150GiB余约9.57GiB；无清理或raw转存。
 
 7初始文件、六显式输入75,682B逐字核验，357冻结身份/core保持。真实generation-ffd3bf5531c4共66 assistant、72工具（45 bash/15 read/4 write/8 edit）、0框架schema repairs；provider估算2.32093677894，非账单。最终probe25,567B SHA `8ab9078e71390b240d8a471cc765084a58b9681d3170f6a8a4050a7221fb2ad4`，plan28,511B SHA `c0dc33c969b45437517d2f2282138a6504f62f2014c4b06b0dc992decf097c8`（完整准确值见审计摘要及文件SHA）。完整会话、工具原始输入/输出、大输出未截断副本、初次生成和edit序列、最终CPU fixture均留服务器。
