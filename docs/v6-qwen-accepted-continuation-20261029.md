@@ -1,5 +1,9 @@
 # Qwen 独立接受版本的接受后续行
 
+启动前维护已于08:32:00–08:33:17 UTC完成。仅旧FSDP终态28个worker RUN目录，397 payload 4,275,658,397→386,632,092B，逐一gzip/解压SHA与342其余文件核验；149冻结依赖、10当前版本、6完整源参考及新e5ad探索版本源码保持。净释放3,888,533,504B（3.62GiB），余12.50GiB。[后验回执](evidence/v6-qwen-accepted-continuation-20261029/storage-postcheck.json)，恢复入口服务器 `storage-audit-20261029/qwen-accepted-continuation/run/RESTORE.md`/journal。旧未压缩路径缺失不是证据丢失；本批输入与参考不在压缩范围。
+
+CPU启动预检通过：155冻结文件、e5ad完整版本/单joint bundle、原prepared baseline009b、40,824B原样feedback SHA `49c8c518e8f64920adf62c1c1d1bb6a44179e48584f27919fd33ac3aa8718142`。控制器 `scripts/experiments/v6_qwen_accepted_continuation_20261029.py`；two-round默认角色/参数探索不另设API上限。反馈即既有完整版本result字节，不把开发审计/此次维护/手工事实送入Agent。
+
 从[独立接受的精确f065完整版本](v6-diagnostic-index-independent-20261029.md) e5ad9a5b3f131dd5a83e238f9b9fc71baf3f91bc6eabea061c103f1823de4939 fork新分支，复用原source/adapter/contract/controls。原independent current仍009b4178；fork显式选择已完整评估且合格的exploration revision，不发布到旧分支。只使用该次原样framework latest-feedback.json，不加入developer数值表、因果判断、手工分组/候选或其他目标旧bundle。
 
 目的为此前Qwen尚缺的接受后重发现、反馈消费和在已安装joint bundle基础上的替换/组合证据。通过既有CLI resume执行**两轮**普通selector/candidate/default tuning；先fresh discovery当前已接受版本，因为此前发现不对应它。两轮是本批预先声明边界，非失败后加轮/重试到通过；API observe-only，无新调用上限。可能没有新接受、可能替换单bundle、可能组合，均按实际记录，不预设多bundle或进一步加速。
