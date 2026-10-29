@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态（2026-10-29 08:03 UTC／香港16:03）：[Qwen/FSDP独立整版验证](v6-diagnostic-index-independent-20261029.md)完整审计60样本/24零误差检查/96trace/149冻结文件。Qwen f065独立接受740.173651→389.8851425ms（47.3251794%），原TTFT合格，本代码native32GraphLaunch/68712Graph kernels；FSDP beb5 K2质量/显存通过但配对收益7.760847/-1.264498低于噪声9.000480/7.672918，拒绝封存不重试。两者无新Agent/搜索/发布，原源映射和owner辅助边界保持。为补Qwen接受后的重发现/反馈与组合证据，下一步[已接受版本两轮续行](v6-qwen-accepted-continuation-20261029.md)，仅原样framework feedback，无人工优化答案，fresh discovery，条件新版本独立验证。先完成授权旧FSDP worker RUN JSON冷压缩并校验；当前GPU空闲、df约8.88GiB，无raw归档下载。此前闭合的提示/核验研究不再重开。以下为历史状态。
+
 当前执行（2026-10-29 07:58 UTC／香港15:58）：[两份精确候选整版独立验证](v6-diagnostic-index-independent-20261029.md)冻结9b2487a5/controller981096已启动，Qwen首个真实baseline worker981170及149冻结身份核验。Qwen/FSDP各一次AB/BA，publish=False，原prepared baseline/全部样本/质量/约束/通信采样保持；只在quality/coverage通过时补一份Qwen候选native。无新Agent/搜索/参数选择/生产采用。唯一普通监听42372运行，旧11872已处理，df约10.09GiB；源证据仅哈希核对后复用，非新源数值运行。等待事件后审计，不预设接受。以下为历史状态。
 
 最新终态审计（2026-10-29）：[新生成代码固定B/C](v6-diagnostic-index-read-fixed-20261029.md)30样本/12零误差连续检查/48raw通信trace/133冻结文件完整核验。Qwen738.254567→389.882535ms，TTFT25.229420/21.598306均符合原上限，生命周期peak增加123,020,288B；FSDP178.084178→173.265275ms，原peak相同，实际49→47 AG/25RS，689ms通信长样本完整保留。仍为固定诊断，提示study关闭且不进生产。为补齐这两份精确实现的版本证据，按[一次独立AB/BA](v6-diagnostic-index-independent-20261029.md)对原prepared baseline验证，publish=False，无搜索/参数选择，另仅一次Qwen候选native；不重复旧版本到通过。原独立源检查通过哈希复用，手工映射/owner修复边界保持。GPU空闲，df约10.10GiB，无本轮清理/raw转存。以下为历史状态。

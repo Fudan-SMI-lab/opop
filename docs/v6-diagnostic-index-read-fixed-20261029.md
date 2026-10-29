@@ -1,5 +1,7 @@
 # 证据阅读重放后候选的原样固定验证
 
+后续[一次整版独立AB/BA](v6-diagnostic-index-independent-20261029.md)已结束：精确Qwen f065独立接受740.173651→389.8851425ms（47.3251794%），完整质量/原TTFT通过且有本代码native32Graph证据；FSDP beb5默认K2完整质量/显存通过，但两pair均未超过噪声界而拒绝。各自保留，不把本页固定B/C通过改写成先前正式接受，也不修改旧K3或历史Qwen结果。提示研究继续关闭、不进生产。
+
 本批已完成原始结果审计，[公开摘要](evidence/v6-diagnostic-index-read-fixed-20261029/public-audit.json)对应服务器完整审计SHA `1eef939109d9751bbf8affe7861a3a6190c98c2526a87047b1328a0c27d67758`。四端点/六rank、30 clean样本、12连续完整质量检查均保留并零误差；48通信raw trace各自重算，133冻结文件、materialized source/adapter/entry/bundle/core、原request、controls、source/branch current核验保持。FSDP六个完整源/controls参考及旧独立源报告另行复核哈希，没有新源模型或CPU张量数值重跑。Qwen原手工外部映射、FSDP512B源owner辅助修复边界保持。
 
 | 固定诊断 | B | C | 限制 |
