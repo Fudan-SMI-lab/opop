@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新审计（2026-10-29 17:12 UTC终态）：[Qwen断电恢复](v6-qwen-accepted-recovery-20261030.md)完成但执行出错，无新接受。原第一轮missing rotary属性→空安装表拒绝，第二轮同会话生成f5b但重启后GPU UUID变化，worker根本未启动。271身份保持、六会话实际工具/快照与六既有worker审计；恢复预检漏核UUID明确记录。旧两轮/监听冻结处理，不重启。下一步[当前设备固定验证](v6-qwen-device-refresh-fixed-20261030.md)仅设备迁移，fresh原baseline controls/TTFT anchor、完整外部源比较，再原样f5b固定B/C，无Agent/搜索/正式接受/生产改动。两卡空闲、余约10.89GiB、无清理。以下为历史状态。
+
 当前执行（2026-10-30 00:56香港／10月29日16:56UTC）：[Qwen断电恢复](v6-qwen-accepted-recovery-20261030.md)冻结fde0f777/controller2158已启动。原selector同会话恢复、33输入字节相同，已进入此前未启动的第二轮candidate generation-cb08f1ca8ed2；271文件/第一轮拒绝/源current核验保持。唯一监听23004运行，df约10.92GiB，Agent阶段GPU空闲。只完成原剩余一轮，条件新接受版本独立验证；不复跑第一轮/参考/初始discovery，不变生产核心，无本轮清理。以下为历史状态。
 
 2026-10-30香港时间断电恢复：用户确认服务器欠费关机后已重启。SSH/GPU/数据盘已检查，两卡空闲、余约11.17GiB；旧控制器不存在，running状态为残留，无完成记录。[Qwen两轮续行](v6-qwen-accepted-continuation-20261029.md)第一轮安装声明错误拒绝，第二轮停在原selector会话，尚无候选/GPU评估。按[同会话恢复协议](v6-qwen-accepted-recovery-20261030.md)只续原剩余一轮，271冻结文件/33初始输入核验；不重跑第一轮、controls、参考或discovery。生产核心、原约束和历史接受/拒绝保持，不做本次空间清理。以下为历史状态。

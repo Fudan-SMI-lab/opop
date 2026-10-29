@@ -1,5 +1,7 @@
 # Qwen 独立接受版本的接受后续行
 
+2026-10-29 17:12 UTC恢复终态已[完整审计](v6-qwen-accepted-recovery-20261030.md)：原计划两轮合计没有新接受。第一轮4857在安装前读取不存在的attention.rotary_emb，返回空安装表后被声明检查拒绝，三个相关worker均无质量/干净样本；第二轮在原会话恢复后生成f5b，但旧GPU UUID已不在重启主机，设备解析阻止worker启动。原controller断电残留状态不改写，无旧completion；恢复另存completed_with_errors，独立not_run。271冻结身份、原current/反馈和已接受f065保持。accepted版本fresh discovery确实执行，但没有新接受后的rediscovery或多活动bundle证据。不能把生成完成、profile有效或CPU mock通过写成优化成功。下一步单独当前设备controls/源比较/固定执行，旧47.3251794%和原25.2536046约束只属于旧测量阶段。
+
 2026-10-30香港时间用户确认欠费停机后已重启。实际检查原控制器消失、无completion，第一轮45c44c1619已因安装位置与bundle声明不一致失败；第二轮selector原会话27消息仍在但尚无selection.json。271既有文件/33初始输入核验，保留原日志和中断状态；按[断电恢复协议](v6-qwen-accepted-recovery-20261030.md)只恢复原第二轮会话，不重复第一轮、controls或初始discovery。下面“运行”描述均为停机前历史状态。
 
 已于 **2026-10-29 08:51:03 UTC（香港16:51）** 启动，冻结 `b18cef24ebfe3d50223de67c55f43dbe9e2bc4ce`，控制器986775；真实本地 OpenCode server 健康预检通过，`server_url=null`，生产核心仍为ed24af7a。见[启动回执](evidence/v6-qwen-accepted-continuation-20261029/launch.json)、[预检](evidence/v6-qwen-accepted-continuation-20261029/preflight.json)、[准备复用](evidence/v6-qwen-accepted-continuation-20261029/preparation-reuse.json)与[两轮协议](evidence/v6-qwen-accepted-continuation-20261029/search-protocol.json)。

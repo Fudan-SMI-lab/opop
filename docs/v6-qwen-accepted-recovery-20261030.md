@@ -1,5 +1,21 @@
 # Qwen 接受后续行的断电恢复
 
+**终态审计：2026-10-29 17:12:56 UTC 完成但执行出错，没有新接受。** [终态](evidence/v6-qwen-accepted-recovery-20261030/followup-completed.json)、[公开审计](evidence/v6-qwen-accepted-recovery-20261030/public-terminal-audit.json)，服务器完整审计SHA `fe139621b7e07b161705a9302e9eede927fdcdc2b2efe0946837fac043c7bde2`。旧控制器断电记录保持，恢复只生成了原来未完成的第二轮候选；没有第三轮，也没有重复第一轮。
+
+第二轮 `trial-recovered-4f3d7f11aa` 生成52,324B候选 `f5b76ebde100c039d8ad9264e316dbade5acdb74c02f40308e958673e802be7e`，空参数，stage为f211410e。启动前设备解析发现冻结请求中的 `GPU-6c11763a-1e00-9af3-e17d-274f5d7f78ba` 已不在当前主机，因而拒绝启动。该screen没有request/started/receipt，没有质量检查、干净样本或配对决定；独立阶段not_run。生成/分支stage不等于接受，源current009b和续行current eb9保持，仍仅活动f065 bundle。
+
+本次实测GPU0为 `GPU-20e8003c-f531-d50c-084c-a9a97fe94004`、GPU1为 `GPU-a24af2e6-99bb-9729-5d14-50fa10a2b321`，均RTX4090。恢复预检确认可用却漏核对冻结UUID，是此次预检缺口；框架的设备保护正确拦截。不能把这次失败称作数值不忠实，也不能将旧设备TTFT anchor直接用于新设备。当前两卡空闲，150GiB配额余约10.89GiB，无本轮清理。
+
+271旧文件和33原selector输入核验不变；同一持久化会话nonfresh恢复，最终29 assistant/36 tools，原未完成message仍保留。新candidate为36输入、36 assistant/44 tools。六个实际角色全部0 schema repairs；工具数依次为初始planner10、第一selector31/candidate50/反馈planner12、恢复selector36/candidate44。provider估计合计4.59042550536，仅观察记录，非账单。完整message/part、命令/输出、初始写入及编辑字节私存服务器 `terminal-private-history`。实际恢复API把selector的previous-feedback逐字节传给candidate，没有再做普通trial的selected-group route；历史4857代码字节正确。不能假设恢复候选的routing字段等同普通新trial。
+
+原六个GPU作业重新核验：accepted f065的discovery、timeline、Python profile有效；第一候选screen及两项诊断worker均安装失败。discovery原trace核对68,777 kernels、53 call sites/46 groups；timeline从原trace重算设备union/gaps/sync/clock完全一致，Python原pstats已检查。这些是不同受扰诊断调用，不是新完整质量/干净计时，不能相减推出host cost或独占关键路径。
+
+第一候选的candidate-diagnostics实际保留三层传播的同一 `AttributeError: Qwen3Attention has no attribute rotary_emb`：_extract→setup→build。build捕获后返回空表，外层声明位置检查才抛出ValueError。这解释已观测安装链条，不推广为旧数值错误的唯一原因。恢复candidate实际读过该诊断、4857/f065代码和安装库，改为模型级rotary查找，并让setup失败时仍安装两个回退callable。它同时改变了若干数值/helper路径，不只是错误信息修复。
+
+新代码拟用六个Triton kernel、内部实现选择和31 decode Graph；prefill为父调用。bundle明确替换f065，当前完整版本只有新bundle，BindingSession此时捕获原模型forward，因此“继承已接受prefill Graph/TTFT保证”不成立。fallback只处理特定异常，早期context guard仍可能返回空表；自检直接调用替换函数，不等于完整框架质量/别名/并发保证。CPU两层hidden128/BF16/prompt6/3decode探针替换了真实Triton实现：TypeError、KeyError、退出0但NaN/FAILED均保留；最后补齐mock的out.copy_才打印token相等、logit/KV非零误差。它不是原36层/32token CUDA质量证明。工具记录未见后来答案读取，但外部FS非隔离，不能作绝对排除；profile差值、唯一GPU瓶颈和延迟保证不采纳。
+
+下一步为单独声明的[当前设备固定验证](v6-qwen-device-refresh-fixed-20261030.md)：既有prepare_variant仅改devices，重新测原baseline controls及TTFT anchor，复用手工外部映射对新controls作完整源比较，再一次固定B/C执行原样f5b候选。无新Agent/搜索/正式接受；旧两批冻结不重启，旧结果和anchor不改写。原监听23004已处理退出，新长任务只设一个监听。以下保留恢复启动时的历史记录。
+
 **已恢复运行：2026-10-30 00:56香港时间（10月29日16:56 UTC）**，冻结fde0f777，恢复控制器2158。[启动回执](evidence/v6-qwen-accepted-recovery-20261030/launch.json)、[实际协议](evidence/v6-qwen-accepted-recovery-20261030/protocol.json)、[冻结预检](evidence/v6-qwen-accepted-recovery-20261030/frozen-preflight.json)与[原会话健康检查](evidence/v6-qwen-accepted-recovery-20261030/session-health.json)均已保存。没有重新启动旧控制器或重复第一轮。
 
 00:57香港时间的[实际恢复核验](evidence/v6-qwen-accepted-recovery-20261030/startup-verification.json)确认：271既有文件保持；原selector会话产生nonfresh generation-b58ccb84d0a8，历史已记录，33输入全部字节相等、无增删、model/tool设置相同。随后已进入原第二轮的新candidate generation-cb08f1ca8ed2/session ses_e7767536dffec2ZwleHR6E5WFV，36初始文件；第二轮此前没有candidate，这不是第三轮。此时未有新GPU评估/质量/接受结论，既有6个GPU作业与第一轮失败不变，源current009b和分支current eb9保持。
