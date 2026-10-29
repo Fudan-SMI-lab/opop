@@ -19,6 +19,11 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def hidden_process_options():
+    # A hidden Python parent does not automatically hide a console child.
+    return {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+
+
 def save(path, value):
     temporary = path.with_suffix(path.suffix + '.tmp')
     temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -124,7 +129,8 @@ def probe(args):
                '-p', str(args.port), args.host, shlex.quote(args.remote_python) + ' -']
     result = subprocess.run(command, input=probe_script(args.remote_root, getattr(args, 'disk_path', None),
                                                        getattr(args, 'min_free_bytes', None)),
-                            text=True, encoding='utf-8', capture_output=True, timeout=45)
+                            text=True, encoding='utf-8', capture_output=True, timeout=45,
+                            **hidden_process_options())
     if result.returncode:
         raise RuntimeError(result.stderr.strip() or f'SSH exited {result.returncode}')
     return json.loads(result.stdout)
@@ -144,7 +150,7 @@ def queue_continuation(args, state, observation, runner=subprocess.run):
                '--cd', str(args.cwd)]
     # No model/permission override: keep the existing task configuration.
     try:
-        result = runner(command, capture_output=True, timeout=90)
+        result = runner(command, capture_output=True, timeout=90, **hidden_process_options())
         state.update(phase='queued' if result.returncode == 0 else 'delivery_uncertain',
                      queue_returncode=result.returncode,
                      queue_stdout=result.stdout.decode('utf-8', errors='replace'),
