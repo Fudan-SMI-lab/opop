@@ -1,5 +1,7 @@
 # Qwen新CPU接口证据的一轮普通续行
 
+后续固定执行已完成：[7e78原字节B/C](v6-qwen-cache-interface-fixed-20261030.md)完整质量通过但C TTFT26.076953超原24.45004275，保留10样本/4检查、无正式接受/指针发布。原6ec4的四个接口异常结果不覆盖，不能把新候选通过追认为旧实现有效，也不能据单次序列声称CPU事实段落稳定因果优越。
+
 后续2026-10-29 22:19 UTC：[单次原失败反馈候选生成](v6-qwen-cache-interface-candidate-20261030.md)已完成审计，492身份/33输入保持，47assistant/57工具/0 schema修复。角色实际读到原始AttributeError及target签名，产出7e78真实DynamicCache实现；只做CPU模拟，仍有verify异常flag、第一层ownership及标签限制。原6ec4四worker失败与本页拒绝保持，不追认为GPU修复成功。下一步[原字节固定B/C](v6-qwen-cache-interface-fixed-20261030.md)，无手改/搜索/正式接受/生产采用。
 
 ## 终态审计：执行失败，未产生质量或性能结论

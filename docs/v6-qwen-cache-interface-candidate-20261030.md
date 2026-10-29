@@ -1,5 +1,7 @@
 # Qwen执行接口失败后的单次候选生成
 
+后续[原字节固定B/C](v6-qwen-cache-interface-fixed-20261030.md)已于22:31:35 UTC完成并审计：500身份保持、10样本/4完整零误差检查；新C全生成380.435753ms，但TTFT26.076953>24.45004275，不接受。实际62个Graph标签不是native证据，setup gate/所有权限制保持；不重复同版本到通过、不采用prompt。另对工具6完整2,766,678B输出按已记录纯JSON打印算法重建，与服务器原始截断输出文件逐字相同，补充证明输出来自原初始反馈，未重跑Agent/模型。
+
 **终态：2026-10-29 22:19:01 UTC，batch_finished。** 审计SHA `eba45afbb2a83f8d267affc822a9a55ee7463f55c801525d664407b447728267`；[公开小摘要](evidence/v6-qwen-cache-interface-candidate-20261030/public-terminal-audit.json)。独立重放实际registry/plan路由，33初始文件/130,630,326B、492冻结身份、prompt/model/tools/core、源空current2a42全部保持。47条assistant/57工具（34 bash、10 read、4 write、9 edit）、0 schema修复；provider估计2.39222807294，非账单。没有GPU模型、搜索或质量结果。
 
 最终代码33,276B/SHA `7e78b82dd21391e3db3d6292e3798feff1908f53259aa732a3c011660c28fb92`，proposal9,799B/SHA `048d30b638809aad76ef99e757be41ea20345d1def2f72da5c332cc56aaf94b6`，parameter_space={}、eliminated_calls=[]、requires/replaces=[]。初始代码及4次修改重建精确匹配；工具34是fuzzy edit，实际返回diff中的旧拼写与请求oldString不同，按真实diff保留。完整会话、大型截断输出原文件、CPU脚本及修改历史留服务器，没有raw转存。
