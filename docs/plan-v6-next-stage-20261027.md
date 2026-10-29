@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前执行（2026-10-29 04:01 UTC／香港12:01）：[原candidate诊断索引重放](v6-diagnostic-index-candidate-20261029.md)冻结2a76a0af，controller957415。Qwen真实32初始文件只改原反馈索引字段，prompt/model/tools不变；9assistant/15工具，实际输出出现索引文字，尚不证明读过索引内证据。FSDP按序；120冻结哈希核验、core不变。单普通监听59216等待终态/8GiB事件，旧50544已处理，df约9.20GiB/GPU空闲。未采用两份核验报告，无新GPU搜索/接受/生产改动/raw转存。以下为历史状态。
+
 最新终态（2026-10-29 03:38 UTC）：[两任务证据核验](v6-diagnostic-verification-20261029.md)完成，初始输入、123冻结文件、逐项覆盖和CPU传输均核验，但两角色仍认可具体事实错误且新增错误，整体usable不采纳。核验实验关闭，不继续增加reviewer或重复到通过。下一步按[原candidate读取诊断索引](v6-diagnostic-index-candidate-20261029.md)各一次真实重放：原失败输入仅supplemental_evidence增加592字节，指向已执行Agent诊断产物，不给错误报告、人工事实或修复方案。先检查实际读取/代码，不自动GPU执行或生产采用。core不变，GPU空闲，df约9.50GiB，无本轮清理/raw转存。以下为历史状态。
 
 当前执行（2026-10-29 03:04 UTC／香港11:04）：[独立证据核验实验](v6-diagnostic-verification-20261029.md)冻结 `9c564293`，controller949392；Qwen 初始7文件/57,776显式字节核验，17真实assistant/23工具，已读取原样报告和证据索引。FSDP后续按序执行。共123冻结文件、生产core不变；无新GPU/search/接受或自动生产审核层。单普通完成/磁盘监听50544运行，df约9.52GiB，历史监听已处理，无Goal/模型等待轮询/清理/raw转存。

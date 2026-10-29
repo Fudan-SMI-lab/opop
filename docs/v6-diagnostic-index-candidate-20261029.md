@@ -1,5 +1,11 @@
 # 原候选角色按需读取 Agent 诊断产物
 
+已于 **2026-10-29 03:58:31 UTC（香港11:58）** 启动，冻结 `2a76a0af246787d5621f7dc7a0a4052bf452465a`，controller957415。真实 OpenCode 本地服务健康检查通过、120冻结文件核验，core不变。见[启动回执](evidence/v6-diagnostic-index-candidate-20261029/launch.json)与[冻结预检](evidence/v6-diagnostic-index-candidate-20261029/preflight.json)。
+
+04:00:57 实际 Qwen `generation-9e85d07b98af` / session `ses_e7a30a566ffe7OdlVv8eIZKFM7` 核对32初始文件，仅previous-feedback内supplemental_evidence变化，其余输入、prompt、model/tool设置均与原快照相同。已有9条assistant/15次工具；`prt_185cfbf64001opWtVrq2R7Ec6K` 对原反馈grep的实际输出含新增索引（输出SHA `cc07cea59ad023072a128caa685654eb63e3d4f8d44612734931f2c41c71eeb9`）。这证明初始投递及索引文字进入工具输出，**尚不等于已经读取索引文件或正确使用原始观察**。早期完整工具访问未见后来答案，终态仍须审计。FSDP随后按序执行。见[初始输入核查](evidence/v6-diagnostic-index-candidate-20261029/startup-verification.json)。
+
+唯一普通完成/磁盘监听59216已检查实际进程命令，旧50544已处理且退出；见[监听回执](evidence/v6-diagnostic-index-candidate-20261029/wakeup-setup.json)。当前df约9.20GiB，GPU为空；等待不调用模型，终态或低于8GiB时触发后续核查。没有raw本地转存、清理或新的优化接受。
+
 前两案例的诊断脚本已经真实执行并产生有用观察，但解读和独立核验仍留下事实错误。此次直接检验现有 candidate 角色能否按需利用原始诊断证据；不继续增加 reviewer，不向生产添加强制核验层。
 
 控制器 `scripts/experiments/v6_diagnostic_index_candidate_20261029.py` 通过现有 `ProjectAgents.replay_snapshot`，按 Qwen、FSDP 各执行一次新真实 candidate 会话。两者沿用各自历史失败输入的 prompt、模型、工具、选择结果、任务、源码和历史候选。唯一输入变化是 `inputs/previous-feedback.txt` 中既有 `supplemental_evidence: null` 替换为小型索引对象，**各增加592 bytes**。其他 feedback 字节/字段不变，不新增提示段落或手写候选。
