@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态（2026-10-29 02:05 UTC）：[FSDP 原样诊断双卡验证](v6-fsdp-diagnostic-validation-20261029.md)完成，B 两 rank 两步零误差/10样本，C 原第二步 logits 拒绝完整复现；四份诊断、24通信原始trace、19冻结哈希核验。第一步 logits/loss 精确，梯度/更新参数已有容差内差异，第二步仅 logits 越界；唯一原因未隔离，top绝对误差列表不等于失败元素。Agent 观测能力在第二任务可行，但整理反馈仍人工。按[同一通用解读角色的两任务实验](v6-diagnostic-interpretation-20261029.md)验证事实整理与既有 supplemental_evidence 传输；不给开发者事实表/原因，不自动生产采用或跑新GPU。df约9.55GiB，GPU空闲，无清理/raw转存。以下为历史状态。
+
 当前执行（2026-10-29 02:04 UTC／香港10:04）：[原样 FSDP 诊断双卡验证](v6-fsdp-diagnostic-validation-20261029.md)已冻结 `0b0e9c44`，controller941199；派生 B 实际 request/probe/四项诊断与声明一致，双卡 worker 已运行。19 冻结文件核验，生产 core 不变。唯一普通完成/磁盘监听59148，df约9.79GiB；无模型轮询/Goal/raw转存/本轮清理。只做固定 B/C 观测，不进行搜索或性能接受。以下为历史状态。
 
 最新终态（2026-10-29 01:49 UTC）：[FSDP 诊断持久化修复](v6-fsdp-diagnostic-repair-20261029.md)已审计，10 初始输入/16 冻结哈希一致，50 工具/0 schema 修复；仅保存路径增加显式非有限编码及失败回退。独立三项原 fixture 加五项异常/写入边界检查通过，有限数值/结构/digest 保持；原脚本缺陷与 Agent 测试错误保留。一个审计断言误要求 observer_wall_s 相等，单独记录并修正检查，不重跑案例。下一步按[原样 FSDP 双卡观测](v6-fsdp-diagnostic-validation-20261029.md)仅执行派生 B/原 K6 C 各一次，保留四项原通信诊断；不搜索/接受/生产采用。当前 core 不变、GPU 空闲、df 约 9.80 GiB，无清理或 raw 转存。以下为历史状态。
