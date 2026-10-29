@@ -1,5 +1,7 @@
 # Qwen新CPU接口证据的一轮普通续行
 
+后续2026-10-29 22:19 UTC：[单次原失败反馈候选生成](v6-qwen-cache-interface-candidate-20261030.md)已完成审计，492身份/33输入保持，47assistant/57工具/0 schema修复。角色实际读到原始AttributeError及target签名，产出7e78真实DynamicCache实现；只做CPU模拟，仍有verify异常flag、第一层ownership及标签限制。原6ec4四worker失败与本页拒绝保持，不追认为GPU修复成功。下一步[原字节固定B/C](v6-qwen-cache-interface-fixed-20261030.md)，无手改/搜索/正式接受/生产采用。
+
 ## 终态审计：执行失败，未产生质量或性能结论
 
 2026-10-29 21:42:39 UTC（香港10月30日05:42）确为 `batch_finished`，不是磁盘告警。控制器完成一轮；trial `2a7d20b4d9` 的唯一空参数候选 `6ec4e97a…` 被记录为 `no_valid_parameter_candidate`。四个worker——screen、candidate_diagnostics、Nsight、timeline——全部在父模型调用 `past_key_values.get_seq_length()` 时抛出 `AttributeError: '_CacheHandle' object has no attribute 'get_seq_length'`。没有返回完整质量检查、clean样本、约束或配对噪声判断；不能把此错误称作数值质量拒绝。独立验证未运行，current仍是空bundle的 `2a42b9b1…`。

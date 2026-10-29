@@ -1,5 +1,17 @@
 # Qwen执行接口失败后的单次候选生成
 
+**终态：2026-10-29 22:19:01 UTC，batch_finished。** 审计SHA `eba45afbb2a83f8d267affc822a9a55ee7463f55c801525d664407b447728267`；[公开小摘要](evidence/v6-qwen-cache-interface-candidate-20261030/public-terminal-audit.json)。独立重放实际registry/plan路由，33初始文件/130,630,326B、492冻结身份、prompt/model/tools/core、源空current2a42全部保持。47条assistant/57工具（34 bash、10 read、4 write、9 edit）、0 schema修复；provider估计2.39222807294，非账单。没有GPU模型、搜索或质量结果。
+
+最终代码33,276B/SHA `7e78b82dd21391e3db3d6292e3798feff1908f53259aa732a3c011660c28fb92`，proposal9,799B/SHA `048d30b638809aad76ef99e757be41ea20345d1def2f72da5c332cc56aaf94b6`，parameter_space={}、eliminated_calls=[]、requires/replaces=[]。初始代码及4次修改重建精确匹配；工具34是fuzzy edit，实际返回diff中的旧拼写与请求oldString不同，按真实diff保留。完整会话、大型截断输出原文件、CPU脚本及修改历史留服务器，没有raw转存。
+
+角色实际读了父方法AttributeError（工具12）、target签名（13/15）及安装的Cache/DynamicLayer/Qwen/SDPA源码（21–27），改为真正DynamicCache/DynamicLayer。完整命令/输出/脚本审查未见后续开发者绑定审计、接受或核验答案读取；文件系统非密闭，不能作绝对无访问证明。新反馈supplemental=null；此前CPU事实与人工源映射辅助边界仍存在。
+
+代码预建31个可复用cache，内部K/V是共享master视图，并非每次返回新对象。活跃对象及第一层keys指针用于识别父调用后的修改，不能证明所有层/values/混合别名/并发所有权。teacher stride[32,1]仍不符合框架[1,1]。A/O/P自检直接调用replacement，未覆盖原框架完整两次run/observe；最终KV比较仅初始oracle链。明确代码风险：verify前置fast_enabled=True，但verify异常catch未清掉它，disable_reason非空时仍可能安装；Graph异常后走eager interior仍会发fast_graph_replay标签。以上是代码审查，不是已发生当前GPU错误或native证据。
+
+CPU错误保留：30不支持layers构造参数、40缺step_caches、42错误要求未写尾部也全1、45期待CPU输入走CUDA快路径、48错误路由标签，均exit1。14错误路径抑制stderr、50拼错dev-venchain后继续测试、55管道tail不能单看exit0。最终3层BF16 CPU测试手工模拟copy/replay/clone/cache尾部，真实replacement调用受CPU设备guard限制；其stale-lineage/_absorb标签不证明进入后续分支。工具31更新layer1却检查layer0，32才更新layer0。通过后55再次运行；不是完整GPU质量。Agent删除自身__pycache__，早期覆盖的临时输出非全部存在，完整历史与最终夹具保留。
+
+不采用“内部已GPU证明”、自检保证无状态泄漏、prefill不绑定保证TTFT、profile gap可回收为关键路径或显存必降等推断。下一步为[一次原字节固定B/C](v6-qwen-cache-interface-fixed-20261030.md)，保留风险，通过原外层完整质量/coverage检查判断实际行为；无手改、观察器、搜索、调参、Nsys或正式接受。当前TTFT上限24.45004275，原失败不覆盖。审计时GPU空闲、150GiB盘余约8.11GiB，无清理；旧17992完成通知处理，不重启。
+
 **已启动：2026-10-29 21:59:05 UTC（香港10月30日05:59），冻结61a968f34b45bc00f7efe53f39728c1812b6d901，controller52752。** [启动](evidence/v6-qwen-cache-interface-candidate-20261030/launch.json)、[492身份预检](evidence/v6-qwen-cache-interface-candidate-20261030/frozen-preflight.json)、[本地服务实际健康检查](evidence/v6-qwen-cache-interface-candidate-20261030/session-health.json)通过。
 
 22:01:21 UTC[实际启动审计](evidence/v6-qwen-cache-interface-candidate-20261030/startup-verification.json)确认generation `a8d232f6cb9b` / session `ses_e76533c6cffeeLrihDWiZF4r03`，33初始文件/130,630,326B逐字匹配，prompt/model/tools/core相同，registry+plan路由一致、supplemental_evidence=null，历史6ec4代码及492冻结身份保持。11条assistant消息/18工具；实际读取新失败sidecar和完整原始traceback（工具12）、原target签名（工具13/15）。这只证明早期失败信息读取，不是正确修复或质量证明。工具14错误dev-v6-work路径被stderr抑制且管道exit0保留；早期无GPU worker。

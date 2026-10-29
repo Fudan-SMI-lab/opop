@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新推进（2026-10-29 22:19 UTC终态）：[缓存接口候选生成](v6-qwen-cache-interface-candidate-20261030.md)审计492身份/33初始文件、47assistant/57工具/0修复，原始代码及4修改精确重建。新7e78使用真实DynamicCache，但直接自检/CPU模拟不证明框架质量，verify异常flag、第一层ownership和Graph标签风险明确保留。下一步[一次精确字节B/C](v6-qwen-cache-interface-fixed-20261030.md)，使用原完整2质量/2warmup/5clean、当前TTFT24.45004275，无新Agent/手改/搜索/observer/Nsys/正式接受。GPU空闲、df约8.11GiB，无清理；旧生成通知处理，新长工作仅一个隐藏监听。生产和关闭研究不变。以下保留历史状态。
+
 当前执行（2026-10-29 21:59 UTC／香港10月30日05:59）：[单次缓存接口候选生成](v6-qwen-cache-interface-candidate-20261030.md)冻结61a968f3/controller52752运行。22:01实际33输入/130.63MB、492身份、原prompt/model/tools/路由核验；新角色已读取原始失败traceback和target签名，尚无代码/质量结论。仅候选生成，无GPU阶段/新selector/搜索，不提供开发者CPU绑定结论。GPU空闲、df约8.11GiB，无清理；唯一普通监听运行，针对用户报告弹窗，仅给本地编排子进程补隐藏标志并替换活动监听，不重启实验。
 
 最新终态（2026-10-29 21:42 UTC／香港10月30日05:42）：[CPU事实反馈试验](v6-qwen-setup-cpu-feedback-20261030.md)完成并审计422身份、四个失败worker、三个真实角色/125工具/0 schema修复。候选6ec4实际读到内联CPU事实，但返回opaque `_CacheHandle`，真实框架签名仍要求DynamicCache，父方法缺get_seq_length而失败；无返回完整质量/clean样本/配对或独立接受，current仍空2a42。一次CPU真实BindingSession控制支持接口解释，不是GPU数值证明；原错误/旧结果保持。下一步[一次候选角色生成](v6-qwen-cache-interface-candidate-20261030.md)，只更新原始framework失败反馈/历史代码/collector包，沿用原选择和生产prompt，不注入开发者CPU新结论，不启动GPU搜索。492身份预检，服务器两卡空闲、df约8.37GiB，无清理；旧40560通知处理，新长工作只设一个监听。以下为历史记录。
