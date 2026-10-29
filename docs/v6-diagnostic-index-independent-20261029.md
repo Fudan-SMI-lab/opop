@@ -1,5 +1,9 @@
 # 索引阅读后两份候选的完整版本独立验证
 
+已于 **2026-10-29 07:58:05 UTC（香港15:58）** 启动，冻结 `9b2487a5057fc499c9eaf172956aca65ac6e36f6`，controller981096，生产core保持ed24af7a。见[启动](evidence/v6-diagnostic-index-independent-20261029/launch.json)、[预检](evidence/v6-diagnostic-index-independent-20261029/preflight.json)、[源证据复用](evidence/v6-diagnostic-index-independent-20261029/source-evidence-reuse.json)和[准备复用](evidence/v6-diagnostic-index-independent-20261029/preparation-reuse.json)。149冻结哈希预检通过，无新参考复制或source模型运行。
+
+07:58:39[实际启动审计](evidence/v6-diagnostic-index-independent-20261029/startup-verification.json)确认首个Qwen baseline worker981170真实执行；request/source/adapter/entry/controls、原2/2/5配置、source/fixed/independent current和149文件保持。此时仅初始端点，不能提前宣告独立结果。唯一普通完成/8GiB监听42372已运行，[正确root预检回执](evidence/v6-diagnostic-index-independent-20261029/wakeup-setup.json)与CIM确认无重复；上一监听11872已处理/退出。df10,833,186,816B（约10.09GiB），不作本轮清理/raw本地转存。后续由完成/磁盘事件接续，不调用模型等待或额外投递测试。
+
 接续[已审计固定验证](v6-diagnostic-index-read-fixed-20261029.md)，使用既有fork_run与promote_version，各任务仅一次B/C/C/B完整版本验证，publish=False。无新Agent、参数搜索、代码修改、正式搜索接受或production采用；完整版本独立decision单独记录，失败/质量失败/噪声拒绝均不重试。运行完成不是接受，当前版本尚无独立性能结论。
 
 Qwen source是新固定分支，candidate224d820b/codef0656da9、一个joint bundle、空参数；原prepared baseline009b4178。FSDP candidate4fa94d6d/codebeb542b6、一个reshard bundle、实际默认K2；原prepared baseline7231e858。两个source fixed current仍为b61996e1/fa5f081d；更早FSDP已接受K3 current3007940f不导入、不覆盖。两新独立分支current保持各自prepared baseline，无论decision接受与否均不发布。
