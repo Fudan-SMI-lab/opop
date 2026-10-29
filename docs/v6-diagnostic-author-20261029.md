@@ -1,5 +1,7 @@
 # 从原失败现场生成诊断采集脚本
 
+2026-10-29 00:32 UTC已启动，冻结`5a5a9f181f4fb5ed63f2301dddc6727bec9c0a88`，controller PID928001，实际OpenCode健康检查通过。00:34:26核查初始snapshot `generation-6e81a3220da0`（session `ses_e7aedd58bffetSzUIuSb2IzLpd`）：六份显式输入与协议逐字相同，另有worker-environment共7份，真实provider已有10条assistant记录/18工具调用；目前未见后续诊断或成功实现的路径/字段命中，但不能由此替代终态完整访问审核或宣称环境隔离。21个源/参考/manifest哈希保持，无GPU worker。唯一普通监听PID14176正在等待，实际df10,639,929,344B（9.91GiB）。见[启动核查](evidence/v6-diagnostic-author-20261029/startup-verification.json)、[监听回执](evidence/v6-diagnostic-author-20261029/wakeup-setup.json)。尚无生成物执行结论。
+
 Qwen事实辅助候选已经通过独立整版验收45.17%，但关键观测仍由开发者手工设计。这是当前真实缺口：已有candidate_diagnostics只运行run，不运行完整observe/compare；错误摘要不能告诉下一角色哪一次连续调用、哪一边输出首先不符合原关系。直接把本案例的诊断脚本硬编码到生产不能保证泛化。
 
 本阶段先做一个隔离的真实`diagnostic_author`角色实验，使用已有ProjectAgents/Runtime/snapshot机制，不增加生产路由或失败分类。输入仅来自历史a866失败现场：原task、原失败worker错误/traceback、原adapter和候选代码、baseline/candidate执行请求与原source/controls索引。六份显式输入共约54KB，另有框架自动注入的worker环境；不加载5MB反馈或155MB资源全集。没有提供后来第二次teacher的实测事实、手工observer脚本、ce85/d5bd成功/失败结果或修复答案。
