@@ -1,5 +1,11 @@
 # 证据阅读重放后候选的原样固定验证
 
+2026-10-29 07:19:57 UTC（香港15:19）启动，冻结 `9b333cd609e7579143321d642ef6ae1293225e2f`，controller978153，生产core不变。见[启动](evidence/v6-diagnostic-index-read-fixed-20261029/launch.json)、[预检](evidence/v6-diagnostic-index-read-fixed-20261029/preflight.json)。07:21:15的[启动身份检查](evidence/v6-diagnostic-index-read-fixed-20261029/startup-verification.json)核对已产生的Qwen B/C及FSDP B请求、133冻结文件、source/branch指针、原adapter/entry/bundle/controls及已完成worker core；当时FSDP B两rank运行，未预设最终结果。
+
+本地唯一普通监听11872已恢复，[正确root预检](evidence/v6-diagnostic-index-read-fixed-20261029/wakeup-setup.json)确认运行后才启动。新批于 **07:22:28 UTC（香港15:22）** 完成，监听07:22:29真实排队完成通知并退出，见[投递回执](evidence/v6-diagnostic-index-read-fixed-20261029/wakeup-result.json)；没有投递测试、重复监听或重启旧批。该通知承接下一轮完整结果审计，当前不存在仍需等待的本批GPU实验。
+
+[终态回执](evidence/v6-diagnostic-index-read-fixed-20261029/terminal-receipt.json)报告四端点worker passed、valid_run=true、原约束通过、冻结文件保持：Qwen B/C TTFT25.229420/21.598306ms均低于25.2536046；FSDP B/C peak均2,239,245,312B，低于2,351,207,577.6。这里只记录控制器报告，尚未在本轮重算全部样本/两步完整质量/48通信trace及最终路径，不能据此宣布正式性能接受或提示因果优势。下一轮按通知审计所有原始结果后决定后续。实际df余10,849,050,624B（约10.10GiB），本轮未清理或转存raw数据。
+
 对[已完成阅读提示实验](v6-diagnostic-index-read-20261029.md)的两份精确生成代码做Qwen B→C、FSDP B→C(K2)各一次。Qwen `f0656da9…` 空参数；FSDP `beb542b6…` 固定实际DEFAULT_KEEP_UNSHARDED_BLOCKS=2及proposal声明默认，choices0/1/2/3/4其余不执行。无手动改代码、参数搜索、新Agent、observer、Nsight、正式性能接受或指针发布。新段落未进生产，本批不评价稳定提示因果优势。
 
 使用已有fork_run/bundle_from_outputs/stage/execute。原空bundle父版本Qwen b61996e1、FSDP fa5f081d；FSDP source历史K3 current3007940f保持，不导入。各source与新分支current始终保持各自原值。原calls/groups/selection/request/contract/adapter/controls逐项核验，共享controls/reference只读，无重复发现或多GB参考复制。相应B不合法则不运行C；其他任务独立，失败保留，不重试到通过。
