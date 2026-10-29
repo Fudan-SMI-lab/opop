@@ -1,5 +1,11 @@
 # Qwen 接受后续行的断电恢复
 
+**已恢复运行：2026-10-30 00:56香港时间（10月29日16:56 UTC）**，冻结fde0f777，恢复控制器2158。[启动回执](evidence/v6-qwen-accepted-recovery-20261030/launch.json)、[实际协议](evidence/v6-qwen-accepted-recovery-20261030/protocol.json)、[冻结预检](evidence/v6-qwen-accepted-recovery-20261030/frozen-preflight.json)与[原会话健康检查](evidence/v6-qwen-accepted-recovery-20261030/session-health.json)均已保存。没有重新启动旧控制器或重复第一轮。
+
+00:57香港时间的[实际恢复核验](evidence/v6-qwen-accepted-recovery-20261030/startup-verification.json)确认：271既有文件保持；原selector会话产生nonfresh generation-b58ccb84d0a8，历史已记录，33输入全部字节相等、无增删、model/tool设置相同。随后已进入原第二轮的新candidate generation-cb08f1ca8ed2/session ses_e7767536dffec2ZwleHR6E5WFV，36初始文件；第二轮此前没有candidate，这不是第三轮。此时未有新GPU评估/质量/接受结论，既有6个GPU作业与第一轮失败不变，源current009b和分支current eb9保持。
+
+唯一普通监听23004已核实存活，[启动预检](evidence/v6-qwen-accepted-recovery-20261030/wakeup-setup.json)及[等待状态](evidence/v6-qwen-accepted-recovery-20261030/wakeup-verification.json)保存。实际df余11,720,011,776B（约10.92GiB），Agent阶段两卡空闲；本轮未做清理。后续由完成/磁盘事件接续，不轮询模型。以下为恢复前核验和边界。
+
 用户确认服务器欠费关机后重新开机。2026-10-29 16:46 UTC（香港10月30日00:46）检查发现：SSH已恢复，两张RTX4090空闲，150GiB数据盘可用约11.17GiB；容器PID1为本次新启动，原控制器986775不存在。宿主机 `/proc/uptime` 不是容器运行时长，不能据其声称容器没有重启。原批state仍为running/search，但没有completion文件，这是中断残留状态，不是仍在执行或正常完成。
 
 原批为[Qwen接受后两轮续行](v6-qwen-accepted-continuation-20261029.md)，冻结b18cef24，生产核心ed24af7a保持。已有接受版本重新发现完成，当前eb9dfd94仍安装单个 `fixed-index-read-qwen` bundle，源码为f065，未接受新优化。已完成第一轮 `trial-45c44c1619`：空参数、新代码4857a625，worker失败于 `installed candidate sites differ from the declared bundle`，在完整质量/干净计时之前，决策 `no_valid_parameter_candidate`。这不是数值不忠实的证据，不能改写为质量通过或数值拒绝。该轮诊断与所有原始错误保留；本次不重复第一轮。
