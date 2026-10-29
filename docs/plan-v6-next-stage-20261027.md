@@ -1,6 +1,9 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
-当前执行（2026-10-29 02:22 UTC／香港10:22）：[两任务通用证据解读](v6-diagnostic-interpretation-20261029.md)已冻结 `727de6bb`，controller943330。Qwen 初始5文件逐字核验，11真实assistant/16工具；后续按序FSDP。116冻结文件核验，生产core不变；只生成事实反馈并CPU验证既有传输，不执行新候选/GPU/接受。唯一普通完成/磁盘监听47044，df约9.53GiB，无Goal/模型等待轮询/清理/raw转存。以下为历史状态。
+2026-10-29：两任务诊断解读已终态审计，真实输入、引用文件哈希和既有路由通过，但 Qwen 与 FSDP 报告均含事实或推断范围错误，原样 packet 暂不采纳。下一步仅做[独立证据核验实验](v6-diagnostic-verification-20261029.md)：原始证据加原样报告，各一次真实角色，无开发者答案、GPU 重跑或生产审核层。完整结论见[解读审计](v6-diagnostic-interpretation-20261029.md)。
+
+
+历史启动（2026-10-29 02:22 UTC／香港10:22，现已结束）：[两任务通用证据解读](v6-diagnostic-interpretation-20261029.md)冻结 `727de6bb`，controller943330。Qwen 初始5文件逐字核验，11真实assistant/16工具；后续按序FSDP。116冻结文件核验，生产core不变；只生成事实反馈并CPU验证既有传输，不执行新候选/GPU/接受。原普通监听47044已投递完成通知，df约9.53GiB，无Goal/模型等待轮询/清理/raw转存。以下为历史状态。
 
 最新终态（2026-10-29 02:05 UTC）：[FSDP 原样诊断双卡验证](v6-fsdp-diagnostic-validation-20261029.md)完成，B 两 rank 两步零误差/10样本，C 原第二步 logits 拒绝完整复现；四份诊断、24通信原始trace、19冻结哈希核验。第一步 logits/loss 精确，梯度/更新参数已有容差内差异，第二步仅 logits 越界；唯一原因未隔离，top绝对误差列表不等于失败元素。Agent 观测能力在第二任务可行，但整理反馈仍人工。按[同一通用解读角色的两任务实验](v6-diagnostic-interpretation-20261029.md)验证事实整理与既有 supplemental_evidence 传输；不给开发者事实表/原因，不自动生产采用或跑新GPU。df约9.55GiB，GPU空闲，无清理/raw转存。以下为历史状态。
 
