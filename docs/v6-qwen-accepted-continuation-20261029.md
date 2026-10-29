@@ -1,5 +1,11 @@
 # Qwen 独立接受版本的接受后续行
 
+已于 **2026-10-29 08:51:03 UTC（香港16:51）** 启动，冻结 `b18cef24ebfe3d50223de67c55f43dbe9e2bc4ce`，控制器986775；真实本地 OpenCode server 健康预检通过，`server_url=null`，生产核心仍为ed24af7a。见[启动回执](evidence/v6-qwen-accepted-continuation-20261029/launch.json)、[预检](evidence/v6-qwen-accepted-continuation-20261029/preflight.json)、[准备复用](evidence/v6-qwen-accepted-continuation-20261029/preparation-reuse.json)与[两轮协议](evidence/v6-qwen-accepted-continuation-20261029/search-protocol.json)。
+
+08:52:38 的[实际启动核验](evidence/v6-qwen-accepted-continuation-20261029/startup-verification.json)确认155冻结文件保持，原分支current仍009b4178，新分支已对接受版本执行 `discover-04002e90dc`，实际worker代码为f065、entry为aed604ee，request/adapter/共享controls一致。发现后的revision eb9dfd94保留同一套源码、合同和单bundle；这只是重新发现产生的revision，尚非新优化。真实collection-planner generation-b3e06c43befb已创建，初始6文件；此角色没有previous-feedback输入。新分支保存的40,824B原始framework反馈字节相等，但此时尚不能声称后续selector/candidate已收到或读过，须在终态审计实际快照和工具记录。
+
+唯一普通完成/8GiB磁盘监听36120已运行，[预检与启动](evidence/v6-qwen-accepted-continuation-20261029/wakeup-setup.json)和[等待状态](evidence/v6-qwen-accepted-continuation-20261029/wakeup-verification.json)留档；旧42372已处理并退出，不重启、不额外测试投递。启动核验时处于Agent阶段，GPU进程为空，数据盘可用12,899,360,768B（约12.01GiB）。后续由完成或磁盘事件接续，不轮询模型。以下保留启动前协议与维护记录。
+
 启动前维护已于08:32:00–08:33:17 UTC完成。仅旧FSDP终态28个worker RUN目录，397 payload 4,275,658,397→386,632,092B，逐一gzip/解压SHA与342其余文件核验；149冻结依赖、10当前版本、6完整源参考及新e5ad探索版本源码保持。净释放3,888,533,504B（3.62GiB），余12.50GiB。[后验回执](evidence/v6-qwen-accepted-continuation-20261029/storage-postcheck.json)，恢复入口服务器 `storage-audit-20261029/qwen-accepted-continuation/run/RESTORE.md`/journal。旧未压缩路径缺失不是证据丢失；本批输入与参考不在压缩范围。
 
 CPU启动预检通过：155冻结文件、e5ad完整版本/单joint bundle、原prepared baseline009b、40,824B原样feedback SHA `49c8c518e8f64920adf62c1c1d1bb6a44179e48584f27919fd33ac3aa8718142`。控制器 `scripts/experiments/v6_qwen_accepted_continuation_20261029.py`；two-round默认角色/参数探索不另设API上限。反馈即既有完整版本result字节，不把开发审计/此次维护/手工事实送入Agent。

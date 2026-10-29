@@ -1,5 +1,7 @@
 # 索引阅读后两份候选的完整版本独立验证
 
+后续已于2026-10-29 08:51 UTC从本批独立接受的Qwen e5ad版本启动[两轮普通续行](v6-qwen-accepted-continuation-20261029.md)，原样framework反馈、共享原controls，源current仍009b；仅新分支执行接受后重新发现。本批Qwen接受和FSDP K2噪声拒绝均冻结，不因续行覆盖。启动前仅对明确旧FSDP worker RUN JSON作无损冷压缩，净释放3.62GiB，恢复journal独立保存；本批149依赖与保留版本核验通过。
+
 终态08:03:25 UTC（香港16:03），[完整审计摘要](evidence/v6-diagnostic-index-independent-20261029/public-audit.json)SHA `16c0defb5354e819a32def84d56b34cb343b3641f8bcb4f7d36586bc2268febc`。60 clean rank样本、24完整连续质量检查均保留并零误差，96份FSDP通信trace逐份重算，149冻结文件、8个evaluate请求及1个native请求、实际source/entry/adapter/bundle/core/controls和所有current核验；14份worker日志无traceback。无新Agent、参数调优、源数值重跑、生产采用或指针发布。
 
 | 独立结果 | Qwen f065，空参数 | FSDP beb5，固定K2 |

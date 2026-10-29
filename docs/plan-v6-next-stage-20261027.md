@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前执行（2026-10-29 08:51 UTC／香港16:51）：[Qwen已接受版本两轮续行](v6-qwen-accepted-continuation-20261029.md)冻结b18cef24/controller986775已启动。实际已对e5ad完整版本执行新discovery，发现后eb9dfd94仍为相同源码/合同/单bundle，真实collection-planner快照已建立；155冻结文件及40,824B原始framework反馈核验。尚不能宣称后续selector/candidate反馈消费或新优化成功。唯一普通完成/8GiB监听36120运行，旧42372已处理；启动核验df约12.01GiB，源分支current仍009b。两轮仅原样反馈、原质量/TTFT/默认参数探索；只有新活动bundle集被接受才进行一次完整版本独立AB/BA。FSDP K2独立拒绝保持，不重试；生产prompt/core/allocator不变。以下为历史状态。
+
 2026-10-29 08:33 UTC空间维护已完成：GPU退出后仅压缩旧FSDP明确worker RUN JSON，397 payload/342其余文件/149当前冻结依赖/10版本+新Qwen探索源码/6源参考核验。净释放3.62GiB，余12.50GiB，无raw归档本地转存；恢复journal见[Qwen接受后续行](v6-qwen-accepted-continuation-20261029.md)。新续行预检155文件和40,824B原样完整版本反馈通过，生产core保持。FSDP K2拒绝封存，不因维护或Qwen续行重测。
 
 最新终态（2026-10-29 08:03 UTC／香港16:03）：[Qwen/FSDP独立整版验证](v6-diagnostic-index-independent-20261029.md)完整审计60样本/24零误差检查/96trace/149冻结文件。Qwen f065独立接受740.173651→389.8851425ms（47.3251794%），原TTFT合格，本代码native32GraphLaunch/68712Graph kernels；FSDP beb5 K2质量/显存通过但配对收益7.760847/-1.264498低于噪声9.000480/7.672918，拒绝封存不重试。两者无新Agent/搜索/发布，原源映射和owner辅助边界保持。为补Qwen接受后的重发现/反馈与组合证据，下一步[已接受版本两轮续行](v6-qwen-accepted-continuation-20261029.md)，仅原样framework feedback，无人工优化答案，fresh discovery，条件新版本独立验证。先完成授权旧FSDP worker RUN JSON冷压缩并校验；当前GPU空闲、df约8.88GiB，无raw归档下载。此前闭合的提示/核验研究不再重开。以下为历史状态。
