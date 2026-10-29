@@ -1,5 +1,11 @@
 # 针对未读取诊断索引的有限提示实验
 
+已于 **2026-10-29 05:02:38 UTC（香港13:02）** 启动，冻结 `c7e2189a242f9cdb60fc5c4b23f69309b8a72e12`，controller968454；真实本地OpenCode health预检通过，server_url=null。见[启动](evidence/v6-diagnostic-index-read-20261029/launch.json)、[预检](evidence/v6-diagnostic-index-read-20261029/preflight.json)。生产core保持。
+
+05:04:19启动审计：Qwen generation-31d64128862c/session ses_e79f5ef19ffeD4N1q1jsgQ7Ffu，32初始输入逐字相同，只改433B prompt，model/tool配置/core相同，122冻结文件复核。真实9assistant/14工具，当前已读原任务、selection、adapter、binding、历史candidate、feedback和原run-only诊断；此时尚未观察到打开新增索引，不能提前判断后续读取或最终成功。完整工具/消息快照留服务器startup-access，公开[部分启动审计](evidence/v6-diagnostic-index-read-20261029/startup-verification.json)。FSDP按序执行，不是额外并行任务。
+
+唯一普通完成/8GiB监听PID7216已启动，[正确root预检及回执](evidence/v6-diagnostic-index-read-20261029/wakeup-setup.json)确认controller运行；CIM核对仅一个watcher进程。旧14176已处理并标记退出，不重启。无投递测试/模型等待轮询/Goal。当前df 11,618,119,680B（10.82GiB）、GPU空闲；相较清理后的变化包含新角色文件/运行环境，不臆测为某一产物。终态后审查完整工具/代码/错误和证据消费，未预设生产采用或GPU验证。
+
 前两次candidate重放都有索引文字可见，却没有打开索引或其中的观察文件。这是已经实际确认的输入消费缺口。本次从那两份**生成前初始快照**分别重放一次既有candidate角色，唯一变化是在prompt末尾追加同一通用段落（含分隔换行433 bytes）。32/37个输入文件、原失败feedback/候选/selection、model/tool配置和core全部保持，不输入新固定GPU结果、审阅报告、人工事实/原因或修复实现。CPU快照预检通过，122冻结文件核验。
 
 > When prior feedback supplies an evidence index, open that index and inspect the relevant observation artifacts and their producing code before choosing a repair or asserting a cause. In the rationale, cite the inspected artifact and location, distinguish directly observed facts from hypotheses and instrumentation limits, and state any remaining evidence gap; an index pointer or a diagnostic status alone is not a quality result.
