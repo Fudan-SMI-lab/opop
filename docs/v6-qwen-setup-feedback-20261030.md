@@ -1,5 +1,7 @@
 # Qwen原样setup观察产物的一轮普通反馈续行
 
+后续已完成[CPU事实反馈试验](v6-qwen-setup-cpu-feedback-20261030.md)：新6ec4代码的四个worker全部因opaque `_CacheHandle` 与父Cache接口不兼容而执行失败，未返回质量检查或clean样本。候选实际读到了内联CPU事实，不能把这次失败归为未送达；也不能宣称事实辅助提高了质量或性能。旧4693的父回退质量/TTFT拒绝、旧CPU证据与所有原始样本保持。下一步仅一次原始失败反馈的候选生成，不自动运行GPU或改变生产规则。
+
 本批于 **2026-10-29 20:48:04 UTC** 完成，唯一trial `bf84d454d6` 被拒绝：`no_valid_parameter_candidate`。重启中断的是后续审计，恢复时远端已终态，没有重启批次。两卡空闲、UUID仍20e8/a24a，150GiB实际余约8.83GiB，无清理；旧监听7324已处理。
 
 [终态小摘要](evidence/v6-qwen-setup-feedback-20261030/public-terminal-audit.json)对应服务器audit SHA `34724d510e99df73d6cbfcc82ebbc83b639ec55c0aec2abea3bc1600b944273d`。382冻结身份、8个worker的source/adapter/entry/core/UUID、原discovery/prepared/request及实际selector/candidate registry/plan路由重新核验。源和分支current仍2a42b9b1、空bundles，无配对接受、重发现、共存或独立阶段。原controls/source映射没有重跑。

@@ -1,0 +1,130 @@
+{
+  "candidate_sha256": "6ec4e97a4bd39a7d16c82109b49b841f0258c039d56de15eeb6f80696e4906fa",
+  "calls_sha256": "773564bc5c512ed489c2e3f2a51a632ddbba85cbb464b13bcdef408e8706c04d",
+  "core": {
+    "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+    "files": 163,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "original_signature": {
+    "args": [],
+    "kwargs": {
+      "input_ids": {
+        "shape": [
+          1,
+          1
+        ],
+        "stride": [
+          1,
+          1
+        ],
+        "dtype": "torch.int64",
+        "device": "cuda",
+        "requires_grad": false
+      },
+      "past_key_values": {
+        "type": "DynamicCache"
+      },
+      "use_cache": true,
+      "logits_to_keep": 1
+    }
+  },
+  "scope": "CPU signature/dispatch only: original input device changed to cpu; exact generated handle class, real BindingSession diagnostic_passthrough, synthetic parent calling get_seq_length. Candidate build/replacement, model, graphs and GPU not run. Not a historical per-call trace or numerical proof.",
+  "records": [
+    {
+      "case": "dynamic_greedy",
+      "signature": {
+        "args": [],
+        "kwargs": {
+          "input_ids": {
+            "shape": [
+              1,
+              1
+            ],
+            "stride": [
+              1,
+              1
+            ],
+            "dtype": "torch.int64",
+            "device": "cpu",
+            "requires_grad": false
+          },
+          "past_key_values": {
+            "type": "DynamicCache"
+          },
+          "use_cache": true,
+          "logits_to_keep": 1
+        }
+      },
+      "matches_adapted_original": true,
+      "returned": 0
+    },
+    {
+      "case": "exact_generated_handle_greedy",
+      "signature": {
+        "args": [],
+        "kwargs": {
+          "input_ids": {
+            "shape": [
+              1,
+              1
+            ],
+            "stride": [
+              1,
+              1
+            ],
+            "dtype": "torch.int64",
+            "device": "cpu",
+            "requires_grad": false
+          },
+          "past_key_values": {
+            "type": "_CacheHandle"
+          },
+          "use_cache": true,
+          "logits_to_keep": 1
+        }
+      },
+      "matches_adapted_original": false,
+      "exception": {
+        "type": "AttributeError",
+        "message": "'_CacheHandle' object has no attribute 'get_seq_length'"
+      }
+    },
+    {
+      "case": "dynamic_teacher_stride",
+      "signature": {
+        "args": [],
+        "kwargs": {
+          "input_ids": {
+            "shape": [
+              1,
+              1
+            ],
+            "stride": [
+              32,
+              1
+            ],
+            "dtype": "torch.int64",
+            "device": "cpu",
+            "requires_grad": false
+          },
+          "past_key_values": {
+            "type": "DynamicCache"
+          },
+          "use_cache": true,
+          "logits_to_keep": 1
+        }
+      },
+      "matches_adapted_original": false,
+      "returned": 0
+    }
+  ],
+  "counts": {
+    "323bcbe006b343648b346af9": 1
+  },
+  "fallbacks": {
+    "323bcbe006b343648b346af9": 2
+  },
+  "restored": true,
+  "cuda_initialized": false
+}
