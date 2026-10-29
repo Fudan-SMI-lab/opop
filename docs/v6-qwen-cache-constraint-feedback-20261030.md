@@ -1,5 +1,9 @@
 # Qwen缓存接口固定结果后的普通约束反馈续行
 
+已于2026-10-29 22:51:30 UTC（香港10月30日06:51）实际启动，冻结 `35a643dc304e3c7cf5d8cc7fbb1d200db876c71d`，controller60363；唯一隐藏完成/磁盘监听41852在22:53:29启动。22:56:43的[实际启动核验](evidence/v6-qwen-cache-constraint-feedback-20261030/startup-verification.json)确认 selector `generation-560f7b8ba6d1` / session `ses_e76232317ffedSphKQzU4T6k6k`，27初始文件85,539,844B逐字相同，实际反馈3,057,250B/SHA `67e2d271aa827ff623f6b1bb5c5e3b92c3550aef282e7865e10299714d869fb5` 与registry route一致，历史7e78代码及完整样本/质量/约束已交付，536冻结哈希保持。相对旧普通selector，prompt/model/tools相同，23文件相同、4变更、3旧collector输入移除；不是整角色单变量A/B。
+
+启动记录包含20条assistant消息/26工具；tool11实际打印诊断拒绝范围、两次完整零误差检查及route标签限制，tool12实际打印B25.941852/C26.076953均超原24.45004275、原anchor23.285755与setup指标。两组样本输出分别截到2000字符，不声称逐个样本都被读取。这段记录尚未打开新增index或外部B/C文件，不能推断后续也不读；tool24隐藏import stderr且最终命令成功，不将exit0当作import成功。tool26仍在遍历已保存calls.json；本启动截面无GPU/model探测或新GPUjob，无新质量/接受结论。完整私有会话留服务器，SHA `367f3ade341175f415da7beee925901eaf53cff7f6771e0c4f002bf91698a10d`。当时controller存活、GPU空闲、df10,038,943,744B约9.35GiB；source/新branch current仍空2a42，discovery/prepared/request一致。生产core仍ed24af7a。后续由单监听报告真正完成或磁盘告警，不重启旧批次；终态再完整审计新selector/candidate实际读取、实现与执行。
+
 空间维护已于2026-10-29 22:48:52–22:49:50 UTC完成：[小摘要](evidence/v6-qwen-cache-constraint-feedback-20261030/storage-completed.json)。133个payload共1,758,344,779B压为118,171,812B，全部gzip/解压SHA验证；2856其余文件、500当前冻结文件、10个历史current源/bundle、旧e5ad版本与6个完整FSDP参考保持。实际df净释放1,640,067,072B（约1.53GiB），余10,229,653,504B（约9.53GiB），GPU始终空闲。初查旧targeted-isolation的16大文件实际为指向其他位置的symlink，已明确排除，未操作。没有raw下载/旧控制器重启，恢复journal SHA `7872ecc61cee947898ff1bd40efd67f61dfc627e4c5a253b339cf3fbee0e9086`。
 
 用户询问是否持续推进时，明确告知上一轮已结束、没有后台实验；本轮恢复实际推进。当前20e8 GPU两卡空闲，150GiB数据盘约8.00GiB，先执行已有授权的旧RUN JSON服务器端无损冷压缩，再启动一轮普通续行。旧固定B/C、候选生成及其已处理监听均不重启。
