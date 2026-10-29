@@ -1,5 +1,7 @@
 # Qwen setup观察器后续失败证据的有限修复
 
+本次修复和条件固定观察均已完成，原错误保持。后续[普通反馈续行](v6-qwen-setup-feedback-20261030.md)只引用原样观察产物，不再生成/修补本probe，不重复观察到通过，不自动安装生产collector。
+
 后续[原样固定B/C观察](v6-qwen-setup-observation-20261030.md)已在19:56:24UTC完成：370身份、10样本/4完整零误差检查保持，198次安装比较中的首发和晚发seq198失败均保存；256个保存超差项独立核算。候选最终仍父回退、TTFT超当前限制，无新接受。该执行使用本页新bc4751 probe，旧8ab9 probe与CPU截断失败保持；以下为19:41修复终态和原协议。
 
 **终态已审计：2026-10-29 19:41:01 UTC完成，独立CPU边界通过，可安排一次原样固定B/C观察。** [审计小摘要](evidence/v6-qwen-setup-diagnostic-repair-20261030/public-terminal-audit.json)、[原样probe](evidence/v6-qwen-setup-diagnostic-repair-20261030/diagnostic.py)、[原样plan](evidence/v6-qwen-setup-diagnostic-repair-20261030/diagnostic-plan.json)保留；服务器terminal-audit SHA `8d2363dd0f11f91c558b71bf5f8d83ec423f0f50e9eb66de541c45ca91dd8432`。这是完成事件；真实150GiB余约9.56GiB、两GPU空闲，无清理。此前生成脚本没有执行GPU，下一步为[独立声明的固定观察](v6-qwen-setup-observation-20261030.md)，不是优化接受。

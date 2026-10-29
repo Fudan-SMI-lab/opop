@@ -1,5 +1,7 @@
 # Qwen setup失败的一次原样固定观察
 
+后续同一完成通知已核对并去重，不再执行B/C。基于本次新增原样观察产物，准备[一轮普通反馈续行](v6-qwen-setup-feedback-20261030.md)：只追加元数据索引、共享已完成discovery/controls；不向Agent提供本页开发者因果判断，不自动采用probe或修改生产提示。以下终态结论保持。
+
 **终态已审计：2026-10-29 19:55:09–19:56:24 UTC（香港10月30日03:55–03:56），固定B/C各一次完成。** 冻结`f46dab3249065fea699446bed1e1f1efbff4c10f`，controller31776。事件为`batch_finished`，不是磁盘告警。两worker正常返回，10个clean样本、4个完整零误差检查（每次4,861,988元素）全部保留；370份冻结文件、实际source/adapter/request/entry/core和原指针核验不变。没有新Agent、搜索、参数选择、Nsight或性能接受。
 
 [公开审计摘要](evidence/v6-qwen-setup-observation-20261030/public-terminal-audit.json)、[请求身份](evidence/v6-qwen-setup-observation-20261030/request-identities.json)、[完成记录](evidence/v6-qwen-setup-observation-20261030/followup-completed.json)及[审计脚本](../scripts/experiments/v6_audit_qwen_setup_observation_20261030.py)已保存。服务器terminal-audit SHA为`c45883919600b7bdfddb6683a670ff1835a502f1f4cd04f463a3fd4a866b509f`。原样Agent probe为`bc4751ca9b77f9edaf5269c10dd053298e287d50452f51d113f1555a33265ff5`，plan为`33fdb9239bc1420293fd89fe74a139a081276e2c955aca411db4b9c1bdef63a6`，没有手改。实际请求仅改变entry、output及新增diagnostic_context；function/wait原已run/true。共享原controls/reference，independent_reference=null，本批没有重做源比较，人工字段映射边界仍保留。
