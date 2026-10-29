@@ -1,5 +1,9 @@
 # Qwen内部setup失败的诊断作者
 
+**已于2026-10-29 18:53:20 UTC（香港10月30日02:53）启动**，冻结`c8965d34`、controller21633。[启动回执](evidence/v6-qwen-setup-author-20261030/launch.json)、[真实本地服务健康](evidence/v6-qwen-setup-author-20261030/session-health.json)、[冻结预检](evidence/v6-qwen-setup-author-20261030/frozen-preflight.json)已保存。生产core仍ed24af7a，未清理磁盘。
+
+18:56:05的[实际启动核验](evidence/v6-qwen-setup-author-20261030/startup-verification.json)确认fresh generation-ffd3bf5531c4/session ses_e76fd52cdffeUfX5DBS0vwSyQX，7份初始文件、六显式输入75,682B逐字相同，357冻结文件保持。16个真实assistant消息/19工具，已读取原输入、索引、原B/C请求/结果/source/framework；一次错误installed路径查询保留。此时尚未生成有效性结论，完整访问/CPU测试/最终代码仍须终态审计。GPU空闲、df余10,289,156,096B（约9.58GiB）。唯一普通完成/8GiB监听PID13092已核验等待，[启动](evidence/v6-qwen-setup-author-20261030/wakeup-setup.json)与[实际状态](evidence/v6-qwen-setup-author-20261030/wakeup-verification.json)留档；旧44008已处理退出，无重复通知测试。
+
 这是[当前设备普通试验](v6-qwen-device-feedback-20261030.md)之后的一次独立真实diagnostic_author生成。外层评估在父路径质量通过，但新候选两种模式都内部自检失败；现有run-only sidecar只有异常位置/传播，没有完整比较值或输入状态，无法判定原.02/.02是否超差或比较是否等价。以这个具体缺口检验作者能否编写有界观察器，不是新增候选搜索、优化接受或重新开启已关闭的prompt/verifier研究。
 
 复用既有ProjectAgents/Runtime/快照接口；沿用通用作者instructions/interface，增加一段通用的“内部捕获异常/回退/有界比较证据”说明。六份显式输入是原task、原始candidate_diagnostics sidecar、原adapter、确切04df候选、原请求/worker/source/只读controls索引和接口，另有自动worker-environment。没有开发者terminal/public audit、fast_enabled/chain E推断、因果答案、手写修复、其他作者输出或旧成功实现。实际文件大小/快照/完整工具读取须终态审计，外部FS可访问，不承诺隔离。
