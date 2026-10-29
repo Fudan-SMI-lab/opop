@@ -1,0 +1,584 @@
+{
+  "at": "2026-10-29T17:39:52.421822+00:00",
+  "finished_at": "2026-10-29T17:34:22.346943+00:00",
+  "core": {
+    "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+    "files": 163,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "frozen_files": 286,
+  "source": {
+    "valid": true,
+    "mapping": {
+      "tokens": "generated_tokens",
+      "logits": "step_logits"
+    },
+    "adapter_sha256": "498c90f3f6f91b993ac8a586ac3230ffe2e6901752165b26948142d978f7cff7",
+    "source_reference_sha256": "af929f424e8ceb372b06ac171841df496f9a9ef4c26c16dc2f69b4014a2678da",
+    "controls_reference_sha256": "948870860ae9e3a0c0dbb16e529def4c6b163b86f5378dbccb3ca1bef6df1343",
+    "checks": [
+      {
+        "step": 0,
+        "passed": true,
+        "compared_elements": 4861984,
+        "max_abs_error": 0.0,
+        "exact_tokens": true,
+        "finite_logits": true,
+        "additional_observations": [
+          "generated_token_count",
+          "teacher_forced_replay_exact_tokens",
+          "teacher_forced_replay_logits_close",
+          "teacher_forced_replay_logits_max_abs_error"
+        ]
+      },
+      {
+        "step": 1,
+        "passed": true,
+        "compared_elements": 4861984,
+        "max_abs_error": 0.0,
+        "exact_tokens": true,
+        "finite_logits": true,
+        "additional_observations": [
+          "generated_token_count",
+          "teacher_forced_replay_exact_tokens",
+          "teacher_forced_replay_logits_close",
+          "teacher_forced_replay_logits_max_abs_error"
+        ]
+      }
+    ],
+    "negative_checks": {
+      "integer_token_plus_one": {
+        "passed": false,
+        "compared_elements": 32,
+        "max_abs_error": 0.0,
+        "observation_path": "output.tokens",
+        "atol": 0.02,
+        "rtol": 0.02,
+        "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+        "error": "output.tokens: integer/bool tensors must match exactly"
+      },
+      "logit_outside_tolerance": {
+        "passed": false,
+        "compared_elements": 4861984,
+        "max_abs_error": 54.0,
+        "observation_path": "output.logits",
+        "atol": 0.02,
+        "rtol": 0.02,
+        "failure_scope": "first failing observation in comparison traversal, not earliest execution divergence",
+        "error": "Tensor-likes are not close!\n\nMismatched elements: 1 / 4861952 (0.0%)\nGreatest absolute difference: 54.0 at index (0, 0, 0) (up to 0.02 allowed)\nGreatest relative difference: 10.1875 at index (0, 0, 0) (up to 0.02 allowed)"
+      }
+    },
+    "scope": "CPU full comparison of fresh real CUDA controls to independent source tensors; no GPU rerun, sample selection or tolerance change. Additional adapter observations and ownership are separate code review."
+  },
+  "new_controls_reference": {
+    "path": "/root/autodl-tmp/dev/v6-work/qwen-device-refresh-fixed-20261030/qwen-fixed/preparation/controls/reference-rank-0.pt",
+    "sha256": "948870860ae9e3a0c0dbb16e529def4c6b163b86f5378dbccb3ca1bef6df1343",
+    "note": "New CUDA controls artifact happens to equal old reference SHA; execution is fresh, not a reference copy."
+  },
+  "pointers": {
+    "new": "009b4178a52cac5cd898cebd04509e2e05607bdc027f985b6ae14d3e3321a7b7",
+    "old": {
+      "revision": "eb9dfd943fd61dec12cf4d54824995ff15ca4bd0e48acda6e8700b0a673e54ea"
+    }
+  },
+  "review": {
+    "quality": "Controls/source gate and B/C full checks passed; candidate quality is on recorded parent fallback path, not successful optimized path.",
+    "routes": "C quality phase records 62 parent_fallback_setup_failure and 2 prefill_parent_passthrough, references 62/2. Empty framework fallbacks does not erase candidate internal fallback.",
+    "constraint": "Fresh TTFT original reference23.285755, limit24.45004275; fixed B24.5339 fails and C23.550697 passes. B gate was quality/coverage only. All samples retained; no threshold change.",
+    "timing": "Fixed B701.762096/C674.079858 ms are diagnostic, no paired-noise or accepted gain. Candidate setup3899.385769ms outside warm score; no clean-wall/profile subtraction.",
+    "ownership": "C lifecycle peak +119403008 bytes and runtime peak +99271168 bytes; not memory gain. Extra setup owners survive fallback. Arbitrary aliases/concurrency not certified.",
+    "next": "One separate existing run-only candidate_diagnostics may identify caught setup error. No manual repair, retiming, new source or candidate acceptance."
+  },
+  "df": "   1B-blocks         Used       Avail\n161061273600 149452476416 11608797184\n",
+  "endpoints": {
+    "controls": {
+      "path": "/root/autodl-tmp/dev/v6-work/qwen-device-refresh-fixed-20261030/qwen-fixed/preparation/controls/receipt.json",
+      "sha256": "a6e2a2e72285d087924ee0f8e5b0bde1ff60c978ed5aec4dc07053f4454efc4d",
+      "request_sha256": "d55b4534f819fd3852a0dea6b9e91f4e721b36e8604b24961fe8daaa443abdd6",
+      "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+      "bundle_files": [],
+      "checks": null,
+      "samples": [
+        {
+          "ttft_ms": 23.248237,
+          "decode_ms": 639.291313,
+          "end_to_end_ms": 662.53955,
+          "decode_tokens_per_second": 48.49119543722003,
+          "generated_tokens_per_second": 48.29900343307807,
+          "generated_tokens": 32.0,
+          "decode_tokens": 31.0,
+          "generated_tokens_per_second_from_elapsed": 48.28519804322605,
+          "parameter_count": 4022468096.0,
+          "peak_allocated_bytes": 8168429568.0,
+          "framework.elapsed_ms": 662.728979,
+          "framework.peak_allocated_bytes": 8168429568.0,
+          "framework.peak_reserved_bytes": 8281653248.0,
+          "framework.allocated_bytes": 8110232064.0,
+          "framework.reserved_bytes": 8281653248.0,
+          "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+          "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+        },
+        {
+          "ttft_ms": 23.285755,
+          "decode_ms": 635.55886,
+          "end_to_end_ms": 658.844615,
+          "decode_tokens_per_second": 48.77597017528794,
+          "generated_tokens_per_second": 48.569874096944694,
+          "generated_tokens": 32.0,
+          "decode_tokens": 31.0,
+          "generated_tokens_per_second_from_elapsed": 48.556559681437285,
+          "parameter_count": 4022468096.0,
+          "peak_allocated_bytes": 8168429568.0,
+          "framework.elapsed_ms": 659.025273,
+          "framework.peak_allocated_bytes": 8168429568.0,
+          "framework.peak_reserved_bytes": 8281653248.0,
+          "framework.allocated_bytes": 8110232064.0,
+          "framework.reserved_bytes": 8281653248.0,
+          "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+          "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+        },
+        {
+          "ttft_ms": 23.601858,
+          "decode_ms": 649.496638,
+          "end_to_end_ms": 673.098496,
+          "decode_tokens_per_second": 47.72926938537902,
+          "generated_tokens_per_second": 47.541333386072516,
+          "generated_tokens": 32.0,
+          "decode_tokens": 31.0,
+          "generated_tokens_per_second_from_elapsed": 47.52872902989031,
+          "parameter_count": 4022468096.0,
+          "peak_allocated_bytes": 8168429568.0,
+          "framework.elapsed_ms": 673.276998,
+          "framework.peak_allocated_bytes": 8168429568.0,
+          "framework.peak_reserved_bytes": 8281653248.0,
+          "framework.allocated_bytes": 8110232064.0,
+          "framework.reserved_bytes": 8281653248.0,
+          "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+          "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+        },
+        {
+          "ttft_ms": 23.273149,
+          "decode_ms": 639.250808,
+          "end_to_end_ms": 662.523957,
+          "decode_tokens_per_second": 48.49426799629481,
+          "generated_tokens_per_second": 48.30014018647781,
+          "generated_tokens": 32.0,
+          "decode_tokens": 31.0,
+          "generated_tokens_per_second_from_elapsed": 48.28683573109111,
+          "parameter_count": 4022468096.0,
+          "peak_allocated_bytes": 8168429568.0,
+          "framework.elapsed_ms": 662.706502,
+          "framework.peak_allocated_bytes": 8168429568.0,
+          "framework.peak_reserved_bytes": 8281653248.0,
+          "framework.allocated_bytes": 8110232064.0,
+          "framework.reserved_bytes": 8281653248.0,
+          "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+          "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+        },
+        {
+          "ttft_ms": 23.363087,
+          "decode_ms": 638.842922,
+          "end_to_end_ms": 662.206009,
+          "decode_tokens_per_second": 48.52523043215309,
+          "generated_tokens_per_second": 48.3233307537081,
+          "generated_tokens": 32.0,
+          "decode_tokens": 31.0,
+          "generated_tokens_per_second_from_elapsed": 48.309921771562514,
+          "parameter_count": 4022468096.0,
+          "peak_allocated_bytes": 8168429568.0,
+          "framework.elapsed_ms": 662.389812,
+          "framework.peak_allocated_bytes": 8168429568.0,
+          "framework.peak_reserved_bytes": 8281653248.0,
+          "framework.allocated_bytes": 8110232064.0,
+          "framework.reserved_bytes": 8281653248.0,
+          "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+          "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+        }
+      ],
+      "metrics": {
+        "ttft_ms": 23.285755,
+        "decode_ms": 639.250808,
+        "end_to_end_ms": 662.523957,
+        "decode_tokens_per_second": 48.49426799629481,
+        "generated_tokens_per_second": 48.30014018647781,
+        "generated_tokens": 32.0,
+        "decode_tokens": 31.0,
+        "generated_tokens_per_second_from_elapsed": 48.28683573109111,
+        "parameter_count": 4022468096.0,
+        "peak_allocated_bytes": 8168429568.0,
+        "framework.elapsed_ms": 662.706502,
+        "framework.peak_allocated_bytes": 8168429568.0,
+        "framework.peak_reserved_bytes": 8281653248.0,
+        "framework.allocated_bytes": 8110232064.0,
+        "framework.reserved_bytes": 8281653248.0,
+        "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+        "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+      },
+      "coverage": null,
+      "setup": null,
+      "constraints": [
+        {
+          "metric": "ttft_ms",
+          "values": [
+            23.285755
+          ],
+          "limit": 24.45004275,
+          "original_reference": 23.285755,
+          "passed": true
+        }
+      ],
+      "log_sha256": "e0a137a6abd748bd6ed2b0d68a331c5a7e79a2485ae1f7bd31baea83df7db931"
+    },
+    "B": {
+      "path": "/root/autodl-tmp/dev/v6-work/qwen-device-refresh-fixed-20261030/B-result.json",
+      "sha256": "a5d5b5d8441a73df8f5981a194cd0b8b822e10499613de4525f9a5ae5bbef357",
+      "request_sha256": "1b999839e49f76669003d132caf41106c0700ae78d28465ce5bf51a018b42dbf",
+      "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+      "bundle_files": [],
+      "checks": [
+        {
+          "continuous_step": 0,
+          "passed": true,
+          "compared_elements": 4861988,
+          "max_abs_error": 0.0
+        },
+        {
+          "continuous_step": 1,
+          "passed": true,
+          "compared_elements": 4861988,
+          "max_abs_error": 0.0
+        }
+      ],
+      "samples": [
+        {
+          "ttft_ms": 24.375889,
+          "decode_ms": 677.277444,
+          "end_to_end_ms": 701.653333,
+          "decode_tokens_per_second": 45.77149331434106,
+          "generated_tokens_per_second": 45.60656736736402,
+          "generated_tokens": 32.0,
+          "decode_tokens": 31.0,
+          "generated_tokens_per_second_from_elapsed": 45.59513728316827,
+          "parameter_count": 4022468096.0,
+          "peak_allocated_bytes": 8168429568.0,
+          "framework.elapsed_ms": 701.829228,
+          "framework.peak_allocated_bytes": 8168429568.0,
+          "framework.peak_reserved_bytes": 8281653248.0,
+          "framework.allocated_bytes": 8110232064.0,
+          "framework.reserved_bytes": 8281653248.0,
+          "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+          "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+        },
+        {
+          "ttft_ms": 25.872794,
+          "decode_ms": 674.105134,
+          "end_to_end_ms": 699.977928,
+          "decode_tokens_per_second": 45.9868920090438,
+          "generated_tokens_per_second": 45.7157271964724,
+          "generated_tokens": 32.0,
+          "decode_tokens": 31.0,
+          "generated_tokens_per_second_from_elapsed": 45.70391686666617,
+          "parameter_count": 4022468096.0,
+          "peak_allocated_bytes": 8168429568.0,
+          "framework.elapsed_ms": 700.158809,
+          "framework.peak_allocated_bytes": 8168429568.0,
+          "framework.peak_reserved_bytes": 8281653248.0,
+          "framework.allocated_bytes": 8110232064.0,
+          "framework.reserved_bytes": 8281653248.0,
+          "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+          "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+        },
+        {
+          "ttft_ms": 24.26697,
+          "decode_ms": 679.678313,
+          "end_to_end_ms": 703.945283,
+          "decode_tokens_per_second": 45.609811887583355,
+          "generated_tokens_per_second": 45.45807859330453,
+          "generated_tokens": 32.0,
+          "decode_tokens": 31.0,
+          "generated_tokens_per_second_from_elapsed": 45.445942292364705,
+          "parameter_count": 4022468096.0,
+          "peak_allocated_bytes": 8168429568.0,
+          "framework.elapsed_ms": 704.133271,
+          "framework.peak_allocated_bytes": 8168429568.0,
+          "framework.peak_reserved_bytes": 8281653248.0,
+          "framework.allocated_bytes": 8110232064.0,
+          "framework.reserved_bytes": 8281653248.0,
+          "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+          "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+        },
+        {
+          "ttft_ms": 24.641411,
+          "decode_ms": 741.114582,
+          "end_to_end_ms": 765.755993,
+          "decode_tokens_per_second": 41.828889557593406,
+          "generated_tokens_per_second": 41.788768605824025,
+          "generated_tokens": 32.0,
+          "decode_tokens": 31.0,
+          "generated_tokens_per_second_from_elapsed": 41.77875018631201,
+          "parameter_count": 4022468096.0,
+          "peak_allocated_bytes": 8168429568.0,
+          "framework.elapsed_ms": 765.939619,
+          "framework.peak_allocated_bytes": 8168429568.0,
+          "framework.peak_reserved_bytes": 8281653248.0,
+          "framework.allocated_bytes": 8110232064.0,
+          "framework.reserved_bytes": 8281653248.0,
+          "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+          "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+        },
+        {
+          "ttft_ms": 24.5339,
+          "decode_ms": 677.228196,
+          "end_to_end_ms": 701.762096,
+          "decode_tokens_per_second": 45.77482181500901,
+          "generated_tokens_per_second": 45.599499007424306,
+          "generated_tokens": 32.0,
+          "decode_tokens": 31.0,
+          "generated_tokens_per_second_from_elapsed": 45.586937692104065,
+          "parameter_count": 4022468096.0,
+          "peak_allocated_bytes": 8168429568.0,
+          "framework.elapsed_ms": 701.955464,
+          "framework.peak_allocated_bytes": 8168429568.0,
+          "framework.peak_reserved_bytes": 8281653248.0,
+          "framework.allocated_bytes": 8110232064.0,
+          "framework.reserved_bytes": 8281653248.0,
+          "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+          "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+        }
+      ],
+      "metrics": {
+        "ttft_ms": 24.5339,
+        "decode_ms": 677.277444,
+        "end_to_end_ms": 701.762096,
+        "decode_tokens_per_second": 45.77149331434106,
+        "generated_tokens_per_second": 45.599499007424306,
+        "generated_tokens": 32.0,
+        "decode_tokens": 31.0,
+        "generated_tokens_per_second_from_elapsed": 45.586937692104065,
+        "parameter_count": 4022468096.0,
+        "peak_allocated_bytes": 8168429568.0,
+        "framework.elapsed_ms": 701.955464,
+        "framework.peak_allocated_bytes": 8168429568.0,
+        "framework.peak_reserved_bytes": 8281653248.0,
+        "framework.allocated_bytes": 8110232064.0,
+        "framework.reserved_bytes": 8281653248.0,
+        "framework.lifecycle_peak_allocated_bytes": 8188023808.0,
+        "framework.lifecycle_peak_reserved_bytes": 8281653248.0
+      },
+      "coverage": {},
+      "setup": [],
+      "constraints": [
+        {
+          "metric": "ttft_ms",
+          "values": [
+            24.5339
+          ],
+          "limit": 24.45004275,
+          "original_reference": 23.285755,
+          "passed": false
+        }
+      ],
+      "log_sha256": "fef5110e93b19b64b1032b85ef7db687f09a25616ac784055f39513de2f8db07"
+    },
+    "C": {
+      "path": "/root/autodl-tmp/dev/v6-work/qwen-device-refresh-fixed-20261030/C-result.json",
+      "sha256": "1b12b53fb42a130e5080d3ae79191947b77e3fac1adff195fecbc22d7c4fade8",
+      "request_sha256": "d5d28da72d8b2e8d1dbaea0693d2fc8b210b228f2ceef41f31dde40dc57f1388",
+      "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+      "bundle_files": [
+        {
+          "id": "trial-recovered-4f3d7f11aa-param-2eb959a5",
+          "sha256": "f5b76ebde100c039d8ad9264e316dbade5acdb74c02f40308e958673e802be7e"
+        }
+      ],
+      "checks": [
+        {
+          "continuous_step": 0,
+          "passed": true,
+          "compared_elements": 4861988,
+          "max_abs_error": 0.0
+        },
+        {
+          "continuous_step": 1,
+          "passed": true,
+          "compared_elements": 4861988,
+          "max_abs_error": 0.0
+        }
+      ],
+      "samples": [
+        {
+          "ttft_ms": 23.550697,
+          "decode_ms": 650.529161,
+          "end_to_end_ms": 674.079858,
+          "decode_tokens_per_second": 47.653513260414776,
+          "generated_tokens_per_second": 47.47212013565313,
+          "generated_tokens": 32.0,
+          "decode_tokens": 31.0,
+          "generated_tokens_per_second_from_elapsed": 47.45683732426155,
+          "parameter_count": 4022468096.0,
+          "peak_allocated_bytes": 8267700736.0,
+          "framework.elapsed_ms": 674.296936,
+          "framework.peak_allocated_bytes": 8267700736.0,
+          "framework.peak_reserved_bytes": 8432648192.0,
+          "framework.allocated_bytes": 8208847872.0,
+          "framework.reserved_bytes": 8432648192.0,
+          "framework.lifecycle_peak_allocated_bytes": 8307426816.0,
+          "framework.lifecycle_peak_reserved_bytes": 8432648192.0
+        },
+        {
+          "ttft_ms": 23.290634,
+          "decode_ms": 650.43676,
+          "end_to_end_ms": 673.727394,
+          "decode_tokens_per_second": 47.660282915129216,
+          "generated_tokens_per_second": 47.496955422893194,
+          "generated_tokens": 32.0,
+          "decode_tokens": 31.0,
+          "generated_tokens_per_second_from_elapsed": 47.48254561654834,
+          "parameter_count": 4022468096.0,
+          "peak_allocated_bytes": 8267700736.0,
+          "framework.elapsed_ms": 673.931854,
+          "framework.peak_allocated_bytes": 8267700736.0,
+          "framework.peak_reserved_bytes": 8432648192.0,
+          "framework.allocated_bytes": 8208847872.0,
+          "framework.reserved_bytes": 8432648192.0,
+          "framework.lifecycle_peak_allocated_bytes": 8307426816.0,
+          "framework.lifecycle_peak_reserved_bytes": 8432648192.0
+        },
+        {
+          "ttft_ms": 24.26732,
+          "decode_ms": 670.414121,
+          "end_to_end_ms": 694.681441,
+          "decode_tokens_per_second": 46.24007613944635,
+          "generated_tokens_per_second": 46.06427941120137,
+          "generated_tokens": 32.0,
+          "decode_tokens": 31.0,
+          "generated_tokens_per_second_from_elapsed": 46.05003765720243,
+          "parameter_count": 4022468096.0,
+          "peak_allocated_bytes": 8267700736.0,
+          "framework.elapsed_ms": 694.896283,
+          "framework.peak_allocated_bytes": 8267700736.0,
+          "framework.peak_reserved_bytes": 8432648192.0,
+          "framework.allocated_bytes": 8208847872.0,
+          "framework.reserved_bytes": 8432648192.0,
+          "framework.lifecycle_peak_allocated_bytes": 8307426816.0,
+          "framework.lifecycle_peak_reserved_bytes": 8432648192.0
+        },
+        {
+          "ttft_ms": 24.320559,
+          "decode_ms": 651.430453,
+          "end_to_end_ms": 675.751012,
+          "decode_tokens_per_second": 47.58758184735954,
+          "generated_tokens_per_second": 47.354720054788466,
+          "generated_tokens": 32.0,
+          "decode_tokens": 31.0,
+          "generated_tokens_per_second_from_elapsed": 47.34008342663016,
+          "parameter_count": 4022468096.0,
+          "peak_allocated_bytes": 8267700736.0,
+          "framework.elapsed_ms": 675.959941,
+          "framework.peak_allocated_bytes": 8267700736.0,
+          "framework.peak_reserved_bytes": 8432648192.0,
+          "framework.allocated_bytes": 8208847872.0,
+          "framework.reserved_bytes": 8432648192.0,
+          "framework.lifecycle_peak_allocated_bytes": 8307426816.0,
+          "framework.lifecycle_peak_reserved_bytes": 8432648192.0
+        },
+        {
+          "ttft_ms": 23.358056,
+          "decode_ms": 648.210202,
+          "end_to_end_ms": 671.568258,
+          "decode_tokens_per_second": 47.82399274857448,
+          "generated_tokens_per_second": 47.64966125007058,
+          "generated_tokens": 32.0,
+          "decode_tokens": 31.0,
+          "generated_tokens_per_second_from_elapsed": 47.63437355343153,
+          "parameter_count": 4022468096.0,
+          "peak_allocated_bytes": 8267700736.0,
+          "framework.elapsed_ms": 671.78379,
+          "framework.peak_allocated_bytes": 8267700736.0,
+          "framework.peak_reserved_bytes": 8432648192.0,
+          "framework.allocated_bytes": 8208847872.0,
+          "framework.reserved_bytes": 8432648192.0,
+          "framework.lifecycle_peak_allocated_bytes": 8307426816.0,
+          "framework.lifecycle_peak_reserved_bytes": 8432648192.0
+        }
+      ],
+      "metrics": {
+        "ttft_ms": 23.550697,
+        "decode_ms": 650.529161,
+        "end_to_end_ms": 674.079858,
+        "decode_tokens_per_second": 47.653513260414776,
+        "generated_tokens_per_second": 47.47212013565313,
+        "generated_tokens": 32.0,
+        "decode_tokens": 31.0,
+        "generated_tokens_per_second_from_elapsed": 47.45683732426155,
+        "parameter_count": 4022468096.0,
+        "peak_allocated_bytes": 8267700736.0,
+        "framework.elapsed_ms": 674.296936,
+        "framework.peak_allocated_bytes": 8267700736.0,
+        "framework.peak_reserved_bytes": 8432648192.0,
+        "framework.allocated_bytes": 8208847872.0,
+        "framework.reserved_bytes": 8432648192.0,
+        "framework.lifecycle_peak_allocated_bytes": 8307426816.0,
+        "framework.lifecycle_peak_reserved_bytes": 8432648192.0
+      },
+      "coverage": {
+        "trial-recovered-4f3d7f11aa-param-2eb959a5": {
+          "counts": {
+            "900c23e99c808d2c9bda215a": 2,
+            "323bcbe006b343648b346af9": 62
+          },
+          "fallbacks": {},
+          "required": [
+            "900c23e99c808d2c9bda215a",
+            "323bcbe006b343648b346af9"
+          ],
+          "reference_invocations": {
+            "900c23e99c808d2c9bda215a": 2,
+            "323bcbe006b343648b346af9": 62
+          },
+          "candidate_declared_routes": [
+            {
+              "call": "323bcbe006b343648b346af9",
+              "route": "parent_fallback_setup_failure",
+              "count": 62
+            },
+            {
+              "call": "900c23e99c808d2c9bda215a",
+              "route": "prefill_parent_passthrough",
+              "count": 2
+            }
+          ],
+          "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+        }
+      },
+      "setup": [
+        {
+          "bundle": "trial-recovered-4f3d7f11aa-param-2eb959a5",
+          "binding": {
+            "requested": "legacy",
+            "effective": "direct",
+            "reason": "no functional replacements"
+          },
+          "elapsed_ms": 3899.385769,
+          "allocated_bytes": 8248573440,
+          "reserved_bytes": 8313110528,
+          "peak_allocated_bytes": 8250852864,
+          "scope": "installation after model prepare; separate from the declared warm-model score"
+        }
+      ],
+      "constraints": [
+        {
+          "metric": "ttft_ms",
+          "values": [
+            23.550697
+          ],
+          "limit": 24.45004275,
+          "original_reference": 23.285755,
+          "passed": true
+        }
+      ],
+      "log_sha256": "2837d213c79463010afc58b5c7f9ada514cf74e32e5260ada219fbfee61d371b"
+    }
+  },
+  "terminal_audit_sha256": "3b0a9bcbf5aec79c59976fff51518a60e60e6e937bd482eccc5b00178ad6593a"
+}

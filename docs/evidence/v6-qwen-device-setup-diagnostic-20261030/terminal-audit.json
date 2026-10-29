@@ -1,0 +1,279 @@
+{
+  "at": "2026-10-29T17:45:37.065114+00:00",
+  "finished_at": "2026-10-29T17:38:24.557389+00:00",
+  "core": {
+    "sha256": "ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f",
+    "files": 163,
+    "scope": "kernel_optimizer Python sources and role prompts at worker entry"
+  },
+  "frozen_files": 289,
+  "request_sha256": "9b8f1b503709ae57e3e5fffa8e3d1129541f61d6bd9a492f3df3028698c3af7f",
+  "entry_sha256": "aed604ee3c454ba7ef3bec09d74c48e1f92ab0ec873c3f74d2c2e2f76c6bd0af",
+  "candidate_sha256": "f5b76ebde100c039d8ad9264e316dbade5acdb74c02f40308e958673e802be7e",
+  "diagnostic_sha256": "bc49f9b0075d0281df7ccf2e5d659adff11cff558dfa8ff2c5e40a9694ebd806",
+  "worker_status": "passed",
+  "run_only_valid": true,
+  "coverage": {
+    "trial-recovered-4f3d7f11aa-param-2eb959a5": {
+      "counts": {
+        "900c23e99c808d2c9bda215a": 2,
+        "323bcbe006b343648b346af9": 62
+      },
+      "fallbacks": {},
+      "reference_invocations": {
+        "900c23e99c808d2c9bda215a": 2,
+        "323bcbe006b343648b346af9": 62
+      },
+      "candidate_declared_routes": [
+        {
+          "call": "323bcbe006b343648b346af9",
+          "route": "parent_fallback_setup_failure",
+          "count": 62
+        },
+        {
+          "call": "900c23e99c808d2c9bda215a",
+          "route": "prefill_parent_passthrough",
+          "count": 2
+        }
+      ],
+      "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+    }
+  },
+  "events": [
+    {
+      "phase": "setup",
+      "bundle": "trial-recovered-4f3d7f11aa-param-2eb959a5",
+      "file": "/root/autodl-tmp/dev/v6-work/qwen-device-setup-diagnostic-20261030/qwen-diagnostic/jobs/setup-diagnostic/source/opop_candidates/trial-recovered-4f3d7f11aa.py",
+      "function": "<genexpr>",
+      "line": 456,
+      "source": "if any(proj is None for proj in projs):",
+      "recent_lines": [
+        {
+          "line": 456,
+          "source": "if any(proj is None for proj in projs):"
+        }
+      ],
+      "event": "return",
+      "type": "bool",
+      "message": "False",
+      "count": 252
+    },
+    {
+      "phase": "setup",
+      "bundle": "trial-recovered-4f3d7f11aa-param-2eb959a5",
+      "file": "/root/autodl-tmp/dev/v6-work/qwen-device-setup-diagnostic-20261030/qwen-diagnostic/jobs/setup-diagnostic/source/opop_candidates/trial-recovered-4f3d7f11aa.py",
+      "function": "_check_logits",
+      "line": 807,
+      "source": "torch.testing.assert_close(mine.float(), reference.float(),",
+      "recent_lines": [
+        {
+          "line": 807,
+          "source": "torch.testing.assert_close(mine.float(), reference.float(),"
+        },
+        {
+          "line": 808,
+          "source": "atol=_VERIFY_ATOL, rtol=_VERIFY_RTOL,"
+        },
+        {
+          "line": 809,
+          "source": "msg=\"decode logits mismatch (%s)\" % what)"
+        },
+        {
+          "line": 807,
+          "source": "torch.testing.assert_close(mine.float(), reference.float(),"
+        }
+      ],
+      "event": "exception",
+      "type": "AssertionError",
+      "message": "decode logits mismatch (eager_vs_parent_step_1)",
+      "count": 1,
+      "traceback": [
+        {
+          "file": "/root/autodl-tmp/dev/v6-work/qwen-device-setup-diagnostic-20261030/qwen-diagnostic/jobs/setup-diagnostic/source/opop_candidates/trial-recovered-4f3d7f11aa.py",
+          "function": "_check_logits",
+          "line": 807,
+          "source": "torch.testing.assert_close(mine.float(), reference.float(),"
+        },
+        {
+          "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/testing/_comparison.py",
+          "function": "assert_close",
+          "line": 1631,
+          "source": "raise error_metas[0].to_error(msg)"
+        }
+      ]
+    },
+    {
+      "phase": "setup",
+      "bundle": "trial-recovered-4f3d7f11aa-param-2eb959a5",
+      "file": "/root/autodl-tmp/dev/v6-work/qwen-device-setup-diagnostic-20261030/qwen-diagnostic/jobs/setup-diagnostic/source/opop_candidates/trial-recovered-4f3d7f11aa.py",
+      "function": "setup",
+      "line": 877,
+      "source": "self._check_logits(self.scratch_logits[:, -1], oracle_out.logits[:, -1],",
+      "recent_lines": [
+        {
+          "line": 868,
+          "source": "self.static_input.copy_(token)"
+        },
+        {
+          "line": 869,
+          "source": "stream.wait_stream(current)"
+        },
+        {
+          "line": 870,
+          "source": "with torch.cuda.stream(stream):"
+        },
+        {
+          "line": 871,
+          "source": "self._fast_step(step, scratch_flat)"
+        },
+        {
+          "line": 870,
+          "source": "with torch.cuda.stream(stream):"
+        },
+        {
+          "line": 872,
+          "source": "current.wait_stream(stream)"
+        },
+        {
+          "line": 873,
+          "source": "torch.cuda.synchronize()"
+        },
+        {
+          "line": 874,
+          "source": "my_token = self.scratch_logits[:, -1].argmax(dim=-1, keepdim=True)"
+        },
+        {
+          "line": 875,
+          "source": "if not bool(torch.equal(my_token, token_next)):"
+        },
+        {
+          "line": 877,
+          "source": "self._check_logits(self.scratch_logits[:, -1], oracle_out.logits[:, -1],"
+        },
+        {
+          "line": 878,
+          "source": "\"eager_vs_parent_step_%d\" % step)"
+        },
+        {
+          "line": 877,
+          "source": "self._check_logits(self.scratch_logits[:, -1], oracle_out.logits[:, -1],"
+        }
+      ],
+      "event": "exception",
+      "type": "AssertionError",
+      "message": "decode logits mismatch (eager_vs_parent_step_1)",
+      "count": 1,
+      "traceback": [
+        {
+          "file": "/root/autodl-tmp/dev/v6-work/qwen-device-setup-diagnostic-20261030/qwen-diagnostic/jobs/setup-diagnostic/source/opop_candidates/trial-recovered-4f3d7f11aa.py",
+          "function": "setup",
+          "line": 877,
+          "source": "self._check_logits(self.scratch_logits[:, -1], oracle_out.logits[:, -1],"
+        },
+        {
+          "file": "/root/autodl-tmp/dev/v6-work/qwen-device-setup-diagnostic-20261030/qwen-diagnostic/jobs/setup-diagnostic/source/opop_candidates/trial-recovered-4f3d7f11aa.py",
+          "function": "_check_logits",
+          "line": 807,
+          "source": "torch.testing.assert_close(mine.float(), reference.float(),"
+        },
+        {
+          "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/testing/_comparison.py",
+          "function": "assert_close",
+          "line": 1631,
+          "source": "raise error_metas[0].to_error(msg)"
+        }
+      ]
+    },
+    {
+      "phase": "setup",
+      "bundle": "trial-recovered-4f3d7f11aa-param-2eb959a5",
+      "file": "/root/autodl-tmp/dev/v6-work/qwen-device-setup-diagnostic-20261030/qwen-diagnostic/jobs/setup-diagnostic/source/opop_candidates/trial-recovered-4f3d7f11aa.py",
+      "function": "build",
+      "line": 1096,
+      "source": "runner.setup(inputs, prefill_repl, decode_repl)",
+      "recent_lines": [
+        {
+          "line": 1076,
+          "source": "batch = int(state.get(\"batch\", 1))"
+        },
+        {
+          "line": 1077,
+          "source": "if new_tokens < 2 or prompt_tokens < 1 or not isinstance(inputs, torch.Tensor):"
+        },
+        {
+          "line": 1079,
+          "source": "if tuple(inputs.shape) != (batch, prompt_tokens) or inputs.device != home:"
+        },
+        {
+          "line": 1081,
+          "source": "if inputs.dtype != torch.int64:"
+        },
+        {
+          "line": 1083,
+          "source": "runner = _FastDecodeRunner(model, home, prompt_tokens, new_tokens - 1,"
+        },
+        {
+          "line": 1084,
+          "source": "decode_parent, prefill_parent)"
+        },
+        {
+          "line": 1083,
+          "source": "runner = _FastDecodeRunner(model, home, prompt_tokens, new_tokens - 1,"
+        },
+        {
+          "line": 1085,
+          "source": "prefill_repl = _PrefillPassthrough(PREFILL_MODEL_CALL, prefill_parent, record_route)"
+        },
+        {
+          "line": 1086,
+          "source": "decode_repl = _DecodeReplacement(runner, DECODE_MODEL_CALL, decode_parent, record_route)"
+        },
+        {
+          "line": 1094,
+          "source": "try:"
+        },
+        {
+          "line": 1095,
+          "source": "with torch.inference_mode():"
+        },
+        {
+          "line": 1096,
+          "source": "runner.setup(inputs, prefill_repl, decode_repl)"
+        }
+      ],
+      "event": "exception",
+      "type": "AssertionError",
+      "message": "decode logits mismatch (eager_vs_parent_step_1)",
+      "count": 1,
+      "traceback": [
+        {
+          "file": "/root/autodl-tmp/dev/v6-work/qwen-device-setup-diagnostic-20261030/qwen-diagnostic/jobs/setup-diagnostic/source/opop_candidates/trial-recovered-4f3d7f11aa.py",
+          "function": "build",
+          "line": 1096,
+          "source": "runner.setup(inputs, prefill_repl, decode_repl)"
+        },
+        {
+          "file": "/root/autodl-tmp/dev/v6-work/qwen-device-setup-diagnostic-20261030/qwen-diagnostic/jobs/setup-diagnostic/source/opop_candidates/trial-recovered-4f3d7f11aa.py",
+          "function": "setup",
+          "line": 877,
+          "source": "self._check_logits(self.scratch_logits[:, -1], oracle_out.logits[:, -1],"
+        },
+        {
+          "file": "/root/autodl-tmp/dev/v6-work/qwen-device-setup-diagnostic-20261030/qwen-diagnostic/jobs/setup-diagnostic/source/opop_candidates/trial-recovered-4f3d7f11aa.py",
+          "function": "_check_logits",
+          "line": 807,
+          "source": "torch.testing.assert_close(mine.float(), reference.float(),"
+        },
+        {
+          "file": "/root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/testing/_comparison.py",
+          "function": "assert_close",
+          "line": 1631,
+          "source": "raise error_metas[0].to_error(msg)"
+        }
+      ]
+    }
+  ],
+  "interpretation": "Three propagated frames of one setup first-decode logit assertion, not three model failures. Candidate internal0.008/0.008 is stricter than original0.02/0.02; no raw logits/max retained, so outer-quality violation unknown. Normal False generator returns252 are not errors. Token check precedes recorded logit assertion, but no full outputs are persisted. Subsequent run is on internal parent fallback. Separate instrumentation can perturb setup; not proof all internals identical to earlier fixed C. No clean timing/observe/compare/performance acceptance.",
+  "source_pointer_unchanged": true,
+  "df": "   1B-blocks         Used       Avail\n161061273600 149452554240 11608719360\n"
+}

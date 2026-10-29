@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+推进至2026-10-29 17:38 UTC：[新设备固定验证](v6-qwen-device-refresh-fixed-20261030.md)controls/完整源检查及B/C质量通过，15样本/286身份保持，但C实际62次setup回退，无快路径优化证据。新TTFT anchor23.285755/limit24.45004275；B24.5339超限、C23.550697合格，固定计时不接受。一次独立run-only诊断记录首decode内部0.008/0.008自检失败，不能判为原0.02/0.02超差；289身份保持，无重跑质量/清理。两次短批在监听创建前完成，无新排队通知。下一步[当前设备一次普通反馈试验](v6-qwen-device-feedback-20261030.md)：原baseline空bundle、新discovery，实际结果/诊断经现有接口，原质量/新anchor/default探索保持，无手工优化答案、生产变更或独立接受预设。以下为历史状态。
+
 最新审计（2026-10-29 17:12 UTC终态）：[Qwen断电恢复](v6-qwen-accepted-recovery-20261030.md)完成但执行出错，无新接受。原第一轮missing rotary属性→空安装表拒绝，第二轮同会话生成f5b但重启后GPU UUID变化，worker根本未启动。271身份保持、六会话实际工具/快照与六既有worker审计；恢复预检漏核UUID明确记录。旧两轮/监听冻结处理，不重启。下一步[当前设备固定验证](v6-qwen-device-refresh-fixed-20261030.md)仅设备迁移，fresh原baseline controls/TTFT anchor、完整外部源比较，再原样f5b固定B/C，无Agent/搜索/正式接受/生产改动。两卡空闲、余约10.89GiB、无清理。以下为历史状态。
 
 当前执行（2026-10-30 00:56香港／10月29日16:56UTC）：[Qwen断电恢复](v6-qwen-accepted-recovery-20261030.md)冻结fde0f777/controller2158已启动。原selector同会话恢复、33输入字节相同，已进入此前未启动的第二轮candidate generation-cb08f1ca8ed2；271文件/第一轮拒绝/源current核验保持。唯一监听23004运行，df约10.92GiB，Agent阶段GPU空闲。只完成原剩余一轮，条件新接受版本独立验证；不复跑第一轮/参考/初始discovery，不变生产核心，无本轮清理。以下为历史状态。
