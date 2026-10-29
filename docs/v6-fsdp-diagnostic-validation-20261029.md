@@ -1,5 +1,9 @@
 # FSDP 原样 Agent 诊断脚本的固定双卡验证
 
+已于 2026-10-29 02:04:05 UTC（香港 10:04）启动，冻结 `0b0e9c44a4a913f4e3acb38df6469ff94b4405d3`，controller PID941199，生产 core `ed24af7a…` 不变。预检 19 个冻结文件/引用哈希通过。02:04:45 核验实际 B request 只有声明中的变化、probe SHA 完全相同，四项原通信诊断保留；双卡 worker PID941299/941300 已运行。此时 C 尚未启动，不预判其结果。见[启动回执](evidence/v6-fsdp-diagnostic-validation-20261029/launch.json)与[实际请求核查](evidence/v6-fsdp-diagnostic-validation-20261029/startup-verification.json)。
+
+唯一普通完成/磁盘监听 PID59148 已核实，旧修复监听标记已处理。监听预检确认本批仍运行，未发送测试消息；低于 8 GiB 时通知。启动实际 df 可用 10,516,926,464 bytes（约 9.79 GiB），无本轮清理或 raw 本地转存。见[监听回执](evidence/v6-fsdp-diagnostic-validation-20261029/wakeup-setup.json)。等待期间不调用模型，完成后核查真实结果。
+
 前置[修复审计](v6-fsdp-diagnostic-repair-20261029.md)通过八项独立 CPU 检查。接下来仅执行生成的 probe `9495eead…` 原始字节，不人工改写；不是新 Agent、候选搜索、性能接受或生产 collector 采用。
 
 顺序固定为派生 baseline B、原失败 candidate C，各一次。两者都复用 `fsdp-search-20261028/fsdp-search/jobs/trial-86e14487d0-param-b3a4c7d3-screen/run/request.json` 的源目录、adapter、controls。B 仅将 `parameters.bundles=[]`，明确是此次派生对照，不是历史已测基线；其物化源目录仍带原 staged revision manifest。C 保留原 bundle 和 `keep_unsharded_blocks=6`。两臂只共同替换 entry/function/output/wait 并增加诊断上下文，独立参考字段为 null。无源文件、控制参考复制或 current 指针发布。
