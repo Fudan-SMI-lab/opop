@@ -1,5 +1,7 @@
 # Qwen 重启后设备迁移与原样候选固定验证
 
+后续[当前设备普通反馈试验](v6-qwen-device-feedback-20261030.md)已于18:31 UTC结束并审计：两角色实际收到并读取本页f5b结果/原始setup诊断，新04df仍内部setup回退，完整父路径质量通过但TTFT24.679412超过本页新anchor所定24.45004275，未接受。25样本/10检查/299身份保留；不把新结果归为旧设备47.325%的增减，也不改变本页固定诊断决定。下一步仅生成有界setup观察器，旧候选不手工修复或重试到通过。
+
 已于2026-10-29 17:32:47–17:34:22 UTC执行完毕，冻结b8712f1b/controller8350。实际GPU UUID、请求、worker entry/core及286冻结身份已核验；[公开审计](evidence/v6-qwen-device-refresh-fixed-20261030/public-terminal-audit.json)对应完整审计SHA `3b0a9bcbf5aec79c59976fff51518a60e60e6e937bd482eccc5b00178ad6593a`。[启动核验](evidence/v6-qwen-device-refresh-fixed-20261030/startup-verification.json)执行时已终态；[监听预检](evidence/v6-qwen-device-refresh-fixed-20261030/wakeup-setup.json)发现完成，未创建listener或排队通知。旧监听23004保持已处理。
 
 新controls reset两次/identity一次通过，负例和missing coverage拒绝；独立源CPU两次完整tokens/logits零误差、finite/exact及两负例通过。新生成reference SHA恰与旧94887086相同，但其真实GPU controls本次执行且文件位于新目录，并非拷贝旧参考；prepared revision仍009b是内容身份，不意味着复用旧计时。新原baseline TTFT **23.285755ms**，上限 **24.45004275ms**。
