@@ -1,5 +1,25 @@
 # 第二种任务的诊断作者：FSDP完整质量拒绝
 
+终态审计：本批2026-10-29 01:28:18 UTC完成。实际7份初始输入与协议逐字相同，六份显式输入44,527 bytes，13个原文件/参考哈希保持。31条assistant消息、46工具（17 bash、16 read、5 edit、3 write、3 todowrite、1 glob、1 grep）、0 schema修复；provider估计费用0.9052052203仅统计。完整工具路径/命令/输出未见访问Qwen探针、后续FSDP接受实现或开发者诊断，仍不宣称文件系统隔离。见[终态小型审计](evidence/v6-fsdp-diagnostic-author-20261029/terminal-audit.json)，服务器完整审计SHA `85443e675f5e1fc0469c17cbb816dc962c0ec32d639728f7ff8a39dbd68ee8fa`。
+
+生成脚本27,054 bytes／608行，SHA `dd550e29654e55d7eade7483c785f0501872956ab43e7bf4f8afcf7abd076249`，plan SHA `9d33cc021e5cea2488d9e18baeb26585c39a6c12611e1f5de3a3bdcad7ce2fd1`。它选择包裹原compare：先取得原判定，再对同一观察量完整遍历，补充原比较在logits失败后未检查的gradients/parameters；另记录torch.distributed API计数。原adapter.observe其实已产生这些CPU观察量，“未比较”不能写成“执行中未观察”。此设计适应了训练任务，尚未经过GPU验证。
+
+作者自己的CPU mock首次因Python的5e-6与FP32实际4.999999873689376e-6严格相等断言失败；Agent只修正mock断言容差至1e-12，未改原模型质量阈值，后续mock通过。另有rg不存在但管道exit0，以及错误Python路径被`||`后备命令覆盖，均记录。mock使用TemporaryDirectory，临时输出已删除；完整命令/输出/修改记录和最终mock源码留服务器，不声称原临时文件仍存在。
+
+审核新增的小型CPU对照使用真实框架compare、原生成脚本，未运行模型/GPU：
+
+| 输入 | 原入口 | 原样诊断入口 |
+|---|---|---|
+| 后续观察量有限 | 返回valid=false，首先失败output.logits | 原返回完整保留，证据写入 |
+| 后续观察量NaN | 同样返回valid=false | JSON序列化抛ValueError，无证据文件 |
+| 后续观察量Inf | 同样返回valid=false | JSON序列化抛ValueError，无证据文件 |
+
+这是**诊断脚本的真实持久化缺陷**：它把原质量拒绝改成诊断异常，并丢失证据。不是FSDP原实验存在NaN/Inf的证据。三次CPU调用后compare/dist hook均恢复，CUDA未初始化；原生成代码未改。因此暂不将它投入双卡GPU，按[一次最小真实修复请求](v6-fsdp-diagnostic-repair-20261029.md)只处理这一缺陷，保留原生成物和失败记录。测试源`scripts/experiments/v6_diagnostic_persistence_cpu_20261029.py`及服务器`audit/persistence-cpu/result.json`可复查。
+
+其他限制不混入本次修复要求，也不自动采纳plan控制方案：top_mismatches按全体绝对误差排序，CPU对照确认其中可能包括容差内元素；仅摘要/选中数值/哈希不足以重新计算全部实际张量统计；observer_wall_s含原compare时间；CPU遍历延长观察量持有与更新间间隔，各rank分片和误差不同会带来不同工作量。首段API计数包含prepare/reset等，后段计数包含到达的后续阶段，不能直接解释成每步物理通信次数、字节、带宽或关键路径。实际policy前后跨prepare初始化，不能要求两端标志相同来替代原evaluator检查。代码也并非对所有异常都在finally中清理；部分安装失败等通用边界未验证。等指纹证明唯一算术原因、完全不改变生命周期、微秒级开销等叙述均未采纳；不自动执行其重复候选或K=0方案。
+
+生产core/prompt/sampler/allocator/验收不变，无新增FSDP GPU结果或接受。本轮df仍约9.81GiB，GPU空闲，无raw本地转存/清理。以下为冻结启动记录。
+
 已于2026-10-29 01:11:02 UTC启动，冻结`31049b1a7a8b5951ef29485eaf372a6688e2a0db`，controller933494，真实OpenCode服务健康检查通过。01:12:44核对初始`generation-9204734ad7e7`／session `ses_e7ac9e991ffe8fpV8xyL6ydRap`：7份初始文件与协议逐字一致，六份显式输入44,527 bytes；9条真实assistant消息、15个工具调用，初始访问记录未见后来诊断/接受版本，最终仍需全量审查。13个源/参考文件哈希保持，无GPU worker。见[启动核验](evidence/v6-fsdp-diagnostic-author-20261029/startup-verification.json)、[启动回执](evidence/v6-fsdp-diagnostic-author-20261029/launch.json)。
 
 唯一普通监听PID53880已确认运行，状态waiting；30秒SSH/df检查不调用模型，8GiB提醒。实际df余10,539,532,288B（约9.82GiB）。见[监听回执](evidence/v6-fsdp-diagnostic-author-20261029/wakeup-setup.json)。没有重启已经处理的Qwen作者/验证批次，没有额外投递测试、GPU运行或raw转存；当前尚无新生成物执行结论。
