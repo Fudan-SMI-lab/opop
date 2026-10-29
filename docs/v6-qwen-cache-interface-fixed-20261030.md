@@ -1,5 +1,7 @@
 # Qwen缓存接口候选原字节固定执行
 
+后续：用户要求持续推进，声明[一轮普通约束反馈](v6-qwen-cache-constraint-feedback-20261030.md)，使用本批精确代码/原质量结果/全部样本和TTFT失败，不重测此固定版本、不换锚或给手写修复。原B/C完成状态与本页结论保持；新续行的开发者诊断反馈标记不是本批正式搜索接受。
+
 **已完成并审计：2026-10-29 22:30:20–22:31:35 UTC。** [启动](evidence/v6-qwen-cache-interface-fixed-20261030/launch.json)冻结 `b17c4a4f93823f3a74143614596d12df632755ea`、controller57868；[500身份预检](evidence/v6-qwen-cache-interface-fixed-20261030/frozen-preflight.json)通过。终态审计SHA `c16a1b85af24a69fb09a7ab437a7f33f73c20d8a89d462dcab52ddd62c5242e4`，[公开小摘要](evidence/v6-qwen-cache-interface-fixed-20261030/public-terminal-audit.json)保留全部10个计时样本。两worker退出、500冻结身份/原source/adapter/entry/core/当前UUID/实际request/contract与完整启动manifest全部核验，源与隔离current仍空parent2a42。
 
 | 固定endpoint | 完整连续质量 | 全生成中位数ms | TTFT中位数ms | 原TTFT约束 |
