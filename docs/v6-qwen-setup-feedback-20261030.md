@@ -1,5 +1,29 @@
 # Qwen原样setup观察产物的一轮普通反馈续行
 
+本批于 **2026-10-29 20:48:04 UTC** 完成，唯一trial `bf84d454d6` 被拒绝：`no_valid_parameter_candidate`。重启中断的是后续审计，恢复时远端已终态，没有重启批次。两卡空闲、UUID仍20e8/a24a，150GiB实际余约8.83GiB，无清理；旧监听7324已处理。
+
+[终态小摘要](evidence/v6-qwen-setup-feedback-20261030/public-terminal-audit.json)对应服务器audit SHA `34724d510e99df73d6cbfcc82ebbc83b639ec55c0aec2abea3bc1600b944273d`。382冻结身份、8个worker的source/adapter/entry/core/UUID、原discovery/prepared/request及实际selector/candidate registry/plan路由重新核验。源和分支current仍2a42b9b1、空bundles，无配对接受、重发现、共存或独立阶段。原controls/source映射没有重跑。
+
+三个角色初始31/34/8文件、98,228,556/140,516,871/18,213B；assistant36/51/9、工具40/63/12，均0框架schema修复，provider估算共4.19619301566，仅观察用量。完整命令/输出/CPU脚本/初始代码/三次编辑保留服务器，重建最终代码逐字相等。**selector和candidate最终均未打开新增index/probe/plan/观察JSON**；selector工具10只打印指针，主要消费原打包sidecar、旧04df和库源码，故不能把结果归于新观察消费。外部FS非隔离，完整记录未见后续接受实现/审阅答案读取。错误source目录、evaluation为null的AttributeError、错误transformers导入、CPU DynamicCache的layers参数TypeError保留；后续CPU cache/inference操作、语法/schema通过，非完整模型/GPU质量。Agent删除自己的__pycache__，会话及截断search输出保留；文件大小不是上下文使用量。
+
+新代码32,394B/SHA `4693d1472b012cfa786209e8ce2ede85a84ae443d7cc1c2212d2680ff42dcd38`，revision `e666c201…`，空参数仅一实例。单decode组，删除Triton/prefill binding，手工展开模块算子、GQA无mask SDPA、31长度Graph、masterKV和预建mirror。mirror并非每次返回新建；直接setup链不等于框架完整run/observe次序。内部转FP32的.02/.02不等于外部BF16关系算术；代码存在bitwise失败后第二次Graph replay逻辑，不能声称首次全部通过。
+
+| 端点 | end_to_end_ms中位数 | TTFT中位数 |
+|---|---:|---:|
+| 唯一screen | 788.271980 | 26.232951 |
+| binding pair0 parent / passthrough | 729.987131 / 720.858054 | 25.715212 / 25.133755 |
+| binding pair1 passthrough / parent | 716.999294 / 731.796445 | 24.561506 / 25.397064 |
+
+25样本/10完整零误差检查全保留，正式screen仅5样本/2检查，其余20/8属于绑定诊断。screen质量路径为62次父setup回退，TTFT超过原23.285755×1.05=24.45004275；32.126278ms TTFT、810.598709ms整段尾样本未移除。setup7047.981304ms在warm计时外；runtime/lifecycle peak增加105,030,656/165,080,064B，不是显存收益。framework fallbacks空不抵消内部回退。
+
+两个run-only sidecar均记录63次input_ids guard异常，以及一次E断言经三帧传播；252个generator False和1个master-view False不是失败。E新消息仅报告舍入max22.0312，无完整新操作数/缓存元数据，不能复制旧观察计数当新事实。run-only valid不调用observe/compare，也不建立快路径完整质量。
+
+[独立CPU接口控制](evidence/v6-qwen-setup-feedback-20261030/cpu-control-flow.json)一次运行原样新代码，未初始化CUDA/执行模型：shape[1,1] teacher切片已contiguous，`.contiguous()`仍返回同对象/stride[32,1]；真实replacement guard送父路径，CPU DynamicCache例子两次增长258→259→260。结合B/R各31次和E一次，支持对63次guard和E位置错配的代码/顺序解释，非逐调用GPU缓存轨迹或唯一数值根因。另一个分离控制只stub setup/verify成功，原build仍因`failure="not_attempted"`未清除而关闭快路径并清空Graph；这是潜在成功分支缺陷，不能解释本次先发生的E断言。无手改候选。
+
+timeline原trace/clock/union/gap/sync已重算：66,441 kernels、active union385.976993ms、span1481.939818ms、gap1095.962825ms、4次sync API、profiled wall1482.621509ms。不能从clean wall相减获得host成本。绑定passthrough较parent少9.129077/14.797151ms不是负物理成本或候选收益。无新Nsys/加速Graph原生证明。prefill不变保证TTFT、旧fused仅因严容差、唯一host/带宽原因以及planner“无Graph路径问题”等主张未采用。
+
+下一步只把新CPU控制的实际结果/界限作为明确开发者辅助反馈，经既有supplemental_evidence声明一次普通续行，不提供实现修复、不改提示、不重开已关闭索引阅读或审阅研究。旧失败保留，新的生成/质量/接受须分别审计。以下为原启动记录。
+
 **已启动：2026-10-29 20:16:48 UTC（香港10月30日04:16），冻结`6cf7bfe305d5724768cd022cd8277802cc25c1ca`，controller33739。** [启动记录](evidence/v6-qwen-setup-feedback-20261030/launch.json)、[本地服务健康](evidence/v6-qwen-setup-feedback-20261030/session-health.json)和[冻结预检](evidence/v6-qwen-setup-feedback-20261030/frozen-preflight.json)通过。实际OpenCode start/health/stop，无模型提示预检。原反馈新增503B变为13,936,321B/SHA`76a2adc5fe5ecaf73a7b68fa8737e6e121d0696ada287120bfa727e728a903c8`；索引3,511B/SHA`9d7a6653adbb0f8447f4f333c8f09a0697cbe97e26604fe9424f1354f6113784`。[现有接口预检](evidence/v6-qwen-setup-feedback-20261030/transport-preflight.json)保留所有原字段/打包产物，只有supplemental不同。
 
 20:19:37 UTC[实际启动核验](evidence/v6-qwen-setup-feedback-20261030/startup-verification.json)：selector generation-d3a31bd6978a/session ses_e76b0be25ffe704tjialDbRUBy，31初始文件/98,228,556B与快照逐字相等，实际feedback5,816,140B/SHA`bb318e94f19e22af2f462addca31b3ab16dd0ba8716834c4a9b90aa17212a744`匹配真实registry route。原04df历史代码、全部原打包产物、382冻结文件核验；discovery/prepared/request和原source/current保持，没有新GPU jobs。与上一普通selector相比prompt/model/tools相同，但6输入改变、3额外历史诊断输入新增，故不是整个角色的单变量A/B；总文件大小不代表全部进入模型上下文。
