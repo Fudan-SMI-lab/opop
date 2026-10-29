@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态（2026-10-29）：[固定Qwen/FSDP执行](v6-diagnostic-index-fixed-20261029.md)完整审计通过，30样本/12零误差检查/48通信trace/131冻结文件保留；Qwen固定706.34→389.97ms且TTFT约束通过，FSDP178.61→172.50ms且原peak约束通过，实际49→47 AG、25 RS不变。仅固定诊断，无正式接受；Qwen新代码无native证明，生命周期peak增加212.89MB。前序两角色未读索引仍是实际缺口，不能把GPU通过追认为证据闭环。下一步[有限通用阅读段落实验](v6-diagnostic-index-read-20261029.md)：从已有索引的相同初始快照各一次真实candidate重放，只加433B prompt，所有输入和生产core保持，不加reviewer、不提供新结果/人工事实。先按已授权范围无损压缩旧DDP/ResNet worker RUN JSON，保护当前输入和源码/参考/接受版本，无raw本地转存。以下为历史状态。
+
 最新执行（2026-10-29 04:48 UTC／香港12:48）：[原样固定B/C](v6-diagnostic-index-fixed-20261029.md)冻结3c287e9c，04:45启动、04:47四端点完成。六rank/四request代码身份、131冻结文件和指针保持；初步worker质量覆盖和原TTFT/显存约束均通过，尚未作全样本/通信trace终态审计或正式性能接受。唯一监听14176已真实排队完成通知并退出，下一回合核查；GPU空闲，df约8.48GiB，无raw转存/清理/生产改动。两candidate此前未读新增索引的结论保持，不以GPU通过追认诊断闭环。以下为历史状态。
 
 最新终态（2026-10-29 04:31 UTC）：[candidate小索引重放](v6-diagnostic-index-candidate-20261029.md)完成，Qwen/FSDP 51/75工具、均0schema修复，120冻结哈希保持。两角色均未打开新增索引，未证明诊断消费；有用新代码来自原反馈/源码推理，不能归因于新证据。FSDP一次错误cwd模拟间接导入旧DDP临时文件后失败，保留访问边界。下一步按[原样固定B/C执行](v6-diagnostic-index-fixed-20261029.md)各一次验证Qwen空参数/FSDP声明默认K2，原evaluator/任务/全部样本/四项通信诊断保持，无搜索/接受/Nsys或production变动。df约9.12GiB、GPU空闲，无raw转存/清理。以下为历史状态。

@@ -1,5 +1,7 @@
 # box4-3 实验结束后的归档与空间清理
 
+2026-10-29 04:58 UTC补充：确认GPU worker退出后，原地无损压缩旧cohort DDP/ResNet和两个DDP step批次明确worker RUN JSON，229 payload 3,089,776,337→261,729,157B。压缩及解压SHA、1,601其余文件、10当前版本和6完整FSDP源参考核验，实际df释放2,825,908,224B（2.63GiB），余11,934,175,232B（11.11GiB）。当前诊断输入/参考/源码/接受版本/模型/private状态排除，没有raw本地传输。恢复 `storage-audit-20261029/diagnostic-index-read/run/RESTORE.md` 及journal；[小型回执](evidence/v6-diagnostic-index-fixed-20261029/storage-postcheck.json)。规划目录名断言失败发生在控制器启动前，已保留并用实际枚举修正，没有未核验删除。
+
 2026-10-29 00:13 UTC补充：已结束GPU之后，按服务器内无损范围压缩qwen-end-to-end-original-followup的11个旧worker RUN JSON，1,683,716,516→130,199,414B，解压SHA/126个其余文件及10当前版本/6FSDP全量参考核验通过。实际df释放1,553,403,904B（1.45GiB），余10.13GiB。无raw本地传输，恢复入口storage-audit-20261029/qwen-routed-independent/run/RESTORE.md及journal；见[回执](evidence/v6-qwen-joint-feedback-routed-20261029/storage-postcheck.json)。
 
 2026-10-28 14:29 UTC追加维护完成：GPU worker全部退出后，仅服务器内压缩已终态FSDP continuation及固定反馈执行批次的明确worker run目录，源码/当前接受版本/参考/模型/私有配置排除。640份payload校验gzip及解压SHA，788个其他文件不变，八个当前版本及六份完整源参考后验通过。实际净释放6,274,646,016 bytes（5.84GiB），余16.40GiB；没有本地raw转存。见[本次范围与验收](v6-qwen-goal-contrast-20261028.md)，新journal在`dev/storage-audit-20261028/goal-contrast-space/run/`，独立于此前各轮结果。
