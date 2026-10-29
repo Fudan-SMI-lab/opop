@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态（2026-10-29 00:02 UTC）：[修正事实接口的一轮试验](v6-qwen-joint-feedback-routed-20261029.md)新joint候选搜索接受：696.0155735→389.841659ms（43.99%），TTFT21.58/21.59低于原25.2536046；25样本10zero-error检查。真实selector/candidate均读事实，candidate另有selection/resources输入变化，不是完整单变量A/B。当前32GraphLaunch/68712Graph kernels原生已核验，一bundle覆盖两组、无接受后重发现。生产core保持；独立验收待按[新协议](v6-qwen-routed-independent-20261029.md)执行，不把开发事实辅助续行称原入口完全无人干预。GPU结束后冷压缩旧失败worker JSON净回收1.45GiB，余10.13GiB，所有证据可恢复、无本地raw转存。以下当前执行均为历史记录。
+
 当前执行（2026-10-28 23:29 UTC／香港10月29日07:29）：[修正事实接口的一轮试验](v6-qwen-joint-feedback-routed-20261029.md)已冻结65402c5a、PID916254。实际初始selector29份文件仅previous-feedback改变，prompt/model/tool/core相同，内部仅supplemental_evidence新增相同事实；真实工具已读到该字段。该记录限初始输入/读取，不预判最终生成/质量/接受。单普通监听PID49084等待完成/8GiB事件，df余10.13GiB；无重复GPU发现/参考复制、raw转存或生产改动。上一批事实未送达及ce85质量失败保持冻结。
 
 最新终态（2026-10-28 23:20 UTC）：[原失败反馈续行](v6-qwen-joint-feedback-20261029.md)新ce85候选仍teacher token断言失败，零clean/接受；三角色0修复，selector/candidate实际输入均无被省略事实，完整工具记录未见读取新诊断。自检直接replay而非framework实际分派/连续顺序，不是完整质量等价验证。旧失败冻结。按[一次接口修正试验](v6-qwen-joint-feedback-routed-20261029.md)从同一原试验前a866/b619状态另建分支，相同事实只改放既有supplemental_evidence，真实完整路由预检已通过；不将ce85新失败/手工答案加入，不改生产core，不不断重试。df约10.32GiB，GPU空闲，无raw转存/清理。

@@ -1,5 +1,7 @@
 # box4-3 实验结束后的归档与空间清理
 
+2026-10-29 00:13 UTC补充：已结束GPU之后，按服务器内无损范围压缩qwen-end-to-end-original-followup的11个旧worker RUN JSON，1,683,716,516→130,199,414B，解压SHA/126个其余文件及10当前版本/6FSDP全量参考核验通过。实际df释放1,553,403,904B（1.45GiB），余10.13GiB。无raw本地传输，恢复入口storage-audit-20261029/qwen-routed-independent/run/RESTORE.md及journal；见[回执](evidence/v6-qwen-joint-feedback-routed-20261029/storage-postcheck.json)。
+
 2026-10-28 14:29 UTC追加维护完成：GPU worker全部退出后，仅服务器内压缩已终态FSDP continuation及固定反馈执行批次的明确worker run目录，源码/当前接受版本/参考/模型/私有配置排除。640份payload校验gzip及解压SHA，788个其他文件不变，八个当前版本及六份完整源参考后验通过。实际净释放6,274,646,016 bytes（5.84GiB），余16.40GiB；没有本地raw转存。见[本次范围与验收](v6-qwen-goal-contrast-20261028.md)，新journal在`dev/storage-audit-20261028/goal-contrast-space/run/`，独立于此前各轮结果。
 
 2026-10-28 12:44 UTC磁盘告警处理：收到提醒时实验仍在运行；实际核查时FSDP continuation已完成且GPU worker退出，才开始压缩旧next-stage/ddp-semantics的7个jobs/sandboxes目录。479份大JSON完整保存在服务器gzip，逐一校验压缩及解压SHA，另2,650个保留文件SHA不变；实际df净回收5,644,873,728 bytes（5.26GiB），余12.21GiB。15个当前/参考run的源码/bundle/参考路径及六份FSDP完整参考hash在维护后复核。未下载raw、未动当前FSDP/接受版本/模型/环境/私有provider。见[本次范围与验收](v6-fsdp-continuation-20261028.md)；恢复journal与RESTORE.md在服务器`dev/storage-audit-20261028/disk-attention/`，独立于下列历史清理数值。
