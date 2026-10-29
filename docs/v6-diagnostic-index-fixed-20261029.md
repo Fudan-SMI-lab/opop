@@ -1,5 +1,13 @@
 # 两份真实生成候选的固定执行验证
 
+本批于 **04:45:02 UTC（香港12:45）** 启动，冻结 `3c287e9ca67d283f61d305d98147a470eff7822c`，controller965586，04:47:19四端点已完成。见[启动](evidence/v6-diagnostic-index-fixed-20261029/launch.json)、[冻结预检](evidence/v6-diagnostic-index-fixed-20261029/preflight.json)与[执行身份／初步终态](evidence/v6-diagnostic-index-fixed-20261029/startup-verification.json)。实际六rank启动记录、四request的materialized代码/adapter/entry/bundle参数、131冻结文件和两source/分支指针核验通过；production core不变。
+
+初步回执四端点均worker passed/valid_run=true；Qwen B/C TTFT分别24.458036/21.579238ms，均低于原25.2536046；FSDP B/C peak均2,239,245,312B，低于原2,351,207,577.6B。**这只是worker/质量覆盖/约束回执，尚待全样本、数值检查、实际路径和48份预期通信trace的完整终态审计，不作性能接受。** 没有新Agent或正式AB/BA。
+
+普通监听14176于04:46:30启动，04:47:31成功排队一次完成通知（[回执](evidence/v6-diagnostic-index-fixed-20261029/wakeup-delivery.json)）并退出；旧59216已处理，没有重复监听或额外投递测试。实际GPU已空闲，df约8.48GiB，未清理或转存raw。新回合将完整审计本批后继续。
+
+初次启动审计工具误从rank-started读取不存在的framework_source而KeyError；真实started只含revision/binding/request引用，core在完成的rank结果中。已单独保留[审计工具错误](evidence/v6-diagnostic-index-fixed-20261029/startup-audit-fixture-error.json)，修正读取位置后核验，没有改动/重启任何实验或候选。
+
 本批验证[索引重放](v6-diagnostic-index-candidate-20261029.md)生成的精确原代码：Qwen `2c08b3b1137d754917dce96c358cc20061aad16b362491327cd2f3b83790cafd`，FSDP `206a02b88dcfff432a8a7f43cbb0adb766a7f04842d88a8e914c9c52c8f4ab8b`。不手工修代码，不新增Agent、不再生成候选，不将未读取索引的结果称为诊断反馈闭环。
 
 04:43:22 UTC预检通过：131冻结文件、两任务原calls/groups、portable request、adapter和共享controls身份一致；FSDP source current仍为历史接受3007940f，但新分支明确从空bundle fa5f081d开始，不导入K3优化bundle。两个原request都保留2continuous/2warmup/5clean，Qwen额外diagnostic_metrics为空，FSDP为原四项。实际df 9,790,251,008 bytes，core不变。
