@@ -1,5 +1,9 @@
 # 两任务诊断解读与既有反馈接口实验
 
+已于 2026-10-29 02:21:11 UTC（香港10:21）启动，冻结 `727de6bbccf41a335897c17af57106899b458560`，controller943330，真实 OpenCode 本地服务健康检查通过。02:22:48 核验 Qwen 初始 `generation-4f922b3e9bd7`／session `ses_e7a89bf86ffeHjr599gRaIxQ3T`：5 个初始文件（4 显式文件 23,371 bytes 加环境）逐字相同，11 条真实 assistant 消息、16 次工具调用；初步未见开发者审计或后续成功答案访问命中，完整访问和事实有效性留待终态审计。FSDP 此时尚未开始，其显式输入预检为 38,309 bytes。共 116 个冻结文件哈希核验，core 不变。见[启动回执](evidence/v6-diagnostic-interpretation-20261029/launch.json)和[实际快照核查](evidence/v6-diagnostic-interpretation-20261029/startup-verification.json)。
+
+唯一普通完成/磁盘监听 PID47044 已用实际进程命令核实，旧验证监听已标记处理。实际 df 余 10,236,854,272 bytes（约9.53GiB），无 GPU worker、清理或 raw 本地转存；阈值8GiB。见[监听回执](evidence/v6-diagnostic-interpretation-20261029/wakeup-setup.json)。启动核查脚本首次因本地 UTF-8 BOM 被 GBK stdin 拒绝，尚未执行远端代码；移除 BOM 后核查完成，没有重启实验或创建重复监听。
+
 Qwen 和 FSDP 的原样 Agent 诊断脚本已分别执行，但采集后的事实解读、证据边界判断和反馈整理仍由开发者承担。下一阶段用同一套通用 `diagnostic_interpretation` 指令，按 Qwen、FSDP 顺序各发一次新的真实角色请求，验证这一缺口。不同任务与产物，不是单变量 A/B，不自动采纳新角色或扩大生产上下文。
 
 每个角色只获得原 task、原失败记录、证据文件索引、通用反馈 schema，框架自动增加 worker 环境。索引指向原 adapter/candidate/source/reference、Agent 自己生成的 probe/plan 和已完成的固定 B/C worker/诊断产物；不内嵌所有梯度摘要或大张量，不提供开发者 terminal-audit、上轮事实表、数值原因、其他任务输出或后续成功实现。Agent 可选择读取原始 JSON/CPU 张量和相关源码，实际工具访问与计算必须留档。外部文件系统并非隔离，不能仅凭输入文件名就宣称没有额外访问。
