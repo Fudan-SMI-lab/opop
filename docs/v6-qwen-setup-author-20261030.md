@@ -1,6 +1,6 @@
 # Qwen内部setup失败的诊断作者
 
-后续：[一次真实保留修复](v6-qwen-setup-diagnostic-repair-20261030.md)已于19:41UTC完成并通过独立CPU边界；原probe8ab9/原截断失败仍冻结。新bc4751原样probe将按[固定B/C观察协议](v6-qwen-setup-observation-20261030.md)执行一次，不修改04df候选、强制快路径或接受性能；不追认本页旧probe已执行GPU。
+后续：[一次真实保留修复](v6-qwen-setup-diagnostic-repair-20261030.md)已于19:41UTC完成并通过独立CPU边界；原probe8ab9/原截断失败仍冻结。新bc4751原样probe的[固定B/C观察](v6-qwen-setup-observation-20261030.md)于19:56UTC完成，保留晚发seq198失败；候选仍父回退、TTFT超限，无新接受。没有修改04df或强制快路径，不追认本页旧probe已执行GPU。
 
 **终态已审计：2026-10-29 19:12:25 UTC完成；发现具体CPU证据保留缺陷，未启动GPU观察。** [审计小摘要](evidence/v6-qwen-setup-author-20261030/public-terminal-audit.json)、[原样probe](evidence/v6-qwen-setup-author-20261030/diagnostic.py)、[原样plan](evidence/v6-qwen-setup-author-20261030/diagnostic-plan.json)保留。服务器terminal-audit SHA `6e55536a0dd76551ad729f8760fac96f9133b3b79271a1d08dfa2f17437ca6d1`。事件为batch_finished，GPU空闲，实际150GiB余约9.57GiB；无清理或raw转存。
 
