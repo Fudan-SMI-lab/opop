@@ -1,5 +1,9 @@
 # 通信方向优先级调整
 
+最新终态：[一次CPU合同辅助修复](v6-ddp-communication-contract-repair-20261030.md)已审计（52a6abc9），914身份/44输入/原40文件保持。新77ac吸收旧计算Graph，原三个Future反例修复，但小桶重复SUM、完成错误被吞、真实哨兵False不降级仍成立；**不进入GPU，关闭本修复链，不再追加修复到通过**。两卡空闲、余约8.30GiB，旧28768已handled/退出，当前没有后台实验。
+
+下一有界步骤[真实通信请求盘点](v6-communication-request-inventory-20261030.md)已执行：限定范围内61项目请求只有既有DDP/FSDP两类，排除19份worker请求。建议接入新的真实分布式请求做预检，已询问研究范围偏好；没有新源码/原始目标时不编造任务。若继续现有DDP，先另行确定证据问题，不沿用这条修复链。通信仍为优先方向，Qwen关闭/FSDP拒绝/当前accepted保持，未宣称整个研究完成。以下“运行”描述均为历史。
+
 当前（香港22:17）：[有界接口修复](v6-ddp-communication-contract-repair-20261030.md)实际运行，controller168132/隐藏监听28768；原40输入逐字保留、914身份/44实际文件核验。角色已读CPU反例及原代码，不预言修复/质量。仅代码生成、无GPU/参数/验收，通信优先不变；原890659候选因接口反例不执行，accepted/current保持。
 
 最新推进：[DDP通信候选](v6-ddp-communication-candidate-20261030.md)已审计，899身份保持；多group hook确为通信实现方向，但schema修复后错误假定被替换Graph仍通过reference执行，一次CPU取证另证实异常分支接口缺陷。因此不进入GPU，不称通信成功，也不改已接受版本。下一步仅[一次具体接口修复生成](v6-ddp-communication-contract-repair-20261030.md)，原输入加精确生成输出和明确CPU事实辅助，由候选角色自主处理；无手选算法、GPU/参数/验收或无限续链。Qwen关闭/FSDP拒绝保持，原质量与独立整步收益要求不变。实际启动/隐藏监听另记。

@@ -1,5 +1,7 @@
 # DDP 通信选择后的一次普通候选生成
 
+后续的一次[CPU合同事实辅助修复](v6-ddp-communication-contract-repair-20261030.md)已完成审计（52a6abc9）：新77ac吸收当前Graph并修复原三个Future反例，但新增小桶重复SUM、首半完成错误被吞及真实哨兵False不降级仍可复现。该修复链现关闭，不执行GPU、不再追加修复；本页890659原代码/失败/899身份记录不变。下一步转为[真实任务证据盘点与接入决策](v6-communication-request-inventory-20261030.md)，通信优先不变。
+
 本批于2026-10-30 13:50:57UTC结束，reason为`batch_finished`。**生成完成，但该候选不进入GPU验证**。完整审计SHA `289c7cc768ac01720f7d84ac85e0c1f380b0e58e99c6b32a4ce0082f0792d9ee`，小型[公开审计](evidence/v6-ddp-communication-candidate-20261030/terminal-audit.json) SHA `16ce667042cc231e3cfbfe7b3d2efdbe1c3618697be372bfc81ec907dc1a884d`。40个实际初始文件32,000,403B、899冻结身份、原反馈route/prompt/model/tools/core/current均核验。两卡空闲，审计时150GiB配额余8,993,787,904B；无清理或新GPU任务。旧40444监听已handled。
 
 实际90 assistant/101工具/1次正常framework schema修复，provider估算4.68589010552，非账单。代码14,135B SHA `890659f73c7c88e704e21682afb584b548dd181447307ef18c4bcfefa54f150f`，proposal12,936B SHA `a27fa33c1b98387e024c535e086f6ff064817019261f004250e3689356b231d5`，空参数。代码一次write加三次edit，proposal一次write加两次edit，均由实际工具记录重建到最终字节；4,910行read输出核验，4条明确截断。完整私有history、初始输出、修复快照及最终CPU脚本仅服务器保存。实际读取了旧`params.index(s)`异常、已安装ccd90代码、绑定实现和当前/历史通信材料；未观察到后来审计/accepted答案读取，外部文件系统仍非hermetic。目录列表暴露审计文件名不能称答案读取。

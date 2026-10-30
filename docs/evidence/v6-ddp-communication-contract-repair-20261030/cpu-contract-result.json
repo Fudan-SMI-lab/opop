@@ -1,0 +1,176 @@
+{
+  "candidate_sha256": "77ac04e8eb86f5b7662d1a96e1152a7c59ea7c6120de5db7a8a2a9ee085b672e",
+  "fixture_sha256": "4868f3d33d42422a19fb5d9de85b14b04f2c63cb76d65d394ea1958a98c072a6",
+  "scope": "CPU interface counterexamples, not GPU/NCCL/model quality or performance. Exact candidate code/constants unchanged; synthetic state and controlled collective outcomes explicitly injected.",
+  "cases": {
+    "binding": {
+      "surviving_old_bundles": [],
+      "reference_is_original_adapter": true,
+      "same_return_object": true,
+      "original_calls": 1,
+      "routes": {
+        "reference_invocations": {
+          "5d7d6bb13691b02f533f62b0": 1
+        },
+        "candidate_declared_routes": [
+          {
+            "call": "5d7d6bb13691b02f533f62b0",
+            "route": "unsupported_environment",
+            "count": 1
+          }
+        ],
+        "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+      },
+      "limit": "Unsupported-environment path only; actual revision filtering independently checked against transactions.stage source; no staged version or CUDA step."
+    },
+    "success": {
+      "input_elements": 20000000,
+      "returned_elements": 20000000,
+      "returned_exception": null,
+      "buffer_first": 4.0,
+      "buffer_last": 4.0,
+      "schedule": "concurrent",
+      "issued": [
+        {
+          "ordinal": 1,
+          "group": "A",
+          "elements": 10000000
+        },
+        {
+          "ordinal": 2,
+          "group": "B",
+          "elements": 10000000
+        }
+      ]
+    },
+    "second_enqueue_error": {
+      "input_elements": 20000000,
+      "returned_elements": 20000000,
+      "returned_exception": null,
+      "buffer_first": 4.0,
+      "buffer_last": 4.0,
+      "schedule": "sequential_default",
+      "issued": [
+        {
+          "ordinal": 1,
+          "group": "A",
+          "elements": 10000000
+        },
+        {
+          "ordinal": 2,
+          "group": "B",
+          "elements": 10000000
+        },
+        {
+          "ordinal": 3,
+          "group": "None",
+          "elements": 10000000
+        }
+      ]
+    },
+    "both_enqueued_future_error": {
+      "input_elements": 20000000,
+      "returned_elements": 20000000,
+      "returned_exception": null,
+      "buffer_first": 4.0,
+      "buffer_last": 4.0,
+      "schedule": "sequential_default",
+      "issued": [
+        {
+          "ordinal": 1,
+          "group": "A",
+          "elements": 10000000
+        },
+        {
+          "ordinal": 2,
+          "group": "B",
+          "elements": 10000000
+        }
+      ]
+    },
+    "async_failure": {
+      "input_elements": 20000000,
+      "returned_elements": null,
+      "returned_exception": "RuntimeError: Got the following error when running the callback: RuntimeError: injected asynchronous collective error\n\nAt:\n  /root/autodl-tmp/dev-venv/lib/python3.12/site-packages/torch/futures/__init__.py(279): raise_error\n  /root/autodl-tmp/dev/v6-work/ddp-communication-contract-repair-20261030/candidate/sandboxes/candidate-c0819b47ab1c/candidate.py(176): _finish\n  /root/autodl-tmp/dev/v6-work/ddp-communication-contract-repair-20261030/candidate/sandboxes/candidate-c0819b47ab1c/candidate.py(202): hook\n  /root/autodl-tmp/dev/opop-v6/scripts/experiments/v6_ddp_repaired_cpu_contract_20261030.py(115): hook_case\n  /root/autodl-tmp/dev/opop-v6/scripts/experiments/v6_ddp_repaired_cpu_contract_20261030.py(143): main\n  /root/autodl-tmp/dev/opop-v6/scripts/experiments/v6_ddp_repaired_cpu_contract_20261030.py(181): <module>\n",
+      "buffer_first": 4.0,
+      "buffer_last": 4.0,
+      "schedule": "sequential_default",
+      "issued": [
+        {
+          "ordinal": 1,
+          "group": "A",
+          "elements": 10000000
+        },
+        {
+          "ordinal": 2,
+          "group": "B",
+          "elements": 10000000
+        }
+      ]
+    },
+    "small_enqueued_future_error": {
+      "input_elements": 8,
+      "returned_elements": 8,
+      "returned_exception": null,
+      "buffer_first": 8.0,
+      "buffer_last": 8.0,
+      "schedule": "sequential_default",
+      "issued": [
+        {
+          "ordinal": 1,
+          "group": "A",
+          "elements": 8
+        },
+        {
+          "ordinal": 2,
+          "group": "None",
+          "elements": 8
+        }
+      ]
+    },
+    "first_half_future_and_wait_error": {
+      "input_elements": 20000000,
+      "returned_elements": 20000000,
+      "returned_exception": null,
+      "buffer_first": 4.0,
+      "buffer_last": 4.0,
+      "schedule": "sequential_default",
+      "issued": [
+        {
+          "ordinal": 1,
+          "group": "A",
+          "elements": 10000000
+        },
+        {
+          "ordinal": 2,
+          "group": "B",
+          "elements": 10000000
+        },
+        {
+          "ordinal": 3,
+          "group": "None",
+          "elements": 10000000
+        }
+      ],
+      "first_half_completion_error_suppressed": true
+    },
+    "sentinel_mismatch": {
+      "routes": [
+        "hook_step_anomaly"
+      ],
+      "mode_after": "graph_hook",
+      "schedule_after": "concurrent",
+      "same_return_object": true,
+      "parent_calls": 0,
+      "actual_sentinel_results": [
+        false
+      ],
+      "fired": 13,
+      "limit": "Synthetic pre-established plan and Graph-callable stub, no model/Graph/collective. Real sentinel branch executed and returnedFalse; does not establish historical GPU drift."
+    }
+  },
+  "cuda_initialized": false,
+  "real_collectives": 0,
+  "model_runs": 0,
+  "candidate_bytes_unchanged": true
+}

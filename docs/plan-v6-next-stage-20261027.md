@@ -1,5 +1,11 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态（香港22:37完成，审计52a6abc9）：[一次DDP CPU合同事实辅助修复](v6-ddp-communication-contract-repair-20261030.md)44输入/原40文件/914身份及生产core/current保持，59 assistant/67工具/0schema修复。新77ac确实吸收旧Graph，旧三个Future反例修复，但一次独立CPU复核仍发现小桶重复SUM、首半完成错误被吞和真实sentinelFalse不降级。**不启动该代码GPU；本条修复链关闭，不手改或再修到通过。** 这些是条件性CPU合同反例，不是GPU数值/性能拒绝。没有新质量样本/接受，旧28768 handled且退出。
+
+下一有界步骤[真实通信任务盘点](v6-communication-request-inventory-20261030.md)已经完成：限定两层请求范围的61份真实项目只有DDP/FSDP变体，19份worker请求排除；源文件hash/当前设备准备状态已记录，无Agent/GPU/collector/清理。建议下一步转入新真实分布式任务的源码/原始目标/质量/空间预检，已询问用户新任务或重新梳理现有DDP证据缺口的偏好。当前没有新任务输入，也没有后台实验/监听；不将此描述为仍在自动搜索或整个研究已完成。Qwen关闭、FSDP拒绝、通信优先及原质量/独立整步/原生通信证据要求不变。
+
+以下为已结束的运行与历史记录。
+
 当前实际运行（香港22:17核验）：[一次CPU接口事实辅助的通信candidate修复](v6-ddp-communication-contract-repair-20261030.md)已22:14启动，冻结f3d245c2/controller168132/唯一隐藏监听28768。generation9e73cbd5bad8，44输入32,032,275B、原40输入不变、914冻结身份核验；仅增加860B实验修复请求及精确前输出/CPU事实索引。真实角色已读CPU反例/前代码/proposal/fixture，仍非修复成功证明。无GPU或新接受、余约8.30GiB；旧40444handled/退出。新终态接回完整审查，不自动GPU或无界重试。独立输出处理失误另记并已告知用户，私有凭据不入公开产物。
 
 最新终态：[DDP通信candidate](v6-ddp-communication-candidate-20261030.md)已完整审计（289c7cc7），40输入/899冻结身份保持，90 assistant/101工具/1正常schema修复。代码890659f7提出多group通信hook，但最终replaces旧Graph而错误假定reference仍是旧优化版本。一次原字节CPU取证另确认半桶返回、重复SUM、异步错误被吞和哨兵不降级；均为受控接口反例，不是GPU数值测量。因此不启动该候选GPU验证，原代码/失败/accepted指针保持。
