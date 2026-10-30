@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前实际运行（香港10月31日01:23核验）：[通信项目重新决策](v6-ddp-communication-redecision-20261031.md)于01:21启动，冻结5ec3a42d/controller177939/唯一隐藏监听49252。实际generation4ac2bc7c0189，41输入27,224,402B、924冻结身份及普通prompt/model/tools/core/current保持；显式CPU事实辅助route0a8d6665。早期13工具已读原拒绝与当前accepted代码，尚未打开新增CPU证据文件，不能预称消费/推理正确。两卡无GPUworker、余约8.20GiB。完成自动接回审查后明确下一有界动作；77ac修复关闭，不自动执行旧失败代码或延长Qwen/FSDP链。下面“等待任务/没有后台”是已被用户新指令取代的历史状态。
+
 2026-10-31最新用户指令：不要让付费服务器长期空闲，继续项目。现推进[一次已有DDP项目的通信重新决策](v6-ddp-communication-redecision-20261031.md)，不再停在等待新任务偏好。保留accepted1fc/ccd90、原source/controls/discovery与普通selector；原37输入仅feedback supplemental增加精确CPU记录，另加4份精确代码/proposal/结果/索引。显式开发者CPU事实辅助，不手选组/算法或修改生产提示/质量/接受。77ac修复链仍关闭，不重复执行；审查新selector后仅对有证据的新路线继续一次candidate。控制器无GPU阶段，256MiB预算+8GiB警戒、一个隐藏监听；事件接回后主动审计和明确后续，不把单批结束视为整个研究完成。
 
 最新终态（香港22:37完成，审计52a6abc9）：[一次DDP CPU合同事实辅助修复](v6-ddp-communication-contract-repair-20261030.md)44输入/原40文件/914身份及生产core/current保持，59 assistant/67工具/0schema修复。新77ac确实吸收旧Graph，旧三个Future反例修复，但一次独立CPU复核仍发现小桶重复SUM、首半完成错误被吞和真实sentinelFalse不降级。**不启动该代码GPU；本条修复链关闭，不手改或再修到通过。** 这些是条件性CPU合同反例，不是GPU数值/性能拒绝。没有新质量样本/接受，旧28768 handled且退出。

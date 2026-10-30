@@ -1,5 +1,11 @@
 # DDP 通信方向的新一次项目级决策
 
+已于2026-10-30 17:21:18UTC（香港10月31日01:21）实际启动，冻结`5ec3a42d091ddaea56f3a55d3ec1e5de3468831c`，controller **177939**，唯一隐藏completion/disk监听 **49252**。旧28768已handled/退出，没有重启旧批次。监听只检查进程、文件与磁盘，终态接回当前会话审查；磁盘告警不当完成。此时运行的是selector，未调度GPU阶段，不将GPU空闲描述为正在GPU验证。
+
+17:23:54UTC启动核验：[startup-verification](evidence/v6-ddp-communication-redecision-20261031/startup-verification.json)，SHA`2e0d4b4efb68fbdee0f5c01188e6238fa4c28901fb384fcd8e3321f3db67e094`。实际generation`4ac2bc7c0189`/session`ses_e722b4144ffendyK8EedF687dl`，41初始文件27,224,402B逐字一致，原37文件中除feedback外不变；924冻结身份、source/current1fc、生产core、普通prompt/model/tools均核验。实际route反馈10,260,140B/SHA`0a8d6665b150f35dceeabfa484143ccf265e919a228ef08c7c09ea3a37e20b96`，仅supplemental增加声明CPU证据。两卡无worker、实际150GiB配额余8,808,640,512B约8.20GiB；这不是新质量或接受。
+
+早期9 assistant/13 tools的有限审查：[startup-tool-review](evidence/v6-ddp-communication-redecision-20261031/startup-tool-review.json)，SHA`8c7e8fd3301ef8dcfe8fe8698de374fe5e89fc008a2d03496e985f66134121f1`。2060 read行与原文件核对、1显式截断前缀；8/9/10的反馈CPU文本遍历输出独立重建逐字相同，未重跑角色/模型。工具10读原拒绝理由和旧selection主张，13读当前accepted代码；工具9只按深度截断摘要CPU字段，前13工具未打开新增decision-evidence文件。4/7/11目录列表仅元数据/前缀审查。不能把交付/字段暴露当完整消费或正确推理，完整终态访问审计待结果；外部FS非隔离。私有历史SHA`846dcf5de2324e416674aec184c9198b7505efecd1cf07193523cefde814384d`留服务器，未回显provider配置或凭据。
+
 首次启动预检在角色/controller/模型/GPU/监听启动前发现：此前独立CPU fixture执行的是CRLF源文件，Git部署规范为LF，故原SHA检查中止。将本地保留的原执行代码逐字存入服务器旧CPU审计目录（SHA4868f3d3一致），新索引改指向该不可变副本；没有重跑CPU或更改生成候选。失败记录另存launch-preflight-attempt-1，冻结b44f0baa目录保留，不当作已启动实验或重试模型。
 
 用户于香港2026-10-31明确要求继续推进，避免付费服务器无任务空闲。因此不再把“等待新项目偏好”作为当前工作的前提；在已有真实DDP任务和新取得的合同证据上推进一次有界项目级决策。原通信优先/完整质量/原约束/独立整步收益要求不变，Qwen关闭、最新FSDP拒绝保持。
