@@ -1,8 +1,14 @@
 # 通信优先：当前设备 FSDP 基线准备
 
-?????2026-10-29 23:49:26UTC???[???](evidence/v6-fsdp-communication-device-20261030/space-completed.json)?589?????7,589,275,690B?563,758,300B???SHA/???snapshot payload?????72manifest?3270?????547?????10??current??Qwen??/???????FSDP???????????7,024,779,264B?6.54GiB???15,646,564,352B?14.57GiB??????5.78GB?controls+1GiB???????8GiB????journal SHA `6c6fdbd1d4103c1233c7e860d1221a0a7447c9be21c7291eebb7115e34850f02`????????????????/??/?????????sandbox????????????snapshot loader?????????
+终态已于2026-10-29 23:53:06 UTC完成并审计，冻结56ca19b0。完整审计SHA `23be91898d179965dfa74656518ec32616edba2b37bc22caad9052c5a1ce7ce6`，见[小摘要与全部样本](evidence/v6-fsdp-communication-device-20261030/terminal-audit.json)。原15文件/6份旧参考、实际新worker请求/source/adapter/entry/core和旧current均保持；新request仅devices不同，新current为原prepared7231空bundle，未安装旧K3。
 
-??????????15????source-check SHA6f83d6ea????UUID?????devices?????baseline????????????GPU controls??????????????????
+双rank各2 reset、1 identity零误差，错误输出与缺失覆盖负例均被拒绝，各5 clean样本保留。逐样本rank-max为175.745409、175.631266、176.464291、175.753368、176.069531 ms，中位数175.753368 ms。当前实际peak2239245312 B，原1.05约束形成2351207577.6 B上限。两rank新controls实际生成5,780,839,642 B，并对原只读独立源各两步完整比较，最大误差0，logits+1/tied=False负例正常；source-check SHA `30db47da3d1cc770408b9a7ba45eedd4df8fdb62aeb54c3fd173348a27c2a07b`。这是新设备实测，不因内容ID/部分数值相同而视作旧时间复用。
+
+24条原始通信trace逐一重算，均有每rank49 AllGather、25 ReduceScatter，实际kernel名为RING_LL。四metric分别有独立三次profile/rank，必须保留不同采样期边界；不能相减或将NCCL sum当wire/critical-path。日志与kernel名不证明唯一物理transport。原始慢样本没有剔除。这是基线准备和源验证，无候选搜索/性能接受。
+
+启动审计先误读rank-N.json的rank字段（实际在receipt，started也有），原错误说明又误指started，均留档；终态审计首版把clean字段当metric_samples字段而KeyError。仅修读者，未重跑模型/源比较。完成后只读pgrep无匹配返回1也留档，不代表worker失败。原日志仅常规barrier/loss/profiler信息。
+
+前置冷存于23:49:26 UTC完成：[空间摘要](evidence/v6-fsdp-communication-device-20261030/space-completed.json)。589个旧会话重复输入7,589,275,690→563,758,300 B，压缩/解压SHA、原snapshot payload、72 manifests/3270其他文件/547冻结依赖/历史与新接受版本/6份FSDP参考通过，实际净释放7,024,779,264 B（6.54 GiB）。不可变snapshot/store原字节仍在线；旧物化路径按journal恢复。新controls生成后约余8.94GiB，为后续一轮另做已声明的小范围冷存预算。
 
 
 [用户通信优先要求](v6-communication-priority-20261030.md)不改变通用项目优化目标。Qwen 必要独立收尾已完成，随后优先原双卡 FSDP 全训练任务；DDP作为下一个通信场景。历史K3确有3.095099%独立整步收益和每rank49→46 AllGather，后续同有效K3的2.157792%不叠加；新K2噪声拒绝与旧DDP通信拒绝保留。不能把DDP计算Graph收益或NCCL kernel sum当通信接受。
