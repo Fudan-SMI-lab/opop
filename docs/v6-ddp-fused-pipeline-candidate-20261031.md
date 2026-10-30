@@ -1,5 +1,7 @@
 # DDP 已接受融合版本的一次普通流水候选生成
 
+后续已实际推进：[一次CPU事实辅助普通候选纠正](v6-ddp-fused-pipeline-cpu-feedback-20261031.md)于香港05:27:01启动controller222432/唯一隐藏监听31676。实际37输入/1489身份、原普通prompt/model/tools和current508a验证通过；本eef828输出与CPU条件反例保留，不GPU、不手写修复，不自动再接第二轮纠正。
+
 本批2026-10-30 21:12:21.397068UTC以`batch_finished`完成，已终审`87cddc2c69cb2287cafd9b566a18badb9eeec0883fc6b01c47c925f108cdc137`；[公开摘要](evidence/v6-ddp-fused-pipeline-candidate-20261031/public-terminal-audit.json) SHA`55c344b8f42ce8f4e3bf778b347030879917b66a352f1c347ec955c9b3532989`。33输入8,618,008B、1469冻结、实际source current10992/单508a bundle、core/prompt/model/tools/原反馈保持。没有原完整模型GPU质量、clean、native或新接受。实际GPU空闲/150GiB盘剩约9.24GiB，无清理；旧36164已handled且进程退出。
 
 新code `eef828816dd138cb69b0d12c960012b1970a0724b426a258ec6f8fcb6900abd7`为20,997B，proposal `0f0a977afdfcb94e9a46f9c950bc4efc587ac72e16cec9fbfed750255234da94`为12,510B，requires[]/replaces fixed-observation-route/emptyparams。代码1写1改、proposal1写0改均逐字重建。38 assistant/43工具/0 schema repair，provider估算1.49171684354不是账单；2174read行/3明确截断前缀、11纯JSON输出精确重建、3失败JSON的stdout和异常类型/消息核实。完整history/初始代码与唯一修改/CPU脚本留服务器。

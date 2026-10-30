@@ -1,5 +1,11 @@
 # DDP 流水候选的一次CPU事实辅助纠正
 
+已于2026-10-30 21:27:01UTC（香港10月31日05:27:01）实际启动，controller `222432`，冻结 `b0012b65c9afdfed215ddc2ccd55916c49721344`，唯一隐藏plain watcher `31676`。不是仅声明后等待：21:28:58UTC实际启动核验SHA `630dd39011a6ef332322af6e504b494da8f987cda7d1aa91a5007023ce6c0c84`，generation `7e29e7027b24` / session `ses_e714a4bfeffeCNBl9mzP7YT0dY`；37文件8,682,320B逐字一致、1489冻结及原prompt/model/tools/core/current10992保持。真实route18,663B/04595a2c…原字段不改，只有精确CPU事实supplement，不增加修复prompt段落。见[启动记录](evidence/v6-ddp-fused-pipeline-cpu-feedback-20261031/startup-verification.json)和[早期读取核验](evidence/v6-ddp-fused-pipeline-cpu-feedback-20261031/startup-tool-review.json)。
+
+早期7 assistant/15工具已核对2487个编号read行、5个明确截断前缀，review SHA `c7a93523b2574f0bfe12b782b2a353f905c1ec1170d09da494700df0129a0225`。工具5完整688行反馈内的CPU事实、工具14完整501行旧eef828代码实际读取；选择rationale/hypothesis和旧proposal部分长行截断。前15工具尚未单独打开CPU结果/index/fixture或当前collector JSON，但不能据此称CPU事实未读：它们已完整内联在反馈。工具7错误adapter根路径和工具12缺失previous-candidate目录/exit2原样保留；8/12只列目录，opencode.json仅文件名、未读内容。前15无模型/tensor/CUDA/processgroup/collective或私配置内容命令，限早期记录，外部FS非hermetic，最终访问与真实探测仍待完整审核；读取不等于正确理解或质量通过。
+
+启动实核GPU空闲/无jobs、controller存活，150GiB盘余9,888,419,840B约9.21GiB，未清理。真实LocalOpenCode start/health/stop、server_url null通过，无模型预检。旧36164已handled/退出。冻结控制器和launch范围句误写“original33 nonfeedback”，实际是原33总输入中的32份非反馈保持；此处与startup仅澄清数量措辞，不修改冻结控制器、实验输入或原错误。当前仅此一次事实辅助纠正，生成结束须审精确代码与实际工具，再作有界下一决策；不自动GPU或修到通过。
+
 本步骤的依据是前一原样eef828代码上的一次CPU合同取证，不是新的GPU质量拒绝或性能测量。前置完整审计`87cddc2c69cb2287cafd9b566a18badb9eeec0883fc6b01c47c925f108cdc137`已完成；保留其生成输出，暂不GPU。下一有界工作只调用一次既有`ProjectAgents.generate(candidate)`，普通生产candidate prompt、既有feedback suffix、model/tools/validator/正常schema repair、API observe-only/no caps不变，**不增加实验修复prompt段落**。
 
 新root `/root/autodl-tmp/dev/v6-work/ddp-fused-pipeline-cpu-feedback-20261031`。输入基于真实generation076246cfc985的33文件：原32份非反馈逐字不变，原路由字段全保持，只附加supplemental_evidence内精确CPU结果、索引和实验范围；另加前候选/proposal/CPU结果/index4份文件，预期37份8,682,320B，1489冻结。源current10992/508a单bundle及原accepted3cd9/formalbbe28c/1fc/4541/independent7a49/historical09b7全部保持，旧物理ccd90文件不当active bundle。选择原7call/3group/rationale/hypothesis、task/source/adapter/registry/controls不改。
