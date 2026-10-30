@@ -1,5 +1,7 @@
 # DDP 原始通信观测反馈的一次普通项目决策
 
+后续独立candidate生成已完成完整审计，见[代码与工具终审](v6-ddp-observation-route-candidate-20261031.md)。新508a代码由Agent自主实现合批/单全梯度规约，实际纠正了旧5e3a失败前提，但仍未读取新15份观测文件；因此不能归因为这些观测的实质消费。仅声明一次固定B/C完整验证，原selector假说/输出和所有旧拒绝保持；不再重试selector或observer。
+
 19:07:26UTC（香港03:07）正常完成，终审SHA`648a01bceb2eb7a8558ee9fed37196f18a4807bd9c90b7a1fbfe0527ae7ac167`。1005冻结身份、56初始文件27,860,418B、原41非feedback输入、实际registry route、生产prompt/model/tools/core与sourcecurrent保持。26 assistant/36工具、0 schema修复，provider估算0.6963988167（非账单）。selection SHA`4249c7d0864a37e31000af3e080e4f2a872eae98e7990221376501f4ab6bba92`一次写入/无修改，AST重建逐字相同；2401 read行/1截断前缀、17段纯JSON输出独立核验。完整历史留服务器，公开[审计摘要](evidence/v6-ddp-observation-feedback-selection-20261031/public-terminal-audit.json)。
 
 完整访问确认：**未打开15份新增observation-evidence文件中的任何一份**。tool10只曝光supplement索引、21列文件名；不能称本次选择吸收了新B/C观测。实际读取旧失败5e3a、当前ccd90、旧timeline/calibration/tuning，tool34读旧77ac CPU结果前3500字符而非全部反例。全部命令/输出/内嵌脚本已审查，无观察到模型/CUDA/collective probe或后续审计答案/私有配置内容读取；文件系统非hermetic。tool4错误source目录stderr被后续ls/exit0掩盖、tool9空grep保留；schema通过不是GPU质量。

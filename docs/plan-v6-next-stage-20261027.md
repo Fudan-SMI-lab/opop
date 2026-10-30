@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新推进：`ddp-observation-route-candidate-20261031`已终审（SHA74209119…，59实际输入/1020冻结，55 assistant/59工具/0 schema）。Agent原样508a/14,898B合批+单全梯度AllReduce代码进入[一次固定B/C验证声明](v6-ddp-observation-route-fixed-20261031.md)：B当前acceptedccd90、C原样新代码；2连续全量质量/2warmup/5clean和原3通信profile/rank、140.04860205ms约束保持。不是search/参数/正式接受，也不自动追加候选。保留CPU模拟Graph空重放、update后fallback/有限guards等局限；当前无新通信成功。原观测文件交付仍不等于读取；工具18仅见索引，最终未打开新观测。闭合observer/77ac/Qwen、最新FSDP拒绝均不重开。终审剩约9.85GiB/GPU空闲，512MiB预算+8GiB警戒，无清理；旧51908 handled。完整结果和下一步见[候选终审](v6-ddp-observation-route-candidate-20261031.md)。
+
 当前实际运行（香港03:18核验）：[一次普通candidate生成](v6-ddp-observation-route-candidate-20261031.md)已03:16启动，冻结b4dafb42/controller195086/唯一隐藏监听51908。真实generation8078c7933f7b、59输入32,668,900B、1020冻结身份和原candidate prompt/model/tools/core/current相同；原选择普通规范化、route7c08054f、旧CPU事实/原观察材料保持，未加入终审解释。早期13工具已读完整selection/adapter/旧失败/source，未观察到模型或collective；后续完整审计待终态。两GPU暂闲、余约9.85GiB，控制器只生成不执行GPU。旧52336 handled，Qwen/FSDP/77ac/observer关闭保持；结果接回审查再决定有界后续。
 
 最新：[原始观察反馈selector终审](v6-ddp-observation-feedback-selection-20261031.md)完成（648a01bc），1005身份/56输入保持，26 assistant/36工具/0修复。全程未打开新观察文件，只读索引和旧材料；不能称新观测已被消费。其线速硬下界、旧失败证明并发饱和和55–62ms预测不采纳，输出保留。额外一次CPU原日志范围核查确认全量497MB调优记录真实但无稳态计时关联。

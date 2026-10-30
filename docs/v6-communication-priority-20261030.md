@@ -1,5 +1,7 @@
 # 通信方向优先级调整
 
+最新推进：`ddp-observation-route-candidate-20261031`已终审（SHA74209119…，59实际输入/1020冻结，55 assistant/59工具/0 schema）。Agent原样508a/14,898B合批+单全梯度AllReduce代码进入[一次固定B/C验证声明](v6-ddp-observation-route-fixed-20261031.md)：B当前acceptedccd90、C原样新代码；2连续全量质量/2warmup/5clean和原3通信profile/rank、140.04860205ms约束保持。不是search/参数/正式接受，也不自动追加候选。保留CPU模拟Graph空重放、update后fallback/有限guards等局限；当前无新通信成功。原观测文件交付仍不等于读取；工具18仅见索引，最终未打开新观测。闭合observer/77ac/Qwen、最新FSDP拒绝均不重开。终审剩约9.85GiB/GPU空闲，512MiB预算+8GiB警戒，无清理；旧51908 handled。完整结果和下一步见[候选终审](v6-ddp-observation-route-candidate-20261031.md)。
+
 当前在推进[新选择的一次候选生成](v6-ddp-observation-route-candidate-20261031.md)：香港03:16启动controller195086/唯一隐藏监听51908，03:18核验59真实输入/1020身份/prompt模型工具与原规则一致。只检验selector自主新调度假设，不采纳其线速下界/55–62ms预测，不自动GPU/接受。两卡当前空闲属代码生成阶段；空间约9.85GiB，无清理。闭合分支不重启，通信优先和原完整质量/独立收益要求保持，完成后接回审计与有界下一步。以下为历史。
 
 最新[selector终审](v6-ddp-observation-feedback-selection-20261031.md)648a01bc：新原始观察交付完整但未被打开，未证明通信成功。保留输出和错误前提，额外CPU核实全量AllReduce调优记录的setup/暖身范围；它不是稳态质量/线速下界。下一项[一次普通candidate生成](v6-ddp-observation-route-candidate-20261031.md)只检验selector自主提出的不同融合规约假设，不手选算法或注入审计答案，不自动GPU/接受。1020身份/59输入预检、空间约9.94GiB满足384MiB材料预算；Qwen、最新FSDP拒绝、77ac及observer修复链保持关闭，原完整质量/独立整步/实际通信证据要求不改。以下均为历史记录。
