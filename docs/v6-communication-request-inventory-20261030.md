@@ -1,5 +1,7 @@
 # 通信研究的有界任务盘点与下一步
 
+2026-10-31用户明确要求继续项目，因此“等待研究范围偏好”不再作为当前阻塞条件。现从已有真实DDP及新增合同证据推进[一次普通项目级选择](v6-ddp-communication-redecision-20261031.md)，由现有selector自主重新判断路线；没有编造新任务或重新开启77ac修复。以下盘点数据及历史状态保持。
+
 2026-10-30 14:54:54UTC完成一次只读盘点，[公开记录](evidence/v6-communication-request-inventory-20261030/inventory.json) SHA `09d773107ed405bd60117cd5e6b8da8c8ad6f05ce5a62b31fc6bf5822b1e5405`，服务器完整清单SHA `9fbcd19b77a6720c88897764b02b88b5bf2dc709514494f8c5730b8dff301103`。这是当前DDP合同修复终态后的明确下一步骤，不是新候选、GPU/collective/model或collector执行。
 
 扫描范围仅 `/root/autodl-tmp/dev/v6-work/*/request.json` 与 `*/*/request.json`，筛选双设备、具有source_root/goal/objective/quality/workload的项目请求。共61份；另19份worker/诊断请求不当作新的真实项目。没有解压冷文件、读取私有provider或复制reference。结论仅适用于这次范围，不声称服务器所有位置或外部仓库都没有其他项目。

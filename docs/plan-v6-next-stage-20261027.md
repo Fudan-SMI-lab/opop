@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+2026-10-31最新用户指令：不要让付费服务器长期空闲，继续项目。现推进[一次已有DDP项目的通信重新决策](v6-ddp-communication-redecision-20261031.md)，不再停在等待新任务偏好。保留accepted1fc/ccd90、原source/controls/discovery与普通selector；原37输入仅feedback supplemental增加精确CPU记录，另加4份精确代码/proposal/结果/索引。显式开发者CPU事实辅助，不手选组/算法或修改生产提示/质量/接受。77ac修复链仍关闭，不重复执行；审查新selector后仅对有证据的新路线继续一次candidate。控制器无GPU阶段，256MiB预算+8GiB警戒、一个隐藏监听；事件接回后主动审计和明确后续，不把单批结束视为整个研究完成。
+
 最新终态（香港22:37完成，审计52a6abc9）：[一次DDP CPU合同事实辅助修复](v6-ddp-communication-contract-repair-20261030.md)44输入/原40文件/914身份及生产core/current保持，59 assistant/67工具/0schema修复。新77ac确实吸收旧Graph，旧三个Future反例修复，但一次独立CPU复核仍发现小桶重复SUM、首半完成错误被吞和真实sentinelFalse不降级。**不启动该代码GPU；本条修复链关闭，不手改或再修到通过。** 这些是条件性CPU合同反例，不是GPU数值/性能拒绝。没有新质量样本/接受，旧28768 handled且退出。
 
 下一有界步骤[真实通信任务盘点](v6-communication-request-inventory-20261030.md)已经完成：限定两层请求范围的61份真实项目只有DDP/FSDP变体，19份worker请求排除；源文件hash/当前设备准备状态已记录，无Agent/GPU/collector/清理。建议下一步转入新真实分布式任务的源码/原始目标/质量/空间预检，已询问用户新任务或重新梳理现有DDP证据缺口的偏好。当前没有新任务输入，也没有后台实验/监听；不将此描述为仍在自动搜索或整个研究已完成。Qwen关闭、FSDP拒绝、通信优先及原质量/独立整步/原生通信证据要求不变。
