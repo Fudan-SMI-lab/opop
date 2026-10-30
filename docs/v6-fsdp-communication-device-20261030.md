@@ -1,5 +1,7 @@
 # 通信优先：当前设备 FSDP 基线准备
 
+最新终态：本轮 FSDP 已完成并拒绝，完整审计见[一轮通信试验](v6-fsdp-communication-trial-20261030.md)。质量和原显存约束通过，实际每 rank AllGather 49→25、ReduceScatter 25不变；但配对第二组176.066436→223.383338ms，整体未改善且未超过噪声门槛。90个clean rank样本、36次零误差完整检查、216条独立通信trace、4份Nsys SQLite及84冻结身份已核验，413–441ms长尾全部保留。不追加FSDP参数或独立重测，Qwen链保持关闭；下一步DDP当前设备空基线、完整源验证与通信试验，先满足空间预算。旧启动描述保留为历史。
+
 迟到通知核对（2026-10-30 00:21:13 UTC／香港08:21）：同一23:53:06的batch_finished已处理。原终态/审计/source-check、controls请求与rank结果、空baseline及历史K3指针均未变；未重跑controls、源比较或24条trace审计。核对SHA `c0918fa6ca0aa03b1a5a190ca2e0ec997a6332b9542756a3e69e54bf7e24de4e`，服务器记录在后续试验 `late-notifications/fsdp-device-20261030.json`。该一轮普通FSDP试验已运行至selector，暂无trial结果；只有隐藏监听18872，无第二批准备或搜索。
 
 终态已于2026-10-29 23:53:06 UTC完成并审计，冻结56ca19b0。完整审计SHA `23be91898d179965dfa74656518ec32616edba2b37bc22caad9052c5a1ce7ce6`，见[小摘要与全部样本](evidence/v6-fsdp-communication-device-20261030/terminal-audit.json)。原15文件/6份旧参考、实际新worker请求/source/adapter/entry/core和旧current均保持；新request仅devices不同，新current为原prepared7231空bundle，未安装旧K3。
