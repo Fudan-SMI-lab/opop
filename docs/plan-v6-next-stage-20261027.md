@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前已有新后台工作：[一次普通pipeline candidate](v6-ddp-fused-pipeline-candidate-20261031.md)于香港04:49:08启动controller217716/冻结0c0ae017/唯一隐藏监听36164。04:51:10实核33输入8,618,008B、1469身份、原prompt/model/tools/core/current508a和普通route，早期已读选择/原独立反馈/当前实现；前14工具仅部分输出范围已核，不预称终局读取或正确实现。GPU空闲属生成阶段、剩约9.24GiB，无清理/并行批次。结果接回完整代码与工具审查再决定GPU，原selector旧50516handled，不静默停研或自动无限候选。
+
 最新普通selector已终审a922faa5…：30初始输入/1454冻结/24assistant31工具、一次selection写入保持；实际读当前508a与全部四份collector JSON，部分正文截断。新分段反向/分块通信更新假设有当前串行结构依据，但固定wire、29–37ms预测和数值/回退保证不采纳，ns→µs误标ms保留并按同SQLite核实。无GPU或新接受。继续[一次普通pipeline candidate生成](v6-ddp-fused-pipeline-candidate-20261031.md)，原选择/原证据/普通角色，33输入/1469身份预检、余约9.27GiB，无手写实现/终审纠正输入或自动GPU。旧50516handled，不静默停研；[完整终审](v6-ddp-fused-communication-selection-20261031.md)。以下运行状态为历史，新的实际启动另记。
 
 当前后台工作已启动：香港04:34:53，普通selector controller215396/唯一隐藏监听50516/冻结d7f2f98d。04:36:52核验真实30文件7,194,917B、1454身份及原prompt/model/tools/core；已实际读当前508a、独立接受反馈及当前校准/部分Nsys/timeline，非仅指针。仍是早期19assistant/26tools记录，最终选择/完整访问/正确推理待审。无GPU作业、剩约9.27GiB，未清理。见[实际启动及边界](v6-ddp-fused-communication-selection-20261031.md)；不是仅声明后闲置，也不预先宣称新候选或接受。

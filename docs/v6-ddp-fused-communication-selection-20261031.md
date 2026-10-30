@@ -1,5 +1,7 @@
 # 已接受联合版本上的一次普通项目选择
 
+下一项已经实际运行：[普通pipeline candidate](v6-ddp-fused-pipeline-candidate-20261031.md)，香港04:49:08 controller217716/冻结0c0ae017/唯一隐藏监听36164。04:51:10真实33输入/1469身份及原prompt/model/tools/current508a通过，原选择仅正常canonicalization，无审计纠正输入。尚非新代码/质量或接受；本selector不重跑。
+
 本批2026-10-30 20:40:18.787766UTC终态为`batch_finished`，已完整终审；[公开摘要](evidence/v6-ddp-fused-communication-selection-20261031/public-terminal-audit.json) SHA`e5ce211d7a55318aec7d37573ad885c37ef514fc6c9b0454b852777b4ce5aca5`，完整审计`a922faa5157b6db9b26a2591c4440aa6aae8ce6c766fd2ce5760abed5351e083`。1454冻结身份、30初始文件7,194,917B、原始反馈/实际registry路由、source current10992、单508a bundle、core/prompt/model/tools均保持。没有candidate、GPU或新接受。实际150GiB磁盘余约9.27GiB、GPU空闲；旧50516完成已handled且进程退出，无清理或重启。
 
 完整24 assistant/31工具/0 schema修复，provider估算0.46256337238不是账单。2415读取行和2处明确截断前缀核实，13条JSON/算术/管道输出逐字重建；selection仅一次写入、无编辑，SHA`b43cc9fe941d950240cc2255af55a42db8e18c8f40bd8d319da165a5d41a3437`。它实际读取当前508a、原source/adapter/contract、完整小型独立反馈，以及全部四份current collector JSON；校准rank记录完整打印，timeline/ownership/plan只打印部分，Nsys完整数组参与算术不代表逐条全文阅读。31次实际访问未见模型/tensor/CUDA/processgroup/collective或私有配置、外部审计/答案内容读取；opencode.json仅目录名曝光，非封闭文件系统/绝对不存在证明。私有完整history留服务器，未输出秘密。
