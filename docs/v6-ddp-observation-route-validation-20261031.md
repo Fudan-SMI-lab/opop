@@ -1,0 +1,13 @@
+# DDP 原样合批与单规约候选的一次正式配对验证
+
+由已完成[固定B/C](v6-ddp-observation-route-fixed-20261031.md)的完整质量/原约束和实际13→1规约证据支持，声明一次现有`ProjectSearch.validate_bundle(publish=False)`。新隔离branch从固定批次的current1fc父版本fork，复用精确staged candidate`bbe28c40885890ef6d2c1e69bb75f1a6934178494d9d704ab56b0887e76301e6`与`fixed-observation-route`bundle。code508ad3823d3a7b980df7076023b3567242f12a2544cb9bbeae0ada66c6f52f0a/14,898B、proposal853ae1eb048e1d590e5b2ba03d75dfec378a4fc20bf4a7b0faa478ba03e1de89/9,828B、emptyparams均不改；replaces旧ccd90、requires空。
+
+使用当前已接受ccd90为B，原样508a为C，原AB然后BA新workers、2连续完整质量/2warmup/5clean/rank及原3次postclean通信profile。原质量/FP32/noTF32/工作量/所有权/精确replicas和原133.379621→140.04860205ms约束保持；aligned rankmax先于median/MAD。固定B/C仅资格证据，不混入配对，不重新锚定。失败、内部回退、所有尾样本原样保留，不重试直到通过。
+
+这是第一次正式验证该生成版本，不是新实现、重新生成、参数搜索或先前失败重启。正常API在质量可用后执行resource_feedback profile及原collection-planner自主选择已有collectors；控制器不手选/禁选任何collector，不改production prompt/model/tools/sampler/quality/接受规则。没有selector/candidate/独立收口阶段、source/control重跑、大reference副本或current发布。正常planner所有实际snapshots/tools/errors/读取及选定native必须终审。只有真正新正式接受才另行声明必要完整版本独立收口，非自动生产采用。
+
+既有source current1fc/accepted4541/independent7a49/historicalGraph09b7保持，新branch current亦1fc。当前两4090 UUID20e8003c/a24af2e6、adapterb276a7ed、coreed24af7a…不变。prepared7a49/currentcontrols只读共享；source/metricmapping/CPUfacts辅助边界保留，无新source comparison。实际请求、生成代码/selection、全量controls/hash必须核对。
+
+已知代码限制保留：token合并副本、有限identity/ptr guards、局部梯度gate不保证global误差、update后异常可能重复parent更新、rank非对称fallback、globaloverride finallyFalse、setup/Graph/retained状态。固定原任务通过不升级为任意输入/并发/故障中性保证。真实1次全梯度规约不减少497,759,232B逻辑总量，合批计算与规约调度为联合机制；native sum不作wire/critical path/跨profile clean减法。内存增大非新约束。
+
+预算1GiB+8GiB磁盘警戒，实际约9.76GiB，启动前检查GPU/df；无清理。新长任务只有一个隐藏完成/磁盘监听，旧固定短批次无监听且已处理。闭合Qwen/最新FSDP拒绝/77ac/observer链不重开。终审本次后依真实接受或拒绝选择有界下一步，不静默停工或无限候选链。

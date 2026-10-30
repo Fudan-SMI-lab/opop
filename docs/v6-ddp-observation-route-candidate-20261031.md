@@ -1,5 +1,7 @@
 # DDP 原观察反馈选择的一次候选生成
 
+原样508a后续固定B/C已经实际完成并[终审](v6-ddp-observation-route-fixed-20261031.md)：完整质量通过（C有微小非零误差）、B71.369506/C54.459087ms，12raw traces证明13→1 AllReduce但总497,759,232B不变；计算合批与通信调度同时变化，尚无正式/独立接受。接着只声明一次原样正式ABBA验证，不追加候选或修复。固定批次已在监听前完成，无多余watcher。
+
 19:37:07UTC真实生成完成，reason=`batch_finished`，不是磁盘警报。终审[小型公开记录](evidence/v6-ddp-observation-route-candidate-20261031/public-terminal-audit.json) SHA`541438bba4cb254a361435bd01a7f5f9fdf8e4634973c5c76450fc486c64e07d`；服务器完整审计SHA`74209119a32ada66f1d298a4f3c67bbe5e1c043a5c796529986ef77ad8d2c123`。1020冻结文件、59实际输入32,668,900B、真实registry反馈路由/prompt/model/tools/core/current全部保持。55 assistant/59工具/0 schema修复；provider估计2.50923005388，非账单。4921 read行/2显式截断前缀及15份纯JSON或框架源码输出逐字核对。candidate一次写入、三次编辑；proposal一次写入无编辑，重建最终字节一致。
 
 新代码`508ad3823d3a7b980df7076023b3567242f12a2544cb9bbeae0ada66c6f52f0a`/14,898B，proposal`853ae1eb048e1d590e5b2ba03d75dfec378a4fc20bf4a7b0faa478ba03e1de89`/9,828B，emptyparams，requires空/replaces旧ccd90 bundle。Agent实际读了旧Tensor-bool异常及两rank fallback，最终正确区分“旧并发实现未执行”与“原eager回退变慢”；该纠正不是开发者提供。仍未打开任何15份新观测材料或current collector JSON；工具18只读到完整generic索引指针/限制，不能声称消费了新GPU观测。
