@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前实际执行（2026-10-30香港08:14）：[一轮普通FSDP通信试验](v6-fsdp-communication-trial-20261030.md)已冻结f200b79f/controller75690启动，双卡正在新空baseline发现，唯一隐藏监听18872运行。原请求/默认范围及参数探索/完整质量/新设备显存上限保持，不指定group/K或安装旧策略。预检84身份通过；新controls与只读源已完成验证，前置19旧文件冷存净回收1.79GiB，启动约10.71GiB余量。尚无新候选质量或接受，DDP下一任务，Qwen链已收尾。
+
 当前主线已转入通信（2026-10-29 23:53 UTC／香港10月30日07:53）。[Qwen 独立收尾](v6-qwen-cache-independent-20261030.md)完整 B/C/C/B 接受：721.4966495→374.1322145 ms，48.1449824%，20样本/8零误差完整检查、原TTFT约束通过，publish=False；搜索48.0946416%另列，非跨设备增量，Qwen候选链结束。
 
 [当前设备 FSDP 基线](v6-fsdp-communication-device-20261030.md)已真实完成，两rank共10样本、4 reset/2 identity检查、4次完整独立源比较及负例通过；24条通信trace全部复算。先按样本取rank最大再中位数，step175.753368 ms；原生每rank49 AllGather/25 ReduceScatter RING_LL，不能据此推出物理transport或关键路径。原peak上限为新测量2239245312×1.05=2351207577.6 B。

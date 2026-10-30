@@ -1,5 +1,7 @@
 # 通信方向优先级调整
 
+执行更新（2026-10-30香港08:14）：当前设备FSDP基线与源验证已通过，现已实际启动[一轮普通通信试验](v6-fsdp-communication-trial-20261030.md)，冻结f200b79f/controller75690，唯一隐藏监听18872。先新baseline发现，再由Agent自主选范围/参数/实现；无旧K3、手选组或生产更改。当前尚无新优化结果。Qwen必要独立收尾完成，DDP随后；下列较早“正在等待Qwen”的描述仅保留历史。
+
 当前主线已转入通信（2026-10-29 23:53 UTC／香港10月30日07:53）。[Qwen 独立收尾](v6-qwen-cache-independent-20261030.md)完整 B/C/C/B 接受：721.4966495→374.1322145 ms，48.1449824%，20样本/8零误差完整检查、原TTFT约束通过，publish=False；搜索48.0946416%另列，非跨设备增量，Qwen候选链结束。
 
 [当前设备 FSDP 基线](v6-fsdp-communication-device-20261030.md)已真实完成，两rank共10样本、4 reset/2 identity检查、4次完整独立源比较及负例通过；24条通信trace全部复算。先按样本取rank最大再中位数，step175.753368 ms；原生每rank49 AllGather/25 ReduceScatter RING_LL，不能据此推出物理transport或关键路径。原peak上限为新测量2239245312×1.05=2351207577.6 B。

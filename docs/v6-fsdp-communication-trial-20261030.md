@@ -1,5 +1,9 @@
 # 当前设备 FSDP 一轮普通通信优化试验
 
+启动审计00:16:46 UTC通过，SHA `348a1f2e30c24a3bc9cf1238f4489ffa7962509762af88e624468c988d9c041c`，见[实际启动快照](evidence/v6-fsdp-communication-trial-20261030/startup-verification.json)。84冻结文件、request/prepared/共享controls与新设备原源一致，discover-b47113febf双rank通过；发现附着新空revision ad259e1f，源current7231不变。真实collection-planner generation-d20b253a56cf/session ses_e75d717dbffeVCkcBlecaHG1DM已有8 assistant/12工具，6初始文件267,681 B逐字匹配快照，无历史candidate文件；完整早期私有history服务器留存。此为启动交付/活动核验，未据此声称完整工具访问审计、候选质量或接受。当时GPU已结束发现、df11,436,781,568B约10.65GiB，controller继续。
+
+已于2026-10-30 00:14:12 UTC（香港08:14）实际启动，冻结 `f200b79f0a78b6538ec8cfddad45b1d592f84ab1`，controller75690。冻结预检84个身份、新devices/源比较/原显存上限/空bundle通过，实际OpenCode start/health/stop通过且未发模型测试prompt。00:14:36普通CLI进入新发现，`discover-b47113febf`两rank worker75863/75864在两张当前4090运行；没有旧K3安装。唯一隐藏监听18872于00:14:26建立，旧45956基线通知已处理，不重启。启动df11,504,537,600B约10.71GiB；这是启动状态，不是候选质量或优化接受结论。
+
 空间门槛已满足（2026-10-30 00:08:21 UTC）：19个旧文件2,072,388,577→152,991,041 B，压缩与解压SHA、616保护文件/67其他文件/10历史current及新Qwen接受版本全部通过；净释放1,919,410,176 B（1.79GiB），余11,513,827,328 B（10.72GiB）。journal SHA `523a6c2d72bf2e2e35393db38307d98bfd656692cc9ddf70165cc8df93b87e55`。13个旧拒绝trial result与6个完成RUN保持全部原字段/样本/错误，恢复路径见文末；无GPU运行期间清理，无新参考复制。
 
 用户要求保持通用项目优化目标，将后续研究优先转向通信。本批在[新设备完整基线](v6-fsdp-communication-device-20261030.md)审计通过后，声明一轮现有CLI普通真实搜索，DDP随后；不再延长Qwen候选链。工作根为 `/root/autodl-tmp/dev/v6-work/fsdp-communication-trial-20261030`。
