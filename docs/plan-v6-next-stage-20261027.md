@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前实际运行（香港03:18核验）：[一次普通candidate生成](v6-ddp-observation-route-candidate-20261031.md)已03:16启动，冻结b4dafb42/controller195086/唯一隐藏监听51908。真实generation8078c7933f7b、59输入32,668,900B、1020冻结身份和原candidate prompt/model/tools/core/current相同；原选择普通规范化、route7c08054f、旧CPU事实/原观察材料保持，未加入终审解释。早期13工具已读完整selection/adapter/旧失败/source，未观察到模型或collective；后续完整审计待终态。两GPU暂闲、余约9.85GiB，控制器只生成不执行GPU。旧52336 handled，Qwen/FSDP/77ac/observer关闭保持；结果接回审查再决定有界后续。
+
 最新：[原始观察反馈selector终审](v6-ddp-observation-feedback-selection-20261031.md)完成（648a01bc），1005身份/56输入保持，26 assistant/36工具/0修复。全程未打开新观察文件，只读索引和旧材料；不能称新观测已被消费。其线速硬下界、旧失败证明并发饱和和55–62ms预测不采纳，输出保留。额外一次CPU原日志范围核查确认全量497MB调优记录真实但无稳态计时关联。
 
 下一步[一次原选择candidate生成](v6-ddp-observation-route-candidate-20261031.md)：仅将selector自主提出的四微批/完整梯度融合规约作为待检验新调度假设，依据为实际13规约/完整负载/源累积边界，不依赖错误因果或收益预测。普通API规范化/selected-group路由，保留原新观察和旧CPU事实，不加终审答案/手写实现。预检1020身份/59输入32,668,900B通过，route7c08054f/6,251,759B，384MiB材料预测+8GiB警戒、约9.94GiB余量，无清理。无自动GPU/search/参数/接受，代码出来先审查；observer/Qwen/FSDP/77ac关闭保持。实际启动和唯一隐藏监听另记。以下为历史。
