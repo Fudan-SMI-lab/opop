@@ -1,5 +1,7 @@
 # 通信优先：当前设备 FSDP 基线准备
 
+迟到通知核对（2026-10-30 00:21:13 UTC／香港08:21）：同一23:53:06的batch_finished已处理。原终态/审计/source-check、controls请求与rank结果、空baseline及历史K3指针均未变；未重跑controls、源比较或24条trace审计。核对SHA `c0918fa6ca0aa03b1a5a190ca2e0ec997a6332b9542756a3e69e54bf7e24de4e`，服务器记录在后续试验 `late-notifications/fsdp-device-20261030.json`。该一轮普通FSDP试验已运行至selector，暂无trial结果；只有隐藏监听18872，无第二批准备或搜索。
+
 终态已于2026-10-29 23:53:06 UTC完成并审计，冻结56ca19b0。完整审计SHA `23be91898d179965dfa74656518ec32616edba2b37bc22caad9052c5a1ce7ce6`，见[小摘要与全部样本](evidence/v6-fsdp-communication-device-20261030/terminal-audit.json)。原15文件/6份旧参考、实际新worker请求/source/adapter/entry/core和旧current均保持；新request仅devices不同，新current为原prepared7231空bundle，未安装旧K3。
 
 双rank各2 reset、1 identity零误差，错误输出与缺失覆盖负例均被拒绝，各5 clean样本保留。逐样本rank-max为175.745409、175.631266、176.464291、175.753368、176.069531 ms，中位数175.753368 ms。当前实际peak2239245312 B，原1.05约束形成2351207577.6 B上限。两rank新controls实际生成5,780,839,642 B，并对原只读独立源各两步完整比较，最大误差0，logits+1/tied=False负例正常；source-check SHA `30db47da3d1cc770408b9a7ba45eedd4df8fdb62aeb54c3fd173348a27c2a07b`。这是新设备实测，不因内容ID/部分数值相同而视作旧时间复用。
