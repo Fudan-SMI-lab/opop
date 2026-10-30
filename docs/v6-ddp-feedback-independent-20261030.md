@@ -1,5 +1,7 @@
 # DDP 新接受版本的独立整版验证
 
+????2026-10-30 11:32:42 UTC???19:32????`49aa288fccec091e2ecfd25090a5eeb8408034ca`?controller140320???????53536??12400???/handled?11:33:54????SHA `883e55712c1864761c945c70e2280c38bddf43672823c4ccd3694e141481d84a`?483?????source/current/?request/prepared??????B/C/C???entry/adapter/UUID/controls??????rank GPU worker141122/141123??????10,206,941,184B????????????????????/??/??/24??trace????Agent???discovery?
+
 因[原失败反馈普通试验](v6-ddp-communication-feedback-20261030.md)真实接受新版本，声明一次现有`promote_version(publish=False)`的B/C/C/B，根`/root/autodl-tmp/dev/v6-work/ddp-feedback-independent-20261030`。不是新Agent、搜索、参数探索、固定旧失败重试或生产采用；独立拒绝/错误照实保存，不重跑至通过。
 
 精确来源版本`4541830b6c81c1c0c2c2fef6dfb5f2566e312483900238abf1e7ac900a1758e6`，代码`ccd90dc158788a164d6fda242572530e9cdc9ca50563af1a1d9d597f0ac12e0b`、单bundle/空参数；对原当前设备prepared空baseline `7a49c6370b52d881a52550766b279df22684adc16cf3c91be56275f8fe2e1df9`。新branch current始终保留baseline，源accepted current保留4541，原source空e925及历史Graph不变，不发布指针。
