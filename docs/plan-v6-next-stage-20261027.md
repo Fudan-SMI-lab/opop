@@ -1,5 +1,9 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态：精确92279 B/C观测18:47:43UTC完成并直接终审，audit2f976a91，977身份/4rank/8完整零误差检查/20样本/12rawtrace保持。B三profile结构关联，C每rank3256回调无法归属、三关联均unknown；两臂13AR/497,759,232B不变，没有通信优化接受。观测/mechanics修复链关闭。[完整记录](v6-ddp-communication-observation-20261031.md)。
+
+主动下一有界工作：[原始观测反馈的一次普通selector](v6-ddp-observation-feedback-selection-20261031.md)。以前次实际41输入为基底，原字段/CPU事实保持，仅增加原始B/C及Agent probe/plan/索引，不提供审计结论或指定算法；普通prompt/model/tools/default scopes不变，无自动candidate/GPU。原Qwen/FSDP/77ac关闭保持。以下运行状态为历史，实际新启动另记。
+
 当前实际运行（香港02:46启动、02:47核验）：[精确Agent DDP通信观测](v6-ddp-communication-observation-20261031.md)，冻结d9f57a81/controller190831/唯一隐藏监听14060。977冻结身份及两份实际B/C request逐字段核对，原entry接线之外不变；B gate通过，C双GPU worker执行中，余约10.04GiB。终态自动接回完整结果/trace审计再决定证据驱动的有界后续；无新优化/接受，不重开Qwen/FSDP/77ac。
 
 最新终态（香港02:33）：[DDP观测机制修复](v6-ddp-observation-mechanics-repair-20261031.md)完成，audit82015a16，15输入/967身份保持；41工具完整核对、原写入精确重建。一次原序列CPU复验支持歧义/缺失关联、cap、返回身份及已安装patch恢复；partial setup仍可在原入口前中止，Graph锚点/额外分配/通用界限明确保留，不把schema当质量。

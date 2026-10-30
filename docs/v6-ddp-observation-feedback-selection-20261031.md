@@ -1,0 +1,11 @@
+# DDP 原始通信观测反馈的一次普通项目决策
+
+在新B/C真实观测完成完整终审后，继续一次现有`ProjectAgents.generate(selection)`。这次新输入来自已经实际执行的原始观测，不重复selector直到得到预设方案，也不继续修复observer。原通用项目优化目标和通信优先保持；无手选group/bucket/算法/实现/collector，无生产prompt/model/tools/质量/接受变更。
+
+从前次实际selection generation4ac2bc7c0189的41份输入出发，所有原非feedback文件逐字节保留。原previous-feedback既有字段及CPU事实supplement保留，仅增加`diagnostic_artifacts`索引；另增加15份原始文件：Agent probe/plan、B/C原request和observed request、四worker result和四diagnostic、索引。12条raw metric trace只指向服务器原路径/hash，不复制。不给终态审计表、callback数量解释、GPU时序因果结论或手写修复。之前CPU/source/metric映射辅助边界仍在，不是无辅助入口或单变量AB。
+
+原trial02ed5436b4反馈14,429,015B、SHA`a0234920605970500c870b2ec98fc952b264a79f264bd19d6a53c99b796cf459`不改，原5e3a失败历史与77ac CPU合同材料保留，77ac实现修复链关闭。source仍`ddp-accepted-communication-trial-20261030/ddp-search`的current1fc/精确ccd90/单bundle/emptyparams与实际accepted-code discovery；accepted4541、independent7a49、历史Graph09b7不变，无新discovery/controls/source/reference副本。
+
+普通selection prompt及现有feedback suffix、model/tools/default scopes/正常validator修复不变，API仅记录，不加cap。仅决策生成，没有candidate/search/参数/GPU/collector/native/接受或pointer阶段；实际工具访问/CPU-GPU活动仍需完整审查，交付不等于读取，非hermetic不作绝对无外部读取声明。PRIVATECONFIG/CREDENTIALS不回显。
+
+预估256MiB材料/历史增长，保留8GiB警戒；前一GPU观测后余约10.02GiB，不新增清理。新长任务一个隐藏完成/磁盘监听，旧14060已handled不重启。终态要审核完整快照、实际读取、选择依据与normal repairs；仅有具体新证据支持的新路线才另行声明候选，不因scope名称称通信成功，不自动GPU或无限生成。若仍沿用失证前提，则保留输出、根据实际缺口作有界证据决策。启动与实际输入核验另记。

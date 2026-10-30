@@ -1,5 +1,17 @@
 # DDP 精确 Agent 代码的一次固定通信观测
 
+已于18:47:43UTC（香港02:47:43）completed，父回合直接接续完成审计，监听14060排队事件已标handled/不重复处理。[终态摘要](evidence/v6-ddp-communication-observation-20261031/public-terminal-audit.json)，服务器完整audit SHA`2f976a911e241e2471548c7dfbd32ab82ae2a87f2ef2b37836c72af1d7f00439`。977冻结身份、真实request/core/原source/bundle/adapter/controls/current保持；4rank workers均passed/valid/mathtrue，8次完整比较各248,879,620元素零误差，20rank样本全部保留。
+
+按各重复先取rank最大，观测B样本118.284116/116.387054/116.474292/125.634750/124.475389ms，中位118.284116；C73.659578/73.250891/73.128837/73.860802/72.125134ms，中位73.250891。均受observer扰动，只作描述；不算新收益或接受、不减observer成本。C两次quality仍为parent_eager_baseline和graph_setup_capture各一次，不是两次优化路径quality。setup约20ms安装不等于第二quality的Graph捕获成本。
+
+每条原始trace独立重算，共12条、156个collective identity/同线程唯一innermost c10d/launch关联、kernel sum/union/overlap/sync数量核对。每窗口13AllReduceSumf32RING_LL、逻辑497,759,232B（12×28,351,488+157,541,376），B3999kernel/0GraphLaunch，C4106/2GraphLaunch。独立profile的rankmax通信中位B48.971275/C36.185936ms，不是wire time/关键路径或可从clean时间扣除的成本；没有新Nsys/物理transport日志证据，不把旧SHM记录当本次捕获。
+
+关键范围差异：B每rank有12个Python锚点（2quality/2warmup/5measure/3profile）、7104 callback，3条结构关联；C每rank只有首个quality锚点、592 anchored/3256 unassigned callback，296广播中148标记unanchored precedent，quality_count_mismatch=true，3条profile关联全部unknown。原evaluator实际两次质量通过，与探针只识别一次不矛盾；不得将3256回调按序号强配、推导GPU ready或伪造Graph phase。raw callback全序列未保存，聚合摘要不能全独立重算。
+
+每rank148 hooks移除、六patch报告restored、无observer_errors/截断丢弃，artifact约137KB(B)/94KB(C)。GPU恢复依据生成代码/报告及独立CPU身份检查，不是另加GPU身份logger。DDP弃用/barrier/loss/profiler及C的stale AccumulateGrad stream warning保留，不是此次原质量失败。teardown bucket分配和owner生命周期、通用存储/异常/并发保证仍有限。
+
+此固定观测和mechanics修复链收尾，不再增加probe修复或observer-off重复。继续一次[原始观测反馈下的普通项目selector](v6-ddp-observation-feedback-selection-20261031.md)：只交付精确Agent probe/plan、新B/C原始request/result/diagnostic及trace索引；不交付上述审计表/因果结论，不手选算法。旧CPU事实辅助和original反馈保留；没有自动候选/GPU/优化接受。
+
 实际18:46:26UTC（香港02:46）已启动，冻结`d9f57a815e16038be01d5bae598f3ffc8e263d0c`，controller190831，唯一隐藏完成/磁盘监听14060；旧48592已handled且进程不存在。启动余10,910,814,208B约10.16GiB。
 
 18:47:29UTC[实际核验](evidence/v6-ddp-communication-observation-20261031/startup-verification.json)SHA`3307c3f3eed4754529047a8befd5e2f1663b38ff818ce7065759329d95600a9c`：977冻结身份/core保持，B/C两份实际worker request与原request仅声明的接线差异；entry为精确92279，原function/wait确为run/true。B通过既定gate，C两GPU worker191287/191288正在执行，余10,779,181,056B约10.04GiB。此为启动身份/活动，不是终态完整质量、观测正确性或接受证明，后续需审查全部实际输出与trace。

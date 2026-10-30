@@ -1,5 +1,7 @@
 # 通信方向优先级调整
 
+最新：固定通信观测已终审（2f976a91），原完整质量通过，12trace仍13AR/相同负载；Graph路径的Python回调关联诚实unknown，不能宣称通信下界/关键路径或新优化收益。继续[一次普通项目决策](v6-ddp-observation-feedback-selection-20261031.md)，仅交付原始新观测和原反馈，不给人工解释/实现，观测修复链已收尾。Qwen/FSDP/77ac不重开，生产规则保持；不是无边界重试。以下均为历史。
+
 当前有真实GPU工作：香港02:46启动[一次原样B/C观测](v6-ddp-communication-observation-20261031.md)，controller190831/唯一隐藏监听14060。02:47实核977身份及B/C request保持原工作/质量，B gate已过、C两rank执行中；余约10.04GiB。目的为核实通信观测范围/未知关联，不新验收或手写优化；完成后继续依据实际证据处理，不把一批结束当整个项目完成。
 
 最新推进：[观测机制修复终审](v6-ddp-observation-mechanics-repair-20261031.md)完成，原15输入/967身份保持，独立CPU原序列一次验证改善报告和恢复；不声称GPU质量或通用observer保证。现声明[精确Agent探针B/C固定观测](v6-ddp-communication-observation-20261031.md)，保留原完整两rank工作/质量/样本，时间受观测扰动、不验收、不重复到通过。旧FSDP拒绝metric服务器无损冷存后空间约10.17GiB，预留512MiB；原生产、Qwen/FSDP/77ac关闭保持。不是继续无限repair，完成后根据真实unknown/错误/关联证据决定后续，以下均为历史。
