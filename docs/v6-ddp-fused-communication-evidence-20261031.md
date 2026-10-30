@@ -1,5 +1,19 @@
 # DDP 已独立接受联合版本的一次正常发现
 
+本批已于2026-10-30 20:25:14.637825UTC完成，reason为`batch_finished`，不是低磁盘告警。终审`7cd9fa02d28a60b4fec48a69cb1c4365842e079cc928dd03db409d3f91da3ab9`，公开摘要[de751966…](evidence/v6-ddp-fused-communication-evidence-20261031/public-terminal-audit.json)。1310冻结身份、core、source current7a49及精确508a文件/bundle/contract保持。5jobs/10ranks均passed/valid，属于发现和4个正常规划采集器；没有新的完整模型质量、clean样本、候选或接受。GPU已空闲，实际150GiB磁盘剩9,982,173,184B约9.30GiB，无清理。旧51188完成已handled，不重启。
+
+新current10992e0d真正附着9calls/8groups，旧registry退休1049calls/385groups，新增3calls、失效2份旧证据；继承关系仅表示调用存活或bundle包含，不是因果归属。两个原始发现trace各1105kernels、2GraphLaunch、1个497,759,232B AllReduce；1103kernels仅归到project层，不能把100%关联解释为全部算子精细归因。发现NCCLsum34.601452/33.079367ms；独立timeline约55.006329/55.008339ms、1AR、4sync、0梯度回调、1bucket。逐trace及跨rank CPU提交界限重算通过：29.304688–173.617188µs仅是本次CPU提交差，不是GPU到达、wire或另一capture的等待原因。0回调不表示无梯度。
+
+此次校准实际覆盖124,439,808个Float/497,759,232B完整载荷，2warmup/5samples每rank，共10合成样本，原合成数值检查通过；median32.517463/32.509024ms，尾样本完整保留。这不是模型完整质量、性能下界或wire吞吐。单独tuning记录完整载荷RING/SIMPLE/channel0–1共3条，含warmup/setup，不与steady调用按序拼接；原生kernel入口仍为RING_LL，不将两者混成一个协议证明。
+
+新Nsys `nsys-28991fc3d0`的两份真实SQLite均重新核对，各1105kernels/1103Graph/2个`cudaGraphLaunch_v10000`，correlation4:955、67:148；1个eager AllReduce在Graph外。r0 SHA`edf46c30f8068ebfed207d70b48f70e5bbf22a88e0edfa992fdf468008e1d508`，r1`900f619ff16abc841333418a9c199f9b0d5148c6d4d1d2a2be267bfa35dabb48`，normalized`3d23a95a534deaba937827fdff95f0c99167b8ab9c91e53cd52e290159af38f8`。本次真实日志SHM/direct/direct；native NCCLsum31.532702/321.602219ms为两个受采集扰动的rank期间，不能减clean时间、当wire或与timeline拼成critical path。stale AccumulateGrad等warning原样保留，无uncaught traceback。
+
+真实规划角色35assistant/39tools/0schema repair，provider估计0.74683934934而非账单。6初始文件74372B及普通prompt/model/tools准确，全部39工具输入/输出已审阅，2756read行与原文件核对，JSON/拼接输出另行重建。工具10空git历史exit128，29/30空路径与shell结果保留。工具11读了自己的私有provider配置；19/22实际读本批launch/protocol/frozen controller，32实际读两个20261021历史collection计划。因此不再声称仅六文件或无外部答案暴露；这不改变真实worker数据。记录中未打开当前508a代码或自动复制的latest-feedback全文，未执行模型/CPU tensor/CUDA/processgroup/collective探针，只有JSON/schema操作；FS仍非hermetic。原计划“四次eager微批次”、确定bucket归属、校准分解wait/wire、paired测量隔离binding成本等说法不采纳，原输出不手改、不重跑planner。
+
+审计首次元数据提取误带完整output/display字段，存在私有配置进入输出流的风险；后续只核对敏感字段存在性和哈希，已告知用户，未修改credential。单独[输出处理记录](evidence/v6-ddp-fused-communication-evidence-20261031/audit-output-handling-note.json)不含配置值；raw/history/config继续只在服务器。
+
+下一项明确为[一次普通项目选择](v6-ddp-fused-communication-selection-20261031.md)：以原样508a新注册表、原始独立完整版本反馈和正常当前collector材料作输入，不加入上述人工终审表，不指定group/算法，不自动候选或GPU。不把本批发现当新接受，也不停止整个项目。以下启动记录是历史状态。
+
 已于2026-10-30 20:19:44UTC（香港10月31日04:19:44）启动，controller210849、冻结`5a140af46d3efa7925323b8b8a70d3f9b4b5d53b`，唯一隐藏监听51188。local OpenCode真实start/health/stop通过、server_url=null，无模型prompt预检。20:22:06[实际启动核验](evidence/v6-ddp-fused-communication-evidence-20261031/startup-verification.json) SHA`be5b5d3a3323f64b0f42d36b1bbdd2304854dcfcaf4baef693b4bbd11866866e`：1310冻结、sourcecurrent7a49、精确508a文件/bundle/contract、request/prepared/core/adapter/controls/UUID保持。discover-0ee3a52759两rank通过，新隔离current10992e0d329f45c941eb2edcd31f60fc1e7f17c7a6bba8241bad93edde56a979只附着发现记录；不是新质量/接受。
 
 真实collection-planner generation-c195abefadc1/session ses_e7187b33effexqMmCIaCpX8ABr，6实际初始文件74372B与snapshot相同，prompt/model/tools等于原始initial planner；29 assistant/32 tools早期私有history留服务器，尚未完整审阅工具输出/访问/最终计划，不能宣称全面消费或无额外读取。GPU在discovery后空闲，controller/规划角色仍活动；df剩10,004,762,624B约9.32GiB。

@@ -1,0 +1,15 @@
+# 已接受联合版本上的一次普通项目选择
+
+前置发现已终审7cd9fa02…，原样508a版本的新注册表为9calls/8groups，原完整载荷校准、新timeline/Nsys及tuning均可经现有普通输入路径提供。声明一次`ProjectAgents.generate(selection)`，决定新的有界方向；不预先指定group、bucket、算法、实现或collector，不自动生成候选/GPU执行，不重启已关闭链。具体启动与实际输入校验另记，声明不等于已启动。
+
+来源`ddp-fused-communication-evidence-20261031/ddp-evidence` current`10992e0d329f45c941eb2edcd31f60fc1e7f17c7a6bba8241bad93edde56a979`；精确508ad382…/14898B、单fixed-observation-route/emptyparams。新决策不修改来源current、accepted3cd9/formalbbe28c/source1fc/旧accepted4541/independent7a49。原controls/source/adapter/request/prepared只读，不新发现、不复制references，不改变生产core。
+
+输入组装直接执行现有`ProjectSearch._trial`中创建trial之前的只读common前缀，默认group/joint/region/execution_plan、非leaf限定、agent/full反馈；前缀SHA`89e9338af6c3d3fffaa63ea88ae16485e2611b9cea668c1864b5c53a31c67f2c`。使用原selection_prompt及既有反馈后缀、原model/tools，API observe-only无新cap。预检1454冻结身份，30预期文件7,194,917B。源中保留的旧ccd90文件是历史文件，实际installed_bundles只有fixed-observation-route，不把两个文件当共存两个active bundles。
+
+latest-feedback是既有fork_run复制的原始`version-aefa021e172f/result.json`，82,833B/SHA`bbc009e9cdef66582f9360791f47271ea1e0e91d0df943edd71aafee0c117937`，零添加。普通route生成2964B/SHA`735271eb027472417490bfce171392ee48b9258e6248a9cef0bb0ecda6cb96df`，保留原decision/measurement/complete_version，supplemental=null。现有完整版本route不会把pairs全部rank原始检查嵌入这2964B；不能称所有raw质量均进入角色上下文。普通source材料含实际508a、原task/adapter及current四collector原始JSON，未加入人工终审/修正表、旧CPU事实补充或新观察器。历史人工source/metricmapping/CPU事实对当前版本的援助边界仍保留，非unaided或单变量AB。
+
+前置planner确实外读历史计划和控制脚本，其原始collection计划仍作为正常resources的一部分提供，不将有争议推理修成手工答案。后续应核对实际snapshot、完整工具访问与输出、消费与推理，尤其区分读取指针/文件大小与实际证据使用。私有配置/credential不回显；完整history留服务器。此阶段无controller GPU/模型/collective/collector/search/parameters/acceptance，实际工具仍需终审，不能用意图证明无探针。
+
+原GPT2两rank/B1/S128/accum4/effective8seq、FP32/noTF32、full FW/BW/globalmeanSGD、2连续全量质量/精确replicas/2warmup5clean、133.379621→140.04860205约束不变。上次独立53.91019995%是计算合批+通信合并联合案例，与formal24.07796199%及旧ccd9036.1578233%不相加；13→1AR但497,759,232B不变。校准不是下界，NCCLsum不当wire/criticalpath，不跨capture扣clean时间。
+
+空间预检约9.30GiB、GPU空闲，384MiB增长预算加8GiB警戒而非APIcap，无清理/并行GPU。使用一个隐藏plain监听，旧51188已handled，不重启。结果返回后完整审计，仅有证据支持的新方向才能另行声明一次candidate；若没有支持，保留输出并选择具体证据问题，不重试selector直到想要的算法，也不静默结束项目。

@@ -1,5 +1,7 @@
 # DDP 原样合批与单规约版本的一次独立闭合
 
+后续证据步骤已终审：原样accepted3cd9的正常发现生成current10992e0d、9calls/8groups，新Nsys/完整载荷校准和timeline已核对，source current7a49与本独立接受不变。详见[终审7cd9fa02…](v6-ddp-fused-communication-evidence-20261031.md)。继续一次普通项目选择，非重复独立验收或新生产采纳；53.91019995%不与其他期间相加。
+
 已于20:13:13UTC完成，reason=batch_finished；处理旧正式配对延迟事件时主动发现并完成本批终审。唯一监听45316的排队完成事件已标记handled，后续投递须去重。审计SHA`bd738743223705f897d1db1154ea4c8f6819b6a0db6844cacb3c1966a623f620`，[公开审计](evidence/v6-ddp-observation-route-independent-20261031/public-terminal-audit.json) SHA`88926877127fb1ae398e0b287873bb0e71f51236b20e6a955518158824c2bcb5`。1235冻结身份、全部4请求/manifest/entry/adapter/controls/core/UUID、完整bundle与contract核对保持；sourcecurrent1fc及独立current7a49均未发布。
 
 完整版本`3cd9fc79f28ac3398d4bdfc5af76b089d7d64ce00a43532f02a8a571671529ca`，trial version-aefa021e172f，quality=pass/coverage_errors空/accepted=true/publication=exploration。对原始当前设备基线，B124.313109/110.580173ms，C53.788142/54.473702ms；pair gain70.524967/56.106471分别大于noise5.158692/4.366202。聚合117.446641→54.130922ms，**53.91019995%**；原140.04860205ms约束通过。这是独立全版本期间收益，与正式对当前accepted父版本24.07796199%、旧ccd90独立36.1578233%分别记录，不能相加或跨期重锚定。

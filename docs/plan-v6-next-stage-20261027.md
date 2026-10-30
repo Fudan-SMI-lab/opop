@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新：508a当前发现已于20:25:14UTC结束并终审7cd9fa02…，1310身份不变、5jobs/10ranks有效；新registry9calls/8groups、新Nsys1105kernels/1103Graph/2launch/1 eager AR，完整497,759,232B合成校准约32.51ms不是wire下界。planner35assistant/39tools实际外读两个历史计划及本批控制脚本，不能称六输入独立决策；原错误与配置输出处理事件保留，见[完整终审](v6-ddp-fused-communication-evidence-20261031.md)。继续[一次普通项目选择](v6-ddp-fused-communication-selection-20261031.md)，只用现有common/current材料+原完整版本反馈，不手选算法或注入终审表；预检1454身份/30文件7.19MB，无candidate/GPU自动阶段。旧51188已handled，GPU空闲剩约9.30GiB，未清理；下面启动状态均为历史。
+
 新接受508a的正常发现已于20:19:44UTC（香港04:19:44）启动controller210849/唯一隐藏监听51188/冻结5a140af4。20:22:06核验1310冻结、discover0ee3a52759两rank通过、新branch10992e0d只更新registry/同codebundle；真实planner c195abefadc1收到6文件74372B，prompt/model/tools原样。完整工具与collector结果待终审，当前剩约9.32GiB。fork_run自动复制原始version结果但未路由为planner初始输入，reader两错误保留且仅修reader，无实验重启。见[当前有界发现记录](v6-ddp-fused-communication-evidence-20261031.md)。旧正式/独立完成事件均去重，不重跑。
 
 最新独立闭合bd738743…接受：原始当前设备B117.446641→C54.130922ms，53.91019995%；40rank样本/16全检查/24原始trace/1235身份保持，两pair收益超噪声，原约束通过，尾样本保留。实际13→1 AR、497759232B不变，支持计算合批+通信合并联合案例，非纯通信份额；与formal24.07796199%和旧ccd90提升不相加。旧54144延迟事件去重，45316独立事件主动处理/handled。继续[一次原样独立接受版本正常发现](v6-ddp-fused-communication-evidence-20261031.md)，显式fork3cd9、现有discover/真实planner自主collectors，只更新隔离branch registry，无新candidate/接受/生产改动。GPU空闲剩约9.34GiB，1GiB预算+8GiB，无清理。详见[独立终审](v6-ddp-observation-route-independent-20261031.md)。
