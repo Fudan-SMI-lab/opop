@@ -1,5 +1,7 @@
 # 当前设备 DDP 一轮普通通信试验
 
+已于2026-10-30 02:10:29 UTC（香港10:10）实际启动，冻结`65dfbef45891536939f03b9e8c53e1ce663a8f1c`/controller100672。02:12:26启动审计SHA `aa74ad333c8db141755b213d8fb7570f2709eafa1fcee02b48654d3c9cd3abbb`：115冻结文件/request/prepared/source/core/UUID通过，discover-81e52aab57双rank通过，发现附着空revision e925da5f，源7a49不变。真实collection-planner generation-fb697d303320/session ses_e756cd09cffe9R8PAYNHvV31Tc，6初始文件262,446B逐字等于snapshot，11 assistant/13工具，私有历史留服务器；仅启动身份/活动证明，完整后续访问/质量/接受待审计，无旧candidate文件。实际本地OpenCode start/health/stop通过，未发模型测试prompt。唯一隐藏监听44088运行，df11,176,882,176B约10.41GiB，GPU已结束发现、角色阶段空闲。见[启动记录](evidence/v6-ddp-communication-trial-20261030/startup-verification.json)。
+
 空间前置已完成：02:06:48–02:07:39UTC，13个旧派生证据1,453,406,919→92,206,688B，压缩/解压SHA、4,204保护文件/102其余文件/历史与新接受版本保持；净释放1,361,186,816B（1.27GiB），余11,266,043,904B（10.49GiB）。journal SHA `63c7c1e21397ca64c64d7afa218a7c5fbc80d42b7e7b047c2c592e4c5d46bb28`，独立恢复路径见文末。GPU当时空闲，未删数据或改历史决策。
 
 从[当前设备空基线](v6-ddp-communication-device-20261030.md)接续一轮普通现有CLI `resume --rounds 1`，默认scope/参数探索、API只观察。工作根`/root/autodl-tmp/dev/v6-work/ddp-communication-trial-20261030`；实际启动信息后补。FSDP本轮已拒绝、不重测，Qwen链已收尾。本批不指定group、bucket、算法或实现，不提供旧Graph候选/人工因果表/修复答案；普通Agent自主选择通信或计算通信联合范围，不预先假定候选必然减少通信。
