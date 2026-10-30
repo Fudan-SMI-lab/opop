@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前实际运行（香港02:21启动、02:23核验）：[DDP观测机制一次修复](v6-ddp-observation-mechanics-repair-20261031.md)，冻结c1a63c3f/controller187340/唯一隐藏监听48592。15输入1,471,240B、原11字节相同、967身份及生产core/model/tools/current核验；前10工具确实读到完整前probe/plan/CPU结果/fixture。无GPU阶段，修复结果未预判，约8.17GiB可用。旧作者原输出/控制器postcheck错误/独立CPU反例已保存，旧48992 handled退出。完成接回审查后继续证据驱动的有界工作，不自动无限修复或GPU。
+
 最新终态：通信观测作者真实完成，控制器仅因已知prompt包装postcheck报错，原错误未覆盖。审计658f17ab、11输入/950身份保持；87工具完整审查发现实际小型CPU模型/Gloo活动超出作者限制。精确0244探针的一次无模型/无collective CPU检查确认歧义与缺失关联被误标observed、部分安装失败遗留patch并阻断原入口，故不上GPU。详见[作者终态](v6-ddp-communication-observation-author-20261031.md)。
 
 主动推进下一有界步骤：[一次CPU事实辅助的观测机制修复](v6-ddp-observation-mechanics-repair-20261031.md)。原输入保持，仅增加精确probe/plan/CPU记录和fixture索引，现有diagnostic_author自主实现，不给手写collector/优化方案。无自动GPU或继续修到通过；生产core/原质量/接受及旧结果保持，Qwen/FSDP/77ac不重启。128MiB材料预算+8GiB警戒、唯一隐藏监听，启动和实际快照另记。以下“当前运行”为历史。
