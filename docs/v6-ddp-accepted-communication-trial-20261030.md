@@ -51,3 +51,6 @@ Planner选择candidate_diagnostics、execution_timeline、binding_cost；前两�
 不手选组/bucket/算法/collector，不修改生产prompt/sampler/质量/接受，不并行GPU，不自动安排independent/native；真实planner可选已有collector。完成后审计完整工具输入输出、初始代码及编辑、所有参数/worker/raw trace/尾样本。仅真实新接受才声明独立整版B/C/C/B；通信结论另需实际通信机制，不能以Graph或较低NCCL sum替代。拒绝/异常原样保留，不重复到通过。Qwen关闭、FSDP最后拒绝保持。
 
 空间依据：旧普通trial262,836,224B，feedback640,086,016B，本次刚完成证据125,440,000B，均为实际allocated du；现余约9.28GiB。预算1GiB增量、8GiB告警线，属于估算而非API/collector cap；本轮不清理/复制参考。低磁盘不等于完成，不能终止活跃实验或盲删。新批次仅一个隐藏普通completion/disk watcher，旧50252处理后不重启；所有后台/SSH/queue显式CREATE_NO_WINDOW。raw/private configs/history留服务器，代码/hash/小型metadata进GitHub。
+
+
+审计输出处理补记：历史planner曾读取自身provider配置。审计者查看完整工具记录时，未先过滤这一输出，导致其中私有配置意外进入工具回显。未写入公开JSON、代码或GitHub；后续回显已屏蔽配置内容，建议更换相关API凭证。该补记不修改冻结原记录、实验输入、数值审计或当前运行配置；没有擅自轮换凭证。此处不重现任何凭证。

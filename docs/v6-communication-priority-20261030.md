@@ -1,5 +1,10 @@
 # 通信方向优先级调整
 
+当前实际运行（香港20:56核验）：[一次普通selector决策](v6-ddp-communication-selection-20261030.md)已20:53启动，冻结07c6a21b/controller154975/唯一隐藏监听7584。真实generation2f2d7ab00b70、37初始文件27,168,387B及886冻结身份验证；原prompt/model/tools、current accepted source/discovery不变，原始拒绝反馈route10252521B/305a2ce5与历史5e3a交付。10 assistant/16工具中，14已读拒绝/配对/原约束，16读历史proposal前6000字符；尚非完整消费或推理正确证明。两卡空闲、余约8.47GiB，无candidate/GPU/新接受。旧13432 handled；Qwen关闭/FSDP拒绝不重跑。终态接回完整审计再决定有界下一步。
+
+以下为前一批终态和历史。
+
+
 最新终态：accepted-version DDP 普通一轮已完成完整审计，trial-02ed5436b4 **拒绝**。父版本两组71.284842/72.901868ms，候选108.537192/111.151905ms；收益-37.252350/-38.250037ms，噪声门槛4.525422/0.450708ms。50个clean rank样本、20次零误差完整检查、30条独立通信trace、647冻结身份均核验。候选初始化 `params.index(s)` 触发Tensor布尔值不明确，实际退回原始eager，未执行拟议并发Graph；每rank仍13 AllReduce/497,759,232B，不能称通信优化成功。完整审计SHA `0ce0048441d64d0dd4fd20dcf52463b83561c24a91f4cefa07d0518a7f542131`。原accepted/current与历史拒绝保持，无独立验收或重试。
 
 下一步明确为[一次隔离的普通selector决策](v6-ddp-communication-selection-20261030.md)：只用本轮原始拒绝反馈、历史失败代码/原始sidecar和不变的当前accepted discovery，保持原prompt/model/tools，由现有selector自主选择范围和假设。本步不生成candidate、不启动GPU或collector、不注入审计因果答案；输出后审查证据依据再决定是否值得实施。当前两卡空闲、余约8.54GiB，不足完整普通轮次1GiB预算；仅为小型角色材料预留384MiB，保留8GiB警戒线，无清理。旧13432已handled；新启动与唯一隐藏监听另行记录。Qwen关闭/FSDP拒绝不重跑，研究方向仍为通信，不把本轮收尾当作整个研究结束。
