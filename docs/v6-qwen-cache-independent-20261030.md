@@ -1,5 +1,7 @@
 # 当前设备 Qwen 新接受版本的独立收尾
 
+迟到通知核对（2026-10-30 00:19:57 UTC／香港08:19）：再次收到同一23:37:02的batch_finished事件。终态、审计SHA、完整版本result（b9d568a2…）、四个worker请求及三个current指针未变，仍是已处理的独立接受；没有重跑模型/源比较/native或重启监听。核对记录留在当前FSDP根的 `late-notifications/qwen-independent-20261030.json`，SHA `3e641ff2ca804e2826d6928e524fca3221d9b0144ba389c9a303a4cfeb5a580d`。后续已转入FSDP一轮普通通信试验，当前selector真实会话已建立，Qwen链保持结束。
+
 终态2026-10-29 23:37:02 UTC，冻结1c29b474，控制器69576。四个fresh worker完整20样本/8零误差检查、543冻结文件及请求/source/adapter/bundle/entry/core核验通过。完整审计SHA `d1440c54a8fba6cc14d3cfc5652f9c6301d4e8613c60c5ee2a1d57b37c1f6863`，见[小摘要](evidence/v6-qwen-cache-independent-20261030/terminal-audit.json)。
 
 独立接受 **721.4966495→374.1322145 ms，48.1449824%**。B为746.616983/696.376316，C为374.184622/374.079807；两对收益372.432361/322.296509均超过噪声3.065312/1.212192。C TTFT20.446481/20.379104小于原24.45004275；B首次TTFT24.998813超限保留，不重设锚。探索版本52668e91，publish=False；独立current仍009b，搜索接受current2a42a6ad及旧空parent2a42b9b1不改。搜索48.0946416%与本结果分别列出，不和旧设备47.325%叠加。
