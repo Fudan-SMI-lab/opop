@@ -1,5 +1,11 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态：[隔离普通selector](v6-ddp-communication-selection-20261030.md)于13:04:38UTC完成并审计，886身份/37初始文件27,168,387B不变；33 assistant/43工具/0修复，输出cd3f9b53一次写入，审计816bff94。它自主选择整步及两AllReduce组、多通信组并发假设，但把前轮初始化失败后的eager退化当计算饱和证据、把合成校准当硬下界等论断不成立；原输出保留。没有候选/GPU/collective执行或新接受。
+
+下一步仅[一次普通candidate生成](v6-ddp-communication-candidate-20261030.md)：真实selection经普通API规范化，原framework失败反馈/current source/registry与prompt/model/tools不变，不提供审计纠正或手写实现。形成代码后审查再决定是否另行执行，不自动GPU/参数搜索，不重做selector/reviewer。两卡空闲、余约8.47GiB，384MiB材料预测+8GiB警戒，无清理；旧7584已handled，实际新启动和唯一隐藏监听另记。通信优先、Qwen关闭/FSDP拒绝保留，整个研究未据此宣告完成。
+
+以下为此前启动及历史。
+
 当前实际运行（香港20:56核验）：[一次普通selector决策](v6-ddp-communication-selection-20261030.md)已20:53启动，冻结07c6a21b/controller154975/唯一隐藏监听7584。真实generation2f2d7ab00b70、37初始文件27,168,387B及886冻结身份验证；原prompt/model/tools、current accepted source/discovery不变，原始拒绝反馈route10252521B/305a2ce5与历史5e3a交付。10 assistant/16工具中，14已读拒绝/配对/原约束，16读历史proposal前6000字符；尚非完整消费或推理正确证明。两卡空闲、余约8.47GiB，无candidate/GPU/新接受。旧13432 handled；Qwen关闭/FSDP拒绝不重跑。终态接回完整审计再决定有界下一步。
 
 以下为前一批终态和历史。

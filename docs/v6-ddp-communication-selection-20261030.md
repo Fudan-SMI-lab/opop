@@ -1,5 +1,17 @@
 # DDP 原始拒绝反馈的一次普通选择决策
 
+本批于2026-10-30 13:04:38UTC（香港21:04）以`batch_finished`结束，已完成终态审计：SHA `816bff94f0b660f3a96e388d2a0484c6e428453394e3156fc551054fde280ec2`，小型[公开审计](evidence/v6-ddp-communication-selection-20261030/public-terminal-audit.json) SHA `70f5a107e64d72e7acfd5894a193325743acbc078a9d7d0308354d2c80a8b129`。886冻结文件、37初始文件27,168,387B、实际registry route、source/current/prompt/model/tools/core均核验；控制器已退出，两卡空闲，实际150GiB盘余9,092,583,424B（约8.47GiB）。旧监听7584已handled，不重启；本轮未清理。
+
+真实selector共33 assistant、43工具、0 schema修复，provider估计0.84558406612（非账单）。完整工具输入/输出、内嵌CPU脚本与session parts保存在服务器；1632行read输出逐行核验，其中1条明确截断只验证前缀。未观察到模型/GPU/collective执行，仅JSON/文本处理及已安装PyTorch默认allreduce hook的源码检查；无外部后验答案读取记录，但文件系统并非hermetic。Tool3错误source目录exit2；tool15同类错误被后续pipeline exit0掩盖，tool12 grep无匹配不能按整体exit0算通过，均保留。审计器第一次将文件路径传给要求目录的validator导致NotADirectoryError，保存`terminal-audit-attempt-1.json`后仅修正读取器，没有角色/实验重跑。
+
+`selection.json`仅tool42写入一次，无编辑；从该脚本AST字面量与实际calls重建字节完全相等，SHA `cd3f9b53abd848b891b70743c6195bf3383733b2d867d2345abab945fdd6a7e7`。自主选择execution_plan、项目整步组及两个AllReduce组，1055 affected calls覆盖当前registry。假设为多communicator并发、末桶拆分和按桶提前更新，属于可形成候选的通信调度方向，尚无实现/正确性/收益证据。
+
+不能采纳整份因果说明：它把前轮72→108/111ms变慢当作计算饱和证据，但实际前轮在`params.index(s)`初始化异常后运行原始eager，拟议并发Graph根本未到达。Tool26虽打开原诊断，400字符rank前缀止于异常内容之前；没有读取失败candidate.py或当前已安装优化代码的记录。它也把明确注明“不是lower bound”的合成校准称作硬下界，将独立profile中的NCCL区间与clean整步组合预测58–64ms；这些不能证明可回收关键路径、唯一剩余优化方向或多通信组吞吐。原生RING_LL入口、tuning日志中的SIMPLE/2 channels及synthetic logical rate不是逐step物理transport/带宽因果证明。默认hook除法后SUM的源码不保证新分组/拆块的数值等价；提前更新仍需依赖/生命周期审查，回退中性和小于1ms开销也未验证。原输出保留、不手改、不向后续角色提供此审计纠正表。
+
+下一步明确为[一次既有candidate角色生成](v6-ddp-communication-candidate-20261030.md)：沿用此真实选择、原始失败反馈、当前accepted source/registry，正常API做affected_calls排序/闭包与selected-group路由。只形成可审查代码，控制器没有GPU、参数执行、搜索、collector或验收阶段；代码/参数/真实工具记录审查后再决定是否值得另行固定执行。不是新selector/reviewer/prompt重试，也不是认可预测收益。Qwen关闭、FSDP拒绝及原DDP accepted指针保持。
+
+以下为启动时历史。
+
 实际2026-10-30 12:53:29UTC（香港20:53）启动，冻结`07c6a21b01fb75450d7043fa1975bbb1eb99e405`，controller154975；唯一显式隐藏completion/disk监听7584，旧13432已handled，无实验重启。OpenCode本地真实start/health/stop通过，server_url=null，预检没有模型prompt。
 
 12:56:22UTC启动核验SHA `eefdd61b9add9bd80f12666ef6afa8e58b7a830fc49958767f01130c534c0a56`：实际generation-2f2d7ab00b70/session `ses_e73206ce5ffek9yynLuM6ILXrs`，37初始文件27,168,387B与预期、实际snapshot逐字相等；886冻结身份不变。相对原selector10文件变化、5移除、1新增，当前任务/source/registry/common未变，非单变量AB。原feedback14,429,015B/a0234920保持；route10,252,521B SHA `305a2ce51d1f0c5c26938e118c6e0a87d1a4649a266feb3629f5761ecffbb5e2`，supplemental=null，历史失败5e3a不是当前installed ccd90。原prompt/model/tools/core相等。

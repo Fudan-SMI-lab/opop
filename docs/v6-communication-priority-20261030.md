@@ -1,5 +1,9 @@
 # 通信方向优先级调整
 
+最新进展：隔离selector已完整审计（816bff94），自主提出多通信组并发/分桶更新，选择整步及两个现有AllReduce组；43实际工具没有模型/GPU/collective执行。前轮初始化失败被误当计算饱和、合成校准被当硬下界等因果论断不采纳，原输出保留。下一有界步骤是[一次普通candidate生成](v6-ddp-communication-candidate-20261030.md)，仅使用真实选择、原始失败反馈和当前source/registry；不人工指定实现、不注入审计纠正、不启动GPU。审查代码后再决定后续，不把选择完成当研究结束或无条件接续候选链。Qwen关闭、FSDP拒绝不重试，当前accepted计算Graph仍不归为通信成功。
+
+以下为此前记录。
+
 当前实际运行（香港20:56核验）：[一次普通selector决策](v6-ddp-communication-selection-20261030.md)已20:53启动，冻结07c6a21b/controller154975/唯一隐藏监听7584。真实generation2f2d7ab00b70、37初始文件27,168,387B及886冻结身份验证；原prompt/model/tools、current accepted source/discovery不变，原始拒绝反馈route10252521B/305a2ce5与历史5e3a交付。10 assistant/16工具中，14已读拒绝/配对/原约束，16读历史proposal前6000字符；尚非完整消费或推理正确证明。两卡空闲、余约8.47GiB，无candidate/GPU/新接受。旧13432 handled；Qwen关闭/FSDP拒绝不重跑。终态接回完整审计再决定有界下一步。
 
 以下为前一批终态和历史。

@@ -1,5 +1,7 @@
 # DDP 已接受版本重发现后的一轮普通通信续行
 
+后续边界：本批02ed5436b4的拒绝和初始化失败保持，未重跑。之后[一次隔离selector](v6-ddp-communication-selection-20261030.md)已审计816bff94：提出新通信并发假设，却将本批未到达并发代码的eager回退变慢误判为计算饱和；此论断不采纳。下一步只由[既有candidate角色](v6-ddp-communication-candidate-20261030.md)依据原选择和原始反馈形成可审查代码，无手工修复、GPU或验收阶段。source/current仍1fc/原ccd90，旧accepted结论不受新选择影响。
+
 终态已审计：2026-10-30 12:40:28UTC（香港20:40）`batch_finished`，不是磁盘警报。controller已退出，两卡空闲；实际150GiB配额约8.54GiB可用。唯一旧监听13432标记handled，不重启，不清理。
 
 原trial `trial-02ed5436b4`、代码 `5e3a9a001ba4c793c602f2b066cb12789550cf09e900cd6518ba821deaefef26`（17979B）、proposal12488B、空参数。仅一个screen，尽管默认参数预算3；execution_plan项目组自主选择，单bundle替换原`trial-d06aa22e2d-param-a72285d2`，不是叠加或共存。新revision01cbc402未发布；current/source evidence仍1fc24545，原accepted4541、independent7a49与历史Graph09b7不变。生产core仍ed24af7a。
