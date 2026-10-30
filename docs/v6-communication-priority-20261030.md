@@ -1,5 +1,7 @@
 # 通信方向优先级调整
 
+最新：观测作者终态已审计，原始生成成功与控制器postcheck错误分开保留；独立CPU反例表明0244探针尚不能可靠报告关联/恢复，暂不GPU。继续[一次有界观测机制修复](v6-ddp-observation-mechanics-repair-20261031.md)，只给原输入及精确CPU事实，不给实现。不是通信优化接受，也不自动延长修复链；原目标/质量/接受、Qwen关闭/FSDP拒绝/77ac关闭不变。实际启动另记，以下为历史。
+
 当前已启动通信证据作者（香港01:44，controller181053/隐藏监听48992），问题限于当前accepted DDP同次调用的就绪/提交/完成证据与不可辨识部分，具体观测由作者选择。无GPU/优化代码/生产改变，结果回来完整审计并继续有界工作。详见[声明与启动限制](v6-ddp-communication-observation-author-20261031.md)。旧selector输出保留，77ac/Qwen/FSDP关闭状态不改。
 
 最新决策：新selector完成后选择计算批处理，13AR不变；其“通信已到硬下界”断言未获原始证据支持，不能据此放弃通信方向。保留该输出，不重做selector，也不直接启动计算候选。下一项为[一次accepted DDP通信观测作者](v6-ddp-communication-observation-author-20261031.md)，让作者从原code/trace识别同调用输入就绪、提交、完成与等待证据及限制；不人工选group/bucket/collector/算法，不自动GPU或生产采纳。77ac修复、Qwen与最新FSDP拒绝链继续关闭。以下为启动及历史。

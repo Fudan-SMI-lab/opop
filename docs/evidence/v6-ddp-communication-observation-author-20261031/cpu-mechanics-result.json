@@ -1,0 +1,176 @@
+{
+  "probe_sha256": "024441f7d80bddaa51590b3630fbcc3969ac31b05548546ad2089106a10b5e98",
+  "scope": "One exact-byte CPU mechanics fixture; synthetic events and Python entry only. No CUDA/model/tensor compute/real collective/profiler. Findings are not historical GPU failures.",
+  "reports": {
+    "enclosing_range": {
+      "positive": {
+        "status": "observed",
+        "method": "same-thread enclosing c10d range around correlated CUDA launch",
+        "ranges": [
+          {
+            "name": "c10d::outer",
+            "start_us": 10,
+            "duration_us": 20
+          }
+        ],
+        "reason": null
+      },
+      "ambiguous": {
+        "status": "observed",
+        "method": "same-thread enclosing c10d range around correlated CUDA launch",
+        "ranges": [
+          {
+            "name": "c10d::outer",
+            "start_us": 10,
+            "duration_us": 20
+          },
+          {
+            "name": "c10d::inner_a",
+            "start_us": 15,
+            "duration_us": 10
+          },
+          {
+            "name": "c10d::inner_b",
+            "start_us": 16,
+            "duration_us": 11
+          }
+        ],
+        "reason": null
+      },
+      "fixture_unique_innermost": false,
+      "scope": "Synthetic same-clock trace, not an observed NCCL execution."
+    },
+    "missing_trace_index": {
+      "status": "observed",
+      "reason": null,
+      "traces": [
+        {
+          "trace_file": "metric-rank-0-0.json",
+          "trace_sha256": "c1a1fad1de7309ff5e12b267e790c070e8d2c4ef9495bc56e445fc4c8680cfe3",
+          "invocation_ordinal": 9,
+          "mapping_status": "observed",
+          "method": "position of profiler-window invocation among profile-phase invocations matched to metric trace index emitted by the original evaluator's own secondary-metric collector",
+          "payload_multiset_match": null,
+          "order_consistent": null,
+          "interpretation": "trace order keyed by CPU submission start where observed, else kernel start; the comparison to CPU bucket ready order is a rank-order correspondence on independent clocks, not a timestamp alignment; equal-payload collectives are interchangeable and remain individually unidentified"
+        },
+        {
+          "trace_file": "metric-rank-0-2.json",
+          "trace_sha256": "c1a1fad1de7309ff5e12b267e790c070e8d2c4ef9495bc56e445fc4c8680cfe3",
+          "invocation_ordinal": 10,
+          "mapping_status": "observed",
+          "method": "position of profiler-window invocation among profile-phase invocations matched to metric trace index emitted by the original evaluator's own secondary-metric collector",
+          "payload_multiset_match": null,
+          "order_consistent": null,
+          "interpretation": "trace order keyed by CPU submission start where observed, else kernel start; the comparison to CPU bucket ready order is a rank-order correspondence on independent clocks, not a timestamp alignment; equal-payload collectives are interchangeable and remain individually unidentified"
+        }
+      ],
+      "profile_invocation_count": 3,
+      "trace_count": 2
+    },
+    "unknown_trace": {
+      "status": "observed",
+      "reason": null,
+      "traces": [
+        {
+          "trace_file": "metric-rank-0-0.json",
+          "trace_sha256": null,
+          "invocation_ordinal": 9,
+          "mapping_status": "observed",
+          "method": "position of profiler-window invocation among profile-phase invocations matched to metric trace index emitted by the original evaluator's own secondary-metric collector"
+        }
+      ],
+      "profile_invocation_count": 3,
+      "trace_count": 1
+    },
+    "no_python_zero_grad": {
+      "synthetic_profile_regions": 3,
+      "hook_ordinals": [
+        0,
+        0,
+        0
+      ],
+      "phases": {
+        "invocations": [
+          {
+            "ordinal": 0,
+            "phase": "quality",
+            "profiler_active": false,
+            "broadcasts_after": 1
+          }
+        ],
+        "method": "request warmup unavailable; phases left unassigned",
+        "expected": {
+          "continuous_steps": 2,
+          "warmup": 2,
+          "repeats": 5,
+          "metric_repeats": 3
+        },
+        "validation": {
+          "quality_invocations": 1,
+          "expected_continuous_steps": 2,
+          "profile_invocations": 0,
+          "expected_metric_repeats": 3,
+          "request_echo_status": "observed"
+        }
+      },
+      "scope": "Conditional event sequence; not a GPU replay trace or historical per-call proof."
+    },
+    "broadcast_bound": {
+      "declared": 4096,
+      "retained_list_length": 4113,
+      "none_stubs": 17
+    },
+    "return": {
+      "original_calls": 1,
+      "same_return_object": false,
+      "same_nested_object": true,
+      "valid_preserved": true,
+      "same_exception_object": false,
+      "error_type": null,
+      "patches_restored_before_fixture_cleanup": {
+        "__init__": true,
+        "no_sync": true,
+        "zero_grad": true,
+        "step": true,
+        "broadcast": true,
+        "profile": true
+      }
+    },
+    "exception": {
+      "original_calls": 1,
+      "same_return_object": false,
+      "same_nested_object": false,
+      "valid_preserved": false,
+      "same_exception_object": true,
+      "error_type": "RuntimeError",
+      "patches_restored_before_fixture_cleanup": {
+        "__init__": true,
+        "no_sync": true,
+        "zero_grad": true,
+        "step": true,
+        "broadcast": true,
+        "profile": true
+      }
+    },
+    "partial_setup": {
+      "original_calls": 0,
+      "same_return_object": false,
+      "same_nested_object": false,
+      "valid_preserved": false,
+      "same_exception_object": false,
+      "error_type": "TypeError",
+      "patches_restored_before_fixture_cleanup": {
+        "__init__": false,
+        "no_sync": false,
+        "zero_grad": false,
+        "step": false,
+        "broadcast": false,
+        "profile": false
+      }
+    }
+  },
+  "fixture_restored_all": true,
+  "cuda_initialized": false,
+  "process_group_initialized": false
+}

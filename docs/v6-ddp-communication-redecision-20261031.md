@@ -1,5 +1,7 @@
 # DDP 通信方向的新一次项目级决策
 
+后续通信观测作者已完成[完整审计](v6-ddp-communication-observation-author-20261031.md)：未生成本selector的计算优化候选。因精确probe的关联/恢复CPU反例，下一步限定[一次观测机制修复](v6-ddp-observation-mechanics-repair-20261031.md)，不重做selector、不恢复77ac、不改生产策略。
+
 本批已于17:35:37UTC（香港01:35）完成，reason=`batch_finished`；controller退出、GPU无worker、余约8.20GiB，旧监听49252不重启。28 assistant/34 tools/0schema修复/provider估计0.91937204936非账单。selection `5878032d`仅whole-step组/1055调用，选择合并前三个microbatch的计算路线、保留13AR。原输出不改，不记新候选/通信质量/接受。
 
 终态审计SHA`94ee7a0e5d43529de7408d00149e17708c84996e5fd1aa3e6361dc63483d02f5`，[公开小型记录](evidence/v6-ddp-communication-redecision-20261031/public-terminal-audit.json)SHA`c61335b2bb38c705ae8c282815a69a99b28b567d367b9af69ef1309196a76208`。41初始文件/27,224,402B、924冻结身份、普通prompt/model/tools/core及current再次核验。2108 read行/1截断前缀核对；全部纯JSON分析输出从原输入独立重建一致，唯一selection写入从literal AST重建精确，没编辑。两次只读审计reader分别误拒绝`with open`与`type(...).__name__`，错误保留，仅修正受限重建reader，没有角色/模型/CPUfixture/GPU重跑。原timeline每rank13AR/497,759,232B与独立校准样本重算，仍不当wire/critical path或新验收。

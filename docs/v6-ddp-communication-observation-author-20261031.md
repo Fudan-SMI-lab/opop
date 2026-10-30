@@ -1,5 +1,17 @@
 # 当前 accepted DDP 的通信观测作者
 
+终态已审计：2026-10-30 18:07:48UTC（香港10月31日02:07），事件为`batch_finished`。真实角色有`PROJECT_AGENT_FINISHED`，71 assistant/87工具/0 schema修复，provider估算2.46235109804（非账单）。控制器`completed_with_errors`仅来自已预告的裸prompt比较，漏算575B正常包装；原控制器与错误保留，未重启角色。审计`658f17abf5d66ffdaa168f993e5d3cd1fff180fde5ece32ba78d04e7ca7ab5e3`，[公开摘要](evidence/v6-ddp-communication-observation-author-20261031/public-terminal-audit.json)`25063561…`。
+
+11初始文件1,404,482B、950冻结身份、原source/current/core/model/tools均核验。完整87工具输入/输出与CPU脚本已审查，3724 read行与实际文件匹配，5个纯JSON打印输出独立重建；探针1次写入+16次编辑、plan1次写入均重建为最终字节。新探针`024441f7d80bddaa51590b3630fbcc3969ac31b05548546ad2089106a10b5e98`/37,167B，plan`862a728f25e8056ed7d61659440f22e323e9e299f57932e35b16f8dbd534bf68`/21,810B。实际读取原输入/原B/C rank0片段、原B metric trace、framework/库源码与自身CPU文件；未观察到私有配置/后续审计/其他候选答案读取，但FS非封闭。
+
+作者实际执行了小型CPU Linear FW/BW/SGD、world_size1 Gloo DDP及broadcast，超出本次明确的“无模型/真实collective”限制，不能称纯mock。CPU profiler出现`gpuGetDeviceCount code100`，未见成功CUDA执行。SyntaxError、缺ijson被复合命令覆盖、两次float/dict错误、Path缺失、param-id误当Parameter、phase/payload断言、UnboundLocalError与cap键错误全部保留；Agent修改代码/fixture后测试通过并重复。其异常检查仅type/message，profiler恢复只查class；所谓ambiguity negative没有覆盖真实歧义。临时输出被覆盖、自己的cache被删除，完整命令及最终fixture保留服务器，不宣称所有早期临时文件仍在。
+
+已另行执行**一次精确原字节CPU机制取证**：[脚本](../scripts/experiments/v6_ddp_observation_cpu_contract_20261031.py) SHA`4349d3cd744984bc47246a13963111215292b35e90f41e5d3d2d800455870b04`，[结果](evidence/v6-ddp-communication-observation-author-20261031/cpu-mechanics-result.json)。无模型、tensor计算、process group、真实collective、profiler执行或CUDA初始化。唯一范围正控通过，但重叠inner ranges仍被标observed；trace索引缺1时文件2被配给ordinal10，unknown trace也被标observed。无Python zero_grad的三段模拟profile事件全部停留ordinal0/quality，说明该ledger不等于真实evaluate调用。4096广播上限后仍追加None，4113条列表没有硬封顶。
+
+原入口普通成功/异常各一次，validfalse与嵌套对象保留、原RuntimeError是同一对象，六个patch均恢复；返回dict本身被浅复制。注入非class profiler API的**条件性部分安装失败**时，原入口调用0次，五个先装patch未恢复；fixture最后自行恢复，不是修复探针。这些是CPU接口/报告反例，不是历史GPU/NCCL失败。探针还在entry返回后调用zeros-like bucket inventory，约497,759,232B额外缓冲；“不排任何kernel”未证实，owner/allocator扰动不可忽略。CPU callback、同trace launch关联、通信union均不能证明GPU就绪、wire time或critical path。
+
+结论：**该0244探针不进入GPU观测。** 原输出/失败/所有旧接受保持。下一有界步骤是[一次观测机制修复生成](v6-ddp-observation-mechanics-repair-20261031.md)，仅原输入加精确前probe/plan、上述CPU结果及fixture索引；显式开发者CPU事实辅助，由原diagnostic_author自主决定最小实现，不手写collector、不优化candidate、不重开77ac。没有自动下一轮修复或GPU执行。终态时两卡无worker、实际150GiB盘余8,784,547,840B；本轮没有清理或reference复制。
+
 实际已于2026-10-30 17:44:50UTC（香港10月31日01:44）启动，冻结`2865d183c4154b612655818f095f93d3a61f1809`/controller **181053**，唯一隐藏完成/磁盘监听 **48992**。原49252终态已处理且退出，不重启。launch时150GiB实际余8,797,040,640B，GPU空闲；本步仅作者生成，不能称GPU正在验证。启动实际快照核验另记。
 
 17:48:37UTC实际核验通过，[startup-verification](evidence/v6-ddp-communication-observation-author-20261031/startup-verification.json)SHA`ab76b9d6dd885fc2b2f99d737a24338c879ec6c61e17505d827c39ad986e5e9d`：generation`bad1395efb6c`/session`ses_e7215a5c7ffe5uCvum0WOqYsk1`，11文件1,404,482B（10显式1,400,912B），950冻结身份/模型工具/core/current1fc保持。真实prompt包含下述正常框架包装，SHA`97ce70b3a5ed066ac77ba8b1f8f1dde5485a56c6df3968236ea54d3ff00fc1d0`。15 assistant/24工具、无jobs/GPUworker、余8,790,978,560B约8.19GiB。
