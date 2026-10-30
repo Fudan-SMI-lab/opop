@@ -1,5 +1,19 @@
 # DDP 原始失败反馈的一轮普通续行
 
+终态已完成并完整审计：2026-10-30 11:16:49 UTC的事件为`batch_finished`，不是磁盘告警。新trial `d06aa22e2d`以空参数接受完整版本`4541830b6c81c1c0c2c2fef6dfb5f2566e312483900238abf1e7ac900a1758e6`，候选SHA `ccd90dc158788a164d6fda242572530e9cdc9ca50563af1a1d9d597f0ac12e0b`，12,536B；proposal SHA `63e8661c273cd117a510d9d5e2006bb156a02ada7c3e5d073dde1b74b1767921`，单bundle `trial-d06aa22e2d-param-a72285d2`。原空source/current、历史接受版本和312冻结文件保持，生产core不变。旧监听12400已退出并标记handled。
+
+完整step搜索结果118.214785→71.725802ms，收益39.3258618%。两组B/C为118.555851/71.824818与117.873719/71.626786，收益46.731033/46.246933ms均超过噪声7.696742/10.436134ms；原锚133.379621、上限140.04860205保持。5个正式端点、两rank共50个clean样本及20次完整零误差检查（各248,879,620元素）全部保留，所有尾样本不剔除。候选每rank首个质量调用走parent，第二个走真实Graph setup/capture，两者通过；不能称两次均为优化路径。全部12 jobs/24 rank正常完成，run-only诊断不替代质量检查。
+
+30条原通信metric trace逐条复算，每rank仍13个AllReduce RING_LL。两份本候选Nsys分别SHA `6b5eecaa078e688d8aec14c127558002d88fcb9abb252576c748f7cfad0672e2`、`146542da81f11ffb5a7394984be8d9d91f14e5038334fa306684d029d4261f14`：各4103 kernels，其中2981在Graph、1122在Graph外，实际2次`cudaGraphLaunch_v10000`，全部13个NCCL均在Graph外。独立Torch profile/timeline各4106 kernels，逻辑AllReduce payload仍497,759,232B；真实channel日志SHM/direct/direct。**这证明计算调度机制发生变化，没有证明通信量减少；不归为通信优化成功。** NCCL sums、校准样本、timeline间隙和设备速率不是wire/关键路径，也不能跨profile相减推clean host成本。
+
+代码Graph A覆盖前三个raw-model microbatch的清零/FW/BW，第4个microbatch保留eager DDP reducer，Graph B执行原SGD更新。setup位于第二次质量调用，不能以约12ms安装时长冒充完整capture成本。候选runtime peak1,498,647,552B、lifecycle peak1,999,242,752B较本轮配对B低，但lifecycle reserved3,193,962,496B高于B2,589,982,720B；仅描述，不新增显存约束。全局capture flag恢复到False、局部对象身份guard、失败后peer一致性和部分更新回退仍有限制，实际本次完整检查不能扩展为任意输入/并发owner或回退中性保证。
+
+三角色全部真实snapshot、126个工具输入/输出记录、截断输出文件、CPU脚本和candidate初稿+4次编辑已审计并逐字重建最终代码。selector/candidate/planner分别39/50/15 assistant、41/66/19工具，0 schema repairs，provider估算合计4.22385320112（非发票）。实际读取原失败反馈/历史candidate、现有profile与安装库，以及官方PyTorch v2.13.0源码；未观察到后来的开发者audit/旧接受答案读取，但外部FS不隔离。候选2rank Gloo CPU玩具验证手工计划、bucket地址变化和连续更新，不是原完整CUDA/Graph或真实candidate框架执行；真实candidate CPU导入仅覆盖不支持设备的回退。缺失目录、KeyError、错误API、grep/sed错误及selector把ns按微秒打印却标ms均保留。工具清理了自己的CPU脚本/cache，原命令源码与完整私有history仍在，不能称全部临时raw保存。
+
+数值审计SHA `b154e700ae58402cef4cfcb9ac5595d07fabf9f50eb663ac638e4fec0e324c9b`；完整终态审计`07fc3b7b3fa2f535204582bc95f7aa027724b4efa9bfdc8d2adfc71d4358d8df`；[公开小摘要](evidence/v6-ddp-communication-feedback-20261030/public-terminal-audit.json) SHA `ba54e7005db588647880c9f7f191c81e787135bab44b1a2d1fe5f7c3c32fbddd`。读取器首次漏掉相对candidate写入路径、首次native查询漏版本后缀/查询不存在DRIVER表，均保留初版/错误后仅修reader，没有模型/GPU/Nsys重跑。完整access review SHA `606ff401ec0f21e29edfa0673098ce390a20bc65630bf95c22d88ba4b11c6b8e`，raw/private留服务器。
+
+因确有新搜索接受，下一步仅[一次独立整版B/C/C/B](v6-ddp-feedback-independent-20261030.md)，原字节、publish=False、原prepared基线与约束，复用精确当前native，不新搜索或重采Nsys。搜索接受与独立结论分列；即使独立通过，也不能将计算Graph收益自动列为通信接受。以下启动描述保留为历史。
+
 已于2026-10-30 10:23:07 UTC（香港18:23）实际启动，冻结`6c6809926168a000c166e106770a7f05686553d1`，controller125768。唯一隐藏完成/磁盘监听12400于10:24:49启动，旧44088保持handled。实际本地OpenCode start/health/stop通过，没有模型测试prompt。启动可用10,983,202,816B，10:25:34审计时10,932,756,480B约10.18GiB、GPU空闲；尚无GPU job，处于真实selector阶段。
 
 [启动核验](evidence/v6-ddp-communication-feedback-20261030/startup-verification.json) SHA `a8e95bedbdf96c31847f107db2c36824dc1935882adc7b5857e7675a1e7e0b15`：generation46c388e29191/session ses_e73aa1d4effeb9UPgg21bO3JD3，32初始文件20,980,742B逐字相等，312冻结hash与source/current/request/prepared/discovery/core通过。真实feedback518,850B/SHA f7489f9ef80206bc4acc1f8385a6311a64773ee43cf96c579c76038c000c5a7e等于实际registry route，supplemental=null，历史cf5e代码和两个打包after artifact一致。
