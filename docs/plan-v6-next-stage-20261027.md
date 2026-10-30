@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前真实后台（香港02:55启动、02:57核验）：[原始观测反馈selector](v6-ddp-observation-feedback-selection-20261031.md)，冻结b4e86ec8/controller192276/唯一隐藏监听52336。实际56输入27,860,418B、1005身份及原普通prompt/model/tools/current保持；仅反馈追加索引和15原始材料。早期16工具实际读旧反馈/代码、展示新指针但尚未打开新观测文件，完整终态审查待续。无GPU阶段，磁盘约9.94GiB；新合理决策才推进候选，不无限重试。已完成固定B/C和observer mechanics链不重启，旧14060重复事件已处理。
+
 最新终态：精确92279 B/C观测18:47:43UTC完成并直接终审，audit2f976a91，977身份/4rank/8完整零误差检查/20样本/12rawtrace保持。B三profile结构关联，C每rank3256回调无法归属、三关联均unknown；两臂13AR/497,759,232B不变，没有通信优化接受。观测/mechanics修复链关闭。[完整记录](v6-ddp-communication-observation-20261031.md)。
 
 主动下一有界工作：[原始观测反馈的一次普通selector](v6-ddp-observation-feedback-selection-20261031.md)。以前次实际41输入为基底，原字段/CPU事实保持，仅增加原始B/C及Agent probe/plan/索引，不提供审计结论或指定算法；普通prompt/model/tools/default scopes不变，无自动candidate/GPU。原Qwen/FSDP/77ac关闭保持。以下运行状态为历史，实际新启动另记。

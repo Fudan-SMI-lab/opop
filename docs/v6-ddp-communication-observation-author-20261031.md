@@ -1,5 +1,7 @@
 # 当前 accepted DDP 的通信观测作者
 
+后续原样92279修复已完整终审并只执行一次[固定B/C观测](v6-ddp-communication-observation-20261031.md)：977身份、8完整零误差检查、12raw trace保持；C Graph路径的Python归属显式unknown，未产生通信接受。旧0244从未GPU执行、原postcheck错误/CPU反例保留。观测/mechanics修复链现收尾，继续[普通项目selector消费原始新证据](v6-ddp-observation-feedback-selection-20261031.md)，不给人工因果答案，不重做本作者。
+
 终态已审计：2026-10-30 18:07:48UTC（香港10月31日02:07），事件为`batch_finished`。真实角色有`PROJECT_AGENT_FINISHED`，71 assistant/87工具/0 schema修复，provider估算2.46235109804（非账单）。控制器`completed_with_errors`仅来自已预告的裸prompt比较，漏算575B正常包装；原控制器与错误保留，未重启角色。审计`658f17abf5d66ffdaa168f993e5d3cd1fff180fde5ece32ba78d04e7ca7ab5e3`，[公开摘要](evidence/v6-ddp-communication-observation-author-20261031/public-terminal-audit.json)`25063561…`。
 
 11初始文件1,404,482B、950冻结身份、原source/current/core/model/tools均核验。完整87工具输入/输出与CPU脚本已审查，3724 read行与实际文件匹配，5个纯JSON打印输出独立重建；探针1次写入+16次编辑、plan1次写入均重建为最终字节。新探针`024441f7d80bddaa51590b3630fbcc3969ac31b05548546ad2089106a10b5e98`/37,167B，plan`862a728f25e8056ed7d61659440f22e323e9e299f57932e35b16f8dbd534bf68`/21,810B。实际读取原输入/原B/C rank0片段、原B metric trace、framework/库源码与自身CPU文件；未观察到私有配置/后续审计/其他候选答案读取，但FS非封闭。
