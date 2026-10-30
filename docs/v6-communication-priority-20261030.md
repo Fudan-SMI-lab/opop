@@ -1,5 +1,7 @@
 # 通信方向优先级调整
 
+当前实际推进到[精确完整版本独立闭合](v6-ddp-fused-pipeline-independent-20261031.md)：香港06:40:32 controller237970/冻结33637dd3/唯一隐藏监听40904。06:41:37实核1691身份、原EMPTY baseline7a49对928db26602b933/空参数、三份B/C/C请求；第二C两个GPU worker运行，余约8.93GiB。前置正式10.8304661%/audit175995c0已独立核对，尚不把本次启动称独立接受；终态完整审计后再决定有界通信证据步骤。无新代码/参数/Agent/native/sourcecontrols/清理/并行GPU，旧49392handled，以下为历史。
+
 最新[原样正式配对验证](v6-ddp-fused-pipeline-validation-20261031.md)已完整终审175995c0：1542冻结身份保持、9jobs18ranks/40样本16全检查24通信traces/2新native，02b933相对当前508a由53.931714→48.090658ms，正式改善10.8304661%；两对收益6.047596/5.634516均高于噪声0.869176/0.951302。原约束和exact replicas通过，第二检查微小非零误差、全部尾部保留。空参数仍用代码自身fine8；新接受928db266为exploration，current10992不发布。新native1128kernels/1112Graph/17launch/8eagerAR和实际SHM/direct/direct；总497,759,232B不变、显存增加，同capture重叠不是wire/关键路径归因。
 
 下一项明确为[一次精确完整版本独立闭合](v6-ddp-fused-pipeline-independent-20261031.md)：promote_version(publish=False)，原当前设备EMPTY prepared7a49对精确928db266，fresh B/C/C/B/原质量噪声约束不变。1691身份预检、GPU空闲、150GiB盘余9,713,926,144B约9.05GiB，1GiB增长预测+8GiB警戒通过，无清理/新Agent/参数/采集/source-control或reference副本。只复用先前真实source/本轮精确native哈希；不能把正式10.83%叫独立接受或与旧53.91%相加。旧49392已handled且进程退出，延迟事件去重；实际新启动另记，以下为历史。
