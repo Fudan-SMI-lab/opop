@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前实际运行（香港20:05核验）：[一轮accepted-version DDP普通续行](v6-ddp-accepted-communication-trial-20261030.md)已20:03启动，冻结2a0bb13a/controller145514/唯一隐藏监听13432。647身份、真实selector41文件50,078,774B及原accepted feedback route核验；原prompt/model/tools、当前installed bundle/source与刷新registry交付。12 assistant/16工具中已实际读取旧质量/配对/约束及已安装代码，当前collector仍仅早期索引曝光，终态完整消费审计待做。两卡空闲/无GPU jobs、余约9.14GiB；无新接受或生产变更。首次launcher旧文件名预检中止于实验启动前，错误保留、只修正部署路径。旧50252 handled，Qwen关闭/FSDP拒绝不重跑。以下为前批终态与历史。
+
 最新终态（香港19:47完成，审计已落盘）：[已接受DDP执行的发现/通信证据](v6-ddp-accepted-communication-evidence-20261030.md)四任务八rank完成、548身份保持，审计51dfcb11。新registry1055 calls/390 groups，原代码/单bundle/contract不变；每rank仍13 AllReduce/497,759,232B，当前采集2 Graph launches。真实planner选择tuning/校准/timeline，12 assistant/14 tools/0修复；其“无Graph/无候选”和跨采集归因过强的说法不采纳，原输出保留。没有新增完整质量/clean/优化接受。
 
 下一步已明确为[一轮普通accepted-version DDP续行](v6-ddp-accepted-communication-trial-20261030.md)：共享刷新后的registry/当前诊断/原controls，原accepted feedback逐字不变，现有Agent自主选范围/实现，不提供审计答案或手选通信组。两卡空闲、余约9.28GiB；既往最大普通feedback批次实际640MB，本次估算1GiB增长并保留8GiB告警线、不清理。仅新接受才另做独立闭环；通信成功仍需实际机制及独立整步收益。Qwen关闭、FSDP拒绝保持，旧50252已处理。以下为历史，启动核验另行记录。

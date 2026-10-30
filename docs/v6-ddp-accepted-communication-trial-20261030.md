@@ -1,5 +1,11 @@
 # DDP 已接受版本重发现后的一轮普通通信续行
 
+实际启动：2026-10-30 12:03:42 UTC（香港20:03），冻结 `2a0bb13a7ab8f46b27c58d77f3c38f81521f5a1a`，controller145514，唯一隐藏监听13432；旧50252已退出并handled。真实local OpenCode start/health/stop通过，server_url=null，无模型测试prompt。首次部署launcher错误地校验旧脚本名，已在创建新root/controller/session/model/watcher前中止；`launch-preflight-attempt-1.json`及原脚本保留，随后只修正部署路径，精确冻结代码/生产core未变，没有实验重启。
+
+12:05:30 UTC启动审计SHA `96f1586200fe20d45d99f5e6e68b504a8af906fa8a7fd15ddbf6b4686538f5bd`：647冻结文件、source/branch current1fc、原request/prepared/discovery/controls/core一致。真实selector generation-deeff48fed0b/session ses_e734df353ffew5IaE4RafG3kbI，41初始文件50,078,774B逐字等于snapshot，原route反馈15,504,256B/SHA84e77ac656c0a7b818be825c89653ca31c9807f91b1bf60d55e72ee7bb312b31，supplemental=null；历史ccd90与实际installed_bundles/current source已交付。与此前普通feedback selector的prompt/model/tools相同，14输入相同、17变化、10新增、1删除，不是整个角色单变量A/B。
+
+早期12 assistant/16 tools，私有history SHA a457fc9df023df57ce90462944a5a02f3398d0dc7455e54ceb2d3f0819d50d4b。tool11实际打印旧accepted质量/配对噪声/约束及parent+Graph setup路线；tool12打印installed bundle身份但affected_calls截断；tool13打印当前三collector索引，tool15读取候选代码。最初16工具尚未打开当前collector JSON正文，不能将交付/索引当作消费，也不能据早期状态预判最终不读。早期只完整复核11/12/13输出，其余参数/状态及部分输出；终态必须完整审计。详见[启动记录](evidence/v6-ddp-accepted-communication-trial-20261030/startup-verification.json)及[早期读取范围](evidence/v6-ddp-accepted-communication-trial-20261030/startup-tool-review.json)。当时无GPU jobs、两卡空闲，150GiB额度实际余9,812,717,568B约9.14GiB；角色仍运行，没有新候选质量或接受结论。
+
 声明一轮有界试验，根目录 `/root/autodl-tmp/dev/v6-work/ddp-accepted-communication-trial-20261030`。上一[证据批次](v6-ddp-accepted-communication-evidence-20261030.md)已经刷新已接受执行的registry，并取得实际bucket、tuning、提交时序和校准材料；通信仍13 AllReduce、497,759,232B逻辑输入，计算调度接受不等于通信成功。下一步由现有普通Agent自行判断当前证据支持的范围和候选，不重复旧失败、不承诺一定选到通信组或得到收益，不开启无限候选链。
 
 源为 `ddp-accepted-communication-evidence-20261030/ddp-evidence` 的1fc24545217087adefa1248704619fcdc882a19057336b231d8e02918bf4d0d8；原代码ccd90dc158788a164d6fda242572530e9cdc9ca50563af1a1d9d597f0ac12e0b、单bundle trial-d06aa22e2d-param-a72285d2、空参数、contract保持。原accepted source4541、证据source1fc、独立current7a49和历史Graph09b7保持；隔离新分支可按原接受规则演进。采用existing fork_run和CLI resume rounds1，默认scopes/parameter exploration，API observe-only/no caps。不重复初始GPU discovery/source/controls，不复制大参考。
