@@ -1,5 +1,7 @@
 # 通信方向优先级调整
 
+当前已运行新的普通项目selector：香港04:34:53 controller215396/隐藏监听50516，04:36:52实际30输入/1454身份/原model-tools-prompt核验通过，当前508a与新完整载荷采集材料已有实际早期读取。详见[启动记录](v6-ddp-fused-communication-selection-20261031.md)。结果返回后做完整审计和有界决策，不手选算法、不直接进入GPU、不静默结束研究。
+
 最新推进：已独立接受的联合508a完成一次正常发现终审7cd9fa02…，新registry9calls/8groups，当前真实单497MB AR/两个Graph；新增完整载荷校准、新Nsys和timeline均逐原始证据核对。不存在新的质量或接受结论；planner实际读取历史计划的额外输入边界和错误推理已记录。下一项为[一次普通项目选择](v6-ddp-fused-communication-selection-20261031.md)，基于新版本/新注册表及原反馈决定后续通信问题，不人为挑选group/算法，不自动无限候选，不重开Qwen/FSDP/77ac/observer链。详见[发现终审](v6-ddp-fused-communication-evidence-20261031.md)；此前53.91%保持联合收益归属。
 
 新接受508a的正常发现已于20:19:44UTC（香港04:19:44）启动controller210849/唯一隐藏监听51188/冻结5a140af4。20:22:06核验1310冻结、discover0ee3a52759两rank通过、新branch10992e0d只更新registry/同codebundle；真实planner c195abefadc1收到6文件74372B，prompt/model/tools原样。完整工具与collector结果待终审，当前剩约9.32GiB。fork_run自动复制原始version结果但未路由为planner初始输入，reader两错误保留且仅修reader，无实验重启。见[当前有界发现记录](v6-ddp-fused-communication-evidence-20261031.md)。旧正式/独立完成事件均去重，不重跑。

@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前后台工作已启动：香港04:34:53，普通selector controller215396/唯一隐藏监听50516/冻结d7f2f98d。04:36:52核验真实30文件7,194,917B、1454身份及原prompt/model/tools/core；已实际读当前508a、独立接受反馈及当前校准/部分Nsys/timeline，非仅指针。仍是早期19assistant/26tools记录，最终选择/完整访问/正确推理待审。无GPU作业、剩约9.27GiB，未清理。见[实际启动及边界](v6-ddp-fused-communication-selection-20261031.md)；不是仅声明后闲置，也不预先宣称新候选或接受。
+
 最新：508a当前发现已于20:25:14UTC结束并终审7cd9fa02…，1310身份不变、5jobs/10ranks有效；新registry9calls/8groups、新Nsys1105kernels/1103Graph/2launch/1 eager AR，完整497,759,232B合成校准约32.51ms不是wire下界。planner35assistant/39tools实际外读两个历史计划及本批控制脚本，不能称六输入独立决策；原错误与配置输出处理事件保留，见[完整终审](v6-ddp-fused-communication-evidence-20261031.md)。继续[一次普通项目选择](v6-ddp-fused-communication-selection-20261031.md)，只用现有common/current材料+原完整版本反馈，不手选算法或注入终审表；预检1454身份/30文件7.19MB，无candidate/GPU自动阶段。旧51188已handled，GPU空闲剩约9.30GiB，未清理；下面启动状态均为历史。
 
 新接受508a的正常发现已于20:19:44UTC（香港04:19:44）启动controller210849/唯一隐藏监听51188/冻结5a140af4。20:22:06核验1310冻结、discover0ee3a52759两rank通过、新branch10992e0d只更新registry/同codebundle；真实planner c195abefadc1收到6文件74372B，prompt/model/tools原样。完整工具与collector结果待终审，当前剩约9.32GiB。fork_run自动复制原始version结果但未路由为planner初始输入，reader两错误保留且仅修reader，无实验重启。见[当前有界发现记录](v6-ddp-fused-communication-evidence-20261031.md)。旧正式/独立完成事件均去重，不重跑。

@@ -1,5 +1,13 @@
 # 已接受联合版本上的一次普通项目选择
 
+实际已于2026-10-30 20:34:53UTC（香港10月31日04:34:53）启动controller215396，冻结`d7f2f98d55be812cbe5dcbdc4fb0e76d22f7e048`。唯一隐藏plain监听50516已armed，旧51188已handled且进程不存在。local OpenCode真实start/health/stop通过、server_url=null、无模型prompt预检。启动磁盘9,970,700,288B，无GPU作业或清理。
+
+20:36:52[实际启动核验](evidence/v6-ddp-fused-communication-selection-20261031/startup-verification.json) SHA`c0273f4318e1462396f2f5772b8e95b6bead533bd4ba74cf648bb2f6b184cf0d`：generation8e004497fd3f/session ses_e717a062cffeDJvMrMHNl3Am74，30文件7,194,917B与snapshot/普通组装完全相同，1454冻结/实际source current/core/route/prompt/model/tools核对通过。相对前selector999c：15输入相同、12改变、3新增、29移除，非单变量AB；变化源于新接受版本/新discovery与原完整版本反馈。此时19assistant/26tools、controller存活、GPU空闲，df9,953,460,224B约9.27GiB。
+
+早期工具审阅`83f557f33c1097051ec8c372672f69640e1f27c69784646dcbf1e06892dcd707`留服务器：2415read行/2显式截断前缀，8个只读JSON输出重建完全一致。工具7读完整路由判定/measurement，15读当前508a；19实际打开全部四个current collector JSON但仅打印嵌套短摘要，20打印Nsys前6000字符，22打印完整小型校准rank记录，24打印部分timeline和crossrank。不是整个Nsys/timeline已消费，也不是正确推理或最终访问证明。5/10目录输出及23仅命令/状态核对，后续完整工具仍待终审；前26无模型/GPU/collective/私有配置命令，不能推广到后续。私有history SHA`a32c46664cf42713e72eaae1b4154cc03966320c6aaf7f6934062f7e975518b3`留服务器。
+
+早期reader首次把read工具明确截断的project长行当完整行，AssertionError保存在startup-reader-attempt-1；仅修reader为显式前缀核对，未改或重启角色/模型/实验。以下是启动前声明，已由上述实际启动记录补全。
+
 前置发现已终审7cd9fa02…，原样508a版本的新注册表为9calls/8groups，原完整载荷校准、新timeline/Nsys及tuning均可经现有普通输入路径提供。声明一次`ProjectAgents.generate(selection)`，决定新的有界方向；不预先指定group、bucket、算法、实现或collector，不自动生成候选/GPU执行，不重启已关闭链。具体启动与实际输入校验另记，声明不等于已启动。
 
 来源`ddp-fused-communication-evidence-20261031/ddp-evidence` current`10992e0d329f45c941eb2edcd31f60fc1e7f17c7a6bba8241bad93edde56a979`；精确508ad382…/14898B、单fixed-observation-route/emptyparams。新决策不修改来源current、accepted3cd9/formalbbe28c/source1fc/旧accepted4541/independent7a49。原controls/source/adapter/request/prepared只读，不新发现、不复制references，不改变生产core。
