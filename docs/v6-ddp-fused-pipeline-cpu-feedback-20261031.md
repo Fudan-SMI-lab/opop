@@ -1,5 +1,19 @@
 # DDP 流水候选的一次CPU事实辅助纠正
 
+本批已于2026-10-30 22:08:19.995561UTC以 `batch_finished` 完成，完整终审SHA `6cd3bb847ae9f3048e12569680817c82e908ea5453cfe6b56ac186d823517ad5`；[公开摘要](evidence/v6-ddp-fused-pipeline-cpu-feedback-20261031/public-terminal-audit.json) SHA `fbbc903b7d092bd5761cd040f72f9ece58501199eea3026d0451f19f53ecf0a1`。37实际输入8,682,320B、1489冻结、原32非反馈文件、core/prompt/model/tools/current10992均保持。58 assistant/68工具/0 schema repair，provider估算3.19831927202不是账单。候选一次写入5次自主编辑、proposal一次写入无编辑，初始代码和全部修改逐字重建；3103编号read行/5明确截断前缀及11份其他输出核验。无原完整任务CUDA质量、clean、native或新接受。
+
+新代码 `02b93360c4d53add1ef14fc91fb32f757b09db43597888f880c1cd25793d614a` 25,781B，proposal `dabb839bd7b29b8b073ff0a134b3114f602b4797c7c37331b14b0ab4424b4a11` 13,832B。requires[]/replaces fixed-observation-route，候选自主声明chunk_plan fine8/fine9/coarse5，自身默认fine8。下一步仅空参数 `{}` 调用默认，不手选桶、不探索其他参数到通过。
+
+完整68工具实际读内联CPU事实、旧eef828完整代码和index，单独CPU结果与命名fixture未打开，但不能称CPU事实未读。当前四collector JSON、当前508a和原training源文件本轮未打开；工具16只打印搜索前缀和目录。实际读取installed PyTorch/Transformers API源码。未见额外审计/答案/私config内容读取，仍是非hermetic FS，不能作绝对absence声明；私有history/21份最终CPU脚本及被覆盖初版重建只在服务器。
+
+真实测试不止小toy：有4层hidden16和完整12层hidden768/vocab50257的CPU模型。后者是seed31000的一条序列重复4次、单CPU/无真实collective，不是原两rank四独立microbatch/CUDA捕获或两连续更新。保留所有失败：错误路径/AttributeError/ImportError/SyntaxError/Tensor与None比较；多个exit0仍有tied梯度不一致；错误adjacency断言；CPU模拟没有peer SUM却除2导致参数差0.00013570633018389344；一次bisect没有清前次梯度。最后修正测试缩放的单CPU完整尺寸参数比较为0，另有tiny早更新测试，但都用复制helper，非精确candidate CUDA绑定。未由审计者重跑这些模型或旧独立fixture；工具67仅不支持CPU路径/parent返回，68删除自身cache。正常错误与覆盖历史保留，不能只取最后通过。
+
+新实现把Work.wait移到通信流内的除法/完成event之前，更新等待规约及声明的consumer段；反向改为链式activation cuts，tied输出权重贡献显式计算。旧两个具体CPU反例已有代码层面的对应处理，足以进入一次限定实测，但不作通用证明。fine8真实8块元素1536 + 6×14,175,744 + 39,383,808，总124,439,808/497,759,232B，当前没有实际新GPU通信次数或overlap证据。setup比较本地全梯度/未通信Graph重放，不验证真实异步交错。第一质量parent、第二setup，非两个optimized检查；replacement fallback仍是原adapter。
+
+保留限制：sharedpool/cut.grad地址生命周期需真实CUDA验证，不能仅凭没有Python清cut.grad就断言累积错误；成功路径移除13hooks，setup中途失败可留下hooks/cut_log；copied tokens/有限identity guards、update后只恢复grad引用不恢复权重、rank非对称故障、override finallyFalse均非通用安全保证。42–47ms预测/15.3GBps wire/仅剩调度杠杆/零回退损失不采纳。没有手改候选或安排下一轮纠正。
+
+下一有界工作为[一次原样固定B/C](v6-ddp-fused-pipeline-fixed-20261031.md)。预检1497身份、原prepared/control/UUID/单bundle保持；GPU空闲，150GiB盘余9,880,834,048B，512MiB预测+8GiB警戒通过，无清理。旧31676已handled且进程不存在。B当前508a通过原完整质量门才运行C原样02b933/空参数；失败保留、不换fine9/coarse5或修到通过。以下启动记录为历史。
+
 已于2026-10-30 21:27:01UTC（香港10月31日05:27:01）实际启动，controller `222432`，冻结 `b0012b65c9afdfed215ddc2ccd55916c49721344`，唯一隐藏plain watcher `31676`。不是仅声明后等待：21:28:58UTC实际启动核验SHA `630dd39011a6ef332322af6e504b494da8f987cda7d1aa91a5007023ce6c0c84`，generation `7e29e7027b24` / session `ses_e714a4bfeffeCNBl9mzP7YT0dY`；37文件8,682,320B逐字一致、1489冻结及原prompt/model/tools/core/current10992保持。真实route18,663B/04595a2c…原字段不改，只有精确CPU事实supplement，不增加修复prompt段落。见[启动记录](evidence/v6-ddp-fused-pipeline-cpu-feedback-20261031/startup-verification.json)和[早期读取核验](evidence/v6-ddp-fused-pipeline-cpu-feedback-20261031/startup-tool-review.json)。
 
 早期7 assistant/15工具已核对2487个编号read行、5个明确截断前缀，review SHA `c7a93523b2574f0bfe12b782b2a353f905c1ec1170d09da494700df0129a0225`。工具5完整688行反馈内的CPU事实、工具14完整501行旧eef828代码实际读取；选择rationale/hypothesis和旧proposal部分长行截断。前15工具尚未单独打开CPU结果/index/fixture或当前collector JSON，但不能据此称CPU事实未读：它们已完整内联在反馈。工具7错误adapter根路径和工具12缺失previous-candidate目录/exit2原样保留；8/12只列目录，opencode.json仅文件名、未读内容。前15无模型/tensor/CUDA/processgroup/collective或私配置内容命令，限早期记录，外部FS非hermetic，最终访问与真实探测仍待完整审核；读取不等于正确理解或质量通过。

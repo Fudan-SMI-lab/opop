@@ -1,5 +1,7 @@
 # DDP 已接受融合版本的一次普通流水候选生成
 
+后续一次CPU事实辅助纠正已完整终审6cd3bb84，原eef828与CPU反例不改、不GPU。新02b933只进入另行声明的[一次原样固定B/C](v6-ddp-fused-pipeline-fixed-20261031.md)，空参数调用自身默认、保留原完整质量与任何失败；无第二轮纠正或参数重试。详见[完整纠正终审](v6-ddp-fused-pipeline-cpu-feedback-20261031.md)。
+
 后续已实际推进：[一次CPU事实辅助普通候选纠正](v6-ddp-fused-pipeline-cpu-feedback-20261031.md)于香港05:27:01启动controller222432/唯一隐藏监听31676。实际37输入/1489身份、原普通prompt/model/tools和current508a验证通过；本eef828输出与CPU条件反例保留，不GPU、不手写修复，不自动再接第二轮纠正。
 
 本批2026-10-30 21:12:21.397068UTC以`batch_finished`完成，已终审`87cddc2c69cb2287cafd9b566a18badb9eeec0883fc6b01c47c925f108cdc137`；[公开摘要](evidence/v6-ddp-fused-pipeline-candidate-20261031/public-terminal-audit.json) SHA`55c344b8f42ce8f4e3bf778b347030879917b66a352f1c347ec955c9b3532989`。33输入8,618,008B、1469冻结、实际source current10992/单508a bundle、core/prompt/model/tools/原反馈保持。没有原完整模型GPU质量、clean、native或新接受。实际GPU空闲/150GiB盘剩约9.24GiB，无清理；旧36164已handled且进程退出。

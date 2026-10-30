@@ -1,5 +1,7 @@
 # 通信方向优先级调整
 
+最新CPU事实辅助纠正已完整终审6cd3bb84：1489身份/37输入保持，58assistant68工具，新02b933代码1写5改，真实完整尺寸CPU测试仍非CUDA/原两rank质量。旧CPU事实确已读，失败与测试修正均保留。下一项已声明[一次固定原样B/C](v6-ddp-fused-pipeline-fixed-20261031.md)：B当前508a、C02b933空参数用自身默认fine8，原2连续full checks/2warmup/5clean/3通信profiles不变；不跑其余参数到通过，不追加修复。1497身份预检/余9.20GiB/GPU空闲，无清理，旧31676handled。实际启动另记，以下状态为历史。
+
 当前推进中的有界工作已落实：[CPU事实辅助普通候选纠正](v6-ddp-fused-pipeline-cpu-feedback-20261031.md)香港05:27:01启动controller222432/隐藏监听31676，05:28:58实际37输入/1489身份/原prompt模型工具核心验证。前15工具完整读到CPU事实与旧eef828代码，尚不代表修复成立；生成后审代码和实际探测再决定GPU。原候选两类条件CPU依赖反例保留，不冒称GPU数值失败，旧508a联合收益保持。余约9.21GiB/未清理/无并行GPU，旧36164handled；明确一次纠正，不自动无限修复，也不静默停研。
 
 最新候选eef828因CPU合同证据暂不GPU：延迟规约后消费和提前更新参数的依赖不由原CPU toy证明，一次独立原代码/原helper CPU取证得到具体条件反例。没有新的GPU数值拒绝或接受，旧联合508a保持。继续[仅一次CPU事实辅助的普通候选纠正](v6-ddp-fused-pipeline-cpu-feedback-20261031.md)，原生产prompt/model/tools/质量规则不变，只给精确前代码和CPU事实，不给修复实现，不重复直到通过。终审87cddc2c…/43工具/1469身份保持，37新输入预检/1489冻结，旧36164handled、GPU空闲余约9.24GiB。Qwen/FSDP拒绝/77ac/observer链关闭；[完整结果](v6-ddp-fused-pipeline-candidate-20261031.md)。

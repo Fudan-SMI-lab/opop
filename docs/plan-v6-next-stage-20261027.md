@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新CPU事实辅助纠正已完整终审6cd3bb84：1489身份/37输入保持，58assistant68工具，新02b933代码1写5改，真实完整尺寸CPU测试仍非CUDA/原两rank质量。旧CPU事实确已读，失败与测试修正均保留。下一项已声明[一次固定原样B/C](v6-ddp-fused-pipeline-fixed-20261031.md)：B当前508a、C02b933空参数用自身默认fine8，原2连续full checks/2warmup/5clean/3通信profiles不变；不跑其余参数到通过，不追加修复。1497身份预检/余9.20GiB/GPU空闲，无清理，旧31676handled。实际启动另记，以下状态为历史。
+
 当前后台已启动[一次CPU事实辅助普通候选纠正](v6-ddp-fused-pipeline-cpu-feedback-20261031.md)：香港05:27:01 controller222432/唯一隐藏监听31676/冻结b0012b65。05:28:58实核37输入8,682,320B、1489身份、原prompt/model/tools/core/current10992；原33总文件中32非反馈不改、仅反馈supplement与4精确证据文件。早期15工具已完整读内联CPU事实和旧eef828，2487read行/5截断核验，错误路径/exit2保留；尚非最终实现或GPU质量。GPU空闲属生成阶段，余约9.21GiB无清理；原eef828不GPU、旧36164handled。限定一次纠正，后续审精确字节再决策，不自动修到通过；以下启动状态均为历史。
 
 最新流水candidate已终审87cddc2c…：33输入/1469身份保持，38assistant43工具，eef828代码1写1改、无GPU质量/新接受。实际CPU toy没有覆盖异步交错；独立一次原代码CPU核验确认延迟规约消费及早更新参数依赖反例（均非历史GPU失败）。原样候选暂不GPU，继续[一次CPU事实辅助普通候选纠正](v6-ddp-fused-pipeline-cpu-feedback-20261031.md)：原32非反馈文件不改、原路由字段保持，加精确4文件与CPU supplement；不改普通prompt或加修复段、不手写算法。37输入/1489冻结预检，余约9.24GiB，无清理；旧36164handled，不自动后续修到通过。[完整审计](v6-ddp-fused-pipeline-candidate-20261031.md)，实际新启动另记，以下为历史。
