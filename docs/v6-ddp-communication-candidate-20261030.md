@@ -1,5 +1,26 @@
 # DDP 通信选择后的一次普通候选生成
 
+本批于2026-10-30 13:50:57UTC结束，reason为`batch_finished`。**生成完成，但该候选不进入GPU验证**。完整审计SHA `289c7cc768ac01720f7d84ac85e0c1f380b0e58e99c6b32a4ce0082f0792d9ee`，小型[公开审计](evidence/v6-ddp-communication-candidate-20261030/terminal-audit.json) SHA `16ce667042cc231e3cfbfe7b3d2efdbe1c3618697be372bfc81ec907dc1a884d`。40个实际初始文件32,000,403B、899冻结身份、原反馈route/prompt/model/tools/core/current均核验。两卡空闲，审计时150GiB配额余8,993,787,904B；无清理或新GPU任务。旧40444监听已handled。
+
+实际90 assistant/101工具/1次正常framework schema修复，provider估算4.68589010552，非账单。代码14,135B SHA `890659f73c7c88e704e21682afb584b548dd181447307ef18c4bcfefa54f150f`，proposal12,936B SHA `a27fa33c1b98387e024c535e086f6ff064817019261f004250e3689356b231d5`，空参数。代码一次write加三次edit，proposal一次write加两次edit，均由实际工具记录重建到最终字节；4,910行read输出核验，4条明确截断。完整私有history、初始输出、修复快照及最终CPU脚本仅服务器保存。实际读取了旧`params.index(s)`异常、已安装ccd90代码、绑定实现和当前/历史通信材料；未观察到后来审计/accepted答案读取，外部文件系统仍非hermetic。目录列表暴露审计文件名不能称答案读取。
+
+schema修复只把`requires=[旧bundle], replaces=[]`改为`requires=[], replaces=[旧bundle]`并改写解释，代码不变。真实`transactions.stage`会移除旧bundle，`BindingSession`的project reference是原始`adapter.run`。新代码没有Graph实现，因此“通过reference保留旧GraphA/B、无收益则精确退回旧接受版本”不成立。它提出两NCCL group、bucket奇偶分配和大桶二分；尚无实际NCCL/完整质量/性能证据，不是通信接受。
+
+Agent确实跑过两进程Gloo小MLP，但使用复制hook、两个微批，无SGD更新或原始GPT2连续完整质量；split/parity及手动sequential状态的梯度相等不能覆盖异常路径。mock失败包括假计时未达收益门槛、测试Tensor布尔值异常；Gloo首次误用`dist.DDP`失败被`tail`的exit0遮住，之后仅修测试。另一个标为degrade的mock未注入异常/未切换状态。全部失败保留；自身cache删除和临时脚本覆写不等于全部早期原始输出仍存在。
+
+随后声明并**只执行一次**[CPU接口取证](evidence/v6-ddp-communication-candidate-20261030/cpu-contract-result.json)，fixture为[scripts/experiments/v6_ddp_candidate_cpu_contract_20261030.py](../scripts/experiments/v6_ddp_candidate_cpu_contract_20261030.py)，SHA `7323f0ee9843288d61444af3e6f9024a0064b238a41df68ef5dc499eab411e64`。直接加载原候选并从真实闭包取hook，保留20,000,000元素split阈值，使用CPU tensor、真实torch Future和明确的等值peer SUM替身；无CUDA初始化、模型、process group或真实collective。正常分支为阳性对照，以下受控反例成立：
+
+- 第二半桶enqueue失败时，返回Future只含10,000,000元素，而原bucket为20,000,000。
+- 两半桶已enqueue后`get_future`失败，重做整桶SUM；替身中正确值4变8。
+- 子Future异步异常被忽略，外部Future仍成功。
+- 哨兵不一致只产生`hook_step_anomaly`，mode仍`hook`、schedule仍`concurrent`。
+
+这些是条件异常分支反例，不能冒充已发生的GPU故障。真实BindingSession CPU检查证实reference为原adapter；不构成模型质量。静态计数setup为166次scratch collective加一次flags，而非proposal约85次；scratch214,244,352B不含通信组/allocator。计时不落盘、group闭包留存、rank不对称失败和局部registration降级等限制仍在；无唯一因果或无开销保证。
+
+下一步限定为[一次通信接口修复生成](v6-ddp-communication-contract-repair-20261030.md)：原40输入不变，额外提供精确本轮代码/proposal、CPU实测结果及fixture索引，明确developer CPU-fact assistance。没有手写修复、算法指定或整份终态审计表；仍只生成，随后审查。不重做selector、不追加GPU/搜索/验收，不把生成错误记为数值质量或正式性能拒绝。Qwen关闭/FSDP拒绝保持，整个研究不据此宣告完成。
+
+以下为启动记录与原协议。
+
 实际2026-10-30 13:16:17UTC（香港21:16）启动，冻结`5e04391abdbcb2c36e4330bde35564ffdcb810bd`，controller158256，唯一显式隐藏completion/disk监听40444；旧7584已handled，无重启或清理。OpenCode本地start/health/stop通过、server_url=null，无预检模型prompt。实际launch盘余9,083,072,512B。
 
 13:18:55UTC实际快照核验SHA `2444e4c4e451ffe537878ce5c3195e84269c42e781f139efcd4f0682e79100e3`：generation413f4674224c/session `ses_e730b8f16ffeQoPR0S3pmDkxVN`，40文件32,000,403B逐字相等，899冻结身份保持。原selection cd3f9b53经普通排序为f23d5bef，语义不变；真实candidate route6,265,380B SHA `82abd303d6352d8c9632531a6b5f6571298cac4974bf7c5a79307af66febc92f`，supplemental=null，原prompt/model/tools/core一致。相对前普通candidate12输入变化、1新增、5移除，不是AB。当前source/current/prepared/discovery保持，GPU空闲、无jobs、df余9,003,180,032B（约8.39GiB）。

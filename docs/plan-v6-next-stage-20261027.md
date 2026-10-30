@@ -1,5 +1,11 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态：[DDP通信candidate](v6-ddp-communication-candidate-20261030.md)已完整审计（289c7cc7），40输入/899冻结身份保持，90 assistant/101工具/1正常schema修复。代码890659f7提出多group通信hook，但最终replaces旧Graph而错误假定reference仍是旧优化版本。一次原字节CPU取证另确认半桶返回、重复SUM、异步错误被吞和哨兵不降级；均为受控接口反例，不是GPU数值测量。因此不启动该候选GPU验证，原代码/失败/accepted指针保持。
+
+下一有界步骤为[一次通信接口修复生成](v6-ddp-communication-contract-repair-20261030.md)：仅原输入加精确代码/proposal和已声明CPU实测/fixture索引，由现有candidate自主修复，不提供实现或手选通信方案。明确CPU事实辅助，原生产prompt文件/core/model/tools不变，仅实验修复段落；不重做selector或变成prompt研究。无GPU/模型/真实collective/参数/验收阶段，结果审查后才决定后续。预估256MiB角色材料（前批实际约86MB增长），保留8GiB警戒、不清理；旧40444handled，实际启动及唯一隐藏监听另记。通信优先、Qwen关闭、FSDP拒绝不重试。
+
+以下“当前运行”为历史。
+
 当前实际运行（香港21:18核验）：[一次普通通信candidate生成](v6-ddp-communication-candidate-20261030.md)已21:16启动，冻结5e04391a/controller158256/唯一隐藏监听40444。实际generation413f4674224c、40输入32,000,403B、899冻结身份及原prompt/model/tools/core核验；原选择经普通排序、原失败反馈selected-group route82abd303，未添加审计答案。早期18工具已读旧失败代码和两rank内部fallback路由，尚非完整推理/代码正确性证明。无GPU jobs、余约8.39GiB；控制器只生成，不自动执行GPU/搜索/验收。完成通知接回完整审计及下一有界决策，Qwen关闭/FSDP拒绝不重试。以下为刚完成审计和历史。
 
 最新终态：[隔离普通selector](v6-ddp-communication-selection-20261030.md)于13:04:38UTC完成并审计，886身份/37初始文件27,168,387B不变；33 assistant/43工具/0修复，输出cd3f9b53一次写入，审计816bff94。它自主选择整步及两AllReduce组、多通信组并发假设，但把前轮初始化失败后的eager退化当计算饱和证据、把合成校准当硬下界等论断不成立；原输出保留。没有候选/GPU/collective执行或新接受。

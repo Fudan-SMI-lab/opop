@@ -1,5 +1,7 @@
 # DDP 原始拒绝反馈的一次普通选择决策
 
+后续状态：对应[真实candidate生成](v6-ddp-communication-candidate-20261030.md)已终态审计，代码890659f7/schema修复后替换旧bundle却误认为reference保留Graph；一次CPU取证发现异常返回/重复SUM/错误传播反例。没有GPU或新接受。原selection及其未证实假设保持；下一步仅一次具体接口修复生成，不重新选择组或手改实现。
+
 本批于2026-10-30 13:04:38UTC（香港21:04）以`batch_finished`结束，已完成终态审计：SHA `816bff94f0b660f3a96e388d2a0484c6e428453394e3156fc551054fde280ec2`，小型[公开审计](evidence/v6-ddp-communication-selection-20261030/public-terminal-audit.json) SHA `70f5a107e64d72e7acfd5894a193325743acbc078a9d7d0308354d2c80a8b129`。886冻结文件、37初始文件27,168,387B、实际registry route、source/current/prompt/model/tools/core均核验；控制器已退出，两卡空闲，实际150GiB盘余9,092,583,424B（约8.47GiB）。旧监听7584已handled，不重启；本轮未清理。
 
 真实selector共33 assistant、43工具、0 schema修复，provider估计0.84558406612（非账单）。完整工具输入/输出、内嵌CPU脚本与session parts保存在服务器；1632行read输出逐行核验，其中1条明确截断只验证前缀。未观察到模型/GPU/collective执行，仅JSON/文本处理及已安装PyTorch默认allreduce hook的源码检查；无外部后验答案读取记录，但文件系统并非hermetic。Tool3错误source目录exit2；tool15同类错误被后续pipeline exit0掩盖，tool12 grep无匹配不能按整体exit0算通过，均保留。审计器第一次将文件路径传给要求目录的validator导致NotADirectoryError，保存`terminal-audit-attempt-1.json`后仅修正读取器，没有角色/实验重跑。

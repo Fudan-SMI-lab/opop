@@ -1,5 +1,7 @@
 # 通信方向优先级调整
 
+最新推进：[DDP通信候选](v6-ddp-communication-candidate-20261030.md)已审计，899身份保持；多group hook确为通信实现方向，但schema修复后错误假定被替换Graph仍通过reference执行，一次CPU取证另证实异常分支接口缺陷。因此不进入GPU，不称通信成功，也不改已接受版本。下一步仅[一次具体接口修复生成](v6-ddp-communication-contract-repair-20261030.md)，原输入加精确生成输出和明确CPU事实辅助，由候选角色自主处理；无手选算法、GPU/参数/验收或无限续链。Qwen关闭/FSDP拒绝保持，原质量与独立整步收益要求不变。实际启动/隐藏监听另记。
+
 当前已实际启动一次通信candidate生成（香港21:16，controller158256/隐藏监听40444），实际40输入/899身份核验，原生产核心及质量/接受规则不变。只沿用真实selector选择和原失败反馈，代码出来再审查，不凭“通信方向”标签或预测收益直接GPU/接受。详见[启动与边界](v6-ddp-communication-candidate-20261030.md)；Qwen关闭、FSDP拒绝保持。
 
 最新进展：隔离selector已完整审计（816bff94），自主提出多通信组并发/分桶更新，选择整步及两个现有AllReduce组；43实际工具没有模型/GPU/collective执行。前轮初始化失败被误当计算饱和、合成校准被当硬下界等因果论断不采纳，原输出保留。下一有界步骤是[一次普通candidate生成](v6-ddp-communication-candidate-20261030.md)，仅使用真实选择、原始失败反馈和当前source/registry；不人工指定实现、不注入审计纠正、不启动GPU。审查代码后再决定后续，不把选择完成当研究结束或无条件接续候选链。Qwen关闭、FSDP拒绝不重试，当前accepted计算Graph仍不归为通信成功。

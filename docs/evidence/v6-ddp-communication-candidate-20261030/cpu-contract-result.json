@@ -1,0 +1,131 @@
+{
+  "candidate_sha256": "890659f73c7c88e704e21682afb584b548dd181447307ef18c4bcfefa54f150f",
+  "fixture_sha256": "7323f0ee9843288d61444af3e6f9024a0064b238a41df68ef5dc499eab411e64",
+  "scope": "CPU interface counterexamples, not GPU/NCCL/model quality or performance. Exact candidate code/constants unchanged; synthetic state and controlled collective outcomes explicitly injected.",
+  "cases": {
+    "binding": {
+      "surviving_old_bundles": [],
+      "reference_is_original_adapter": true,
+      "same_return_object": true,
+      "original_calls": 1,
+      "routes": {
+        "reference_invocations": {
+          "5d7d6bb13691b02f533f62b0": 1
+        },
+        "candidate_declared_routes": [
+          {
+            "call": "5d7d6bb13691b02f533f62b0",
+            "route": "unsupported_environment",
+            "count": 1
+          }
+        ],
+        "interpretation": "Reference counters observe calls through context.references only, not all possible captured aliases. A reference call may be fallback or part of a composite; declared route labels are candidate telemetry, not independent proof. Corroborate implementation with traces."
+      },
+      "limit": "Unsupported-environment path only; actual revision filtering independently checked against transactions.stage source; no staged version or CUDA step."
+    },
+    "success": {
+      "input_elements": 20000000,
+      "returned_elements": 20000000,
+      "returned_exception": null,
+      "buffer_first": 4.0,
+      "buffer_last": 4.0,
+      "schedule": "concurrent",
+      "issued": [
+        {
+          "ordinal": 1,
+          "group": "A",
+          "elements": 10000000
+        },
+        {
+          "ordinal": 2,
+          "group": "B",
+          "elements": 10000000
+        }
+      ]
+    },
+    "second_enqueue_error": {
+      "input_elements": 20000000,
+      "returned_elements": 10000000,
+      "returned_exception": null,
+      "buffer_first": 4.0,
+      "buffer_last": 4.0,
+      "schedule": "sequential_default",
+      "issued": [
+        {
+          "ordinal": 1,
+          "group": "A",
+          "elements": 10000000
+        },
+        {
+          "ordinal": 2,
+          "group": "B",
+          "elements": 10000000
+        },
+        {
+          "ordinal": 3,
+          "group": "None",
+          "elements": 10000000
+        }
+      ]
+    },
+    "both_enqueued_future_error": {
+      "input_elements": 20000000,
+      "returned_elements": 20000000,
+      "returned_exception": null,
+      "buffer_first": 8.0,
+      "buffer_last": 8.0,
+      "schedule": "sequential_default",
+      "issued": [
+        {
+          "ordinal": 1,
+          "group": "A",
+          "elements": 10000000
+        },
+        {
+          "ordinal": 2,
+          "group": "B",
+          "elements": 10000000
+        },
+        {
+          "ordinal": 3,
+          "group": "None",
+          "elements": 20000000
+        }
+      ]
+    },
+    "async_failure": {
+      "input_elements": 20000000,
+      "returned_elements": 20000000,
+      "returned_exception": null,
+      "buffer_first": 4.0,
+      "buffer_last": 4.0,
+      "schedule": "concurrent",
+      "issued": [
+        {
+          "ordinal": 1,
+          "group": "A",
+          "elements": 10000000
+        },
+        {
+          "ordinal": 2,
+          "group": "B",
+          "elements": 10000000
+        }
+      ]
+    },
+    "sentinel_mismatch": {
+      "routes": [
+        "hook_step_anomaly"
+      ],
+      "mode_after": "hook",
+      "schedule_after": "concurrent",
+      "same_return_object": true,
+      "parent_calls": 1,
+      "limit": "Synthetic initial plan/sentinel state; demonstrates mismatch handling, not historical model drift."
+    }
+  },
+  "cuda_initialized": false,
+  "real_collectives": 0,
+  "model_runs": 0,
+  "candidate_bytes_unchanged": true
+}
