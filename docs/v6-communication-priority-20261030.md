@@ -1,5 +1,7 @@
 # 通信方向优先级调整
 
+最新候选eef828因CPU合同证据暂不GPU：延迟规约后消费和提前更新参数的依赖不由原CPU toy证明，一次独立原代码/原helper CPU取证得到具体条件反例。没有新的GPU数值拒绝或接受，旧联合508a保持。继续[仅一次CPU事实辅助的普通候选纠正](v6-ddp-fused-pipeline-cpu-feedback-20261031.md)，原生产prompt/model/tools/质量规则不变，只给精确前代码和CPU事实，不给修复实现，不重复直到通过。终审87cddc2c…/43工具/1469身份保持，37新输入预检/1489冻结，旧36164handled、GPU空闲余约9.24GiB。Qwen/FSDP拒绝/77ac/observer链关闭；[完整结果](v6-ddp-fused-pipeline-candidate-20261031.md)。
+
 实际已继续：[普通pipeline candidate](v6-ddp-fused-pipeline-candidate-20261031.md)香港04:49:08启动controller217716/隐藏监听36164，04:51:10核验33真实输入/1469身份和原生产核心、模型、prompt、当前508a保持。由角色实现自主选择的生产/通信/更新调度假设，无人工实现或审计纠正输入；生成后先审查精确代码，尚无新GPU或接受。当前余约9.24GiB，旧50516已handled；现有联合53.91%与历史拒绝、关闭链保持，不把生成结束当整体研究完成。
 
 当前决策：普通selector已终审a922faa5…，实际新选择为分段梯度生产、分块通信与更新调度。真实串行结构支持检验这个假设，不支持固定wire下界/29–37ms预测/自动数值与回退保证。继续[一次普通candidate生成](v6-ddp-fused-pipeline-candidate-20261031.md)，只传精确原选择和正常current材料，不传审计纠正/手写实现，不自动GPU。1454旧身份保持、下一步1469冻结/33输入预检通过，GPU空闲余约9.27GiB无清理，旧50516handled。此前508a53.91%仍属计算合批+通信合并联合案例，闭合链不重开；[selector终审](v6-ddp-fused-communication-selection-20261031.md)。实际启动另记，以下为历史。

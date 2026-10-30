@@ -1,5 +1,19 @@
 # DDP 已接受融合版本的一次普通流水候选生成
 
+本批2026-10-30 21:12:21.397068UTC以`batch_finished`完成，已终审`87cddc2c69cb2287cafd9b566a18badb9eeec0883fc6b01c47c925f108cdc137`；[公开摘要](evidence/v6-ddp-fused-pipeline-candidate-20261031/public-terminal-audit.json) SHA`55c344b8f42ce8f4e3bf778b347030879917b66a352f1c347ec955c9b3532989`。33输入8,618,008B、1469冻结、实际source current10992/单508a bundle、core/prompt/model/tools/原反馈保持。没有原完整模型GPU质量、clean、native或新接受。实际GPU空闲/150GiB盘剩约9.24GiB，无清理；旧36164已handled且进程退出。
+
+新code `eef828816dd138cb69b0d12c960012b1970a0724b426a258ec6f8fcb6900abd7`为20,997B，proposal `0f0a977afdfcb94e9a46f9c950bc4efc587ac72e16cec9fbfed750255234da94`为12,510B，requires[]/replaces fixed-observation-route/emptyparams。代码1写1改、proposal1写0改均逐字重建。38 assistant/43工具/0 schema repair，provider估算1.49171684354不是账单；2174read行/3明确截断前缀、11纯JSON输出精确重建、3失败JSON的stdout和异常类型/消息核实。完整history/初始代码与唯一修改/CPU脚本留服务器。
+
+实际读取当前508a、完整小反馈、选择/source/adapter/contract，校准/tuning部分JSON和Nsys数组；没有打开当前timeline JSON，proposal的overlap/33.71ms等复述选择，不能称直接核读。工具20/21/23因kernel名称字段是整数而TypeError，24转字符串仍按ID分组，未解码NCCL名称；原错误保留。工具11`find /`列出外部同名路径，仅目录名暴露；全部记录未见额外审计/答案/私有config内容读取，仍非hermetic/绝对absence。无凭据输出。
+
+角色实际运行小型CPU GPT2：4层FW/BW、12层小维度分类、2层双输入集合模拟。工具40的None梯度更新失败被stderr隐藏，41的tail管道exit0仍含错误，42只修测试的grad重接，43才通过。该模拟先完成全部反向，再同步张量SUM和更新，没有真实多rank/collective/CUDA、没有候选Graph/stream/异步Work，所以不覆盖拟议交错。唯一candidate编辑35将同步all_reduce改为async_op=True，把Work.wait放到全部缩放、更新和最终synchronize之后；不把schema/toy通过当质量。
+
+代码尝试3个连续chunk（38/48/62参数）的分段反向、通信、更新。真实全尺寸chunk元素为21,265,152/28,351,488/74,823,168，注释把1536个ln_f元素放错chunk，实际实现使用真实numel/offset。更实质的问题是规约完成到消费之间缺显式依赖，以及后续分段反向仍可能消费已提前更新的上层参数。相同chunk与2-rank SUM、全局末尾同步不能自动证明这些依赖；PyTorch的[异步collective说明](https://docs.pytorch.org/docs/2.15/distributed.html#synchronous-and-asynchronous-collective-operations)亦区分提交、当前流等待与跨流消费。此外，仅恢复grad引用不恢复已更新权重、reference为原adapter而非已安装508a、第二调用实际在质量检查而非“最后warmup”、有限输入guards/global override/共享pool/rank非对称失败等边界保留。42–44ms预测和“安全包络原样继承”未成立。
+
+已另行执行一次CPU合同取证，原候选未改：fixture [代码](../scripts/experiments/v6_ddp_fused_pipeline_cpu_contract_20261031.py) SHA`42a253121a48d097ebf74478d6b41baf432b114b5f8e19c0cc45b671c114a70a`，原执行副本服务器`audit/cpu-stream-consumer/fixture.py`，result `0c40b6ef9f05bdf6f19525c134142cfb124875bf0f120309e25aa6fb3fa0d477`。精确嵌套_fast_step配惯性Graph/stream/event/Work与等peer SUM调度：完成已排序正控制误差0；允许的延迟完成顺序中3个更新均先于规约，更新权重误差0.0010000000000012221，最后Work.wait才返回。另用原classifier/原_chunked_backward helper、12层hidden16 CPU GPT2（41,520元素）：全部反向后更新的正控制梯度max0；第一chunk更新后再反向下一chunk，实际触发saved参数版本RuntimeError，fixture恢复权重。CUDA未初始化、无DDP/NCCL/原完整模型/source/control执行。前者是条件调度反例，后者是小CPU依赖反例，不是历史GPU/NCCL失败或数值拒绝；无fixture/model重试。
+
+因此原样eef828暂不进入GPU，原代码/错误/先前接受保持。下一项为[一次明确CPU事实辅助的普通候选纠正](v6-ddp-fused-pipeline-cpu-feedback-20261031.md)：原33输入除feedback新增supplemental外逐字不变，加精确候选/proposal/CPU结果/index4文件；生产prompt及既有feedback suffix完全不变，不加修复段落、终审表、算法或实现。1489身份/37输入8,682,320B预检通过，真实route18,663B/04595a2c…原字段保持，原独立accepted决定不是eef828质量结论。只安排这一项，有具体缺陷则保留，不自动接续修到通过。一次本地reader嵌套引号SyntaxError/随后FileNotFoundError发生在SSH前，已保留并改为文件reader；无角色/模型/GPU重跑。以下为历史启动。
+
 已于2026-10-30 20:49:08UTC（香港10月31日04:49:08）实际启动controller217716，冻结`0c0ae017eb1229ac44e08f5c18e4a1e200d0345b`，唯一隐藏plain监听36164已armed。原50516已handled且进程退出。真实local OpenCode start/health/stop通过，server_url=null，无模型prompt预检；启动磁盘9,942,052,864B，无清理或并行GPU。本步骤仅生成代码，不预先称新实现通过。
 
 20:51:10[实际启动核验](evidence/v6-ddp-fused-pipeline-candidate-20261031/startup-verification.json) SHA`d066e04279da79ef357b234a6f9fce4a525f000f4c1fe97705b0fdf90b545612`：generation076246cfc985/session ses_e716cfae3ffevWhGYXDT7EyAkW，33文件8,618,008B与正常输入和snapshot完全相同，原selector非反馈文件逐字保持；1469冻结身份、source current10992/508a、core/prompt/model/tools和实际route均通过。相对旧candidate15相同/15变化/3新增/29移除，不是AB。13 assistant/14工具时控制器存活，无worker或GPU进程，实际150GiB盘剩9,922,928,640B约9.24GiB。

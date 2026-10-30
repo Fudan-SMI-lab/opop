@@ -1,5 +1,7 @@
 # 已接受联合版本上的一次普通项目选择
 
+后续candidate已完整终审87cddc2c…：eef828确实实现分段反向/3chunk异步规约与更新，但一次精确CPU合同取证暴露消费依赖和参数生命周期问题，暂不GPU；选择预测不当成功证明。继续[一次明确CPU事实辅助纠正](v6-ddp-fused-pipeline-cpu-feedback-20261031.md)，原选择未改、未重做selector、不手写实现或改变生产prompt。详见[候选终审](v6-ddp-fused-pipeline-candidate-20261031.md)。
+
 下一项已经实际运行：[普通pipeline candidate](v6-ddp-fused-pipeline-candidate-20261031.md)，香港04:49:08 controller217716/冻结0c0ae017/唯一隐藏监听36164。04:51:10真实33输入/1469身份及原prompt/model/tools/current508a通过，原选择仅正常canonicalization，无审计纠正输入。尚非新代码/质量或接受；本selector不重跑。
 
 本批2026-10-30 20:40:18.787766UTC终态为`batch_finished`，已完整终审；[公开摘要](evidence/v6-ddp-fused-communication-selection-20261031/public-terminal-audit.json) SHA`e5ce211d7a55318aec7d37573ad885c37ef514fc6c9b0454b852777b4ce5aca5`，完整审计`a922faa5157b6db9b26a2591c4440aa6aae8ce6c766fd2ce5760abed5351e083`。1454冻结身份、30初始文件7,194,917B、原始反馈/实际registry路由、source current10992、单508a bundle、core/prompt/model/tools均保持。没有candidate、GPU或新接受。实际150GiB磁盘余约9.27GiB、GPU空闲；旧50516完成已handled且进程退出，无清理或重启。
