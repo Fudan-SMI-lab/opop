@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前推进：FSDP一轮已审计拒绝，不做独立重测；[DDP当前设备准备](v6-ddp-communication-device-20261030.md)于01:58:19UTC完成并通过完整源/质量/跨rank负例审计。新空基线133.379621ms，原1.05上限140.04860205ms，10样本/4reset/2identity/6条通信trace，每rank13 AllReduce RING_LL。源梯度/参数有微小容差内差异，replica exact。准备在监听创建前结束，未建listener或排队。下一步仅[一轮普通DDP通信试验](v6-ddp-communication-trial-20261030.md)，先补足2GiB预算；Agent自主选组/实现，Qwen链保持关闭。
+
 最新终态：本轮 FSDP 已完成并拒绝，完整审计见[一轮通信试验](v6-fsdp-communication-trial-20261030.md)。质量和原显存约束通过，实际每 rank AllGather 49→25、ReduceScatter 25不变；但配对第二组176.066436→223.383338ms，整体未改善且未超过噪声门槛。90个clean rank样本、36次零误差完整检查、216条独立通信trace、4份Nsys SQLite及84冻结身份已核验，413–441ms长尾全部保留。不追加FSDP参数或独立重测，Qwen链保持关闭；下一步DDP当前设备空基线、完整源验证与通信试验，先满足空间预算。旧启动描述保留为历史。
 
 08:21香港补核：FSDP基线迟到通知同样已去重，原审计23be9189/source-check/controls请求与结果/历史K3指针保持。现有一轮普通通信试验仍在selector，无trial结果；controller75690及唯一隐藏监听18872正常，GPU当时空闲、余约10.58GiB。未重跑基线、追加搜索、清理或改变Qwen已收尾状态。
