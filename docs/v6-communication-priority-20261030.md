@@ -1,5 +1,7 @@
 # 通信方向优先级调整
 
+已实际继续[一次已有产物协议归属取证编写](v6-ddp-protocol-attribution-author-20261031.md)：香港07:25:36 controller246575/冻结cb34d3ea/唯一隐藏监听51296；07:27:11实核17输入3,037,071B、1947冻结/current0bc、原model/tools/core不变，实验prompt+正常wrapper完整相等。19assistant28早期工具，1962行/3prefix与10纯JSON输出核对；已读原假说/当前代码/四collector，3错误根路径保留。无GPU/jobs，余约8.74GiB。仅生成artifact-reader/plan，不自动执行或声称质量/协议结论；完整终审待返回。前selector终审1797e5de、44808已handled；以下为历史。
+
 最新[普通pipeline selector终审](v6-ddp-pipeline-communication-selection-20261031.md)1797e5de：1926身份/32输入保持、16assistant27tools/0修复，原selection c1e508b9保留。实际读取当前代码/四collector，但协议归因跨capture且工具19/20单位误标；同SQLite通信stream17只有8NCCL、无non-NCCL，不支持其除法/固定协议开销结论。未生成候选、无新接受。下一步声明[一次已有产物协议归属取证编写](v6-ddp-protocol-attribution-author-20261031.md)：原假说+原证据、角色自主只读方法，17输入/1947冻结/256MiB预测预检通过，源current0bc不变；不手选协议/算法、不注入审计答案、不启动GPU或旧observer修复。旧44808 handled/退出；实际新启动另记，以下为历史。
 
 已实际继续[一次普通pipeline通信selector](v6-ddp-pipeline-communication-selection-20261031.md)：香港07:05:14 controller244218/冻结259946cf/唯一隐藏监听44808；07:05:58核验真实32输入7,411,018B、1926身份、源current0bc及原prompt/model/tools/core/3146B反馈路由不变。该决策角色无controller GPU阶段；已有4assistant/7读取工具，完整终审待返回。当前余约8.76GiB无清理/并行GPU。前批发现已终审38f5f8ca/新native8AR总497MB，未新增接受；旧53520 handled，以下为历史。
