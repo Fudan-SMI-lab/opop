@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+已实际继续[一次普通pipeline通信selector](v6-ddp-pipeline-communication-selection-20261031.md)：香港07:05:14 controller244218/冻结259946cf/唯一隐藏监听44808；07:05:58核验真实32输入7,411,018B、1926身份、源current0bc及原prompt/model/tools/core/3146B反馈路由不变。该决策角色无controller GPU阶段；已有4assistant/7读取工具，完整终审待返回。当前余约8.76GiB无清理/并行GPU。前批发现已终审38f5f8ca/新native8AR总497MB，未新增接受；旧53520 handled，以下为历史。
+
 最新[02b933 当前版本发现](v6-ddp-pipeline-communication-evidence-20261031.md)已完成终审38f5f8ca：1769身份保持，5jobs/10ranks有效，新registry13calls/12groups；新native1128kernels/1112Graph/17launch/8eagerAR，总497,759,232B不变，实际SHM/direct/direct。新三种载荷30个合成样本不构成模型质量或wire下界；本批无新接受。21工具全审，初始6文件完整展示，额外原源码/README/自身配置读取已记录，配置本轮只核哈希未输出。继续[一次普通项目selector](v6-ddp-pipeline-communication-selection-20261031.md)，只用当前普通证据和原独立反馈，不注入审计纠正/手选算法、不自动GPU；1926冻结/32输入预检通过，余约8.78GiB无需清理。旧53520已handled且退出，实际新启动另记，以下为历史。
 
 已实际继续[精确02b933已接受版本正常发现](v6-ddp-pipeline-communication-evidence-20261031.md)：香港06:49:24 controller240296/冻结c5d4b1f0/唯一隐藏监听53520；06:50:45核验1769身份与discover710b两rank、新branch0bc64a5a只更新发现/同代码bundle。真实planner1439b881收到6输入93,892B、原prompt/model/tools不变，完整工具/采集待终审。独立57.8545851%已闭合5225b4bd，此阶段不是新优化接受或自动候选链；余约8.80GiB无清理/并行GPU。旧40904已handled，以下为历史。
