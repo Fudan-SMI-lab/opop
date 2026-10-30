@@ -1,5 +1,11 @@
 # DDP 原样合批与单规约候选的一次正式配对验证
 
+已于2026-10-30 19:54:59UTC（香港次日03:54:59）启动，controller203621，冻结`c65f6c2401fbb6da29d8a34b8b71e04fca0b4abf`，唯一隐藏监听54144。local OpenCode真实start/health/stop通过，server_url=null，无模型prompt预检；启动可用10,474,876,928B约9.75GiB。旧批次均已handled，未重启旧listener或实验。
+
+19:57:09UTC[启动核验](evidence/v6-ddp-observation-route-validation-20261031/startup-verification.json) SHA`b2b7ff4595a2065892048f9b5194ebc5cb7d96c6f1d8e480492c25ddf9900c86`：1073冻结身份及request/prepared/discovery/sharedcontrols/current/core保持。实际B/C/C/B四请求加正常profile共5jobs的entry/adapter/materialized source/bundle/UUID一致，精确508a revision/bundle未改。worker文件记录passed，仅属启动状态核验，不代替终局全数值、接受、native审计。GPU在profile后空闲，controller及正常规划角色仍活动，可用10,321,793,024B约9.61GiB。
+
+正常collection-planner为generation-b9a109eaff42/session ses_e719d2440ffeq6v2r3fot4FZKz；[实际输入身份](evidence/v6-ddp-observation-route-validation-20261031/planner-startup-identities.json) SHA`ad65ce1024991b486fa8878e32d2acb961d6b9d59b9557fc30e86f6eb46295f9`。8文件270,745B与实际snapshot字节相同，仅正常request/availablecollectors/coverage/evaluation/observations/revisions/schema/environment，core保持。完整tools/outputs/访问/collectors审计尚待终局，交付不代表消费或正确推理。启动reader最初错误预期role为collection_planner，实际producer为collection-planner；attempt1已保留，仅修正reader，无Agent/GPU重跑。唯一隐藏监听54144继续等待事件。
+
 由已完成[固定B/C](v6-ddp-observation-route-fixed-20261031.md)的完整质量/原约束和实际13→1规约证据支持，声明一次现有`ProjectSearch.validate_bundle(publish=False)`。新隔离branch从固定批次的current1fc父版本fork，复用精确staged candidate`bbe28c40885890ef6d2c1e69bb75f1a6934178494d9d704ab56b0887e76301e6`与`fixed-observation-route`bundle。code508ad3823d3a7b980df7076023b3567242f12a2544cb9bbeae0ada66c6f52f0a/14,898B、proposal853ae1eb048e1d590e5b2ba03d75dfec378a4fc20bf4a7b0faa478ba03e1de89/9,828B、emptyparams均不改；replaces旧ccd90、requires空。
 
 使用当前已接受ccd90为B，原样508a为C，原AB然后BA新workers、2连续完整质量/2warmup/5clean/rank及原3次postclean通信profile。原质量/FP32/noTF32/工作量/所有权/精确replicas和原133.379621→140.04860205ms约束保持；aligned rankmax先于median/MAD。固定B/C仅资格证据，不混入配对，不重新锚定。失败、内部回退、所有尾样本原样保留，不重试直到通过。
