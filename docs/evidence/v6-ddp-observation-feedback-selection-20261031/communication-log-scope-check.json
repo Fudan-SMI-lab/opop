@@ -1,0 +1,60 @@
+{
+  "question": "Does the full-size AllReduce tuning record establish a measured steady-step fused reduction or wire floor?",
+  "matched_original_log": [
+    {
+      "file": "/root/autodl-tmp/dev/v6-work/ddp-accepted-communication-evidence-20261030/ddp-evidence/jobs/nccl-tuning-47b036a1b0/run/nccl.autodl-container-d0884780b4-24520c7e.143778.log",
+      "sha256": "8c9e4cc6def79eafb780978c904926b94348913fdb0df9309e43c578b8dcfc18",
+      "line": 68,
+      "text": "autodl-container-d0884780b4-24520c7e:143778:144017 [0] NCCL INFO AllReduce: 497759232 Bytes -> Algo RING proto SIMPLE channel{Lo..Hi}={0..1}"
+    }
+  ],
+  "collector_original_scope": "Separate diagnostic worker including communicator setup and warmed workload calls. Counts are log records, not scoped invocation counts. No event-to-collective or operator-group join is claimed.",
+  "collector_original_interpretation": "Kernel entry names do not identify the selected algorithm/protocol. These are actual NCCL tuning log decisions; payload-size matches alone do not establish per-group identity.",
+  "evaluation_sha256": "12eff4e84f07abd7d41a99c75061f0b144144192136a00cfb2e89980735a0643",
+  "evaluation_action": "if action == \"nccl_tuning\":\n        mode(\"profile\")\n        for _ in range(request[\"warmup\"] + 1):\n            adapter.reset(state)\n            invoke()\n        return {\"valid\": True, \"scope\": \"Tuning-log diagnostic only; no quality or performance acceptance\"}",
+  "accepted_code_sha256": "ccd90dc158788a164d6fda242572530e9cdc9ca50563af1a1d9d597f0ac12e0b",
+  "existing_timeline_periods": [
+    {
+      "rank": 0,
+      "kernels": 13,
+      "logical_bytes": 497759232,
+      "sum_ms": 35.766444,
+      "scope": "Existing timeline capture only; no clean/wire/critical-path estimate"
+    },
+    {
+      "rank": 1,
+      "kernels": 13,
+      "logical_bytes": 497759232,
+      "sum_ms": 39.508218,
+      "scope": "Existing timeline capture only; no clean/wire/critical-path estimate"
+    }
+  ],
+  "existing_calibration": [
+    {
+      "rank": 0,
+      "bytes": 28351488,
+      "median_ms": 1.971845,
+      "interpretation": "synthetic contiguous reference at observed payload size/dtype and rank count; not a reproduction of model scheduling or a lower bound; effective logical payload rate is not busbw or wire throughput; do not infer model critical-path savings"
+    },
+    {
+      "rank": 0,
+      "bytes": 157541376,
+      "median_ms": 10.492628,
+      "interpretation": "synthetic contiguous reference at observed payload size/dtype and rank count; not a reproduction of model scheduling or a lower bound; effective logical payload rate is not busbw or wire throughput; do not infer model critical-path savings"
+    },
+    {
+      "rank": 1,
+      "bytes": 28351488,
+      "median_ms": 1.971176,
+      "interpretation": "synthetic contiguous reference at observed payload size/dtype and rank count; not a reproduction of model scheduling or a lower bound; effective logical payload rate is not busbw or wire throughput; do not infer model critical-path savings"
+    },
+    {
+      "rank": 1,
+      "bytes": 157541376,
+      "median_ms": 10.457812,
+      "interpretation": "synthetic contiguous reference at observed payload size/dtype and rank count; not a reproduction of model scheduling or a lower bound; effective logical payload rate is not busbw or wire throughput; do not infer model critical-path savings"
+    }
+  ],
+  "answer": "No. One real full-payload tuning decision occurs in a separate worker whose action resets and invokes warmup+1 times, including installation/setup. Log rows have no per-invocation duration/sequence join. Actual steady timeline has13 reductions; calibration has only28MB/157MB. This establishes an observed full-size tuning decision/capability, not clean fused-step quality, speed, wire saturation or a33ms lower bound. Exact placement in first/setup invocation remains code/order inference, not a timestamp join.",
+  "activity": "Read-only CPU parsing of retained logs/code/JSON; no original fixture/model/collector/native rerun."
+}

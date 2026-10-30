@@ -1,5 +1,7 @@
 # 通信方向优先级调整
 
+最新[selector终审](v6-ddp-observation-feedback-selection-20261031.md)648a01bc：新原始观察交付完整但未被打开，未证明通信成功。保留输出和错误前提，额外CPU核实全量AllReduce调优记录的setup/暖身范围；它不是稳态质量/线速下界。下一项[一次普通candidate生成](v6-ddp-observation-route-candidate-20261031.md)只检验selector自主提出的不同融合规约假设，不手选算法或注入审计答案，不自动GPU/接受。1020身份/59输入预检、空间约9.94GiB满足384MiB材料预算；Qwen、最新FSDP拒绝、77ac及observer修复链保持关闭，原完整质量/独立整步/实际通信证据要求不改。以下均为历史记录。
+
 当前正在推进[原始观测反馈的一次普通selector](v6-ddp-observation-feedback-selection-20261031.md)：香港02:55启动，controller192276/唯一隐藏监听52336；02:57实际56输入/1005身份/普通prompt模型工具验证。没有新优化接受或GPU阶段，原始新观测交付不当读取证明，完成接回完整审查。前一固定观测终审已收尾，依据新真实证据做决策，不停在等待新外部项目，也不继续无限observer修复。
 
 最新：固定通信观测已终审（2f976a91），原完整质量通过，12trace仍13AR/相同负载；Graph路径的Python回调关联诚实unknown，不能宣称通信下界/关键路径或新优化收益。继续[一次普通项目决策](v6-ddp-observation-feedback-selection-20261031.md)，仅交付原始新观测和原反馈，不给人工解释/实现，观测修复链已收尾。Qwen/FSDP/77ac不重开，生产规则保持；不是无边界重试。以下均为历史。

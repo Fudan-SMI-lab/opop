@@ -1,5 +1,9 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新：[原始观察反馈selector终审](v6-ddp-observation-feedback-selection-20261031.md)完成（648a01bc），1005身份/56输入保持，26 assistant/36工具/0修复。全程未打开新观察文件，只读索引和旧材料；不能称新观测已被消费。其线速硬下界、旧失败证明并发饱和和55–62ms预测不采纳，输出保留。额外一次CPU原日志范围核查确认全量497MB调优记录真实但无稳态计时关联。
+
+下一步[一次原选择candidate生成](v6-ddp-observation-route-candidate-20261031.md)：仅将selector自主提出的四微批/完整梯度融合规约作为待检验新调度假设，依据为实际13规约/完整负载/源累积边界，不依赖错误因果或收益预测。普通API规范化/selected-group路由，保留原新观察和旧CPU事实，不加终审答案/手写实现。预检1020身份/59输入32,668,900B通过，route7c08054f/6,251,759B，384MiB材料预测+8GiB警戒、约9.94GiB余量，无清理。无自动GPU/search/参数/接受，代码出来先审查；observer/Qwen/FSDP/77ac关闭保持。实际启动和唯一隐藏监听另记。以下为历史。
+
 当前真实后台（香港02:55启动、02:57核验）：[原始观测反馈selector](v6-ddp-observation-feedback-selection-20261031.md)，冻结b4e86ec8/controller192276/唯一隐藏监听52336。实际56输入27,860,418B、1005身份及原普通prompt/model/tools/current保持；仅反馈追加索引和15原始材料。早期16工具实际读旧反馈/代码、展示新指针但尚未打开新观测文件，完整终态审查待续。无GPU阶段，磁盘约9.94GiB；新合理决策才推进候选，不无限重试。已完成固定B/C和observer mechanics链不重启，旧14060重复事件已处理。
 
 最新终态：精确92279 B/C观测18:47:43UTC完成并直接终审，audit2f976a91，977身份/4rank/8完整零误差检查/20样本/12rawtrace保持。B三profile结构关联，C每rank3256回调无法归属、三关联均unknown；两臂13AR/497,759,232B不变，没有通信优化接受。观测/mechanics修复链关闭。[完整记录](v6-ddp-communication-observation-20261031.md)。

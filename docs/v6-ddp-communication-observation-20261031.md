@@ -1,5 +1,7 @@
 # DDP 精确 Agent 代码的一次固定通信观测
 
+后续[普通selector终审](v6-ddp-observation-feedback-selection-20261031.md)确认未读取新增观测文件，不能将其新选择归因于消费了本批结果。本批原质量、unknown关联、12 trace及观察扰动限制不改，不重复观测或延长修复链。当前声明一次原选择candidate生成，未新增GPU质量/接受。
+
 已于18:47:43UTC（香港02:47:43）completed，父回合直接接续完成审计，监听14060排队事件已标handled/不重复处理。[终态摘要](evidence/v6-ddp-communication-observation-20261031/public-terminal-audit.json)，服务器完整audit SHA`2f976a911e241e2471548c7dfbd32ab82ae2a87f2ef2b37836c72af1d7f00439`。977冻结身份、真实request/core/原source/bundle/adapter/controls/current保持；4rank workers均passed/valid/mathtrue，8次完整比较各248,879,620元素零误差，20rank样本全部保留。
 
 按各重复先取rank最大，观测B样本118.284116/116.387054/116.474292/125.634750/124.475389ms，中位118.284116；C73.659578/73.250891/73.128837/73.860802/72.125134ms，中位73.250891。均受observer扰动，只作描述；不算新收益或接受、不减observer成本。C两次quality仍为parent_eager_baseline和graph_setup_capture各一次，不是两次优化路径quality。setup约20ms安装不等于第二quality的Graph捕获成本。

@@ -1,5 +1,15 @@
 # DDP 原始通信观测反馈的一次普通项目决策
 
+19:07:26UTC（香港03:07）正常完成，终审SHA`648a01bceb2eb7a8558ee9fed37196f18a4807bd9c90b7a1fbfe0527ae7ac167`。1005冻结身份、56初始文件27,860,418B、原41非feedback输入、实际registry route、生产prompt/model/tools/core与sourcecurrent保持。26 assistant/36工具、0 schema修复，provider估算0.6963988167（非账单）。selection SHA`4249c7d0864a37e31000af3e080e4f2a872eae98e7990221376501f4ab6bba92`一次写入/无修改，AST重建逐字相同；2401 read行/1截断前缀、17段纯JSON输出独立核验。完整历史留服务器，公开[审计摘要](evidence/v6-ddp-observation-feedback-selection-20261031/public-terminal-audit.json)。
+
+完整访问确认：**未打开15份新增observation-evidence文件中的任何一份**。tool10只曝光supplement索引、21列文件名；不能称本次选择吸收了新B/C观测。实际读取旧失败5e3a、当前ccd90、旧timeline/calibration/tuning，tool34读旧77ac CPU结果前3500字符而非全部反例。全部命令/输出/内嵌脚本已审查，无观察到模型/CUDA/collective probe或后续审计答案/私有配置内容读取；文件系统非hermetic。tool4错误source目录stderr被后续ls/exit0掩盖、tool9空grep保留；schema通过不是GPU质量。
+
+输出选择整个execution_plan/1055 calls，提出四微批批处理、完整梯度一次AllReduce、SGD Graph。它仍把校准当33ms线速硬下界、把旧初始化失败后108/111ms eager退化当并发计算饱和，并预测55–62ms；这些因果、收益及“按构造保证约束/回退”论断均不采纳。新观察unknown没有被消费，未证明任何新通信收益。
+
+另执行一次CPU只读[全量AllReduce日志范围核查](evidence/v6-ddp-observation-feedback-selection-20261031/communication-log-scope-check.json)，SHA`a3ebe87badee2d2489145673c242eeac9126947c7dbfb6b0ec93ea15f2ebdef0`。原rank0日志第68行确有497,759,232B调优决策，但collector执行reset/invoke共warmup+1次且含setup；没有逐调用计时关联。原稳态timeline仍13次，校准只测28MB/157MB。全负载调优记录不是已验证稳态融合步骤/线速下界，具体首次或setup归属仍为代码顺序推论；无GPU/collector/模型重跑。
+
+下一步声明[一次原选择候选生成](v6-ddp-observation-route-candidate-20261031.md)。依据限于实际13次稳态规约、完整负载/累积梯度边界及全负载调优能力，足以形成待检验的新通信调度假设；不依赖旧失败因果或55–62ms预测。它与77ac多communicator/Future修复、此前三微批/13次规约不同。不手改selection、不添加审计答案、不给实现，代码审查后才决定GPU。无新接受/生产变更，observer/Qwen/FSDP/77ac关闭保持。以下为历史启动记录。
+
 实际18:55:18UTC（香港02:55）已启动，冻结`b4e86ec8c106952b8c7a3f2e8d18ca30feb714d5`，controller192276/唯一隐藏监听52336。local OpenCode实际start/health/stop通过，server_url=null，没有model预检请求；旧14060终态已直接审计/handled，排队重复通知去重，不重启。
 
 18:57:04UTC[启动核验](evidence/v6-ddp-observation-feedback-selection-20261031/startup-verification.json)SHA`46bc04d529463a024ce5159f8efae6c3d55b1442e0f7c49c6b3e7cb1a171b4b0`：generation999c08dfa37c/session ses_e71d5303effeplDBk2SALVlQUL，56初始文件27,860,418B与实际snapshot逐字节相同；原41非feedback保持，1005冻结身份及sourcecurrent/prompt/model/tools/core相同。实际route10,261,232B SHA`2d2eeeba11945301a08e797485cfba207e5212f8af52f2f8ab78573bb884ab38`，原字段/CPU事实保留，新原始观测仅supplement索引与15文件。
