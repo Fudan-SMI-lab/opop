@@ -1,8 +1,8 @@
 # 已接受 DDP 版本的正式发现与通信诊断规划
 
-????2026-10-30 11:43:03 UTC???19:43????`21bcce8615d27c89afee7466dce33be2856a0cfb`?controller142528???????50252??53536???/handled?????OpenCode start/health/stop????????prompt?11:44:10????SHA `ba0fd682282213b90807f0472f93a7051a703119a7e6fea64f93c29d876e1217`?548???????discover-27942843ca?rank?????branch?registry??`1fc24545217087adefa1248704619fcdc882a19057336b231d8e02918bf4d0d8`?????/bundle/contract?source current4541???
+实际启动2026-10-30 11:43:03 UTC（香港19:43），冻结`21bcce8615d27c89afee7466dce33be2856a0cfb`，controller142528，唯一隐藏监听50252；旧53536已退出/handled。实际本地OpenCode start/health/stop通过，无模型测试prompt。11:44:10启动核验SHA `ba0fd682282213b90807f0472f93a7051a703119a7e6fea64f93c29d876e1217`：548冻结身份通过，discover-27942843ca双rank完成，隔离branch新registry版本`1fc24545217087adefa1248704619fcdc882a19057336b231d8e02918bf4d0d8`保留原源码/bundle/contract，source current4541不变。
 
-??collection-planner generation-fa06929739bd/session ses_e7360b60effeKmiOf83y9r5NRJ????6????262,792B????snapshot?9 assistant/11?????history????????????planner generation-fb697d303320??prompt/model/tools????????request/actual observations/coverage/available collectors/schema/worker environment????????????????/?????????????collector???GPU?????????????????/??/??collector?????worker????????planner???????9,988,993,024B?9.30GiB?
+真实collection-planner generation-fa06929739bd/session ses_e7360b60effeKmiOf83y9r5NRJ已启动，6初始文件262,792B逐字等于snapshot，9 assistant/11工具的私有history已留服务器。与旧普通初始planner generation-fb697d303320相比prompt/model/tools一致；六文件只含request/actual observations/coverage/available collectors/schema/worker environment，无反馈或候选输入。此为初始身份/活动核验，不是全后续读取、collector成功、GPU质量或新接受证明；终态还需完整工具/输出/所有collector审计。发现worker退出后两卡空闲，planner仍在运行，盘余9,988,993,024B约9.30GiB。
 
 [独立整版验证](v6-ddp-feedback-independent-20261030.md)已接受36.1578233%完整step收益，原搜索39.3258618%另列。但实际通信仍13 eager AllReduce/497,759,232B逻辑负载，当前证据支持计算Graph调度，通信优化成功缺口未闭合。实际检查发现source `ddp-communication-feedback-20261030/ddp-search/discovery.json`仍引用旧空baseline e925，而current为新接受4541；此前post-evaluation Torch profile没有更新其registry。不能据旧可优化范围继续候选链。
 
