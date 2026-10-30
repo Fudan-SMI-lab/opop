@@ -1,5 +1,7 @@
 # DDP 通信方向的新一次项目级决策
 
+首次启动预检在角色/controller/模型/GPU/监听启动前发现：此前独立CPU fixture执行的是CRLF源文件，Git部署规范为LF，故原SHA检查中止。将本地保留的原执行代码逐字存入服务器旧CPU审计目录（SHA4868f3d3一致），新索引改指向该不可变副本；没有重跑CPU或更改生成候选。失败记录另存launch-preflight-attempt-1，冻结b44f0baa目录保留，不当作已启动实验或重试模型。
+
 用户于香港2026-10-31明确要求继续推进，避免付费服务器无任务空闲。因此不再把“等待新项目偏好”作为当前工作的前提；在已有真实DDP任务和新取得的合同证据上推进一次有界项目级决策。原通信优先/完整质量/原约束/独立整步收益要求不变，Qwen关闭、最新FSDP拒绝保持。
 
 本步只运行现有 `ProjectAgents.generate(selection)` 一次，普通selector提示、模型、工具、可选scope和正常schema修复不变，API observe-only、无新增cap。当前accepted source/current discovery仍为1fc24545/ccd90单bundle；不重复discovery/controls/source比较，不复制reference，不改accepted指针。普通选择范围由角色决定，开发者不指定group、bucket、算法、实现或collector。

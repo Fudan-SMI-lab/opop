@@ -46,7 +46,7 @@ def prepare(args):
     directory = Path(result['agent']['sandbox'])
     cpu = previous/'audit/cpu-contract/result.json'
     assert read(cpu)['candidate_sha256'] == result['candidate_sha256'] and read(cpu)['model_runs'] == read(cpu)['real_collectives'] == 0
-    fixture = Path('/root/autodl-tmp/dev/opop-v6/scripts/experiments/v6_ddp_repaired_cpu_contract_20261030.py')
+    fixture = previous/'audit/cpu-contract/fixture.py'
     assert sha(fixture) == read(cpu)['fixture_sha256']
     items = [directory/'candidate.py',directory/'proposal.json',cpu,fixture,previous/'audit/cpu-contract-execution.json']
     index = {'scope':'Exact generated code/proposal and completed synthetic CPU-contract observations. Not a search trial, historical NCCL fault or GPU quality result. The previous implementation-repair branch is closed; this is a new project-level evidence decision, not a request to edit that implementation. No algorithm, group, bucket, predicted gain or causal solution is prescribed.',
