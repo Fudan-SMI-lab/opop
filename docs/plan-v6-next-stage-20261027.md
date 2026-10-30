@@ -1,5 +1,9 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态（香港02:33）：[DDP观测机制修复](v6-ddp-observation-mechanics-repair-20261031.md)完成，audit82015a16，15输入/967身份保持；41工具完整核对、原写入精确重建。一次原序列CPU复验支持歧义/缺失关联、cap、返回身份及已安装patch恢复；partial setup仍可在原入口前中止，Graph锚点/额外分配/通用界限明确保留，不把schema当质量。
+
+主动推进[一次精确B/C通信观测](v6-ddp-communication-observation-20261031.md)：Agent92279原样，不再作者修复、不新优化。原两rank完整quality/样本/metric保留，B质量/恢复gate后C，时间诊断不验收。已在GPU空闲时服务器无损冷压缩旧拒绝FSDP216 metric JSON，释放约2.01GiB，余约10.17GiB；为B/C预留512MiB+8GiB警戒。Qwen/FSDP/77ac关闭状态及生产core不变。实际启动单独记录，以下运行描述为历史。
+
 当前实际运行（香港02:21启动、02:23核验）：[DDP观测机制一次修复](v6-ddp-observation-mechanics-repair-20261031.md)，冻结c1a63c3f/controller187340/唯一隐藏监听48592。15输入1,471,240B、原11字节相同、967身份及生产core/model/tools/current核验；前10工具确实读到完整前probe/plan/CPU结果/fixture。无GPU阶段，修复结果未预判，约8.17GiB可用。旧作者原输出/控制器postcheck错误/独立CPU反例已保存，旧48992 handled退出。完成接回审查后继续证据驱动的有界工作，不自动无限修复或GPU。
 
 最新终态：通信观测作者真实完成，控制器仅因已知prompt包装postcheck报错，原错误未覆盖。审计658f17ab、11输入/950身份保持；87工具完整审查发现实际小型CPU模型/Gloo活动超出作者限制。精确0244探针的一次无模型/无collective CPU检查确认歧义与缺失关联被误标observed、部分安装失败遗留patch并阻断原入口，故不上GPU。详见[作者终态](v6-ddp-communication-observation-author-20261031.md)。
