@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新普通selector已终审a922faa5…：30初始输入/1454冻结/24assistant31工具、一次selection写入保持；实际读当前508a与全部四份collector JSON，部分正文截断。新分段反向/分块通信更新假设有当前串行结构依据，但固定wire、29–37ms预测和数值/回退保证不采纳，ns→µs误标ms保留并按同SQLite核实。无GPU或新接受。继续[一次普通pipeline candidate生成](v6-ddp-fused-pipeline-candidate-20261031.md)，原选择/原证据/普通角色，33输入/1469身份预检、余约9.27GiB，无手写实现/终审纠正输入或自动GPU。旧50516handled，不静默停研；[完整终审](v6-ddp-fused-communication-selection-20261031.md)。以下运行状态为历史，新的实际启动另记。
+
 当前后台工作已启动：香港04:34:53，普通selector controller215396/唯一隐藏监听50516/冻结d7f2f98d。04:36:52核验真实30文件7,194,917B、1454身份及原prompt/model/tools/core；已实际读当前508a、独立接受反馈及当前校准/部分Nsys/timeline，非仅指针。仍是早期19assistant/26tools记录，最终选择/完整访问/正确推理待审。无GPU作业、剩约9.27GiB，未清理。见[实际启动及边界](v6-ddp-fused-communication-selection-20261031.md)；不是仅声明后闲置，也不预先宣称新候选或接受。
 
 最新：508a当前发现已于20:25:14UTC结束并终审7cd9fa02…，1310身份不变、5jobs/10ranks有效；新registry9calls/8groups、新Nsys1105kernels/1103Graph/2launch/1 eager AR，完整497,759,232B合成校准约32.51ms不是wire下界。planner35assistant/39tools实际外读两个历史计划及本批控制脚本，不能称六输入独立决策；原错误与配置输出处理事件保留，见[完整终审](v6-ddp-fused-communication-evidence-20261031.md)。继续[一次普通项目选择](v6-ddp-fused-communication-selection-20261031.md)，只用现有common/current材料+原完整版本反馈，不手选算法或注入终审表；预检1454身份/30文件7.19MB，无candidate/GPU自动阶段。旧51188已handled，GPU空闲剩约9.30GiB，未清理；下面启动状态均为历史。

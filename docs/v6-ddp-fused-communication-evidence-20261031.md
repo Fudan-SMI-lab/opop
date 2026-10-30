@@ -1,5 +1,7 @@
 # DDP 已独立接受联合版本的一次正常发现
 
+后续普通selector已完整审计a922faa5…：它实际打开四份current collector JSON，解析全Nsys数组做算术，但timeline/ownership/plan只看部分；不能以文件打开等同全文消费。新分段调度假设进入[一次普通候选生成](v6-ddp-fused-pipeline-candidate-20261031.md)，外部纠正不注入角色。该selector的wire下界/预测收益不由本次校准和trace推出；同capture ns单位另行只读核实，无本批或GPU重跑。见[后续完整审计](v6-ddp-fused-communication-selection-20261031.md)。
+
 本批已于2026-10-30 20:25:14.637825UTC完成，reason为`batch_finished`，不是低磁盘告警。终审`7cd9fa02d28a60b4fec48a69cb1c4365842e079cc928dd03db409d3f91da3ab9`，公开摘要[de751966…](evidence/v6-ddp-fused-communication-evidence-20261031/public-terminal-audit.json)。1310冻结身份、core、source current7a49及精确508a文件/bundle/contract保持。5jobs/10ranks均passed/valid，属于发现和4个正常规划采集器；没有新的完整模型质量、clean样本、候选或接受。GPU已空闲，实际150GiB磁盘剩9,982,173,184B约9.30GiB，无清理。旧51188完成已handled，不重启。
 
 新current10992e0d真正附着9calls/8groups，旧registry退休1049calls/385groups，新增3calls、失效2份旧证据；继承关系仅表示调用存活或bundle包含，不是因果归属。两个原始发现trace各1105kernels、2GraphLaunch、1个497,759,232B AllReduce；1103kernels仅归到project层，不能把100%关联解释为全部算子精细归因。发现NCCLsum34.601452/33.079367ms；独立timeline约55.006329/55.008339ms、1AR、4sync、0梯度回调、1bucket。逐trace及跨rank CPU提交界限重算通过：29.304688–173.617188µs仅是本次CPU提交差，不是GPU到达、wire或另一capture的等待原因。0回调不表示无梯度。

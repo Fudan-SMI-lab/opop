@@ -1,5 +1,15 @@
 # 已接受联合版本上的一次普通项目选择
 
+本批2026-10-30 20:40:18.787766UTC终态为`batch_finished`，已完整终审；[公开摘要](evidence/v6-ddp-fused-communication-selection-20261031/public-terminal-audit.json) SHA`e5ce211d7a55318aec7d37573ad885c37ef514fc6c9b0454b852777b4ce5aca5`，完整审计`a922faa5157b6db9b26a2591c4440aa6aae8ce6c766fd2ce5760abed5351e083`。1454冻结身份、30初始文件7,194,917B、原始反馈/实际registry路由、source current10992、单508a bundle、core/prompt/model/tools均保持。没有candidate、GPU或新接受。实际150GiB磁盘余约9.27GiB、GPU空闲；旧50516完成已handled且进程退出，无清理或重启。
+
+完整24 assistant/31工具/0 schema修复，provider估算0.46256337238不是账单。2415读取行和2处明确截断前缀核实，13条JSON/算术/管道输出逐字重建；selection仅一次写入、无编辑，SHA`b43cc9fe941d950240cc2255af55a42db8e18c8f40bd8d319da165a5d41a3437`。它实际读取当前508a、原source/adapter/contract、完整小型独立反馈，以及全部四份current collector JSON；校准rank记录完整打印，timeline/ownership/plan只打印部分，Nsys完整数组参与算术不代表逐条全文阅读。31次实际访问未见模型/tensor/CUDA/processgroup/collective或私有配置、外部审计/答案内容读取；opencode.json仅目录名曝光，非封闭文件系统/绝对不存在证明。私有完整history留服务器，未输出秘密。
+
+选择为execution_plan、3组/7调用，自主提出分段合批反向、分块SUM/divide和SGD调度，区别于关闭的77ac多通信组/Future修复。保留原选择，不手改方案。当前代码确为反向→整块AR→SGD的串行结构，同次native也未见计算/通信重叠，这足以提出实现假设，不足以证明收益。32.51ms校准不是固定wire成本、不可突破下界或唯一剩余方向；497,759,232B是当前载荷，不是普遍不可减少下界。29–37ms预测忽略总传输、依赖、启动与资源争用；梯度就绪不证明参数可安全提前更新，尤其共享embedding；分块相同不自动保证浮点顺序、完整连续状态、exact replicas或失败回退。
+
+[同次原SQLite算术复核](evidence/v6-ddp-fused-communication-selection-20261031/native-arithmetic-check.json)确认工具28/29将ns除1000却标ms，实际输出单位是µs。最终文字52.2/17.87/31.53/2.80ms数值与正确ns/1e6一致；错误标签仍保留。rank0通信前955 kernels共17.867725ms、通信31.532702ms、通信后149 kernels共2.799854ms，不能把全部20.7ms非NCCL当通信前可隐藏工作；rank1另一受扰周期321.602219ms也不用于clean/wire/关键路径归因。没有重采集或重跑模型。
+
+下一有界决策为[一次普通pipeline candidate生成](v6-ddp-fused-pipeline-candidate-20261031.md)：精确原选择、当前source/registry、原完整版本反馈和正常collector材料，由普通角色自行实现；不交付上述终审纠正或手写实现，不自动GPU。预检1469冻结/33输入8,618,008B、路由2980B/supplemental=null，原字段保持。审查精确生成字节、依赖、参数与错误后再决定后续，Qwen/FSDP拒绝/77ac/observer关闭状态保持。以下为本批历史启动记录。
+
 实际已于2026-10-30 20:34:53UTC（香港10月31日04:34:53）启动controller215396，冻结`d7f2f98d55be812cbe5dcbdc4fb0e76d22f7e048`。唯一隐藏plain监听50516已armed，旧51188已handled且进程不存在。local OpenCode真实start/health/stop通过、server_url=null、无模型prompt预检。启动磁盘9,970,700,288B，无GPU作业或清理。
 
 20:36:52[实际启动核验](evidence/v6-ddp-fused-communication-selection-20261031/startup-verification.json) SHA`c0273f4318e1462396f2f5772b8e95b6bead533bd4ba74cf648bb2f6b184cf0d`：generation8e004497fd3f/session ses_e717a062cffeDJvMrMHNl3Am74，30文件7,194,917B与snapshot/普通组装完全相同，1454冻结/实际source current/core/route/prompt/model/tools核对通过。相对前selector999c：15输入相同、12改变、3新增、29移除，非单变量AB；变化源于新接受版本/新discovery与原完整版本反馈。此时19assistant/26tools、controller存活、GPU空闲，df9,953,460,224B约9.27GiB。
