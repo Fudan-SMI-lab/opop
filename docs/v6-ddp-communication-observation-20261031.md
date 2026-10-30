@@ -1,5 +1,9 @@
 # DDP 精确 Agent 代码的一次固定通信观测
 
+实际18:46:26UTC（香港02:46）已启动，冻结`d9f57a815e16038be01d5bae598f3ffc8e263d0c`，controller190831，唯一隐藏完成/磁盘监听14060；旧48592已handled且进程不存在。启动余10,910,814,208B约10.16GiB。
+
+18:47:29UTC[实际核验](evidence/v6-ddp-communication-observation-20261031/startup-verification.json)SHA`3307c3f3eed4754529047a8befd5e2f1663b38ff818ce7065759329d95600a9c`：977冻结身份/core保持，B/C两份实际worker request与原request仅声明的接线差异；entry为精确92279，原function/wait确为run/true。B通过既定gate，C两GPU worker191287/191288正在执行，余10,779,181,056B约10.04GiB。此为启动身份/活动，不是终态完整质量、观测正确性或接受证明，后续需审查全部实际输出与trace。
+
 通信优先保持。终审后的92279探针允许在当前固定API/request上验证其可观测范围；不宣称通用observer正确性。下一步声明为一次串行B-observed→C-observed，使用现有LocalExecutor/device leases和原pair0实际request，每rank原evaluator一次。无新Agent/search/参数探索/Nsys/observer-off重复/优化代码/生产采纳。Qwen、最新拒绝FSDP和77ac修复链保持关闭。
 
 精确probe SHA`92279e28dc1e548efe86ef44467a3b0d09f7d94586da3dc16c0a3f55b773db96`，46,532B；plan SHA`0a82e46248377b94a7ec21954eb34d2bdf556d65796557556923ebf9eeefcf13`，40,074B。[前置终审](v6-ddp-observation-mechanics-repair-20261031.md)及一次CPU夹具证明部分报告/恢复机制，不是GPU质量。代码不手改，plan过度承诺不采纳。

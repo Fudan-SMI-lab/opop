@@ -1,5 +1,7 @@
 # 通信方向优先级调整
 
+当前有真实GPU工作：香港02:46启动[一次原样B/C观测](v6-ddp-communication-observation-20261031.md)，controller190831/唯一隐藏监听14060。02:47实核977身份及B/C request保持原工作/质量，B gate已过、C两rank执行中；余约10.04GiB。目的为核实通信观测范围/未知关联，不新验收或手写优化；完成后继续依据实际证据处理，不把一批结束当整个项目完成。
+
 最新推进：[观测机制修复终审](v6-ddp-observation-mechanics-repair-20261031.md)完成，原15输入/967身份保持，独立CPU原序列一次验证改善报告和恢复；不声称GPU质量或通用observer保证。现声明[精确Agent探针B/C固定观测](v6-ddp-communication-observation-20261031.md)，保留原完整两rank工作/质量/样本，时间受观测扰动、不验收、不重复到通过。旧FSDP拒绝metric服务器无损冷存后空间约10.17GiB，预留512MiB；原生产、Qwen/FSDP/77ac关闭保持。不是继续无限repair，完成后根据真实unknown/错误/关联证据决定后续，以下均为历史。
 
 当前有后台工作：香港02:21已启动[一次观测机制修复](v6-ddp-observation-mechanics-repair-20261031.md)，controller187340/隐藏监听48592。02:23实际15输入、原11保持、967冻结身份通过，作者已读完整CPU反例材料；无GPU/新接受，余约8.17GiB。终态自动接回完整审查，依据实际结果决定后续，不将生成完成或计算Graph收益称通信接受。
