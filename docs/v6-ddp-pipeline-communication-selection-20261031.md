@@ -1,5 +1,18 @@
 # DDP 已独立接受流水版本的一次普通项目选择
 
+## 终态审计与下一决策
+
+2026-10-30 23:15:08.914833UTC（香港07:15:08）正常 batch_finished。终态后实际150GiB盘余9,400,082,432B，GPU/controller均已退出，不是low_disk_space。完整审计 SHA **1797e5de55b0f6c816a5c83f5fc1990fe0a26efdd156378cf23b8a16aef7e098**，[公开摘要](evidence/v6-ddp-pipeline-communication-selection-20261031/public-terminal-audit.json) SHA46f9d94ac4da424df55b33d18d4c4a4ce65538e6b85692c531b8fbde230df2a4。1926冻结、32初始文件7,411,018B、源current0bc、原prompt/model/tools/core、原反馈/3146B路由均相同；无新GPU工作、质量检查或接受。
+
+16 assistant/27工具/0 schema repair；provider估算0.57068710726，不是账单。selection一次写入零修改，逐字重建SHA **c1e508b94f88c7e9d0a3ef67e2d23e40dcd5dad094710d7b863a0712dccb294d**。4014显示read行、2明确截断prefix核对；11个纯JSON输出完整重建。实际完整读取02b933、原训练源、binding contract和小独立反馈；四个当前collectorJSON均打开，calibration小rank记录和tuning决策完整展示，timeline/ownership/resources有截断，native所有kernel被解析不等于每条打印或正确理解。工具9缺目录stderr隐藏且复合末命令exit0保留。无记录到模型/tensor/CUDA/processgroup/collective/private-config或后来审计答案内容读取；外部FS非hermetic，不作绝对无访问声明。原私有history留服务器，不输出凭证。
+
+自主选择7组/7calls execution_plan，提出新communicator协议设置、把平均移至update和可选fine9。保留原输出，**不据此生成候选**：原tuning材料已明确kernel entry不能识别实际protocol，selector仍将不同period的kernel/合成calibration差值归因于LL与SIMPLE；所谓wire上限、每chunk协议开销和只剩通信流可优化均未建立。CPU提交差不能排除GPU readiness等待，半比例数学等价也不是连续浮点/副本/全部state证明，replacement reference不自动是旧优化fallback。原约束anchor133.379621不能混作本次独立B114.757729。
+
+[同SQLite算术核对](evidence/v6-ddp-pipeline-communication-selection-20261031/native-arithmetic-check.json)保持原始记录：工具19/20把ns÷1000标ms（实际us），最终输出部分重新缩放正确不补足因果证据。rank1同capture span48.778643ms、NCCL sum36.408616ms；pre326 kernel union8.977007ms、during790 union14.182733ms、post3 union0.834623ms；通信stream17实际8个NCCL且零non-NCCL kernel，不能把其间空隙自动称除法/可回收等待。rank0长尾NCCL255.681236ms保留，不能跨rank/period扣clean时间。此核对只有SQLite读取，无GPU/native重采集。终审主reader首次通过；随后补读源代码的通用candidate.py后缀导致StopIteration，已保留note并改精确snapshot key，仅reader更正。
+
+下一步为[一次已有产物协议归属取证编写](v6-ddp-protocol-attribution-author-20261031.md)，聚焦实际steady AllReduce协议身份及配置/communicator生效范围能否由原始证据证明。角色自主选择只读分析方法，原selection只是待验证假说，不注入本终审答案或手写修复，不再调用selector直到想要答案。该步骤不是候选、live collector、旧observer修复或GPU实验；生成代码终审后才决定一次CPU产物分析。旧44808已handled/退出，延迟事件去重；原57.8545851%独立联合接受及所有历史失败不变。
+
+
 已于2026-10-30 23:05:14.539887UTC（香港07:05:14）实际启动controller **244218**，冻结 `259946cff8b26bd78ef935e3f3a351f3ef8b6de3`，唯一隐藏plain watcher **44808**。23:05:58 [启动核验](evidence/v6-ddp-pipeline-communication-selection-20261031/startup-verification.json) SHA9b9566fc56e2058b728695212e1509a58c2aebad12182a1b4602e6156f2c05f1：真实generation951247d7d996/session ses_e70f05c38ffeFF8Y4PFYu97wXx收到32文件7,411,018B，逐字节相等/1926冻结/sourcecurrent0bc/core/普通prompt-model-tools保持，3146B反馈f14ffa53精确原路由/supplementnull。相对旧普通selector999c初始材料15相同、12改变、5新增、29移除，不是AB。4assistant/7tools早期history server-only；[早期read行核验](evidence/v6-ddp-pipeline-communication-selection-20261031/startup-tool-review.json) 2907行/2明确截断prefix，读取request/index/groups/calls/project/resources/search；前7尚未打开previous-feedback或4collectorJSON/当前候选源码，不能外推最终未读。该核验是显示行机械核对与路径/状态审查，不是最终完整消费/推理/输出语义审计。无早期模型/GPU/collective/privateconfig命令，外部FS非hermetic；完整终审仍待返回。启动controller存活、GPU空闲/无jobs、盘余9,401,749,504B约8.76GiB，localOpenCode实际start-health-stop/server_urlnull/no modelprecheck通过。无启动reader错误/清理/实验重启，旧53520 handled/进程已退出。
 
 依据[当前版本发现终审](v6-ddp-pipeline-communication-evidence-20261031.md)38f5f8ca，声明并执行一次现有 `ProjectAgents.generate(selection)`：源为 `ddp-pipeline-communication-evidence-20261031/ddp-evidence` current0bc64a5a，exact02b933/单fixed-fused-pipeline/空参数/实际13call12group registry。目的由普通角色根据真实当前通信证据提出下一项目决策，不手选组、chunk、算法或实现，也不自动进入candidate/GPU。实际启动和早期snapshot另记。

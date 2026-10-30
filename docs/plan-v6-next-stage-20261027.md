@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新[普通pipeline selector终审](v6-ddp-pipeline-communication-selection-20261031.md)1797e5de：1926身份/32输入保持、16assistant27tools/0修复，原selection c1e508b9保留。实际读取当前代码/四collector，但协议归因跨capture且工具19/20单位误标；同SQLite通信stream17只有8NCCL、无non-NCCL，不支持其除法/固定协议开销结论。未生成候选、无新接受。下一步声明[一次已有产物协议归属取证编写](v6-ddp-protocol-attribution-author-20261031.md)：原假说+原证据、角色自主只读方法，17输入/1947冻结/256MiB预测预检通过，源current0bc不变；不手选协议/算法、不注入审计答案、不启动GPU或旧observer修复。旧44808 handled/退出；实际新启动另记，以下为历史。
+
 已实际继续[一次普通pipeline通信selector](v6-ddp-pipeline-communication-selection-20261031.md)：香港07:05:14 controller244218/冻结259946cf/唯一隐藏监听44808；07:05:58核验真实32输入7,411,018B、1926身份、源current0bc及原prompt/model/tools/core/3146B反馈路由不变。该决策角色无controller GPU阶段；已有4assistant/7读取工具，完整终审待返回。当前余约8.76GiB无清理/并行GPU。前批发现已终审38f5f8ca/新native8AR总497MB，未新增接受；旧53520 handled，以下为历史。
 
 最新[02b933 当前版本发现](v6-ddp-pipeline-communication-evidence-20261031.md)已完成终审38f5f8ca：1769身份保持，5jobs/10ranks有效，新registry13calls/12groups；新native1128kernels/1112Graph/17launch/8eagerAR，总497,759,232B不变，实际SHM/direct/direct。新三种载荷30个合成样本不构成模型质量或wire下界；本批无新接受。21工具全审，初始6文件完整展示，额外原源码/README/自身配置读取已记录，配置本轮只核哈希未输出。继续[一次普通项目selector](v6-ddp-pipeline-communication-selection-20261031.md)，只用当前普通证据和原独立反馈，不注入审计纠正/手选算法、不自动GPU；1926冻结/32输入预检通过，余约8.78GiB无需清理。旧53520已handled且退出，实际新启动另记，以下为历史。
