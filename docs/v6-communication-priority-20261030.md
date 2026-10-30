@@ -1,5 +1,6 @@
 # 通信方向优先级调整
 
+最新：原样508a正式ABBA已终审e431bb80…并接受exploration，当前acceptedccd90的71.582732→54.347069ms/24.07796199%，两pair收益均过噪声，40rank样本/16全检查/24raw traces/1073冻结保持。真实新Nsys每rank1105kernels1103Graph/2launch/1 eager AR，稳态13→1、497759232B不变，joint合批计算+通信合并，非隔离wire收益。已声明[一次完整版本独立闭合](v6-ddp-observation-route-independent-20261031.md)，原样bbe28c对原始当前设备prepared7a49、publishFalse/新B/C/C/B，复用native/source hash，不新Agent/代码/collector。旧54144完成事件主动处理/handled，GPU空闲剩约9.56GiB，预算1GiB+8GiB；保留任何独立拒绝，不重复直到通过。详见[正式终审](v6-ddp-observation-route-validation-20261031.md)。
 正式配对验证已于19:54:59UTC（香港次日03:54）启动，controller203621、唯一隐藏监听54144、冻结c65f6c24。19:57:09核验1073冻结身份、实际ABBA四请求及正常profile的entry/source/bundle/core/UUID，branch/sourcecurrent仍为1fc。正常collection-planner generation-b9a109eaff42的8文件270745B与snapshot相符；终局工具、诊断结果及接受判定仍待完整审计。GPU在profile后空闲，controller/规划角色仍工作，剩约9.61GiB。详见[正式配对启动记录](v6-ddp-observation-route-validation-20261031.md)，不预先宣布接受。
 
 最新：原样508a固定B/C已完成终审61101490…（1028保护身份、4ranks/20样本/8全检查/12raw traces）。B当前accepted71.369506ms，C54.459087ms，C第二检查max9.5367e-7/1.1921e-7原容差内；两端140.04860205约束通过，单B/C不是接受。真实稳态13→1 RING_LL AllReduce，逻辑总量497,759,232B不变，计算合批也改变，不能隔离归因通信。继续[一次正式原样配对验证](v6-ddp-observation-route-validation-20261031.md)，现有validate_bundle publishFalse/原ABBA/正常planner和collectors，不生成候选、手选collector或预排独立。GPU已空闲/剩约9.76GiB，1GiB预算+8GiB警戒；固定短批次在watcher预检前完成，无监听重复。闭合链和所有旧拒绝保持，非整个项目完成。

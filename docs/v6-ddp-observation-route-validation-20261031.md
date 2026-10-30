@@ -1,5 +1,17 @@
 # DDP 原样合批与单规约候选的一次正式配对验证
 
+已于20:01:10UTC完成，reason=batch_finished；主动发现唯一监听54144已queued后直接处理，标记handled，重复排队消息必须去重。终审SHA`e431bb807d9c2a3fb3fee3fa1d4f7e4e1a46c9688cd94a6d0731166cccdea900`，[公开审计](evidence/v6-ddp-observation-route-validation-20261031/public-terminal-audit.json) SHA`db17ee8766031a84ab81dafc8769a849b8ec9d392bd5c740e857c92586212283`。实际150GiB可用10,262,315,008B约9.56GiB，GPU空闲；1073冻结身份、原请求/controls/adapter/core/UUID和源及新branch current1fc保持。
+
+原ABBA正式接受，publication=exploration，不发布current。对当前已接受ccd90，B72.405976/70.759488ms，C54.542347/54.151791ms；两对gain17.863629/16.607697大于noise1.616880/0.661952。聚合71.582732→54.347069ms，24.07796199%，仅此正式配对期间的相对收益，不与旧提升相加。原140.04860205ms约束通过。10jobs/20ranks均passed/valid，40个rank clean样本、16全量检查每次248,879,620元素、24独立metric traces全部核验；75.973656ms等尾样本保留。C每端第二检查r0 max9.5367431640625e-7、r1 1.1920928955078125e-7均在原容差内，其他检查零误差；exact replica observe通过。两次质量仍为一次parent、一次graph_setup_capture，不是两次优化路径检查，没有保存所有原始输出张量或重新做source比较。
+
+新candidate原生证据真实来自本批正常planner选择的nsys-6db4c3619f。每rank1105kernels、1103Graph、2次cudaGraphLaunch_v10000；相关4→955、67→148 kernels，唯一AllReduce在Graph外。SQLite r0 SHA`4e597149fa9276597dc44efe6bdfc88872c18429ef4d0cfae8f8a01a19f400b4`、r1 `64d68a0412de97c3c5c5c0d539d2124950bf9c9c3f7fb2ee83ac032f4126be16`，normalized `2722b92619ecadf6960c78b4ee713db48378fad2cd60c5debf4d9f815414e266`。实际日志channels为SHM/direct/direct。24metric traces也分别确认B13→C1 AllReduce，逻辑总量497,759,232B不变。RING_LL是实际kernel entry；另一个tuning period报告全尺寸RING/SIMPLE两channel，包含setup/warmup，不能按次数或名称跨capture拼接。Nsys两rank NCCLsum32.698052/228.938552ms属于受扰动独立时间窗，不能当clean、wire或critical path。
+
+新profile每rank1105kernels/9calls/8groups，timeline约55.04ms、1AR/4sync，重算原trace和时钟分析一致；profile未更新registry/current。timeline在Graph下0梯度callback仅表示该观测未记录readiness，不是无梯度。run-only诊断每rank仅3处共300个正常False生成器返回、无exception事件，不执行observe/compare。calibration20个rank样本仍为父discovery的28MB/157MB两尺寸，不是全497MB规约或传输下界。C runtime峰1528818688>B1498647552，lifecycle2427159040>B1999242752且reserved更高，不是内存收益或新约束。
+
+真实collection-planner 8初始文件270745B、12 assistant/17工具/0 schema修复，provider估算0.20941772794非账单。完整工具输入输出/脚本访问和2161显示行核验，tail及4段纯JSON输出原样重构；plan一次write无edit，生产prompt/model/tools相同。仅读取原sandbox输入，未观察到模型/CPU tensor/GPU/collective探针或私有配置/后续答案读取，FS非hermetic。planner明确区分parent discovery13AR与candidate评估，但“direct/no functional replacements”说法错误：实际whole-step replacement；旧coverage不是本候选native。完整私有history留服务器。原启动role连字符reader错误保留；本地摘要reader把setup list当dict及公开metadata额外换行导致hash不符，均只修读者并核对精确字节，无任何实验重跑。
+
+已决定并声明[一次完整版本独立闭合](v6-ddp-observation-route-independent-20261031.md)：原样已接受exploration bbe28c对原始当前设备prepared7a49，现有promote_version(publish=False)/新B/C/C/B。复用本次精确508a native和既有source证据hash，不新采Nsys或生成候选。当前正式接受是合批计算和通信合并的联合结果，尚无独立闭合，更不能隔离通信收益、宣称减少字节或上线。所有代码guard/fallback/owner限制和旧拒绝保持。
+
 已于2026-10-30 19:54:59UTC（香港次日03:54:59）启动，controller203621，冻结`c65f6c2401fbb6da29d8a34b8b71e04fca0b4abf`，唯一隐藏监听54144。local OpenCode真实start/health/stop通过，server_url=null，无模型prompt预检；启动可用10,474,876,928B约9.75GiB。旧批次均已handled，未重启旧listener或实验。
 
 19:57:09UTC[启动核验](evidence/v6-ddp-observation-route-validation-20261031/startup-verification.json) SHA`b2b7ff4595a2065892048f9b5194ebc5cb7d96c6f1d8e480492c25ddf9900c86`：1073冻结身份及request/prepared/discovery/sharedcontrols/current/core保持。实际B/C/C/B四请求加正常profile共5jobs的entry/adapter/materialized source/bundle/UUID一致，精确508a revision/bundle未改。worker文件记录passed，仅属启动状态核验，不代替终局全数值、接受、native审计。GPU在profile后空闲，controller及正常规划角色仍活动，可用10,321,793,024B约9.61GiB。
