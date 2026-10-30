@@ -1,5 +1,9 @@
 # 通信方向优先级调整
 
+最新[02b933完整版本独立闭合](v6-ddp-fused-pipeline-independent-20261031.md)已终审5225b4bd：1691身份、4jobs8ranks/40样本16全检查24自有traces，原EMPTY baseline114.757729→48.365121ms，**57.8545851%独立联合收益**；两pair收益72.439344/60.345872大于噪声4.674488/1.495542，原约束/exact replicas通过，B122.928613/C50.093932尾部保留。accepted73ac265f仅exploration、current7a49/source10992不发布；实际13→8 AR、497,759,232B不变、显存增加。与formal相对508a的10.8304661%、旧53.91019995%不相加，不称纯通信份额。
+
+下一项声明[一次已接受流水版本正常发现](v6-ddp-pipeline-communication-evidence-20261031.md)：精确fork73ac265f/02b933，现有discover/原真实planner自主existing collectors，只补当前版本registry/证据，不新selector/candidate/参数/质量或接受。1769身份预检通过，GPU空闲、实际余9,480,597,504B约8.83GiB。依据当前9jobs82,251,776B和前完整发现139,771,904B实际du，新的768MiB空间预测+8GiB警戒通过，不是API/collector cap；无清理。旧40904 handled/进程退出/延迟事件去重；实际新启动另记。以下为历史。
+
 当前实际推进到[精确完整版本独立闭合](v6-ddp-fused-pipeline-independent-20261031.md)：香港06:40:32 controller237970/冻结33637dd3/唯一隐藏监听40904。06:41:37实核1691身份、原EMPTY baseline7a49对928db26602b933/空参数、三份B/C/C请求；第二C两个GPU worker运行，余约8.93GiB。前置正式10.8304661%/audit175995c0已独立核对，尚不把本次启动称独立接受；终态完整审计后再决定有界通信证据步骤。无新代码/参数/Agent/native/sourcecontrols/清理/并行GPU，旧49392handled，以下为历史。
 
 最新[原样正式配对验证](v6-ddp-fused-pipeline-validation-20261031.md)已完整终审175995c0：1542冻结身份保持、9jobs18ranks/40样本16全检查24通信traces/2新native，02b933相对当前508a由53.931714→48.090658ms，正式改善10.8304661%；两对收益6.047596/5.634516均高于噪声0.869176/0.951302。原约束和exact replicas通过，第二检查微小非零误差、全部尾部保留。空参数仍用代码自身fine8；新接受928db266为exploration，current10992不发布。新native1128kernels/1112Graph/17launch/8eagerAR和实际SHM/direct/direct；总497,759,232B不变、显存增加，同capture重叠不是wire/关键路径归因。
