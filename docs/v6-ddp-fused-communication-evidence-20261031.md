@@ -1,5 +1,11 @@
 # DDP 已独立接受联合版本的一次正常发现
 
+已于2026-10-30 20:19:44UTC（香港10月31日04:19:44）启动，controller210849、冻结`5a140af46d3efa7925323b8b8a70d3f9b4b5d53b`，唯一隐藏监听51188。local OpenCode真实start/health/stop通过、server_url=null，无模型prompt预检。20:22:06[实际启动核验](evidence/v6-ddp-fused-communication-evidence-20261031/startup-verification.json) SHA`be5b5d3a3323f64b0f42d36b1bbdd2304854dcfcaf4baef693b4bbd11866866e`：1310冻结、sourcecurrent7a49、精确508a文件/bundle/contract、request/prepared/core/adapter/controls/UUID保持。discover-0ee3a52759两rank通过，新隔离current10992e0d329f45c941eb2edcd31f60fc1e7f17c7a6bba8241bad93edde56a979只附着发现记录；不是新质量/接受。
+
+真实collection-planner generation-c195abefadc1/session ses_e7187b33effexqMmCIaCpX8ABr，6实际初始文件74372B与snapshot相同，prompt/model/tools等于原始initial planner；29 assistant/32 tools早期私有history留服务器，尚未完整审阅工具输出/访问/最终计划，不能宣称全面消费或无额外读取。GPU在discovery后空闲，controller/规划角色仍活动；df剩10,004,762,624B约9.32GiB。
+
+两个只读启动reader错误保留：第一次经stdin wrapper漏--root，在argparse退出、尚未读取实验；第二次错误预期无latest-feedback。现有fork_run对非current的accepted exploration会复制其原始complete-version result；已核对本批latest-feedback与source version-aefa021e172f/result.json字节相同。它不是planner初始输入（实际6文件、无previous-feedback、无feedback suffix、原prompt一致），但FS非hermetic，后续工具访问仍需终审。仅改reader，冻结controller/Agent/worker未修改或重启。旧54144/45316事件已处理，延迟排队必须去重。
+
 基于独立终审bd738743…，声明一次现有`ProjectSearch.discover`及其正常真实collection-planner/自主选择的既有collectors。目的为原样508a建立真实当前调用/registry/communication记录：完整独立版本仍继承旧ccd90 registry，之前formal post-profile并未更新它。不是新候选优化、接受、独立验证或生产发布，不自动接下一候选。
 
 从ddp-observation-route-independent-20261031/ddp-independent中accepted exploration `3cd9fc79f28ac3398d4bdfc5af76b089d7d64ce00a43532f02a8a571671529ca`显式fork，源current仍7a49不变。新ddp-evidence只附着discovery/plan/registry，code/bundle/contract必须与3cd9相同。精确code508ad3823d3a7b980df7076023b3567242f12a2544cb9bbeae0ada66c6f52f0a/14898B、单fixed-observation-route/emptyparams；正式sourcecurrent1fc/旧accepted4541/旧Graph09b7保留。
