@@ -1,5 +1,7 @@
 # DDP 流水候选的一次CPU事实辅助纠正
 
+后续原样02b933固定B/C已实际完成、终审155c368d：原完整质量/约束通过，B54.389143/C48.359030ms但显存增加；实际8 AR与通信计算重叠只属机制证据，单B/C不是接受。继续[一次原样正式ABBA](v6-ddp-fused-pipeline-validation-20261031.md)，无新代码/其他参数/纠正。见[固定实测完整审计](v6-ddp-fused-pipeline-fixed-20261031.md)。
+
 本批已于2026-10-30 22:08:19.995561UTC以 `batch_finished` 完成，完整终审SHA `6cd3bb847ae9f3048e12569680817c82e908ea5453cfe6b56ac186d823517ad5`；[公开摘要](evidence/v6-ddp-fused-pipeline-cpu-feedback-20261031/public-terminal-audit.json) SHA `fbbc903b7d092bd5761cd040f72f9ece58501199eea3026d0451f19f53ecf0a1`。37实际输入8,682,320B、1489冻结、原32非反馈文件、core/prompt/model/tools/current10992均保持。58 assistant/68工具/0 schema repair，provider估算3.19831927202不是账单。候选一次写入5次自主编辑、proposal一次写入无编辑，初始代码和全部修改逐字重建；3103编号read行/5明确截断前缀及11份其他输出核验。无原完整任务CUDA质量、clean、native或新接受。
 
 新代码 `02b93360c4d53add1ef14fc91fb32f757b09db43597888f880c1cd25793d614a` 25,781B，proposal `dabb839bd7b29b8b073ff0a134b3114f602b4797c7c37331b14b0ab4424b4a11` 13,832B。requires[]/replaces fixed-observation-route，候选自主声明chunk_plan fine8/fine9/coarse5，自身默认fine8。下一步仅空参数 `{}` 调用默认，不手选桶、不探索其他参数到通过。
