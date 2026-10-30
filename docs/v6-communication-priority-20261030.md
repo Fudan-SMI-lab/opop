@@ -1,5 +1,9 @@
 # 通信方向优先级调整
 
+最新终态（香港19:47完成，审计已落盘）：[已接受DDP执行的发现/通信证据](v6-ddp-accepted-communication-evidence-20261030.md)四任务八rank完成、548身份保持，审计51dfcb11。新registry1055 calls/390 groups，原代码/单bundle/contract不变；每rank仍13 AllReduce/497,759,232B，当前采集2 Graph launches。真实planner选择tuning/校准/timeline，12 assistant/14 tools/0修复；其“无Graph/无候选”和跨采集归因过强的说法不采纳，原输出保留。没有新增完整质量/clean/优化接受。
+
+下一步已明确为[一轮普通accepted-version DDP续行](v6-ddp-accepted-communication-trial-20261030.md)：共享刷新后的registry/当前诊断/原controls，原accepted feedback逐字不变，现有Agent自主选范围/实现，不提供审计答案或手选通信组。两卡空闲、余约9.28GiB；既往最大普通feedback批次实际640MB，本次估算1GiB增长并保留8GiB告警线、不清理。仅新接受才另做独立闭环；通信成功仍需实际机制及独立整步收益。Qwen关闭、FSDP拒绝保持，旧50252已处理。以下为历史，启动核验另行记录。
+
 迟到通知去重（香港19:46）：独立批次11:34:33UTC的完成事件在其完整审计及后续证据批次启动后才送达。重新核对terminal hash、审计9d85463c及source/independent指针一致，按已处理事件去重；没有重跑模型、样本或旧监听。当前controller142528/唯一隐藏监听50252仍运行，GPU暂闲、实际盘余9,988,984,832B。本轮同时修复上述新增中文段落经PowerShell管道编码变成问号的问题；原实验/审计JSON/冻结输入不变，错误文档版本保留在git历史。
 
 当前实际运行（香港19:44）：[DDP已接受版本正式发现与通信诊断规划](v6-ddp-accepted-communication-evidence-20261030.md)已启动，冻结21bcce86/controller142528/唯一隐藏监听50252。548冻结身份和新discovery双rank核验，隔离branch1fc24545仍原代码/单bundle/contract，真实collection-planner6文件262,792B、原prompt/model/tools。没有selector/candidate/trial；source4541/独立7a49不变。独立36.1578233%完整step接受已收尾，但13 eager AllReduce未减少，通信成功缺口保持。当前planner运行/两卡暂闲/余约9.30GiB，终态接回完整证据审计后再决定有界下一步。Qwen关闭/FSDP拒绝不重测。以下为历史。

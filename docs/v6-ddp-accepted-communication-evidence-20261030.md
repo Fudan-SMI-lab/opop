@@ -1,5 +1,17 @@
 # 已接受 DDP 版本的正式发现与通信诊断规划
 
+终态已审计：2026-10-30 11:47:13 UTC，事件为 `batch_finished`，不是低磁盘告警。审计 SHA `51dfcb11aad2539abc8b579422791b0ce6d1c52b97aac603a4bfdae58d583f48`，小型公开记录 SHA `d172542ef245535ef3488e682b8befd99cafe10262515d97a13b8775d53d8079`，见[审计记录](evidence/v6-ddp-accepted-communication-evidence-20261030/terminal-audit.json)。548 个冻结文件、源码/adapter/entry/core/设备/controls 均核验；原 source current4541、独立 current7a49 保持。新分支1fc24545仅附加实际发现的 plan/registry，原代码ccd90/单bundle/空参数/contract未变。四任务八rank均status passed/valid true；没有新候选、搜索接受、完整模型质量检查或clean样本。校准的20个rank样本仅属合成collective正确性与耗时。
+
+两个rank各4106 kernels、1052 calls/387 groups，合并registry1055 calls/390 groups；实际退役1419调用/619组、新增948调用、失效2项旧证据。lineage是存活调用身份或已安装bundle包含关系，不能证明多bundle共存或独立组归因。原stale empty discovery不再用于本分支。
+
+当前discovery与独立timeline的原始trace均逐条复算。每rank每次均13 AllReduce，12×28,351,488B+157,541,376B=497,759,232B逻辑输入，仍无通信量减少。discovery每rank2次cudaGraphLaunch；r0/r1 NCCL kernel sum192.993544/33.218863ms属于该扰动采集。另一次timeline墙钟83.081355/83.052759ms，sum35.766444/39.508218ms，各4106 kernels、2 Graph launches、148个梯度callback和13个bucket；这些callback不能代表四个microbatch的全部反向Python事件。CPU时钟界限下最后一个collective提交差约2.596–2.768ms，不能解释为GPU到达差、wire时间或原discovery异常的唯一原因。timeline序号52–64不同于discovery51–63，禁止跨采集按序号拼接。所有sync、clock、interval、gradient事件和cross-rank提交界限已从自己的raw trace重算。
+
+真实planner自主选择nccl_tuning、collective_calibration、execution_timeline，没有新Nsys。tuning日志的大载荷RING/SIMPLE、2 channels包含setup/warmup/peer检查；另外trace的RING_LL仅为kernel入口名称，不能冒充该次tuning决策或逐事件join。实际worker channel记录SHM/direct/direct，不是从NODE/P2P能力推断。校准两种payload的全部20样本、median与逻辑速率核验；不是497MB单次模型通信、带宽下界或可减去的关键路径成本。
+
+planner6输入262,792B全部等于初始snapshot，与初始planner的prompt/model/tools相同；12 assistant/14 tools、0 schema repairs，provider估计0.21640881636（不是账单）。全部工具参数/输出、目录读取、CPU命令及session parts留服务器。它只读初始输入和部分observations，bash仅计数/grep及JSON schema验证；未观察到外部答案读取或自行模型/GPU实验，FS仍非封闭。生成collection.json仅一次，未手改。其“没有CUDA Graph／没有候选”说法与实际安装accepted bundle及当前Graph API矛盾；“另一次timeline能确切归因先前rank不对称”也过强。初始六输入未显式携带当前bundle/code元数据是信息边界，不是已证唯一原因，不据此改生产prompt或再堆reviewer。
+
+下一步明确为[基于当前registry的一轮普通DDP续行](v6-ddp-accepted-communication-trial-20261030.md)。采用现有普通selector/candidate接口的installed_bundles/source、当前collector材料和原框架accepted feedback，不注入上述人工审计结论，不手选group/bucket/实现。实际两卡空闲、150GiB额度余9,964,486,656B约9.28GiB；既往普通trial/feedback实际占用262,836,224/640,086,016B，故本次复用discovery/controls按1GiB增量预算并维持8GiB告警线，不清理、不设新API/collector上限。只有真实新接受才安排独立整版闭环；通信成功仍需机制证据和独立整步收益。此前独立36.1578233%计算调度收益保持，Qwen关闭、FSDP拒绝不重跑。下列为启动历史。
+
 实际启动2026-10-30 11:43:03 UTC（香港19:43），冻结`21bcce8615d27c89afee7466dce33be2856a0cfb`，controller142528，唯一隐藏监听50252；旧53536已退出/handled。实际本地OpenCode start/health/stop通过，无模型测试prompt。11:44:10启动核验SHA `ba0fd682282213b90807f0472f93a7051a703119a7e6fea64f93c29d876e1217`：548冻结身份通过，discover-27942843ca双rank完成，隔离branch新registry版本`1fc24545217087adefa1248704619fcdc882a19057336b231d8e02918bf4d0d8`保留原源码/bundle/contract，source current4541不变。
 
 真实collection-planner generation-fa06929739bd/session ses_e7360b60effeKmiOf83y9r5NRJ已启动，6初始文件262,792B逐字等于snapshot，9 assistant/11工具的私有history已留服务器。与旧普通初始planner generation-fb697d303320相比prompt/model/tools一致；六文件只含request/actual observations/coverage/available collectors/schema/worker environment，无反馈或候选输入。此为初始身份/活动核验，不是全后续读取、collector成功、GPU质量或新接受证明；终态还需完整工具/输出/所有collector审计。发现worker退出后两卡空闲，planner仍在运行，盘余9,988,993,024B约9.30GiB。
