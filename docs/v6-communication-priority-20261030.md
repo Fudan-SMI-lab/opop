@@ -1,5 +1,7 @@
 # 通信方向优先级调整
 
+当前已启动通信证据作者（香港01:44，controller181053/隐藏监听48992），问题限于当前accepted DDP同次调用的就绪/提交/完成证据与不可辨识部分，具体观测由作者选择。无GPU/优化代码/生产改变，结果回来完整审计并继续有界工作。详见[声明与启动限制](v6-ddp-communication-observation-author-20261031.md)。旧selector输出保留，77ac/Qwen/FSDP关闭状态不改。
+
 最新决策：新selector完成后选择计算批处理，13AR不变；其“通信已到硬下界”断言未获原始证据支持，不能据此放弃通信方向。保留该输出，不重做selector，也不直接启动计算候选。下一项为[一次accepted DDP通信观测作者](v6-ddp-communication-observation-author-20261031.md)，让作者从原code/trace识别同调用输入就绪、提交、完成与等待证据及限制；不人工选group/bucket/collector/算法，不自动GPU或生产采纳。77ac修复、Qwen与最新FSDP拒绝链继续关闭。以下为启动及历史。
 
 当前实际运行：香港10月31日01:21已启动[一次项目级重新决策](v6-ddp-communication-redecision-20261031.md)，controller177939/唯一隐藏监听49252。01:23核验实际41输入27,224,402B、924冻结身份、普通prompt/model/tools/core/current均保持；无GPU阶段，CPU事实辅助不当GPU质量。结果自动接回完整审查和下一有界决策；不继续77ac修复、不重启Qwen/FSDP拒绝链。以下等待外部任务/无后台的文字为历史，不是当前运行状态。

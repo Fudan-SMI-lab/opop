@@ -1,5 +1,9 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前已运行（香港01:44启动）：[accepted DDP通信观测作者](v6-ddp-communication-observation-author-20261031.md)，冻结2865d183/controller181053/唯一隐藏监听48992。只用原代码/原始观测自主设计取证，不生成计算优化、不重开77ac。生产core与质量/接受规则保持，无GPU阶段。启动reader漏算已有prompt包装错误已保留；冻结控制器同类末尾postcheck不手改，角色输出与controller错误将分开审计。
+
+01:48实际快照核验：generationbad1395efb6c/11输入1,404,482B、950身份/模型工具/core/current保持；实际原框架prompt包装核对通过。15 assistant/24工具已读取原code和部分观测，完整输出审查待终态；无GPU、余约8.19GiB。启动审计ab76b9d6、唯一隐藏监听继续等待，完成自动接回分析与下一有界工作。
+
 最新终态（香港01:35）：通信重新决策已完成，selection5878032d转向microbatch计算批处理、13AllReduce不变。完整34工具仅文件/JSON分析，无GPU/collective探针；新增CPU证据文件未读。它实际读到旧初始化异常及校准非下界限制，仍作错误fallback归因与通信硬下界断言。原输出保留，不生成其计算候选、不重复selector。下一有界步骤是[当前accepted DDP通信观测作者](v6-ddp-communication-observation-author-20261031.md)，从精确code与原始观测自主设计同调用就绪/排队/完成证据获取；无手写collector/优化算法，审查后才另行观测。Qwen/FSDP/77ac关闭状态保持，研究不停止等待外部任务。
 
 当前实际运行（香港10月31日01:23核验）：[通信项目重新决策](v6-ddp-communication-redecision-20261031.md)于01:21启动，冻结5ec3a42d/controller177939/唯一隐藏监听49252。实际generation4ac2bc7c0189，41输入27,224,402B、924冻结身份及普通prompt/model/tools/core/current保持；显式CPU事实辅助route0a8d6665。早期13工具已读原拒绝与当前accepted代码，尚未打开新增CPU证据文件，不能预称消费/推理正确。两卡无GPUworker、余约8.20GiB。完成自动接回审查后明确下一有界动作；77ac修复关闭，不自动执行旧失败代码或延长Qwen/FSDP链。下面“等待任务/没有后台”是已被用户新指令取代的历史状态。

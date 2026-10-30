@@ -1,0 +1,9 @@
+{
+  "at": "2026-10-30T17:48:02.395737+00:00",
+  "phase": "startup_reader_failure_and_known_terminal_postcheck_issue",
+  "error": "AssertionError expecting actual prompt == bare author INSTRUCTIONS; existing ProjectAgents.generate prepends287B generic instructions and _complete appends288B environment note. Actual3891B = declared3316B +575B existing wrapper.",
+  "actual_prompt_sha256": "97ce70b3a5ed066ac77ba8b1f8f1dde5485a56c6df3968236ea54d3ff00fc1d0",
+  "declared_body_sha256": "991b6f81efc228681668f671ea9d5ad696f5edd36f903d8187e74feab55329e7",
+  "impact": "Role receives intended existing wrapper and exact declared body; no role/prompt/core/code mutation or restart. Frozen controller contains the same incorrect terminal postcheck and is left unchanged; may record completed_with_errors after real role finishes. Audit event receipt/snapshots/output separately, do not equate postcheck failure to role/model/quality failure.",
+  "correction": "Read-only startup reader now constructs exact original ProjectAgents wrapper from source and actual worker-environment. No model or GPU rerun."
+}
