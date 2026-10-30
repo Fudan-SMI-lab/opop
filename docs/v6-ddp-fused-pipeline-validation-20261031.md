@@ -1,5 +1,7 @@
 # DDP 原样流水候选的一次正式配对验证
 
+香港06:27:48实核：迟到的固定B/C完成事件已按原22:21:02终态和终审155c368d去重，没有重跑或新增监听。正式controller233246/唯一监听49392仍存活，未终态；实际collection-planner generation-fd0d55290f92已启动，snapshot8初始文件82,263B（本次只核角色/初始规模，完整输入/工具待终审）。当时GPU无worker，处正常模型规划阶段，150GiB盘剩9,759,846,400B约9.09GiB；无清理、并行GPU或参数重试。
+
 已于2026-10-30 22:25:22.159723UTC（香港06:25:22）实际启动controller `233246`、冻结 `5e19841d7009dca8c1795321607776f69baf05cf`、唯一隐藏plain watcher `49392`。真实LocalOpenCode start/health/stop通过，server_url=null，无模型预检。22:26:32[启动身份核验](evidence/v6-ddp-fused-pipeline-validation-20261031/startup-verification.json) SHA `de140538db9bbaa3445c1b0329a34c398da558b4a034d9bab43c9b05ba610a8d`：1542冻结/source与branchcurrent10992/原request/prepared/discovery/精确928db266及单02b933 bundle/空参数/core均保持，实际三份B/C/C请求的source/entry/adapter/controls/UUID核实；第二C两rank233958/233959在GPU运行，各6672MiB。实际150GiB盘余9,795,452,928B约9.12GiB，无清理或并行GPU。此时尚无planner generation；终态需审完整四请求/质量/噪声/正常profile/planner及collectors，不把worker状态当接受。旧46572固定结果已直接终审/handled/退出，晚到事件去重不重跑。
 
 前置[固定B/C完整审计](v6-ddp-fused-pipeline-fixed-20261031.md)155c368d已完成，当前任务原完整质量、约束通过，实际通信调度与整步表现具备进一步正式验证依据。下一有界步骤只调用一次现有 `ProjectSearch.validate_bundle(publish=False)`：fresh B/C/C/B、原噪声/质量/约束规则，不将固定样本池化，不手改候选或试其他参数。此处为启动前声明，实际启动另记。
