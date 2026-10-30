@@ -1,5 +1,7 @@
 # 通信方向优先级调整
 
+最新[02b933 当前版本发现](v6-ddp-pipeline-communication-evidence-20261031.md)已完成终审38f5f8ca：1769身份保持，5jobs/10ranks有效，新registry13calls/12groups；新native1128kernels/1112Graph/17launch/8eagerAR，总497,759,232B不变，实际SHM/direct/direct。新三种载荷30个合成样本不构成模型质量或wire下界；本批无新接受。21工具全审，初始6文件完整展示，额外原源码/README/自身配置读取已记录，配置本轮只核哈希未输出。继续[一次普通项目selector](v6-ddp-pipeline-communication-selection-20261031.md)，只用当前普通证据和原独立反馈，不注入审计纠正/手选算法、不自动GPU；1926冻结/32输入预检通过，余约8.78GiB无需清理。旧53520已handled且退出，实际新启动另记，以下为历史。
+
 已实际继续[精确02b933已接受版本正常发现](v6-ddp-pipeline-communication-evidence-20261031.md)：香港06:49:24 controller240296/冻结c5d4b1f0/唯一隐藏监听53520；06:50:45核验1769身份与discover710b两rank、新branch0bc64a5a只更新发现/同代码bundle。真实planner1439b881收到6输入93,892B、原prompt/model/tools不变，完整工具/采集待终审。独立57.8545851%已闭合5225b4bd，此阶段不是新优化接受或自动候选链；余约8.80GiB无清理/并行GPU。旧40904已handled，以下为历史。
 
 最新[02b933完整版本独立闭合](v6-ddp-fused-pipeline-independent-20261031.md)已终审5225b4bd：1691身份、4jobs8ranks/40样本16全检查24自有traces，原EMPTY baseline114.757729→48.365121ms，**57.8545851%独立联合收益**；两pair收益72.439344/60.345872大于噪声4.674488/1.495542，原约束/exact replicas通过，B122.928613/C50.093932尾部保留。accepted73ac265f仅exploration、current7a49/source10992不发布；实际13→8 AR、497,759,232B不变、显存增加。与formal相对508a的10.8304661%、旧53.91019995%不相加，不称纯通信份额。
