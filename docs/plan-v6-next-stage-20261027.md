@@ -1,5 +1,12 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态：accepted-version DDP 普通一轮已完成完整审计，trial-02ed5436b4 **拒绝**。父版本两组71.284842/72.901868ms，候选108.537192/111.151905ms；收益-37.252350/-38.250037ms，噪声门槛4.525422/0.450708ms。50个clean rank样本、20次零误差完整检查、30条独立通信trace、647冻结身份均核验。候选初始化 `params.index(s)` 触发Tensor布尔值不明确，实际退回原始eager，未执行拟议并发Graph；每rank仍13 AllReduce/497,759,232B，不能称通信优化成功。完整审计SHA `0ce0048441d64d0dd4fd20dcf52463b83561c24a91f4cefa07d0518a7f542131`。原accepted/current与历史拒绝保持，无独立验收或重试。
+
+下一步明确为[一次隔离的普通selector决策](v6-ddp-communication-selection-20261030.md)：只用本轮原始拒绝反馈、历史失败代码/原始sidecar和不变的当前accepted discovery，保持原prompt/model/tools，由现有selector自主选择范围和假设。本步不生成candidate、不启动GPU或collector、不注入审计因果答案；输出后审查证据依据再决定是否值得实施。当前两卡空闲、余约8.54GiB，不足完整普通轮次1GiB预算；仅为小型角色材料预留384MiB，保留8GiB警戒线，无清理。旧13432已handled；新启动与唯一隐藏监听另行记录。Qwen关闭/FSDP拒绝不重跑，研究方向仍为通信，不把本轮收尾当作整个研究结束。
+
+以下运行记录为历史。
+
+
 当前实际运行（香港20:05核验）：[一轮accepted-version DDP普通续行](v6-ddp-accepted-communication-trial-20261030.md)已20:03启动，冻结2a0bb13a/controller145514/唯一隐藏监听13432。647身份、真实selector41文件50,078,774B及原accepted feedback route核验；原prompt/model/tools、当前installed bundle/source与刷新registry交付。12 assistant/16工具中已实际读取旧质量/配对/约束及已安装代码，当前collector仍仅早期索引曝光，终态完整消费审计待做。两卡空闲/无GPU jobs、余约9.14GiB；无新接受或生产变更。首次launcher旧文件名预检中止于实验启动前，错误保留、只修正部署路径。旧50252 handled，Qwen关闭/FSDP拒绝不重跑。以下为前批终态与历史。
 
 最新终态（香港19:47完成，审计已落盘）：[已接受DDP执行的发现/通信证据](v6-ddp-accepted-communication-evidence-20261030.md)四任务八rank完成、548身份保持，审计51dfcb11。新registry1055 calls/390 groups，原代码/单bundle/contract不变；每rank仍13 AllReduce/497,759,232B，当前采集2 Graph launches。真实planner选择tuning/校准/timeline，12 assistant/14 tools/0修复；其“无Graph/无候选”和跨采集归因过强的说法不采纳，原输出保留。没有新增完整质量/clean/优化接受。

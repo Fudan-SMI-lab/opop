@@ -1,5 +1,8 @@
 # 已接受 DDP 版本的正式发现与通信诊断规划
 
+后续[普通accepted-version一轮](v6-ddp-accepted-communication-trial-20261030.md)已完整审计拒绝：初始化Tensor索引异常使新候选退回原始eager；旧accepted Graph/source/本页discovery不变，通信量仍13 AllReduce/rank。原证据不因新失败而覆盖。下一步只做[一次普通selector决策](v6-ddp-communication-selection-20261030.md)，无新GPU或自动候选链。
+
+
 终态已审计：2026-10-30 11:47:13 UTC，事件为 `batch_finished`，不是低磁盘告警。审计 SHA `51dfcb11aad2539abc8b579422791b0ce6d1c52b97aac603a4bfdae58d583f48`，小型公开记录 SHA `d172542ef245535ef3488e682b8befd99cafe10262515d97a13b8775d53d8079`，见[审计记录](evidence/v6-ddp-accepted-communication-evidence-20261030/terminal-audit.json)。548 个冻结文件、源码/adapter/entry/core/设备/controls 均核验；原 source current4541、独立 current7a49 保持。新分支1fc24545仅附加实际发现的 plan/registry，原代码ccd90/单bundle/空参数/contract未变。四任务八rank均status passed/valid true；没有新候选、搜索接受、完整模型质量检查或clean样本。校准的20个rank样本仅属合成collective正确性与耗时。
 
 两个rank各4106 kernels、1052 calls/387 groups，合并registry1055 calls/390 groups；实际退役1419调用/619组、新增948调用、失效2项旧证据。lineage是存活调用身份或已安装bundle包含关系，不能证明多bundle共存或独立组归因。原stale empty discovery不再用于本分支。
