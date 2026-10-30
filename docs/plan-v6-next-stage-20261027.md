@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+当前实际运行（香港22:17核验）：[一次CPU接口事实辅助的通信candidate修复](v6-ddp-communication-contract-repair-20261030.md)已22:14启动，冻结f3d245c2/controller168132/唯一隐藏监听28768。generation9e73cbd5bad8，44输入32,032,275B、原40输入不变、914冻结身份核验；仅增加860B实验修复请求及精确前输出/CPU事实索引。真实角色已读CPU反例/前代码/proposal/fixture，仍非修复成功证明。无GPU或新接受、余约8.30GiB；旧40444handled/退出。新终态接回完整审查，不自动GPU或无界重试。独立输出处理失误另记并已告知用户，私有凭据不入公开产物。
+
 最新终态：[DDP通信candidate](v6-ddp-communication-candidate-20261030.md)已完整审计（289c7cc7），40输入/899冻结身份保持，90 assistant/101工具/1正常schema修复。代码890659f7提出多group通信hook，但最终replaces旧Graph而错误假定reference仍是旧优化版本。一次原字节CPU取证另确认半桶返回、重复SUM、异步错误被吞和哨兵不降级；均为受控接口反例，不是GPU数值测量。因此不启动该候选GPU验证，原代码/失败/accepted指针保持。
 
 下一有界步骤为[一次通信接口修复生成](v6-ddp-communication-contract-repair-20261030.md)：仅原输入加精确代码/proposal和已声明CPU实测/fixture索引，由现有candidate自主修复，不提供实现或手选通信方案。明确CPU事实辅助，原生产prompt文件/core/model/tools不变，仅实验修复段落；不重做selector或变成prompt研究。无GPU/模型/真实collective/参数/验收阶段，结果审查后才决定后续。预估256MiB角色材料（前批实际约86MB增长），保留8GiB警戒、不清理；旧40444handled，实际启动及唯一隐藏监听另记。通信优先、Qwen关闭、FSDP拒绝不重试。

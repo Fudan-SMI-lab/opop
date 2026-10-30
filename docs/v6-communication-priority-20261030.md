@@ -1,5 +1,7 @@
 # 通信方向优先级调整
 
+当前（香港22:17）：[有界接口修复](v6-ddp-communication-contract-repair-20261030.md)实际运行，controller168132/隐藏监听28768；原40输入逐字保留、914身份/44实际文件核验。角色已读CPU反例及原代码，不预言修复/质量。仅代码生成、无GPU/参数/验收，通信优先不变；原890659候选因接口反例不执行，accepted/current保持。
+
 最新推进：[DDP通信候选](v6-ddp-communication-candidate-20261030.md)已审计，899身份保持；多group hook确为通信实现方向，但schema修复后错误假定被替换Graph仍通过reference执行，一次CPU取证另证实异常分支接口缺陷。因此不进入GPU，不称通信成功，也不改已接受版本。下一步仅[一次具体接口修复生成](v6-ddp-communication-contract-repair-20261030.md)，原输入加精确生成输出和明确CPU事实辅助，由候选角色自主处理；无手选算法、GPU/参数/验收或无限续链。Qwen关闭/FSDP拒绝保持，原质量与独立整步收益要求不变。实际启动/隐藏监听另记。
 
 当前已实际启动一次通信candidate生成（香港21:16，controller158256/隐藏监听40444），实际40输入/899身份核验，原生产核心及质量/接受规则不变。只沿用真实selector选择和原失败反馈，代码出来再审查，不凭“通信方向”标签或预测收益直接GPU/接受。详见[启动与边界](v6-ddp-communication-candidate-20261030.md)；Qwen关闭、FSDP拒绝保持。
