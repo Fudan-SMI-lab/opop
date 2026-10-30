@@ -1,5 +1,7 @@
 # 通信方向优先级调整
 
+2026-10-30香港18:12接续：用户明确期待结果分析后继续推进。前一轮审计已完成，但结束后没有新controller/监听，空闲约7小时，现修正“有界轮次收尾即整个研究停止”的处理。准备[一轮DDP原始反馈续行](v6-ddp-communication-feedback-20261030.md)：仅未修改framework failure与历史candidate/诊断，复用当前空baseline discovery/controls，由现有Agent自主决策，无开发者状态因果表/修复答案、手选bucket或生产变更。新步骤逐批声明并保留失败，不是旧candidate固定重测或无限到通过；Qwen链关闭、FSDP拒绝不重跑。实际启动、隐藏监听和输入核验随后记录。
+
 最新终态（2026-10-30香港11:11完成，11:27审计）：[当前DDP一轮](v6-ddp-communication-trial-20261030.md)拒绝`no_valid_parameter_candidate`。18 rank worker退出正常，但screen第二连续loss两rank失败，0 clean/0配对/0新接受，不安排独立重试。捕获诊断有AccumulateGrad流引用异常；回退恢复初始参数，第二实际loss精确等于已有第一步control，支持连续状态被重置的代码/顺序解释，但无完整参数转移trace。候选timeline仍13 AllReduce/rank，拟议one-flat-buffer未成为通信成功证据。115身份、完整角色记录、4timeline/2baseline Nsys/校准样本已审计，SHA `70b28f9d3d09ed8078461a325a40e0ce021a5c00e3b13d12e4bb5fff467746bf`。本次FSDP/DDP有界轮次均收尾；Qwen链关闭，拒绝不重跑。后续通信工作仍需完整连续更新/回退状态、原质量、实际native机制和独立整步收益，不能靠Graph、NCCL sum或重试取得接受。当前GPU空闲、约10.24GiB余量，无新后台试验或生产改动。以下运行描述为历史。
 
 当前实际运行（2026-10-30香港10:12）：[一轮普通DDP通信试验](v6-ddp-communication-trial-20261030.md)冻结65dfbef4/controller100672，空baseline新发现已通过，真实collection-planner开始，115冻结身份/6初始文件262,446B已核验。唯一隐藏监听44088，约10.41GiB余量。没有新候选质量或接受结论；FSDP拒绝封存、Qwen链关闭，不并行GPU、不手选组/实现或更改生产。
