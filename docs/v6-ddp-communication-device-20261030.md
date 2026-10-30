@@ -1,5 +1,7 @@
 # 当前设备 DDP 通信任务准备
 
+后续[一轮普通通信试验](v6-ddp-communication-trial-20261030.md)已于2026-10-30 03:11:12UTC完成并审计拒绝：首连续检查全量通过，第二loss失败，未达clean计时或配对，不做独立重测。准备阶段的10样本、源比较及exact跨rank负例仍为原证据，不被新失败覆盖；本prepared/current空7a49及共享controls保持。试验审计SHA `70b28f9d3d09ed8078461a325a40e0ce021a5c00e3b13d12e4bb5fff467746bf`。
+
 已实际完成并审计：2026-10-30 01:56:59–01:58:19 UTC，冻结`db863f634e8c79043d9a605d6cd4487a8cc9d55d`/controller98876。两rank新controls、单GPU原source串行全局batch、双rank exact关系负例依次运行；36冻结身份、源码/adapter/entry/core/UUID/请求/旧指针核验通过，当前空baseline7a49、旧Graph current09b7均保持。短批在监听预检前已终态，未建立listener或排队消息。
 
 审计 SHA `b6f94dbb2651438ccd66253559fa516ac6a79ad38ccc1ca1e92c098d0f8b0553`，[小摘要](evidence/v6-ddp-communication-device-20261030/public-terminal-audit.json) SHA `82ba578709fa9f12d881828eb34b6331ffece30ad616ba14a68b461d85816eff`。10个clean rank样本、4 reset完整零误差检查（每次248,879,620元素）、2 identity及覆盖/负例通过。aligned-rank-max样本128.751741/140.158400/131.167867/137.112747/133.379621ms，中位数133.379621/MAD3.733126ms，原step约束上限140.04860205ms；单个140.158400ms样本保留，按原中位数判定。

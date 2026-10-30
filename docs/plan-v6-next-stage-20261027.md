@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+最新终态（2026-10-30香港11:11完成，11:27审计）：[当前DDP一轮](v6-ddp-communication-trial-20261030.md)拒绝`no_valid_parameter_candidate`。两个rank第一连续全量质量通过，第二loss失败，0 clean/0配对/0新接受；不安排独立重试。候选捕获异常后回退恢复初始参数，第二实际loss精确等于第一步control，代码/顺序支持连续状态丢失，但不冒充完整参数转移trace或唯一原因。候选timeline仍13 AllReduce/rank，拟议平坦单AllReduce未获正式质量/收益证明。115冻结身份、四角色记录、9jobs/18ranks、4timeline/2baseline Nsys及校准样本完整审计，SHA `70b28f9d3d09ed8078461a325a40e0ce021a5c00e3b13d12e4bb5fff467746bf`。FSDP/DDP本次有界轮次收尾、Qwen链关闭；通信优先不变，下一阶段以连续状态语义及真实机制/整步收益为证据缺口，不自动追加修复链、参数或生产变更。服务器两GPU空闲、约10.24GiB余量，监听已处理，无新后台实验。以下旧运行记录仅保留历史。
+
 当前实际运行（2026-10-30香港10:12）：[一轮普通DDP通信试验](v6-ddp-communication-trial-20261030.md)冻结65dfbef4/controller100672，空baseline新发现已通过，真实collection-planner开始，115冻结身份/6初始文件262,446B已核验。唯一隐藏监听44088，约10.41GiB余量。没有新候选质量或接受结论；FSDP拒绝封存、Qwen链关闭，不并行GPU、不手选组/实现或更改生产。
 
 当前推进：FSDP一轮已审计拒绝，不做独立重测；[DDP当前设备准备](v6-ddp-communication-device-20261030.md)于01:58:19UTC完成并通过完整源/质量/跨rank负例审计。新空基线133.379621ms，原1.05上限140.04860205ms，10样本/4reset/2identity/6条通信trace，每rank13 AllReduce RING_LL。源梯度/参数有微小容差内差异，replica exact。准备在监听创建前结束，未建listener或排队。下一步仅[一轮普通DDP通信试验](v6-ddp-communication-trial-20261030.md)，先补足2GiB预算；Agent自主选组/实现，Qwen链保持关闭。
