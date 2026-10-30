@@ -1,5 +1,13 @@
 # DDP 原始失败反馈的一轮普通续行
 
+已于2026-10-30 10:23:07 UTC（香港18:23）实际启动，冻结`6c6809926168a000c166e106770a7f05686553d1`，controller125768。唯一隐藏完成/磁盘监听12400于10:24:49启动，旧44088保持handled。实际本地OpenCode start/health/stop通过，没有模型测试prompt。启动可用10,983,202,816B，10:25:34审计时10,932,756,480B约10.18GiB、GPU空闲；尚无GPU job，处于真实selector阶段。
+
+[启动核验](evidence/v6-ddp-communication-feedback-20261030/startup-verification.json) SHA `a8e95bedbdf96c31847f107db2c36824dc1935882adc7b5857e7675a1e7e0b15`：generation46c388e29191/session ses_e73aa1d4effeb9UPgg21bO3JD3，32初始文件20,980,742B逐字相等，312冻结hash与source/current/request/prepared/discovery/core通过。真实feedback518,850B/SHA f7489f9ef80206bc4acc1f8385a6311a64773ee43cf96c579c76038c000c5a7e等于实际registry route，supplemental=null，历史cf5e代码和两个打包after artifact一致。
+
+对比上轮无反馈selector，原25输入不变、新增7个反馈/历史文件；模型和工具设置相同，但**prompt不相同**：现有`ProjectAgents.generate`在有feedback时原本追加“Read inputs/previous-feedback.txt and repair the concrete failure.”，不是本轮修改生产prompt。最初只读审计错误断言prompt相等，保留[startup-audit-attempt-1](evidence/v6-ddp-communication-feedback-20261030/startup-audit-attempt-1.json)，修正reader后核验，无模型/实验重启或输入改动。
+
+早期20 assistant/22工具已留私有history，SHA `5671523fecfbfbd9e4f5993eed8b16912dcdf75995441d50a4296bdebdcf2fa4`。工具10–14真实读取反馈片段/参数搜索/worker结果，17读取旧candidate源码；截断输出不证明所有失败字段或样本均已读、更不证明推理正确。工具3缺失source目录的stderr被抑制后后续命令成功，compound exit0不能逐命令视为通过。[早期读取记录](evidence/v6-ddp-communication-feedback-20261030/startup-tool-review.json)只核对这些输出证据及22工具命令/metadata，全部输出、后续访问、CPU/GPU probes与污染审查留终态完整审计。真实活动/输入交付不等于新候选质量或接受。
+
 用户于2026-10-30香港18:12追问结果分析与自动推进。上轮DDP已完整审计，但主Agent结束后没有启动新controller/监听，服务器确实空闲约7小时；不是实验仍在运行或结果尚未到达。此次继续通信研究，声明一个新的有界步骤，不重启旧轮次、不重复固定旧候选到通过。
 
 新工作根`/root/autodl-tmp/dev/v6-work/ddp-communication-feedback-20261030`。现有CLI `resume --rounds 1`、原scope和默认参数探索/API observe-only；普通selector/candidate依据原始framework failure自行决定范围/实现。源为已审计的`ddp-communication-trial-20261030/ddp-search`，空current `e925da5fa07cb2c7ac12e0c19e1c297b62ee28feaf39fdf4494a00cfe4f31d29`，prepared `7a49c637…`。复用已完成当前设备discovery、共享只读controls/contract，初始不再GPU rediscovery、不重跑源/controls、不复制约4GB参考。源current/历史Graph/current/FSDP拒绝/Qwen关闭保持。
