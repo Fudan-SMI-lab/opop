@@ -1,5 +1,13 @@
 # DDP 通信方向的新一次项目级决策
 
+本批已于17:35:37UTC（香港01:35）完成，reason=`batch_finished`；controller退出、GPU无worker、余约8.20GiB，旧监听49252不重启。28 assistant/34 tools/0schema修复/provider估计0.91937204936非账单。selection `5878032d`仅whole-step组/1055调用，选择合并前三个microbatch的计算路线、保留13AR。原输出不改，不记新候选/通信质量/接受。
+
+终态审计SHA`94ee7a0e5d43529de7408d00149e17708c84996e5fd1aa3e6361dc63483d02f5`，[公开小型记录](evidence/v6-ddp-communication-redecision-20261031/public-terminal-audit.json)SHA`c61335b2bb38c705ae8c282815a69a99b28b567d367b9af69ef1309196a76208`。41初始文件/27,224,402B、924冻结身份、普通prompt/model/tools/core及current再次核验。2108 read行/1截断前缀核对；全部纯JSON分析输出从原输入独立重建一致，唯一selection写入从literal AST重建精确，没编辑。两次只读审计reader分别误拒绝`with open`与`type(...).__name__`，错误保留，仅修正受限重建reader，没有角色/模型/CPUfixture/GPU重跑。原timeline每rank13AR/497,759,232B与独立校准样本重算，仍不当wire/critical path或新验收。
+
+完整访问审查显示：角色读了current ccd90、原始任务、当前timeline/calibration/tuning及旧失败sidecar；**没有打开新增decision-evidence代码/proposal/CPU结果/索引或fixture**，仅工具9深度截断字段摘要。工具30已看到`params.index(s)`异常，却仍把旧eager fallback误称为三Graph replay+merge并分配66ms成本；工具21明确暴露“非lower bound”限制，却在选择中断言SHM带宽饱和、通信时间/体积硬下界。时序相邻/CPU回调/能力字段不证明完整GPU依赖或wire瓶颈。其计算方案数值、fallback与62–67ms预测均未执行验证。
+
+因此不直接生成该计算候选。明确下一步为[一次当前accepted DDP通信观测作者](v6-ddp-communication-observation-author-20261031.md)：只给原始code/任务/观测与具体证据问题，由作者自主决定可移除的最小观测，澄清同次调用的就绪/排队/完成证据与未知范围。无手选collector/算法、无GPU阶段或生产改变。77ac修复仍关闭，不重复selector直到选通信；通信研究继续推进。下面是本批启动记录。
+
 已于2026-10-30 17:21:18UTC（香港10月31日01:21）实际启动，冻结`5ec3a42d091ddaea56f3a55d3ec1e5de3468831c`，controller **177939**，唯一隐藏completion/disk监听 **49252**。旧28768已handled/退出，没有重启旧批次。监听只检查进程、文件与磁盘，终态接回当前会话审查；磁盘告警不当完成。此时运行的是selector，未调度GPU阶段，不将GPU空闲描述为正在GPU验证。
 
 17:23:54UTC启动核验：[startup-verification](evidence/v6-ddp-communication-redecision-20261031/startup-verification.json)，SHA`2e0d4b4efb68fbdee0f5c01188e6238fa4c28901fb384fcd8e3321f3db67e094`。实际generation`4ac2bc7c0189`/session`ses_e722b4144ffendyK8EedF687dl`，41初始文件27,224,402B逐字一致，原37文件中除feedback外不变；924冻结身份、source/current1fc、生产core、普通prompt/model/tools均核验。实际route反馈10,260,140B/SHA`0a8d6665b150f35dceeabfa484143ccf265e919a228ef08c7c09ea3a37e20b96`，仅supplemental增加声明CPU证据。两卡无worker、实际150GiB配额余8,808,640,512B约8.20GiB；这不是新质量或接受。
