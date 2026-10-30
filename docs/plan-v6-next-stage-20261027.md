@@ -1,5 +1,7 @@
 # v6 下一阶段工作方案与执行记录（2026-10-27）
 
+独立闭合已于20:11:22UTC（香港04:11:22）启动controller208696/唯一隐藏监听45316/冻结f81953b6。20:12:25核验1235冻结、实际B/C/C请求和原样508a/controls/UUID；第二C两GPU workers运行，剩约9.44GiB，sourcecurrent1fc/新current7a49未改。见[独立启动记录](v6-ddp-observation-route-independent-20261031.md)，身份/活动不预称独立接受。
+
 最新：原样508a正式ABBA已终审e431bb80…并接受exploration，当前acceptedccd90的71.582732→54.347069ms/24.07796199%，两pair收益均过噪声，40rank样本/16全检查/24raw traces/1073冻结保持。真实新Nsys每rank1105kernels1103Graph/2launch/1 eager AR，稳态13→1、497759232B不变，joint合批计算+通信合并，非隔离wire收益。已声明[一次完整版本独立闭合](v6-ddp-observation-route-independent-20261031.md)，原样bbe28c对原始当前设备prepared7a49、publishFalse/新B/C/C/B，复用native/source hash，不新Agent/代码/collector。旧54144完成事件主动处理/handled，GPU空闲剩约9.56GiB，预算1GiB+8GiB；保留任何独立拒绝，不重复直到通过。详见[正式终审](v6-ddp-observation-route-validation-20261031.md)。
 
 正式配对验证已于19:54:59UTC（香港次日03:54）启动，controller203621、唯一隐藏监听54144、冻结c65f6c24。19:57:09核验1073冻结身份、实际ABBA四请求及正常profile的entry/source/bundle/core/UUID，branch/sourcecurrent仍为1fc。正常collection-planner generation-b9a109eaff42的8文件270745B与snapshot相符；终局工具、诊断结果及接受判定仍待完整审计。GPU在profile后空闲，controller/规划角色仍工作，剩约9.61GiB。详见[正式配对启动记录](v6-ddp-observation-route-validation-20261031.md)，不预先宣布接受。
