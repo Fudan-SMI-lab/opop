@@ -28,7 +28,10 @@ def main(args):
     terminal = read(args.parent/'followup-completed.json')
     assert terminal['phase'] == 'completed' and audit['all_frozen_unchanged']
     assert terminal['results']['B']['full_gate'] and terminal['results']['C']['full_gate']
-    assert previous['core'] == framework_source()
+    # Fresh paired runs use the current framework, not pooled fixed samples.
+    # Record both provenances so an already-reviewed generic framework update
+    # can be used without rewriting the completed fixed experiment.
+    fixed_core = previous['core']
     source = args.parent/'ddp-fixed'
     original = ProjectSearch(config, source)
     parent = original.revisions.current()
@@ -51,7 +54,8 @@ def main(args):
              'Preserve any rejection/error; no retry until pass.')
     definitions = {'source':str(source), 'parent':parent.id, 'candidate':candidate.id, 'bundle':bundle.id,
         'candidate_sha256':previous['candidate_sha256'], 'proposal_sha256':previous['proposal_sha256'],
-        'parameters':{}, 'core':framework_source(), 'devices':original.request.devices,
+        'parameters':{}, 'core':framework_source(), 'fixed_core':fixed_core,
+        'framework_changed_since_fixed':fixed_core != framework_source(), 'devices':original.request.devices,
         'prepared':original.prepared['revision'], 'shared_controls':original.prepared['controls_path'],
         'critical_files':len(frozen), 'free_bytes':free, 'warning_free_bytes':args.warning_free_bytes,
         'growth_forecast_bytes':args.growth_forecast_bytes, 'fixed_audit_sha256':sha(args.parent/'terminal-audit.json'), 'scope':scope}

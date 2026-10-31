@@ -1,5 +1,14 @@
 # 原拒绝反馈后的并发通信候选生成
 
+本批已于香港 **18:11:10**正常完成，并完成全部35工具/输出、代码初稿与编辑、探测和依赖审查。[终审摘要](evidence/v6-ddp-pipeline-parallel-candidate-20261031/public-terminal-audit.json) SHA **51af79359410ce30d4f828a2f0f66b1350a2ef8811994365fd68cacb03410bbd**。50实际输入20,711,320B、原46非反馈输入及12当前关键文件、原prompt/model/tools/core保持。25assistant/35tools/0schema修复；provider .90240376526仅估计。代码30949B SHA **9bddb13647eac850b561c1707640e75255f5e9dabf29e1bf241e83a090b5185f**（一写一编辑），proposal8069B SHA **94d72e386e9bd229da73f6c46934c352103cf971e80c26b2a588d2eefcfa3cec**（一写无编辑）逐字重建；4970展示行、4个截断前缀、9个JSON/复合输出核对。唯一代码编辑由Agent将组预热tensor分配移到new_group前，审计没有改候选。
+
+实际读完整02b933/e610、原source/common/adapter、binding、选择和用户要求；仅前缀读取当前tuning/calibration，未打开当前timeline/Nsys JSON。工具只做库签名/Work.wait文档、列表分配和CPU不支持路径parent透传；没有实际CUDA工作负载、模型训练、PG或真实collective。tool34的`NCCL_PROTO`不存在断言因docstring失败，后续grep复合exit0掩盖失败；35确认只有文档文本、没有环境写入。列表“bytes(M)”实际是元素，不是实测并发时间。所有错误保留，私人history只在服务器；完整记录未见私人配置或后续审计答案内容读取，非封闭FS不作绝对无外部访问声明。未追加审计CPU/model测试或角色重试。
+
+代码自己的默认fine8/两个通信组，按实际sizes最大优先、最小负载分配，默认slots为[4,6,7]与[0,1,2,3,5]，不是人工指定。通信流先等生产segment，再SUM/Work.wait、记录done；更新流等done及声明的参数consumer边界，以-lr/world乘sum更新后平均梯度。没有环境协议覆盖。新helper由sizes/world/device驱动，没有新case路径/hash/UUID/模型名/答案分支；仍继承12block/four-microbatch的原任务程序结构和bindingID，不能称通用生产算法。
+
+组初始化/预热发生在peer agreement之前，缓存world/device不包含PG生命周期；非对称失败/common-prefix并非通用安全保证。原有限guard、复制tokens、shared pool、setup hooks、更新后fallback只恢复grad不恢复weights/globaloverride False等条件限制保留；replacement reference是原adapter，不是旧优化parent。预测通信链减半、协议覆盖无效、旧收益全来自除法融合、普遍bitwise/无内存增加等声明不采纳。没有发现阻止这一次固定原任务验证的新具体错误，决定并已执行[原B/C](v6-ddp-pipeline-parallel-fixed-20261031.md)→[原正式AB/BA](v6-ddp-pipeline-parallel-validation-20261031.md)→[接受完整版本独立验证](v6-ddp-pipeline-parallel-independent-20261031.md)，均无手工代码/调参。独立已接受并继续普通discovery；旧77ac/eef828修复链不重开。旧22944监听handled，以下保留原启动记录。
+
+
 已于 **2026-10-31 09:57:43.900965UTC / 香港17:57:43**实际启动一次普通 `ProjectAgents.generate(candidate)`，controller **278968**，唯一隐藏完成/磁盘监听 **22944**。这一步直接继续优化实施；不追加分析器、selector、评审或修复链。[启动记录](evidence/v6-ddp-pipeline-parallel-candidate-20261031/launch.json)与[监听记录](evidence/v6-ddp-pipeline-parallel-candidate-20261031/wakeup-setup.json)已保存。
 
 候选路线来自[本次真实拒绝反馈后的selector](v6-ddp-pipeline-rejection-selection-20261031.md)，不是审计者选择通信器、bucket或算法。当前02b933八个分段的通信按序提交，角色提出通过多个通信器并发不同分段并保留更新依赖；是否存在并发收益或资源争用尚未知。原selection的协议因果归因、预计通信减半和若干毫秒收益不预采纳。与关闭的77ac有并发概念关联，但这次对象是已独立接受的whole-step分段生产/更新流水线，不复用或修复旧DDP-hook/Future实现。生成后首先审实际代码、参数、数值与依赖，再决定必要的原GPU验证；不自动换fine9/coarse5或再要求修到通过。
