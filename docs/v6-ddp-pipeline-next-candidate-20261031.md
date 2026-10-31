@@ -1,5 +1,15 @@
 # DDP 下一项普通优化候选（2026-10-31）
 
+已于香港**08:22:11**正常完成。聚焦终审SHA **510c793a37618de036e0da54624d2df6102762cfc13017dafc2b010d1903b0bd**，[公开摘要](evidence/v6-ddp-pipeline-next-candidate-20261031/public-terminal-audit.json) SHA cc7d4aa38ba9d6150c9336e2ad1674a2b765dcf961492d8f6122893d772be877。38实际输入/15当前关键文件及原prompt/model/tools/core保持，不重做1947历史身份检查。35assistant/47工具/0框架schema修复，provider估算1.54495464816非账单。代码 **e610e944… /28,517B** 一写无改；proposal **4a00833b… /9,663B** 一写、一次补JSON括号，字节重建一致。
+
+实际读到用户约束、当前02b933、binding/task及完整tuning/calibration；timeline/Nsys解析但只显示部分字段。**新增分析plan只wc统计大小，未读正文**；feedback读到其索引和限制，不能声称消费了分析结论。5784显示read行、3显式截断前缀核对，resources另有输出截断。47工具命令和相关结果已审；没有重放CPU测试。实际探测是库API、CPU不支持路径/fake-parent及FP32随机算术，未观察到模型训练、进程组、真实collective或成功CUDA运算。未观察到私有配置/后续答案内容访问，外部FS不封闭。
+
+保留工具21的rg缺失但pipeline exit0；36假parent日志顺序断言失败、37只改测试；38将FP32标量与Python0.001精确比较失败、39改测标量转换及20M随机元素；41 proposal缺括号JSON错误被后续diff的exit0遮盖，45只补括号、46通过。没有审计者模型/CPU反例重跑。
+
+新增实际机制是新NCCL组初始化时临时设置`NCCL_PROTO=Simple`并finally恢复，组可用性参与既有MIN/MAX协商；每chunk SUM的`Work.wait`仍在done事件和更新之前，更新图执行`param.add_(sum, alpha=-lr/world)`后原地缩放梯度，步末同步保留。是否实际固定Simple、影响是否仅限新组、CPU位相等能否推广CUDA，以及0.69ms关键路径/3.5–5ms预计收益均未证明。组缓存仅world/device、不覆盖进程组生命周期；已有部分guards、共享pool、setup hooks、更新后fallback不恢复权重、rank非对称及global override限制保留，不宣称普适正确。
+
+新增机制没有按实验路径、哈希、GPU UUID或预期答案分支；候选仍继承当前程序的12层/GPT2结构专门化和binding ID，不能称为可直接移植的通用生产实现，也没有给生产框架增加case分支。审查未发现必须手修后才能试原任务的确定性缺陷，因此已执行[一次默认空参数原样B/C](v6-ddp-pipeline-next-fixed-20261031.md)，未尝试fine9/coarse5或追加候选修复。该B/C已通过原质量检查，观察约1.16%改善，现进入[一次原正式噪声判定](v6-ddp-pipeline-next-validation-20261031.md)。旧8584监听handled/退出；以下为启动历史。
+
 [协议分析](v6-ddp-protocol-attribution-author-20261031.md)已结束：现有记录不能证明当前实际协议或预计切换收益；含实例硬编码的生成reader不采用、不执行、不修复。本次直接回到优化实现，允许一个尚未证明收益的可检验假设，不追加分析器、selector或评审链。
 
 **实际启动：2026-10-31 00:05:26.022435UTC / 香港08:05:26，controller254376，唯一隐藏监听8584。** 复用已有只读运行环境cb34d3eaa55661a1f0df34678cf3d0f9ebd691ac，生产core仍ed24af7acc8caa15578e0b859c85ef8a901be51354448ed39094606ed9e10a2f。新增[通用实验编排脚本](../scripts/experiments/v6_candidate_from_selection.py)通过参数接收selection/evidence/output，不修改生产框架或优化代码；实际执行副本SHA08150b7e617ef728816745df35e688f27caa0d00347779f92cc9d85964f5bb76。没有把新Git提交作为启动门槛，没有重复制环境、模型健康试调用或历史检查。
