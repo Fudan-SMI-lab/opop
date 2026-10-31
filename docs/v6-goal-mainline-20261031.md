@@ -96,6 +96,18 @@ ResNet 原入口两轮与独立验收已完成；新DDP原入口两轮于香港1
 
 实际启动可用2,242,461,696B，准备预测512MiB：原offline参考77,811,899B×2加约381MB产物余量；不是APIcap，8GiB仍已确认warning，不作预留硬门槛。本次无清理、参考复制或并行GPU。原参考保留供准备后只读CPU语义比对，未额外执行源模型。普通intake `ce55934436c4`／session `ses_e6cf22ba5ffekOX0DmT0G9wvTm` 实际5输入18,963B与snapshot相同，core一致；这仅是启动证据，不是准备正确性。首次reader误查尚未建立的output目录，实际intake在同root的output.intake；FileNotFoundError保留，仅改读取位置，无重跑。唯一隐藏完成监听45912经waiting预检启动。准备有效后再按实际容量进入同request两轮普通优化，Goal保持active。
 
+### Qwen离线准备通过，普通两轮优化运行中
+
+17:48:51 UTC准备完成，prepared `0db575bc…`，adapter `24ea41d3129ae1cb3d1e73f83f36fe3156e07fa6b22616b08a6a0fd6b6580c86`（8,175B）。实际保留B8/256→32、预训练BF16/SDPA/noTF32、每请求空KV cache、固定32步greedy及原三处同步；完整logits和teacher-forced比较在计时外，整数tokens由既有通用比较器执行精确比较。原reset/identity/wrong-output/missing-coverage通过，基线314.384585tokens/s。框架目标计时包含调用返回/清理，原函数内部计时仅作诊断，不称原源性能同一计时。
+
+只读CPU核对原offline参考和当前两份controls：每份38,897,920个input/token/logit元素全部一致，完整BF16 logits最大误差0、tokens精确相等。未重跑源模型/GPU或复制参考；开发者显式字段映射是辅助核验，不是通用自动语义证明，也未输入后续角色。intake13工具、evaluator20工具已核对，资产路径错误保留；角色末尾有实际tokenizer/CPU输入tensor fixture，不能称完全未做tensor操作。源语义记录SHA `9d453308179e9a814ca39cf9854079950e6ebe0a78d441251c45b01c62ada817`。
+
+**17:53:37 UTC／香港02时前，已启动同request普通两轮优化**：根目录 `goal-qwen-offline-optimization-20261031`，controller380707；现有CLI `--resume --rounds 2`，生产核心e893及普通prompt/model/tools/原接受规则保持。唯一隐藏完成监听33744；旧准备45912、DDP16040已handled。没有第三轮、人工候选或旧交互式Qwen重试。
+
+C1 discovery实际26,911 calls／17,853 groups，66,333 CUDA kernels全部有归属。普通initial planner `eba08066351a` 的6输入14,524B、10工具已核对，302显示行中request一行仅前2000字符暴露；一次plan写入、无编辑，自主选择python_runtime。两份worker结果通过，Python诊断的perturbed host时间不用于clean接受；全部归属也不证明因果关键路径。首轮selector已运行，后续实际改写与配对结果待返回。记录 `328e01881a189167e023be8046c3c6fa0d68d562d72bfeb91c0a3624e6fc4d4c`；只读reader的过大摘要和未考虑单行截断断言已记录，无实验重跑。
+
+**按新实际占盘处理容量**：启动可用2,084,302,848B、1.5GiB预测；本次discovery原始trace/规范化记录合计约501MB，不能沿用旧小批量运行作为保证。18:00:04 UTC在GPU空闲时，仅将已关闭且正式拒绝的两轮DDP候选screen/pair-C共36张raw metric trace无损冷存：583,783,968→49,668,352B，逐文件恢复哈希通过，6项请求/决定/controls元数据保持，释放约534MB，可用1,894,416,384B。未触碰基线、源、接受版本、当前Qwen、controls、模型和依赖；不暂停/重启优化。RESTORE在 `storage-audit-20261031/goal-qwen-offline-optimization/RESTORE.md`，journal `1b960c93dde3f48b2352acb7466847db3693c53514feaf8b5452133efcf5692a`。8GiB仍已确认warning，不重复告警、不作预留硬门槛；继续依据实际剩余工作检查容量。
+
 ## 执行边界与容量
 
 无并行 GPU、手写优化或 collector、案例路径/哈希/模型名生产分支；不重开已关闭的 Qwen/FSDP/77ac/observer/eef828 修复链。原接受版本、失败、质量与性能阈值保留。私有配置、角色历史和快照只留服务器，不输出原始配置或工具元数据内容。
