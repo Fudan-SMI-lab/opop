@@ -1,5 +1,7 @@
 # 新接受重叠版本的普通通信discovery
 
+香港 **21:32:15** 收到唯一14164完成事件：`batch_finished`，UTC2026-10-31T13:32:15.482713+00:00，150GiB盘available8,626,425,856B，仍高于原8GiB警戒。事件已queue；新discovery完整planner工具/collector/trace终审尚待该事件续接，不把controller完成当作全质量或新接受，也不重复创建监听或自动生成下一候选。
+
 香港2026-10-31 **21:26:34**实际启动一次existing `ProjectSearch.discover`，controller **322505**，唯一隐藏完成/磁盘监听 **14164**。[launch](evidence/v6-ddp-overlap-communication-evidence-20261031/launch.json)使用现有通用v6_discover_accepted_version.py SHA62d4e9bf967d2a90c828304d58f7a164fd5f2b47cf328e95e3d8fa65ea35afa1，复用working runtime/core e893。仅6当前关键身份，没有历史sweep/model-health、环境副本/部署门槛/新测试或生产框架改动。
 
 依据[刚完成的独立接受](v6-ddp-schedule-overlap-independent-20261031.md)，显式fork accepted exploration `4e6bc78bd39550a754d66d04adc157b65bbec4b53ee245abda03bedbf3aa3158`；来源ddp-schedule-overlap-independent-20261031/ddp-independent CURRENT仍原EMPTY7a49，current不等于探索接受版本不是失败。新ddp-evidence只附着新registry/plan/discovery，同files/bundle/contract。singlefixed-schedule-overlap/params{}，code2166f860330679a93f335985183675815b2e7e7053dc5be9453277aa68497a61/41127B，proposal b3fae015c2007ce75443c39fcceb8f5c51cb06403265bd99ced30c584b29e4c6/11239B，自身lead2/comm_groups2/tail_splits4不变。没有手工算法、分片或参数，旧物理代码文件不是多个active bundles。
