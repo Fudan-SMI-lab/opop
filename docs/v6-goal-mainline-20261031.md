@@ -8,12 +8,24 @@
 
 ## 当前执行
 
+香港22:56已从准备阶段进入**普通 discovery 和两轮顺序优化**，不是重新生成评测或继续辅助分析。
+
 - **项目**：ResNet 原始离线 batch-32 推理；保留预训练模型、真实图片、FP32、完整 logits 和精确类别。目标沿用旧原入口批次的完整推理延迟目标。
 - **实际启动**：香港2026-10-31 22:46:12，box4-3，controller `329695`。根目录 `/root/autodl-tmp/dev/v6-work/goal-resnet-original-20261031`。
 - **入口**：现有生产 `optimize-project --project … --command … --goal … --devices 0 --prepare-only`。没有提供旧 request、adapter、候选、人工算法或审计答案。生产核心仍为 `e893f850…`。
 - **有限后续**：检查实际生成的任务、评测及原源码语义；准备成功且容量满足后，进入普通 discovery 和两轮优化。结果按原规则接受或拒绝，不重试到通过；仅实际暴露的通用缺陷才考虑最小修正，生产 prompt 修改仍需明确授权。
 - **启动核实**：22:46:56 controller 存活，实际 intake snapshot `7fec5ffc4745` 已生成；尚未生成评测制品，GPU 空闲属于角色生成阶段。此记录不是准备通过或优化接受。
 - **自动续接**：实际 waiting 预检后只启动一个隐藏完成监听 `49068`，同一 Goal 保持 active；完成或低盘注意事件续接同一线程，不重启旧批次。后续仍须区分准备完成和优化接受。
+
+### 准备完成与优化启动
+
+准备于22:52:40完成，adapter `8d656e90…`；原reset/identity/错误输出/缺失覆盖控制通过，五个完整推理样本为4.012611、3.994588、4.008986、3.988195、3.991729ms，中位数 **3.994588ms**。实际 adapter 保留原始 `images` 和 batch `pixels`，FP32/noTF32；框架计时保留两端同步，输出生命周期按原 invocation 处理。`observe` 的重复前向在计时之外。
+
+22:55对新controls与已有原源码参考作只读CPU比较：两次各32,000个logits最大绝对误差0、32个类别精确相同；4,816,896个输入像素精确一致。没有新模型前向/GPU/原源码重跑或参考复制。这是开发者对实际字段的核验，不称通用自动语义证明；核验结果未送入优化角色。角色把原offline内存目标的吞吐≥0.95baseline约束带入当前latency目标，固定batch的配对延迟改善也满足该约束，保留原输出未改。
+
+优化根目录 `/root/autodl-tmp/dev/v6-work/goal-resnet-optimization-20261031`，22:56:36启动 controller **331628**，执行现有生产CLI `--request 原request --resume --rounds 2`，继续同一run。核心仍为e893，未指定算法、分组或候选，也未提供上面的核验答案。22:58:57实际discovery worker通过，current `c68d8902…`，普通planner snapshot `5f1faa72f1c2`已出现，尚无trial结果，不构成优化接受。
+
+准备完成事件49068已标记handled，迟到事件去重。新优化只设一个隐藏监听 **32596**。两轮结束后评估实际正确性、收益、执行路径与反馈消费，再决定有依据的下一步；不自动追加第三轮或修复直到通过。
 
 ## 执行边界与容量
 
@@ -22,3 +34,5 @@
 必要容量处理仅使用现有无损冷存工具：65份已关闭、未采用角色的重复输入及拒绝候选派生记录，64,203,807B→10,172,362B；roundtrip hash 全部通过，21份保留对象不变。接受、原始源码、参考、controls、原生采集、模型及依赖保持在线。恢复说明：`/root/autodl-tmp/dev/storage-audit-20261031/goal-resnet-original/RESTORE.md`；journal SHA `7df73e30ce27585caffde46dbf71c19cfb51155bc12d566fea17d2efcb7920bf`。
 
 启动实际150GiB盘 available 8,661,217,280B。64MiB增长预测只覆盖准备阶段，原8GiB警戒线不变，预测不是限制。后续优化须按实际容量重新安排；低盘事件不是实验完成。
+
+优化启动available 8,656,666,624B，无新清理。单独60MiB增长预测来自旧同workload完整三轮ResNet实际45,412,352B＋intake270,336B，占用之上留37%以上余量，当前仅两轮；不是collector/API限制。原8GiB告警保留，超预测按实际事件处理，不盲目终止正在运行的工作。
