@@ -8,7 +8,7 @@
 
 ## 当前执行
 
-ResNet 原入口两轮与独立验收已完成；新DDP原入口两轮于香港11月1日 **01:39:19** 结束，两候选均按原规则拒绝，未追加修复。**01:41:53已启动Qwen原始offline batch-8完整生成吞吐准备**（controller378140），继续当前同一核心的跨项目C1→C2→C3主线，不重开旧交互式Qwen链。
+ResNet 原入口两轮与独立验收已完成；新DDP原入口两轮均拒绝，未追加修复。Qwen offline B8/256→32准备及C1已完成；香港11月1日 **02:32**，原定第二轮普通候选正在生成（controller380707）。首轮因返回缓存类型不符合绑定签名而运行失败，第二轮已实际消费拒绝和异常反馈；尚无Qwen优化接受。继续当前同一核心的跨项目C1→C2→C3主线，不重开旧交互式Qwen链。
 
 - **项目**：ResNet 原始离线 batch-32 推理；保留预训练模型、真实图片、FP32、完整 logits 和精确类别。目标沿用旧原入口批次的完整推理延迟目标。
 - **实际启动**：香港2026-10-31 22:46:12，box4-3，controller `329695`。根目录 `/root/autodl-tmp/dev/v6-work/goal-resnet-original-20261031`。
@@ -107,6 +107,14 @@ ResNet 原入口两轮与独立验收已完成；新DDP原入口两轮于香港1
 C1 discovery实际26,911 calls／17,853 groups，66,333 CUDA kernels全部有归属。普通initial planner `eba08066351a` 的6输入14,524B、10工具已核对，302显示行中request一行仅前2000字符暴露；一次plan写入、无编辑，自主选择python_runtime。两份worker结果通过，Python诊断的perturbed host时间不用于clean接受；全部归属也不证明因果关键路径。首轮selector已运行，后续实际改写与配对结果待返回。记录 `328e01881a189167e023be8046c3c6fa0d68d562d72bfeb91c0a3624e6fc4d4c`；只读reader的过大摘要和未考虑单行截断断言已记录，无实验重跑。
 
 **按新实际占盘处理容量**：启动可用2,084,302,848B、1.5GiB预测；本次discovery原始trace/规范化记录合计约501MB，不能沿用旧小批量运行作为保证。18:00:04 UTC在GPU空闲时，仅将已关闭且正式拒绝的两轮DDP候选screen/pair-C共36张raw metric trace无损冷存：583,783,968→49,668,352B，逐文件恢复哈希通过，6项请求/决定/controls元数据保持，释放约534MB，可用1,894,416,384B。未触碰基线、源、接受版本、当前Qwen、controls、模型和依赖；不暂停/重启优化。RESTORE在 `storage-audit-20261031/goal-qwen-offline-optimization/RESTORE.md`，journal `1b960c93dde3f48b2352acb7466847db3693c53514feaf8b5452133efcf5692a`。8GiB仍已确认warning，不重复告警、不作预留硬门槛；继续依据实际剩余工作检查容量。
+
+### Qwen首轮拒绝，原定第二轮消费反馈
+
+首轮候选 `93b8d355…` 用静态KV缓冲和展开的decode计算替换原模块，但返回自定义 `_DecodeState`。下一步不匹配原 `DynamicCache` 调用签名，绑定回到原模型后因缺少 `get_query_offset` 失败。唯一空参数screen未完成全量质量检查或clean计时，正式配对未开始；普通诊断重复记录同一错误，0条候选内部事件不代表没有故障。`trial-a5eadc233c` 按原规则 `no_valid_parameter_candidate` 拒绝，原current保留。角色的小CPU直接替换测试绕过了生产绑定，不能代替原GPU集成结果。未人工修复候选或绑定规则。
+
+第二轮selector `b0c970c751ef` 的28输入87,000,599B与快照相同；40个实际工具中，17读取拒绝和失败screen，19读取诊断堆栈，21读取完整旧候选，22/26读取实际绑定和类型描述源码，27读取原目标签名。最终选择明确连接这些证据，提出保留真实 `DynamicCache` 接口，继续同一decode范围。工具30空cache层索引错误保留；没有成功的缓存CPU证明。跨profile差值当host stall、所有cat当KV拼接、吞吐预测及通用fallback保证均未采信。记录 `second-selection-review.json` SHA `3229f2dd4bf40a3929646032359c744615c45a03d8ddb479a25204b81067e577`。
+
+普通第二候选 `259b793b561a` 已收到31项实际输入129,065,077B；生产核心、模型、工具及接受规则不变。这是已声明两轮中的第二轮，不追加第三轮或修复到通过。最新可用磁盘约1.43GB，GPU空闲于角色生成阶段，唯一完成监听33744继续等待；没有新清理、额外模型测试或生产代码变更。待实际候选和质量/性能结果决定下一步，Goal保持active。
 
 ## 执行边界与容量
 
