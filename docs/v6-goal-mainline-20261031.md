@@ -8,7 +8,7 @@
 
 ## 当前执行
 
-香港23:48已完成本次 ResNet 原入口的两轮普通优化及一次完整版本独立验收。第一轮拒绝、第二轮正式接受、独立复核接受。23:59:49已启动当前核心的DDP原入口准备，继续跨项目主线；这是不同项目的实际入口缺口，不是重开旧DDP候选链。
+ResNet 原入口已完成两轮普通优化及一次完整版本独立验收。当前 DDP 原入口准备也已通过，香港11月1日 **00:18:42** 已启动同一 request 的两轮普通优化（controller351511）；继续跨项目 C1→C2→C3 主线，不重开旧DDP候选链。
 
 - **项目**：ResNet 原始离线 batch-32 推理；保留预训练模型、真实图片、FP32、完整 logits 和精确类别。目标沿用旧原入口批次的完整推理延迟目标。
 - **实际启动**：香港2026-10-31 22:46:12，box4-3，controller `329695`。根目录 `/root/autodl-tmp/dev/v6-work/goal-resnet-original-20261031`。
@@ -57,6 +57,18 @@
 启动available **8,619,958,272B**。准备阶段5GiB增长预测以既有两份完整参考各1,991,214,515B、合计3,982,429,030B为基础，额外约1.39GB覆盖任务产物和控制记录；不是API/collector限额。8GiB仍告警，预计跨线不当作完成或盲目终止理由；检查剩余工作量和真实df后处理，去重同一告警。无新冷存或参考复制。准备返回后先审实际生成语义；有效才按同request进入有限两轮普通优化，搜索容量另算，保留任何失败，不自动修复到通过。
 
 11月1日00:02:42实际核实controller存活，普通intake snapshot `0f2f0dcc5cff`／session `ses_e6d4faa9affe3gjRkr37QRUHNa` 已出现，5个初始文件；GPU空闲、df available8,619,528,192B。这仅是身份/活动证据，不是准备正确性。单个隐藏监听 **5392** 经waiting预检启动；无模型健康调用、历史重审或额外生产改动。
+
+### DDP准备通过，普通两轮优化已启动
+
+香港11月1日00:15:51准备正常完成，prepared `caa5257d45cb871d2285d511ca11c1d2ed8c2a23eadc3d7432e6a2e1bdf10610`；adapter `3368992ca5b2497ed910ba005fdf90b3db4159c0b142facaad5581d07a07ac40`（13,907B）、request `3619e6a57c2f12f2cf81be5e16f236b61b5d9ddae95143cd61f8e35118ac6399`。实际代码保留原模型/种子/FP32/noTF32、CPU初始权重、两卡B1/S128/accum4、前三次no_sync、完整zero_grad/FWBW/loss除4/SGD及末端同步，计时前Gloo协调。生成的observe自主执行精确梯度副本检查，并在rank0计时外重放1/2步串行global batch参考；因此本次确有普通evaluator的新参考运算，不能称旧source哈希复用。开发者没有重跑模型/GPU或复制参考。
+
+两卡reset各两次及identity比较全部为0，wrong-output/missing-coverage控制通过。每步均有148份完整梯度、124,439,808梯度元素和同数量更新参数；rank0两步串行参考梯度最大误差7.4505806e-9/6.7986548e-8、参数3.7252903e-9，原容差及精确replica通过。只读CPU mmap核对保存的检查值，不再算模型。五个逐样本rank-max为108.314193、107.011910、107.629041、106.525478、106.809146ms，中位数 **107.011910ms**；这是新原入口基线，不混用旧133.379621ms或旧DDP分数。rank0生命周期峰值约3.944GB包含串行参考，rank1约2.205GB；计时阶段两卡峰值约1.98GB。检查记录SHA `5a3bcda23b17612baba00c79d89250470d76ea33898e3e501dfcd6a77bcca2e3`。
+
+实际intake13工具、evaluator19工具。原源码/配置接口读取及小模型CPU探测已核对；intake一次GPT2Config属性名错误保留。evaluator另自主执行两进程Gloo小模型fixture，首次误在rank1断言rank0专有字段而KeyError，修正fixture断言后通过；不是原两卡GPU质量证明，也没有修改交付adapter（一次写入、无编辑）。末尾检查ABI/语法并删除自身pycache；这些由普通角色发生，开发者未追加测试或修复链。记录范围仍非隔离文件系统下的绝对访问证明。
+
+**当前优化根目录** `/root/autodl-tmp/dev/v6-work/goal-ddp-optimization-20261031`；2026-10-31 16:18:42.461565 UTC／香港00:18:42，controller **351511**。现有CLI对原run执行 `--request 原request --output 同一run --resume --rounds 2`；核心e893、普通prompt/model/tools及质量/噪声规则不变，没有输入旧候选、手工算法或上述审查答案。00:20:13已核实原discovery完成/current `8125e24d…`，普通collection-planner `43685c0420c3`／session `ses_e6d3e1edeffexIGvQvw0LrjJUh` 六初始输入已出现；尚无trial结果。新根只设置一个隐藏完成监听 **16040**，实际waiting预检后启动。
+
+准备实际增加约4.08GB，结束可用约4.54GB，低于8GiB告警但在已声明5GiB预测内。旧5392已投递低盘注意事件；核对后准备已终态，已handled，不补旧监听。新两轮启动可用 **4,537,098,240B**，预测 **3GiB**：当前六张诊断trace约97MB，默认至多3个screen加4个正式endpoint、两轮约1.36GB；另约1.86GB覆盖发现、正常自主采集、角色产物及波动。原约3.98GB controls在同一run复用、不复制，无新清理。预测不是API/collector限额；8GiB仍告警，已确认的同一跨线不重复投递，完成监听只处理新终态，后续按实际df/剩余工作处理。生产框架、质量、接受规则均未更改。两轮后检查实际路径/数值/配对接受与反馈消费；不自动追加第三轮，也不以这一个项目闭环标记整个Goal完成。
 
 ## 执行边界与容量
 
