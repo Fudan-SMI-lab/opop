@@ -17,3 +17,15 @@
 新discovery终审e92a2201和原独立6448a8c5/正式6c3a49ad已完成，见对应文档，不重审整批。当前正式相对02b933提升5.6824%，原EMPTY对完整版本独立提升58.4625%，两者不加；8AR总497,759,232B、分段计算/通信/更新联合收益，不宣称纯通信因果。新profile/native/校准/遥测不是新接受。
 
 结果后只根据真实新选择决定一次有依据的普通候选，审实际数值/依赖/泛化代码再决定必要原GPU验证；若重复未证实协议前提或关闭链，原输出保留，不追加selector/prompt/修复到满意。原全量数值、exact replicas、2warmup/5clean/maxrank-before-median-MAD、anchor133.379621/limit140.04860205保持，不添加新内存约束或降低规则。所有新框架调整必须可泛化，不以case路径/hash/模型名/预期答案生产分支。私人config和完整history只在server，工具metadata.output/display/preview不得直接输出。
+
+## 终态审查与已执行下一步
+
+香港 **18:51:18** `batch_finished`，controller正常完成、6当前关键文件保持；[终审](evidence/v6-ddp-parallel-communication-selection-20261031/public-terminal-audit.json) SHA `f0488777c2bde38c53150e469e4a10b580d9be0941231f74169ba2c65b0fa529`。36实际输入7,526,725B逐字节、普通prompt/model/tools/core与初始snapshot相同。16assistant/29tools/0schema repairs，provider估算0.57740629678（非账单）。原selection SHA `12033944e081ce35bc89aa864c24e3bdc99ba9a26ab059bb89609b14c4fccd01`，4groups/10calls/execution_plan，一次写入无编辑，原字节重建一致。
+
+完整29工具的命令、输出及会影响判断的内容已核对：4413展示read行、2显式长行截断前缀；tools9/19/20/21/22/24/25/26/27/29的JSON、源码前缀与schema输出纯只读重建逐字节一致。没有角色、模型、CUDA或通信重跑。实际完整读了当前9bdd、原训练源码、binding、小型独立接受反馈及用户约束；tuning决策全展示、calibration rank0样本/rank1 median，timeline只有rank0部分字段、telemetry仅浅层metadata。**当前nsys JSON没有打开**，tool27只读adapter前3000字符；不能把资源中有路径等同消费完整文件。Tool8找不存在previous-candidate和错误相对source路径，stderr被隐藏且最后ls导致compound exit0，保留原记录。目录opencode.json仅名字，不是内容读取。没有记录到model/tensor/CUDA/processgroup/collective/private-config/后来审计者答案内容访问；FS非hermetic，不能绝对断言无其他访问。完整私有history/access hash在小结，raw仅server。
+
+选择自主提出末尾157.5MB梯度拆片并跨当前通信器安排、按ready顺序重新分配、把6KB规约后移。可进入一次生成的窄依据是实际当前代码中一个晚就绪大flat chunk落在单一communicator，以及现有静态按size分配；这是可用原全step质量/性能检验的排程假说，不是要求重跑协议切换或手选新参数。
+
+不采纳原输出中的强结论：communication-without-compute区间不证明因果关键路径/可回收时间；6KB两rank时长差不证明arrival-wait；校准logical rate不是wire、下界或已测余量，tool22已展示这一限制；SHM不证明合计15GB/s，实际telemetry主体也未读；旧独立EMPTY pair噪声不是未来新pair阈值。预估3–8ms、4.4ms改善和全副本数值等价均待检验，分片/二的幂缩放不能代替原全梯度/更新参数/exact replica检查。原selection和普通证据保持，这些审计纠正未供新candidate。
+
+已于香港 **18:55:34**实际执行[一次普通candidate生成](v6-ddp-parallel-schedule-candidate-20261031.md)，不是辅助任务终点。未人工分配chunk、实现算法、改prompt或质量规则；先审新代码再决定必要GPU验证，不自动修复/换参数直到通过。旧41700监听已handled，迟到本批通知去重。主终审首次通过；本地最初猜错旧reader脚本名与输出预算截断只影响读取，按现有脚本/完整保留输出纠正，无实验重启。

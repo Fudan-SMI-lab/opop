@@ -102,7 +102,8 @@ def prepare(args):
     paths += [search.output/n for n in ['request.json','prepared.json','discovery.json','project/current.json','latest-feedback.json']]
     frozen={str(path):sha(path)for path in paths}
     free=int(subprocess.check_output(['df','-B1','--output=avail','/root/autodl-tmp'],text=True).splitlines()[-1])
-    assert free>=8*1024**3+384*1024**2
+    assert args.forecast_bytes>0
+    assert free>=8*1024**3+args.forecast_bytes
     assert not subprocess.check_output(['nvidia-smi','--query-compute-apps=pid','--format=csv,noheader'],text=True).strip()
     from kernel_optimizer.project import agents
     body=Path(agents.__file__).with_name('candidate_prompt.md').read_text()
@@ -116,7 +117,7 @@ def prepare(args):
         'inputs':len(expected),'input_bytes':sum(map(len,expected.values())),'input_hashes':{n:digest(v)for n,v in expected.items()},
         'selector_nonfeedback_inputs_reused':len(reused),'selector_nonfeedback_hashes':reused,
         'critical_frozen_files':len(frozen),'historical_preservation_reference':str(args.selection_run/'terminal-audit.json'),
-        'prompt_sha256':digest(full_prompt),'free_bytes':free,'growth_forecast_bytes':384*1024**2,'warning_free_bytes':8*1024**3,
+        'prompt_sha256':digest(full_prompt),'free_bytes':free,'growth_forecast_bytes':args.forecast_bytes,'warning_free_bytes':8*1024**3,
         'scope':'One ordinary candidate generation from a completed selection/current source and declared original evidence. Optional original analysis evidence is added only when explicitly supplied; otherwise all selector non-feedback inputs are byte-equal. No reader repair, selector retry, manual algorithm/group/code or production prompt/model/tools change. No GPU/search/parameter/collector/sourcecontrol/referencecopy/publication stage. Schema success is not numerical or performance acceptance.'}
     return config,search,inputs,feedback,expected,full_prompt,frozen,index,details,augmented_text,raw
 
@@ -158,4 +159,6 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(__doc__)
     for name in ['config','selection-run','output']:parser.add_argument('--'+name,type=Path,required=True)
     for name in ['evidence-run','user-constraints']:parser.add_argument('--'+name,type=Path)
+    parser.add_argument('--forecast-bytes',type=int,default=384*1024**2,
+                        help='Expected artifact growth for this run; not an API or disk usage cap.')
     parser.add_argument('--preflight',action='store_true');main(parser.parse_args())
