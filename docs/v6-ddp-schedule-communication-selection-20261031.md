@@ -1,5 +1,15 @@
 # 分片排程接受版本的普通优化选择
 
+香港2026-10-31 **20:14:15**正常完成，reason=`batch_finished`。聚焦终审 [2d94b241](evidence/v6-ddp-schedule-communication-selection-20261031/public-terminal-audit.json)完成：37实际输入7,558,327B、六当前关键身份、原prompt/model/tools/core e893及source CURRENT88fa保持。17assistant/28tools/0 schema修复，provider估计0.7565482316，非账单。原selection `4a363faac6ed5d19766ee04f8b6e830e3d96dabf639b7798dfed016eb4db0bd1` /4631B，一次写入无编辑，4groups/10calls/execution_plan。全部命令、实际输出和selection已审，无新模型质量/性能接受。
+
+7641展示行、3明确截断前缀、工具23/24/25/28纯JSON/源码输出逐项重建。20/22完整保存stdout分别1,574,450B/1,573,581B与snapshot原heads/targets精确重建，但角色仅看到返回尾部，没有读取保存全文。实际完整读了当前7e6、原训练、binding、原独立反馈与用户要求、calibration924行和tuning342行；resources仅1995/2853行、timeline仅1705/18296行。search虽只有一物理行，实际前缀截断，不是全文暴露；审计表的all_lines_exposed只计行号覆盖。Nsys JSON打开解析后只输出顶层metadata，未展示kernel数组；ownership顶层摘要、adapter仅13个签名行。旧物理候选源码heads/targets实际打开，不能据此称多active bundle或完整语义消费。
+
+工具7的错误相对路径/缺失previous-candidate目录、stderr隐藏和最终exit2保留。其他目录中opencode.json仅名称。所有28工具未记录模型/tensor/CUDA/PG/真实collective、私有配置或后来审计/评审答案内容命令；外部FS并不封闭，不作绝对缺席结论。私有完整历史/命令留服务器。审计reader初次误要求ls目录名带斜杠inputs/，仅改成实际inputs输出断言，失败reader保留，未重跑角色/探测/GPU。
+
+原selection提出更早的producer边界、首批通信以及按片完成事件启动更新，并考虑搬移1/world缩放。当前代码确实先等完整两层producer段、末尾更新等四片全部完成，这是支持一次实现的具体依据。合成速率/SHM并不证明32ms传输下界或41.5ms结构极限；通信未覆盖计算的区间不等于可回收关键路径，非对称首kernel不证明rank等待。预先折半与SUM后缩放不保证所有FP32范围逐位等价；44.255/44.594是独立pair中位数，不是下一次ABBA噪声门槛；original adapter fallback也不是自动保留优化parent或回滚已更新weights。原预测1.5–3ms保留为假说，不采纳为收益。
+
+已经于香港 **20:20:58**实际启动[一次普通候选生成](v6-ddp-schedule-overlap-candidate-20261031.md)，controller309340。只使用原selection/current与普通原证据，未给上述审计纠正/手写算法；返回后审代码再决定原GPU验证，不追加修复/参数直到通过。旧46500已处理，不重启。以下为本批历史启动记录。
+
 香港2026-10-31 **20:02:40** 已实际启动一次普通 `ProjectAgents.generate(selection)`，controller **307469**，唯一隐藏完成/磁盘监听 **46500**。generation33724c362c75/session ses_e6e28c725ffeuId4jt1xGE5WHB。来源是[新7e6fb7当前版本discovery终审](v6-ddp-schedule-communication-evidence-20261031.md)，不是把辅助分析当优化终点，也不手工指定算法。
 
 source `ddp-schedule-communication-evidence-20261031/ddp-evidence` CURRENT **88fa1d104cd1777b723521cfd9bb37540abfcefbb9a5edb3a04ca3cc21f67057**，新实际registry10call/9group、已独立接受c283f6的精确code7e6fb7a723590a93b289f43fcfef84663fc618b5da6d559362144d178827eed3/35595B和proposal442ac3f39dc9d13f8591f534be804b42b77b625c933a184038de64200a241403/11159B。singlefixed-parallel-schedule、params{}是自身fine8/comm_groups2/tail_splits4；旧物理文件不是多个active bundle。原accepted/formal/来源CURRENT均保持。
