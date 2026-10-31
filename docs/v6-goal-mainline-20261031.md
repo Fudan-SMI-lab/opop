@@ -70,6 +70,18 @@ ResNet 原入口已完成两轮普通优化及一次完整版本独立验收。�
 
 准备实际增加约4.08GB，结束可用约4.54GB，低于8GiB告警但在已声明5GiB预测内。旧5392已投递低盘注意事件；核对后准备已终态，已handled，不补旧监听。新两轮启动可用 **4,537,098,240B**，预测 **3GiB**：当前六张诊断trace约97MB，默认至多3个screen加4个正式endpoint、两轮约1.36GB；另约1.86GB覆盖发现、正常自主采集、角色产物及波动。原约3.98GB controls在同一run复用、不复制，无新清理。预测不是API/collector限额；8GiB仍告警，已确认的同一跨线不重复投递，完成监听只处理新终态，后续按实际df/剩余工作处理。生产框架、质量、接受规则均未更改。两轮后检查实际路径/数值/配对接受与反馈消费；不自动追加第三轮，也不以这一个项目闭环标记整个Goal完成。
 
+### DDP首轮拒绝，第二轮已消费真实反馈
+
+香港11月1日01:04，原两轮控制器351511仍在运行。C1普通规划器自主选择六项既有采集器；首轮selector据实际资源材料选择完整step执行计划，candidate `b3a004ef4784c04db03279a87a7f8f49bab11679594698adefe59fa57a7695c4`（8,975B）尝试前三次no_sync微批次Graph重放、最后一次原生DDP同步及foreach更新。无手写优化、生产核心或prompt修改。
+
+首轮 `trial-ff10c5d978` 正式拒绝：B两对107.729532/107.880377ms，C117.743657/113.330675ms；收益−10.014125/−5.450298ms，原噪声界限5.779976/1.411752ms。整体 **107.8049545→115.537166ms，慢7.1724%**，`paired_gain_not_above_noise`及`objective_not_improved`。40个正式样本、16次完整检查均保留；rank0每次248,879,629元素、rank1每次248,879,623元素，最大误差0。但代码在setup捕获RuntimeError后永久回退，两卡质量路径均为parent passthrough/fallback；24张正式原始trace均3999kernels、13NCCL、0Graph启动，所以这是回退质量通过，不能称Graph优化成功。另有一次空参数screen的10样本/4检查/6trace，未合并分数。
+
+普通反馈规划器自行选择candidate_diagnostics、binding_cost和python_runtime。独立诊断捕获到Transformers `eager_mask` 创建标量时的CPU→CUDA复制不允许进入Graph；这是既有collector实际发现的异常，不是开发者给出的修复答案。候选CPU小模型/单进程Gloo探测不证明原两卡Graph正确性；其异常回退中未赋值的updated局部变量及多参数组lr等条件性限制已记录，未人工修改。资源选择中的单位误标、rank颠倒及跨profile因果推断不作为性能证明。
+
+第二轮普通selector `53d0f0db039a`／session `ses_e6d15d95effeEAqE6Y73URkxz7` 已启动，41项输入。实际工具14/16/18读到拒绝原因、107.8049545/115.537166ms、两项噪声和回退标签；工具23已展示捕获异常消息及binding_cost摘要。当前仅确认实际信息暴露，最终选择理由及第二轮结果仍待返回。没有额外轮次、人工候选修复或第三轮。服务器记录：`first-paired-review.json` SHA `84ab5eea7bc492ca0133cf65b00c8640464b0dc6b2376a3b5113693799ee7992`；`first-trial-review.json` SHA `19e87fae643f7b780afa3090d4e62df32f442f0274dc780267b4d9541a4bccdf`。只读reader的profile coverage类型及CPU/GPU同名窗口读取错误保留，未重跑实验。
+
+01:04实际df可用3,271,634,944B；原8GiB已确认告警不重复投递，没有新清理。唯一完成监听16040在01:05:58核验waiting、controller存活。当前真实任务继续执行；Goal保持active，后续依据第二轮实际结果选择整版独立验收或剩余跨项目缺口，不以首轮拒绝或这份记录结束项目。
+
 ## 执行边界与容量
 
 无并行 GPU、手写优化或 collector、案例路径/哈希/模型名生产分支；不重开已关闭的 Qwen/FSDP/77ac/observer/eef828 修复链。原接受版本、失败、质量与性能阈值保留。私有配置、角色历史和快照只留服务器，不输出原始配置或工具元数据内容。
