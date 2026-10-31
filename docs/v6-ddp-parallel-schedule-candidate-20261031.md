@@ -1,5 +1,13 @@
 # 已接受双通信组版本的后续排程候选
 
+香港2026-10-31 **19:20:51** 正常完成，reason=`batch_finished`。本次聚焦终审 [2f788497](evidence/v6-ddp-parallel-schedule-candidate-20261031/public-terminal-audit.json) 完成：39输入8,988,022B、原35非反馈文件、12当前关键身份、普通prompt/model/tools/core e893保持；28assistant/39tools/0 schema修复，provider估计1.14335997286（非账单）。code一次写入无修改 `7e6fb7a723590a93b289f43fcfef84663fc618b5da6d559362144d178827eed3` /35595B，proposal一次写入无修改 `442ac3f39dc9d13f8591f534be804b42b77b625c933a184038de64200a241403` /11159B。全部命令、输出和新代码依赖已审；5058显示行、4截断前缀和8个JSON/源码输出或失败stdout核对，完整历史仅服务器。
+
+实际读取当前9bdd、原训练/adapter/binding/selection/feedback，timeline/calibration有打开、tuning前缀/resources摘要；本次未打开nsys和device_telemetry JSON。工具19在输出两rank通信后因rank1的devices['0']报KeyError；28假定队列模拟超时，29误将每片算成整个尾部，30只修正模拟尺寸。这些是CPU算术假设，不能证明收益；31库API、33整数排程覆盖、36不支持CPU路径回退、38schema、39语法均不构成原GPU质量。没有记录到私有配置/后来答案、模型训练、数值tensor、CUDA工作负载、PG或真实collective命令；cuda.is_available查询不是GPU正确性，外部文件系统不封闭。
+
+新增helper按实际尺寸/顺序/通信槽生成分片和排程，没有新增实验路径/hash/模型名/答案分支；仍继承原12block任务程序专用结构，不是任意模型实现。默认fine8/2组/4尾片，尾部四片各39,383,808B；预计8→11次SUM，总497,759,232B不变。每片Work.wait在对应通信stream完成事件前；整chunk更新等待全部片完成和原参数消费者事件。小chunk通信及更新后移。共享pool/改变update顺序、copied inputs、有限guards、group初始化早于peer一致性、异常后只恢复grads不恢复weights等条件性限制保留，不追加故障注入或修复链。原full evaluator是质量依据；本地gate和CPU模拟不是分片通信证明，预测2–4ms/3–8ms、wire/等待归因不采纳。
+
+已明确选择并于香港 **19:27:50** 实际启动[一次原B/C验证](v6-ddp-parallel-schedule-fixed-20261031.md)，controller296856。空参数使用候选自己的默认值，未人工修改算法、分片或参数；原质量/性能规则保持。旧45380完成事件已处理，不重启旧批次。以下启动记录为历史。
+
 香港2026-10-31 **18:55:34**实际启动一次普通候选，controller **293560**，唯一隐藏完成/磁盘监听 **45380**。源是最新独立接受9bdd及实际新registry，依据刚完成的原项目selection提出的排程假说继续优化；不采用其预估收益/等待因果作为事实，不增加人工分片、排序或算法实现。
 
 [实际启动](evidence/v6-ddp-parallel-schedule-candidate-20261031/launch.json)。使用现有 `ProjectAgents.generate(candidate)`，普通生产prompt与既有feedback suffix、model/tools、API observe-only无cap、正常validator repairs。controller仅生成及schema，不含GPU/model/collective/search/parameter/collector/native/source-control/reference副本/指针发布/接受。实际Agent工具必须终态检查，意图不是无探测证明。返回后审精确code/params/dependencies、数值和泛化范围，再决定必要的原GPU验证；没有自动修复或fine9/coarse5/组数1/3/4循环。
