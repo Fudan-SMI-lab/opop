@@ -1,5 +1,13 @@
 # 已接受分片排程版本的后续重叠候选
 
+香港2026-10-31 20:48:45正常完成（batch_finished），完整新候选终审 [e0100fe4](evidence/v6-ddp-schedule-overlap-candidate-20261031/public-terminal-audit.json) 已完成。40实际输入9,019,089B、原36非反馈输入逐字节相同、12当前关键身份及原prompt/model/tools/core e893保持。47assistant/59tools/0框架schema修复；provider估算2.20043178404不是账单。代码一次写入5次编辑，proposal一次写入1次编辑，完整重建；最终代码2166f860/41,127B，proposal b3fae015/11,239B。全部实际命令与输出已审，3717 read lines/5截断前缀及18个JSON或源码输出核对，原错误保留。
+
+角色读了完整当前7e6、任务、绑定、反馈及用户要求、adapter；本轮未打开原training源码。实际打开timeline及其原rank0 raw trace，校准样本和tuning前缀；未打开Nsys JSON。做过实际CPU大embedding形状张量与复制更新片段测试，不能称没有tensor计算；没有记录到原模型训练、CUDA workload、PG/真实collective或私有配置/后续答案内容命令，外部FS并不封闭。工具44偏移越界后45修正候选相对偏移，46形状不匹配、47不同算式严格逐位比较失败、48超时、49不同初值比较失败均保留；50相同初值小布局通过。原root-scale/halved-SUM测试未执行到，不能称CPU已证明缩放等价。工具59打印的每slot 69,307,776元素有误，实际默认每slot为62,219,904；不向新角色注入修正表，也不重跑CPU测试。
+
+实际默认lead2/2组/tail_splits4：前两个block各自生产，后五个双block段；尾部连续片12,604,800+3×8,926,336元素。新helper按尺寸/顺序计算，没有新增实验路径、hash、UUID或预期答案分支；仍继承原12-block任务程序和binding ID，不称通用生产算法。每片Work.wait在通信stream内先于done event，更新等待本片完成与声明的消费者段；相对参数offset已在角色内部修正。loss backward seed乘1/world、SUM后不再平均，原完整数值验证是依据，不能从实数恒等式或复制CPU测试推导全部FP32等价。单更新stream仍可能阻塞后续片；route中的tail2指两个active tail slots，不是只有两片。默认仍有五个56.7MB双层chunk，proposal“全部消除该形状”不成立。继承的复制输入/有限guards/shared pool/PG lifetime/异常后未回滚weights等条件限制保留，不新增无关故障注入或修复链。
+
+按实际依赖与代码审查，已执行[一次原固定B/C](v6-ddp-schedule-overlap-fixed-20261031.md)，原质量通过并观察到2.5789489%整步差异；随后已启动[一次原正式AB/BA](v6-ddp-schedule-overlap-validation-20261031.md)。无人工改代码/分片/参数或更改质量接受规则。旧33580已handled，不重启；以下为历史启动记录。
+
 香港2026-10-31 **20:20:58**实际启动一次普通 `ProjectAgents.generate(candidate)`，controller **309340**，唯一隐藏完成/磁盘监听 **33580**。依据[完整新selector终审](v6-ddp-schedule-communication-selection-20261031.md)，当前整段生产后通信和整尾部等待提供可检验的依赖排程问题。原selection由角色提出早启动通信、按片更新等待及缩放位置的组合假说；没有手写分片/算法或采用transport floor、精确缩放、1.5–3ms预测作为事实。
 
 [实际启动](evidence/v6-ddp-schedule-overlap-candidate-20261031/launch.json)复用现有工作runtime `/root/autodl-tmp/dev/opop-v6`，core `e893f850dff70908e6100b7f6cc0773fbeac03e201759d688eda4d3682b3d0d8`不变。现有通用[实验编排](../scripts/experiments/v6_candidate_from_selection.py) SHA `a53979eb3703fa34ca9d38ba5cda0051ba9da0487f602c1ebbf3fe5458ef5c3b`原样复制；本次没有生产/实验helper代码修改。普通candidate prompt、既有feedback suffix、model/tools、API observe-only无cap、正常validator repairs保持。controller无GPU/model/collective/search/parameter/collector/native/source-control/reference副本/发布/接受阶段；Agent实际工具须终态审查，不能从意图宣称无探测。
