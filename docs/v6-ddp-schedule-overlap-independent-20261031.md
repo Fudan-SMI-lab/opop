@@ -1,5 +1,22 @@
 # 重叠版本的原独立完整版本验证
 
+香港2026-10-31 **21:19:49**原独立B/C/C/B正常完成，完整新结果终审 `d0c4bf0af5b06d94f88eb961d63c8c97b31f9e2e858fa90a3a420b8795368f25`，[公开终审](evidence/v6-ddp-schedule-overlap-independent-20261031/public-terminal-audit.json) SHA `3b3f92a1805813e062052d8c3fa56ef37e8df5b04445e77eabcf78c1a58d845f`。version-c5a4f0c3a7b5接受完整版本 `4e6bc78bd39550a754d66d04adc157b65bbec4b53ee245abda03bedbf3aa3158`，publication=exploration；独立CURRENT仍原EMPTY7a49，来源CURRENT88fa不变，没有发布指针。
+
+|原独立配对|B 原始EMPTY ms|C 完整2166 ms|收益ms|噪声界限ms|
+|---|---:|---:|---:|---:|
+|B/C|109.687160|43.014729|66.672431|2.837348|
+|C/B|115.921650|43.306667|72.614983|2.329440|
+
+聚合 **112.804405→43.160698ms，改善61.7384640254%**，两对均超过各自原噪声界限。4jobs/8ranks/40clean/16fullchecks（每次248,879,620元素）/24自身metric traces全部核对，8当前关键身份/core/实际请求与物化文件/adapter/controls/devices保持。全部40样本保留，最大B135.103348/C43.384675；原anchor133.379621/limit140.04860205约束通过，没有改锚点或加内存门槛。12个checks误差0，4个C第二检查rank0最大9.5367431640625e-7、rank1 1.1920928955078125e-7在原容差内，精确副本检查通过。first parent/second graph_setup_lead2_pg2_tail2_perpiece_foldscale/reference1不是两个optimized checks，没有保存全部raw tensors或新增source比较。
+
+全部自身trace：原始EMPTY B3999 kernels/0 Graph/0 launches/13AR；C1139 kernels/1127 Graph/22 launches/12AR。AR全部eager在Graph外，RING_LL入口。B载荷12×28351488+157541376B；C6144+2×28351488+5×56702976+50419200+3×35705344B，总量同为497,759,232B。C自身计算通信重叠14.956601—16.399222ms，原EMPTY B6.784588—13.281030ms；通信间重叠C26.495166—29.614966ms，B约0仅浮点roundoff。它们是各自capture内区间，不是wire/关键路径、跨capture的clean差值或可回收收益。完整版本收益包含计算批处理、通信和更新排程，不称纯通信贡献/通信量减少，也不与正式相对7e6的2.3751878%或历史59.69/58.46等相加。
+
+原EMPTY Torch runtime peak1,981,029,376B/lifecycle2,479,585,792B/reserved2,589,982,720B；C4,619,939,328B/5,672,500,224B/runtime reserved5,888,802,816B/lifecycle reserved6,354,370,560B，内存增加。外部NCCL未全量测量，不能将相对parent的runtime reservation下降称此完整版本内存收益。全部deprecation/barrier/default loss/profiler/AccumulateGrad警告和尾部保留，无uncaught traceback；没有抑制警告或加入无关故障注入。
+
+此批无Agent/新native/新source-control。只hash复用前一正式精确2166的native605d8220/46e34355/normalized585aa6db和旧真实source证据；不称新Nsys、新source tensor比较或全部所有者证明。主审首遍通过，没有实验/角色/GPU重跑。完整原日志、checks、请求、trace和服务器审计记录保留，私有配置未输出。
+
+下一步依据：新接受2166仍继承7e6旧10call/9group registry，正式profile的12call/11group未附着为当前registry。已于香港 **21:26:34实际启动[一次正常discovery和普通collection-planner](v6-ddp-overlap-communication-evidence-20261031.md)**，显式从accepted4e6bc78b分支，只更新新代码的调用证据，不重新验证旧批、生成候选或选参数。旧33548已handled；以下为本批历史启动记录。
+
 唯一33548已成功queue终态事件：batch_finished，完成UTC 2026-10-31T13:19:49.457966+00:00。终态不等于接受，完整独立审计由该事件续接，不重复监听。
 
 香港2026-10-31 **21:18:24**实际启动一次existing `promote_version(publish=False)`，controller **320672**，唯一隐藏完成/磁盘监听 **33548**。[实际launch](evidence/v6-ddp-schedule-overlap-independent-20261031/launch.json)复用working runtime/core e893，现有通用v6_promote_accepted_version.py SHA b27c96c77ae87644e0bb76acce964e7d95ac1e23e075b5eeb0b39a1054541de3保持。8当前关键身份，无历史sweep/model-health/环境副本/部署门槛/新测试。依据[新正式接受终审](v6-ddp-schedule-overlap-validation-20261031.md)，不是根据固定分数自动提升。

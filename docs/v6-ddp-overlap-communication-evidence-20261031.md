@@ -1,0 +1,17 @@
+# 新接受重叠版本的普通通信discovery
+
+香港2026-10-31 **21:26:34**实际启动一次existing `ProjectSearch.discover`，controller **322505**，唯一隐藏完成/磁盘监听 **14164**。[launch](evidence/v6-ddp-overlap-communication-evidence-20261031/launch.json)使用现有通用v6_discover_accepted_version.py SHA62d4e9bf967d2a90c828304d58f7a164fd5f2b47cf328e95e3d8fa65ea35afa1，复用working runtime/core e893。仅6当前关键身份，没有历史sweep/model-health、环境副本/部署门槛/新测试或生产框架改动。
+
+依据[刚完成的独立接受](v6-ddp-schedule-overlap-independent-20261031.md)，显式fork accepted exploration `4e6bc78bd39550a754d66d04adc157b65bbec4b53ee245abda03bedbf3aa3158`；来源ddp-schedule-overlap-independent-20261031/ddp-independent CURRENT仍原EMPTY7a49，current不等于探索接受版本不是失败。新ddp-evidence只附着新registry/plan/discovery，同files/bundle/contract。singlefixed-schedule-overlap/params{}，code2166f860330679a93f335985183675815b2e7e7053dc5be9453277aa68497a61/41127B，proposal b3fae015c2007ce75443c39fcceb8f5c51cb06403265bd99ced30c584b29e4c6/11239B，自身lead2/comm_groups2/tail_splits4不变。没有手工算法、分片或参数，旧物理代码文件不是多个active bundles。
+
+新独立版本继承的是旧7e6的10call/9group registry，上一正式profile的12call/11group并没有更新当前登记，因此需要这一次真实新代码证据后再讨论下一候选。没有selector/candidate/search/parameter/trial/独立重跑/source-control/reference副本/指针发布。真实普通initial collection-planner使用原request、available collectors、实际新observations、coverage、schema与environment，自主选择既有collectors；不提供终审纠正、causal答案、手工collector或代码。普通prompt/model/tools/API observe-only无cap及正常错误保留。实际工具可访问外部或探测，须终态完整审核，不能从controller意图推断没有执行。
+
+香港 **21:28:08** [启动实核](evidence/v6-ddp-overlap-communication-evidence-20261031/startup-verification.json) SHAb1be4cd2dfc540d068f01a474269dcf3f6c7ffbd886933b65707ba0629dc8897：6当前关键身份/core/sourceCURRENT7a49保持，discover-1cef5069de两rank完成，新current `febcd1fc7dba364e9ab96e9175fa229d757078946fe6e2ad320705d15bf24e1c` 同2166文件/bundle/contract，实际12calls/11groups。真实planner **generation04e497a80be7/session ses_e6ddbc10dffehboMRkBzCD9QJG**，6实际输入111,445B与snapshot逐字节相同，原initial prompt/model/tools相同，没有previous-feedback suffix。fork存在精确原version-c5a4f0c3a7b5/result的latest-feedback副本，但它不是这6初始输入；后续实际外部读取尚待完整审计。此时controller/planner活跃、GPU空闲，df8,651,169,792B；不是终态quality/接受/完整访问结论。
+
+本次profile/run-only采集不自动执行原evaluate的全部质量/clean/接受；原GPT2/2ranks/B1S128/accum4/FP32/noTF32/SGD.001、adapter b276a7ed和controls不变。独立已接受61.7384640%是原EMPTY对完整版本，正式2.3751878%是7e6对新版本，不相加、不称纯通信或流量降低。若planner选择新Nsys，须按本次实际SQLite/图节点/stream/载荷/transport核对，不能把旧正式native当新capture。NCCL sum/重叠不是wire或关键路径，NODE/P2P不是transport证明；零CPU callback表示readiness未知，不等于无梯度。普通collector局部错误保留，不强制补采直到成功。
+
+[64MiB增长预测](evidence/v6-ddp-overlap-communication-evidence-20261031/disk-budget.json)来自最近两次同阶段完整150GiB盘实际quota增量41,308,160/43,835,392B，67,108,864B超过最大值50%以上余量；目录du含共享物化，不能当作新增quota。原8GiB警戒不变，forecast不是API/collector cap，也不限制自主collector数量。启动free8,669,093,888B，GPU空闲，本轮无新增cold。较旧第三个completion缺少disk键，初次只读预算查询KeyError留budget说明，只使用两个最新完整兼容记录，无实验重跑。
+
+low_disk_space不表示完成，不能盲杀/删除。若仍运行，先查真实GPU/磁盘；必要授权服务器无损cold只在GPU结束后保护active/source/accepted/controls/models/provider/deps，之后仅替换一个监听、无重复不变提醒。最新旧cold是120份关闭未采用角色的重复输入物化副本，原snapshot/artifact/source/decisions/accepted/controls保留，RESTOREstorage-audit-20261031/ddp-overlap-independent/RESTORE.md，journal302cfa502b7d3ecbb38040745439cc7d612e89402c43f000f08d14a72a39efcd，可恢复、不丢失；旧journal分别保留。
+
+继承的有限guards/复制inputs/shared pool/PG init及lifetime/异常后未回滚weights等条件限制保持，不额外建立安全性测试/分析器/评审修复链。原root-scale并非普遍FP32逐位等价，原全质量规则不放宽。Qwen/FSDP/77ac/observer/eef828及历史拒绝保持关闭。旧33548独立和34508正式已handled，其他迟到事件去重，不重启旧批。所有后台SSH/queue隐藏，不关VSCode，无model polling/delivery tests。终态审新registry、真实planner和collector后再明确决定下一步，不预排候选链或结束整个项目。
