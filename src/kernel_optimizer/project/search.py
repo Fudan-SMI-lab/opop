@@ -146,7 +146,7 @@ class ProjectSearch:
                   "coverage.json": json.dumps(discovery["coverage"], indent=2),
                   "collection.schema.json": json.dumps(CollectionPlan.model_json_schema(), indent=2)}
         if evaluation is not None:
-            from kernel_optimizer.project.diagnostic_planning import objective_reference
+            from kernel_optimizer.project.diagnostic_planning import objective_reference, revision_summary
             reference = {"revision": self.prepared["revision"],
                 "bundles": list(self.revisions.revision(self.prepared["revision"]).bundles),
                 "ranks": [{"rank": row["rank"], "metrics": row.get("result", {}).get("metrics", {})}
@@ -158,7 +158,8 @@ class ProjectSearch:
             reference["objective_aggregate"] = objective_reference(self.prepared["evaluation"], self.request.objective)
             inputs["evaluation.json"] = json.dumps({**evaluation, "original_reference": reference}, indent=2)
             inputs["revisions.json"] = json.dumps({"candidates": [
-                {"revision": r.id, "parent": r.parent_id, "bundles": list(r.bundles)} for r in revisions],
+                revision_summary(r, self.revisions.revision(r.parent_id) if r.parent_id else None)
+                for r in revisions],
                 "discovery_revision": discovery["revision"]}, indent=2)
         prompt = ("Choose useful diagnostic collectors for the frozen task objective from actual capability and trace evidence. "
             "Write collection.json following collection.schema.json and use names from available-collectors.json. The torch collector already ran. Nsys is optional and runs separately; "

@@ -4,6 +4,57 @@ from types import SimpleNamespace
 import pytest
 
 
+@pytest.mark.parametrize('previous,current,changes', [
+    ((), ('new',), {'added': ['new'], 'removed': [], 'retained': []}),
+    (('shared', 'old'), ('shared', 'old', 'new'),
+     {'added': ['new'], 'removed': [], 'retained': ['shared', 'old']}),
+    (('shared', 'old'), ('shared', 'new'),
+     {'added': ['new'], 'removed': ['old'], 'retained': ['shared']}),
+    (('old',), ('old',), {'added': [], 'removed': [], 'retained': ['old']}),
+    (None, ('root',), None),
+])
+def test_planner_receives_actual_parent_composition(tmp_path, monkeypatch, previous, current, changes):
+    from contextlib import nullcontext
+    from kernel_optimizer.project import search as module
+
+    search = object.__new__(module.ProjectSearch)
+    search.output, search.config, search.store = tmp_path, None, None
+    search.request = SimpleNamespace(profiling={}, portable=lambda: {},
+        objective={'name': 'duration', 'unit': 'ms', 'direction': 'minimize'})
+    search.prepared = {'revision': 'reference', 'evaluation': {'ranks': [
+        {'rank': 0, 'result': {'metrics': {'duration': 10}}}]}}
+    candidate = SimpleNamespace(id='candidate', parent_id='parent' if previous is not None else None,
+                                bundles=current)
+    # Neither the original reference nor discovery is the candidate's parent.
+    revisions = {'reference': SimpleNamespace(bundles=('reference-only',)),
+                 'discovery': SimpleNamespace(bundles=('discovery-only',)),
+                 'parent': SimpleNamespace(bundles=previous)}
+    search.revisions = SimpleNamespace(revision=revisions.__getitem__)
+    captured = {}
+
+    class Agent:
+        def generate(self, role, inputs, prompt, outputs, *, validator):
+            captured.update(json.loads(inputs['revisions.json']))
+            result = tmp_path/'generated'
+            result.mkdir()
+            (result/'collection.json').write_text(json.dumps({
+                'collectors': [], 'requested_fields': [], 'unavailable_fields': {},
+                'rationale': 'No additional collection.', 'revision': candidate.id}))
+            validator(result)
+            return result, {}
+
+    monkeypatch.setattr(module, 'Runtime', lambda *a, **kw: nullcontext(None))
+    monkeypatch.setattr(module, 'ProjectAgents', lambda *a, **kw: Agent())
+    search.plan_collectors({'revision': 'discovery', 'communication': {}, 'coverage': []},
+                           evaluation={}, revisions=[candidate])
+    assert captured['discovery_revision'] == 'discovery'
+    row, = captured['candidates']
+    assert row['revision'] == candidate.id and row['parent'] == candidate.parent_id
+    assert row['bundles'] == list(current)
+    assert row['parent_bundles'] == (list(previous) if previous is not None else None)
+    assert row['bundle_changes'] == changes
+
+
 @pytest.mark.parametrize('enabled', [False, True])
 def test_screening_rejection_can_collect_an_agent_selected_revision(tmp_path, monkeypatch, enabled):
     from kernel_optimizer.project.search import ProjectSearch
