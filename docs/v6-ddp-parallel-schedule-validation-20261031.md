@@ -1,5 +1,24 @@
 # 分片排程候选的原正式配对验证
 
+**正式终审完成（香港2026-10-31 19:38:35）**：原AB/BA接受精确7401459f/7e6fb7，publication为exploration，源及新分支CURRENT仍eb8。服务器audit `00402fbf7ee2bae0768f831cdffa8b33325fcf1f4d4b75f7e3d827855060bf77`，[公开摘要](evidence/v6-ddp-parallel-schedule-validation-20261031/public-terminal-audit.json) SHA `0c42f315224be4013399c02ca5714cc3ae3b36a053fc9d11ea68b899287cb51d`。9jobs/18ranks、40clean、16全量检查、24自身原trace、2新native及8当前身份/9实际materialization manifest核对；未重跑旧审计、角色或GPU。
+
+| pair | 9bdd B ms | 7e6fb7 C ms | 收益ms | 噪声界限ms |
+|---|---:|---:|---:|---:|
+| AB | 45.527374 | 44.487930 | 1.039444 | .806860 |
+| BA | 45.547699 | 44.672083 | .875616 | .441046 |
+
+汇总 **45.5375365→44.5800065ms，改善2.1027268350%**，两对收益超过原MAD噪声界限。原anchor133.379621/limit140.04860205约束通过；B45.954116/C46.812499尾部完整保留，不混入fixed样本。每次比较248879620元素，8次首次误差0，8次第二检查r0最大9.5367431640625e-7/r1最大1.1920928955078125e-7，原容差/exact replicas通过。首parent、次graph_setup_capture_parallel_pg2_tail4_deferred_small/reference1并非两个optimized-only检查；无全量tensor留存或新source比较。
+
+24自身trace确认B1138kernels/1130Graph、8AR，C1141/1130Graph、11AR，均17Graph launches，AR在Graph外。C两stream21:6/25:5，payload6144+六56702976+四39383808，总497759232B与B相同。B通信区间并发18.186940–19.448048ms，C28.747721–29.896418；compute/comm重叠B13.944402–14.351160、C14.669393–15.531901ms。这是各自capture内的描述，非wire/关键路径或可回收收益。Torch peak约4.613GB/lifecycle5.656GB/reserved6.354GB，allocator小差异不称内存收益，NCCL外部分配未全计；8.27–13.86ms安装时间不是完整setup成本。所有18日志warning、deprecation/barrier/AccumulateGrad保留，无未捕获traceback。
+
+新native `nsys-0b0b77dfd6`：r0SQLite493f341464fddea63924c8a5767814e1a6e4cdf7e6ccaa6650b43600f90f9b8b，r190bc513ac292f111cf4d50bbd6813b3a45fd94bf604f1de50d006565dce27bfd，normalized1c18d6753f0bd7e7588cd564d3781425efabb8580f6f52445dd7858464cefbc2。每rank1131kernels/1120Graph、17个versioned cudaGraphLaunch、11个eager RING_LL entry，stream21:6/25:5，实际SHM/direct/direct ch00/01。NCCL sum433.214293/61.946102ms、union218.397836/33.122997；r0约190.90/193.08ms尾部保留，各rank扰动period不当clean/wire/关键路径。Torch profile10calls/9groups并未更新registry；timeline11AR/88sync/0gradientcallbacks/1inventory bucket，callback缺失不是无梯度或完整piece ownership。run-only诊断6处normal-False生成器共458returns/rank，无异常但非observe比较。无校准；tuning的6144 RING/LL单channel、较大块RING/SIMPLE双channel及setup/warmup记录不与timed kernels硬关联。
+
+真实planner9f846b9ebd6d/session ses_e6e42c703ffeqfgZDtZcpNq2FZ：8输入108595B、9assistant/13tools/0schema修复，provider估算0.16678577316非账单。2620展示行核对，tool8 byte-truncation加11 continuation覆盖全部2088 observation行/all8 inputs。1/2仅目录名，7实际parent bundle/added-removed-retained，12一次plan写入无编辑，13只JSON/schema/revision断言；自主选择nsys/timeline/diagnostics/tuning。没有记录到model/tensor/CUDA/PG/collective/privateconfig/later-answer内容访问，FS非封闭不能绝对排除。plan保留wire/criticalpath未知；8AR/157MB说的是输入parent9bdd，不当新11AR证据。原plan未改、不把审计纠正表供给下个角色。完整私有历史只在服务器，hash d9080645d9be56aaa27c3d8ab035733580665f37d336adfb715fc29278ea1cc6。
+
+**实际下一步已完成**：[完整版本独立验证](v6-ddp-parallel-schedule-independent-20261031.md)，精确7e6fb7对原始EMPTY，原B/C/C/B、质量及噪声规则不变，只复用本批native/source记录，没有另一次Nsys或参数搜索。原7304事件已handled，迟到事件去重。
+
+以下为启动时记录。
+
 香港2026-10-31 **19:32:38** 实际启动，controller **297985**；唯一隐藏完成/磁盘监听 **7304**。现有通用 `v6_validate_fixed_candidate.py` SHA96586fdc2a611253b32b5a5e63ceb49d63132a63db78bb7cfb3c014cd51229da调用一次 `ProjectSearch.validate_bundle(publish=False)`，fresh AB然后BA。工作runtime/core e893与刚完成fixed一致；没有新框架、prompt、模型、测量或接受改动。
 
 依据[原固定B/C终审](v6-ddp-parallel-schedule-fixed-20261031.md)：原fullchecks/精确副本/约束通过，45.521059→44.334140ms观察2.6074064%，且实际11次分片SUM与更新等待机制执行。这个观察值得一次正式噪声判断；不将模拟预测当收益、不混入fixed样本。
