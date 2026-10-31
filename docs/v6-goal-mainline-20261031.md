@@ -8,7 +8,7 @@
 
 ## 当前执行
 
-ResNet 原入口已完成两轮普通优化及一次完整版本独立验收。当前 DDP 原入口准备也已通过，香港11月1日 **00:18:42** 已启动同一 request 的两轮普通优化（controller351511）；继续跨项目 C1→C2→C3 主线，不重开旧DDP候选链。
+ResNet 原入口两轮与独立验收已完成；新DDP原入口两轮于香港11月1日 **01:39:19** 结束，两候选均按原规则拒绝，未追加修复。**01:41:53已启动Qwen原始offline batch-8完整生成吞吐准备**（controller378140），继续当前同一核心的跨项目C1→C2→C3主线，不重开旧交互式Qwen链。
 
 - **项目**：ResNet 原始离线 batch-32 推理；保留预训练模型、真实图片、FP32、完整 logits 和精确类别。目标沿用旧原入口批次的完整推理延迟目标。
 - **实际启动**：香港2026-10-31 22:46:12，box4-3，controller `329695`。根目录 `/root/autodl-tmp/dev/v6-work/goal-resnet-original-20261031`。
@@ -81,6 +81,20 @@ ResNet 原入口已完成两轮普通优化及一次完整版本独立验收。�
 第二轮普通selector `53d0f0db039a`／session `ses_e6d15d95effeEAqE6Y73URkxz7` 已启动，41项输入。实际工具14/16/18读到拒绝原因、107.8049545/115.537166ms、两项噪声和回退标签；工具23已展示捕获异常消息及binding_cost摘要。当前仅确认实际信息暴露，最终选择理由及第二轮结果仍待返回。没有额外轮次、人工候选修复或第三轮。服务器记录：`first-paired-review.json` SHA `84ab5eea7bc492ca0133cf65b00c8640464b0dc6b2376a3b5113693799ee7992`；`first-trial-review.json` SHA `19e87fae643f7b780afa3090d4e62df32f442f0274dc780267b4d9541a4bccdf`。只读reader的profile coverage类型及CPU/GPU同名窗口读取错误保留，未重跑实验。
 
 01:04实际df可用3,271,634,944B；原8GiB已确认告警不重复投递，没有新清理。唯一完成监听16040在01:05:58核验waiting、controller存活。当前真实任务继续执行；Goal保持active，后续依据第二轮实际结果选择整版独立验收或剩余跨项目缺口，不以首轮拒绝或这份记录结束项目。
+
+### DDP两轮关闭，转入Qwen离线原入口
+
+第二轮selector实际读完首轮拒绝、配对数值、回退路径与异常位置，提出显式mask/loss和稳定梯度缓冲改写。普通candidate `d17ca345035c` 最终代码 `e13c616884b38814661f7ccb730e75a9718dfee54585f3afb0f8264c9206bcfa`（15,746B），proposal `6292d6b8…`；44实际输入36,837,487B、69工具，代码/proposal各一次写入无编辑。小模型CPU mask/logits/loss/grads与foreach探测通过不代表原GPU正确性；一次错误CPU API断言保留。无人工改代码或额外角色，普通两轮范围不变。
+
+第二轮 `trial-0aa9491baf` 的B为113.069022/114.667429ms，C为112.386166/114.180735ms，收益0.682856/0.486694ms均低于原噪声2.450892/6.358922ms；整体113.8682255→113.2834505ms的0.51355%仅是未接受观察。正式40rank样本、16次全检查全部保留，每次rank0比较248,879,629元素/rank1比较248,879,623元素，误差0。但质量路径再次是首次parent、第二次setup失败后永久parent fallback；24正式加6screen自身trace均3999kernels/13NCCL/0Graph。不能称实际Graph优化或Graph质量通过。
+
+普通反馈planner `0883452ed9ef` 的8输入271,377B、22工具实际核对，选择candidate_diagnostics/binding_cost/nccl_tuning，路径错误及git exit128保留。诊断在两rank的捕获backward line172定位到AccumulateGrad陈旧default-stream引用；line227为同一异常传播，不是第二个独立故障。绑定对照两对112.804938/115.530283、126.985549/111.760303ms不能直接分解或抵扣候选性能；tuning是另一次setup/warmup记录，不是timed-kernel协议join。第二轮共12jobs/24rank结果已核对。数值记录SHA `e77aa0eca14c1a02c93e768fe282a7f69ea8106fd3358879da8a087914fdc706`，终态记录 `7056dbba21448a73e042b30b88243e46ba6551c5903eccf0b494aba64e6cf15a`。
+
+控制器351511于17:39:19 UTC正常结束，第二轮正式`paired_gain_not_above_noise`拒绝，原EMPTY current `8125e24d…`保持。原质量证明回退正确，C1资源和实际异常确实进入了C2第二轮，但没有得到新DDP优化接受；C3正确拒绝。不会启动独立候选验收或第三轮修复，也不把候选错误当作修改生产框架的理由。旧16040事件已handled，迟到去重。
+
+**下一步已执行**：17:41:53 UTC／香港01:41:53启动 `/root/autodl-tmp/dev/v6-work/goal-qwen-offline-original-20261031`，controller378140；现有CLI从原`qwen_inference.py`、本地预训练资产及自然语言offline目标进入`--prepare-only`。目标为原B8/prompt256/new32完整同步prefill+decode吞吐，保留BF16、完整逐步logits、精确greedy tokens及原teacher-forced关系；不是旧B1交互式TTFT修复链。没有旧request/adapter/candidate、手工算法或上述DDP审查答案输入。生产核心仍e893、普通配置/model/tools不变，通用supervisor按protocol执行，无新生产代码或测试。
+
+实际启动可用2,242,461,696B，准备预测512MiB：原offline参考77,811,899B×2加约381MB产物余量；不是APIcap，8GiB仍已确认warning，不作预留硬门槛。本次无清理、参考复制或并行GPU。原参考保留供准备后只读CPU语义比对，未额外执行源模型。普通intake `ce55934436c4`／session `ses_e6cf22ba5ffekOX0DmT0G9wvTm` 实际5输入18,963B与snapshot相同，core一致；这仅是启动证据，不是准备正确性。首次reader误查尚未建立的output目录，实际intake在同root的output.intake；FileNotFoundError保留，仅改读取位置，无重跑。唯一隐藏完成监听45912经waiting预检启动。准备有效后再按实际容量进入同request两轮普通优化，Goal保持active。
 
 ## 执行边界与容量
 
