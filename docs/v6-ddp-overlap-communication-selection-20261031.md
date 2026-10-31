@@ -1,0 +1,15 @@
+# 新接受2166版本的一次普通优化选择
+
+香港2026-10-31 **21:39:39**实际启动一次existing `ProjectAgents.generate(selection)`，controller **325977**，唯一隐藏完成/磁盘监听 **52696**。[launch](evidence/v6-ddp-overlap-communication-selection-20261031/launch.json)复用working runtime/core e893与现有通用v6_selection_from_feedback.py SHAaed0367b02a348347046127a5c55510788ba3847e2191001eda521f7576abe52。普通prompt+既有feedback suffix/model/tools、group/joint/region/execution_plan默认scope、API observe-only无cap、正常validator修复保持。只有6当前关键身份，无历史sweep/model-health/环境副本/版本部署门槛/新测试/生产改动。
+
+依据[本轮新discovery终审](v6-ddp-overlap-communication-evidence-20261031.md)3bfcff93，而不是未审的collector标签。Source ddp-overlap-communication-evidence-20261031/ddp-evidence CURRENT `febcd1fc7dba364e9ab96e9175fa229d757078946fe6e2ad320705d15bf24e1c`，真实2166的12calls/11groups。单fixed-schedule-overlap/params{}仍调用自身lead2/comm_groups2/tail_splits4；code2166f860330679a93f335985183675815b2e7e7053dc5be9453277aa68497a61/41127B，proposalb3fae015c2007ce75443c39fcceb8f5c51cb06403265bd99ced30c584b29e4c6/11239B。旧物理代码文件不是多个active bundles。accepted4e6bc78b/formalEA18/source88fa/独立EMPTY7a49/历史接受与拒绝保持；无rediscovery/source-control/reference副本或指针发布。
+
+普通当前四collector JSON、source/task/ownership/bundle与原version-c5a4f0c3a7b5完整版本反馈；raw SHA69ac4cc385ea190fdfbd48a5bf99816c8a4aa1563684f3479d094f6e3cdc3237、正常route27259c22b79f808b21ff623751162870159342cfcc128126480801d3b7fc1f58。原decision/字段保持，supplement仅沿用明确用户约束34ae723134b9114d19d36e5e3cf16ad876a2287ffaabbd53327ebf7119240c8e及已经记录的“为什么没有继续推进”。没有终审纠正表、causal答案、手工算法/通信组/参数或新analysis；历史source/metric/CPU/user辅助边界保持，不称unaided A/B。
+
+香港 **21:41:25** [启动实核](evidence/v6-ddp-overlap-communication-selection-20261031/startup-verification.json) SHA12dfc8e4fe8c10e7bbeec0b26930f750734173b453b8cb88273a63e8e074b2b9：generation **0d7ab323bb3b/session ses_e6dcffc2effej916a6CynsNnBm**，实际39输入7,638,025B与snapshot精确一致，6当前关键文件、sourcecurrent、core及原prompt/model/tools保持。10assistant/19tools此时仅metadata/read路径核对，完整实际commands/outputs/probes和selection语义待终态，不当消费/正确推理或没有外部访问的证明。GPU空闲/controller活跃/df8,608,747,520B。无startup reader错误、模型健康调用、历史重审或清理。
+
+下一问题是：当前较早生产边界、12片双通信组和按片更新的完整接受实现，结合新自身观察，是否支持一个不同且可由原质量/配对性能判定的优化路线。由普通selector自主选择，不指定算法或结果；支持才继续一次普通candidate，并在GPU前审实际代码/数值/依赖/泛化。若只重复已拒绝机制或未经证实协议前提，保留输出并选具体有界问题，不重试selector/prompt直到满意。Qwen/FSDP/77ac/observer/eef828等关闭链不重开；禁止手改实现或放宽原质量/接受。
+
+空间核对后**本轮无清理**：剩余可见大input副本关联历史接受来源，已保护。32MiB33554432预算来自最近两次同类selection实际150GiB盘quota增量23,867,392/19,931,136B，超过最大值40%余量；原8GiB8589934592警戒保持，forecast不是API/output cap。启动available8,627,527,680B，后续GPU必须重新算真实预算。低磁盘不等于完成，不盲杀/删除；若报警先查真实GPU，必要授权无损cold仅GPU结束后保护active/source/accepted/controls/models/provider/deps，再按实际运行状态保留单一监听。旧cold RESTORE journal302cfa50可恢复，原snapshot/artifact/source/decisions/accepted保持，旧journals分别保留。
+
+没有controller候选/GPU/模型/collective/search/参数/collector/native/source-control/reference副本/接受阶段。实际Agent工具仍须完整审核，不从意图推断没有探测。私有配置/history只在服务器，先allowlist再相关输出审阅；不打印metadata.output/display/preview。后台SSH/queue隐藏，不关VSCode，无模型轮询或投递测试。旧14164已完整审核并handled，33548/34508及更早事件去重、不重启；当前只有52696监听新批。完成后从实际selection决定有界优化，不把辅助记录当终点或结束整个项目。
