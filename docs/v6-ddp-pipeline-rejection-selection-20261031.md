@@ -1,5 +1,13 @@
 # 正式拒绝后的普通项目决策
 
+本轮已于香港 **17:51:16** 正常完成。完整新批审查见[终审记录](evidence/v6-ddp-pipeline-rejection-selection-20261031/public-terminal-audit.json)，SHA `cbc0aa796c3266e5f581ebc8cb819e32bc1e3c5861d7411ac51daec075ffb542`。实际47输入19,251,110B及7当前关键身份保持；26assistant/35tools/0schema修复，provider报告0.67701272392仅估算。selection一写一拼写修改（communicives→communicators），完整重建SHA `832668b7749bf7cf2e3e009c7436f46e61146c1f2bd578352dc61ae589a63407`；3262展示行、2截断前缀、14纯JSON输出与head输出逐项核对。所有命令和输出均纳入审查，原完整history仍仅在服务器；本轮未重跑旧模型或采集。
+
+角色实际读了完整当前02b933和失败e610代码、原pair收益/噪声/约束、用户要求及binding；四份当前collector均打开，但展示深度不同，Nsys只有部分数组/元数据，不能称全量理解。工具6错误相对source目录exit2保留；工具26正则命中数值“4090”不是设备证据。完整35工具中未观察到模型、tensor、CUDA、process-group、真实collective、私人配置或后续审计答案读取；文件系统非封闭，因此不声称绝对无外部访问。
+
+实际输出保留7组11调用的execution_plan：在当前已接受分段流水线上并发不同分段的通信，保留每段完成→更新依赖，并沿用e610提出的平均融合。这不是已验证收益。原输出把单次切协议失败归因成“全部微小收益来自除法融合”、把分离capture的调优记录当逐次协议证据、把串行时间链当可回收关键路径、把校准速率当传输下界，均不采纳。替换后的reference也不自动等于旧优化fallback。原selection不修改，这些审计纠正没有注入候选。
+
+决定并已执行：[一次普通候选生成](v6-ddp-pipeline-parallel-candidate-20261031.md)。最低依据是当前已接受八分段实现的生产/完成/更新边界及实际串行通信提交；并发究竟改善还是争用变慢，必须由生成后的真实代码和原质量/性能验证裁决。它与旧77ac有并发概念关联，但不复用/修复旧DDP-hook、Future或半bucket实现；新ID本身不是继续理由。旧修复链仍关闭，不追加手工实现或反复prompt。原e610正式拒绝、已接受02b933及全部历史失败保持。旧32612监听已处理，不重启。以下保留启动记录。
+
 用户问“为什么没有继续推进”。上一轮把通用元数据修正当作终点，未接回优化工作；现已纠正执行安排，继续现有真实DDP项目，而不是要求新外部项目或重跑被拒绝代码。
 
 实际启动 **2026-10-31 09:44:22.243921UTC / 香港17:44:22**，controller **276981**，唯一隐藏完成/磁盘监听 **32612**。使用[通用实验编排](../scripts/experiments/v6_selection_from_feedback.py)，controller SHA`aed0367b02a348347046127a5c55510788ba3847e2191001eda521f7576abe52`；一次现有`ProjectAgents.generate(selection)`，普通prompt/feedback后缀、模型、工具和默认允许scope，API observe-only不加cap，正常schema修复保留。

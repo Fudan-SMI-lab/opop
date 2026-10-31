@@ -51,21 +51,36 @@ def prepare(args):
     inputs.update({'selection.json':json.dumps(selection,indent=2),
         'targets.json':json.dumps([lookup[c]for c in sorted(affected)],indent=2),
         'target-resources.json':json.dumps({c:discovery.get('call_resources',{}).get(c)for c in sorted(affected)},indent=2)})
-    evidence_terminal=read(args.evidence_run/'followup-completed.json')
-    assert evidence_terminal['phase']=='completed'and(args.evidence_run/'terminal-audit.json').exists()
-    evidence=evidence_terminal['results']['diagnostic-author'];plan=Path(evidence['plan'])
-    assert sha(plan)==evidence['plan_sha256']
-    constraints=args.user_constraints.read_text()
-    index={'scope':'Original generated analysis plan, not a verified causal answer, optimization instruction or certified collector. Its claims/inferences remain hypotheses to reconcile with original artifacts. No generated artifact-reader code, developer terminal audit/correction table or manual optimization supplied. Latest user constraints are explicit user steering, not an unaided/single-variable cohort.',
-        'plan':{'input':'inputs/diagnostic-evidence/plan.json','path':str(plan),'sha256':sha(plan),'bytes':plan.stat().st_size},
-        'original_artifact_index':{'path':str(args.evidence_run/'evidence-index.json'),'sha256':sha(args.evidence_run/'evidence-index.json')},
-        'user_constraints':'inputs/user-constraints.txt'}
-    inputs.update({'diagnostic-evidence/plan.json':plan.read_bytes(),'diagnostic-evidence/index.json':json.dumps(index,indent=2),'user-constraints.txt':constraints})
     raw=(args.selection_run/'original-feedback.json').read_bytes();assert raw==(search.output/'latest-feedback.json').read_bytes()
-    original=json.loads(raw);augmented=dict(original)
-    existing=original.get('supplemental_evidence')
-    augmented['supplemental_evidence']={'prior':existing,'diagnostic_artifacts':index,'user_constraints':constraints}
-    augmented_text=json.dumps(augmented,indent=2)
+    original=json.loads(raw);evidence_paths=[];plan=None
+    if args.evidence_run is not None:
+        assert args.user_constraints is not None
+        evidence_terminal=read(args.evidence_run/'followup-completed.json')
+        assert evidence_terminal['phase']=='completed'and(args.evidence_run/'terminal-audit.json').exists()
+        evidence=evidence_terminal['results']['diagnostic-author'];plan=Path(evidence['plan'])
+        assert sha(plan)==evidence['plan_sha256']
+        constraints=args.user_constraints.read_text()
+        index={'scope':'Original generated analysis plan, not a verified causal answer, optimization instruction or certified collector. Its claims/inferences remain hypotheses to reconcile with original artifacts. No generated artifact-reader code, developer terminal audit/correction table or manual optimization supplied. Latest user constraints are explicit user steering, not an unaided/single-variable cohort.',
+            'plan':{'input':'inputs/diagnostic-evidence/plan.json','path':str(plan),'sha256':sha(plan),'bytes':plan.stat().st_size},
+            'original_artifact_index':{'path':str(args.evidence_run/'evidence-index.json'),'sha256':sha(args.evidence_run/'evidence-index.json')},
+            'user_constraints':'inputs/user-constraints.txt'}
+        inputs.update({'diagnostic-evidence/plan.json':plan.read_bytes(),'diagnostic-evidence/index.json':json.dumps(index,indent=2),'user-constraints.txt':constraints})
+        augmented=dict(original)
+        augmented['supplemental_evidence']={'prior':original.get('supplemental_evidence'),'diagnostic_artifacts':index,'user_constraints':constraints}
+        augmented_text=json.dumps(augmented,indent=2)
+        evidence_paths=[plan,args.evidence_run/'evidence-index.json',args.evidence_run/'terminal-audit.json',args.user_constraints]
+    else:
+        # Reuse the completed selector's exact evidence. Only ordinary candidate
+        # selection/targets/resource inputs and selected-group routing are added.
+        assert args.user_constraints is None
+        augmented_path=args.selection_run/'augmented-feedback.json'
+        augmented_text=augmented_path.read_text() if augmented_path.exists() else raw.decode()
+        augmented=json.loads(augmented_text)
+        assert {k:v for k,v in augmented.items()if k!='supplemental_evidence'}=={k:v for k,v in original.items()if k!='supplemental_evidence'}
+        constraints=inputs.get('user-constraints.txt',b'')
+        index={'scope':'Exact completed-selector evidence reused; no new analysis, audit corrections, implementation instructions or user constraints added.',
+               'selection_snapshot':result['initial_snapshot'],'feedback_path':str(augmented_path if augmented_path.exists()else args.selection_run/'original-feedback.json')}
+        evidence_paths=[augmented_path]if augmented_path.exists()else[]
     packaged,compact=feedback_artifacts(augmented_text)
     for n,v in packaged.items():
         b=v.encode()if isinstance(v,str)else v
@@ -77,10 +92,13 @@ def prepare(args):
     expected={'inputs/'+n:v.encode()if isinstance(v,str)else v for n,v in inputs.items()}
     expected['inputs/previous-feedback.txt']=feedback.encode()
     expected['inputs/worker-environment.json']=json.dumps(worker_environment(),indent=2).encode()
+    reused={n:digest(v)for n,v in files.items()if n!='inputs/previous-feedback.txt'and expected.get(n)==v}
+    if args.evidence_run is None:
+        assert len(reused)==len(files)-1
     # Preserve current task/source and actual supplied evidence. Historical audits are
     # references, not another repeated traversal of every closed run or its tensors.
     paths=[args.selection_run/n for n in ['protocol.json','followup-completed.json','terminal-audit.json','original-feedback.json']]
-    paths += [selection_path,Path(result['initial_snapshot']),plan,args.evidence_run/'evidence-index.json',args.evidence_run/'terminal-audit.json',args.user_constraints]
+    paths += [selection_path,Path(result['initial_snapshot']),*evidence_paths]
     paths += [search.output/n for n in ['request.json','prepared.json','discovery.json','project/current.json','latest-feedback.json']]
     frozen={str(path):sha(path)for path in paths}
     free=int(subprocess.check_output(['df','-B1','--output=avail','/root/autodl-tmp'],text=True).splitlines()[-1])
@@ -94,11 +112,12 @@ def prepare(args):
         'selection_snapshot':result['initial_snapshot'],'selection_sha256':sha(selection_path),'canonical_selection_sha256':digest(inputs['selection.json']),
         'affected_calls':len(affected),'groups':selection['groups'],'scope_selected':selection['scope'],
         'original_feedback_sha256':digest(raw),'original_feedback_bytes':len(raw),'feedback_sha256':digest(feedback),'feedback_bytes':len(feedback.encode()),
-        'evidence_plan_sha256':sha(plan),'user_constraints_sha256':digest(constraints),
+        'evidence_plan_sha256':sha(plan)if plan else None,'user_constraints_sha256':digest(constraints),
         'inputs':len(expected),'input_bytes':sum(map(len,expected.values())),'input_hashes':{n:digest(v)for n,v in expected.items()},
-        'critical_frozen_files':len(frozen),'historical_preservation_reference':str(args.evidence_run/'terminal-audit.json'),
+        'selector_nonfeedback_inputs_reused':len(reused),'selector_nonfeedback_hashes':reused,
+        'critical_frozen_files':len(frozen),'historical_preservation_reference':str(args.selection_run/'terminal-audit.json'),
         'prompt_sha256':digest(full_prompt),'free_bytes':free,'growth_forecast_bytes':384*1024**2,'warning_free_bytes':8*1024**3,
-        'scope':'One ordinary candidate generation from original selection/current source and newly available original analysis plan plus latest user genericity/progress requirements. No reader repair, selector retry, manual algorithm/group/code or production prompt/model/tools change. No GPU/search/parameter/collector/sourcecontrol/referencecopy/publication stage. Schema success is not numerical or performance acceptance.'}
+        'scope':'One ordinary candidate generation from a completed selection/current source and declared original evidence. Optional original analysis evidence is added only when explicitly supplied; otherwise all selector non-feedback inputs are byte-equal. No reader repair, selector retry, manual algorithm/group/code or production prompt/model/tools change. No GPU/search/parameter/collector/sourcecontrol/referencecopy/publication stage. Schema success is not numerical or performance acceptance.'}
     return config,search,inputs,feedback,expected,full_prompt,frozen,index,details,augmented_text,raw
 
 def main(args):
@@ -137,5 +156,6 @@ def main(args):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(__doc__)
-    for name in ['config','selection-run','evidence-run','user-constraints','output']:parser.add_argument('--'+name,type=Path,required=True)
+    for name in ['config','selection-run','output']:parser.add_argument('--'+name,type=Path,required=True)
+    for name in ['evidence-run','user-constraints']:parser.add_argument('--'+name,type=Path)
     parser.add_argument('--preflight',action='store_true');main(parser.parse_args())
