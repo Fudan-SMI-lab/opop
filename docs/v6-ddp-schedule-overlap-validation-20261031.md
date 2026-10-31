@@ -1,5 +1,26 @@
 # 重叠候选的原正式配对验证
 
+香港2026-10-31 **21:04:58**正式AB/BA正常完成，完整新结果终审 `3d34cf680ab7b0fbf30d2b023365bf194c2fee05550b820a90e24d1036012ab7`，只读数值汇总 `9f2109cf1abd76b1627a86fec32bc98c04c863d42958f5d3fe1432b0f6f91af7`，[公开终审](evidence/v6-ddp-schedule-overlap-validation-20261031/public-terminal-audit.json) SHA `76669d9e317a99495653c135fd94a7b492a3005c8e55eb8674607d04bdc1b731`。10jobs/20ranks/40clean/16fullchecks（每次248,879,620元素）/24自身metric traces/2新native SQLite，8当前关键身份与原core e893保持。原判定已核实为接受ea18e465，publication=exploration，CURRENT仍88fa，没有发布指针。
+
+|原fresh配对|B accepted7e6 ms|C exact2166 ms|收益ms|MAD噪声界限ms|
+|---|---:|---:|---:|---:|
+|AB|44.308969|43.144499|1.164470|0.487990|
+|BA|44.234766|43.296156|0.938610|0.091448|
+
+两对均通过，聚合 **44.2718675→43.2203275ms，改善2.3751878097%**。全部40样本保留，最大B44.643096/C43.573637；原anchor133.379621/limit140.04860205、数值/精确副本和原约束均通过。8个first checks误差0，8个second checks rank0最大9.5367431640625e-7、rank1 1.1920928955078125e-7，在原容差内。first parent/second graph_setup_lead2_pg2_tail2_perpiece_foldscale/reference1不是两个optimized checks；没有全raw tensor保存或新source比较。此2.3752%相对7e6，不与旧59.6932%或固定2.5789%相加，也不称纯通信贡献。
+
+全部自身metric trace：B1141 kernels/1130 Graph/17 launches/11 eager AR，C1139/1127 Graph/22 launches/12 eager AR；B group1/stream21:6、group2/stream25:5，C为5/7。AR均在Graph外、RING_LL入口，C载荷6144+2×28351488+5×56702976+50419200+3×35705344B，总497,759,232B与B相同。自身计算通信重叠C15.027464—16.341379/B14.679553—15.683146ms，通信之间重叠C26.081054—29.748434/B28.331830—29.959752ms；只是各自capture内区间，不能作wire、关键路径或可回收收益。新profile12calls/11groups不等于已更新registry。
+
+新精确2166 Nsys来自nsys-b6971ce879：r0 SQLite605d822095a04e332212eba13241670f6a20944f740bf77edd8d274332e0f95a、r1 46e34355530198edf4301516b2162bec98ff0e7f5bd091e9fd374e25c5bb5cd3、normalized585aa6dbab3d8aae48201395c175387801f458ab00ee6f0253030df217da2156。每rank1128 kernels/1116 Graph/22个cudaGraphLaunch_v10000/12 eager AR，stream21:5/25:7；实际native日志SHM/direct/direct双channel，不从NODE/P2P推断transport。NCCL sum59.693460/439.302237ms，union33.208888/221.342357ms，rank1首两段190.94/191.12ms尾部保留；不同受扰周期，不是clean/wire/关键路径。后续独立阶段只hash复用这些新证据，不再采一次Nsys。
+
+独立timeline 43.861086/43.846283ms、12AR/102sync/0callback/1inventory bucket，GPU readiness未知，不能解释为无梯度或完整12片ownership。30个合成校准样本使用旧parent discovery的14175744/9845952/1536元素，aligned rank-max中位数3.865863/2.709768/.060604ms；是default group独立SUM，不是新lead2大小/双组模型排程、模型全量质量或wire下界。tuning含setup/warmup及当前chunks，不做每step或kernel协议join，无env pin。run-only诊断两rank各6个正常False generator位置334/356/365/384/385/406，共460返回；无exception，也不执行数值observe比较。
+
+C Torch peak4,619,939,328B/lifecycle5,672,500,224B，runtime reserved5,888,802,816B，但lifecycle reserved6,354,370,560B；B peak约4.613GB/lifecycle5.656GB/reserved6.354GB。不能只选runtime reservation称生命周期内存收益，外部NCCL并未全量计入，无新内存门槛。全部deprecation/barrier/AccumulateGrad/profiler警告保留，无uncaught traceback；8.705609—11.089830ms安装时间不是完整setup。
+
+真实planner generation7a806babeaa1/session ses_e6df335cfffem66IQy15doYEBK，10assistant/14tools/0schema修复，provider估算.19024736154不是账单；8输入116,884B与snapshot/普通prompt-model-tools一致。2964展示行、0逐行prefix截断；工具8字节截断后11续读，全部2369 observations行及8输入实际暴露。工具7正确读替换组成、排除binding_cost。**工具12确实读了自己的provider配置**，1504B/hash8adbdd58ab2165c422393fe885fce15bc685c1e835b4ed5ebd730acd6ab3a890，63行仅在服务器精确核对，内容没有输出；不能称8-input-only。13一次plan写入无编辑，14纯JSON/schema。没有记录到model/tensor/CUDA/PG/真实collective/后来答案内容命令，外部FS非封闭。private history9a37766219bccd71f07af5cf244c3eafb75d6db34ec917941ef466c283ba36fc/accessa7ba6d958045b30fef9828daf9cd0a87921d32da49eb7d16525ac17e553d87ee留服务器。原plan首kernel“等待主导”未获证明、将单独diagnostic profile称clean不当、校准大小来自parent；原plan保留，未作为新角色纠正答案。主审首遍通过；初始metadata检查错找results.json的FileNotFound保留initial-inspection-error.json（实际followup-results.json），无角色/实验重跑。
+
+基于真实新正式接受，香港 **21:18:24已实际执行[一次完整版本独立B/C/C/B](v6-ddp-schedule-overlap-independent-20261031.md)**，对原始EMPTY，不改代码、参数、质量或接受规则。旧34508已handled，原固定/候选不重审。以下为历史启动记录。
+
 香港21:04:58，正式批已返回 batch_finished，唯一34508已成功queue完成事件；不是low_disk_space。完整正式数值/noise/采集与planner终审由这一已queued事件续接，当前不把完成等同接受，不重复监听或重启。终态磁盘available 8606490624B。
 
 香港2026-10-31 **20:59:39**已启动一次`ProjectSearch.validate_bundle(publish=False)`原fresh AB/BA，controller **315531**，唯一隐藏完成/磁盘监听 **34508**。[实际launch](evidence/v6-ddp-schedule-overlap-validation-20261031/launch.json)复用现有working runtime/core e893，与固定阶段和本次B/C相同；现有通用v6_validate_fixed_candidate.py SHA96586fdc2a611253b32b5a5e63ceb49d63132a63db78bb7cfb3c014cd51229da未改。8当前关键身份，没有历史sweep、环境副本、model-health或新增测试。
