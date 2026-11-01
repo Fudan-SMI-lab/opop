@@ -275,7 +275,7 @@ class ProjectSearch:
         common.update({"source/"+name: data for name, data in sources.items()})
         from kernel_optimizer.project.feedback import candidate_artifacts
         common.update(candidate_artifacts(feedback, self.store))
-        prompt_root = Path(__file__).parent
+        from kernel_optimizer.project.prompt_versions import load_prompt
         trial_id = "trial-"+uuid4().hex[:10]
         trial_root = self.output/"trials"/trial_id; trial_root.mkdir(parents=True)
         with Runtime(self.config, log_dir=trial_root) as runtime:
@@ -285,7 +285,7 @@ class ProjectSearch:
             plan = self.revisions.load(parent.plan_ref, ExecutionPlan)
             if selection_strategy == "agent":
                 selected, selection_receipt = agents.generate("selection", common,
-                    (prompt_root/"selection_prompt.md").read_text(), ("selection.json",),
+                    load_prompt(self.config, "selection"), ("selection.json",),
                     view_feedback(route(feedback, current_revision=parent.id, registry=registry), feedback_view),
                     validator=lambda path: check_selection(path, discovery, allowed_scopes, eligible))
                 selection = json.loads((selected/"selection.json").read_text())
@@ -313,7 +313,7 @@ class ProjectSearch:
                                 "target-resources.json": json.dumps({ident: discovery.get("call_resources", {}).get(ident)
                                                                      for ident in affected}, indent=2)}
             generated, candidate_receipt = agents.generate("candidate", candidate_inputs,
-                (prompt_root/"candidate_prompt.md").read_text(), ("candidate.py", "proposal.json"),
+                load_prompt(self.config, "candidate"), ("candidate.py", "proposal.json"),
                 view_feedback(route(feedback, current_revision=parent.id, registry=registry, selected_groups=selection["groups"], plan=plan), feedback_view),
                 validator=validate_proposal)
         bundle, proposal = self.bundle_from_outputs(generated, selection, parent, discovery, trial_id)

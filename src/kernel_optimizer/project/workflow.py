@@ -10,6 +10,7 @@ from kernel_optimizer.config import AppConfig
 from kernel_optimizer.models.objective import AggregationSpec, ObjectiveSpec, RequiredMetric
 from kernel_optimizer.models.project import ExecutionPlan, GroupRegistry, ProjectContract
 from kernel_optimizer.project.agents import ProjectAgents
+from kernel_optimizer.project.prompt_versions import load_prompt
 from kernel_optimizer.project.request import ProjectRequest, ProjectUnderstanding
 from kernel_optimizer.project.transactions import RevisionStore
 from kernel_optimizer.runtime.execution import ExecutionRequest, LocalExecutor, write_json
@@ -59,7 +60,7 @@ class ProjectWorkflow:
                 prior = Path(generated[-1]["sandbox"])/"adapter.py"
                 if prior.exists():
                     inputs["prior_adapter.py"] = prior.read_bytes()
-        prompt = Path(__file__).with_name("adapter_prompt.md").read_text(encoding="utf-8")
+        prompt = load_prompt(self.config, "project-evaluator")
         revisions = RevisionStore(store)
 
         def make_contract(understanding):

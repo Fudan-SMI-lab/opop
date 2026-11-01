@@ -778,6 +778,7 @@ class ProjectDefaults(StrictConfig):
     lease_dir: Path = Path("~/.cache/opop/device-leases")
     tools: dict[str, str] = Field(default_factory=dict)
     profiling: dict[str, Any] = Field(default_factory=dict)
+    prompt_versions: dict[Literal["project-intake", "project-evaluator", "selection", "candidate"], str] = Field(default_factory=dict)
     worker_timeout_s: float | None = 600.0
 
 

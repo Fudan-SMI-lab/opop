@@ -7,6 +7,7 @@ from kernel_optimizer.agents.sandbox import Sandbox
 from kernel_optimizer.project.agents import ProjectAgents
 from kernel_optimizer.project.experiment_policy import check_selection, eligible_groups
 from kernel_optimizer.project.generated import validate_proposal
+from kernel_optimizer.project.prompt_versions import load_prompt
 from kernel_optimizer.runtime.execution import write_json
 from kernel_optimizer.wiring import Runtime
 
@@ -79,7 +80,7 @@ def resume_generation(search, directory):
                 "targets.json": json.dumps([c for c in discovery["calls"] if c["id"] in affected], indent=2),
                 "target-resources.json": json.dumps({c: discovery.get("call_resources", {}).get(c) for c in affected}, indent=2)})
             generated, candidate_receipt = agents.generate("candidate", common,
-                Path(__file__).with_name("candidate_prompt.md").read_text(), ("candidate.py", "proposal.json"),
+                load_prompt(search.config, "candidate"), ("candidate.py", "proposal.json"),
                 previous.decode() if previous else None, validator=validate_proposal)
         else:
             selection = json.loads((inputs / "selection.json").read_text())

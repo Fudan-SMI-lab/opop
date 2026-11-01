@@ -210,7 +210,8 @@ def prepare_request(config, *, project: str, goal: str, command: str | None, con
     def validate(directory):
         proposed = IntakeProposal.model_validate_json((directory/"intake.json").read_bytes())
         resolve_request(proposed, source, goal, environment)
-    prompt = Path(__file__).with_name("intake_prompt.md").read_text(encoding="utf-8")
+    from kernel_optimizer.project.prompt_versions import load_prompt
+    prompt = load_prompt(config, "project-intake")
     with Runtime(config, log_dir=root) as runtime:
         generated, receipt = ProjectAgents(runtime, store).generate("project-intake", inputs, prompt,
             ("intake.json",), validator=validate)
