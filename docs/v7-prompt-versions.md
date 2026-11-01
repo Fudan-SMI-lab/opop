@@ -40,3 +40,19 @@ kernel-opt --config private.yaml --override project_defaults.prompt_versions.can
 两臂均用v7核心`383699d7…`、原B8/256→32完整生成、精确tokens/完整logits、原质量及配对噪声规则。启动可用22,996,221,952B，增长预测4GiB依据此前单capture及归一化约501MB并预留正常多采集/角色波动；非API/collector上限，8GiB仍是告警而非启动硬门槛。当次未清理。通过与否均保存，不自动重试或修到通过。
 
 按用户最新节省token要求，等待期间由一个普通完成监听器处理；不再反复模型轮询、读取未完成草稿或重复中间审计。只在实际完成/新异常/用户指令时接续。当前Goal保持active，这一步不是整个主线完成。
+
+### 正式结果及独立验证
+
+正式批次09:26:09结束，原规则接受exploration版本`23979149…`，源旧accepted/current及新分支原基线指针均保留。20个clean样本、8次完整质量检查（每次38,897,924元素）最大误差均0，原tokens/完整logits/teacher检查通过。两对B为323.171296/320.581964、C为374.000070/372.930331 tokens/s；收益50.828774/52.348367超过噪声3.884853/4.811726。汇总 **321.876630→373.465200 tokens/s，16.0274358%**；全部样本保留，不与历史分数合并。
+
+两次C的质量覆盖各62次flattened-decode声明路由、0记录回退/0reference调用；独立结构依据是新profile与plain timeline：均66,064 kernels，profile中63,994个关联到替换范围，decode维度−2的KV追加cat为0，维度−1的rotate-half cat仍2,232次，prefill的72次KV cat保留。不能把全部cat计数变化都说成KV优化。profile8.60s、timeline1.36s均为受扰诊断周期，不能用来分解684–686ms clean完整生成收益。
+
+运行峰值8.574→8.914GB，生命周期8.847→9.187GB，约增加324MiB；无新内存约束，不称显存优化。独立run-only诊断为空，只表示未记录异常/False，成功路径结论依赖代码、原质量与trace。绑定对照parent/passthrough为846.588/933.321及780.123/820.987ms，独立周期且含噪声，不从正式收益扣除。
+
+真实普通planner`079f334122fd`：9条assistant、12工具、0合同修复，8个实际输入逐字节符合快照；443显示行，其中request第73行只显示前2000/2197字符，不能称全输入完整消费。一次plan写入零编辑，自主选择candidate_diagnostics/execution_timeline/binding_cost；仅目录、输入读取和JSON schema检查，无观察到模型/GPU或私有配置正文命令，非隔离访问证明。其66,333-kernel说法来自父版本观测，非新候选计数；timeline不能单独证明clean收益的因果分解。
+
+新11个worker全部通过，七项当前关键文件保持；终态审查`7ec5b247f0f2d4278a9e5301231c2cfead9295585f9292ca899b0e2ee8b018ba`。读取器曾误把snapshot.files当列表、误找request路径、未处理request行截断；原reader保留，只修读取记录，不重跑角色/GPU。没有追加候选修复或CPU故障测试。
+
+**09:33:47独立完整版本已启动**，controller `433833`，根目录`/root/autodl-tmp/dev/v7-work/candidate-path-independent-20261101`。新通用实验wrapper只调用一次现有`promote_version(publish=False)`，将上述exact版本与原prepared EMPTY `0db575bc…`做新ABBA；同一v7核心/原质量/噪声/参数，不新建Agent、collector、source参考或搜索。启动可用22,033,780,736B，512MiB规划余量覆盖四个evaluate worker产物，无新清理。原始源码参考复用，不重复模型核验。
+
+等待机制纠正：普通监听本身不调用模型，但active Goal仍会在回合结束后自动续接；前述“仅凭监听即可避免反复唤醒”过强。用户要求长期无人介入，因此不采用需要人工resume的暂停方案，不擅自暂停Goal；当前工具约束亦不能保证整小时零唤醒。保留一个完成监听、避免中间内容重审，真实结果到达后继续主线。
